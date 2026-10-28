@@ -82,7 +82,7 @@ function MediaContactsFields({ canEdit }: { canEdit: boolean }): React.JSX.Eleme
           value={value.introHtml}
           onChange={(introHtml) => set({ introHtml })}
           readOnly={!canEdit}
-          allowAssets={false}
+          allowAssets={false} allowItalic
           describedBy={introError ? `${INTRO_HINT_ID} ${INTRO_ERROR_ID}` : INTRO_HINT_ID}
         />
         <p id={INTRO_HINT_ID}>Include the 24-hour media line number here.</p>

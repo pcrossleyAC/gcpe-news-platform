@@ -15,8 +15,8 @@ import { BODY_ATTRIBUTES, BODY_SCHEMES, BODY_TAGS } from "@gcpe/nrms-contract";
 
 const ALLOWED_ATTRIBUTES: Record<string, readonly string[]> = BODY_ATTRIBUTES;
 const ALLOWED_SCHEMES = new Set<string>(BODY_SCHEMES);
-/** Matches the server sanitiser's `transformTags: { b: "strong" }` (apps/nrms/src/text/sanitize.ts). */
-const TAG_ALIASES: Record<string, string> = { b: "strong" };
+/** Matches the server sanitiser's `transformTags: { b: "strong" }` (apps/nrms/src/text/sanitize.ts); `i` becomes `em`, kept only where `em` is allowed. */
+const TAG_ALIASES: Record<string, string> = { b: "strong", i: "em" };
 /** Dropped along with their entire contents — never just unwrapped. */
 const SKIP_CONTENT_TAGS = new Set(["script", "style", "noscript", "textarea", "option", "svg", "iframe"]);
 

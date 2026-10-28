@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { enqueueEvent, termEventType, termRecordSchema, type SubscriberConfig, type TermKind, type TermRecord } from "@gcpe/events";
 import { terms } from "../db/schema";
@@ -6,6 +6,35 @@ import { CORE_SOURCE, lockAggregate, termAggregateId } from "./aggregate";
 
 export const termInputSchema = termRecordSchema.omit({ updatedAt: true });
 export type TermInput = Omit<TermRecord, "updatedAt">;
+
+/** A new term's key: what the public site's CATEGORY_KEY accepts (apps/public-site/src/site-paths.ts). Existing legacy keys are exempt. */
+export const NEW_TERM_KEY = /^[a-z0-9-]{1,100}$/;
+export const TERM_NAME_MAX = 100;
+
+export class TermRuleError extends Error {
+  constructor(readonly code: "key-format" | "key-taken" | "name-required" | "name-too-long") {
+    super(code);
+    this.name = "TermRuleError";
+  }
+}
+
+/** Staff-edit rules for PUT /terms. Not applied by upsertTerm, so the legacy importer keeps its legacy keys and null names. */
+export async function checkTermWrite(db: Db, input: TermInput): Promise<void> {
+  const name = input.displayName?.trim() ?? "";
+  if (name === "") throw new TermRuleError("name-required");
+  if (name.length > TERM_NAME_MAX) throw new TermRuleError("name-too-long");
+  const [exact] = await db
+    .select({ key: terms.key })
+    .from(terms)
+    .where(and(eq(terms.kind, input.kind), eq(terms.key, input.key)));
+  if (exact) return;
+  if (!NEW_TERM_KEY.test(input.key)) throw new TermRuleError("key-format");
+  const [variant] = await db
+    .select({ key: terms.key })
+    .from(terms)
+    .where(and(eq(terms.kind, input.kind), sql`lower(${terms.key}) = lower(${input.key})`));
+  if (variant) throw new TermRuleError("key-taken");
+}
 
 type Row = typeof terms.$inferSelect;
 

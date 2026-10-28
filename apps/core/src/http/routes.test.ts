@@ -1,10 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { hashPassword, localLoginRouter } from "@gcpe/auth";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
-import { MAX_EVENT_BYTES } from "@gcpe/events";
+import { MAX_EVENT_BYTES, outboxEvents } from "@gcpe/events";
 import { eq } from "drizzle-orm";
 import { organizations, userOrganizations, users } from "../db/schema";
 import { createApp } from "../app";
@@ -18,6 +18,7 @@ const audience = "api://core";
 describe("Core HTTP API", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
+  let staffApp: ReturnType<typeof createApp>;
   let admin: string;
   let reader: string;
   let directoryService: string;
@@ -37,6 +38,7 @@ describe("Core HTTP API", () => {
     editorOnly = await sign(["NRMS.Editor"]);
     siteEditor = await sign(["NRMS.SiteEditor"]);
     app = createApp({ db: tdb.db, subscribers: [], auth: { issuer, audience, keys } });
+    staffApp = createApp({ db: tdb.db, subscribers: [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }], auth: { issuer, audience, keys } });
   });
   afterAll(async () => {
     await tdb.drop();
@@ -99,6 +101,73 @@ describe("Core HTTP API", () => {
     expect((await request(app).put("/api/terms/tag/covid-19").set("authorization", `Bearer ${admin}`).send(term)).status).toBe(200);
     expect((await request(app).get("/api/terms/tag").set("authorization", `Bearer ${reader}`)).body).toHaveLength(1);
     expect((await request(app).get("/api/terms/planet").set("authorization", `Bearer ${reader}`)).status).toBe(404);
+  });
+
+  describe("staff term edits", () => {
+    const social = { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null };
+    const term = (key: string, extra: Record<string, unknown> = {}) => ({ kind: "tag", key, displayName: "T", sortOrder: 0, isActive: true, social, ...extra });
+    const put = (key: string, body: unknown, token = () => admin) => request(staffApp).put(`/api/terms/tag/${key}`).set(auth(token())).send(body as object);
+    // The shared DB is not truncated between tests, so leave no terms or events behind.
+    afterEach(async () => {
+      await tdb.pool.query("DELETE FROM terms WHERE key IN ('new-tag','New-Tag','Legacy-Tag','legacy-tag','blank-tag','raced-tag','to-retire','nope')");
+      await tdb.pool.query("DELETE FROM outbox_events WHERE aggregate_id LIKE 'tag:%'");
+    });
+    const eventsFor = async (key: string) => (await tdb.db.select().from(outboxEvents)).filter((e) => e.aggregateId === `tag:${key}`);
+
+    it("PUT /api/terms/tag/new-tag with displayName '  New tag ' stores 'New tag' and enqueues tag.upserted", async () => {
+      const res = await put("new-tag", term("new-tag", { displayName: "  New tag " }));
+      expect(res.status).toBe(200);
+      expect(res.body.displayName).toBe("New tag");
+      const events = await eventsFor("new-tag");
+      expect(events.map((e) => e.type)).toEqual(["tag.upserted"]);
+    });
+
+    it("PUT a new key 'New-Tag' answers 400 { error: 'key-format' }; an existing key's case variant answers 409 { error: 'key-taken' }", async () => {
+      const bad = await put("New-Tag", term("New-Tag"));
+      expect(bad.status).toBe(400);
+      expect(bad.body).toEqual({ error: "key-format" });
+      await tdb.pool.query("INSERT INTO terms (kind, key, display_name, sort_order, is_active, social, updated_at) VALUES ('tag', 'Legacy-Tag', 'Legacy', 0, true, $1, now())", [JSON.stringify(social)]);
+      const taken = await put("legacy-tag", term("legacy-tag"));
+      expect(taken.status).toBe(409);
+      expect(taken.body).toEqual({ error: "key-taken" });
+      // A blank name is a 400 too.
+      expect((await put("blank-tag", term("blank-tag", { displayName: "  " }))).body).toEqual({ error: "name-required" });
+    });
+
+    it("PUT with isActive false on an existing term stores it inactive and enqueues tag.upserted with isActive false", async () => {
+      await put("to-retire", term("to-retire"));
+      const res = await put("to-retire", term("to-retire", { isActive: false }));
+      expect(res.status).toBe(200);
+      expect(res.body.isActive).toBe(false);
+      const events = await eventsFor("to-retire");
+      expect(events.map((e) => e.type)).toEqual(["tag.upserted", "tag.upserted"]);
+      expect(((events[1]!.envelope as { data: { isActive: boolean } }).data.isActive)).toBe(false);
+    });
+
+    it("PUT renames an existing legacy mixed-case key (200): the format rule only guards new keys", async () => {
+      await termsService.upsertTerm(tdb.db, { kind: "tag", key: "Legacy-Tag", displayName: null as unknown as string, sortOrder: 0, isActive: true, social }, []);
+      const res = await put("Legacy-Tag", term("Legacy-Tag", { displayName: " Legacy tag " }));
+      expect(res.status).toBe(200);
+      expect(res.body.displayName).toBe("Legacy tag");
+    });
+
+    it("PUT answers 409 key-taken when the write loses a create race (unique violation on terms_kind_key)", async () => {
+      const spy = vi
+        .spyOn(termsService, "upsertTerm")
+        .mockRejectedValueOnce(Object.assign(new Error("Failed query"), { cause: Object.assign(new Error("duplicate key"), { code: "23505", constraint: "terms_kind_key" }) }));
+      try {
+        const res = await put("raced-tag", term("raced-tag"));
+        expect(res.status).toBe(409);
+        expect(res.body).toEqual({ error: "key-taken" });
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("PUT by a non-Core.Admin answers 403", async () => {
+      expect((await put("nope", term("nope"), () => reader)).status).toBe(403);
+      expect((await put("nope", term("nope"), () => siteEditor)).status).toBe(403);
+    });
   });
 
   it("hides internal error details on unexpected failures", async () => {

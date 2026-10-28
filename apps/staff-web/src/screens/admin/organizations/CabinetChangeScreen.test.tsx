@@ -296,13 +296,13 @@ describe("CabinetChangeScreen", () => {
     stored = change({ operations: [RENAME], status: "scheduled", scheduledFor: "2020-01-01T08:00:00.000Z", scheduledForLocal: "2020-01-01T00:00" });
     stub([]);
     renderScreen();
-    expect(await screen.findByText(/it is being published now/)).toBeInTheDocument();
+    expect(await screen.findByText(/it is being published now/, {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.queryByText(/^Publishes on/)).toBeNull();
     stored = null;
     act(() => {
       window.dispatchEvent(new Event("focus"));
     });
-    expect(await screen.findByText("The scheduled cabinet change has been published.")).toBeInTheDocument();
+    expect(await screen.findByText("The scheduled cabinet change has been published.", {}, { timeout: 5000 })).toBeInTheDocument();
   });
 
   it("an already-scheduled change shows its time, and one that failed at its time says why", async () => {

@@ -413,6 +413,59 @@ describe("NRMS HTTP API", () => {
     expect(images.body[0]).not.toHaveProperty("bytes");
   });
 
+  describe("page-type writes (Core.Admin)", () => {
+    const del = (path: string, cookie: string) => request(app).delete(path).set("cookie", cookie).set("x-gcpe-request", "1");
+    const body = { pageTitle: "Joint Statement", languageId: 4105, releaseType: "release", sortOrder: 6, layout: "formal", pageImageId: null };
+    let admin: string;
+    beforeAll(async () => {
+      admin = await cookieFor(["Core.Admin"]);
+    });
+
+    it("POST/PUT/DELETE /api/page-types need Core.Admin (NRMS.SiteEditor gets 403)", async () => {
+      expect((await post("/api/page-types", siteEditorCookie, body)).status).toBe(403);
+      expect((await put("/api/page-types/4105/Joint%20Statement", siteEditorCookie, body)).status).toBe(403);
+      expect((await del("/api/page-types/4105/Joint%20Statement", siteEditorCookie)).status).toBe(403);
+      expect((await post("/api/page-types", editorCookie, body)).status).toBe(403);
+    });
+
+    it("PUT /api/page-types/4105/Fact%2FSheet%20%2350 addresses the title 'Fact/Sheet #50'", async () => {
+      const created = await post("/api/page-types", admin, { ...body, pageTitle: "Fact/Sheet #50", releaseType: "factsheet" });
+      expect(created.status).toBe(201);
+      expect(created.body).toMatchObject({ pageTitle: "Fact/Sheet #50" });
+      const updated = await put("/api/page-types/4105/Fact%2FSheet%20%2350", admin, { ...body, pageTitle: "Fact/Sheet #51", releaseType: "factsheet" });
+      expect(updated.status).toBe(200);
+      expect(updated.body.pageTitle).toBe("Fact/Sheet #51");
+      expect((await del("/api/page-types/4105/Fact%2FSheet%20%2351", admin)).status).toBe(204);
+      expect((await get("/api/page-types")).body.map((t: { pageTitle: string }) => t.pageTitle)).not.toContain("Fact/Sheet #51");
+    });
+
+    it("GET /api/page-types and /api/page-images answer 200 for a Core.Admin with no NRMS role", async () => {
+      expect((await get("/api/page-types", admin)).status).toBe(200);
+      expect((await get("/api/page-images", admin)).status).toBe(200);
+      expect((await request(app).get("/api/page-types")).status).toBe(401);
+    });
+
+    it("conflict and stranded-type errors answer 409 with the message; unknown title answers 404; bad input 400", async () => {
+      await tdb.pool.query("INSERT INTO page_types (page_title, language_id, release_type, sort_order) VALUES ('Only Advisory', 4105, 'advisory', 1) ON CONFLICT DO NOTHING");
+      await tdb.pool.query("DELETE FROM page_types WHERE release_type = 'advisory' AND page_title <> 'Only Advisory'");
+      const dup = await post("/api/page-types", admin, { ...body, pageTitle: "only advisory", releaseType: "advisory" });
+      expect(dup.status).toBe(409);
+      expect(dup.body.error).toBe("A page title with that name already exists in that language.");
+      const stranded = await del("/api/page-types/4105/Only%20Advisory", admin);
+      expect(stranded.status).toBe(409);
+      expect(stranded.body.error).toBe("This is the only English page title for Advisory. Add another first.");
+      expect((await del("/api/page-types/4105/No%20Such%20Title", admin)).status).toBe(404);
+      expect((await put("/api/page-types/4105/No%20Such%20Title", admin, body)).status).toBe(404);
+      expect((await post("/api/page-types", admin, { ...body, pageTitle: "Lang", languageId: 1234 })).status).toBe(400);
+      expect((await post("/api/page-types", admin, { ...body, pageTitle: "x".repeat(51) })).status).toBe(400);
+      const fifty = await post("/api/page-types", admin, { ...body, pageTitle: "y".repeat(50) });
+      expect(fifty.status).toBe(201);
+      expect((await del("/api/page-types/abc/x", admin)).status).toBe(404);
+      expect((await post("/api/page-types", admin, { ...body, pageTitle: "<b>x</b>" })).status).toBe(400);
+      expect((await post("/api/page-types", admin, { ...body, pageTitle: "Bad Pic", pageImageId: "00000000-0000-4000-8000-000000000001" })).status).toBe(400);
+    });
+  });
+
   it("a retired media list is still listed, marked inactive, and a new release can't pick it (422)", async () => {
     await tdb.pool.query("INSERT INTO media_lists (key, display_name, sort_order, is_active) VALUES ('retired-desk', 'Retired desk', 50, false)");
     try {

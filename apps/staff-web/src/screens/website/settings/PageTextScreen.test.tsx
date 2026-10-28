@@ -124,6 +124,25 @@ describe("PageTextScreen", () => {
     expect(body.value.searchArchiveLinks).toEqual(PAGE_TEXT.searchArchiveLinks);
   });
 
+  it("the BC privacy statement's four <em> survive an edit to another paragraph and a Save", async () => {
+    const html = "<p>Edit me</p><p>Under the <em>Freedom of Information and Protection of Privacy Act</em> and the <em>Act</em>.</p><p>See <em>one</em> and <em>two</em>.</p>";
+    const doc = { ...DOC, pageText: { ...PAGE_TEXT, privacy: { ...PAGE_TEXT.privacy, bodyHtml: html } } };
+    const calls = stub(["NRMS.SiteEditor"], stateOf(doc));
+    renderScreen();
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Statement" });
+    await user.click(field);
+    (field as unknown as { editor: { commands: { focus(p: string): void } } }).editor.commands.focus("start");
+    await user.type(field, "X", { skipClick: true });
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
+    const saved = (post.body as { value: SiteSettings["pageText"] }).value.privacy.bodyHtml;
+    expect(saved).toContain("XEdit me");
+    expect(saved.match(/<em>/g)).toHaveLength(4);
+    expect(saved).toContain("<em>Freedom of Information and Protection of Privacy Act</em>");
+  });
+
   it("a server error on pageText.assetLicence.url shows beside Link URL", async () => {
     stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "pageText.assetLicence.url", message: "Must start with https:// or / (a page on this site)." }]));
     renderScreen();

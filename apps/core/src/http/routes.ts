@@ -36,7 +36,7 @@ import {
   scheduleCabinetChange,
   type CabinetChangeRecord,
 } from "../services/cabinet-changes";
-import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
+import { checkTermWrite, deactivateTerm, getTerm, listTerms, TermRuleError, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
 import { CALENDAR_ACCESS_ROLES, calendarAccessRouter } from "./calendar-access";
 import { usersRouter } from "./users";
@@ -53,6 +53,10 @@ function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | nu
 function handleError(res: Response, e: unknown) {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
   if (e instanceof AbbreviationTakenError) return void res.status(409).json({ error: "abbreviation-taken", takenBy: e.takenBy });
+  if (e instanceof TermRuleError) return void res.status(e.code === "key-taken" ? 409 : 400).json({ error: e.code });
+  // drizzle wraps the pg error; a unique violation on the terms table means another create of the key won the race.
+  if ((e as { cause?: { code?: string; constraint?: string } }).cause?.code === "23505" && (e as { cause?: { constraint?: string } }).cause?.constraint === "terms_kind_key")
+    return void res.status(409).json({ error: "key-taken" });
   if (e instanceof SuccessionError) return void res.status(422).json({ error: e.message });
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: "record too large to publish" });
   // Only the label: a failed query's message carries its bound parameters, which can be an email.
@@ -263,8 +267,10 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     safe<{ kind: string; key: string }>(async (req, res) => {
       const kind = parseKind(req, res);
       if (!kind) return;
-      const input = termInputSchema.parse(req.body);
-      if (input.kind !== kind || input.key !== req.params.key) return void res.status(400).json({ error: "body kind/key must match path" });
+      const parsed = termInputSchema.parse(req.body);
+      if (parsed.kind !== kind || parsed.key !== req.params.key) return void res.status(400).json({ error: "body kind/key must match path" });
+      await checkTermWrite(db, parsed);
+      const input = { ...parsed, displayName: parsed.displayName!.trim() };
       res.json((await upsertTerm(db, input, subscribers)).record);
     }),
   );

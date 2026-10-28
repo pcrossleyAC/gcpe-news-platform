@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
+import { EditorContent, ReactNodeViewRenderer, useEditor, useEditorState } from "@tiptap/react";
 import { Button, ToggleButton } from "@bcgov/design-system-react-components";
 import { Asset, bodyExtensions } from "./schema";
 import { AssetChip } from "./AssetChip";
@@ -25,6 +25,10 @@ export interface BodyEditorProps {
    * true; the minister biography turns it off, so a stored or pasted `<asset>` shows as its URL
    * text, which is what Core stores. Read once, when the editor is created. */
   allowAssets?: boolean;
+  /** Italic: the toolbar toggle, the mark, and `em` in the paste allow-list. Default false: only the
+   * settings editors turn it on, because their server allow-list keeps `<em>`; the release body and
+   * the biography drop it. Read once, when the editor is created. */
+  allowItalic?: boolean;
   /** Space-separated ids of the hint, note or error that describe the editing area. */
   describedBy?: string;
 }
@@ -36,7 +40,7 @@ export interface BodyEditorProps {
  * client-side (pasteFilter.ts) before ProseMirror ever parses it, matching what the server
  * sanitiser would keep.
  */
-export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets = true, describedBy }: BodyEditorProps): React.JSX.Element {
+export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets = true, allowItalic = false, describedBy }: BodyEditorProps): React.JSX.Element {
   const attributes = (): Record<string, string> => ({
     id,
     role: "textbox",
@@ -49,17 +53,30 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
   // server error) reaches the editing area's attributes without an effect of its own.
   const editor = useEditor(
     {
-      extensions: bodyExtensions(allowAssets ? AssetWithView : null),
+      extensions: bodyExtensions(allowAssets ? AssetWithView : null, { italic: allowItalic }),
       content: value,
       editable: !readOnly,
       editorProps: {
         attributes: attributes(),
-        transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, allowAssets ? BODY_TAGS : BIO_TAGS),
+        transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, [...(allowAssets ? BODY_TAGS : BIO_TAGS), ...(allowItalic ? ["em"] : [])]),
       },
       onUpdate: ({ editor: e }) => onChange(e.getHTML()),
     },
     [],
   );
+
+  // The toolbar's pressed states follow the caret (WCAG 4.1.2): useEditor does not re-render on
+  // selection changes, so the active marks are subscribed to here.
+  const active = useEditorState({
+    editor,
+    selector: ({ editor: e }) => ({
+      bold: !!e?.isActive("bold"),
+      italic: !!e?.isActive("italic"),
+      bullet: !!e?.isActive("bulletList"),
+      ordered: !!e?.isActive("orderedList"),
+      link: !!e?.isActive("link"),
+    }),
+  });
 
   // Not a content change, so no update event: TipTap's default would call onChange on mount with
   // its own rewrite of `value` (<b> as <strong>, line breaks dropped), which reads as an edit.
@@ -102,16 +119,21 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
       </span>
       {!readOnly && editor && (
         <div className="gcpe-body-editor__toolbar" role="toolbar" aria-label={`${label} formatting`}>
-          <ToggleButton isSelected={editor.isActive("bold")} onChange={() => editor.chain().focus().toggleBold().run()}>
+          <ToggleButton isSelected={active.bold} onChange={() => editor.chain().focus().toggleBold().run()}>
             Bold
           </ToggleButton>
-          <ToggleButton isSelected={editor.isActive("bulletList")} onChange={() => editor.chain().focus().toggleBulletList().run()}>
+          {allowItalic && (
+            <ToggleButton isSelected={active.italic} onChange={() => editor.chain().focus().toggleItalic().run()}>
+              Italic
+            </ToggleButton>
+          )}
+          <ToggleButton isSelected={active.bullet} onChange={() => editor.chain().focus().toggleBulletList().run()}>
             Bulleted list
           </ToggleButton>
-          <ToggleButton isSelected={editor.isActive("orderedList")} onChange={() => editor.chain().focus().toggleOrderedList().run()}>
+          <ToggleButton isSelected={active.ordered} onChange={() => editor.chain().focus().toggleOrderedList().run()}>
             Numbered list
           </ToggleButton>
-          <ToggleButton isSelected={editor.isActive("link")} onChange={toggleLink}>
+          <ToggleButton isSelected={active.link} onChange={toggleLink}>
             Link
           </ToggleButton>
           {allowAssets && <Button onPress={insertAsset}>Insert asset</Button>}

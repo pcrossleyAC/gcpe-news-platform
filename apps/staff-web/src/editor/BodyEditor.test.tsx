@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BodyEditor } from "./BodyEditor";
 import { caretToEnd } from "../../test/editorCaret";
@@ -131,6 +131,60 @@ describe("BodyEditor", () => {
     expect(last).not.toContain("<h2");
     expect(last).toContain("https://youtu.be/pasted00001");
     expect(last).toContain("Heading");
+  });
+
+  it("with allowItalic, the toolbar has an Italic toggle and toggling it wraps the selection in <em>", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={onChange} readOnly={false} allowItalic />);
+    const field = await screen.findByLabelText("Body");
+    const user = userEvent.setup();
+    const italic = screen.getByRole("button", { name: "Italic" });
+    expect(italic).toHaveAttribute("aria-pressed", "false");
+    await user.click(italic);
+    await user.click(field);
+    await user.type(field, "hi");
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)![0]).toContain("<em>hi</em>");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-pressed", "true"));
+  });
+
+  it("with allowItalic, stored '<p>under the <i>FOIPP Act</i></p>' loads italic and an edit elsewhere keeps '<em>FOIPP Act</em>'", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p>under the <i>FOIPP Act</i></p>" onChange={onChange} readOnly={false} allowItalic />);
+    const field = await screen.findByLabelText("Body");
+    expect(field.querySelector("em")?.textContent).toBe("FOIPP Act");
+    const user = userEvent.setup();
+    await user.click(field);
+    (field as unknown as { editor: { commands: { focus(p: string): void } } }).editor.commands.focus("start");
+    await user.type(field, "x", { skipClick: true });
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)![0]).toBe("<p>xunder the <em>FOIPP Act</em></p>");
+  });
+
+  it("without allowItalic there is no Italic button and the release schema has no italic mark", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p>a <em>b</em></p>" onChange={onChange} readOnly={false} />);
+    const field = await screen.findByLabelText("Body");
+    expect(screen.queryByRole("button", { name: "Italic" })).not.toBeInTheDocument();
+    expect(field.querySelector("em")).toBeNull();
+    const { bodyExtensions } = await import("./schema");
+    expect(bodyExtensions().some((e) => e.name === "italic")).toBe(false);
+    expect(bodyExtensions(null, { italic: true }).some((e) => e.name === "italic")).toBe(true);
+  });
+
+  it.each([
+    ["Italic", "<p>a <em>b</em> c</p>"],
+    ["Bold", "<p>a <strong>b</strong> c</p>"],
+  ])("the %s toggle's aria-pressed follows the caret in and out of the formatting", async (name, html) => {
+    render(<BodyEditor id="body" label="Body" value={html} onChange={() => {}} readOnly={false} allowItalic />);
+    const field = await screen.findByLabelText("Body");
+    const editor = (field as unknown as { editor: { commands: { setTextSelection(p: number): void } } }).editor;
+    const button = screen.getByRole("button", { name });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    act(() => editor.commands.setTextSelection(4)); // inside "b" (doc: p@0, "a " = 1-2, b = 3-4)
+    await waitFor(() => expect(button).toHaveAttribute("aria-pressed", "true"));
+    act(() => editor.commands.setTextSelection(6)); // in " c"
+    await waitFor(() => expect(button).toHaveAttribute("aria-pressed", "false"));
   });
 
   it("allowAssets default: a pasted <asset> stays an asset embed", async () => {

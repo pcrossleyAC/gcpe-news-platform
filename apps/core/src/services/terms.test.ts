@@ -4,7 +4,7 @@ import { outboxEvents, type SubscriberConfig } from "@gcpe/events";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { upsertOrganization } from "./organizations";
 import { republishAll } from "./republish";
-import { deactivateTerm, getTerm, listTerms, upsertTerm, type TermInput } from "./terms";
+import { checkTermWrite, deactivateTerm, getTerm, listTerms, NEW_TERM_KEY, TermRuleError, upsertTerm, type TermInput } from "./terms";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }];
 const economy: TermInput = {
@@ -80,5 +80,48 @@ describe("terms service", () => {
     expect(await republishAll(tdb.db, subs)).toBe(2);
     const types = (await tdb.db.select().from(outboxEvents)).map((e) => e.type).sort();
     expect(types).toEqual(["org.upserted", "sector.upserted"]);
+  });
+
+  describe("checkTermWrite", () => {
+    const code = async (input: TermInput) => {
+      try {
+        await checkTermWrite(tdb.db, input);
+        return "ok";
+      } catch (e) {
+        if (e instanceof TermRuleError) return e.code;
+        throw e;
+      }
+    };
+
+    it("accepts an existing legacy key that breaks NEW_TERM_KEY (renaming 'Jobs_Economy' is allowed)", async () => {
+      const legacy = { ...economy, key: "Jobs_Economy", displayName: null as unknown as string };
+      await tdb.pool.query("INSERT INTO terms (kind, key, display_name, sort_order, is_active, social, updated_at) VALUES ('sector', 'Jobs_Economy', NULL, 0, true, $1, now())", [JSON.stringify(economy.social)]);
+      expect(await code({ ...legacy, displayName: "Jobs and economy" })).toBe("ok");
+    });
+
+    it("refuses a new key 'Economy', 'jobs and economy' and 101 characters with key-format", async () => {
+      expect(await code({ ...economy, key: "Economy" })).toBe("key-format");
+      expect(await code({ ...economy, key: "jobs and economy" })).toBe("key-format");
+      expect(await code({ ...economy, key: "a".repeat(101) })).toBe("key-format");
+      expect(await code({ ...economy, key: "a".repeat(100) })).toBe("ok");
+    });
+
+    it("refuses a new 'economy' when 'Economy' exists in the same kind (key-taken), but allows it in another kind", async () => {
+      await tdb.pool.query("INSERT INTO terms (kind, key, display_name, sort_order, is_active, social, updated_at) VALUES ('sector', 'Economy', 'Economy', 0, true, $1, now())", [JSON.stringify(economy.social)]);
+      expect(await code({ ...economy, key: "economy" })).toBe("key-taken");
+      expect(await code({ ...economy, kind: "theme", key: "economy" })).toBe("ok");
+    });
+
+    it("refuses null, '' and '   ' names (name-required) and 101 characters (name-too-long)", async () => {
+      expect(await code({ ...economy, displayName: null as unknown as string })).toBe("name-required");
+      expect(await code({ ...economy, displayName: "" })).toBe("name-required");
+      expect(await code({ ...economy, displayName: "   " })).toBe("name-required");
+      expect(await code({ ...economy, displayName: "n".repeat(101) })).toBe("name-too-long");
+      expect(await code({ ...economy, displayName: "n".repeat(100) })).toBe("ok");
+    });
+
+    it("NEW_TERM_KEY means the same as the public site's CATEGORY_KEY", () => {
+      expect(NEW_TERM_KEY.source).toBe("^[a-z0-9-]{1,100}$");
+    });
   });
 });

@@ -20,6 +20,7 @@ import DocumentExt from "@tiptap/extension-document";
 import TextExt from "@tiptap/extension-text";
 import Paragraph from "@tiptap/extension-paragraph";
 import Bold from "@tiptap/extension-bold";
+import Italic from "@tiptap/extension-italic";
 import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
 import ListItem from "@tiptap/extension-list-item";
@@ -86,14 +87,17 @@ export const Asset = Node.create<Record<string, never>, AssetAttrs>({
  * every other extension, and the schema it produces, stays identical to what this test suite
  * (and the Node round-trip test) exercises.
  */
-/** `assetExtension` null leaves the `<asset>` node out (the minister biography): an `<asset>` then
+/** `opts.italic` adds the italic mark (rendered `<em>`) for the settings editors, whose server
+ * allow-list keeps `em`; the release body and biography allow-lists drop it, so it stays off there.
+ * `assetExtension` null leaves the `<asset>` node out (the minister biography): an `<asset>` then
  * parses as its URL text, which is what Core's bio sanitiser stores. */
-export function bodyExtensions(assetExtension: AnyExtension | null = Asset): AnyExtension[] {
+export function bodyExtensions(assetExtension: AnyExtension | null = Asset, opts: { italic?: boolean } = {}): AnyExtension[] {
   return [
     DocumentExt,
     TextExt,
     Paragraph,
     Bold,
+    ...(opts.italic ? [Italic] : []),
     BulletList,
     OrderedList,
     ListItem,

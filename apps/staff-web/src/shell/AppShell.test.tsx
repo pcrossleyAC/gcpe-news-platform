@@ -33,7 +33,7 @@ async function renderShell(roles: string[], tzCheck?: { at: string; offsetMinute
   await waitFor(() => expect(screen.getByText("Signed in as Pat")).toBeInTheDocument());
 }
 
-const allLabels = ["Releases", "Search", "Website", "Subscribers", "Calendar", "Users", "Calendar access", "Organizations", "Government terms", "Media list names", "Error log"];
+const allLabels = ["Releases", "Search", "Website", "Subscribers", "Calendar", "Users", "Calendar access", "Organizations", "Government terms", "Sectors, themes and tags", "Release page titles", "Media list names", "Error log"];
 const visibleLabels = () => allLabels.filter((label) => screen.queryByRole("link", { name: label }) !== null);
 
 describe("AppShell nav — roles decide what's shown", () => {
@@ -55,6 +55,22 @@ describe("AppShell nav — roles decide what's shown", () => {
     expect(visibleLabels()).toEqual(["Releases", "Search", "Website", "Organizations"]);
   });
 
+  it("Core.Admin sees 'Sectors, themes and tags'; NRMS.SiteEditor does not", async () => {
+    await renderShell(["Core.Admin"]);
+    expect(screen.getByRole("link", { name: "Sectors, themes and tags" })).toHaveAttribute("href", "/categories");
+    cleanup();
+    await renderShell(["NRMS.SiteEditor"]);
+    expect(screen.queryByRole("link", { name: "Sectors, themes and tags" })).toBeNull();
+  });
+
+  it("Core.Admin sees 'Release page titles'; NRMS.SiteEditor does not", async () => {
+    await renderShell(["Core.Admin"]);
+    expect(screen.getByRole("link", { name: "Release page titles" })).toHaveAttribute("href", "/release-page-titles");
+    cleanup();
+    await renderShell(["NRMS.SiteEditor"]);
+    expect(screen.queryByRole("link", { name: "Release page titles" })).toBeNull();
+  });
+
   it("shows Organizations in the nav for NRMS.SiteEditor", async () => {
     await renderShell(["NRMS.SiteEditor"]);
     expect(visibleLabels()).toEqual(["Releases", "Search", "Website", "Organizations"]);
@@ -62,7 +78,7 @@ describe("AppShell nav — roles decide what's shown", () => {
 
   it("Core.Admin sees Website (to reach Project Blue Bridge), Users, Media list names and the error log", async () => {
     await renderShell(["Core.Admin"]);
-    expect(visibleLabels()).toEqual(["Website", "Users", "Calendar access", "Organizations", "Government terms", "Media list names", "Error log"]);
+    expect(visibleLabels()).toEqual(["Website", "Users", "Calendar access", "Organizations", "Government terms", "Sectors, themes and tags", "Release page titles", "Media list names", "Error log"]);
   });
 
   it("each NoD role sees Subscribers; NRMS roles don't", async () => {
