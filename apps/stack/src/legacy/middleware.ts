@@ -120,19 +120,21 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
    * the canonical page `/releases/<on-disk name>/` must exist. `/image` → 302 to the default OG
    * image (a placeholder until a per-post image endpoint is worth building), query dropped; any
    * other spelling of the post → 301 to the canonical page, query kept; the canonical path
-   * itself → static. An unknown key → null (the site 404); a listed key whose page is gone →
-   * status 404 with the canonical path to hand static.
+   * itself → static, checked before any stat. An unknown key → null (the site 404); a listed
+   * key whose page is gone → status 404 with the canonical path to hand static.
    */
   async function postRule(m: RegExpExecArray, target: RequestTarget): Promise<{ status: 301 | 302 | 404; to: string } | null> {
     const exact = await resolvePostKey(outputDir, m[1]!);
     if (exact === null) return null;
     const canonical = `/releases/${exact}/`;
+    // The hottest path: the canonical page itself goes to static with no further stat (static
+    // 404s it if it is gone).
+    if (m[2] === undefined && target.path === canonical) return null;
     if ((await pagePath(outputDir, canonical)) === null) return { status: 404, to: canonical };
     if (m[2] !== undefined) {
       if ((await pagePath(outputDir, DEFAULT_OG_IMAGE)) === null) return null;
       return { status: 302, to: DEFAULT_OG_IMAGE };
     }
-    if (target.path === canonical) return null;
     return { status: 301, to: `${canonical}${target.query}` };
   }
 }

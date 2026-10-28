@@ -2,12 +2,13 @@ import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import { mountSite, rootSiteNotFound } from "../site-mount";
 import { SITE_PASS_THROUGH } from "../stack";
 import { createLegacySiteFixture } from "./fixture";
+import { LISTING_MIN_REREAD_MS } from "./site-files";
 
 // Mirrors stack.ts (and site-mount.test.ts): mountSite, rootSiteNotFound just before News API,
 // then a catch-all standing in for News API's own JSON 404.
@@ -305,6 +306,7 @@ describe("legacyUrls: posts by key and case-insensitive paths (url-compat T2)", 
     app = appFor(outputDir);
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(outputDir, { recursive: true, force: true });
   });
 
@@ -393,6 +395,9 @@ describe("legacyUrls: posts by key and case-insensitive paths (url-compat T2)", 
     await writeFile(join(outputDir, "releases", "2026TT0106-000001", "index.html"), "<h1>new</h1>");
     const later = new Date(Date.now() + 60_000);
     await utimes(join(outputDir, "releases"), later, later);
+    // The listing is re-checked at most every LISTING_MIN_REREAD_MS: step the clock past it.
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + LISTING_MIN_REREAD_MS + 1);
     await expectOneHop(app, "/stories/2026tt0106-000001", "/releases/2026TT0106-000001/");
 
     await rm(join(outputDir, "releases", "2026TT0105-001130", "index.html"));
