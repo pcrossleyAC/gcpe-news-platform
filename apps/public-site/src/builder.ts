@@ -220,12 +220,15 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     if (related.length === 0 && leadKey) {
       const cache = (run.ministryLatest ??= new Map());
       let fetch = cache.get(leadKey);
-      if (!fetch) cache.set(leadKey, (fetch = newsApi.latest("ministries", leadKey, MINISTRY_LATEST_COUNT)));
-      try {
-        ministryLatest = await fetch;
-      } catch (err) {
-        console.error(`[public-site] the ministry's latest posts are unavailable for post:${key} ${safeErrorLabel(err)}`);
+      if (!fetch) {
+        // Logged once per ministry per run (the failed promise is cached), read as none.
+        fetch = newsApi.latest("ministries", leadKey, MINISTRY_LATEST_COUNT).catch((err: unknown): PostDto[] => {
+          console.error(`[public-site] the latest posts of ministry:${leadKey} are unavailable this run (first needed by post:${key}) ${safeErrorLabel(err)}`);
+          return [];
+        });
+        cache.set(leadKey, fetch);
       }
+      ministryLatest = await fetch;
     }
     await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { related, leadMinistry, leadMinistrySuccessor, ministryLatest }));
     const entry = indexEntryOf(key, post);

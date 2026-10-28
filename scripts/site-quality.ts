@@ -71,6 +71,20 @@ export async function checkReleaseStates(browser: import("@playwright/test").Bro
   if (frenchCopy !== 1) fail(`(no script): the French copy is not shown`);
   if (headings !== 1) fail(`(no script): ${headings} level-1 headings exposed, expected 1`);
   await context.close();
+
+  // Share is in the DOM twice (the side column and the phone toolbar); legacy CSS hides one per
+  // width. The hidden copy must be display:none (no boxes), not merely off screen, so assistive
+  // technology reads one Share list, not two.
+  for (const width of [390, 1280]) {
+    const sized = await browser.newContext({ viewport: { width, height: 900 } });
+    const page = await sized.newPage();
+    await page.goto(url + RELEASE);
+    const copies = page.locator(".resource-links.share");
+    const [total, rendered] = [await copies.count(), await copies.evaluateAll((els) => els.filter((el) => el.getClientRects().length > 0).length)];
+    log(`${RELEASE} at ${width}px: Share copies ${total}, rendered ${rendered}`);
+    if (rendered !== 1) fail(`at ${width}px: ${rendered} Share copies rendered, expected exactly 1 (the other display:none)`);
+    await sized.close();
+  }
   return failures;
 }
 

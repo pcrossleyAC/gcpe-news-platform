@@ -462,6 +462,19 @@ describe("renderPage Open Graph and Twitter card meta", () => {
     expect(meta(root, "property", "og:image")).toBe("https://news.example/assets/legacy/Content/Images/Gov/default-og-image-new.jpg");
   });
 
+  it("og:image:alt and twitter:image:alt only with a given image and imageAlt (never on the default image); the description is trimmed", () => {
+    const social = (o: Parameters<typeof renderPage>[4]) => expectAccessibleStructure(renderPage("T", at, "/site/x/", "<h1>H</h1>", o));
+    const withAlt = social({ social: { image: "https://live.staticflickr.com/1/2_ab.jpg", imageAlt: " Tom & Jerry " } });
+    expect(meta(withAlt, "property", "og:image:alt")).toBe("Tom & Jerry");
+    expect(meta(withAlt, "name", "twitter:image:alt")).toBe("Tom & Jerry");
+    expect(meta(social({ social: { imageAlt: "Alt" } }), "property", "og:image:alt")).toBeNull();
+    expect(meta(social({ social: { image: "javascript:x", imageAlt: "Alt" } }), "property", "og:image:alt")).toBeNull();
+    expect(meta(social({ social: { image: "https://live.staticflickr.com/1/2_ab.jpg", imageAlt: " " } }), "property", "og:image:alt")).toBeNull();
+    const trimmed = social({ description: "  About fish \n" });
+    expect(meta(trimmed, "property", "og:description")).toBe("About fish");
+    expect(meta(trimmed, "name", "twitter:description")).toBe("About fish");
+  });
+
   it("social overrides title, description, image and type; a non-http social.image falls back to the default; empty description omits og:description", () => {
     const social = (s: Parameters<typeof renderPage>[4]) => expectAccessibleStructure(renderPage("Page", at, "/site/x/", "<h1>H</h1>", s));
     const over = social({ description: "page", social: { title: "Social", description: "Summary", image: "https://live.staticflickr.com/1/2_ab.jpg", type: "article" } });

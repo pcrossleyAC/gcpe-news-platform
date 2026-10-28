@@ -393,7 +393,8 @@ describe("release page: share, social meta, lead media, related band", () => {
     const ig = [...d.querySelectorAll("a.share-instagram")];
     expect(ig).toHaveLength(2);
     expect(ig[0]!.getAttribute("href")).toBe("https://www.instagram.com/governmentofbc/");
-    expect(ig[0]!.getAttribute("aria-label")).toBe("BC Government on Instagram");
+    // Named by the account it links to.
+    expect(ig[0]!.getAttribute("aria-label")).toBe("Gov on Instagram");
     expect(ig[0]!.querySelector("use")?.getAttribute("href")).toContain("#i-instagram");
     // After X, before Threads.
     expect(ig[0]!.parentElement!.previousElementSibling?.querySelector("a.share-twitter")).not.toBeNull();
@@ -412,6 +413,9 @@ describe("release page: share, social meta, lead media, related band", () => {
     expect(meta(flickr, "og:title")).toBe("Clinics to open across the province");
     expect(meta(flickr, "og:description")).toBe("Clinics are opening across the province this month.");
     expect(meta(flickr, "og:url")).toBe("https://news.example/releases/2026HLTH0001-000001/");
+    // The lead image's alt is the headline, for both cards.
+    expect(meta(flickr, "og:image:alt")).toBe("Clinics to open across the province");
+    expect(meta(flickr, "twitter:image:alt")).toBe("Clinics to open across the province");
 
     const html = render({ assetUrl: "https://www.youtube.com/watch?v=abc123DEF" });
     const yt = expectAccessibleStructure(html);
@@ -421,6 +425,9 @@ describe("release page: share, social meta, lead media, related band", () => {
 
     const fallback = "https://news.example/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
     expect(meta(dom({}), "og:image")).toBe(fallback);
+    // The default image carries no page-specific alt.
+    expect(meta(dom({}), "og:image:alt")).toBeNull();
+    expect(meta(yt, "og:image:alt")).toBe("Clinics to open across the province");
     expect(meta(dom({ assetUrl: "https://news.gov.bc.ca/live" }), "og:image")).toBe(fallback);
     expect(meta(dom({ assetUrl: "javascript:alert(1)" }), "og:image")).toBe(fallback);
   });
@@ -436,7 +443,7 @@ describe("release page: share, social meta, lead media, related band", () => {
 
     const yt = dom({ assetUrl: "https://youtu.be/abc123DEF" }).querySelector(".story-body > div.story-copy.primary-asset:first-child div.asset.youtube > a")!;
     expect(yt.getAttribute("href")).toBe("https://www.youtube.com/watch?v=abc123DEF");
-    expect(yt.querySelector("img")?.getAttribute("src")).toBe("/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg");
+    expect(yt.querySelector("img")?.getAttribute("src")).toBe("/assets/legacy/Content/Images/Gov/default-og-image-new.jpg");
 
     const live = dom({ assetUrl: "https://news.gov.bc.ca/live" }).querySelector(".story-body > div.story-copy.primary-asset:first-child a")!;
     expect(live.getAttribute("href")).toBe("https://news.gov.bc.ca/live");

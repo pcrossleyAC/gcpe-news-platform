@@ -218,6 +218,19 @@ describe("site builder", () => {
     expect(html(storage, "releases/K3/index.html")).not.toContain("story-ministry");
   });
 
+  it("a failing ministry latest-posts fetch (the related band's fallback) is logged once per ministry per run", async () => {
+    const posts = new Map([["K1", post({ key: "K1", leadMinistryKey: "health" })], ["K2", post({ key: "K2", leadMinistryKey: "health" })], ["K3", post({ key: "K3", leadMinistryKey: "health" })]]);
+    const { storage, api, builder } = setup(posts);
+    const latest = api.latest;
+    // Only the band's fallback fetch (3 to show + the release itself) fails; the ministry and home pages' own lists still load.
+    api.latest = async (kind, key, n) => { if (n === 4) throw new Error("News API 500"); return latest(kind, key, n); };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await builder.rebuild(["post:K1", "post:K2", "post:K3"], {});
+    expect(storage.files.has("releases/K3/index.html")).toBe(true);
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes("latest posts"))).toHaveLength(1);
+    errors.mockRestore();
+  });
+
   it("an inactive lead ministry is linked only when a successor resolves; successors are fetched once per run, only for an inactive lead", async () => {
     const posts = new Map([["K1", post({ key: "K1", leadMinistryKey: "old-health" })], ["K2", post({ key: "K2", leadMinistryKey: "gone" })], ["K3", post({ key: "K3", leadMinistryKey: "health" })]]);
     const { storage, api, builder } = setup(posts);

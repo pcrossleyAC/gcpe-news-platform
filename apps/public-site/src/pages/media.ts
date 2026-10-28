@@ -17,8 +17,10 @@ const YOUTUBE_ID = /^[A-Za-z0-9_-]{6,20}$/;
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com"]);
 const LIVE = /^https:\/\/news\.gov\.bc\.ca\/live\/?$/;
 
-/** The vendored image a YouTube link shows instead of YouTube's own thumbnail. */
-export const YOUTUBE_PLACEHOLDER = "/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg";
+/** The vendored image a YouTube link shows instead of YouTube's own thumbnail: legacy's 1920×1080
+ * card image (`default-og-image-new.jpg`), large enough for the story column at phone pixel
+ * densities (the 300px square it replaced was upscaled; Lighthouse image-size-responsive). */
+export const YOUTUBE_PLACEHOLDER = "/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
 
 function youtubeId(url: string): string | null {
   let u: URL;
@@ -48,8 +50,8 @@ export function leadMedia(url: string | null | undefined): LeadMedia | null {
 /** What names a Flickr photo link whose image has no alt text, when the caller gives nothing better. */
 export const FLICKR_LINK_NAME = "Photo on Flickr";
 
-/** One lead media block. `lazy` defers a Flickr photo's load (body embeds; a lead photo stays
- * eager, as it is likely the page's largest paint). `base` is the site's base path ("" or "/site"); `alt` is the image's alt
+/** One lead media block. `lazy` defers its image's load (body embeds; a lead stays eager, as it
+ * is likely the page's largest paint). `base` is the site's base path ("" or "/site"); `alt` is the image's alt
  * text (the headline for a lead), escaped here. With an empty `alt` a YouTube link carries no
  * visually-hidden suffix, and a Flickr photo link — whose only content is the image — is named by
  * visually hidden `name` instead, so it is never a nameless link (WCAG 2.4.4, 4.1.2). */
@@ -63,7 +65,7 @@ export function renderMedia(m: LeadMedia, base: string, alt: string, name = FLIC
     }
     case "youtube": {
       const suffix = alt ? `<span class="visually-hidden">: ${e(alt)}</span>` : "";
-      return `<div class="asset youtube"><a href="${e(m.href)}"><img src="${e(base)}${YOUTUBE_PLACEHOLDER}" alt=""><span>Watch on YouTube</span>${suffix}</a></div>`;
+      return `<div class="asset youtube"><a href="${e(m.href)}"><img src="${e(base)}${YOUTUBE_PLACEHOLDER}" alt="" width="1920" height="1080"${lazy ? ' loading="lazy"' : ""}><span>Watch on YouTube</span>${suffix}</a></div>`;
     }
     case "live":
       return `<p><a href="${e(m.href)}">Watch the live webcast</a></p>`;

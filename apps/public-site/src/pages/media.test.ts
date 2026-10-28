@@ -4,7 +4,7 @@ import { sanitizeBodyHtml } from "../sanitize-body";
 import { leadMedia, renderBodyAssets, renderMedia } from "./media";
 
 const frag = (html: string) => JSDOM.fragment(html);
-const PLACEHOLDER = "/site/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg";
+const PLACEHOLDER = "/site/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
 
 describe("leadMedia", () => {
   it("leadMedia: live.staticflickr.com jpg → image with the bcgovphotos page; youtu.be/x and youtube.com/watch?v=x → youtube; news.gov.bc.ca/live → live; flickr.com page, javascript:, '' → null", () => {
@@ -53,6 +53,9 @@ describe("renderMedia", () => {
     for (const el of ytDoc.querySelectorAll("[src]")) expect(el.getAttribute("src")).not.toMatch(/youtube|ytimg/);
     expect(ytDoc.querySelector("img")?.getAttribute("src")).toBe(PLACEHOLDER);
     expect(ytDoc.querySelector("img")?.getAttribute("alt")).toBe("");
+    // Legacy's own 1920×1080 card image, sized so the box is reserved; a lead is eager.
+    expect([ytDoc.querySelector("img")?.getAttribute("width"), ytDoc.querySelector("img")?.getAttribute("height")]).toEqual(["1920", "1080"]);
+    expect(ytDoc.querySelector("img")?.hasAttribute("loading")).toBe(false);
     expect(ytDoc.querySelector("a")?.textContent).toBe('Watch on YouTube: A "quoted" <headline>');
     expect(ytDoc.querySelector("span.visually-hidden")?.textContent).toBe(': A "quoted" <headline>');
     expect(yt).not.toContain("<headline>");
@@ -72,6 +75,7 @@ describe("renderBodyAssets", () => {
     const yt = frag(renderBodyAssets("<p>Before</p><asset>https://www.youtube.com/watch?v=abcdef1&amp;t=2</asset><p>After</p>", "/site"));
     expect(yt.querySelector("div.asset.youtube > a")?.getAttribute("href")).toBe("https://www.youtube.com/watch?v=abcdef1");
     expect(yt.querySelector("div.asset.youtube img")?.getAttribute("src")).toBe(PLACEHOLDER);
+    expect(yt.querySelector("div.asset.youtube img")?.getAttribute("loading")).toBe("lazy");
     expect([...yt.querySelectorAll("p")].map((p) => p.textContent)).toEqual(["Before", "After"]);
     expect(yt.querySelector("asset")).toBeNull();
 

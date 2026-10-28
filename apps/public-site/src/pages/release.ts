@@ -92,10 +92,11 @@ const RELATED_COUNT = 3;
  * Legacy `ShareSocialMedia` as plain links (plan 2 ledger P2-R1): legacy built the share URLs in
  * page script and opened pop-ups; these are the same URLs as hrefs, with no script and no
  * third-party load until a reader follows one. Instagram has no share intent, so, as legacy did,
- * its link is a profile (`instagramUrl`, already gated), left out when there is none. `canonical`
+ * its link is a profile (`instagram.url`, already gated; named by the account's text), left out
+ * when there is none. `canonical`
  * and `title` are percent-encoded, then escaped.
  */
-export function shareLinks(canonical: string, title: string, instagramUrl: string | null, base: string): string {
+export function shareLinks(canonical: string, title: string, instagram: { url: string; text: string } | null, base: string): string {
   const enc = encodeURIComponent(canonical);
   const b = e(base);
   const item = (cls: string, href: string, label: string, iconId: Parameters<typeof icon>[0]) =>
@@ -103,7 +104,7 @@ export function shareLinks(canonical: string, title: string, instagramUrl: strin
   const items = [
     item("share-facebook", `https://www.facebook.com/sharer/sharer.php?u=${enc}`, "Share on Facebook", "facebook"),
     item("share-twitter", `https://twitter.com/intent/tweet?url=${enc}`, "Share on X", "square-x-twitter"),
-    instagramUrl ? item("share-instagram", instagramUrl, "BC Government on Instagram", "instagram") : "",
+    instagram ? item("share-instagram", instagram.url, `${instagram.text.trim() || "BC Government"} on Instagram`, "instagram") : "",
     item("share-threads", `https://threads.net/intent/post?text=${enc}`, "Share on Threads", "threads"),
     item("share-bluesky", `https://bsky.app/intent/compose?text=${enc}`, "Share on Bluesky", "bluesky"),
     item("", `mailto:?subject=${encodeURIComponent(title)}&body=${enc}`, "Share by email", "envelope"),
@@ -201,7 +202,8 @@ export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptio
   const date = displayDateTime(post.publishDate);
   // Legacy shared to governmentofbc, BC's featured account (P2-R5).
   const instagram = settings.connect.instagram.featured[0] ?? settings.connect.instagram.accounts[0];
-  const share = shareLinks(canonical, headline, instagram ? settingsHref(instagram.url, site) : null, base);
+  const instagramHref = instagram ? settingsHref(instagram.url, site) : null;
+  const share = shareLinks(canonical, headline, instagram && instagramHref ? { url: instagramHref, text: instagram.text } : null, base);
   const lead = leadMedia(post.assetUrl);
 
   const sideTranslations = translationItems(post.azureTranslations ?? [], icon("language", e(base)));
@@ -297,7 +299,7 @@ ${storyBody}
   return renderPage(headline, site, path, body, {
     ...opts,
     description: post.summary,
-    social: { title: headline, description: post.summary, image: socialImage(lead), type: "article" },
+    social: { title: headline, description: post.summary, image: socialImage(lead), imageAlt: headline, type: "article" },
     ...(trail ? { trail } : {}),
   });
 }

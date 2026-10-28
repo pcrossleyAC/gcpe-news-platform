@@ -44,8 +44,9 @@ export interface PageOptions {
   trail?: string;
   /** The page's Open Graph / Twitter card values where they differ from the defaults
    * ({@link socialMeta}): title (else the page title), description (else `description`), an
-   * absolute http(s) image (else the default card image) and the og:type (else "website"). */
-  social?: { title?: string | null; description?: string | null; image?: string | null; type?: "website" | "article" };
+   * absolute http(s) image (else the default card image), that image's alt text (only with the
+   * given image) and the og:type (else "website"). */
+  social?: { title?: string | null; description?: string | null; image?: string | null; imageAlt?: string | null; type?: "website" | "article" };
 }
 
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
@@ -83,17 +84,20 @@ export const DEFAULT_OG_IMAGE = "/assets/legacy/Content/Images/Gov/default-og-im
 
 /**
  * Every page's Open Graph and Twitter card meta (gap audit M5): og:site_name, url (the canonical),
- * type, title, description (left out when empty) and image, then twitter:card summary_large_image
- * and the twitter: title, description and image with the same values. A crawler fetches the image
+ * type, title, description (trimmed; left out when empty), image and image:alt (a page's own image
+ * only), then twitter:card summary_large_image and the twitter: title, description, image and
+ * image:alt with the same values. A crawler fetches the image
  * on its own, so it must be absolute: anything but an absolute http(s) URL gets the default. No
  * twitter:site — the handle is tenant identity, which plan 5 T10 owns.
  */
 function socialMeta(title: string, site: SiteInfo, canonical: string, opts: PageOptions): string {
   const s = opts.social ?? {};
   const ogTitle = s.title ?? title;
-  const given = s.description ?? opts.description;
-  const description = given?.trim() ? given : null;
-  const image = s.image && isSafeUrl(s.image, { relative: false, schemes: ["https:", "http:"] }) ? s.image : new URL(site.baseUrl).origin + basePath(site) + DEFAULT_OG_IMAGE;
+  const description = (s.description ?? opts.description)?.trim() || null;
+  const ownImage = s.image && isSafeUrl(s.image, { relative: false, schemes: ["https:", "http:"] }) ? s.image : null;
+  const image = ownImage ?? new URL(site.baseUrl).origin + basePath(site) + DEFAULT_OG_IMAGE;
+  // Alt text describes the page's own image; the default card image carries none.
+  const imageAlt = ownImage ? s.imageAlt?.trim() || null : null;
   const og = (k: string, v: string) => `\n<meta property="og:${k}" content="${e(v)}">`;
   const tw = (k: string, v: string) => `\n<meta name="twitter:${k}" content="${e(v)}">`;
   return (
@@ -103,10 +107,12 @@ function socialMeta(title: string, site: SiteInfo, canonical: string, opts: Page
     og("title", ogTitle) +
     (description ? og("description", description) : "") +
     og("image", image) +
+    (imageAlt ? og("image:alt", imageAlt) : "") +
     tw("card", "summary_large_image") +
     tw("title", ogTitle) +
     (description ? tw("description", description) : "") +
-    tw("image", image)
+    tw("image", image) +
+    (imageAlt ? tw("image:alt", imageAlt) : "")
   );
 }
 
