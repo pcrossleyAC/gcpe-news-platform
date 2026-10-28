@@ -99,6 +99,16 @@ export interface ApplyOptions {
    * wins — NRMS is authoritative for any key once it has published to it.
    */
   origin?: "legacy" | "event";
+  /**
+   * Only the legacy SQL importer sets this. Legacy SQL has no file lists (the translations and
+   * media assets live in Azure blob storage), so its records always carry `translations: null`
+   * and `assets: null`; `import:files` fills them in afterwards. With this set, an update of an
+   * existing row keeps the stored `translations` while the record's `hasTranslations` is set
+   * (and `assets` while `hasMediaAssets` is), instead of nulling them, so a re-run of the legacy
+   * import doesn't undo `import:files`. A cleared flag clears its list. A new row is inserted
+   * as given.
+   */
+  preserveFiles?: boolean;
 }
 
 export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions = {}): Promise<{ skippedEventOwned: boolean }> {
@@ -153,10 +163,19 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
     // RETURNING then yields zero rows, which is what skippedEventOwned is actually derived
     // from (never from the pre-check above). A fresh insert (no conflicting row at all) is
     // unaffected by setWhere and always proceeds.
+    // preserveFiles: keep each stored list only while legacy still sets its flag (news.gov shows
+    // neither list without it), so a flag legacy clears also clears the list import:files filled.
+    const set = opts.preserveFiles
+      ? {
+          ...values,
+          translations: sql`CASE WHEN excluded.has_translations THEN "posts"."translations" ELSE NULL END`,
+          assets: sql`CASE WHEN excluded.has_media_assets THEN "posts"."assets" ELSE NULL END`,
+        }
+      : values;
     const written = await tx
       .insert(posts)
       .values(values)
-      .onConflictDoUpdate({ target: posts.key, set: values, setWhere: sql`${posts.origin} <> 'event'` })
+      .onConflictDoUpdate({ target: posts.key, set, setWhere: sql`${posts.origin} <> 'event'` })
       .returning({ key: posts.key });
     if (written.length === 0) return { skippedEventOwned: true };
   } else {

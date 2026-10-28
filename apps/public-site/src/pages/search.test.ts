@@ -42,7 +42,7 @@ function open(qs: string, answer: unknown = EMPTY) {
   return { dom, doc, fetchMock, settled, apiUrl };
 }
 
-const result = (over: Record<string, unknown> = {}) => ({ key: "K1", kind: "releases", headline: "Clinic opens", summary: "First line\nSecond line", publishDate: "2026-10-03T10:00:00-07:00", leadMinistryKey: "health", hasTranslations: false, hasMediaAssets: false, url: "https://evil.example/", ...over });
+const result = (over: Record<string, unknown> = {}) => ({ key: "K1", kind: "releases", headline: "Clinic opens", summary: "First line\nSecond line", publishDate: "2026-10-03T10:00:00-07:00", leadMinistryKey: "health", hasTranslations: false, hasMediaAssets: false, hasTranslationList: false, hasMediaAssetList: false, url: "https://evil.example/", ...over });
 
 describe("search page", () => {
   it("one h1; filter panel with Ministry, Sector, Content, Date (terms, date inputs, older-archive links); Reset search", () => {
@@ -161,14 +161,15 @@ describe("search page", () => {
     expect(dom.window.location.search).toBe("?q=%3Cimg+src%3Dx+onerror%3Dalert%281%29%3E");
   });
 
-  it("results render as div.article cards with Translations link when flagged, date with time, Read More; headline text never becomes markup", async () => {
+  it("results render as div.article cards with Translations link when there is a list, date with time, Read More; headline text never becomes markup", async () => {
     const hostile = "<img src=x onerror=alert(1)>";
     const { doc, settled } = open("?q=clinic", {
       ...EMPTY,
       total: 3,
       results: [
-        result({ headline: hostile, summary: `${hostile}\nSecond line`, hasTranslations: true, hasMediaAssets: true }),
-        result({ key: "K2", headline: null, summary: null }),
+        result({ headline: hostile, summary: `${hostile}\nSecond line`, hasTranslations: true, hasMediaAssets: true, hasTranslationList: true, hasMediaAssetList: true }),
+        // Flagged in legacy but no files listed: no links (they would lead to nothing).
+        result({ key: "K2", headline: null, summary: null, hasTranslations: true, hasMediaAssets: true }),
         // A key that is not a post key never becomes a link.
         result({ key: "../evil", headline: "Evil" }),
       ],
@@ -193,7 +194,7 @@ describe("search page", () => {
     expect([...card.children].map((c) => c.className || c.tagName.toLowerCase())).toEqual(["h2", "item-medialink translations", "item-medialink media-assets", "item-date", "item-content", "clear"]);
     expect(doc.querySelector("#results img, #results script")).toBeNull();
     expect(doc.getElementById("results")!.innerHTML).not.toContain("evil.example");
-    // Unflagged: no Translations or Media Assets; no headline: the key.
+    // Flags without lists: no Translations or Media Assets; no headline: the key.
     expect(cards[1]!.querySelector(".item-medialink")).toBeNull();
     expect(cards[1]!.querySelector("h2 a")?.textContent).toBe("K2");
     expect(doc.getElementById("results")!.textContent).not.toContain("Evil");

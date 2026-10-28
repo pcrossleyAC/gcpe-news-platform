@@ -58,7 +58,7 @@ export async function importLegacyNews(
       // (origin "event", even one this importer originally created): applyRelease (ruling
       // P1-R21) refuses that write entirely rather than reverting the row to "legacy" and
       // overwriting NRMS's current content with legacy's now-stale copy.
-      const { skippedEventOwned } = await db.transaction((tx) => applyRelease(tx, record, { notify: false, origin: "legacy" }));
+      const { skippedEventOwned } = await db.transaction((tx) => applyRelease(tx, record, { notify: false, origin: "legacy", preserveFiles: true }));
       // Legacy still lists this key as published either way, so it still belongs in the
       // published set below — unpublish-missing only acts on origin = 'legacy' rows anyway,
       // so a skipped (origin "event") key here is a no-op for that step regardless.

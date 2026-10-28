@@ -6,7 +6,7 @@ SELECT DISTINCT YEAR(r.PublishDateTime) AS [Year] FROM dbo.NewsRelease r WHERE $
 
 export const qReleases = (y: number) => `-- name: releases:${y}
 SELECT r.Id, r.[Key], r.ReleaseType, r.Reference, r.AtomId, r.PublishDateTime, m.[Key] AS LeadMinistryKey, r.Keywords, r.AssetUrl,
-       r.RedirectUrl, r.HasMediaAssets, r.PublishOptions, r.[Timestamp],
+       r.RedirectUrl, r.HasMediaAssets, r.HasTranslations, r.PublishOptions, r.[Timestamp],
        l.Location, l.Summary, l.SocialMediaHeadline, l.SocialMediaSummary
 FROM dbo.NewsRelease r
 LEFT JOIN dbo.Ministry m ON m.Id = r.MinistryId
