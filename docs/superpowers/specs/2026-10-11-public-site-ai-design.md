@@ -14,7 +14,7 @@ Phase 6 copies its patterns, not its code.
 
 ## 1. Goal and scope
 
-Give the platform a complete, accessible public site of its own, and add search, related posts and staff "similar item" help. BC's public site does not change at cutover (§2, D1).
+Give the platform a complete, accessible public site of its own, and add search, related posts and staff "similar item" help. ~~BC's public site does not change at cutover (§2, D1).~~ **Superseded 2026-10-28 by `2026-10-28-news-gov-parity-design.md` P1: the static site replaces news.gov.bc.ca** (D1 below).
 
 **In scope:**
 - tenant feature flags and a site theme in tenant config (§3);
@@ -25,7 +25,7 @@ Give the platform a complete, accessible public site of its own, and add search,
 - the exit check: axe-core, Lighthouse, and a search spot-check script (§9).
 
 **Out of scope:**
-- replacing BC's `gcpe-news-webapp`, and with it legacy URL redirects for news.gov.bc.ca. That is a later sub-phase if BC moves to the static site;
+- replacing BC's `gcpe-news-webapp`, and with it legacy URL redirects for news.gov.bc.ca. That is a later sub-phase if BC moves to the static site (it is now: `2026-10-28-news-gov-parity-design.md` P1);
 - French versions of public pages;
 - AI on unpublished content except the explicit staff action in §7;
 - AI-written text of any kind;
@@ -36,7 +36,7 @@ Give the platform a complete, accessible public site of its own, and add search,
 
 | # | Decision |
 |---|---|
-| D1 | **At cutover, BC keeps `gcpe-news-webapp`, repointed at the new News API.** The new static site is the product's default site, and BC's option later. No legacy database is needed after cutover: the webapp reads only the News API, whose posts come from the Phase 1 importer. |
+| D1 | **Superseded 2026-10-28 by `2026-10-28-news-gov-parity-design.md` P1: the static site replaces news.gov.bc.ca.** Legacy URLs resolve or 301 (parity url-compat); C202 and C206 are superseded with it. Original text: ~~At cutover, BC keeps `gcpe-news-webapp`, repointed at the new News API. The new static site is the product's default site, and BC's option later. No legacy database is needed after cutover: the webapp reads only the News API, whose posts come from the Phase 1 importer.~~ |
 | D2 | **Embeddings are built against a pluggable provider.** Tests and boxs.ca use a stand-in provider. Azure OpenAI (`text-embedding-3-small`, 1536 dimensions, Canada region) is connected later through configuration. A full-text fallback is always available. |
 | D3 | **The site design is neutral, accessible and branded from tenant config.** Its page structure is familiar from news.gov.bc.ca. It is not a visual copy of it. |
 | D4 | **Staff help is behind the staff-AI flag, off by default.** It runs on an explicit click, and falls back to full-text matching when the flag is off. The flag stays off until a privacy impact assessment approves it. |

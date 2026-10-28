@@ -479,7 +479,7 @@ Suggested verification harness (all chunks): a Playwright script that loads the 
 
 ## Risks / not checked
 
-- **Q76 is the blocking decision.** Without BC Sans and the BC logo, the site will not look like news.gov regardless of CSS. I verified that the files exist and their licences (OFL for the font; the logo licence is unknown). Their legal clearance is unverified.
+- ~~**Q76 is the blocking decision.**~~ Answered 2026-10-28 by the owner: the BC logo SVGs are committed and always rendered; BC Sans comes from `@bcgov/bc-sans` (OFL-1.1). See open-questions Q76 and the parity spec P5.
 - **Not measured:**
   - legacy pages at 768–1023px (tablet layout); only 1280 and 390 were captured;
   - subscribe, search, privacy and contacts were not screenshotted (HTML only);
@@ -488,3 +488,79 @@ Suggested verification harness (all chunks): a Playwright script that loads the 
 - **Live news.gov is not on admin-screens**, so the live colours are the hard-coded defaults. The admin-screens CSS variables were read from source, not seen rendered.
 - **Ministry mega-menu on every page** makes every page depend on the ministry list: a ministry rename means a full rebuild (C207 tick-based) [I].
 - **jQuery CVEs** are from memory [A]. They are moot if jQuery is dropped as recommended.
+
+---
+
+## Plan 1 result (2026-10-28, parity plan 1 Task 11)
+
+**Verdict: every strict chrome region passes except one: the phone header on the search page (0.0382 against the 0.03 limit).** That one is the deliberate C225 deviation, not a rendering fault (cause below). axe found 0 serious or critical issues on every page at both widths. `parity:urls` passed 9/9 and `site:quality` passed.
+
+### How it was run
+- **Our side.** The branch isn't deployed to boxs.ca (plan rule: no deploy), so our side was a local stack at `http://127.0.0.1:4321`, built from branch head 81407d8:
+  - the fixture site (`scripts/fixture-site.ts` content, BC tenant settings), plus the subscribe pages;
+  - the site banner set to live news.gov's current info banner ("Due to the post-election period…", dismissible), so the banner region is compared;
+  - the fixture release copied to the key in `tools/parity/pages.ts`, `2026HLTH0085-001117`;
+  - served through the stack's real `mountSite(app, { basePath: "" })` and `rootSiteNotFound` from `apps/stack/src/site-mount.ts`, so `/site/` 301s and trailing-slash redirects behave as in production.
+  - The runner script was temporary and isn't committed.
+- **Legacy side.** Live https://news.gov.bc.ca, 2026-10-28, at most one navigation a second.
+- **Command.** `npm run parity -- --target http://127.0.0.1:4321 --pages home,ministry,sector,release,search,subscribe,connect`, at 1280×900 and 390×844. `contacts` is excluded until plan 4.
+  - Every navigation returned 200 on both sides (report.json `loads`).
+  - A second run gave identical ratios on every row.
+
+### Mismatch ratios (strict limit 0.03; `main` is reported only)
+
+| page | width | banner | header | landAck | footer | main (report only) |
+|---|---|---|---|---|---|---|
+| home | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0114 | 0.3164 |
+| home | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.3436 |
+| ministry | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0063 | 0.2479 |
+| ministry | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.3704 |
+| sector | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0063 | 0.6023 |
+| sector | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.6439 |
+| release | 1280 | 0.0011 | 0.0004 | 0.0073 | 0.0037 | 0.7448 |
+| release | 390 | 0.0023 | 0.0052 | 0.0045 | 0.0043 | 0.8640 |
+| search | 1280 | 0.0011 | 0.0004 | 0.0072 | 0.0036 | 0.7813 |
+| search | 390 | 0.0023 | **0.0382 FAIL** | 0.0045 | 0.0043 | 0.8850 |
+| subscribe | 1280 | 0.0011 | 0.0004 | 0.0072 | 0.0036 | 0.6818 |
+| subscribe | 390 | 0.0023 | 0.0052 | 0.0045 | 0.0043 | 0.8163 |
+| connect | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0036 | 0.5781 |
+| connect | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0164 | 0.5933 |
+
+`main` differs because the content differs (fixture posts against live posts). Plan 2 and later plans own it.
+
+### The one failure: search, 390, header (fix task F-P1-1, before plan 2)
+- **Cause.** On `/search`, legacy's phone header still shows its search toggle (`_Layout.cshtml:201-205`), which opens an empty `#smd-search-container`. Legacy hides only the form inside it (`:308-320`). Ours drops the toggle on `/search/` (C225, ruling R9 item 6, cecf155), so the hamburger sits where legacy's search button was.
+- **Checks that settle it:**
+  - Legacy's 390 header screenshot is byte-identical on home and search (same sha1).
+  - Our home 390 header, which has the toggle, measures 0.0052.
+  - So the whole 0.0382 is our `/search/` difference, not drift in the shared header.
+- **Options (owner or controller to choose; the threshold isn't raised without the owner):**
+  1. Accept C225 and record the search-page phone header as a known deviation in the harness. This would be a per-page/region exemption, named in report.json, not a looser STRICT_MAX.
+  2. Show the toggle on `/search/` at phone width and have it focus the page's own search box. That restores legacy's pixels with no dead control.
+
+### Noise floor and STRICT_MAX
+- **Legacy against legacy.** `--target https://news.gov.bc.ca`, same pages and widths: 56 strict rows, maximum **0.0000**. `main` was also 0.0000 on every page; the carousel showed the same slide in both loads.
+  - The axe failures in that run are legacy's own (image-alt, button-name, label, link-name, color-contrast and others), as expected.
+- **Ours against ours.** The local stack against itself: 56 strict rows, maximum **0.0000**.
+- **Run to run.** Two runs of ours against legacy, minutes apart, gave identical ratios on every row.
+- **Why 0.03 stays.**
+  - With a measured noise floor of 0, the limit absorbs no capture noise. All of it is margin for real rendering differences between the two sites: font anti-aliasing and the sub-pixel offsets that `bestRowOffsetMismatch` doesn't absorb.
+  - The largest passing region is 0.0164 (connect, 390, footer), so there is about 2× headroom.
+  - The one real deviation measured 0.0382, so the limit still catches a single missing 40 px control in a 390×75 header.
+  - Lowering it to about 0.02 would also pass today. It is left at 0.03 because only one day's legacy content was measured.
+- **Not measured:**
+  - noise across days, as legacy's banner and carousel content changes;
+  - other machines, browsers or font stacks; all runs used this Mac's Playwright Chromium;
+  - widths between 390 and 1280.
+
+### Other gates (same head)
+- `npm run parity:urls -- --base http://127.0.0.1:4321`: 9/9 passed.
+  - `/` answered 200.
+  - `/ministries`, `/ministries/health`, `/connect`, `/subscribe`, `/search?q=housing` and `/archive` each 301 to their trailing-slash page.
+  - `/site/` 301s to `/`, and `/site/ministries/` to `/ministries/`.
+- `npm run site:quality`: PASS.
+  - axe found 0 violations on all 11 fixture pages.
+  - Lighthouse accessibility was 100 everywhere.
+  - Lighthouse performance was 84–86, against the 80 gate (C212).
+- Run again against https://boxs.ca once plan 1 is deployed (ruling R2). That deploy will also exercise the real News API search, which the fixture's search page doesn't call.
+

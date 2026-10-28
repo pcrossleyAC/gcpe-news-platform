@@ -42,7 +42,7 @@ All are in `docs/parity/inputs/`, gathered 2026-10-27:
 | P2 | Serve the site at the origin root (`/`), keeping `/site/` working (301 to the root equivalent) until cutover. `PUBLIC_SITE_URL` becomes the origin. | news.gov URLs are root-relative (url-compat T0). |
 | P3 | **Look:** vendor legacy CSS largely as-is and emit the legacy class skeleton from our renderers, keeping our semantic/accessibility structure. Includes Bootstrap 5.3.3, site, custom, transforms, accessibility, print, granville and a small `overrides.css`. No jQuery; one small vanilla JS file. Font Awesome is replaced by an inline SVG sprite. | The legacy code is Apache-2.0. Its 3.5k-line site.css encodes measured spacing that re-authoring would miss (look-and-feel §6). |
 | P4 | **[call] Font:** BC Sans from the `@bcgov/bc-sans` npm package (OFL-1.1), already a Hub dependency, copied into site assets with its licence. | Resolves the font half of Q76 without new licensing. |
-| P5 | **Logo: owner decision pending (Q76).** The repo is public and the BC logo is a brand mark, not Apache-2.0. Until answered, the header uses the existing mechanism: the logo shows only when an operator places the file in `config/site/assets/`. The layout reserves its space so nothing shifts when it's added. | Brand/legal call that only GCPE can make. |
+| P5 | **Owner decision 2026-10-28: BC logo SVGs are committed (from legacy `wwwroot/Content/Images/Gov`) and always rendered.** The four files (`BCID_H_rgb_pos_LH_crop.svg`, `BC_Mark.svg` and their `_bridge` variants) sit under `apps/public-site/assets/legacy/` and render in the header and footer as legacy does; the operator file-presence gate is gone. | Q76 answered by the owner (plan 1 cf0827e, d39a395). |
 | P6 | Every accessibility deviation in look-and-feel §5 is adopted: one real `<h1>` per page, a single `main`, skip-link targets, no `role="menu"`, alt text, keyboard-reachable controls, per-page `<title>`, and long-URL wrapping. | Anti-goal 1. |
 | P7 | Theme colours: legacy CSS variables alias our five site-settings colours (look-and-feel §4). Legacy link colour maps to `primary`. Admin colour edits change only `theme.css`. | Keeps admin control. |
 | P8 | **[call] Media contacts are free-text fields** (name, title, phone, cell, email) on the ministry form, not Hub-user pickers. | Core users have no phone fields. |
@@ -52,7 +52,7 @@ All are in `docs/parity/inputs/`, gathered 2026-10-27:
 | P12 | **[call] 404:** a styled 404 inside the site chrome, with a search box prefilled from the missing path's words. This is legacy's intent (a search for the page) without legacy's behaviour of silently returning search results with a 200. | Parity of usefulness, with a correct status. |
 | P13 | **[call] Analytics:** Snowplow (BC's own collector) behind an operator config flag, off on boxs.ca. | Test traffic must not pollute BC stats. Production on/off is GCPE's call. |
 | P14 | Text that legacy hardcodes becomes editable site settings with today's text as defaults. This covers the land acknowledgement, Notice of Collection, privacy page, 404 text, live page text, the 24-hour media line and multicultural contacts, the Blue Bridge text and the slide action label. | Owner requirement; admin-editability §1. |
-| P15 | Operator-owned (not in the Hub): base URL, time zone, language, test-site noindex/robots, analytics IDs, search-console token, logo/font files, webcast fallback URLs. | admin-editability §2. These are deployment facts, not editorial content. |
+| P15 | Operator-owned (not in the Hub): base URL, time zone, language, test-site noindex/robots, analytics IDs, search-console token, webcast fallback URLs. (The logo and BC Sans are committed assets, P4/P5.) | admin-editability §2. These are deployment facts, not editorial content. |
 | P16 | Checks are against the **live** news.gov.bc.ca, not only the legacy repo. The repo is behind production; e.g. live ministry keys like `transportation-and-transit` are missing from it. | url-compat §0. |
 
 ## 4. Workstreams
@@ -161,7 +161,6 @@ Each plan is written when the previous one is underway, so it can use what was l
 
 ## 7. Open for the owner
 
-- **Q76 logo** (P5): may the public repo carry the BC logo, or should the deploy supply it privately?
 - **Analytics in production** (P13).
 - **Legacy access logs** for url-compat T9: needs BC server access.
 - **Other hosts** pointing at news.gov (url-compat §3), only if their DNS moves too.
