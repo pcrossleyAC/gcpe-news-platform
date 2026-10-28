@@ -59,7 +59,17 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
     bannerHash: hash(settings.banner),
     connectHash: hash(settings.connect),
     ministryPagesHash: hash(settings.ministryPages),
+    // Only the one account the release page's Share → Instagram links to, so another network's
+    // edit (the Connect page's business) doesn't re-render every release.
+    releaseShareHash: hash(releaseInstagram(settings) ?? null),
   };
+}
+
+/** The Instagram account every release page's Share list links to: BC's featured account, else
+ * the first listed (legacy shared to governmentofbc; P2-R5). */
+export function releaseInstagram(settings: SiteSettings): { url: string; text: string } | null {
+  const ig = settings.connect.instagram.featured[0] ?? settings.connect.instagram.accounts[0];
+  return ig ? { url: ig.url, text: ig.text } : null;
 }
 
 /** The last applied settings document, beside the site-state marker (rebuild.ts's

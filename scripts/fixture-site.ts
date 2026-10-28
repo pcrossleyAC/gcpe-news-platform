@@ -69,6 +69,7 @@ function memoryIndex(): PostIndex {
     keys: async () => [...rows.keys()],
     categories: async () => [...new Set([...rows.values()].flatMap((p) => p.categories))].sort(),
     inCategory: async (token) => [...rows.values()].filter((p) => p.categories.includes(token)).map((p) => p.key).sort(),
+    withLeadMinistry: async (key) => [...rows.values()].filter((p) => p.leadMinistry === key.toLowerCase()).map((p) => p.key).sort(),
     inDayRange: async (start, end) => [...rows.values()].filter((p) => inDays(p, start, end)).sort(newest),
     countInDayRange: async (start, end) => [...rows.values()].filter((p) => inDays(p, start, end)).length,
     appliedTermsHash: async () => termsHash,

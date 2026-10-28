@@ -4,7 +4,7 @@ import { icon } from "../icons";
 import { headlineOf } from "../post-index";
 import { basePath, e, renderPage, safeHref, type PageOptions, type SiteInfo } from "../render";
 import { sanitizeBodyHtml } from "../sanitize-body";
-import { settingsHref, themeDefaults } from "../settings";
+import { releaseInstagram, settingsHref, themeDefaults } from "../settings";
 import { categoryPageId, pageUrl, parsePageId } from "../site-paths";
 import { bytesReadable, displayDate, displayDateTime } from "./format";
 import { translationLanguage } from "./languages";
@@ -200,8 +200,8 @@ export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptio
   const path = pageUrl(site, { type: "post", key: post.key });
   const canonical = new URL(site.baseUrl).origin + path;
   const date = displayDateTime(post.publishDate);
-  // Legacy shared to governmentofbc, BC's featured account (P2-R5).
-  const instagram = settings.connect.instagram.featured[0] ?? settings.connect.instagram.accounts[0];
+  // A change to it re-renders every release (settings.ts releaseShareHash).
+  const instagram = releaseInstagram(settings);
   const instagramHref = instagram ? settingsHref(instagram.url, site) : null;
   const share = shareLinks(canonical, headline, instagram && instagramHref ? { url: instagramHref, text: instagram.text } : null, base);
   const lead = leadMedia(post.assetUrl);

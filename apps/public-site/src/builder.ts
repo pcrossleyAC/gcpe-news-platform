@@ -12,7 +12,7 @@ import { renderHomePage } from "./pages/home";
 import { hasBiography, renderBiographyPage } from "./pages/minister";
 import { renderReleasePage } from "./pages/release";
 import { renderSearchPage } from "./pages/search";
-import { indexEntryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
+import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
 import { categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
@@ -213,7 +213,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     }
     const all = await ministries(run);
     // The side column's ministry: matched case-insensitively (News API and NRMS key casing can differ).
-    const leadKey = (post.leadMinistryKey ?? post.ministryKeys[0])?.toLowerCase();
+    const leadKey = leadMinistryOf(post);
     const leadMinistry = (leadKey && all.find((m) => m.key.toLowerCase() === leadKey)) || null;
     const leadMinistrySuccessor = leadMinistry && !leadMinistry.isActive ? ((await successors(run))[leadMinistry.key.toLowerCase()] ?? null) : null;
     let ministryLatest: PostDto[] = [];
