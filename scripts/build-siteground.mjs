@@ -208,7 +208,9 @@ async function runBuild() {
   const forbidden = [
     { label: "the repository's absolute path", value: root },
     { label: "the home directory", value: homedir() },
-    { label: "the local username", value: userInfo().username },
+    // Not on GitHub's hosted runners (scripts/build-windows.mjs builds there): their user is
+    // "runner", a plain word the bundle contains anyway, and the machine is thrown away after.
+    { label: "the local username", value: process.env.GITHUB_ACTIONS === "true" ? "" : userInfo().username },
   ];
   const offenders = findLeakedPaths(outDir, forbidden);
   if (offenders.length > 0) {

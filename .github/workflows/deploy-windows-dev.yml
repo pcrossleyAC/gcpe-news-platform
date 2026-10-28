@@ -1,0 +1,63 @@
+name: deploy-windows-dev
+# Deploys to the Dev Windows Server on every push to `develop` (docs/deploy/windows.md, step 7):
+# builds the package on GitHub's runners, then runs Deploy-GcpeRelease.ps1 on the self-hosted runner
+# installed on the Dev server (labels: self-hosted, windows, gcpe-dev). The deploy job waits for the
+# "dev" environment's protection rules, if any are set in Settings > Environments.
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+concurrency:
+  group: deploy-windows-dev
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+
+  package:
+    needs: test
+    uses: ./.github/workflows/windows-package.yml
+
+  deploy:
+    needs: package
+    runs-on: [self-hosted, windows, gcpe-dev]
+    environment: dev
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gcpe-windows
+          path: drop
+      - name: Deploy-GcpeRelease.ps1
+        run: |
+          $zip = (Get-ChildItem drop\*.zip | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'gcpe-package'
+          Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+          Expand-Archive $zip -DestinationPath $dir
+          & "$dir\gcpe-windows\Deploy-GcpeRelease.ps1" -Package "$dir\gcpe-windows" -Root C:\gcpe

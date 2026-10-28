@@ -1,6 +1,6 @@
 import { mkdtemp, readdir, rm, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
 
@@ -10,11 +10,13 @@ describe("data dir", () => {
     for (const d of made) await rm(d, { recursive: true, force: true });
   });
   it("defaults to ~/gcpe-data, honours absolute DATA_DIR, resolves relative against home", () => {
-    expect(resolveDataDir({}, "/home/x")).toBe("/home/x/gcpe-data");
-    expect(resolveDataDir({ DATA_DIR: "/srv/data" }, "/home/x")).toBe("/srv/data");
-    expect(resolveDataDir({ DATA_DIR: "data" }, "/home/x")).toBe("/home/x/data");
+    const home = resolve("/home/x");
+    expect(resolveDataDir({}, home)).toBe(join(home, "gcpe-data"));
+    expect(resolveDataDir({ DATA_DIR: resolve("/srv/data") }, home)).toBe(resolve("/srv/data"));
+    expect(resolveDataDir({ DATA_DIR: "data" }, home)).toBe(join(home, "data"));
   });
-  it("creates the folder, leaves no test file behind, and fails clearly when unwritable", async () => {
+  // chmod 0o500 doesn't make a directory unwritable on Windows (POSIX permission bits).
+  it.skipIf(process.platform === "win32")("creates the folder, leaves no test file behind, and fails clearly when unwritable", async () => {
     const base = await mkdtemp(join(tmpdir(), "gcpe-dd-"));
     made.push(base);
     await ensureWritableDir(join(base, "a", "b"));

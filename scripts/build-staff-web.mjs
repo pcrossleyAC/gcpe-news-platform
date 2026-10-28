@@ -6,7 +6,7 @@
 //
 // Usage: node scripts/build-staff-web.mjs [--watch]
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, posix, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { context } from "esbuild";
 
@@ -14,6 +14,7 @@ const root = resolve(import.meta.dirname, "..");
 const entry = join(root, "apps/staff-web/src/main.tsx");
 const outDir = join(root, "apps/staff-web/dist");
 const outDirRel = relative(root, outDir);
+const outDirPosix = outDirRel.split("\\").join("/");
 
 /** Mounted at /hub (apps/stack/src/stack.ts) — every asset reference in index.html is this
  * absolute path, never a relative one, so the shell works the same regardless of which deep
@@ -81,9 +82,12 @@ function htmlDocument({ jsPath, cssPath }) {
  */
 export function assetUrlsFromMetafile(metafile) {
   const outputs = Object.keys(metafile.outputs);
-  const toUrl = (outputPath) => `${BASE_PATH}${relative(outDirRel, outputPath)}`;
-  const jsOutput = outputs.find((f) => f.endsWith(".js") && relative(outDirRel, f).startsWith("assets/app-"));
-  const cssOutput = outputs.find((f) => f.endsWith(".css") && relative(outDirRel, f).startsWith("assets/app-"));
+  // Metafile keys always use forward slashes, even on Windows, so compare them posix-style
+  // (node:path's relative() would turn them into backslash paths there).
+  const rel = (outputPath) => posix.relative(outDirPosix, outputPath);
+  const toUrl = (outputPath) => `${BASE_PATH}${rel(outputPath)}`;
+  const jsOutput = outputs.find((f) => f.endsWith(".js") && rel(f).startsWith("assets/app-"));
+  const cssOutput = outputs.find((f) => f.endsWith(".css") && rel(f).startsWith("assets/app-"));
   if (!jsOutput) throw new Error("no JS entry output found in the esbuild metafile");
   return { jsPath: toUrl(jsOutput), cssPath: cssOutput ? toUrl(cssOutput) : undefined };
 }

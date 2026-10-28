@@ -6,11 +6,12 @@ import { describe, expect, it } from "vitest";
 // only way to exercise `process.stdin.isTTY === false` for real, which is the code path the
 // `npm run auth:hash-password` script hits in CI and in most operators' terminals/pipes.
 const cliPath = fileURLToPath(new URL("./hash-password.ts", import.meta.url));
-const tsxBin = fileURLToPath(new URL("../../../../node_modules/.bin/tsx", import.meta.url));
+// tsx's CLI script run by node: node_modules/.bin/tsx is a .cmd shim on Windows, which spawn can't start directly.
+const TSX_CLI = fileURLToPath(new URL("../../../../node_modules/tsx/dist/cli.mjs", import.meta.url));
 
 function runPiped(stdin: string): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(tsxBin, [cliPath], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [TSX_CLI, cliPath], { stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d: Buffer) => (stdout += d.toString("utf8")));

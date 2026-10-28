@@ -199,7 +199,7 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
+  }, 60_000); // typing, a save and a 31 s fake-timer poll: ~3.5 s on a laptop but over the 20 s default on a Windows CI runner.
 
   it("removing a file someone else already removed takes it off the list, keeping unsaved changes", async () => {
     stubActivity([], {

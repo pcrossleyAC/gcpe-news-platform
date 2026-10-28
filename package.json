@@ -26,6 +26,7 @@
     "staff-web:dev": "node scripts/build-staff-web.mjs --watch",
     "build:siteground": "node scripts/build-siteground.mjs",
     "deploy:siteground": "bash scripts/deploy-siteground.sh",
+    "build:windows": "node scripts/build-windows.mjs",
     "siteground:env": "tsx scripts/siteground-env.ts",
     "core:seed-from-public-api": "tsx scripts/seed-core-from-public-api.ts",
     "distribution:capacity": "tsx scripts/distribution-capacity.ts",

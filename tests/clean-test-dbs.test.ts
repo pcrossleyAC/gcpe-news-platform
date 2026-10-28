@@ -6,7 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { adminUrl, withAdmin } from "@gcpe/db-kit";
 import { cleanTestDbs, isHarnessDatabase, isHarnessRole } from "../scripts/clean-test-dbs";
 
-const TSX = fileURLToPath(new URL("../node_modules/.bin/tsx", import.meta.url));
+// tsx's CLI script run by node: node_modules/.bin/tsx is a .cmd shim on Windows, which spawn can't start directly.
+const TSX_CLI = fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../scripts/clean-test-dbs.ts", import.meta.url));
 
 const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
@@ -28,7 +29,7 @@ describe("npm run test:clean-dbs -- --min-age-minutes", () => {
   it("an invalid value prints the script's own message, not just 'Error', and exits non-zero", () => {
     let error: unknown;
     try {
-      execFileSync(TSX, [SCRIPT, "--min-age-minutes=abc"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      execFileSync(process.execPath, [TSX_CLI, SCRIPT, "--min-age-minutes=abc"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     } catch (e) {
       error = e;
     }
