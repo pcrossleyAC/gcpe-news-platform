@@ -84,6 +84,22 @@ describe("ThemeScreen", () => {
     expect(screen.getByLabelText("Page background")).toHaveAccessibleDescription(/Readable 13\.\d:1/);
   });
 
+  it("a pale primary with dark header text shows the server's link-text and white-text checks, not just 'Readable on the header'", async () => {
+    stub(["NRMS.SiteEditor"]);
+    renderScreen();
+    const user = userEvent.setup();
+    const text = await screen.findByLabelText("Text on the header and buttons");
+    await user.clear(text);
+    await user.type(text, "#000000");
+    const primary = screen.getByLabelText("Header and buttons");
+    await user.clear(primary);
+    await user.type(primary, "#8FB3E8");
+    expect(primary).toHaveAccessibleDescription(/Readable \d+\.\d:1 on the header/);
+    expect(primary).toHaveAccessibleDescription(/Too faint 2\.1:1 as link text/);
+    expect(primary).toHaveAccessibleDescription(/Too faint 2\.1:1 behind white text/);
+    expect(screen.getByLabelText("Page background")).toHaveAccessibleDescription(/Too faint 2\.1:1 as link text/);
+  });
+
   it("publishing '#1a5a96' sends '#1A5A96' for the theme section only", async () => {
     const calls = stub(["NRMS.SiteEditor"], (c) => (c.url.endsWith("/publish") ? jsonResponse(200, { revision: 5, state: { live: null, document: DOC, draft: null, baseRevision: 5, errors: [] } }) : undefined));
     renderScreen();

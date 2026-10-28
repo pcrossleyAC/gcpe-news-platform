@@ -41,16 +41,19 @@ interface Pair {
 const TEXT_ON_BACKGROUND: Pair = { fg: (c) => c.text, bg: (c) => c.background, where: "on the page background" };
 const TEXT_ON_SURFACE: Pair = { fg: (c) => c.text, bg: (c) => c.surface, where: "on panels" };
 const ON_HEADER: Pair = { fg: (c) => c.primaryText, bg: (c) => c.primary, where: "on the header" };
+// The primary colour is also every link's colour (P7) and sits behind legacy's hard-coded white text.
+const LINK_ON_BACKGROUND: Pair = { fg: (c) => c.primary, bg: (c) => c.background, where: "as link text" };
+const WHITE_ON_PRIMARY: Pair = { fg: () => WHITE, bg: (c) => c.primary, where: "behind white text" };
 const WHITE_ON_INFO: Pair = { fg: () => WHITE, bg: (c) => c.bannerInfo, where: "behind white text" };
 const WHITE_ON_EMERGENCY: Pair = { fg: () => WHITE, bg: (c) => c.bannerEmergency, where: "behind white text" };
 
 /** Each colour's badges: the pair(s) it belongs to, on either side. Accent, secondary text and borders aren't checked. */
 const PAIRS: Partial<Record<ColorKey, Pair[]>> = {
   text: [TEXT_ON_BACKGROUND, TEXT_ON_SURFACE],
-  background: [TEXT_ON_BACKGROUND],
+  background: [TEXT_ON_BACKGROUND, LINK_ON_BACKGROUND],
   surface: [TEXT_ON_SURFACE],
   primaryText: [ON_HEADER],
-  primary: [ON_HEADER],
+  primary: [ON_HEADER, LINK_ON_BACKGROUND, WHITE_ON_PRIMARY],
   bannerInfo: [WHITE_ON_INFO],
   bannerEmergency: [WHITE_ON_EMERGENCY],
 };

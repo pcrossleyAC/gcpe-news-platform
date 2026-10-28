@@ -62,6 +62,9 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
     checkContrast("theme.colors.primaryText", c.primaryText, c.primary, "on the header", errors);
     // P7: --theme-link aliases --color-primary, so the primary colour is also every link's colour.
     checkContrast("theme.colors.primary", c.primary, c.background, "as link text", errors);
+    // Legacy CSS also paints hard-coded white text on it (custom.css .btn-primary-blue, site.css
+    // .news-listing .home-body h3), whatever primaryText or the background are.
+    checkContrast("theme.colors.primary", "#FFFFFF", c.primary, "behind white text", errors);
     checkContrast("theme.colors.bannerInfo", "#FFFFFF", c.bannerInfo, "behind white text", errors);
     checkContrast("theme.colors.bannerEmergency", "#FFFFFF", c.bannerEmergency, "behind white text", errors);
   }

@@ -95,7 +95,18 @@ describe("validateSiteSettings", () => {
   it("a primary too pale to read as link text on the background is refused", () => {
     expect(errorsFor((d) => { d.theme.colors.primary = "#8FB3E8"; d.theme.colors.primaryText = "#000000"; })).toEqual([
       { field: "theme.colors.primary", message: "Too faint to read as link text (2.1:1, needs 4.5:1). Pick a darker shade." },
+      { field: "theme.colors.primary", message: "Too faint to read behind white text (2.1:1, needs 4.5:1). Pick a darker shade." },
     ]);
+  });
+
+  // Legacy CSS paints hard-coded white text on the primary colour (custom.css .btn-primary-blue,
+  // site.css .news-listing .home-body h3), whatever primaryText and the background are.
+  it("a primary too pale behind white text is refused even when links on a dark background read", () => {
+    expect(
+      errorsFor((d) => {
+        Object.assign(d.theme.colors, { primary: "#A0C4FF", primaryText: "#000000", text: "#FFFFFF", background: "#000000", surface: "#000000" });
+      }),
+    ).toEqual([{ field: "theme.colors.primary", message: "Too faint to read behind white text (1.8:1, needs 4.5:1). Pick a darker shade." }]);
   });
 
   it("the bc and nb tenant defaults still validate", () => {
