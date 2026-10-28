@@ -258,6 +258,36 @@ describe("cabinet changes (new-government spec §5)", () => {
     ]);
   });
 
+  it("refuses a chain: a ministry handed over in the change can't also take over another's work (NG-R16)", async () => {
+    await org("a", "Alpha", "ALPH");
+    await org("b", "Beta", "BETA");
+    await org("c", "Gamma", "GAMM");
+    const change = await draft([
+      { op: "succeed", key: "a", expectedUpdatedAt: await stamp("a"), successors: [{ key: "b" }], moves },
+      { op: "succeed", key: "b", expectedUpdatedAt: await stamp("b"), successors: [{ key: "c" }], moves },
+    ]);
+    await clearOutbox();
+    expect((await previewCabinetChange(tdb.db, change.id)).problems).toEqual([
+      { op: 0, message: "Beta is handed over in this change, so it can't also take over Alpha's work." },
+    ]);
+    expect(await publishCabinetChange(tdb.db, change.id, subs)).toMatchObject({ result: "invalid" });
+    expect(await getOrganization(tdb.db, "a")).toMatchObject({ isActive: true });
+    expect(await getOrganization(tdb.db, "b")).toMatchObject({ isActive: true });
+    expect(await outbox()).toEqual([]);
+  });
+
+  it("refuses handing a ministry to one the same change abolishes", async () => {
+    await org("a", "Alpha", "ALPH");
+    await org("b", "Beta", "BETA");
+    const change = await draft([
+      { op: "succeed", key: "a", expectedUpdatedAt: await stamp("a"), successors: [{ key: "b" }], moves },
+      { op: "succeed", key: "b", expectedUpdatedAt: await stamp("b"), successors: [], moves, noSuccessor: true },
+    ]);
+    expect((await previewCabinetChange(tdb.db, change.id)).problems).toEqual([
+      { op: 0, message: "Beta is handed over in this change, so it can't also take over Alpha's work." },
+    ]);
+  });
+
   it("preview shows the diff, the resulting list in sort order and the service's own problems, and writes nothing", async () => {
     await org("a", "Alpha", "ALPH", 10);
     await org("b", "Beta", "BETA", 20);
@@ -283,12 +313,15 @@ describe("cabinet changes (new-government spec §5)", () => {
     expect(await orgKeys()).toEqual(["a", "b"]);
     expect(await outbox()).toEqual([]);
 
-    // A loop is refused by the hand-over itself.
+    // A loop inside one change is a chain both ways (NG-R16), refused before anything runs.
     const loop = await draft([
       { op: "succeed", key: "a", expectedUpdatedAt: await stamp("a"), successors: [{ key: "b" }], moves },
       { op: "succeed", key: "b", expectedUpdatedAt: await stamp("b"), successors: [{ key: "a" }], moves },
     ]);
-    expect((await previewCabinetChange(tdb.db, loop.id)).problems).toEqual([{ op: 1, message: "Choose an active ministry as successor." }]);
+    expect((await previewCabinetChange(tdb.db, loop.id)).problems).toEqual([
+      { op: 0, message: "Beta is handed over in this change, so it can't also take over Alpha's work." },
+      { op: 1, message: "Alpha is handed over in this change, so it can't also take over Beta's work." },
+    ]);
   });
 
   it("only one open draft", async () => {

@@ -207,7 +207,7 @@ function successorKeys(op: Extract<CabinetOperation, { op: "succeed" }>, created
  * keeps every other abbreviation write out until then.
  *
  * Then it checks each operation on its own (a missing ministry, a stale expectedUpdatedAt, a double
- * hand-over, an abolish without "No successor", an unknown ref), and runs the rest, each in its own
+ * hand-over, a hand-over to a ministry the change also hands over, an abolish without "No successor", an unknown ref), and runs the rest, each in its own
  * savepoint, so a refused operation (a loop, an inactive successor, a name that already exists)
  * becomes a problem and the others still run and report. Run order: updates (renames and
  * reactivations, so a hand-over can name a ministry the change reactivates), then creates, then
@@ -284,6 +284,14 @@ async function applyOperations(
     if (op.noSuccessor && op.successors.length) problem(i, `Choose a successor for ${org.displayName} or choose “No successor (abolish it)”, not both.`);
     if (!op.noSuccessor && !op.successors.length) problem(i, `Choose a successor for ${org.displayName}, or choose “No successor (abolish it)”.`);
     for (const s of op.successors) if (s.ref !== undefined && !createdRefs.has(s.ref)) problem(i, `No new ministry in this change is called “${s.ref}”.`);
+    // A chain (A→B, B→C or B abolished) in one change: consumers apply the two hand-overs in
+    // whatever order they arrive, so A's subscribers, activities and drafts could land on B after
+    // B's own moved on, and stay on an inactive ministry (final review I1). Hand A straight to C.
+    for (const s of op.successors) {
+      if (s.key === undefined || !succeeded.has(s.key) || s.key === op.key) continue;
+      const successor = byKey.get(s.key)?.displayName ?? s.key;
+      problem(i, `${successor} is handed over in this change, so it can't also take over ${org.displayName}'s work.`);
+    }
   });
 
   if (!(opts.stopAtStale && stale.length)) {
