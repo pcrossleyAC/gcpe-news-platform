@@ -669,25 +669,19 @@ Rows C273-C294 in `changes-from-legacy.md` hold the reasons. The visible ones:
 - BC Sans Italic is preloaded only on pages that use italics (P4-R6, C294); a page with italics and no preload scored 79.
 - axe found 0 violations on every page the implementers ran.
 
-### Gate results (boxs.ca) -- for the controller to fill
+### Gate results (boxs.ca)
 
-Run after the batch G deploy. Record the `main` ratios; any failure becomes a named fix task before plan 5.
+Run by the controller at 14:30 on 2026-10-28, after the batch G deploy and after a slice of news.gov posts was seeded on boxs.ca (source: `~/GCPE-Legacy-Hub/overnight-log.md`, 13:00 and 14:25 entries). Per-page ratios were not kept for this run; the plan 5 run below covers every page type with the numbers.
 
-1. `npm run parity -- --target https://boxs.ca --pages home,contacts,live,privacy,factsheets,stories,ministry-factsheets,ministries,sectors,themes,topics,sector,search,subscribe,connect,archive --ours search=/search/?q=<word>`
-   - Expected: every strict region <= 0.03 at both widths, structure rows `ok` or `legacy-absent`, axe 0 serious/critical.
-   - Result: _not run yet_
-
-   | page | width | header | landAck | footer | main (report only) |
-   |---|---|---|---|---|---|
-   | _to fill_ | | | | | |
-
-   Structure rows: _to fill_ (data-only FAILs on an empty boxs.ca, such as listings with no cards, are expected; record which and why).
-2. `npm run site:quality`: _not run yet_ (expect PASS).
-3. `npx vitest run --project node`: _not run yet_ (last implementer count 5629 passed, 10 skipped at 62a9ebe).
-4. `npx vitest run --project staff-web`: _not run yet_.
-5. `npm run check`: _not run yet_ (expect exit 0).
-6. `npm run parity:urls -- --base https://boxs.ca` (Task 23 is done): _not run yet_ (expect 100%).
-7. A live-on check: with a stream on, screenshot the header at 390, 768 and 1280 (the phone header must stay one row).
+1. Parity, 18 page types at 1280 and 390:
+   - Structure `ok` on 16 of 18: home, ministry, sector, search, subscribe, connect, contacts, live, privacy, factsheets, stories, ministries, sectors, themes, topics, archive.
+   - `ministry-factsheets`: **data** (no Health factsheets in boxs.ca's slice).
+   - `release` `#assets` missing: **a real markup difference** (legacy nests translations in `div#assets`). Fixed in plan 5 Task 10 (89016db, C302); the plan 5 run shows release structure 7/7 `ok`.
+   - Banner region mismatch on every page: **data** (boxs.ca's banner was set to the red emergency style with test text; news.gov's is the blue notice).
+   - Header, landAck and footer: within 0.03 on every page.
+2. URL lists: curated 48/49 (the miss is the Google verification file, operator-owned), ours 4/4, generated 165/243 (nav 34/34, feeds 40/40, post-variants 20/20; the 78 misses are releases not imported on boxs.ca).
+3. Local gates were not recorded for this run; the plan 5 run below records them at the deployed commit.
+4. The live-on header check (item 7): the phone header fix is be9a534 (the Live button as legacy's 40 px icon). boxs.ca was off-air for every gate run, so the live-on screenshots at 390, 768 and 1280 are not recorded here [not checked].
 
 ### Open items carried out of plan 4
 - Owner questions (the plan's six, with P4-R2 and P4-R9 defaults applied, plus three new):
@@ -702,3 +696,102 @@ Run after the batch G deploy. Record the `main` ratios; any failure becomes a na
   9. **New: production stream https/CORS.** The same facts as question 1, to check on the production host before the Live page is relied on: the stream URL must be https (the page refuses anything else) and must send CORS headers.
 - The Resources link (`/contacts/`) is data in the Hub; it needs a staff sign-in.
 - A legacy carousel import re-run replaces slides wholesale, including their action labels, as for every other slide field.
+
+## Plan 5 result (2026-10-28, parity plan 5 Task 14)
+
+**Verdict: the chrome, accessibility and gap-audit lines of spec §6 pass on boxs.ca; the URL line passes for every URL whose data is on boxs.ca; the editability line passes under the plan's ruling on developer-owned headings.** Every strict region (header, landAck, footer) is within 0.03 on all 20 page types at 1280 and 390 (worst: footer 0.0180), and the banner region passes too. axe found nothing serious or critical. Every structure and URL failure is boxs.ca data or an operator setting, except one small code gap found by the gap re-walk: `/assets/license` answers 404 (fix task F-P5-1, Low).
+
+### How it was run
+- **Target.** boxs.ca at deploy ad3f5f8 of `main` 7bfb7e7 (plan 5 batches A-C; `RENDER_CHROME_VERSION` 20). Legacy: live https://news.gov.bc.ca.
+- **Harness.** `npm run parity -- --target https://boxs.ca --ours search=/search/?q=health,release=/releases/2026HLTH0085-001117/` with no `--pages`, so every `PARITY_PAGES` entry ran (20 page types × 2 widths = 40 loads). Output: `.superpowers/sdd/2026-10-28-parity-5-identity-and-leftovers/parity.txt` and `parity-report.json` (`axeFailures: []`, `loadErrors: []`, `failed: true` from the two structure FAILs below).
+- The banner region passes only after the owner corrected boxs.ca's banner data on the evening of 2026-10-28. An earlier run (23-07) failed on the banner alone, for that data.
+- Local gates ran at the deployed commit (`check.txt`, `node.txt`, `staffweb.txt`, `sitequality.txt` in the same folder).
+
+### Mismatch ratios (strict limit 0.03; banner is checked too; `main` is reported only)
+
+| page | width | banner | header | landAck | footer | main (report only) |
+|---|---|---|---|---|---|---|
+| home | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0114 | 0.1548 |
+| home | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.3226 |
+| ministry | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0115 | 0.1730 |
+| ministry | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.3107 |
+| biography | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0088 | 0.4192 |
+| biography | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.5588 |
+| premier | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0063 | 0.4320 |
+| premier | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.4668 |
+| sector | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0036 | 0.0719 |
+| sector | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.2699 |
+| release | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0115 | 0.0862 |
+| release | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.0984 |
+| search | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0036 | 0.1694 |
+| search | 390 | 0.0023 | 0.0062 | 0.0000 | 0.0043 | 0.5179 |
+| subscribe | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0063 | 0.4943 |
+| subscribe | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.5691 |
+| connect | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0036 | 0.3153 |
+| connect | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.3457 |
+| contacts | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0037 | 0.1235 |
+| contacts | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0161 | 0.1622 |
+| live | 1280 | 0.0011 | 0.0004 | 0.0072 | 0.0088 | 0.4610 |
+| live | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.1863 |
+| privacy | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0037 | 0.1157 |
+| privacy | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0180 | 0.1957 |
+| factsheets | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0036 | 0.1304 |
+| factsheets | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0161 | 0.3116 |
+| stories | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0036 | 0.1714 |
+| stories | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0062 | 0.3843 |
+| ministry-factsheets | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0141 | 0.0554 |
+| ministry-factsheets | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.1311 |
+| ministries | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0087 | 0.6027 |
+| ministries | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0161 | 0.6357 |
+| sectors | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0113 | 0.1336 |
+| sectors | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.2421 |
+| themes | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0071 | 0.1517 |
+| themes | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0043 | 0.3364 |
+| topics | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0115 | 0.1227 |
+| topics | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0161 | 0.2632 |
+| archive | 1280 | 0.0011 | 0.0004 | 0.0000 | 0.0036 | 0.7674 |
+| archive | 390 | 0.0023 | 0.0052 | 0.0000 | 0.0180 | 0.7637 |
+
+Maxima: banner 0.0023, header 0.0062 (search, 390), landAck 0.0072 (live, 1280), footer 0.0180 (privacy and archive, 390). `main` runs from 0.0554 (ministry-factsheets, 1280) to 0.7674 (archive, 1280); it compares different posts and data on each side and is not a gate. The biography `main` compares legacy's biography with our ministry page, because boxs.ca's biography address redirects there (below).
+
+### Structure rows
+
+All `ok` at both widths, apart from three `legacy-absent` rows (release `.backgrounder`, sectors `.news-control .load-more`, each at both widths) and two failing page types:
+
+| page | missing at 1280 and 390 | cause | class |
+|---|---|---|---|
+| biography | `.biography-details`, `.minister-bio-picture img` | boxs.ca's Core has no biography text for Citizens' Services: its card shows the placeholder name "First Name Last Name" and no bio, so the builder writes no bio page (`apps/public-site/src/builder.ts:365-368`) and `/ministries/citizens-services/biography/` 301s to the ministry page. The legacy import reads `MinisterPageHtml`, `MinisterPhotoUrl` and `MinisterName` (`apps/core/src/import/queries.ts:3`). The page itself is tested in plan 2 (3881b34) and passed 4/4 on the local fixture. | **data** (cutover import) |
+| ministry-factsheets | `.regular-articles .article` | boxs.ca has no Health factsheets: the page shows "Nothing has been published yet.", and the two Health factsheets legacy lists answer 404 on boxs.ca. | **data** (cutover import) |
+
+### URL rehearsal
+
+| list | result | misses |
+|---|---|---|
+| curated (`tools/parity/legacy-urls.txt`) | 48/49 | `/google790b0529c8dcfaff.html` 404: the Google verification file is `SITE_GOOGLE_VERIFICATION_FILE`, operator-owned (P15), and unset on the test host. **Operator** |
+| generated (`legacy-urls.generated.txt`) | 165/243 | nav 34/34, feeds 40/40, post-variants 20/20, posts 71/149. All 78 misses are `404 /releases/<key>`: legacy releases outside boxs.ca's 184-post slice. **Data** (full import at cutover) |
+| ours (`legacy-urls-ours.txt`, base `/site`) | 4/4 | none |
+
+### Local gates (at `main` 7bfb7e7)
+- `npm run check`: exit 0.
+- `npx vitest run --project node`: 458 files passed (3 skipped), 5739 tests passed (10 skipped).
+- `npx vitest run --project staff-web`: 128 files, 1220 tests passed.
+- `npm run site:quality`: every page passed axe and Lighthouse (accessibility and best-practices 100 everywhere; performance 80-87; SEO 69 on `/search/`, `/subscribe/` and `/subscribe/manage/`, 100 elsewhere; SEO has no gate).
+
+### Spec §6 "Done means"
+
+| § 6 line | result | evidence |
+|---|---|---|
+| The parity audit, rerun against boxs.ca, finds no High or Medium gap that isn't a recorded deliberate difference. | **pass** | `gap-audit.md`, "Plan 5 final re-walk": H1-H6 and M1-M17 all addressed by commit (with C-rows where they differ). Open: L5 (analytics, owner) and the L3 remnant `/assets/license` (F-P5-1), both Low. |
+| Chrome diffs within threshold at both widths for home, release, ministry, category, search, subscribe, connect and contacts. | **pass** | Table above: header ≤ 0.0062, landAck ≤ 0.0072, footer ≤ 0.0180 on those pages (category = sector, sectors, themes, topics) and on every other page type. |
+| axe reports 0 serious/critical. | **pass** | `parity-report.json` `axeFailures: []` (40 loads); `site:quality` axe pass on every fixture page. |
+| The URL rehearsal returns 100% 2xx/3xx on the legacy URL list. | **pass for every URL with data on boxs.ca; not 100% as measured** | curated 48/49 (operator's Google file), generated 165/243 (78 unimported releases), ours 4/4. No miss is code. Rerun on production after the full import and with the verification file set. |
+| Every row in admin-editability §1 is "editable" or operator-owned per P15. | **pass under spec conflict 8** | Plan 5 Task 13 (e0c7b91, c72e4a6): `grep -nE "\| \**(missing\|hardcoded\|data, no screen)" docs/parity/inputs/admin-editability.md` returns nothing (re-run for this audit). Rows are editable, operator-owned, derived, or **developer-owned by decision** (13 rows, each citing C304 or §2); the last status is the plan's resolution of spec conflict 8 and is owner question 5, not the spec's literal two statuses. |
+| `changes-from-legacy.md` records every remaining deliberate difference; D1, C202 and C206 are updated. | **pass** | C295-C304 added in Task 13. C202 and C206 now name the shipped url-compat commits and this rehearsal; D1 (`2026-10-11-public-site-ai-design.md`) names the shipped replacement. The `/assets/license` gap is a fix task, not a difference. |
+
+### Cutover and data items (not fix tasks)
+- Run the full legacy import (Core and News API, then `import:files`) on production: brings minister names, photos and biographies (biography structure), the Health factsheets (ministry-factsheets structure) and the 78 releases outside boxs.ca's slice.
+- Set `SITE_GOOGLE_VERIFICATION_FILE` (and the meta token if used) on production (operator, P15).
+- Rerun `npm run parity:urls` against production after DNS moves, with the full data.
+
+### Fix tasks found by this audit
+- **F-P5-1** (Low, code): `/assets/license` answers 404 on boxs.ca; legacy 302s it to the News Footage License PDF. Appended to the plan 5 plan file.
