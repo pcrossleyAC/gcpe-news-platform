@@ -187,6 +187,13 @@ as every other Website write.
   from `ministryPages`; empty groups omitted. "Factsheets" and "Read Bio" are not carried
   over: this site has no per-ministry factsheet or biography page **[call]**.
 
+## Ministry abbreviation (added by the user, 2026-10-27)
+
+NRMS numbers releases from the lead ministry's abbreviation and refuses approval without one,
+but no Hub form sets it (Add ministry stores none). The Add ministry and edit forms gain an
+**Abbreviation** field, Core.Admin only: 2–10 capital letters or digits (stored upper-case),
+unique across organizations; changing it affects only releases approved afterwards.
+
 ## Hub screens (Website section, manage roles)
 
 Tabs added after the existing ones: **Banner**, **Footer**, **Social links**, **Theme**,
