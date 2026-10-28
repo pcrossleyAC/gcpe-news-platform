@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import express from "express";
 import request from "supertest";
 import { mountSite, rootSiteNotFound } from "../site-mount";
+import { SITE_PASS_THROUGH } from "../stack";
 import { createLegacySiteFixture } from "./fixture";
 
 // Mirrors stack.ts (and site-mount.test.ts): mountSite, rootSiteNotFound just before News API,
@@ -197,18 +198,49 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     }
   });
 
-  it("a stack-owned prefix that is also a rule path (/updates, the 4th post kind) is passed through", async () => {
+  // Ruling P3-R4 (review I1): the stack passes SITE_PASS_THROUGH — every stack-owned prefix but
+  // /updates — so legacy GET/HEAD /updates/… URLs reach the rules and the site 404, while the
+  // News API hub's POST /updates/negotiate still reaches News API.
+  it("with SITE_PASS_THROUGH: GET /updates/archive → 301 /archive/, unknown /updates/x → site HTML 404, POST /updates/negotiate reaches News API", async () => {
+    expect(SITE_PASS_THROUGH).not.toContain("/updates");
+    expect(SITE_PASS_THROUGH).toContain("/api");
+    const stackLike = express();
+    mountSite(stackLike, { outputDir, basePath: "", passThrough: SITE_PASS_THROUGH });
+    stackLike.use(rootSiteNotFound(outputDir, SITE_PASS_THROUGH));
+    // Stands in for News API: its hub's only Express route, then its JSON catch-all.
+    stackLike.post("/updates/negotiate", (_req, res) => void res.json({ negotiated: true }));
+    stackLike.use((req, res) => void res.status(404).json({ fellThrough: true, method: req.method, path: req.path }));
+
+    await expectRedirect(stackLike, "/updates/archive", "/archive/");
+    await expectRedirect(stackLike, "/Updates/more-news", "/archive/");
+    await expectRedirect(stackLike, "/updates", "/");
+    const unknown = await request(stackLike).get("/updates/x").redirects(0);
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers["content-type"]).toMatch(/^text\/html/);
+    expect(unknown.text).toBe("<h1>site 404</h1>");
+    const negotiate = await request(stackLike).post("/updates/negotiate");
+    expect(negotiate.status).toBe(200);
+    expect(negotiate.body).toEqual({ negotiated: true });
+    // The other stack-owned prefixes are still untouched.
+    const api = await request(stackLike).get("/api/x").redirects(0);
+    expect(api.body).toEqual({ fellThrough: true, method: "GET", path: "/api/x" });
+  });
+
+  it("the pass-through is tested on the decoded path, the same one the rules match", async () => {
     const owned = express();
-    mountSite(owned, { outputDir, basePath: "", passThrough: ["/updates"] });
-    owned.use(rootSiteNotFound(outputDir, ["/updates"]));
+    mountSite(owned, { outputDir, basePath: "", passThrough: ["/newsletters"] });
     owned.use((req, res) => void res.status(404).json({ fellThrough: true, method: req.method, path: req.path }));
-    for (const path of ["/updates", "/Updates/archive", "/updates/more-news"]) {
+    for (const path of ["/newsletters", "/%6Eewsletters", "/%4Eewsletters/x"]) {
       const res = await request(owned).get(path).redirects(0);
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ fellThrough: true, method: "GET", path });
+      expect({ path, status: res.status, location: res.headers.location }).toEqual({ path, status: 404, location: undefined });
     }
-    // Without the pass-through the same paths are legacy rules.
-    await expectRedirect(app, "/updates/archive", "/archive/");
+  });
+
+  it("/archive/{yyyy} is a fallback: once archive/2026/index.html exists, /archive/2026/ → 200 and /archive/2026 → static's 301 /archive/2026/", async () => {
+    await writeFile(join(outputDir, "archive", "2026", "index.html"), "<h1>2026</h1>");
+    expect((await request(app).get("/archive/2026/")).status).toBe(200);
+    await expectRedirect(app, "/archive/2026", "/archive/2026/");
+    await expectRedirect(app, "/archive/2019", "/archive/");
   });
 
   it.each(["//evil.example/newsletters", "/%2F%2Fevil.example", "/\\evil.example"])("%s never yields a Location starting with // or a host", async (path) => {

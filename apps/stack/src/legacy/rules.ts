@@ -18,6 +18,11 @@ export type LegacyAction =
       status?: 301 | 302;
       /** Fire only when the request path itself is not a page on disk (`pagePath` is null). */
       fallback?: boolean;
+      /**
+       * The targets are absolute https URLs (forms.gov): no basePath is prefixed and the
+       * Location guard checks for "https://" instead of a root-relative path.
+       */
+      absolute?: boolean;
     }
   | { do: "serve"; file: string; type: string };
 
@@ -35,12 +40,13 @@ const PATH_RULES: ReadonlyArray<readonly [RegExp, (m: RegExpExecArray) => Legacy
   [new RegExp(`^(?:/${KIND})?/more-news$|^/${KIND}/(?:morearticles|archive(?:/\\d{4})?)$`), () => redirect(["/archive/!"], "drop")],
   // Legacy's {month?} took "1" as well as "01"; the new archive's month folders are two digits.
   [new RegExp(`^/${KIND}/archive/(\\d{4})/(\\d{1,2})$`), (m) => redirect([`/archive/${m[1]}/${m[2]!.padStart(2, "0")}/`, "/archive/!"], "drop")],
-  [/^\/archive\/\d{4}$/, () => redirect(["/archive/!"], "drop")],
+  // Fallback: plan 4's year page (archive/<yyyy>/index.html), once built, wins.
+  [/^\/archive\/\d{4}$/, () => redirect(["/archive/!"], "drop", true)],
   [new RegExp(`^/${KIND}$`), () => redirect(["/!"], "drop", true)],
   [/^\/news-subscribe$/, () => redirect(["/tags/", "/!"], "drop", true)],
   [/^\/(?:sectors|themes|tags)$/, () => redirect(["/!"], "drop", true)],
   [/^\/sitemap\/html$/, () => redirect(["/archive/!"], "drop")],
-  [/^\/contact$/, () => redirect(["https://forms.gov.bc.ca/!"], "drop")],
+  [/^\/contact$/, () => ({ do: "redirect", to: ["https://forms.gov.bc.ca/!"], query: "drop", absolute: true })],
   [/^\/subscribe\/index$/, () => redirect(["/subscribe/!"], "keep")],
   [/^\/subscribe\/(?:save|renew)$|^\/enewsletters\/unsubscribe\.aspx$/, () => redirect(["/subscribe/manage/!"], "drop")],
   [/^\/newsletters\/subscribe$|^\/enewsletters\/subscribe\.aspx$/, () => redirect(["/subscribe/!"], "drop")],

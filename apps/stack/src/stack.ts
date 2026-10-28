@@ -125,9 +125,10 @@ function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir: stri
 }
 
 /**
- * Every path prefix some part of the stack answers itself, rather than the public site:
- * rootSiteNotFound lets these fall through to their own app's 404 (News API's JSON one for
- * /api, /health, /events and /updates). A new top-level mount belongs here too.
+ * Every path prefix some part of the stack answers itself, rather than the public site. A new
+ * top-level mount belongs here too. The site's own pass-through list is SITE_PASS_THROUGH below
+ * (all of these but "/updates"): under those, rootSiteNotFound and legacyUrls step aside and the
+ * app answers its own 404 (News API's JSON one for /api, /health and /events).
  */
 export const STACK_OWNED_PREFIXES: readonly string[] = [
   "/api",
@@ -148,6 +149,16 @@ export const STACK_OWNED_PREFIXES: readonly string[] = [
   FAKE_EMERGENCY_FEED_PATH,
   FAKE_ENTRA_PATH,
 ];
+
+/**
+ * The prefixes the public site leaves alone (legacyUrls and rootSiteNotFound): every
+ * stack-owned prefix except "/updates" (ruling P3-R4). Legacy Updates posts, feeds and archives
+ * live at news.gov.bc.ca/updates/…, so a GET/HEAD there must reach the legacy rules and the
+ * site's HTML 404. News API's hub keeps working: its only Express route is POST
+ * /updates/negotiate (legacyUrls and rootSiteNotFound pass every non-GET/HEAD through), and its
+ * WebSocket handshake arrives on the server's 'upgrade' event, which never enters Express.
+ */
+export const SITE_PASS_THROUGH: readonly string[] = STACK_OWNED_PREFIXES.filter((p) => p !== "/updates");
 
 /** Every folder the stack serves to anyone, named by the setting that moves it. */
 function publicDirs(nrmsStorage: string | undefined, siteOutput: string | undefined, staffWeb: string | undefined): Record<string, string | undefined> {
@@ -368,8 +379,8 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // PUBLIC_SITE_URL still has a path (boxs.ca's https://boxs.ca/site until the operator flips
   // it), the site is served under that prefix too, with siteNotFound for its unknown pages;
   // once it is the bare origin, /site/<rest>?<query> 301s to /<rest>?<query> (site-mount.ts).
-  // Old news.gov.bc.ca URLs (parity plan 3) are answered inside it, never under a stack-owned prefix.
-  mountSite(app, { outputDir, basePath: siteBasePath(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl), passThrough: STACK_OWNED_PREFIXES });
+  // Old news.gov.bc.ca URLs (parity plan 3) are answered inside it, never under a SITE_PASS_THROUGH prefix.
+  mountSite(app, { outputDir, basePath: siteBasePath(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl), passThrough: SITE_PASS_THROUGH });
 
   // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
   // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
@@ -599,8 +610,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   app.use("/site-builder", siteBuilder.app);
   // Any other GET/HEAD nothing above served is a public-site page that doesn't exist: the
   // site's own 404.html, not News API's JSON catch-all — except under the stack's own prefixes
-  // (News API's /api, /health, /events, /updates among them), which keep their own 404s.
-  app.use(rootSiteNotFound(outputDir, STACK_OWNED_PREFIXES));
+  // (News API's /api, /health and /events among them), which keep their own 404s. /updates
+  // is the site's (SITE_PASS_THROUGH): only the hub's POST /updates/negotiate goes on to News API.
+  app.use(rootSiteNotFound(outputDir, SITE_PASS_THROUGH));
   app.use(newsApi.app);
   stackApp = app;
 

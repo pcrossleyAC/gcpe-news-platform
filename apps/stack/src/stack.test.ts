@@ -456,6 +456,25 @@ describe("apps/stack", () => {
     expect(await health.json()).toEqual({ error: "not found" });
   });
 
+  // Parity plan 3 ruling P3-R4: /updates is not a site pass-through prefix (legacy Updates
+  // posts live there), so GET/HEAD under it is the site's; POST still goes on to News API (the
+  // hub's /updates/negotiate — disabled in this env, so News API's own JSON 404 proves it got there).
+  it("GET /updates/archive is a legacy 301, unknown GET /updates/x the site's HTML 404; POST /updates/negotiate reaches News API", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    await fsStorage(instance.outputDir).write("404.html", "<h1>probe not found page</h1>");
+    const archive = await fetch(`${instance.stackUrl}/updates/archive`, { redirect: "manual" });
+    expect(archive.status).toBe(301);
+    expect(archive.headers.get("location")).toBe("/archive/");
+    expect(archive.headers.get("cache-control")).toBe("no-store");
+    const unknown = await fetch(`${instance.stackUrl}/updates/no-such-page-xyz`, { redirect: "manual" });
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get("content-type")).toMatch(/^text\/html/);
+    expect(await unknown.text()).toBe("<h1>probe not found page</h1>");
+    const negotiate = await fetch(`${instance.stackUrl}/updates/negotiate`, { method: "POST" });
+    expect(negotiate.status).toBe(404);
+    expect(await negotiate.json()).toEqual({ error: "not found" });
+  });
+
   // Parity Task 2: news.gov URLs are root-relative, so the site is served at / as well as at
   // PUBLIC_SITE_URL's own path (self:/site here) until the operator flips it to the origin.
   it("GET / serves the home index.html written into OUTPUT_DIR, alongside /site/", async () => {

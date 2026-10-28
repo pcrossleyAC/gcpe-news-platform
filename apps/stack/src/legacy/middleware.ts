@@ -9,7 +9,7 @@ export interface LegacyUrlOptions {
   outputDir: string;
   /** The prefix this handler is mounted under: "" at the root, "/site" under /site. */
   basePath: string;
-  /** Stack-owned path prefixes (`STACK_OWNED_PREFIXES`), passed through before any filesystem call. */
+  /** Path prefixes the site leaves alone (`SITE_PASS_THROUGH` in stack.ts), passed through before any filesystem call. */
   passThrough: readonly string[];
   /** NEWS-n reference → post key (plan 3 Task 6). Unused until then. */
   lookupReference?: (reference: string) => Promise<string | null>;
@@ -23,8 +23,9 @@ export interface LegacyUrlOptions {
  * - rewrites `req.url` so the static mount serves a file in place (the legacy OG image); or
  * - falls through (`next()`) to the static mount and the site 404.
  *
- * Order: method (GET/HEAD), then `passThrough`, then `parseRequestTarget` (anything unsafe falls
- * through), then `fixedRule`. A *fallback* rule fires only when the request path is not itself a
+ * Order: method (GET/HEAD), then `parseRequestTarget` (anything unsafe falls through), then
+ * `passThrough` on the decoded path, then `fixedRule` — all pure, so a pass-through prefix never
+ * costs a filesystem call. A *fallback* rule fires only when the request path is not itself a
  * page on disk, so a page the site later builds (plan 4's /releases/ …) wins with no change here.
  * Filesystem errors go to `next(err)`.
  */
@@ -34,10 +35,11 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
   const prefixes = opts.passThrough.map((p) => p.toLowerCase());
   return (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
-    const lower = req.path.toLowerCase();
-    if (prefixes.some((p) => lower === p || lower.startsWith(`${p}/`))) return next();
     const target = parseRequestTarget(req.url);
     if (!target) return next();
+    // On the decoded path, the same one the rules match (/%75pdates/x is /updates/x to them).
+    const lower = target.path.toLowerCase();
+    if (prefixes.some((p) => lower === p || lower.startsWith(`${p}/`))) return next();
     const action = fixedRule(target.path, target.query);
     if (!action) return next();
 
@@ -67,10 +69,10 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
         if (to !== null) break;
       }
       if (to === null) return next();
-      const absolute = /^https:\/\/forms\.gov\.bc\.ca\//.test(to);
+      const absolute = action.absolute === true;
       const location = `${absolute ? "" : basePath}${to}${action.query === "keep" ? target.query : ""}`;
-      // Root-relative or the one forms.gov URL; never protocol-relative.
-      if (!absolute && (!location.startsWith("/") || location.startsWith("//") || location.startsWith("/\\"))) return next();
+      // Root-relative, or the rule's own absolute https URL; never protocol-relative.
+      if (absolute ? !location.startsWith("https://") : (!location.startsWith("/") || location.startsWith("//") || location.startsWith("/\\"))) return next();
       res.setHeader("Cache-Control", "no-store");
       res.redirect(action.status ?? 301, location);
     })().catch(next);
