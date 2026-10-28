@@ -3,13 +3,14 @@ import { z } from "zod";
 import express from "express";
 import { authFromEnv } from "@gcpe/auth";
 import { parseEnv } from "@gcpe/config";
-import type { Closer } from "@gcpe/http-kit";
+import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
 import { createEntraClient } from "./entra/client";
 import { signInSettingsFromEnv } from "./entra/config";
 import { republishAll } from "./services/republish";
+import { publishDueCabinetChanges } from "./services/cabinet-changes";
 
 export const coreEnvSchema = z.object({
   DATABASE_URL: z.string().url(),
@@ -72,6 +73,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   // Set by startLoops(); closers below reference it lazily so they're safe to call even if
   // startLoops() was never invoked (e.g. a test that only exercises `workers`/`closers`).
   let stopDispatcher: (() => Promise<void>) | undefined;
+  let cabinetLoop: NodeJS.Timeout | undefined;
 
   return {
     app,
@@ -81,13 +83,22 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // Phase 4a: lets the stack ask Core to re-emit every org/term as an upserted event — the
       // one-time reference-data backfill for a NoD that has never seen them (stack.ts).
       republish: () => republishAll(db, subscribers),
+      // New-government spec §5: publishes a staged cabinet change once its scheduled time has come
+      // (the stack's core.cabinet-changes tick step; the loop below when Core runs on its own).
+      cabinetChanges: () => publishDueCabinetChanges(db, subscribers),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
+      cabinetLoop = setInterval(
+        () => void publishDueCabinetChanges(db, subscribers).catch((e) => console.error("[core] scheduled cabinet change failed", safeErrorLabel(e))),
+        30_000,
+      );
+      cabinetLoop.unref();
     },
     closeBeforeServer: [],
     closers: [
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
+      { name: "cabinet change scheduler", close: async () => clearInterval(cabinetLoop) },
       { name: "db pool", close: () => pool.end() },
     ],
   };

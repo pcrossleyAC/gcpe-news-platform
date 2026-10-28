@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from "express";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
+import { CORE_ADMIN_DIRECTORY_ROLE, actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { EventTooLargeError, orgKeyFromName, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
 import {
@@ -24,6 +24,14 @@ import {
   upsertOrganization,
 } from "../services/organizations";
 import { republishAll } from "../services/republish";
+import {
+  cancelCabinetChange,
+  getOpenCabinetChange,
+  previewCabinetChange,
+  publishCabinetChange,
+  saveCabinetChangeDraft,
+  scheduleCabinetChange,
+} from "../services/cabinet-changes";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
 import { CALENDAR_ACCESS_ROLES, calendarAccessRouter } from "./calendar-access";
@@ -146,6 +154,71 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe<{ key: string }>(async (req, res) => {
       const record = await succeedOrganization(db, req.params.key, successionInputSchema.parse(req.body), subscribers);
       record ? res.json(record) : res.status(404).json({ error: "not found" });
+    }),
+  );
+
+  // New-government spec §5: the staged cabinet change. One change is open (draft or scheduled) at a
+  // time, so these routes address "the" open change rather than an id.
+  const noOpenChange = (res: Response) => void res.status(404).json({ error: "no open cabinet change" });
+  r.get(
+    "/cabinet-change",
+    admin,
+    safe(async (_req, res) => {
+      const change = await getOpenCabinetChange(db);
+      change ? res.json(change) : noOpenChange(res);
+    }),
+  );
+  const draftSchema = z.object({ operations: z.array(z.unknown()) }).strict();
+  r.put(
+    "/cabinet-change",
+    admin,
+    safe(async (req, res) => {
+      const { operations } = draftSchema.parse(req.body);
+      res.json(await saveCabinetChangeDraft(db, operations, actorOf(req).name));
+    }),
+  );
+  r.post(
+    "/cabinet-change/preview",
+    admin,
+    safe(async (_req, res) => {
+      const change = await getOpenCabinetChange(db);
+      if (!change) return noOpenChange(res);
+      res.json(await previewCabinetChange(db, change.id));
+    }),
+  );
+  r.post(
+    "/cabinet-change/publish",
+    admin,
+    safe(async (_req, res) => {
+      const change = await getOpenCabinetChange(db);
+      if (!change) return noOpenChange(res);
+      const result = await publishCabinetChange(db, change.id, subscribers);
+      const status = { published: 200, stale: 409, invalid: 422, "not-open": 404 }[result.result];
+      res.status(status).json(result);
+    }),
+  );
+  const scheduleSchema = z.object({ at: z.string().datetime({ offset: true }) }).strict();
+  r.post(
+    "/cabinet-change/schedule",
+    admin,
+    safe(async (req, res) => {
+      const { at } = scheduleSchema.parse(req.body);
+      const change = await getOpenCabinetChange(db);
+      if (!change) return noOpenChange(res);
+      const result = await scheduleCabinetChange(db, change.id, new Date(at));
+      if (result.result === "scheduled") return void res.json(result.change);
+      if (result.result === "not-open") return noOpenChange(res);
+      if (result.result === "past") return void res.status(422).json({ result: "past", error: "Choose a time in the future." });
+      res.status(422).json(result);
+    }),
+  );
+  r.post(
+    "/cabinet-change/cancel",
+    admin,
+    safe(async (_req, res) => {
+      const change = await getOpenCabinetChange(db);
+      if (!change || !(await cancelCabinetChange(db, change.id))) return noOpenChange(res);
+      res.status(204).end();
     }),
   );
 

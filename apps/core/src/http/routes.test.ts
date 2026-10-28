@@ -542,4 +542,65 @@ describe("Core HTTP API", () => {
       expect(res.body).toMatchObject({ isActive: true, successorKeys: [] });
     });
   });
+
+  describe("cabinet change routes (new-government spec §5)", () => {
+    const put = (key: string, displayName: string, abbreviation: string | null) =>
+      request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName, abbreviation }).expect(200);
+    const moves = { moveSubscribers: true, moveStaff: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: false };
+
+    it("403 for anyone but Core.Admin", async () => {
+      expect((await request(app).get("/api/cabinet-change").set(auth(siteEditor))).status).toBe(403);
+      expect((await request(app).put("/api/cabinet-change").set(auth(siteEditor)).send({ operations: [] })).status).toBe(403);
+      for (const path of ["preview", "publish", "schedule", "cancel"]) {
+        expect((await request(app).post(`/api/cabinet-change/${path}`).set(auth(siteEditor)).send({})).status).toBe(403);
+      }
+    });
+
+    it("draft, preview, schedule, cancel, then a stale and a clean publish", async () => {
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).status).toBe(404);
+      expect((await request(app).post("/api/cabinet-change/publish").set(auth(admin))).status).toBe(404);
+      await put("cab-a", "Cab A", null);
+      const a = (await request(app).get("/api/organizations/cab-a").set(auth(reader))).body as { updatedAt: string };
+      const rename = { op: "update", key: "cab-a", expectedUpdatedAt: a.updatedAt, patch: { displayName: "Cab A Renamed" } };
+
+      expect((await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [{ op: "update", key: "cab-a" }] })).status).toBe(400);
+      const saved = await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [rename] });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({ status: "draft", operations: [rename], createdBy: "svc", scheduledFor: null });
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).body.id).toBe(saved.body.id);
+
+      const preview = await request(app).post("/api/cabinet-change/preview").set(auth(admin));
+      expect(preview.status).toBe(200);
+      expect(preview.body.problems).toEqual([]);
+      expect(preview.body.diff).toEqual([{ key: "cab-a", displayName: "Cab A Renamed", kind: "changed", field: "displayName", from: "Cab A", to: "Cab A Renamed" }]);
+
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ at: "2001-01-01T00:00:00Z" })).body).toEqual({ result: "past", error: "Choose a time in the future." });
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ at: "soon" })).status).toBe(400);
+      const scheduled = await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ at: "2099-11-20T08:00:00Z" });
+      expect(scheduled.status).toBe(200);
+      expect(scheduled.body).toMatchObject({ status: "scheduled", scheduledFor: "2099-11-20T08:00:00.000Z" });
+
+      expect((await request(app).post("/api/cabinet-change/cancel").set(auth(admin))).status).toBe(204);
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).status).toBe(404);
+
+      // A new draft; Cab A changes underneath it.
+      await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [rename, { op: "succeed", key: "cab-a", expectedUpdatedAt: a.updatedAt, successors: [], moves }] }).expect(200);
+      const invalid = await request(app).post("/api/cabinet-change/publish").set(auth(admin));
+      expect(invalid.status).toBe(422);
+      expect(invalid.body).toEqual({ result: "invalid", problems: [{ op: 1, message: "Choose a successor for Cab A, or tick “No successor” to abolish it." }] });
+      await new Promise((r) => setTimeout(r, 5));
+      await request(app).patch("/api/organizations/cab-a/profile").set(auth(admin)).send({ sortOrder: 5 }).expect(200);
+      const stale = await request(app).post("/api/cabinet-change/publish").set(auth(admin));
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ result: "stale", key: "cab-a" });
+
+      const fresh = (await request(app).get("/api/organizations/cab-a").set(auth(reader))).body as { updatedAt: string };
+      await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [{ ...rename, expectedUpdatedAt: fresh.updatedAt }] }).expect(200);
+      const published = await request(app).post("/api/cabinet-change/publish").set(auth(admin));
+      expect(published.status).toBe(200);
+      expect(published.body).toEqual({ result: "published" });
+      expect((await request(app).get("/api/organizations/cab-a").set(auth(reader))).body.displayName).toBe("Cab A Renamed");
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).status).toBe(404);
+    });
+  });
 });

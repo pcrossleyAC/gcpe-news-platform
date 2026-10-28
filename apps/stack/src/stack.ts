@@ -517,6 +517,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         { name: "nrms.government-terms", run: worker(nrms, "governmentTerms") },
         { name: "nrms.publish", run: worker(nrms, "publish") },
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
+        // A staged cabinet change scheduled for the swearing-in publishes at the first tick after
+        // its time; just before core.dispatch, so its org events go out in the same tick.
+        { name: "core.cabinet-changes", run: worker(core, "cabinetChanges") },
         { name: "core.dispatch", run: worker(core, "dispatch") },
         ...(calendar ? [{ name: "calendar.dispatch", run: worker(calendar, "dispatch") }] : []),
         // Deletes edit locks idle for 15 minutes (spec addendum §7.5); a no-op most ticks.

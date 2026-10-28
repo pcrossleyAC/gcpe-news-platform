@@ -1,6 +1,6 @@
 import { and, asc, count, eq, inArray, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
+import type { Db, DbOrTx, TestClock, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, orgKeyFromName, orgRecordSchema, type OrgRecord, type OrgSucceeded, type SubscriberConfig } from "@gcpe/events";
 import { isSafeUrl } from "@gcpe/site-settings";
 import { organizations, userOrganizations } from "../db/schema";
@@ -160,6 +160,9 @@ export const abbreviationSchema = z
   .toUpperCase()
   .regex(/^[A-Z0-9]{2,10}$/, "Use 2 to 10 capital letters or digits, e.g. HLTH.");
 
+/** The advisory lock every Hub write of an abbreviation takes, after the organizations' own locks (and any user locks). */
+export const ABBREVIATIONS_LOCK = "org-abbreviations";
+
 /** Another organization already uses this abbreviation (compared case-insensitively). The route answers 409. */
 export class AbbreviationTakenError extends Error {
   constructor(readonly takenBy: string) {
@@ -176,7 +179,7 @@ export class AbbreviationTakenError extends Error {
  * and the second sees the first. Callers hold their own org lock already (always taken before this one).
  */
 async function assertAbbreviationFree(tx: Tx, abbreviation: string, key: string): Promise<void> {
-  await lockAggregate(tx, "org-abbreviations");
+  await lockAggregate(tx, ABBREVIATIONS_LOCK);
   const [other] = await tx
     .select({ displayName: organizations.displayName })
     .from(organizations)
@@ -228,16 +231,18 @@ export const ADMIN_ONLY_PROFILE_FIELDS = ["parentKey", "isActive", "abbreviation
  * Staff edit of the form fields. Merges `minister` and `social` field by field onto the stored ones
  * (lists are replaced whole), refuses an abbreviation another organization holds, reuses the
  * upsert path (so org.upserted fires only on a real change) and stamps staffEditedAt when it writes.
- * Returns null when the key does not exist; throws AbbreviationTakenError.
+ * Returns null when the key does not exist; throws AbbreviationTakenError. Uses the caller's
+ * transaction when `tx` is given (a cabinet change).
  */
 export async function patchOrganizationProfile(
   db: Db,
   key: string,
   patch: OrgProfilePatch,
   subscribers: SubscriberConfig[],
+  tx?: Tx,
 ): Promise<OrgRecord | null> {
   const parsed = orgProfilePatchSchema.parse(patch);
-  return db.transaction(async (tx) => {
+  const run = async (tx: Tx): Promise<OrgRecord | null> => {
     await lockAggregate(tx, orgAggregateId(key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
     if (!existing) return null;
@@ -253,7 +258,8 @@ export async function patchOrganizationProfile(
     const merged: OrgInput = { ...current, ...rest, minister: { ...current.minister, ...minister }, social: { ...current.social, ...social } };
     // tx is a Db-compatible handle; upsertOrganization opens a nested transaction (savepoint) on it and re-takes the same lock.
     return (await upsertOrganization(tx as unknown as Db, merged, subscribers, { staffEdit: true })).record;
-  });
+  };
+  return tx ? run(tx) : db.transaction(run);
 }
 
 export const orgCreateSchema = z
@@ -271,18 +277,19 @@ export type OrgCreate = z.infer<typeof orgCreateSchema>;
  * Creates an organization whose key is derived from its name. New ministries are public, active, not HQ,
  * and staff-edited (so the seed and importer leave them alone). Returns `{ conflict: key }` when the key
  * already exists (active or not), throws when the name yields no key, and throws AbbreviationTakenError
- * when another organization holds the abbreviation.
+ * when another organization holds the abbreviation. Uses the caller's transaction when `tx` is given (a cabinet change).
  */
 export async function createOrganization(
   db: Db,
   input: { displayName: string; sortOrder?: number; parentKey?: string | null; minister?: Partial<OrgRecord["minister"]>; abbreviation?: string },
   subscribers: SubscriberConfig[],
+  tx?: Tx,
 ): Promise<{ record: OrgRecord } | { conflict: string }> {
   const displayName = input.displayName.trim();
   const key = orgKeyFromName(displayName);
   if (!key) throw new Error("displayName must contain a letter or digit");
   const abbreviation = input.abbreviation === undefined ? null : abbreviationSchema.parse(input.abbreviation);
-  return db.transaction(async (tx) => {
+  const run = async (tx: Tx): Promise<{ record: OrgRecord } | { conflict: string }> => {
     await lockAggregate(tx, orgAggregateId(key));
     if (abbreviation !== null) await assertAbbreviationFree(tx, abbreviation, key);
     const sortOrder = input.sortOrder ?? ((await tx.select({ m: max(organizations.sortOrder) }).from(organizations))[0]?.m ?? 0) + 10;
@@ -317,7 +324,8 @@ export async function createOrganization(
     const record = toOrgRecord(row);
     await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: record }, subscribers);
     return { record };
-  });
+  };
+  return tx ? run(tx) : db.transaction(run);
 }
 
 /** Core.Admin's HQ switch. Emits org.upserted only when the flag changes. */
@@ -348,8 +356,9 @@ export async function setOrganizationPublic(db: Db, key: string, isPublic: boole
   });
 }
 
-export async function deactivateOrganization(db: Db, key: string, subscribers: SubscriberConfig[]): Promise<boolean> {
-  return db.transaction(async (tx) => {
+/** Plain deactivation (no successor). Uses the caller's transaction when `tx` is given (a cabinet change's abolish). */
+export async function deactivateOrganization(db: Db, key: string, subscribers: SubscriberConfig[], tx?: Tx): Promise<boolean> {
+  const run = async (tx: Tx): Promise<boolean> => {
     await lockAggregate(tx, orgAggregateId(key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
     if (!existing) return false;
@@ -357,7 +366,8 @@ export async function deactivateOrganization(db: Db, key: string, subscribers: S
     await tx.update(organizations).set({ isActive: false, updatedAt: new Date(), staffEditedAt: new Date() }).where(eq(organizations.key, key));
     await enqueueEvent(tx, { type: "org.deactivated", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: { key } }, subscribers);
     return true;
-  });
+  };
+  return tx ? run(tx) : db.transaction(run);
 }
 
 export async function listOrganizations(db: Db): Promise<OrgRecord[]> {
@@ -402,7 +412,8 @@ export class SuccessionError extends Error {
  *
  * Returns null when A does not exist. Throws SuccessionError (a missing or inactive successor, A
  * itself, or a successor whose chain leads back to A) and AbbreviationTakenError (another active
- * ministry holds A's abbreviation), in both cases before anything is written.
+ * ministry holds A's abbreviation), in both cases before anything is written. `now` (a test clock,
+ * or a scheduled cabinet change's publish time) stamps the rows and the event's `at`.
  */
 export async function succeedOrganization(
   db: Db,
@@ -410,6 +421,7 @@ export async function succeedOrganization(
   input: SuccessionInput,
   subscribers: SubscriberConfig[],
   tx?: Tx,
+  now?: TestClock,
 ): Promise<OrgRecord | null> {
   const run = async (tx: Tx): Promise<OrgRecord | null> => {
     const successorKeys = [...new Set(input.successorKeys)];
@@ -433,13 +445,13 @@ export async function succeedOrganization(
     const movers = input.moveStaff ? await staffOf(tx, a.id) : [];
     for (const id of movers) await lockAggregate(tx, userAggregateId(id));
 
-    const now = new Date();
+    const stampedAt = now ? now() : new Date();
     const changedA = a.isActive || JSON.stringify(a.successorKeys) !== JSON.stringify(successorKeys);
     let recordA = toOrgRecord(a);
     if (changedA) {
       const [row] = await tx
         .update(organizations)
-        .set({ isActive: false, successorKeys, updatedAt: now, staffEditedAt: now })
+        .set({ isActive: false, successorKeys, updatedAt: stampedAt, staffEditedAt: stampedAt })
         .where(eq(organizations.id, a.id))
         .returning();
       recordA = toOrgRecord(row!);
@@ -453,7 +465,7 @@ export async function succeedOrganization(
       await assertAbbreviationFree(tx, abbreviation, b.key);
       const [row] = await tx
         .update(organizations)
-        .set({ abbreviation, updatedAt: now, staffEditedAt: now })
+        .set({ abbreviation, updatedAt: stampedAt, staffEditedAt: stampedAt })
         .where(eq(organizations.id, b.id))
         .returning();
       recordB = toOrgRecord(row!);
@@ -476,7 +488,7 @@ export async function succeedOrganization(
       moveCalendar: input.moveCalendar,
       moveDrafts: input.moveDrafts,
       takeAbbreviation,
-      at: now.toISOString(),
+      at: stampedAt.toISOString(),
     };
     await event("org.succeeded", key, succeeded);
     for (const id of movers) await emitUserUpserted(tx, id, subscribers);

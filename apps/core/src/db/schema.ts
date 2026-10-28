@@ -126,3 +126,29 @@ export const userLegacyIds = pgTable(
     check("user_legacy_ids_system_check", sql`${t.system} IN ('calendar')`),
   ],
 );
+
+/**
+ * A staged cabinet change (new-government spec §5): ministry operations saved as a draft, previewed,
+ * then published in one transaction, now or at `scheduled_for`. At most one change is open (draft or
+ * scheduled) at a time.
+ */
+export const cabinetChanges = pgTable(
+  "cabinet_changes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    status: text("status").$type<"draft" | "scheduled" | "published" | "cancelled">().notNull().default("draft"),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+    /** The draft's operations, as cabinetOperationSchema parsed them (services/cabinet-changes.ts). */
+    operations: jsonb("operations").$type<unknown[]>().notNull().default([]),
+    createdBy: text("created_by"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    /** Why the last scheduled publish failed; cleared when it is saved, scheduled or published again. */
+    error: text("error"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("cabinet_changes_status_check", sql`${t.status} IN ('draft','scheduled','published','cancelled')`),
+    check("cabinet_changes_scheduled_for_check", sql`${t.status} <> 'scheduled' OR ${t.scheduledFor} IS NOT NULL`),
+    uniqueIndex("cabinet_changes_one_open_idx").on(sql`(true)`).where(sql`${t.status} IN ('draft','scheduled')`),
+  ],
+);
