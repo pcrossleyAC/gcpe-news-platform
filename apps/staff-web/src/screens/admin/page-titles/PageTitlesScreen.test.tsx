@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
-import { PageTypesFixture, PAGE_IMAGES } from "./fixtures";
+import { GONE_IMAGE, PageTypesFixture, PAGE_IMAGES } from "./fixtures";
 import { PageTitlesScreen } from "./PageTitlesScreen";
 
 type Call = { url: string; method: string; body: any };
@@ -204,6 +204,102 @@ describe("PageTitlesScreen", () => {
     expect(await within(form.parentElement!).findByRole("alert")).toHaveTextContent(msg);
     expect(within(form).getByRole("textbox", { name: "Page title" })).toHaveAccessibleDescription(msg);
     expect(within(form).getByRole("textbox", { name: "Page title" })).toHaveValue("News Release");
+  });
+
+  it("a row Save pressed twice quickly sends one request", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const calls = stub(["Core.Admin"]);
+    const inner = globalThis.fetch as unknown as (u: string, i?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", vi.fn(async (u: string, i?: RequestInit) => {
+      if (i?.method === "PUT") await gate;
+      return inner(u, i);
+    }));
+    renderIt();
+    const user = userEvent.setup();
+    const save = await screen.findByRole("button", { name: "Save Story" });
+    await user.dblClick(save);
+    release();
+    await screen.findByRole("status");
+    await waitFor(() => expect(writes(calls)).toHaveLength(1));
+  });
+
+  it("after a confirmed delete, focus lands on the status line", async () => {
+    stub(["Core.Admin"]);
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete Information Bulletin" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+    const status = await screen.findByText("Deleted Information Bulletin.");
+    await waitFor(() => expect(status).toHaveFocus());
+  });
+
+  it("a delete 409 moves focus to that row's alert once the dialog has closed", async () => {
+    stub(["Core.Admin"], { write: () => jsonResponse(409, { error: "Only one left." }) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete Story" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+    const row = (await screen.findByRole("textbox", { name: "Page title for Story" })).closest("tr")!;
+    await waitFor(() => expect(within(row).getByRole("alert")).toBeInTheDocument());
+    await waitFor(() => expect(row.contains(document.activeElement) && document.activeElement?.contains(within(row).getByRole("alert"))).toBe(true));
+  });
+
+  it("a row Save 409 focuses the row's title field and describes it with the message", async () => {
+    stub(["Core.Admin"], { write: () => jsonResponse(409, { error: "A page title with that name already exists in that language." }) });
+    renderIt();
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Page title for News Release" });
+    await user.click(screen.getByRole("button", { name: "Save News Release" }));
+    await waitFor(() => expect(field).toHaveFocus());
+    expect(field).toHaveAccessibleDescription("A page title with that name already exists in that language.");
+  });
+
+  it("a 404 says the title no longer exists and reloads; a 403 says you lack permission", async () => {
+    let status = 404;
+    const calls = stub(["Core.Admin"], { write: () => jsonResponse(status, { error: "not found" }) });
+    renderIt();
+    const user = userEvent.setup();
+    const saveStory = await screen.findByRole("button", { name: "Save Story" });
+    const before = listLoads(calls);
+    await user.click(saveStory);
+    expect(await screen.findByRole("alert")).toHaveTextContent("That page title no longer exists.");
+    await waitFor(() => expect(listLoads(calls)).toBe(before + 1));
+    status = 403;
+    await user.click(screen.getByRole("button", { name: "Save Story" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("You don't have permission to change page titles."));
+  });
+
+  it("a row whose page image is no longer active keeps it as a selectable option", async () => {
+    stub(["Core.Admin"]);
+    renderIt();
+    const select = await screen.findByRole("combobox", { name: "Page image for Story" });
+    expect(select).toHaveValue(GONE_IMAGE);
+    expect(within(select).getByRole("option", { name: "Current image (no longer available)" })).toBeInTheDocument();
+  });
+
+  it("a status message is cleared when a later action fails", async () => {
+    let fail = false;
+    stub(["Core.Admin"], { write: (c) => (fail ? jsonResponse(409, { error: "Nope." }) : jsonResponse(200, c.body)) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Save Story" }));
+    expect(await screen.findByText("Saved Story.")).toBeInTheDocument();
+    fail = true;
+    await user.click(screen.getByRole("button", { name: "Save Story" }));
+    await waitFor(() => expect(screen.queryByText("Saved Story.")).toBeNull());
+  });
+
+  it("after a rename a second Save targets the new title", async () => {
+    const calls = stub(["Core.Admin"]);
+    renderIt();
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Page title for Story" });
+    await user.clear(field);
+    await user.type(field, "  Tale  ");
+    await user.click(screen.getByRole("button", { name: "Save Story" }));
+    await waitFor(() => expect(writes(calls)).toHaveLength(1));
+    expect(writes(calls)[0]!.body.pageTitle).toBe("Tale");
   });
 
   it("a non-Core.Admin sees the permission message", async () => {

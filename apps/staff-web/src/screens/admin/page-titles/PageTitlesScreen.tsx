@@ -19,13 +19,18 @@ const LAYOUT_LABEL: Record<Layout, string> = { formal: "Formal", informal: "Info
 type PageType = { pageTitle: string; languageId: number; releaseType: ReleaseType; sortOrder: number; layout: Layout; pageImageId: string | null };
 type PageImage = { id: string; name: string };
 type Fields = { pageTitle: string; languageId: number; sortOrder: string; layout: Layout; pageImageId: string };
-type Problem = { field: "title" | "order" | "form"; text: string };
+type Problem = { field: "title" | "order" | "form"; text: string; stale?: boolean };
 
-/** The server's own 409/400 wording is shown as is; a schema rejection ("invalid request") gets a plain-language line. */
+/** The server's own 409/400 wording is shown as is; a schema rejection ("invalid request") gets a plain-language line.
+ * `stale` means the row was changed or removed elsewhere, so the list should be reloaded. */
 function explain(err: unknown): Problem {
-  if (err instanceof ApiError && (err.status === 409 || err.status === 400)) {
-    if (err.message !== "invalid request") return { field: "form", text: err.message };
-    return { field: "form", text: `Check the page title and order. ${ORDER_RANGE}` };
+  if (err instanceof ApiError) {
+    if (err.status === 404) return { field: "form", text: "That page title no longer exists.", stale: true };
+    if (err.status === 403) return { field: "form", text: "You don't have permission to change page titles." };
+    if (err.status === 409 || err.status === 400) {
+      if (err.message !== "invalid request") return { field: "form", text: err.message };
+      return { field: "form", text: "Check the page title (1 to 50 characters) and the order (0 to 9999)." };
+    }
   }
   return { field: "form", text: "Couldn't save. Try again." };
 }
@@ -51,9 +56,9 @@ const body = (f: Fields, releaseType: ReleaseType) => ({
 
 const rowKey = (r: { languageId: number; pageTitle: string }) => `${r.languageId}/${r.pageTitle}`;
 
-function ErrorAlert({ id, text }: { id: string; text: string }): React.JSX.Element {
+function ErrorAlert({ id, text, wrapperRef }: { id: string; text: string; wrapperRef?: React.RefObject<HTMLDivElement | null> }): React.JSX.Element {
   return (
-    <div id={id}>
+    <div id={id} tabIndex={-1} ref={wrapperRef}>
       <InlineAlert variant="danger" role="alert" isCloseable={false} description={text} />
     </div>
   );
@@ -78,9 +83,12 @@ function PageTitlesEditor(): React.JSX.Element {
   const [rows, setRows] = useState<PageType[] | null>(null);
   const [images, setImages] = useState<PageImage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ key: string | null; nonce: number }>({ key: null, nonce: 0 });
   const statusRef = useRef<HTMLParagraphElement>(null);
+  // After a delete the row (and its dialog) are gone once the reload lands; only then is the status line a safe place for focus.
+  const focusStatusAfterLoad = useRef(false);
 
   // Only the latest load may land: an earlier, slower one must not put back stale rows.
   const latest = useRef(0);
@@ -99,13 +107,23 @@ function PageTitlesEditor(): React.JSX.Element {
   }, []);
   useEffect(() => {
     reload();
-    apiFetch<PageImage[]>("/nrms/api/page-images").then(setImages, () => setLoadError("Couldn't load the page images."));
+    apiFetch<PageImage[]>("/nrms/api/page-images").then(setImages, () => setImageError("Couldn't load the page images."));
   }, [reload]);
+  useEffect(() => {
+    if (rows && focusStatusAfterLoad.current) {
+      focusStatusAfterLoad.current = false;
+      statusRef.current?.focus();
+    }
+  }, [rows]);
 
   const saved = (text: string, key: string | null) => {
     setMessage(text);
     setFocus((f) => ({ key, nonce: f.nonce + 1 }));
     reload();
+  };
+  const failed = (stale: boolean) => {
+    setMessage(null);
+    if (stale) reload();
   };
   const nextOrder = (t: ReleaseType) => Math.max(0, ...(rows ?? []).filter((r) => r.releaseType === t).map((r) => r.sortOrder)) + 1;
 
@@ -117,6 +135,7 @@ function PageTitlesEditor(): React.JSX.Element {
         public release page. A release keeps the title it was given: to change a published release's title, edit that release.
       </p>
       {loadError && <p role="alert">{loadError}</p>}
+      {imageError && <p role="alert">{imageError}</p>}
       <p role="status" tabIndex={-1} ref={statusRef}>
         {message}
       </p>
@@ -150,9 +169,10 @@ function PageTitlesEditor(): React.JSX.Element {
                         images={images}
                         focusNonce={focus.key === rowKey(r) ? focus.nonce : 0}
                         onSaved={saved}
+                        onFailed={failed}
                         onDeleted={(text) => {
+                          focusStatusAfterLoad.current = true;
                           saved(text, null);
-                          statusRef.current?.focus();
                         }}
                       />
                     ))}
@@ -162,16 +182,17 @@ function PageTitlesEditor(): React.JSX.Element {
             </section>
           );
         })}
-      <AddForm images={images} ready={rows !== null} nextOrder={nextOrder} onAdded={saved} />
+      <AddForm images={images} ready={rows !== null} nextOrder={nextOrder} onAdded={saved} onFailed={failed} />
     </div>
   );
 }
 
 
 /** Option lists shared by a row and the Add form. A page image that is no longer active stays selectable so a save doesn't silently drop it. */
-function LanguageOptions(): React.JSX.Element {
+function LanguageOptions({ current }: { current: number }): React.JSX.Element {
   return (
     <>
+      {!LANGUAGES.some((l) => l.id === current) && <option value={current}>{`Other language (${current})`}</option>}
       {LANGUAGES.map((l) => (
         <option key={l.id} value={l.id}>
           {l.label}
@@ -206,12 +227,13 @@ function ImageOptions({ images, current }: { images: PageImage[]; current: strin
 }
 
 function TitleRow({
-  record, images, focusNonce, onSaved, onDeleted,
+  record, images, focusNonce, onSaved, onFailed, onDeleted,
 }: {
   record: PageType;
   images: PageImage[];
   focusNonce: number;
   onSaved(text: string, focusKey: string): void;
+  onFailed(stale: boolean): void;
   onDeleted(text: string): void;
 }): React.JSX.Element {
   const [f, setF] = useState<Fields>({
@@ -224,8 +246,12 @@ function TitleRow({
   const rowEl = useRef<HTMLTableRowElement>(null);
   const errorId = useId();
   const set = (p: Partial<Fields>) => setF((x) => ({ ...x, ...p }));
-  const name = record.pageTitle;
-  const url = `/nrms/api/page-types/${record.languageId}/${encodeURIComponent(record.pageTitle)}`;
+  // The row's identity on the server. A successful rename moves it at once, so a quick second Save targets the new title, not a 404.
+  const [ident, setIdent] = useState({ pageTitle: record.pageTitle, languageId: record.languageId });
+  const alertEl = useRef<HTMLDivElement>(null);
+  const focusAlert = useRef(false);
+  const name = ident.pageTitle;
+  const url = `/nrms/api/page-types/${ident.languageId}/${encodeURIComponent(ident.pageTitle)}`;
 
   useEffect(() => {
     if (focusNonce > 0) rowEl.current?.querySelector<HTMLInputElement>("input[type=text]")?.focus();
@@ -236,7 +262,14 @@ function TitleRow({
     if (e.field === "title") rowEl.current?.querySelector<HTMLInputElement>("input[type=text]")?.focus();
     else if (e.field === "order") rowEl.current?.querySelector<HTMLInputElement>("input[type=number]")?.focus();
   };
-  const run = async (action: () => Promise<void>) => {
+  // Once the delete dialog has unmounted, focus goes to the row's alert so the failure is read out in place.
+  useEffect(() => {
+    if (!error || !focusAlert.current) return;
+    focusAlert.current = false;
+    const id = requestAnimationFrame(() => alertEl.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [error]);
+  const run = async (action: () => Promise<void>, inDialog = false) => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -244,8 +277,17 @@ function TitleRow({
     try {
       await action();
     } catch (err) {
+      const problem = explain(err);
       setConfirmDelete(false);
-      show(explain(err));
+      onFailed(problem.stale === true);
+      if (inDialog) {
+        focusAlert.current = true;
+        setError(problem);
+      } else {
+        // A save error that isn't about Order goes back to the title field, as on the Add form.
+        show(problem.field === "form" ? { ...problem, field: "title" } : problem);
+        setError(problem);
+      }
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -256,7 +298,8 @@ function TitleRow({
     const invalid = check(f);
     if (invalid) return show(invalid);
     return run(async () => {
-      await apiFetch(url, { method: "PUT", body: body(f, record.releaseType) });
+      const saved = await apiFetch<Partial<PageType> | undefined>(url, { method: "PUT", body: body(f, record.releaseType) });
+      setIdent({ pageTitle: saved?.pageTitle ?? f.pageTitle.trim(), languageId: saved?.languageId ?? f.languageId });
       onSaved(`Saved ${f.pageTitle.trim()}.`, rowKey({ languageId: f.languageId, pageTitle: f.pageTitle.trim() }));
     });
   };
@@ -265,7 +308,7 @@ function TitleRow({
       await apiFetch(url, { method: "DELETE" });
       setConfirmDelete(false);
       onDeleted(`Deleted ${name}.`);
-    });
+    }, true);
 
   const described = (field: Problem["field"]) => (error && (error.field === field || (field === "title" && error.field === "form")) ? errorId : undefined);
 
@@ -283,7 +326,7 @@ function TitleRow({
       </td>
       <td>
         <select aria-label={`Language for ${name}`} value={f.languageId} onChange={(e) => set({ languageId: Number(e.target.value) })}>
-          <LanguageOptions />
+          <LanguageOptions current={f.languageId} />
         </select>
       </td>
       <td>
@@ -312,7 +355,7 @@ function TitleRow({
             Save <span className="gcpe-visually-hidden">{name}</span>
           </span>
         </Button>
-        {error && <ErrorAlert id={errorId} text={error.text} />}
+        {error && <ErrorAlert id={errorId} text={error.text} wrapperRef={alertEl} />}
       </td>
       <td>
         <Button variant="secondary" isDisabled={busy} onPress={() => setConfirmDelete(true)}>
@@ -347,12 +390,13 @@ function TitleRow({
 }
 
 function AddForm({
-  images, ready, nextOrder, onAdded,
+  images, ready, nextOrder, onAdded, onFailed,
 }: {
   images: PageImage[];
   ready: boolean;
   nextOrder(t: ReleaseType): number;
   onAdded(text: string, focusKey: string): void;
+  onFailed(stale: boolean): void;
 }): React.JSX.Element {
   const [type, setType] = useState<ReleaseType>("release");
   const [f, setF] = useState<Fields>({ pageTitle: "", languageId: LANG_EN, sortOrder: "", layout: "formal", pageImageId: "" });
@@ -389,6 +433,7 @@ function AddForm({
       setOrderEdited(false);
       onAdded(`Added ${title}.`, rowKey({ languageId: fields.languageId, pageTitle: title }));
     } catch (err) {
+      onFailed(false);
       fail(explain(err));
     } finally {
       busyRef.current = false;
@@ -423,7 +468,7 @@ function AddForm({
         <div>
           <label htmlFor={`${ids}-language`}>Language</label>
           <select id={`${ids}-language`} value={f.languageId} onChange={(e) => set({ languageId: Number(e.target.value) })}>
-            <LanguageOptions />
+            <LanguageOptions current={f.languageId} />
           </select>
         </div>
         <div>
