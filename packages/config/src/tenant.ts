@@ -24,6 +24,31 @@ const timeZoneCheckSchema = z.object({
   expectedOffset: z.string().regex(/^[+-]\d{2}:\d{2}$/, "timeZoneCheck.expectedOffset must be ±HH:MM"),
 });
 
+/** Spec 2026-10-28 new government: a term slug (`current` is reserved for the archive alias). */
+export const GOVERNMENT_TERM_SLUG = /^[a-z0-9-]{1,40}$/;
+
+/**
+ * NG-R17: the government terms NRMS seeds into an empty `government_terms` table at startup (an
+ * install whose data didn't come from the legacy database). Oldest first; start dates and slugs
+ * unique. A tenant with none omits it.
+ */
+export const tenantGovernmentTermsSchema = z
+  .array(
+    z.object({
+      slug: z.string().regex(GOVERNMENT_TERM_SLUG).refine((s) => s !== "current", { message: "the slug current is reserved" }),
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate must be YYYY-MM-DD"),
+      label: z.string().min(1).nullable().default(null),
+      legacyArchiveUrl: z.string().url().nullable().default(null),
+    }),
+  )
+  .superRefine((terms, ctx) => {
+    for (let i = 1; i < terms.length; i++) {
+      if (terms[i]!.startDate <= terms[i - 1]!.startDate) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, "startDate"], message: "start dates must be strictly increasing" });
+    }
+    if (new Set(terms.map((t) => t.slug)).size !== terms.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "slugs must be unique" });
+  });
+export type TenantGovernmentTerm = z.infer<typeof tenantGovernmentTermsSchema>[number];
+
 /** A Postgres text-search configuration. It must match the News API's posts.search_vector column. */
 export const searchLanguageSchema = z.enum(["english", "french", "simple"]);
 export type SearchLanguage = z.infer<typeof searchLanguageSchema>;
@@ -48,6 +73,8 @@ export const tenantConfigSchema = z.object({
   timeZoneCheck: timeZoneCheckSchema.optional(),
   /** Optional: only tenants that run the Corporate Calendar need it; the Calendar refuses to start without it. */
   calendar: calendarTenantSchema.optional(),
+  /** Optional (NG-R17): seeded into an empty NRMS `government_terms` table at startup. */
+  governmentTerms: tenantGovernmentTermsSchema.optional(),
 });
 
 export type TenantConfig = z.infer<typeof tenantConfigSchema>;

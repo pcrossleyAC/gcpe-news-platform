@@ -255,6 +255,26 @@ describe("importReference — government terms", () => {
   });
 });
 
+describe("importReference — government terms seeded before the import (NG-R17)", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("adopts a seeded term with the same name instead of failing on the name", async () => {
+    await tdb.db.insert(governmentTerms).values({ name: "2017-2021", startDate: "2017-07-18", legacyArchiveUrl: "https://archive.example/2017-2021.htm" });
+    const result = await importReference(tdb.db, source(), new ImportReport());
+    const rows = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.name, "2017-2021"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ legacyId: "55555555-5555-5555-5555-555555555555", startDate: "2017-07-18", legacyArchiveUrl: "https://archive.example/2017-2021.htm" });
+    expect(result.termIds.get("55555555-5555-5555-5555-555555555555")).toBe(rows[0]!.id);
+    expect(await tdb.db.select().from(governmentTerms)).toHaveLength(4);
+  });
+});
+
 describe("importReference — concurrent imports", () => {
   let tdb: TestDatabase;
   beforeAll(async () => {

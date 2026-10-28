@@ -36,6 +36,18 @@ describe("startNrms", () => {
     await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
   });
 
+  it("seeds the tenant's government terms into an empty table, once (NG-R17)", async () => {
+    const env = await testEnv();
+    const handle = await startNrms(env);
+    await Promise.all(handle.closers.map((c) => c.close()));
+    const again = await startNrms(env);
+    await Promise.all(again.closers.map((c) => c.close()));
+    const tdb = dbs.at(-1)!;
+    expect((await tdb.pool.query("SELECT count(*)::int AS n FROM government_terms")).rows[0].n).toBe(9);
+    expect((await tdb.pool.query("SELECT name FROM government_terms WHERE is_current")).rows.map((r: { name: string }) => r.name)).toEqual(["2024-2028"]);
+    expect((await tdb.pool.query("SELECT count(*)::int AS n FROM outbox_events WHERE type = 'government_terms.published'")).rows[0].n).toBe(1);
+  });
+
   it("has no closeBeforeServer closers (NRMS has nothing that must close before the http server)", async () => {
     const handle = await startNrms(await testEnv());
     expect(handle.closeBeforeServer).toEqual([]);

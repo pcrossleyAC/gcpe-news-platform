@@ -16,7 +16,7 @@ import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
 import { publishDue, startPublisher } from "./publisher";
 import { startSiteLoop, switchCarousels } from "./website/carousel";
-import { syncGovernmentTerms } from "./government-terms";
+import { seedGovernmentTerms, syncGovernmentTerms } from "./government-terms";
 import { ensureSlideImageFiles } from "./website/slide-images";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
@@ -311,6 +311,9 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const backfilled = await ensureSlideImageFiles(db, slideFiles);
   if (backfilled) console.log(`[nrms] published ${backfilled} slide image files`);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
+  // NG-R17: an install with no government terms (data not from the legacy DB) gets the tenant's.
+  const seededTerms = await db.transaction((tx) => seedGovernmentTerms(tx, tenant.governmentTerms ?? [], { timeZone: tenant.timeZone, subscribers }));
+  if (seededTerms.seeded) console.log(`[nrms] seeded ${seededTerms.seeded} government terms from the tenant config`);
 
   const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const blueBridgeNotify = buildBlueBridgeNotify(core, distribution);
