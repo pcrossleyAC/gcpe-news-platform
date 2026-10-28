@@ -1166,7 +1166,16 @@ describe("apps/stack: without CALENDAR_DATABASE_URL", () => {
 // fire-and-forget block in stack.ts that runs once at startup — by writing straight into a
 // fresh database before startStack() ever runs, bypassing the event system entirely, so the
 // only way the data could reach NoD is through the backfill.
-describe("apps/stack: reference-data backfill from Core at startup", () => {
+// Each test here builds a whole stack: six or seven fresh databases (each migrated), startStack,
+// then the fire-and-forget backfill and a dispatch tick, then drops them all on close. That is
+// under a second on Linux/macOS but is dominated by Postgres CREATE DATABASE + migrations on
+// CI's Windows runner, where the default 20s test timeout was hit (the poll below was not the
+// slow part). 60s covers a slow runner; the poll keeps its own explicit deadline, so a real hang
+// in the backfill or the tick still fails with a clear message instead of waiting out the timeout.
+const BACKFILL_STACK_TIMEOUT_MS = 60_000;
+const BACKFILL_POLL_DEADLINE_MS = 20_000;
+
+describe("apps/stack: reference-data backfill from Core at startup", { timeout: BACKFILL_STACK_TIMEOUT_MS }, () => {
   // A second ministry, distinct from the shared instance's `healthOrg`, so a leftover row from
   // another test can never be mistaken for one this test produced.
   const financeOrg = { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: ["finance"] };
@@ -1185,14 +1194,14 @@ describe("apps/stack: reference-data backfill from Core at startup", () => {
       const nodHasFinance = async (): Promise<boolean> => {
         // The backfill enqueues the republished event asynchronously (fire-and-forget) and it
         // only reaches NoD on a dispatch tick, so poll both together until it lands.
-        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` } });
+        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(10_000) });
         const rows = await stack.dbs.nod.pool.query<{ list_key: string; name: string }>(
           "SELECT list_key, name FROM lists WHERE list_key = $1",
           [`ministries:${financeOrg.key}`],
         );
         return rows.rows.length > 0;
       };
-      await expect.poll(nodHasFinance, { timeout: 5000 }).toBe(true);
+      await expect.poll(nodHasFinance, { timeout: BACKFILL_POLL_DEADLINE_MS, interval: 100 }).toBe(true);
     } finally {
       await stack.close();
     }
@@ -1210,11 +1219,11 @@ describe("apps/stack: reference-data backfill from Core at startup", () => {
     });
     try {
       const nrmsHasViewers = async (): Promise<boolean> => {
-        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` } });
+        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(10_000) });
         const rows = await stack.dbs.nrms.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM calendar_viewers");
         return rows.rows[0]!.n > 0;
       };
-      await expect.poll(nrmsHasViewers, { timeout: 5000 }).toBe(true);
+      await expect.poll(nrmsHasViewers, { timeout: BACKFILL_POLL_DEADLINE_MS, interval: 100 }).toBe(true);
     } finally {
       await stack.close();
     }
@@ -1244,7 +1253,7 @@ describe("apps/stack: reference-data backfill from Core at startup", () => {
       // write) happens well before this; the wait plus a tick just gives it generous room to
       // have finished either way before asserting its absence.
       await new Promise((r) => setTimeout(r, 300));
-      await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` } });
+      await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(10_000) });
 
       const backfillLogs = logSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("Core republished"));
       expect(backfillLogs).toEqual([]);
