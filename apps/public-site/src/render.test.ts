@@ -128,18 +128,15 @@ describe("renderPage chrome", () => {
   });
 
   const LEGACY_ORDER = [
-    "/site/assets/legacy/lib/bootstrap5/css/bootstrap.min.css",
-    "/site/assets/legacy/Content/site.css",
-    "/site/assets/legacy/Content/custom.css",
-    "/site/assets/legacy/Content/transforms.css",
-    "/site/assets/legacy/Content/accessibility-styles.css",
+    // One render-blocking request: bootstrap, site, custom, transforms, accessibility-styles (site-assets.ts).
+    "/site/assets/legacy/Content/legacy.bundle.css",
     "/site/assets/legacy/Content/print.css",
     "/site/assets/site/overrides.css",
     "/site/assets/theme.css",
   ];
   const sheets = (html: string) => [...expectAccessibleStructure(html).querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute("href"));
 
-  it("head links the legacy CSS in legacy order, then overrides.css, then theme.css last", () => {
+  it("head links the legacy CSS (one bundle, then print), then overrides.css, then theme.css last", () => {
     const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
     expect(sheets(html)).toEqual(LEGACY_ORDER);
     const at = LEGACY_ORDER.map((href) => html.indexOf(`href="${href}"`));
@@ -160,7 +157,14 @@ describe("renderPage chrome", () => {
     expect(renderPage("T", themed, "/site/", "<h1>H</h1>", { banner: null })).not.toContain("granville-bridge-theme.css");
     const bridged = renderPage("T", themed, "/site/", "<h1>H</h1>", { banner: "Project Blue Bridge" });
     const order = [...expectAccessibleStructure(bridged).querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute("href"));
-    expect(order).toEqual([...LEGACY_ORDER.slice(0, 6), "/site/assets/legacy/Content/granville-bridge-theme.css", ...LEGACY_ORDER.slice(6)]);
+    expect(order).toEqual([...LEGACY_ORDER.slice(0, 2), "/site/assets/legacy/Content/granville-bridge-theme.css", ...LEGACY_ORDER.slice(2)]);
+  });
+
+  it("preloads BC Sans Regular (crossorigin, as the font fetch needs) before any stylesheet", () => {
+    const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
+    const preload = '<link rel="preload" href="/site/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>';
+    expect(html).toContain(preload);
+    expect(html.indexOf(preload)).toBeLessThan(html.indexOf('rel="stylesheet"'));
   });
 
   it("favicon and the html.js marker script are in the head, before any stylesheet", () => {

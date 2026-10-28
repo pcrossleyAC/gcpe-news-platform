@@ -30,6 +30,13 @@ describe("the fixture site (6e exit checks)", () => {
       expect((await fetch(`${server.url}/assets/theme.css`)).headers.get("content-type")).toBe("text/css; charset=utf-8");
       expect((await fetch(`${server.url}/no/such/page/`)).status).toBe(404);
       expect((await fetch(`${server.url}/..%2f..%2fetc/passwd`)).status).toBe(404);
+      // Like production (boxs.ca's nginx), text is compressed for a client that accepts it; fonts are not.
+      const css = await fetch(`${server.url}/assets/theme.css`, { headers: { "accept-encoding": "gzip" } });
+      expect(css.headers.get("content-encoding")).toBe("gzip");
+      expect(await css.text()).toContain(":root");
+      const font = await fetch(`${server.url}/assets/legacy/fonts/BCSans-Regular.woff2`, { headers: { "accept-encoding": "gzip" } });
+      expect(font.headers.get("content-encoding")).toBeNull();
+      expect((await fetch(`${server.url}/assets/theme.css`, { headers: { "accept-encoding": "identity" } })).headers.get("content-encoding")).toBeNull();
     } finally {
       await server.close();
       await rm(dir, { recursive: true, force: true });

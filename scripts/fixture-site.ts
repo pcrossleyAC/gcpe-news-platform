@@ -5,6 +5,7 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
 import type { AddressInfo } from "node:net";
 import { extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,7 +100,11 @@ const TYPES: Record<string, string> = {
   ".json": "application/json",
 };
 
-/** A static server for the built site: "/x/" serves "x/index.html", a missing file 404.html. */
+/** Gzipped when the client accepts it, as production (boxs.ca's nginx, brotli) compresses text. */
+const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml|rss\+xml)|image\/svg\+xml)/;
+
+/** A static server for the built site: "/x/" serves "x/index.html", a missing file 404.html.
+ * Text is gzipped when the client accepts it. */
 export async function serveStatic(dir: string): Promise<{ url: string; close(): Promise<void> }> {
   const root = resolve(dir);
   const server = createServer(async (req, res) => {
@@ -109,8 +114,15 @@ export async function serveStatic(dir: string): Promise<{ url: string; close(): 
       if (relative(root, file).startsWith("..")) throw new Error("outside");
       if ((await stat(file)).isDirectory()) file = join(file, "index.html");
       const body = await readFile(file);
-      res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" });
-      res.end(body);
+      const type = TYPES[extname(file)] ?? "application/octet-stream";
+      // Production (boxs.ca's nginx) compresses text; without this, Lighthouse scores an uncompressed site.
+      if (COMPRESSIBLE.test(type) && /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) {
+        res.writeHead(200, { "content-type": type, "content-encoding": "gzip", vary: "accept-encoding" });
+        res.end(gzipSync(body));
+      } else {
+        res.writeHead(200, { "content-type": type });
+        res.end(body);
+      }
     } catch {
       res.writeHead(404, { "content-type": TYPES[".html"]! });
       res.end(await readFile(join(root, "404.html")).catch(() => ""));

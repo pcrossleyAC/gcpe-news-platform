@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { siteThemeSchema } from "@gcpe/config";
+import { BC_SANS_FILES } from "./site-assets";
 import { DEFAULT_THEME, themeCss } from "./theme-css";
 
 const overrides = readFileSync(new URL("../assets/site/overrides.css", import.meta.url), "utf8");
@@ -89,6 +90,24 @@ describe("overrides.css", () => {
   });
   it("underlines links inside running text (legacy CSS removes it; axe link-in-text-block, WCAG 1.4.1)", () => {
     expect(overrides).toMatch(/main p a, main li a\s*\{[^}]*text-decoration:\s*underline/);
+  });
+  it("re-declares the six BC Sans faces legacy declares, woff2 only, with font-display: swap", () => {
+    const faces = [...overrides.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]!);
+    const desc = faces.map((f) => ({
+      style: /font-style:\s*(\w+)/.exec(f)?.[1],
+      weight: /font-weight:\s*(\w+)/.exec(f)?.[1],
+      file: /url\("\.\.\/legacy\/fonts\/([^"]+)"\)/.exec(f)?.[1],
+      swap: /font-display:\s*swap/.test(f) && /font-family:\s*"BCSans"/.test(f),
+    }));
+    expect(desc).toEqual([
+      { style: "normal", weight: "normal", file: "BCSans-Regular.woff2", swap: true },
+      { style: "italic", weight: "normal", file: "BCSans-Italic.woff2", swap: true },
+      { style: "normal", weight: "700", file: "BCSans-Bold.woff2", swap: true },
+      { style: "italic", weight: "700", file: "BCSans-BoldItalic.woff2", swap: true },
+      { style: "normal", weight: "300", file: "BCSans-Light.woff2", swap: true },
+      { style: "italic", weight: "300", file: "BCSans-LightItalic.woff2", swap: true },
+    ]);
+    for (const d of desc) expect(BC_SANS_FILES).toContain(d.file);
   });
   it("has no :focus-visible outline rule of its own (theme.css's loads last)", () => {
     expect(overrides).not.toMatch(/(^|[,}])\s*:focus-visible\s*\{/m);

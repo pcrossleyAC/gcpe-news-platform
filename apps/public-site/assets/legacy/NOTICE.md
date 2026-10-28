@@ -8,6 +8,7 @@ Do not edit them; our own changes belong in `assets/site/overrides.css`.
 - Commit: `3fdf3e6b6faa92172ba60f8bd2951bce96dbe2de`
 - Source root: `Gov.News.WebApp/wwwroot/` (`lib/bootstrap5/css/bootstrap.min.css`, `Content/*.css`, `Content/Images/**` and `favicon.ico` keep their relative paths; the logo and `Gov/` images come from `Content/Images/Gov/`).
 - The BC logo SVGs under `Content/Images/Gov/` are committed by owner decision (Q76, 2026-10-28).
+- `Content/legacy.bundle.css` is not in this folder: `writeBuiltinAssets` (apps/public-site/src/site-assets.ts) generates it in the output folder on every start and build. It is `lib/bootstrap5/css/bootstrap.min.css`, `Content/site.css`, `Content/custom.css`, `Content/transforms.css` and `Content/accessibility-styles.css`, byte-for-byte in that order, each followed by a newline, with one leading UTF-8 BOM dropped from each (the one a browser strips from a separate file). It sits in `Content/` so every relative `url()` resolves as it does in the separate files. The files listed below are unchanged.
 
 | File | sha256 |
 | --- | --- |

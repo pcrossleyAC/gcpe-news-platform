@@ -2,6 +2,8 @@ import type { SiteTheme } from "@gcpe/config";
 import { escapeHtml, isSafeUrl } from "@gcpe/http-kit";
 import type { LinkSetting, SiteSettings } from "@gcpe/site-settings";
 import { SITE_BANNER_SCRIPT } from "./banner-script";
+// bootstrap, site, custom, transforms and accessibility-styles, in legacy order, as one file.
+import { LEGACY_BUNDLE } from "./site-assets";
 import { DEFAULT_TIME_ZONE, settingsHref, themeDefaults, yearIn } from "./settings";
 import { DEFAULT_THEME } from "./theme-css";
 
@@ -93,11 +95,8 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}${description}
 <link rel="icon" href="${e(base)}/favicon.ico">
 <script>${HTML_JS_MARKER}</script>
-<link rel="stylesheet" href="${e(base)}/assets/legacy/lib/bootstrap5/css/bootstrap.min.css">
-<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/site.css">
-<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/custom.css">
-<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/transforms.css">
-<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/accessibility-styles.css">
+<link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="${e(base)}/assets/${LEGACY_BUNDLE}">
 <link rel="stylesheet" href="${e(base)}/assets/legacy/Content/print.css" media="print">${bridgeCss}
 <link rel="stylesheet" href="${e(base)}/assets/site/overrides.css">
 <link rel="stylesheet" href="${e(base)}/assets/theme.css">${font}${feed}

@@ -3,8 +3,9 @@ import { dirname, join, posix } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { memoryStorage } from "../test/memory-storage";
-import { BC_SANS_FILES, builtinAssetSources, BUNDLED_SITE_ASSETS, writeBuiltinAssets } from "./site-assets";
+import { BC_SANS_FILES, builtinAssetSources, BUNDLED_SITE_ASSETS, LEGACY_BUNDLE, LEGACY_BUNDLE_SOURCES, writeBuiltinAssets } from "./site-assets";
 
+const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 const ASSETS = fileURLToPath(new URL("../assets/", import.meta.url));
 
 /** Files the legacy site's own CSS names but its repository never had (look-and-feel §3), and the font fallbacks after woff2. */
@@ -53,11 +54,36 @@ describe("writeBuiltinAssets", () => {
     expect(has("assets/site/icons.svg")).toBe(true);
   });
 
+  it("writes legacy.bundle.css beside the Content CSS: the five render-blocking files in legacy order, byte-for-byte bar a leading BOM", async () => {
+    expect(LEGACY_BUNDLE).toBe("legacy/Content/legacy.bundle.css");
+    expect(LEGACY_BUNDLE_SOURCES).toEqual([
+      "legacy/lib/bootstrap5/css/bootstrap.min.css",
+      "legacy/Content/site.css",
+      "legacy/Content/custom.css",
+      "legacy/Content/transforms.css",
+      "legacy/Content/accessibility-styles.css",
+    ]);
+    const storage = memoryStorage();
+    await writeBuiltinAssets(storage);
+    const bundle = Buffer.from(storage.files.get(`assets/${LEGACY_BUNDLE}`) as Uint8Array);
+    const parts = LEGACY_BUNDLE_SOURCES.map((rel) => {
+      const raw = readFileSync(join(ASSETS, rel));
+      return raw[0] === 0xef && raw[1] === 0xbb && raw[2] === 0xbf ? raw.subarray(3) : raw;
+    });
+    expect(bundle.equals(Buffer.concat(parts.flatMap((b) => [b, Buffer.from("\n")])))).toBe(true);
+    // A browser strips one leading BOM per file, so exactly one is dropped per source. custom.css
+    // starts with two; its second survives in the bundle just as it does on news.gov.
+    const boms = (b: Buffer) => { let n = 0; for (let i = b.indexOf(BOM); i !== -1; i = b.indexOf(BOM, i + 1)) n++; return n; };
+    expect(boms(bundle)).toBe(1);
+    // @charset is only honoured first in a file: bootstrap.min.css's must lead the bundle.
+    expect(bundle.subarray(0, 8).toString()).toBe("@charset");
+  });
+
   it("every url(...) in the vendored CSS resolves to a written file, except the allow-listed files legacy itself lacks", async () => {
     const storage = memoryStorage();
     await writeBuiltinAssets(storage);
     const cssFiles = [...storage.files.keys()].filter((k) => k.startsWith("assets/legacy/") && k.endsWith(".css"));
-    expect(cssFiles.length).toBe(7);
+    expect(cssFiles.length).toBe(8); // the seven vendored files and the generated bundle
     const unresolved: string[] = [];
     for (const css of cssFiles) {
       const text = Buffer.from(storage.files.get(css) as string | Uint8Array).toString("utf8");

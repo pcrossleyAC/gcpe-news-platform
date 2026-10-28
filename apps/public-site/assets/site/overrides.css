@@ -5,6 +5,16 @@
  * rule loads after this file and stays the last word on focus outlines.
  */
 
+/* BC Sans: the same six faces legacy declares, re-declared (later wins) with font-display: swap so
+ * text paints in the fallback font instead of staying invisible while the woff2 loads. woff2 only,
+ * as every browser we support reads it. The head preloads Regular from this same URL. */
+@font-face { font-family: "BCSans"; font-style: normal; font-weight: normal; font-display: swap; src: url("../legacy/fonts/BCSans-Regular.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: italic; font-weight: normal; font-display: swap; src: url("../legacy/fonts/BCSans-Italic.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: normal; font-weight: 700; font-display: swap; src: url("../legacy/fonts/BCSans-Bold.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: italic; font-weight: 700; font-display: swap; src: url("../legacy/fonts/BCSans-BoldItalic.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: normal; font-weight: 300; font-display: swap; src: url("../legacy/fonts/BCSans-Light.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: italic; font-weight: 300; font-display: swap; src: url("../legacy/fonts/BCSans-LightItalic.woff2") format("woff2"); }
+
 /* Moved from themeCss: today's chrome, until Tasks 6-9 and plan 2 replace it. */
 *, *::before, *::after { box-sizing: border-box; }
 html { font-family: var(--font-family); color: var(--color-text); background: var(--color-background); line-height: 1.5; }
