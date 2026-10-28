@@ -137,6 +137,26 @@ describe("plan-4 parts (contactsPage, pageText, navigation, connect.linkedin/pol
     expect(kept.pageText.notFound).toEqual(raw.pageText.notFound);
   });
 
+  it("BC's Blogs list never collapses (collapseAfter 0, legacy left its four open); the other networks use the default", () => {
+    expect(raw.connect.blogs.collapseAfter).toBe(0);
+    for (const { key } of NETWORKS) if (key !== "blogs") expect(raw.connect[key].collapseAfter).toBeUndefined();
+  });
+
+  it("fillMissingFields fills a network's missing collapseAfter from the defaults, keeps a stored one, and keeps key order", () => {
+    const old = prePlan4();
+    expect("collapseAfter" in old.connect.blogs!).toBe(false);
+    const filled = fillMissingFields(old, raw);
+    expect(filled.connect.blogs.collapseAfter).toBe(0);
+    expect(Object.keys(filled.connect.blogs)).toEqual(["featured", "accounts", "collapseAfter"]);
+    expect("collapseAfter" in filled.connect.x).toBe(false);
+    const own = prePlan4();
+    own.connect.blogs = { ...own.connect.blogs!, collapseAfter: 3 };
+    own.connect.x = { ...own.connect.x, collapseAfter: 0 };
+    const kept = fillMissingFields(own, raw);
+    expect([kept.connect.blogs.collapseAfter, kept.connect.x.collapseAfter]).toEqual([3, 0]);
+    expect(storedSiteSettingsSchema.parse(JSON.parse(JSON.stringify(own))).connect.blogs).toEqual(own.connect.blogs);
+  });
+
   it("fillMissingFields fills theme.colors.sectionBar for an older document and keeps a stored one", () => {
     const old = prePlan4();
     expect(old.theme.colors.sectionBar).toBeUndefined();

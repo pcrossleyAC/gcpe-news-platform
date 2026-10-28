@@ -314,4 +314,12 @@ describe("validateSiteSettings — plan-4 parts", () => {
     expect(errorsFor((d) => { d.connect.policyLink = { text: "", url: "/policy/" }; })).toEqual([{ field: "connect.policyLink.text", message: "Enter the link text." }]);
     expect(errorsFor((d) => { d.connect.policyLink = { text: "", url: "" }; })).toEqual([]);
   });
+
+  it("connect.<network>.collapseAfter: absent, or a whole number from 0 (never collapse) to 50", () => {
+    for (const ok of [0, 2, 50]) expect(errorsFor((d) => { d.connect.x.collapseAfter = ok; })).toEqual([]);
+    expect(errorsFor((d) => { delete d.connect.x.collapseAfter; })).toEqual([]);
+    for (const bad of [-1, 1.5, 51, Number.NaN]) {
+      expect(errorsFor((d) => { d.connect.youtube.collapseAfter = bad; })).toEqual([{ field: "connect.youtube.collapseAfter", message: "Enter a whole number from 0 to 50." }]);
+    }
+  });
 });

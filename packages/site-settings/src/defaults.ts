@@ -108,13 +108,18 @@ export function defaultSiteSettings(
  * from `defaults`: a new, complete document; neither input is changed, and no part of the result
  * is shared with `defaults`. A document published before a part existed has no value for it; an
  * explicit value, including "", is the editor's choice and is kept. Each part is filled whole:
- * `footer.landAcknowledgement`, `connect.linkedin`, `connect.policyLink`, `connect.intro`, and
+ * `footer.landAcknowledgement`, `connect.linkedin`, `connect.policyLink`, `connect.intro`, each
+ * network's `collapseAfter` (only when the defaults set one), and
  * the `contactsPage`, `pageText` and `navigation` sections. The single place a later optional
  * part gets its default.
  */
 export function fillMissingFields(doc: StoredSiteSettings, defaults: SiteSettings): SiteSettings {
   const fill = <T>(value: T | undefined, fallback: T): T => (value !== undefined ? value : structuredClone(fallback));
   const { connect } = doc;
+  // A list's collapseAfter, absent in a document published before it existed, from the defaults
+  // when they set one (BC's Blogs: 0); key order featured, accounts, collapseAfter, as parsed.
+  const network = <N extends SiteSettings["connect"]["x"]>(n: N, d: N): N =>
+    n.collapseAfter !== undefined || d.collapseAfter === undefined ? n : { featured: n.featured, accounts: n.accounts, collapseAfter: d.collapseAfter } as N;
   return {
     ...doc,
     theme: { colors: { ...doc.theme.colors, sectionBar: fill(doc.theme.colors.sectionBar, defaults.theme.colors.sectionBar) } },
@@ -122,15 +127,15 @@ export function fillMissingFields(doc: StoredSiteSettings, defaults: SiteSetting
     // Spelled out in schema (NETWORKS) order, so a filled document serialises like a parsed one
     // (the public site hashes each section's JSON).
     connect: {
-      facebook: connect.facebook,
-      x: connect.x,
-      instagram: connect.instagram,
-      threads: connect.threads,
-      bluesky: connect.bluesky,
-      linkedin: fill(connect.linkedin, defaults.connect.linkedin),
-      flickr: connect.flickr,
-      youtube: connect.youtube,
-      blogs: connect.blogs,
+      facebook: network(connect.facebook, defaults.connect.facebook),
+      x: network(connect.x, defaults.connect.x),
+      instagram: network(connect.instagram, defaults.connect.instagram),
+      threads: network(connect.threads, defaults.connect.threads),
+      bluesky: network(connect.bluesky, defaults.connect.bluesky),
+      linkedin: network(fill(connect.linkedin, defaults.connect.linkedin), defaults.connect.linkedin),
+      flickr: network(connect.flickr, defaults.connect.flickr),
+      youtube: network(connect.youtube, defaults.connect.youtube),
+      blogs: network(connect.blogs, defaults.connect.blogs),
       policyLink: fill(connect.policyLink, defaults.connect.policyLink),
       intro: fill(connect.intro, defaults.connect.intro),
     },

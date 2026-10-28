@@ -17,5 +17,6 @@ export function prePlan4Settings(): StoredSiteSettings {
   delete d.connect.policyLink;
   delete d.connect.intro;
   delete d.theme.colors.sectionBar;
+  for (const n of Object.values(d.connect)) if (n && typeof n === "object" && "collapseAfter" in n) delete n.collapseAfter;
   return d;
 }

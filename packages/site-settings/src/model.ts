@@ -36,7 +36,12 @@ const linkSchema = z.object({
   summary: z.string().optional(),
 });
 
-const networkSchema = z.object({ featured: z.array(linkSchema), accounts: z.array(linkSchema) });
+/**
+ * `collapseAfter`: how many entries the Connect page shows before its Expand button (absent: 2, as
+ * legacy's lists; 0: the list never collapses). Optional everywhere: absent is a value, and an older
+ * document lacks it (`fillMissingFields` takes the tenant default when there is one).
+ */
+const networkSchema = z.object({ featured: z.array(linkSchema), accounts: z.array(linkSchema), collapseAfter: z.number().optional() });
 const instant = z.string().datetime({ offset: true }).nullable();
 
 export const THEME_COLOR_KEYS = [

@@ -515,7 +515,8 @@
           "text": "BC Parks",
           "url": "https://engage.gov.bc.ca/bcparksblog"
         }
-      ]
+      ],
+      "collapseAfter": 0
     },
     "policyLink": {
       "text": "BC Government News Social Media policy, collection notice and hours of operation",

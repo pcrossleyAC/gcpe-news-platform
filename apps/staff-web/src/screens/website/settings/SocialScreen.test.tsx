@@ -130,6 +130,48 @@ describe("SocialScreen", () => {
     expect({ ...body.value, bluesky: undefined }).toEqual({ ...DOC.connect, bluesky: undefined });
   });
 
+  it("each network has 'Entries shown before Expand' (2 when unset, with a hint); publishing sends that network's collapseAfter and leaves the others", async () => {
+    const calls = stub(["NRMS.SiteEditor"], stateOf(DOC));
+    renderScreen("/?network=x");
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Entries shown before Expand" });
+    expect(field).toHaveValue("2");
+    expect(field).toHaveAccessibleDescription(/0 never collapses the list/);
+    await user.clear(field);
+    await user.type(field, "0");
+    await user.tab();
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
+    expect(body.value.x).toEqual({ featured: [], accounts: [{ text: "A", url: "https://x.com/a" }, { text: "b", url: "https://x.com/b" }], collapseAfter: 0 });
+    expect({ ...body.value, x: undefined }).toEqual({ ...DOC.connect, x: undefined });
+  });
+
+  it("a stored collapseAfter is shown and kept when the network's links are edited", async () => {
+    const doc: SiteSettings = { ...DOC, connect: { ...DOC.connect, blogs: { featured: [], accounts: [{ text: "Blog", url: "https://blog.example" }], collapseAfter: 0 } } };
+    const calls = stub(["NRMS.SiteEditor"], stateOf(doc));
+    renderScreen("/?network=blogs");
+    const user = userEvent.setup();
+    expect(await screen.findByRole("textbox", { name: "Entries shown before Expand" })).toHaveValue("0");
+    const accounts = screen.getByRole("group", { name: "Other accounts" });
+    await user.click(within(accounts).getByRole("button", { name: "+ Add a link" }));
+    await user.type(within(accounts).getAllByLabelText("Link text").pop()!, "Another");
+    await user.type(within(accounts).getAllByLabelText("Web address").pop()!, "https://another.example");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
+    expect(body.value.blogs.collapseAfter).toBe(0);
+    expect(body.value.blogs.accounts.map((l) => l.text)).toEqual(["Another", "Blog"]);
+  });
+
+  it("a server error on connect.<network>.collapseAfter shows beside the field", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.youtube.collapseAfter", message: "Enter a whole number from 0 to 50." }]));
+    renderScreen("/?network=youtube");
+    const field = await screen.findByRole("textbox", { name: "Entries shown before Expand" });
+    expect(field).toBeInvalid();
+    expect(field).toHaveAccessibleDescription(/Enter a whole number from 0 to 50/);
+  });
+
   it("featured accounts are reorderable with a Description, ids kept", async () => {
     const doc: SiteSettings = {
       ...DOC,
