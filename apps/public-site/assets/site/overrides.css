@@ -413,3 +413,16 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
   .search-panel label{display:block;padding-right:0}
   .search-panel-bar input[type="text"]{width:calc(100% - 30px)}
 }
+
+/* Archive pages (pages/archive.ts): news.gov's listing look in one full-width column (no side column: they depend only on the post index). */
+.home-body.archive-page{float:none;padding-left:0;max-width:100%}
+.archive-page h1{font-size:36px;font-weight:600;color:var(--color-text);line-height:1.2;border-bottom:1px solid var(--color-border);margin:15px 0 10px;padding-bottom:10px}
+.archive-page .resource-links{float:none;width:100%;border-bottom:0;padding-bottom:10px}
+.archive-page .resource-links ul{list-style:none;padding:0;margin:0;font-weight:400;color:var(--color-text)}
+.archive-page .resource-links ul li{padding:4px 0;color:var(--color-text);font-size:16px}
+.archive-page .resource-links ul.term-list li{border-bottom:1px solid var(--color-border);padding:12px 0}
+.archive-page .resource-links ul.term-list li p{margin:6px 0 0;font-size:14px}
+.archive-page .resource-links ul li a{text-decoration:none;display:inline-block;min-height:24px}
+.archive-page .resource-links ul li a:hover,.archive-page .resource-links ul li a:focus-visible{text-decoration:underline}
+.archive-page .other-articles{float:none;width:100%}
+.archive-page .regular-articles .article:first-child{margin-top:0}

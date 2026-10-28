@@ -1,12 +1,43 @@
 import type { GovernmentTermDto } from "../dto";
 import { isLegacyOnly, legacyHref } from "../government-terms";
 import type { IndexedPost } from "../post-index";
-import { e, renderPage, type PageOptions, type SiteInfo } from "../render";
+import { icon } from "../icons";
+import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "../render";
 import { pageUrl } from "../site-paths";
-import { displayDate, monthName, postListItem } from "./format";
+import { displayDate, displayDateTime, monthName } from "./format";
 
 /** "1 post" / "n posts". */
 const postCount = (count: number) => `${count} post${count === 1 ? "" : "s"}`;
+
+/**
+ * One archived post as news.gov's listing card (the markup of `postCard`, from the post index
+ * alone: no thumbnail, no Media Assets or Translations links, which need the News API). The link
+ * goes through `pageUrl`, so a key over 100 characters reaches its hashed directory.
+ */
+export function archiveCard(site: Pick<SiteInfo, "baseUrl">, p: IndexedPost): string {
+  const base = e(basePath(site));
+  const href = e(pageUrl(site, { type: "post", key: p.key }));
+  const headline = e(p.headline);
+  const summary = p.summary?.trim()
+    ? p.summary.split(/\r?\n/).map((line) => `<p>${e(line)}</p>`).join("")
+    : "";
+  return `<div class="article">
+<h2><a href="${href}">${headline}</a></h2>
+<div class="list-container ps-0 pb-0">
+<div class="item-date">${e(displayDateTime(p.publishDate))}</div>
+</div>
+<div class="item-content">
+<div class="item-text">${summary}
+<a href="${href}" class="read-more">${icon("caret-right", base)} Read More<span class="visually-hidden">: ${headline}</span></a>
+</div>
+</div>
+<div class="clear"></div>
+</div>`;
+}
+
+/** The cards of a month or term, all visible (no Load More: the page is the whole list). */
+const cardList = (site: SiteInfo, posts: IndexedPost[]) =>
+  `<div class="other-articles">\n<div class="regular-articles">\n${posts.map((p) => archiveCard(site, p)).join("\n")}\n</div>\n</div>`;
 
 /** The archive index: every month with at least one post, grouped by year under an `h2`,
  * newest year and newest month first (months arrive already sorted — `postIndex.months()`). */
@@ -27,22 +58,20 @@ export function renderArchiveIndex(months: { month: string; count: number }[], s
         const items = entries
           .map((m) => `<li><a href="${e(pageUrl(site, { type: "archive-month", month: m.month }))}">${e(monthName(m.month))}</a> (${postCount(m.count)})</li>`)
           .join("\n");
-        return `<section>\n<h2>${e(year)}</h2>\n<ul>\n${items}\n</ul>\n</section>`;
+        return `<div class="resource-links">\n<h2>${e(year)}</h2>\n<ul>\n${items}\n</ul>\n</div>`;
       })
       .join("\n");
   }
   const terms = `<p><a href="${e(pageUrl(site, { type: "archive-terms" }))}">Browse by government term</a></p>`;
-  const body = `<h1>News archive</h1>\n${listing}\n${terms}`;
+  const body = `<div class="home-body archive-page">\n<h1>News archive</h1>\n${listing}\n${terms}\n</div>`;
   return renderPage("News archive", site, pageUrl(site, { type: "archive" }), body, opts);
 }
 
 /** One month's posts, in the order given (the caller — `postIndex.inMonth()` — sorts them). */
 export function renderArchiveMonth(month: string, posts: IndexedPost[], site: SiteInfo, opts: PageOptions = {}): string {
-  const list = posts.length
-    ? `<ul class="post-list">\n${posts.map((p) => postListItem(site, p)).join("\n")}\n</ul>`
-    : "<p>Nothing was published this month.</p>";
+  const list = posts.length ? cardList(site, posts) : "<p>Nothing was published this month.</p>";
   const title = `News from ${monthName(month)}`;
-  const body = `<h1>${e(title)}</h1>\n${list}\n<p><a href="${e(pageUrl(site, { type: "archive" }))}">All months</a></p>`;
+  const body = `<div class="home-body archive-page" id="main-content-release">\n<h1>${e(title)}</h1>\n${list}\n<p><a href="${e(pageUrl(site, { type: "archive" }))}">All months</a></p>\n</div>`;
   return renderPage(title, site, pageUrl(site, { type: "archive-month", month }), body, opts);
 }
 
@@ -72,14 +101,14 @@ export function renderTermsIndex(rows: { term: GovernmentTermDto; count: number 
       return `<li><a href="${e(pageUrl(site, { type: "archive-term", slug: term.slug }))}">${e(range)}</a>${label} (${postCount(count)})${note}</li>`;
     });
     // post-list: the listing pages' row spacing, which also keeps a link-only row's target 24px clear (axe target-size).
-    listing = `<ul class="post-list term-list">\n${items.join("\n")}\n</ul>`;
+    listing = `<div class="resource-links">\n<ul class="post-list term-list">\n${items.join("\n")}\n</ul>\n</div>`;
   }
   // The frozen legacy archive's home, from the oldest term that links into it.
   const oldestLegacy = [...rows].reverse().map((r) => legacyHref(r.term)).find((h): h is string => h !== null);
   const closing = oldestLegacy
     ? `\n<p>Releases from before 2012 are on the legacy news archive (<a href="${e(new URL(oldestLegacy).origin)}/">${e(new URL(oldestLegacy).host)}</a>).</p>`
     : "";
-  const body = `<h1>${e(title)}</h1>\n${listing}${closing}\n<p><a href="${e(pageUrl(site, { type: "archive" }))}">Browse by month</a></p>`;
+  const body = `<div class="home-body archive-page">\n<h1>${e(title)}</h1>\n${listing}${closing}\n<p><a href="${e(pageUrl(site, { type: "archive" }))}">Browse by month</a></p>\n</div>`;
   return renderPage(title, site, pageUrl(site, { type: "archive-terms" }), body, opts);
 }
 
@@ -92,10 +121,10 @@ export function renderTermPage(term: GovernmentTermDto, posts: IndexedPost[], si
   const { canonicalSlug, ...pageOpts } = opts;
   const title = `News from ${termRangeLabel(term.startDate, term.endDate)}`;
   const label = term.label ? `\n<p>${e(term.label)}</p>` : "";
-  const list = posts.length
-    ? `<ul class="post-list">\n${posts.map((p) => postListItem(site, { ...p, summary: null })).join("\n")}\n</ul>`
-    : `<p>Nothing has been published in this term yet.</p>`;
-  const body = `<h1>${e(title)}</h1>${label}\n${list}\n<p><a href="${e(pageUrl(site, { type: "archive-terms" }))}">All government terms</a></p>`;
+  const legacy = legacyHref(term);
+  const note = legacy && posts.length > 0 ? `\n${legacyNote(legacy)}` : "";
+  const list = posts.length ? cardList(site, posts) : `<p>Nothing has been published in this term yet.</p>`;
+  const body = `<div class="home-body archive-page" id="main-content-release">\n<h1>${e(title)}</h1>${label}${note}\n${list}\n<p><a href="${e(pageUrl(site, { type: "archive-terms" }))}">All government terms</a></p>\n</div>`;
   return renderPage(title, site, pageUrl(site, { type: "archive-term", slug: canonicalSlug ?? term.slug }), body, pageOpts);
 }
 
