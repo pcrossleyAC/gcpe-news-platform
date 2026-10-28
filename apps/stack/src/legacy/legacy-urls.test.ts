@@ -7,7 +7,7 @@ import express from "express";
 import request from "supertest";
 import { mountSite, rootSiteNotFound } from "../site-mount";
 import { SITE_PASS_THROUGH } from "../stack";
-import { createLegacySiteFixture } from "./fixture";
+import { createLegacySiteFixture, LONG_POST_KEY } from "./fixture";
 import { legacyUrls } from "./middleware";
 import { LISTING_MIN_REREAD_MS } from "./site-files";
 
@@ -464,5 +464,56 @@ describe("legacyUrls: unsafe request targets never reach the static mount", () =
     });
     const res = await request(app).get("/api/x%5Cy");
     expect({ status: res.status, reached }).toEqual({ status: 200, reached: 1 });
+  });
+});
+
+describe("legacyUrls: post keys over 100 characters (url-compat T3, M17)", () => {
+  let outputDir: string;
+  let app: express.Express;
+  const LONG = LONG_POST_KEY;
+  const HASHED = "<h1>releases/_long/106422386aca9cfd948a818d5a9a92f5/</h1>";
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+    app = appFor(outputDir);
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+
+  it("GET /releases/<102-char key>/ → 200 serving the hashed page", async () => {
+    expect(LONG).toHaveLength(102);
+    const res = await request(app).get(`/releases/${LONG}/?x=1`).redirects(0);
+    expect({ status: res.status, body: res.text }).toEqual({ status: 200, body: HASHED });
+    const under = await request(appFor(outputDir, "/site")).get(`/site/releases/${LONG}/`).redirects(0);
+    expect({ status: under.status, body: under.text }).toEqual({ status: 200, body: HASHED });
+  });
+
+  it("/RELEASES/<KEY UPPERCASED>/ → 200 (same dir)", async () => {
+    const res = await request(app).get(`/RELEASES/${LONG.toUpperCase()}/`).redirects(0);
+    expect({ status: res.status, body: res.text }).toEqual({ status: 200, body: HASHED });
+  });
+
+  it("/releases/<key> → 301 /releases/<key>/", async () => {
+    await expectRedirect(app, `/releases/${LONG}`, `/releases/${LONG}/`);
+    await expectRedirect(app, `/Releases/${LONG.toUpperCase()}?a=b`, `/releases/${LONG.toUpperCase()}/?a=b`);
+  });
+
+  it("/stories/<key> → 301 /releases/<key>/", async () => {
+    await expectRedirect(app, `/stories/${LONG}`, `/releases/${LONG}/`);
+    await expectRedirect(app, `/factsheets/${LONG}/`, `/releases/${LONG}/`);
+  });
+
+  it("an unknown 150-char key → 404", async () => {
+    for (const path of [`/releases/${"x".repeat(150)}/`, `/stories/${"x".repeat(150)}`, `/releases/${"x".repeat(201)}/`]) {
+      const res = await request(app).get(path).redirects(0);
+      expect({ path: path.length, status: res.status, location: res.headers.location, body: res.text }).toEqual({ path: path.length, status: 404, location: undefined, body: "<h1>site 404</h1>" });
+    }
+  });
+
+  it("a key with unsafe characters never reaches the hashed dir", async () => {
+    for (const path of [`/releases/${LONG}%5C..%5C/`, `/releases/${LONG}.x/`, `/releases/${LONG}%00/`]) {
+      const res = await request(app).get(path).redirects(0);
+      expect({ path, status: res.status, location: res.headers.location }).toEqual({ path, status: 404, location: undefined });
+    }
   });
 });

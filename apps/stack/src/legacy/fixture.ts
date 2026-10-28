@@ -2,9 +2,13 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+/** A 102-character post key (news.gov's M17 case): its page lives in the hashed `releases/_long/` dir. */
+export const LONG_POST_KEY = "canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1";
+
 /** The pages (directories holding index.html) every legacy-URL test can rely on. */
 export const LEGACY_FIXTURE_PAGES = [
   "releases/2026TT0105-001130/",
+  "releases/_long/106422386aca9cfd948a818d5a9a92f5/",
   "archive/",
   "archive/2026/10/",
   "search/",

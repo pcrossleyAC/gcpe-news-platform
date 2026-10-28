@@ -1,8 +1,16 @@
+import { createHash } from "node:crypto";
 import { GOVERNMENT_TERM_SLUG } from "@gcpe/config";
 import { basePath, type SiteInfo } from "./render";
 
-/** A post key as NRMS and the News API produce it. Also the on-disk directory name. */
-export const POST_KEY = /^[A-Za-z0-9-]{1,100}$/;
+/** A post key as NRMS and the News API produce it. 200 matches RELATED_MAX_KEY_CHARS; news.gov has
+ * keys over 100 characters. A key of up to `SHORT_POST_KEY_MAX` is its own directory name under
+ * `releases/`; a longer one lives in a hashed directory (`postDir`). */
+export const POST_KEY = /^[A-Za-z0-9-]{1,200}$/;
+export const SHORT_POST_KEY_MAX = 100;
+/** Where posts with a key over `SHORT_POST_KEY_MAX` characters live: `<LONG_POST_DIR>/<hash>/`. */
+export const LONG_POST_DIR = "releases/_long";
+/** The sidecar in a hashed directory that records the post's key (the hash cannot be reversed). */
+export const LONG_POST_KEY_FILE = ".key";
 /** A category key (ministry, sector, theme, tag) in its lowercased on-disk form. */
 export const CATEGORY_KEY = /^[a-z0-9-]{1,100}$/;
 /** A government term slug (an imported legacy name or a new term's ISO start date); `current` is the
@@ -81,13 +89,20 @@ export function categoryPageId(kind: CategoryKind, key: string): string | null {
  * url-compat's per-post maps share the `legacy/` directory. */
 export const MINISTRY_SUCCESSORS_FILE = "legacy/ministry-successors.json";
 
-export const postPath = (key: string) => `releases/${key}/index.html`;
+/** A post's directory: `releases/<key>`, or for a key over 100 characters
+ * `releases/_long/<first 32 hex of sha256(lowercased key)>` (lowercased, so any request case finds it). */
+export function postDir(key: string): string {
+  if (key.length <= SHORT_POST_KEY_MAX) return `releases/${key}`;
+  return `${LONG_POST_DIR}/${createHash("sha256").update(key.toLowerCase()).digest("hex").slice(0, 32)}`;
+}
+export const postPath = (key: string) => `${postDir(key)}/index.html`;
 
 /** Relative output files for a page. Only ever called with a parsed (validated) PageId. */
 export function pageFiles(p: PageId): string[] {
   switch (p.type) {
     case "home": return ["index.html", "feed.xml"];
-    case "post": return [postPath(p.key)];
+    // A long key's directory also holds the sidecar naming the key; it goes with the page.
+    case "post": return p.key.length > SHORT_POST_KEY_MAX ? [postPath(p.key), `${postDir(p.key)}/${LONG_POST_KEY_FILE}`] : [postPath(p.key)];
     case "ministries": return ["ministries/index.html"];
     // A ministry's third file is its minister's biography page (H2): written only while the
     // minister has a bio, and removed with the rest when the ministry goes.

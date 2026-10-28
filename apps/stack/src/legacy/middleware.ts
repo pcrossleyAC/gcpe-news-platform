@@ -5,6 +5,7 @@ import { DEFAULT_OG_IMAGE } from "../../../public-site/src/render";
 import { fixedRule } from "./rules";
 import { parseRequestTarget, type RequestTarget } from "./safe-path";
 import { siteNotFound } from "../site-not-found";
+import { POST_KEY, postDir, SHORT_POST_KEY_MAX } from "../../../public-site/src/site-paths";
 import { exactPagePath, pagePath, resolvePostKey } from "./site-files";
 
 export interface LegacyUrlOptions {
@@ -88,6 +89,19 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
       if (action && !action.fallback) return fixedRedirect(action, target, res, next);
 
       if (post) {
+        const key = post[1]!;
+        // The hashed-dir parent is not a post: `/releases/_long` must not reach static's directory 301.
+        if (key.toLowerCase() === "_long") return notFound(req, res, next);
+        if (key.length > SHORT_POST_KEY_MAX && POST_KEY.test(key)) {
+          const long = await longPostRule(key, post[2] !== undefined, target);
+          if (long === null) return next();
+          if (long === "serve") {
+            // In place: the only rewrite ever produced is /releases/_long/<32 hex>/.
+            req.url = `/${postDir(key)}/${target.query}`;
+            return next();
+          }
+          return redirect(long.status, long.to);
+        }
         const done = await postRule(post, target);
         if (done === null) return next();
         if (done.status === 404) {
@@ -148,6 +162,20 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
       return { status: 302, to: DEFAULT_OG_IMAGE };
     }
     return { status: 301, to: `${canonical}${target.query}` };
+  }
+
+  /**
+   * The post rule for a key over 100 characters that matches `POST_KEY` (url-compat T3): its page
+   * is `postDir(key)`, found by hash, not by a listing. The canonical request `/releases/<key>/`
+   * (any case) → "serve" (the caller rewrites to the hashed dir); `/image` → 302 to the default OG
+   * image; any other spelling → 301 to `/releases/<key as requested>/`, query kept. No such page →
+   * null (the site 404). `key` is `[A-Za-z0-9-]{101,200}`, so the Location is safe to build.
+   */
+  async function longPostRule(key: string, image: boolean, target: RequestTarget): Promise<"serve" | { status: 301 | 302; to: string } | null> {
+    if ((await pagePath(outputDir, `/${postDir(key)}/`)) === null) return null;
+    if (image) return (await pagePath(outputDir, DEFAULT_OG_IMAGE)) === null ? null : { status: 302, to: DEFAULT_OG_IMAGE };
+    if (target.path.toLowerCase() === `/releases/${key.toLowerCase()}/`) return "serve";
+    return { status: 301, to: `/releases/${key}/${target.query}` };
   }
 }
 

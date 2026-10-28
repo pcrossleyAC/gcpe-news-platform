@@ -15,7 +15,7 @@ import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
-import { biographyUrl, categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
+import { biographyUrl, categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
 import type { SiteStorage } from "./storage";
@@ -231,6 +231,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       ministryLatest = await fetch;
     }
     await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { related, leadMinistry, leadMinistrySuccessor, ministryLatest }));
+    // A long key's directory name is a hash: record the key beside the page so allPostKeys can list it.
+    const keyFile = pageFiles(p)[1];
+    if (keyFile) await storage.write(keyFile, `${key}\n`);
     const entry = indexEntryOf(key, post);
     if (entry) await writeIndex.put(entry);
     else await writeIndex.remove(key);
@@ -425,6 +428,12 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       for (const kind of POST_KINDS) for (const k of await newsApi.postKeys(kind)) if (POST_KEY.test(k)) keys.add(k);
       for (const k of await index.keys()) keys.add(k);
       for (const k of await storage.listDirs("releases")) if (POST_KEY.test(k)) keys.add(k);
+      // Keys over 100 characters sit in hashed directories; the sidecar names the key. Trusted only
+      // when it is a long key whose own hash is that directory.
+      for (const h of await storage.listDirs(LONG_POST_DIR)) {
+        const k = (await storage.read(`${LONG_POST_DIR}/${h}/${LONG_POST_KEY_FILE}`))?.trim();
+        if (k && k.length > SHORT_POST_KEY_MAX && POST_KEY.test(k) && postDir(k) === `${LONG_POST_DIR}/${h}`) keys.add(k);
+      }
       return [...keys];
     },
 

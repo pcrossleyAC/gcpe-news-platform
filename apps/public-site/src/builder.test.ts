@@ -116,6 +116,26 @@ describe("site builder", () => {
     expect(html(storage, "sitemap.xml")).not.toContain("2026-10.xml");
   });
 
+  it("renders a post with a 102-char key to the hashed dir, and allPostKeys still lists it", async () => {
+    const key = "canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1";
+    const posts = new Map([[key, post({ key })], ["K2", post({ key: "K2", publishDate: "2026-09-01T10:00:00-07:00" })]]);
+    const { storage, builder } = setup(posts);
+    await builder.rebuild([`post:${key}`, "post:K2"], {});
+    const dir = "releases/_long/106422386aca9cfd948a818d5a9a92f5";
+    expect(storage.files.has(`${dir}/index.html`)).toBe(true);
+    expect(storage.files.has(`releases/${key}/index.html`)).toBe(false);
+    expect(html(storage, "sitemaps/2026-10.xml")).toContain(`/releases/${key}/`);
+    // Listed from disk alone (no News API, no index): the key is recovered from the sidecar.
+    const bare = createSiteBuilder({ newsApi: fakeNewsApi(new Map()), storage, index: postIndex(tdb.db), site, assetsDir: null });
+    await tdb.pool.query("TRUNCATE site_posts");
+    expect((await bare.allPostKeys()).sort()).toEqual([key, "K2"].sort());
+    // Unpublishing removes the page and the sidecar, so the key is no longer listed.
+    posts.delete(key);
+    await builder.rebuild([`post:${key}`], {});
+    expect([...storage.files.keys()].filter((f) => f.startsWith("releases/_long/"))).toEqual([]);
+    expect(await bare.allPostKeys()).toEqual(["K2"]);
+  });
+
   it("a category the News API no longer has loses its page and feed", async () => {
     const { storage, builder } = setup(new Map());
     await storage.write("tags/gone/index.html", "x");
