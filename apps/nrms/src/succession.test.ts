@@ -113,6 +113,15 @@ describe("NRMS org.succeeded", () => {
     expect((await approveAs("wellness")).n).toBe(1); // WELL has its own count
   });
 
+  it("finds the inactive lead whatever the lead key's case, as numbering does", async () => {
+    const d = await draft();
+    await tdb.pool.query("UPDATE news_releases SET lead_ministry_key = 'HEALTH' WHERE id = $1", [d.id]);
+    await tdb.pool.query("UPDATE organizations SET is_active = false WHERE key = 'health'");
+    await expect(approve(tdb.db, d.id, d.version, editor, { timeZone: TZ })).rejects.toMatchObject({
+      problems: ["This ministry is no longer active. Change the lead ministry to its successor before approving."],
+    });
+  });
+
   it("refuses to approve a release led by a succeeded (inactive) ministry", async () => {
     const d = await draft();
     await tdb.pool.query("UPDATE organizations SET is_active = false WHERE key = 'health'");

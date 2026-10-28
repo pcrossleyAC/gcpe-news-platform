@@ -82,7 +82,8 @@ export async function approve(db: Db, id: string, version: number, actor: Actor,
       const before = await linkStateOf(tx, id);
       const view = (await loadView(tx, id))!;
       const lead = row.leadMinistryKey ?? (view.ministries.length === 1 ? view.ministries[0]! : null);
-      const [leadOrg] = lead ? await tx.select({ isActive: organizations.isActive }).from(organizations).where(eq(organizations.key, lead)) : [];
+      // Lower-cased like ministryAbbreviation, so the guard and the numbering read the same row.
+      const [leadOrg] = lead ? await tx.select({ isActive: organizations.isActive }).from(organizations).where(eq(organizations.key, lead.toLowerCase())) : [];
       // A succeeded ministry keeps its abbreviation locally, so it must not be allowed to number new releases.
       const problems = approveProblems({ ...view, leadMinistryKey: lead }, leadOrg && !leadOrg.isActive ? [lead!] : []);
       if (problems.length) throw new ReleaseRuleError(problems);
