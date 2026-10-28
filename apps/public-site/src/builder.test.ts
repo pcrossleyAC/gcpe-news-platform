@@ -143,9 +143,9 @@ describe("site builder", () => {
     // A ministry with no minister never gets one; a vanished ministry loses all three files.
     await builder.renderPage("category:ministries:finance", {});
     expect(storage.files.has("ministries/finance/biography/index.html")).toBe(false);
-    await storage.write("ministries/gone/biography/index.html", "x");
+    for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) await storage.write(f, "x");
     await builder.renderPage("category:ministries:gone", {});
-    expect(storage.files.has("ministries/gone/biography/index.html")).toBe(false);
+    for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) expect(storage.files.has(f), f).toBe(false);
   });
 
   it("renders each childKey's ministry and minister; a null child ministry is skipped", async () => {

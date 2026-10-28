@@ -14,18 +14,27 @@ const BLOCK = /<(p|div|ul|ol|h[1-6]|table|blockquote|figure|hr)[\s>/]/i;
 
 /**
  * The minister's biography as the public site shows it: always through the public sanitiser
- * (which demotes any `h1`). A bio with no paragraph-level block (plain text, as older NRMS bios
+ * (which demotes any `h1`), its headings then shifted so the shallowest is an h2. A bio with no paragraph-level block (plain text, as older NRMS bios
  * are) gets one `<p>` per non-empty line, as legacy's `AsHtmlParagraphs` did; the wrapped result
  * is sanitised again, so a tag spanning two lines is re-balanced rather than left open.
  */
 export function bioHtml(details: string | null): string {
   const clean = sanitizeBodyHtml(details ?? "");
-  if (BLOCK.test(clean)) return clean;
+  if (BLOCK.test(clean)) return shiftHeadings(clean);
   const lines = clean
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
   return lines.length ? sanitizeBodyHtml(lines.map((l) => `<p>${l}</p>`).join("")) : "";
+}
+
+/** Shifts every heading by one amount so the shallowest becomes h2, directly under the page's h1
+ * (axe heading-order), keeping their relative levels; none goes past h6. */
+function shiftHeadings(html: string): string {
+  const levels = [...html.matchAll(/<h([1-6])[\s>]/gi)].map((m) => Number(m[1]));
+  if (!levels.length) return html;
+  const by = 2 - Math.min(...levels);
+  return by === 0 ? html : html.replace(/<(\/?)h([1-6])(?=[\s>])/gi, (_m, slash: string, level: string) => `<${slash}h${Math.min(Math.max(Number(level) + by, 2), 6)}`);
 }
 
 /** True when the minister's bio has any text once sanitised (an emptied editor's `<p></p>` has none). */
@@ -37,18 +46,26 @@ export function hasBiography(minister: MinisterDto | null): boolean {
   return text.trim() !== "";
 }
 
+/** The minister's name on the card and bio page: the headline, else the ministry's minister name, else the ministry. */
+const ministerName = (m: MinistryDto, minister: MinisterDto) => minister.headline?.trim() || m.ministerName?.trim() || m.name;
+
 const ministryHref = (site: Pick<SiteInfo, "baseUrl">, m: MinistryDto) => pageUrl(site, { type: "category", kind: "ministries", key: m.key.toLowerCase() });
 
 /**
  * Legacy `Minister.cshtml` as `div.resource-links.minister`: photo, name, summary, "Read Bio" (only
  * when there is a bio) and the minister's Contact email (from `/api/v2/ministries`). Empty when the
- * minister has no name, as legacy's `Headline` check. Legacy's h3/h4 are emitted one level up;
+ * minister has no name and no bio (legacy's `Headline` check); with a bio but no name, the card is
+ * named as the bio page is, so the bio page is always linked. Legacy's h3/h4 are emitted one level up;
  * with `ministryHeading` (a page listing several ministries) the ministry name is the h2 above the
  * minister's h3. Legacy's link from the photo to www2's large photo is not reproduced.
  */
 export function ministerCard(site: Pick<SiteInfo, "baseUrl">, m: MinistryDto, minister: MinisterDto | null, profile: MinistryProfileDto | null, o: { ministryHeading?: boolean } = {}): string {
-  const name = minister?.headline?.trim();
-  if (!minister || !name) return "";
+  if (!minister) return "";
+  const bio = hasBiography(minister);
+  // A bio page exists whenever there is a bio (the builder's gate), so the card that links it
+  // shows too, named as the bio page names the minister.
+  const name = minister.headline?.trim() || (bio ? ministerName(m, minister) : "");
+  if (!name) return "";
   const parts: string[] = [];
   if (o.ministryHeading) parts.push(`<h2><a href="${e(ministryHref(site, m))}">${e(m.name)}</a></h2>`);
   const photo = safeSrc(minister.photo);
@@ -56,7 +73,7 @@ export function ministerCard(site: Pick<SiteInfo, "baseUrl">, m: MinistryDto, mi
   const h = o.ministryHeading ? "h3" : "h2";
   parts.push(`<${h}>${e(name)}</${h}>`);
   for (const line of (minister.summary ?? "").split(/\r?\n/)) if (line.trim()) parts.push(`<p>${e(line.trim())}</p>`);
-  if (hasBiography(minister)) parts.push(`<a href="${e(biographyUrl(site, m.key))}" class="read-more">Read Bio<span class="visually-hidden">: ${e(name)}</span></a>`);
+  if (bio) parts.push(`<a href="${e(biographyUrl(site, m.key))}" class="read-more">Read Bio<span class="visually-hidden">: ${e(name)}</span></a>`);
   const email = profile?.ministerEmail?.trim();
   const mailto = email ? safeHref(`mailto:${email}`) : null;
   if (email && mailto) parts.push(`<h3>Contact</h3>\n<p class="minister-email">Email: <a href="${e(mailto)}">${e(email)}</a></p>`);
@@ -79,7 +96,7 @@ ${ministerCard(site, m, minister, profile)}${extra ? `\n${extra}` : ""}
  * Legacy's `<center>` is a div centred in overrides.css.
  */
 export function renderBiographyPage(m: MinistryDto, minister: MinisterDto, profile: MinistryProfileDto | null, site: SiteInfo, opts: PageOptions = {}): string {
-  const name = minister.headline?.trim() || m.ministerName?.trim() || m.name;
+  const name = ministerName(m, minister);
   const labels = (opts.settings ?? themeDefaults(site.theme)).ministryPages;
   const [, topics, services] = ministryLinkGroups(m, labels);
   const extra = [topics!, services!].map((g) => resourceLinks(site, g.heading, g.links)).filter(Boolean).join("\n");

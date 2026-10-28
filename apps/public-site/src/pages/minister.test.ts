@@ -61,10 +61,23 @@ describe("ministerCard", () => {
     expect(card.querySelector("img")!.getAttribute("alt")).toBe('A "<b>" & B');
   });
 
-  it("blank minister headline → no card", () => {
-    expect(ministerCard(site, health, minister({ headline: "  " }), profile())).toBe("");
-    expect(ministerCard(site, health, minister({ headline: null }), profile())).toBe("");
+  it("blank minister headline and no biography → no card", () => {
+    expect(ministerCard(site, health, minister({ headline: "  ", details: null }), profile())).toBe("");
+    expect(ministerCard(site, health, minister({ headline: null, details: "<p></p>" }), profile())).toBe("");
     expect(ministerCard(site, health, null, profile())).toBe("");
+  });
+
+  it("blank minister headline with a biography → the card still links Read Bio (the bio page is never orphaned), named like the bio page", () => {
+    const named = ministry({ key: "Health", name: "Health", ministerName: "Hon. Pat Doe" });
+    const card = frag(ministerCard(site, named, minister({ headline: " " }), profile())).querySelector("div.resource-links.minister")!;
+    expect(card).not.toBeNull();
+    expect(texts(card, "h2")).toEqual(["Hon. Pat Doe"]);
+    expect(card.querySelector("a.read-more")?.getAttribute("href")).toBe("/ministries/health/biography/");
+    expect(card.querySelector("a.read-more")?.textContent).toBe("Read Bio: Hon. Pat Doe");
+    // No ministerName either: the ministry name, as the bio page's h1.
+    const bare = frag(ministerCard(site, { ...health, ministerName: null }, minister({ headline: null }), profile()));
+    expect(texts(bare, "div.minister h2")).toEqual(["Health"]);
+    expect(expectAccessibleStructure(renderBiographyPage(named, minister({ headline: " " }), profile(), site)).querySelector("h1")?.textContent).toBe("Hon. Pat Doe");
   });
 
   it("ministrySidebar: a labelled section with the ministry name as a hidden-from-AT title", () => {
@@ -82,7 +95,8 @@ describe("bioHtml and hasBiography", () => {
     expect(bioHtml("First line.\r\n\r\nSecond & <b>third\nFourth</b> <x-unknown>")).toBe("<p>First line.</p><p>Second &amp; <b>third</b></p><p>Fourth</p>");
     // HTML with block elements is left as the sanitiser gives it.
     expect(bioHtml("<p>One</p>\n<p>Two</p>")).toBe("<p>One</p>\n<p>Two</p>");
-    expect(bioHtml("<h2>Career</h2>Elected in 2020.")).toBe("<h3>Career</h3>Elected in 2020.");
+    // (headings then shifted so the shallowest is h2: see the heading-shift test)
+    expect(bioHtml("<h2>Career</h2>Elected in 2020.")).toBe("<h2>Career</h2>Elected in 2020.");
     expect(bioHtml(null)).toBe("");
   });
 
@@ -137,6 +151,16 @@ describe("renderBiographyPage", () => {
     const own = withoutChromeScripts(html);
     expect(own).not.toMatch(/<script|<iframe|\son[a-z]+=/i);
     expect(own).not.toContain("alert(1)");
+  });
+
+  it("bio headings are shifted so the shallowest becomes h2 under the page h1, keeping their relative levels", () => {
+    expect(bioHtml("<h2>Early life</h2><p>a</p><h3>School</h3>")).toBe("<h2>Early life</h2><p>a</p><h3>School</h3>");
+    expect(bioHtml("<h4>Early life</h4><p>a</p><h5>School</h5><h4>Career</h4>")).toBe("<h2>Early life</h2><p>a</p><h3>School</h3><h2>Career</h2>");
+    expect(bioHtml("<h1>Top</h1><h3>Gap</h3>")).toBe("<h2>Top</h2><h4>Gap</h4>");
+    expect(bioHtml("<h6 >Tiny</h6>")).toBe("<h2>Tiny</h2>");
+    expect(bioHtml("<p>No headings</p>")).toBe("<p>No headings</p>");
+    const d = expectAccessibleStructure(page({ details: "<h3>Early life</h3><p>Born here.</p>" }));
+    expect(texts(d, ".biography-details h2")).toEqual(["Early life"]);
   });
 
   it("no photo: no picture block; no profile: no Contact", () => {

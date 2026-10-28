@@ -233,8 +233,8 @@ describe("renderMinistryPage", () => {
     expect(doc.querySelectorAll(".resource-links.minister")).toHaveLength(1);
   });
 
-  it("no minister, or a blank headline: no card, and the page still renders", () => {
-    for (const mn of [null, minister({ headline: "  " })]) {
+  it("no minister, or a blank headline with no bio: no card, and the page still renders", () => {
+    for (const mn of [null, minister({ headline: "  ", details: null })]) {
       const doc = expectAccessibleStructure(renderMinistryPage(ministry(), mn, emptyPosts, site, {}, noCtx));
       expect(doc.querySelector(".resource-links.minister")).toBeNull();
       expect(doc.querySelector("section.home-features")).not.toBeNull();

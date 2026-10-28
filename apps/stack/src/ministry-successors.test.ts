@@ -46,6 +46,16 @@ describe("ministrySuccessorRedirects", () => {
     expect((await get(appFor(), "/ministries/a?x=1")).headers.location).toBe("/ministries/c/?x=1");
   });
 
+  it("/ministries/<old>/biography[/] → the successor's ministry page (its minister's bio may not exist), query kept", async () => {
+    await writeTable({ a: "c" });
+    expect((await get(appFor(), "/ministries/a/biography/")).headers.location).toBe("/ministries/c/");
+    expect((await get(appFor(), "/ministries/a/biography")).headers.location).toBe("/ministries/c/");
+    expect((await get(appFor(), "/ministries/A/Biography/?x=1")).headers.location).toBe("/ministries/c/?x=1");
+    // Anything beneath it, or a longer segment, keeps the general rule.
+    expect((await get(appFor(), "/ministries/a/biography/x")).headers.location).toBe("/ministries/c/biography/x");
+    expect((await get(appFor(), "/ministries/a/biographyx")).headers.location).toBe("/ministries/c/biographyx");
+  });
+
   it("matches whole segments only, case-insensitively", async () => {
     await writeTable({ a: "c" });
     expect((await get(appFor(), "/ministries/ab/")).status).toBe(404);
