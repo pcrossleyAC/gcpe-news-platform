@@ -1,0 +1,5 @@
+# Legacy paths that 404 on boxs.ca until their plan ships. Same format as legacy-urls.txt (one per line,
+# `# section: <name>` lines). Check with: npm run parity:urls -- --base <url> --list tools/parity/legacy-urls-pending.txt
+# Plan 4 batch C (PR #59) moves /live into legacy-urls.txt; /contacts and /privacy already moved (PR #57).
+# section: plan 4
+/live

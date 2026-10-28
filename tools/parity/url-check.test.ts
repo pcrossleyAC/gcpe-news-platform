@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkUrls } from "./url-check";
+import { checkUrls, formatSummary, main, parseList } from "./url-check";
 
 type Reply = { status: number; location?: string };
 function fakeFetch(map: Record<string, Reply>, seen: string[] = []): typeof fetch {
@@ -90,5 +90,60 @@ describe("checkUrls", () => {
     const [r] = await checkUrls("https://x.test", ["/slow"], hang, 50);
     expect(r).toMatchObject({ ok: false, status: 0 });
     expect(r?.reason).toMatch(/^fetch failed: /);
+  });
+});
+
+describe("sections", () => {
+  it("parseList assigns sections", () => {
+    const text = "# comment\n/a\n# section: feeds\n/feed\n\n# section: posts\n/p\n";
+    expect(parseList(text)).toEqual([
+      { path: "/a", section: "default" },
+      { path: "/feed", section: "feeds" },
+      { path: "/p", section: "posts" },
+    ]);
+  });
+
+  it("a result carries its section; main's summary counts per section", async () => {
+    const f = fakeFetch({
+      "https://x.test/a": { status: 200 },
+      "https://x.test/b": { status: 404 },
+      "https://x.test/c": { status: 200 },
+    });
+    const results = await checkUrls(
+      "https://x.test",
+      [
+        { path: "/a", section: "feeds" },
+        { path: "/b", section: "feeds" },
+        { path: "/c", section: "posts" },
+      ],
+      f,
+    );
+    expect(results.map((r) => r.section)).toEqual(["feeds", "feeds", "posts"]);
+    expect(formatSummary(results)).toEqual(["feeds: 1/2 passed", "posts: 1/1 passed", "2/3 passed"]);
+  });
+});
+
+describe("main", () => {
+  const list = "# section: a\n/ok\n/bad\n";
+  const f = () => fakeFetch({ "https://x.test/ok": { status: 200 }, "https://x.test/bad": { status: 500 } });
+
+  it("returns exit code 1 when any URL fails, and prints per-section counts", async () => {
+    const lines: string[] = [];
+    const code = await main(["--base", "https://x.test", "--list", "l.txt"], {
+      readList: async (p) => (p === "l.txt" ? list : ""),
+      fetchImpl: f(),
+      log: (l) => lines.push(l),
+    });
+    expect(code).toBe(1);
+    expect(lines).toContain("a: 1/2 passed");
+  });
+
+  it("returns 0 when everything passes", async () => {
+    const code = await main(["--base", "https://x.test"], {
+      readList: async () => "/ok\n",
+      fetchImpl: f(),
+      log: () => {},
+    });
+    expect(code).toBe(0);
   });
 });

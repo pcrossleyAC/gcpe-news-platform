@@ -2,12 +2,17 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { wallClockToInstant } from "@gcpe/config";
 import { eq, sql } from "drizzle-orm";
+import request from "supertest";
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
+import { createApp } from "../app";
+import { legacyTokenHash } from "../subscribe/legacy-token";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb } from "../../../nrms/test/helpers";
 import { newsReleases } from "../../../nrms/src/db/schema";
 import { createNodTestDb } from "../../test/helpers";
-import { FIXTURE_GUIDS as G, legacyNodSource, legacyNodTables, seedNodListsForImport } from "../../test/legacy-nod-fixture";
+import { FIXTURE_GUIDS as G, legacyNodSource, legacyNodTables, LINK_GUIDS, seedNodListsForImport } from "../../test/legacy-nod-fixture";
 import { emergencyItemKey } from "../as-it-happens";
 import { deliveries, items, nodSettings } from "../db/schema";
 import { LEGACY_BATCH_ID } from "./articles";
@@ -38,7 +43,7 @@ describe("nod:import on the synthetic legacy database", () => {
     await nrms.drop();
   });
   beforeEach(async () => {
-    await nod.db.execute(sql`DELETE FROM deliveries; DELETE FROM items; DELETE FROM subscriber_history; DELETE FROM subscriptions; DELETE FROM subscribers; DELETE FROM legacy_subscriber_imports;`);
+    await nod.db.execute(sql`DELETE FROM deliveries; DELETE FROM items; DELETE FROM subscriber_links; DELETE FROM subscriber_history; DELETE FROM subscriptions; DELETE FROM subscribers; DELETE FROM legacy_subscriber_imports;`);
     await nod.db.update(nodSettings).set({ lastDigestCutoff: null }).where(eq(nodSettings.id, 1));
     await seedNodListsForImport(nod.db);
   });
@@ -105,6 +110,93 @@ describe("nod:import on the synthetic legacy database", () => {
     expect(alert).toMatchObject({ title: "Sample alert two", linkIdentity: "https://emergency.example.test/alerts/78" });
   });
 
+  describe("legacy manage links", () => {
+    const linkRows = async () =>
+      (await nod.db.execute<{ token_hash: string; purpose: string; origin: string; subscriber_id: string | null; email: string; expires_at: Date; created_at: Date }>(sql`SELECT * FROM subscriber_links ORDER BY token_hash`)).rows;
+    const tableOf = (json: { tables: Record<string, unknown> }) => json.tables.SubscriberLink;
+
+    it("imports the active subscriber's link; skips ended, unknown and expired with those reasons; balanced report", async () => {
+      const json = (await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS)).toJSON();
+      expect(json.balanced).toBe(true);
+      expect(tableOf(json)).toEqual({ legacy: 4, imported: 1, skipped: 3 });
+      const reasons = json.skipped.filter((s) => s.table === "SubscriberLink").map((s) => [s.reason, s.sample]);
+      expect(reasons).toEqual(
+        expect.arrayContaining([
+          ["subscriber ended", [G.subDeleted.toLowerCase()]],
+          ["subscriber not in NoD", ["b0000000-0000-4000-8000-0000000000ff"]],
+          ["expired", [G.subDigest.toLowerCase()]],
+        ]),
+      );
+      const rows = await linkRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ token_hash: legacyTokenHash(LINK_GUIDS.active), purpose: "manage", origin: "send", subscriber_id: G.subActive.toLowerCase(), email: "active@example.test" });
+      expect(rows[0]!.subscriber_id).not.toBeNull();
+      expect(new Date(rows[0]!.expires_at)).toEqual(wallClockToInstant(new Date("2099-01-01T09:00:00Z"), OPTS.timeZone));
+    });
+
+    it("braces around a LinkGuid are stripped; any other malformed id is skipped as 'malformed link id' and still balances", async () => {
+      const tables = legacyNodTables();
+      const far = new Date("2099-01-01T09:00:00Z");
+      tables.liveManageLinks = [
+        { LinkGuid: `{${LINK_GUIDS.active.toUpperCase()}}`, SubscriberGuid: G.subActive, ExpiryDate: far },
+        { LinkGuid: "not-a-guid", SubscriberGuid: G.subActive, ExpiryDate: far },
+        { LinkGuid: "{00112233-4455-6677-8899-aabbccddee0", SubscriberGuid: G.subActive, ExpiryDate: far },
+        { LinkGuid: null, SubscriberGuid: G.subActive, ExpiryDate: far },
+      ];
+      const json = (await runNodImport(nod.db, nrms.db, legacyNodSource(tables), OPTS)).toJSON();
+      expect(json.balanced).toBe(true);
+      expect(tableOf(json)).toEqual({ legacy: 4, imported: 1, skipped: 3 });
+      expect(json.skipped.find((s) => s.table === "SubscriberLink")).toMatchObject({ reason: "malformed link id", count: 3 });
+      expect((await linkRows()).map((r) => r.token_hash)).toEqual([legacyTokenHash(LINK_GUIDS.active)]);
+    });
+
+    it("after import, the NoD route ConfirmUpdateCreateSubscription/MyIRAFVEd2aImaq7zN3u_w2 answers with that subscriber", async () => {
+      await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS);
+      const pair = await generateKeyPair("RS256");
+      const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+      const svc = await new SignJWT({ roles: ["NoD.SubscribeApi"] })
+        .setProtectedHeader({ alg: "RS256", kid: "k" })
+        .setIssuer("https://login.microsoftonline.com/t/v2.0")
+        .setAudience("api://nod")
+        .setSubject("svc")
+        .setExpirationTime("5m")
+        .sign(pair.privateKey);
+      const app = createApp({
+        db: nod.db,
+        auth: { issuer: "https://login.microsoftonline.com/t/v2.0", audience: "api://nod", keys },
+        eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
+        render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
+        subscribe: { db: nod.db, pageUrl: "https://boxs.ca/site/subscribe/manage/", linkSecret: "k".repeat(32), render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null }, distribution: { send: async () => ({ batchId: "b" }) } },
+      });
+      const res = await request(app).get("/api/Subscribe/ConfirmUpdateCreateSubscription/MyIRAFVEd2aImaq7zN3u_w2").set({ authorization: `Bearer ${svc}` });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ emailAddress: "active@example.test" });
+    });
+
+    it("a second run imports nothing new and leaves the row unchanged", async () => {
+      await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS);
+      const before = await linkRows();
+      const again = (await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS)).toJSON();
+      expect(await linkRows()).toEqual(before);
+      expect(again.balanced).toBe(true);
+      expect(tableOf(again)).toEqual({ legacy: 4, imported: 0, skipped: 4 });
+      expect(again.skipped.find((s) => s.table === "SubscriberLink" && s.reason === "already present")).toMatchObject({ count: 1, sample: [G.subActive.toLowerCase()] });
+    });
+
+    it("a link under a duplicate record that lost the address pick imports for the winning subscriber", async () => {
+      const tables = legacyNodTables();
+      const far = new Date("2099-01-01T09:00:00Z");
+      const loserLink = "00112233-4455-6677-8899-aabbccddee10";
+      tables.liveManageLinks = [{ LinkGuid: loserLink, SubscriberGuid: G.subDuplicate, ExpiryDate: far }];
+      const json = (await runNodImport(nod.db, nrms.db, legacyNodSource(tables), OPTS)).toJSON();
+      expect(json.balanced).toBe(true);
+      expect(tableOf(json)).toEqual({ legacy: 1, imported: 1, skipped: 0 });
+      const rows = await linkRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ token_hash: legacyTokenHash(loserLink), subscriber_id: G.subActive.toLowerCase(), email: "active@example.test" });
+    });
+  });
+
   it("a second full run changes nothing", async () => {
     await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS);
     const before = await counts();
@@ -138,6 +230,9 @@ describe("nod:import on the synthetic legacy database", () => {
     const json = await readFile(reportPath, "utf8");
     const text = await readFile(reportPath.replace(/\.json$/, ".txt"), "utf8");
     for (const out of [json, text, lines.join("\n")]) expect(out).not.toContain("@");
+    expect(json).toContain("SubscriberLink");
+    // Neither a token nor a legacy token hash reaches the output; the ids sampled are SubscriberGuids (legacy GUIDs), never link ids.
+    for (const out of [json, text, lines.join("\n")]) expect(out).not.toContain(legacyTokenHash(LINK_GUIDS.active));
   });
 
   it("a stage failing part-way exits 1, with a partial report naming the stage", async () => {

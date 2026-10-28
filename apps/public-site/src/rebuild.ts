@@ -65,10 +65,11 @@ export const SITE_STATE_PATH = ".site-state.json";
  * path and the BC Sans Italic preload on pages that use italics (parity plan 4, batch B). 13: atom.xml beside every
  * feed.xml, the per-kind feeds/ and long post keys in releases/_long/ (parity plan 3, batches B+C). 14: header,
  * footer headings and page labels from Navigation settings, the Live Webcast buttons and /live/ (parity plan 4,
- * batch C). Bump for body render changes
+ * batch C). 15: the news.gov Connect page and the shared Connect With Us strip with LinkedIn and RSS
+ * (parity plan 4, batch D). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 14;
+export const RENDER_CHROME_VERSION = 15;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must

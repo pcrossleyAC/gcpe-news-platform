@@ -82,8 +82,9 @@ export function legacyStatus(s: Pick<LegacySubscriberRow, "IsEnabled" | "IsDelet
 const RANK: Record<SubscriberStatus, number> = { active: 0, disabled: 1, pending: 2, deleted: 3 };
 
 /** One record per address (legacy's column isn't unique): active over disabled over deleted,
- * then the newest registration. Ids come back lower-case. */
-export function pickWinners(rows: LegacySubscriberRow[]): { winners: LegacySubscriberRow[]; duplicates: string[]; invalid: string[] } {
+ * then the newest registration. Ids come back lower-case.
+ * `winnerOf` maps each loser's id to its address's winner, so a link kept under a loser can follow it. */
+export function pickWinners(rows: LegacySubscriberRow[]): { winners: LegacySubscriberRow[]; duplicates: string[]; invalid: string[]; winnerOf: Map<string, string> } {
   const invalid: string[] = [];
   const groups = new Map<string, LegacySubscriberRow[]>();
   for (const r of rows) {
@@ -96,6 +97,7 @@ export function pickWinners(rows: LegacySubscriberRow[]): { winners: LegacySubsc
   }
   const winners: LegacySubscriberRow[] = [];
   const duplicates: string[] = [];
+  const winnerOf = new Map<string, string>();
   for (const group of groups.values()) {
     const sorted = [...group].sort(
       (a, b) =>
@@ -104,9 +106,12 @@ export function pickWinners(rows: LegacySubscriberRow[]): { winners: LegacySubsc
         guidKey(a.SubscriberGuid).localeCompare(guidKey(b.SubscriberGuid)),
     );
     winners.push(sorted[0]!);
-    for (const d of sorted.slice(1)) duplicates.push(guidKey(d.SubscriberGuid));
+    for (const d of sorted.slice(1)) {
+      duplicates.push(guidKey(d.SubscriberGuid));
+      winnerOf.set(guidKey(d.SubscriberGuid), guidKey(sorted[0]!.SubscriberGuid));
+    }
   }
-  return { winners, duplicates, invalid };
+  return { winners, duplicates, invalid, winnerOf };
 }
 
 export interface SubscriberState {
