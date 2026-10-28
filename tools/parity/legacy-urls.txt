@@ -12,6 +12,7 @@
 /archive/2026
 /contact
 /newsletters
+/assets/license
 /Content/Images/Gov/default-og-image-new.jpg
 /search?q=housing&resultspagenum=2
 # section: robots and verification

@@ -6,7 +6,7 @@
 
 ## Verdict
 
-**Final status (plan 5, 2026-10-28, boxs.ca at `main` 7bfb7e7, deploy ad3f5f8): no High or Medium entry is open.** Every one of H1–H6 and M1–M17 is addressed by a commit, some with a recorded deliberate difference beside it (C-rows named in the re-walk table below). Two Low entries stay open: **L5** (web analytics, an operator feature the owner decides, spec §7) and the **`/assets/license` remnant of L3** (boxs.ca answers 404 where legacy 302s to the licence PDF; fix task F-P5-1). The rest of what boxs.ca does not show is data that the cutover import brings: minister biographies, Health factsheets and the 78 legacy releases outside boxs.ca's slice. See "Plan 5 final re-walk".
+**Final status (plan 5, 2026-10-28, boxs.ca at `main` 7bfb7e7, deploy ad3f5f8): no High or Medium entry is open.** Every one of H1–H6 and M1–M17 is addressed by a commit, some with a recorded deliberate difference beside it (C-rows named in the re-walk table below). Two Low entries stay open: **L5** (web analytics, an operator feature the owner decides, spec §7) and nothing else; the **`/assets/license` remnant of L3** is fixed in code (F-P5-1, C305: 302 to the licence PDF as legacy; the boxs.ca check waits for the next deploy). The rest of what boxs.ca does not show is data that the cutover import brings: minister biographies, Health factsheets and the 78 legacy releases outside boxs.ca's slice. See "Plan 5 final re-walk".
 
 The original verdict (2026-10-27) follows.
 
@@ -66,7 +66,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 | `/robots.txt` | `/site/robots.txt` | parity | Test site uses `Disallow: /` (C39). |
 | `/<digits>` (NEWS- reference permalink) → redirect | NEWS-n references resolved | addressed by plan 3 (url-compat T5: baeddc5, 5c3590b) | `/1123` returned 404 on legacy; the curated URL list's references section passes on boxs.ca (1/1). |
 | `/newsletters[/…]` | — | n/a | Legacy 302 to `/` (retired) [V-live]. |
-| `/files/*`, `/assets/*`, `/assets/license` | `/files/<key>` (NRMS storage) | gap L3 (licence line addressed by plan 4, 5598052); **`/assets/license` open: fix task F-P5-1** | `/assets/license` 302 to `/files/News_Footage_License_British_Columbia.pdf` (legacy, re-checked 2026-10-28); boxs.ca answers 404. Our licence text and link are Page text settings (C281). `/files/*` is runbook item 2f. |
+| `/files/*`, `/assets/*`, `/assets/license` | `/files/<key>` (NRMS storage) | gap L3 (licence line addressed by plan 4, 5598052); **`/assets/license` fixed in code by F-P5-1 (C305), live after the next deploy** | `/assets/license` 302 to `/files/News_Footage_License_British_Columbia.pdf` (legacy, re-checked 2026-10-28); boxs.ca answers 404. Our licence text and link are Page text settings (C281). `/files/*` is runbook item 2f. |
 | `/CarouselImage/<id>`, `/SiteStatus`, `/api/live/granville`, `{controller}/MoreArticles` | — | n/a (internal) | Covered by C204, C202 and the Blue Bridge switch. |
 | `/error` | — | n/a | Legacy 500 [V-live]. |
 | Unknown path (404) | the site's 404 page, status 404 | **H1 addressed** (c769bd2; text 5598052, C282) | Legacy shows a styled 404 page [V-live]. |
@@ -284,7 +284,7 @@ One request per entry to boxs.ca (deploy ad3f5f8 of `main` 7bfb7e7), plus the fu
 | M17 | Curated list "long keys" 1/1 | addressed (e95720f, 464581c) |
 | L1 | `/privacy/`: 200, "B.C. Government Website Privacy Statement" | addressed (5598052); C279, C280 |
 | L2 | `/sitemap/html`: 301 to `/sitemap/` | addressed (91629ee, 62a9ebe); C275 |
-| L3 | Release asset rows and translations inside `#assets` (89016db); `/assets/license`: **404** (legacy 302 to the licence PDF) | partly addressed (1868215, 5598052, 89016db; C281, C302). **Open: F-P5-1** |
+| L3 | Release asset rows and translations inside `#assets` (89016db); `/assets/license`: was 404 on boxs.ca, now a 302 to the licence PDF in code as legacy | partly addressed (1868215, 5598052, 89016db; C281, C302). `/assets/license` addressed by F-P5-1 (C305), live after the next deploy |
 | L4 | `/news-subscribe/bc-coroners-service`: 301 to `/tags/bc-coroners-service/` | addressed (de7e6ec) |
 | L5 | No analytics script | **open** (Low; operator feature, spec P13 and §7) |
 | L6 | `/sectors/economy/`: Connect strip, "View all Social Media", Resources | addressed (d6591b1, efa17ea, 3fe99ee); C287 |

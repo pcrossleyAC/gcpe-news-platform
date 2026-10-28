@@ -589,15 +589,15 @@ Runs after batches A and B (and C, if any task ran) are deployed and the rebuild
 
 Task 14 found one code failure. The other misses are data or operator settings, listed in `look-and-feel.md` "Plan 5 result" under "Cutover and data items".
 
-#### F-P5-1: `/assets/license` answers 404 (gap L3 remnant, Low)
+#### F-P5-1: `/assets/license` answers 404 (gap L3 remnant, Low) - DONE (controller ruling P5-R9: option (a), fixed 302 to the site-relative `/files/…` PDF as legacy, query dropped; C305; step 5 runs after deploy)
 
 - **Failing check.** Task 14 Step 4 (gap re-walk, L3). `curl -sI https://boxs.ca/assets/license` gives 404. Legacy `https://news.gov.bc.ca/assets/license` gives 302 to `https://news.gov.bc.ca/files/News_Footage_License_British_Columbia.pdf` (re-checked 2026-10-28). url-compat §1 row `/assets/{*path}` planned a redirect, but no url-compat task built it and no C-row records its absence. After DNS moves, old links to `/assets/license` (legacy release pages with media assets print it) would 404.
 - **Files.** `apps/stack/src/legacy/rules.ts` (fixed rule table), its test file, and `tools/parity/legacy-urls.txt` (add `/assets/license` under "fixed rules").
 - **Decide first (controller).** The target: (a) legacy's own `/files/News_Footage_License_British_Columbia.pdf` on the same host, which only works once runbook item 2f (`/files/*`) is settled; or (b) the Page text setting `pageText.assetLicence.url` when it is set (the link our release pages already print, C281), else the site 404. (b) keeps one place to change the address. Record the choice as a C-row only if the target differs from legacy's.
-- [ ] **Step 1: Failing test.** In the rules test: `GET /assets/license` (any case) returns a 301 to the chosen target, query dropped; with no target configured, the site 404. Run it and see it fail.
-- [ ] **Step 2: Implement** the one rule. No other `/assets/*` path changes: the vendored `/assets/legacy/…` files must still be served (`middleware.ts:371`).
-- [ ] **Step 3: Gates.** `npx vitest run --project node apps/stack`, `npm run check`.
-- [ ] **Step 4: Commit** with `git commit -m "fix(stack): /assets/license redirects to the News Footage License as on news.gov (F-P5-1)"`.
+- [x] **Step 1: Failing test.** In the rules test: `GET /assets/license` (any case) returns a 301 to the chosen target, query dropped; with no target configured, the site 404. Run it and see it fail.
+- [x] **Step 2: Implement** the one rule. No other `/assets/*` path changes: the vendored `/assets/legacy/…` files must still be served (`middleware.ts:371`).
+- [x] **Step 3: Gates.** `npx vitest run --project node apps/stack`, `npm run check`.
+- [x] **Step 4: Commit** with `git commit -m "fix(stack): /assets/license redirects to the News Footage License as on news.gov (F-P5-1)"`.
 - [ ] **Step 5: After deploy,** `npm run parity:urls -- --base https://boxs.ca` passes the new `/assets/license` line, and the gap audit's L3 row moves to addressed.
 
 ---

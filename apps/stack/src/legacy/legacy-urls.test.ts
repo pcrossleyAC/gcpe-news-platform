@@ -141,6 +141,19 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     await expectRedirect(appFor(outputDir, "/site"), "/site/Contact", "https://forms.gov.bc.ca/");
   });
 
+  it("/assets/license → 302 /files/News_Footage_License_British_Columbia.pdf (basePath prefixed), any case, slash or query; nothing else under /assets changes (F-P5-1)", async () => {
+    const pdf = "/files/News_Footage_License_British_Columbia.pdf";
+    for (const path of ["/assets/license", "/Assets/License", "/assets/license/", "/ASSETS/LICENSE?x=1"]) {
+      await expectRedirect(app, path, pdf, 302);
+    }
+    await expectRedirect(appFor(outputDir, "/site"), "/site/assets/license", `/site${pdf}`, 302);
+    // Only that exact path: neighbours and our own /assets files are untouched.
+    for (const path of ["/assets/licenses", "/assets/license/x", "/assets/legacy/Content/Images/Gov/BC_Mark.svg"]) {
+      const res = await request(app).get(path).redirects(0);
+      expect({ path, redirected: res.status >= 300 && res.status < 400 && /News_Footage/.test(String(res.headers.location)) }).toEqual({ path, redirected: false });
+    }
+  });
+
   it("/subscribe/index → 301 /subscribe/ with the query kept byte for byte", async () => {
     await expectRedirect(app, "/subscribe/index?ministries=Health&x=A%2Bb", "/subscribe/?ministries=Health&x=A%2Bb");
     await expectRedirect(app, "/Subscribe/Index", "/subscribe/");
