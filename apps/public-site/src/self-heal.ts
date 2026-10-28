@@ -1,7 +1,7 @@
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { drainQueue } from "./drain";
 import { ministryMenu, NO_MINISTRIES, type MenuMinistry } from "./ministry-menu";
-import { enqueueSiteWrite, tryHome } from "./rebuild";
+import { enqueueSiteWrite, recordedNonEmptyMenu, tryHome } from "./rebuild";
 import { applyChromeChanges, degradedSubscribe, turnOptions, type SyncDeps } from "./sync";
 import { writeBuiltinAssets } from "./site-assets";
 import { writeSubscribePages } from "./subscribe-pages";
@@ -10,7 +10,7 @@ import { writeSubscribePages } from "./subscribe-pages";
 async function tryMinistryMenu(deps: SyncDeps): Promise<MenuMinistry[] | null> {
   try {
     const menu = ministryMenu(await deps.newsApi.ministries());
-    if (menu.length === 0) throw new Error(NO_MINISTRIES);
+    if (menu.length === 0 && (await recordedNonEmptyMenu(deps.storage))) throw new Error(NO_MINISTRIES);
     return menu;
   } catch (err) {
     console.error(`[public-site] failed to fetch ministries() for the header menu ${safeErrorLabel(err)}`);

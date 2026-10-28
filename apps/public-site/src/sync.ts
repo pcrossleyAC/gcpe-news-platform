@@ -8,7 +8,7 @@ import type { NewsApiClient } from "./news-api-client";
 import type { PostIndex } from "./post-index";
 import { enqueuePages, PRIORITY } from "./queue";
 import { ministryMenu, NO_MINISTRIES, type MenuMinistry } from "./ministry-menu";
-import { chromeChanges, enqueueSiteWrite, keepSettingsHashes, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
+import { chromeChanges, enqueueSiteWrite, keepSettingsHashes, recordedNonEmptyMenu, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
 import { enqueueChromeChanges } from "./rebuild-all";
 import type { PageOptions, SiteInfo } from "./render";
 import { writeSubscribePages } from "./subscribe-pages";
@@ -145,9 +145,10 @@ export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Prom
   return enqueueSiteWrite(deps.storage, async () => {
     const { granville } = await deps.newsApi.home();
     const menu = ministryMenu(await deps.newsApi.ministries());
-    // The client answers [] for an empty or "not found" body: that is an outage, not a site with
-    // no ministries, and rendering it would rebuild every page twice (down, then back up).
-    if (menu.length === 0) throw new Error(NO_MINISTRIES);
+    // The client answers [] for an empty or "not found" body. After a non-empty menu was recorded
+    // that is an outage, and rendering it would rebuild every page twice (down, then back up).
+    // With none ever recorded (fresh install, a tenant with no ministries yet) it is a valid menu.
+    if (menu.length === 0 && (await recordedNonEmptyMenu(deps.storage))) throw new Error(NO_MINISTRIES);
     const turn = await turnOptions(deps, granville, menu);
     const { pageOpts } = turn;
     // selfHeal wrote the subscribe pages without the menu (ministries() was down); now it is back.

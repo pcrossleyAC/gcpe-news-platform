@@ -224,7 +224,7 @@ describe("syncSite", () => {
       expect(await queueDepth(tdb.db)).toBe(0);
     });
 
-    it("an empty ministries() answer is unavailable: the turn rejects, and recovery queues exactly one rebuild-all", async () => {
+    it("after a non-empty menu was recorded, an empty ministries() answer is unavailable: the turn rejects, and recovery queues exactly one rebuild-all", async () => {
       const deps = setup(posts(), 1);
       await syncSite(deps);
       const before = (deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json");
@@ -239,6 +239,18 @@ describe("syncSite", () => {
       await reset();
       await syncSite(deps);
       expect(await queueDepth(tdb.db)).toBe(0);
+    });
+
+    it("with no non-empty menu ever recorded, an empty ministries() list is a valid empty menu", async () => {
+      const deps = setup(posts());
+      deps.newsApi.ministries = async () => [];
+      await syncSite(deps);
+      const m = marker(deps);
+      expect(m.ministryMenuHash).toMatch(/^[0-9a-f]{64}$/);
+      await reset();
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+      expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
     });
 
     it("an outage then recovery with the same menu queues nothing", async () => {

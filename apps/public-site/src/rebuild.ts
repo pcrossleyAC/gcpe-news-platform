@@ -42,10 +42,11 @@ export const SITE_STATE_PATH = ".site-state.json";
  * next startup/event rebuilds every page already on disk. 3: the full site (theme, every page
  * type, archives, feeds, sitemaps; spec §6). 4: the site settings' footer and banner placeholder.
  * 5: ministry Media Contacts and filter-only search links (PR #46). 6: the legacy <head> (favicon,
- * html.js marker, vendored legacy CSS, overrides.css) and the theme's legacy variable aliases. Bump for body render changes
+ * html.js marker, vendored legacy CSS, overrides.css) and the theme's legacy variable aliases. 7: the
+ * news.gov header (BC logo, News ministry menu, Subscribe, search, phone drawer) and site.js. Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 6;
+export const RENDER_CHROME_VERSION = 7;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
@@ -82,6 +83,14 @@ async function readSiteState(storage: SiteStorage): Promise<ReadMarker | null> {
     // Malformed/foreign content — treated the same as "no marker" below.
   }
   return null;
+}
+
+/** True when the marker already recorded a non-empty ministries menu: an empty answer is then an
+ * outage, not a tenant with no ministries (ministry-menu.ts). No marker, an old marker or a
+ * recorded empty menu: false. */
+export async function recordedNonEmptyMenu(storage: SiteStorage): Promise<boolean> {
+  const h = (await readSiteState(storage))?.ministryMenuHash;
+  return typeof h === "string" && h !== "" && h !== ministryMenuHash([]);
 }
 
 /**

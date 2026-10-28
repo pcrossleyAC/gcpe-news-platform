@@ -84,9 +84,18 @@ describe("selfHeal", () => {
     }
   });
 
-  it("an empty ministries() answer is treated as down: ministryMenu null, marker untouched, returns null", async () => {
+  it("an empty ministries() answer with no menu ever recorded is a valid empty menu: the site builds", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    deps.newsApi.ministries = async () => [];
+    expect(await selfHeal(deps)).not.toBeNull();
+    expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
+  });
+
+  it("an empty ministries() answer after a non-empty menu was recorded is treated as down: ministryMenu null, marker untouched, returns null", async () => {
     const deps = setup();
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    await selfHeal(deps); // records the fake API's two ministries
+    const marker = storage.files.get(".site-state.json");
     deps.newsApi.ministries = async () => [];
     const opts: PageOptions[] = [];
     const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async (_s, _site, o) => void opts.push(o as PageOptions));
@@ -94,7 +103,7 @@ describe("selfHeal", () => {
     try {
       expect(await selfHeal(deps)).toBeNull();
       expect(opts[0]?.ministryMenu).toBeNull();
-      expect(storage.files.has(".site-state.json")).toBe(false);
+      expect(storage.files.get(".site-state.json")).toBe(marker);
     } finally {
       spy.mockRestore();
       errSpy.mockRestore();
