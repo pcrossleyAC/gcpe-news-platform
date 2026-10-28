@@ -1,16 +1,17 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { DbOrTx, Tx } from "@gcpe/db-kit";
 import { LANG_EN } from "@gcpe/nrms-contract";
 import type { EventEnvelope, EventHandler, OrgSucceeded } from "@gcpe/events";
 import { documentLanguages, newsReleases, releaseDocuments } from "./db/schema";
-import { bcYear } from "./releases/numbering";
 
 /**
  * Core hands ministry `e.key` to `successorKeys[0]` (new-government spec §4). Only drafts move:
  * an approved release already carries its number, key and lead, and rewriting those would change
- * published history. Every step is a no-op the second time, so a redelivery is harmless.
+ * published history. A redelivery is a no-op. There is no counter seed: release numbers are counted
+ * per printed abbreviation (numbering.ts), so a successor that takes HLTH continues HLTH's count by
+ * construction, in any event order.
  */
-export async function applySuccession(tx: Tx, e: OrgSucceeded, timeZone: string): Promise<{ drafts: number }> {
+export async function applySuccession(tx: Tx, e: OrgSucceeded): Promise<{ drafts: number }> {
   const from = e.key.toLowerCase();
   const to = e.successorKeys[0]!.toLowerCase();
   let drafts = 0;
@@ -33,6 +34,7 @@ export async function applySuccession(tx: Tx, e: OrgSucceeded, timeZone: string)
       ), moved AS (
         UPDATE release_categories SET key = ${to}
         WHERE kind = 'ministries' AND key = ${from} AND release_id IN (${draftIds})
+          AND NOT EXISTS (SELECT 1 FROM release_categories o WHERE o.release_id = release_categories.release_id AND o.kind = 'ministries' AND o.key = ${to})
         RETURNING release_id
       )
       SELECT release_id FROM gone UNION SELECT release_id FROM moved`);
@@ -44,22 +46,13 @@ export async function applySuccession(tx: Tx, e: OrgSucceeded, timeZone: string)
     drafts = touched.size;
   }
 
-  if (e.takeAbbreviation && from !== to) {
-    // The successor now signs releases with the predecessor's abbreviation, so its counter must start
-    // where the predecessor's stopped (never lower: GREATEST also keeps a redelivery from rewinding it).
-    const year = bcYear(new Date(e.at), timeZone);
-    await tx.execute(sql`
-      INSERT INTO number_counters (scope, year, ministry, last_value)
-      SELECT 'ministry', year, ${to}, last_value FROM number_counters WHERE scope = 'ministry' AND year = ${year} AND ministry = ${from}
-      ON CONFLICT (scope, year, ministry) DO UPDATE SET last_value = GREATEST(number_counters.last_value, EXCLUDED.last_value)`);
-  }
   return { drafts };
 }
 
-/** Core's org.succeeded → applySuccession. `timeZone` is the tenant's (WorkflowDeps.timeZone) for the counter's year. */
-export function successionHandler(event: EventEnvelope, timeZone = "America/Vancouver"): EventHandler | undefined {
+/** Core's org.succeeded → applySuccession. */
+export function successionHandler(event: EventEnvelope): EventHandler | undefined {
   if (event.source !== "core" || event.type !== "org.succeeded") return undefined;
-  return async (tx, e) => void (await applySuccession(tx, e.data as OrgSucceeded, timeZone));
+  return async (tx, e) => void (await applySuccession(tx, e.data as OrgSucceeded));
 }
 
 export interface OpenReleases {
@@ -67,14 +60,27 @@ export interface OpenReleases {
   notMoved: { id: string; headline: string; status: string; key: string | null }[];
 }
 
-/** What a hand-over of `key` would and would not take: drafts move, approved/scheduled/publishing releases keep their lead. */
+/** What a hand-over of `key` would and would not take: every draft that leads with or lists it moves; approved/scheduled/publishing releases it leads keep their lead. */
 export async function openReleasesOf(db: DbOrTx, key: string): Promise<OpenReleases> {
+  const k = key.toLowerCase();
   const headline = sql<string>`coalesce((SELECT dl.headline FROM ${releaseDocuments} d JOIN ${documentLanguages} dl ON dl.document_id = d.id AND dl.language_id = ${LANG_EN}
     WHERE d.release_id = news_releases.id ORDER BY d.sort_index LIMIT 1), '')`;
   const rows = await db
     .select({ id: newsReleases.id, headline, status: newsReleases.status, key: newsReleases.key })
     .from(newsReleases)
-    .where(and(eq(newsReleases.leadMinistryKey, key.toLowerCase()), inArray(newsReleases.status, ["draft", "approved", "scheduled", "publishing"])))
+    .where(
+      or(
+        // Every draft applySuccession would move: led by the ministry, or merely listing it.
+        and(
+          eq(newsReleases.status, "draft"),
+          or(
+            eq(newsReleases.leadMinistryKey, k),
+            sql`EXISTS (SELECT 1 FROM release_categories rc WHERE rc.release_id = news_releases.id AND rc.kind = 'ministries' AND rc.key = ${k})`,
+          ),
+        ),
+        and(eq(newsReleases.leadMinistryKey, k), inArray(newsReleases.status, ["approved", "scheduled", "publishing"])),
+      ),
+    )
     .orderBy(newsReleases.createdAt, newsReleases.id);
   return {
     drafts: rows.filter((r) => r.status === "draft").map((r) => ({ id: r.id, headline: r.headline })),

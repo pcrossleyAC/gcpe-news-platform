@@ -124,6 +124,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   // Media-list admin (create/edit/deactivate/republish) is Core.Admin only — distinct from
   // NRMS.Editor, which only ever picks a release's existing media lists.
   const mediaListAdmin = requireRole("Core.Admin");
+  const coreAdmin = requireRole("Core.Admin");
   const withStatus = (v: ReleaseView) => ({ ...v, statusText: statusText(v, Date.now()) });
   const version = (req: Request) => versionOnlySchema.parse(req.body).version;
 
@@ -161,7 +162,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   r.get("/categories", read, run(async (_req, res) => void res.json(await listCategories(db))));
 
   // Succession preview (new-government spec §4): drafts that would move, and the releases that keep this lead.
-  r.get("/ministries/:key/open-releases", mediaListAdmin, run(async (req, res) => void res.json(await openReleasesOf(db, String(req.params.key)))));
+  r.get("/ministries/:key/open-releases", coreAdmin, run(async (req, res) => void res.json(await openReleasesOf(db, String(req.params.key)))));
 
   // The Forecast tab (spec addendum §11): releases from now on, and the activities the caller can see.
   r.get(

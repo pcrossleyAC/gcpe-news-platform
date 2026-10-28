@@ -69,7 +69,7 @@ export function createApp(deps: {
   // Mounted before any body parser: signatures cover the raw bytes (see
   // packages/events/src/receiver.ts), so an upstream express.json()/raw() that already
   // consumed the body would make every event fail verification.
-  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: (e) => taxonomyHandler(e) ?? successionHandler(e, deps.workflow.timeZone) ?? calendarHandler(e) }));
+  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: (e) => taxonomyHandler(e) ?? successionHandler(e) ?? calendarHandler(e) }));
 
   if (deps.loginRouter) app.use(deps.loginRouter);
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.

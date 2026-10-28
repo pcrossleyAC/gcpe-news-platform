@@ -10,6 +10,8 @@ import { organizations } from "./db/schema";
 import { createRelease } from "./releases/service";
 import { approve } from "./releases/workflow";
 import { bcYear } from "./releases/numbering";
+import { approveProblems } from "@gcpe/nrms-contract";
+import { loadView } from "./releases/store";
 import { successionHandler } from "./succession";
 
 const TZ = "America/Vancouver";
@@ -24,7 +26,6 @@ describe("NRMS org.succeeded", () => {
   const draft = async (over: Record<string, unknown> = {}) => createRelease(tdb.db, { ...sampleCreate, ...over }, editor);
   const leadOf = async (id: string) => (await tdb.pool.query("SELECT lead_ministry_key AS k FROM news_releases WHERE id = $1", [id])).rows[0].k as string | null;
   const cats = async (id: string) => (await tdb.pool.query("SELECT key FROM release_categories WHERE release_id = $1 AND kind = 'ministries' ORDER BY key", [id])).rows.map((r: { key: string }) => r.key);
-  const counter = async (m: string) => (await tdb.pool.query("SELECT last_value FROM number_counters WHERE scope = 'ministry' AND year = $1 AND ministry = $2", [bcYear(new Date(AT), TZ), m])).rows[0]?.last_value as number | undefined;
 
   beforeAll(async () => {
     tdb = await createNrmsTestDb();
@@ -71,43 +72,68 @@ describe("NRMS org.succeeded", () => {
     expect(await leadOf(d.id)).toBe("wellness");
   });
 
-  it("seeds the successor counter so the next number continues", async () => {
-    const now = new Date().toISOString(); // approve numbers by the clock's year, so the hand-over is dated now
-    const year = bcYear(new Date(now), TZ);
-    await tdb.pool.query("INSERT INTO number_counters (scope, year, ministry, last_value) VALUES ('ministry', $1, 'health', 41)", [year]);
-    const d = await draft();
-    await apply(data({ at: now }));
-    expect((await tdb.pool.query("SELECT last_value FROM number_counters WHERE scope = 'ministry' AND year = $1 AND ministry = 'wellness'", [year])).rows[0].last_value).toBe(41);
-    const fresh = (await tdb.pool.query("SELECT version FROM news_releases WHERE id = $1", [d.id])).rows[0].version as number;
-    expect(fresh).toBe(d.version + 1); // the hand-over bumps the version, so an editor's stale copy conflicts instead of undoing it
-    await approve(tdb.db, d.id, fresh, editor, { timeZone: TZ });
-    const r = (await tdb.pool.query("SELECT ministry_release, key FROM news_releases WHERE id = $1", [d.id])).rows[0];
-    expect(r.ministry_release).toBe(42);
-    expect(r.key).toMatch(new RegExp(`^${year}HLTH0042-`));
-  });
+  const approveAs = async (lead: string) => {
+    const d = await draft({ ministries: [lead], leadMinistryKey: lead });
+    await approve(tdb.db, d.id, d.version, editor, { timeZone: TZ });
+    return (await tdb.pool.query("SELECT ministry_release AS n, key FROM news_releases WHERE id = $1", [d.id])).rows[0] as { n: number; key: string };
+  };
+  const dbYear = async () => bcYear((await tdb.pool.query("SELECT now() AS now")).rows[0].now as Date, TZ);
 
-  it("never lowers a successor counter that is already ahead, and skips when takeAbbreviation is off", async () => {
-    const year = bcYear(new Date(AT), TZ);
-    await tdb.pool.query("INSERT INTO number_counters (scope, year, ministry, last_value) VALUES ('ministry', $1, 'health', 10), ('ministry', $1, 'wellness', 25)", [year]);
+  it("a successor taking the abbreviation continues the count, whichever event or approval comes first", async () => {
+    const year = await dbYear();
+    for (let i = 1; i <= 3; i++) expect((await approveAs("health")).n).toBe(i);
+    // B already holds HLTH locally (org.upserted arrived before org.succeeded), A is deactivated: B continues at 4.
+    await tdb.pool.query("UPDATE organizations SET is_active = false WHERE key = 'health'");
+    const first = await approveAs("wellness");
+    expect(first.n).toBe(4);
+    expect(first.key).toMatch(new RegExp(`^${year}HLTH0004-`));
+    await apply(data()); // the hand-over event, arriving late, changes nothing about numbering
     await apply(data());
-    expect(await counter("wellness")).toBe(25);
-    await tdb.pool.query("DELETE FROM number_counters WHERE ministry = 'wellness'");
-    await apply(data({ takeAbbreviation: false }));
-    expect(await counter("wellness")).toBeUndefined();
+    expect((await approveAs("wellness")).n).toBe(5);
   });
 
-  it("is idempotent on redelivery", async () => {
-    const year = bcYear(new Date(AT), TZ);
-    await tdb.pool.query("INSERT INTO number_counters (scope, year, ministry, last_value) VALUES ('ministry', $1, 'health', 41)", [year]);
+  it("an abbreviation freed and taken again never restarts at 0001 within the year", async () => {
+    await approveAs("health");
+    await approveAs("health");
+    await tdb.pool.query("UPDATE organizations SET abbreviation = 'WELL' WHERE key = 'wellness'");
+    await tdb.pool.query("UPDATE organizations SET is_active = false WHERE key = 'health'");
+    await tdb.db.insert(organizations).values({ key: "newcomer", displayName: "Newcomer", abbreviation: "hlth", sortOrder: 4 });
+    expect((await approveAs("newcomer")).n).toBe(3); // a lower-case abbreviation counts as HLTH
+    expect((await approveAs("wellness")).n).toBe(1); // WELL has its own count
+  });
+
+  it("refuses to approve a release led by a succeeded (inactive) ministry", async () => {
+    const d = await draft();
+    await tdb.pool.query("UPDATE organizations SET is_active = false WHERE key = 'health'");
+    await expect(approve(tdb.db, d.id, d.version, editor, { timeZone: TZ })).rejects.toMatchObject({
+      problems: ["This ministry is no longer active. Change the lead ministry to its successor before approving."],
+    });
+    expect((await tdb.pool.query("SELECT status FROM news_releases WHERE id = $1", [d.id])).rows[0].status).toBe("draft");
+    expect(approveProblems({ ...(await loadView(tdb.db, d.id))!, leadMinistryKey: "health" }, ["health"])).toHaveLength(1);
+    // After the hand-over moves the draft, it approves under the successor.
+    await apply(data());
+    const fresh = (await tdb.pool.query("SELECT version FROM news_releases WHERE id = $1", [d.id])).rows[0].version as number;
+    await approve(tdb.db, d.id, fresh, editor, { timeZone: TZ });
+    expect(await leadOf(d.id)).toBe("wellness");
+  });
+
+  it("a redelivery changes nothing", async () => {
     const d = await draft();
     await apply(data());
     const v1 = (await tdb.pool.query("SELECT version FROM news_releases WHERE id = $1", [d.id])).rows[0].version;
-    await tdb.pool.query("UPDATE number_counters SET last_value = 44 WHERE ministry = 'wellness'"); // successor has since issued numbers
     await apply(data());
     expect(await leadOf(d.id)).toBe("wellness");
     expect(await cats(d.id)).toEqual(["wellness"]);
     expect((await tdb.pool.query("SELECT version FROM news_releases WHERE id = $1", [d.id])).rows[0].version).toBe(v1);
-    expect(await counter("wellness")).toBe(44);
+  });
+
+  it("leaves a published release that lists the ministry (not as lead) alone", async () => {
+    const p = await draft({ ministries: ["finance", "health"], leadMinistryKey: "finance" });
+    await approve(tdb.db, p.id, p.version, editor, { timeZone: TZ });
+    await tdb.pool.query("UPDATE news_releases SET status = 'published', publish_at = now() WHERE id = $1", [p.id]);
+    await apply(data());
+    expect(await cats(p.id)).toEqual(["finance", "health"]);
+    expect(await leadOf(p.id)).toBe("finance");
   });
 
   describe("GET /api/ministries/:key/open-releases", () => {
@@ -118,9 +144,13 @@ describe("NRMS org.succeeded", () => {
       const d = await draft({ headline: "A draft" });
       const a = await draft({ headline: "An approved one" });
       await approve(tdb.db, a.id, a.version, editor, { timeZone: TZ });
-      const s = await draft({ headline: "A scheduled one" });
+      const s = await draft({ headline: "A publishing one" });
       await approve(tdb.db, s.id, s.version, editor, { timeZone: TZ });
       await tdb.pool.query("UPDATE news_releases SET status = 'publishing', publish_at = now() WHERE id = $1", [s.id]);
+      const sc = await draft({ headline: "A scheduled one" });
+      await approve(tdb.db, sc.id, sc.version, editor, { timeZone: TZ });
+      await tdb.pool.query("UPDATE news_releases SET status = 'scheduled', publish_at = now() + interval '1 day' WHERE id = $1", [sc.id]);
+      const listed = await draft({ ministries: ["finance", "health"], leadMinistryKey: "finance", headline: "Lists it only" });
       const pub = await draft({ headline: "Done" });
       await approve(tdb.db, pub.id, pub.version, editor, { timeZone: TZ });
       await tdb.pool.query("UPDATE news_releases SET status = 'published', publish_at = now() WHERE id = $1", [pub.id]);
@@ -128,8 +158,8 @@ describe("NRMS org.succeeded", () => {
 
       const res = await request(app()).get("/api/ministries/health/open-releases").set("cookie", await cookie(["Core.Admin"]));
       expect(res.status).toBe(200);
-      expect(res.body.drafts).toEqual([{ id: d.id, headline: "A draft" }]);
-      expect(res.body.notMoved.map((r: { headline: string; status: string; key: string }) => [r.headline, r.status, typeof r.key]).sort()).toEqual([["A scheduled one", "publishing", "string"], ["An approved one", "approved", "string"]]);
+      expect(res.body.drafts).toEqual([{ id: d.id, headline: "A draft" }, { id: listed.id, headline: "Lists it only" }]);
+      expect(res.body.notMoved.map((r: { headline: string; status: string; key: string }) => [r.headline, r.status, typeof r.key]).sort()).toEqual([["A publishing one", "publishing", "string"], ["A scheduled one", "scheduled", "string"], ["An approved one", "approved", "string"]]);
       expect((await request(app()).get("/api/ministries/health/open-releases").set("cookie", await cookie(["NRMS.Editor"]))).status).toBe(403);
     });
   });

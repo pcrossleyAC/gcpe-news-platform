@@ -64,6 +64,7 @@ import {
 } from "./queries";
 import { stripParamsLines } from "./redact";
 import type { ImportReport } from "./report";
+import { ministryAbbreviation } from "../taxonomy";
 
 export interface ImportReleasesContext {
   pageImageIds: Map<string, string>;
@@ -624,7 +625,7 @@ async function importFeatures(
 interface CounterAggregate {
   maxNewsRef: number;
   maxYearRelease: Map<number, number>;
-  maxMinistryRelease: Map<string, { year: number; ministry: string; max: number }>;
+  maxMinistryRelease: Map<string, { year: number; ministry: string; isAbbreviation: boolean; max: number }>;
 }
 
 function newAggregate(): CounterAggregate {
@@ -640,10 +641,14 @@ function accumulate(agg: CounterAggregate, row: RawReleaseRow): void {
     agg.maxYearRelease.set(row.Year, Math.max(agg.maxYearRelease.get(row.Year) ?? 0, row.YearRelease));
   }
   if (row.Year !== null && row.MinistryRelease !== null) {
-    const ministry = (row.LeadMinistryKey ?? "").toLowerCase();
+    // Counters are per printed abbreviation (numbering.ts), which the legacy key spells: {year}{ABBR}{n}-{m}; ADVIS counts under ''.
+    const abbr = /^\d{4}(.+)\d{4}-\d{6}$/.exec(row.Key)?.[1]?.toUpperCase();
+    // No parseable key: fall back to the lead ministry key, resolved to its abbreviation when the counters are written.
+    const ministry = abbr === "ADVIS" ? "" : (abbr ?? (row.LeadMinistryKey ?? "").toLowerCase());
+    const isAbbreviation = abbr !== undefined;
     const mapKey = `${row.Year}\u0000${ministry}`;
     const prev = agg.maxMinistryRelease.get(mapKey);
-    agg.maxMinistryRelease.set(mapKey, { year: row.Year, ministry, max: Math.max(prev?.max ?? 0, row.MinistryRelease) });
+    agg.maxMinistryRelease.set(mapKey, { year: row.Year, ministry, isAbbreviation, max: Math.max(prev?.max ?? 0, row.MinistryRelease) });
   }
 }
 
@@ -657,7 +662,10 @@ async function seedCounters(db: Db, agg: CounterAggregate): Promise<void> {
   await db.transaction(async (tx) => {
     if (agg.maxNewsRef > 0) await seedCounter(tx, "news", 0, "", agg.maxNewsRef);
     for (const [year, max] of agg.maxYearRelease) await seedCounter(tx, "year", year, "", max);
-    for (const { year, ministry, max } of agg.maxMinistryRelease.values()) await seedCounter(tx, "ministry", year, ministry, max);
+    for (const { year, ministry, isAbbreviation, max } of agg.maxMinistryRelease.values()) {
+      const abbr = isAbbreviation || !ministry ? null : await ministryAbbreviation(tx, ministry);
+      await seedCounter(tx, "ministry", year, isAbbreviation ? ministry : abbr?.trim() ? abbr.trim().toUpperCase() : ministry, max);
+    }
   });
 }
 
