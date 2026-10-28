@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertDialog, Checkbox, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
+import { Link } from "react-router";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
@@ -133,6 +134,9 @@ export function BlueBridgeScreen(): React.JSX.Element {
           </Modal>
         </>
       )}
+      <p>
+        The banner text is on <Link to="/website/identity">Site identity</Link>.
+      </p>
     </div>
   );
 }
