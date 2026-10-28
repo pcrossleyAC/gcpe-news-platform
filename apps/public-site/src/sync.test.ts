@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSiteBuilder, type SiteBuilder } from "./builder";
 import { fsStorage } from "./storage";
-import { settingsHashes } from "./settings";
+import { DEFAULT_TIME_ZONE, settingsHashes } from "./settings";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
@@ -598,6 +598,45 @@ describe("syncSite", () => {
       const r = recording(deps);
       await syncSite(r.deps);
       expect(r.rendered.sort()).toEqual(["category:ministries:finance", "category:ministries:health"]);
+    });
+
+    describe("land acknowledgement (chrome v7)", () => {
+      const preField = () => {
+        const d = bcSettings();
+        delete d.footer.landAcknowledgement;
+        return d;
+      };
+      const BC_ACK = bcSettings().footer.landAcknowledgement!;
+
+      it("a published document without the field shows the tenant default text", async () => {
+        const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: bcSettings() };
+        api(deps).settings = published(preField());
+        await syncSite(deps);
+        for (const p of ["index.html", "releases/K1/index.html", "subscribe/index.html"]) {
+          expect(html(deps, p)).toContain('<aside id="landAcknowledgement" class="container-fluid" aria-label="Land acknowledgement">');
+          expect(html(deps, p)).toContain(BC_ACK);
+        }
+      });
+
+      it("deploying v7 with a filled default queues exactly one rebuild-all; the next turn queues nothing", async () => {
+        const deps = { ...setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })], ["K3", post({ key: "K3" })]]), 1), defaultSettings: bcSettings() };
+        const storage = deps.storage as ReturnType<typeof memoryStorage>;
+        api(deps).settings = published(preField());
+        await syncSite(deps);
+        // The marker a v6 build left: chrome 6 and the footer hash of the unfilled document.
+        const v6 = { ...JSON.parse(storage.files.get(".site-state.json") as string), chrome: 6, footerHash: settingsHashes(preField(), DEFAULT_TIME_ZONE, new Date()).footerHash };
+        await storage.write(".site-state.json", JSON.stringify(v6));
+        await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+        await syncSite(deps);
+        const q = new Set((await tdb.pool.query("SELECT page_id FROM rebuild_queue")).rows.map((r: { page_id: string }) => r.page_id));
+        for (const id of ["post:K1", "post:K2", "post:K3", "archive", "sitemap"]) expect(q.has(id)).toBe(true);
+        const marker = JSON.parse(storage.files.get(".site-state.json") as string);
+        expect(marker.chrome).toBe(RENDER_CHROME_VERSION);
+        expect(marker.footerHash).toBe(settingsHashes(bcSettings(), DEFAULT_TIME_ZONE, new Date()).footerHash);
+        await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+        await syncSite(deps);
+        expect(await queueDepth(tdb.db)).toBe(0);
+      });
     });
 
     it("unchanged settings queue nothing", async () => {

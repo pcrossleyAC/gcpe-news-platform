@@ -115,7 +115,7 @@ ${renderHeader(site, opts)}
 <div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
 ${body}
 </main></div>
-${renderFooter(settings, site)}
+${renderFooter(settings, site, opts)}
 <script src="${e(base)}/assets/site/site.js" defer onerror="${e(SITE_SCRIPT_ONERROR)}"></script>
 </body>
 </html>
@@ -137,14 +137,33 @@ function helpSentence(links: LinkSetting[], site: SiteInfo): string {
 
 const linkList = (links: LinkSetting[], site: SiteInfo) => links.map((l) => `<li>${settingsLink(l, site)}</li>`).join("\n");
 
-/** Every page's footer, from the site settings (spec "Delivery": a change rebuilds every page). */
-function renderFooter(settings: SiteSettings, site: SiteInfo): string {
+/**
+ * Every page's land acknowledgement band and footer, from the site settings (spec "Delivery": a
+ * change rebuilds every page): legacy `_Layout`'s skeleton (look-and-feel §1) with the §5
+ * deviations — the band is an `aside` landmark with no inline style, the footer is `footer#footer`
+ * (no `role=navigation`), its headings are `h2` (overrides.css restates legacy's `#footer h4`),
+ * the link columns sit in one labelled `nav` (`display:contents`, so legacy's flex row holds) and
+ * the lists carry no `role=menu`. One logo, the bridge file while Blue Bridge is on, instead of
+ * legacy's two toggled by class. An empty or whitespace-only acknowledgement shows no band.
+ */
+function renderFooter(settings: SiteSettings, site: SiteInfo, opts: PageOptions): string {
   const f = settings.footer;
+  const ack = f.landAcknowledgement?.trim() ? `<aside id="landAcknowledgement" class="container-fluid" aria-label="Land acknowledgement"><div class="container-xl"><p>${e(f.landAcknowledgement)}</p></div></aside>\n` : "";
   const help = [f.helpText ? e(f.helpText) : "", helpSentence(f.helpLinks, site)].filter(Boolean).join(" ");
-  const column = (cls: string, heading: string, links: LinkSetting[]) => (links.length ? `<div class="${cls}">\n<h2>${heading}</h2>\n<ul>\n${linkList(links, site)}\n</ul>\n</div>` : "");
-  const columns = [column("footer-connect", "Connect with Us", f.connectLinks), column("footer-more-info", "More Info", f.moreInfoLinks)].filter(Boolean).join("\n");
+  const column = (cls: string, heading: string, links: LinkSetting[], ulClass = "") =>
+    links.length ? `<div class="${cls}">\n<h2>${heading}</h2>\n<ul${ulClass ? ` class="${ulClass}"` : ""}>\n${linkList(links, site)}\n</ul>\n</div>` : "";
+  const columns = [column("footer-connect", "Connect with Us", f.connectLinks), column("footer-more-info", "More Info", f.moreInfoLinks, "pull-left")].filter(Boolean).join("\n");
+  const logo = `${e(basePath(site))}/assets/legacy/Content/Images/Gov/BCID_H_rgb_pos_LH_crop${opts.banner ? "_bridge" : ""}.svg`;
   const year = yearIn(site.timeZone ?? DEFAULT_TIME_ZONE, new Date());
-  return `<footer class="site-footer">
-${help ? `<p class="footer-help">${help}</p>\n` : ""}${columns ? `<div class="footer-columns">\n${columns}\n</div>\n` : ""}<p class="copyright">© ${e(year)} ${e(f.copyrightHolder)}</p>
+  return `${ack}<footer id="footer" class="container-fluid">
+<div class="top container-xl">
+<div class="footer-bc">
+<img id="BCGov-logo-footer" src="${logo}" alt="Government of B.C.">
+${help ? `<p>${help}</p>\n` : ""}</div>
+${columns ? `<nav aria-label="Footer">\n${columns}\n</nav>\n` : ""}<hr>
+</div>
+<div class="container-xl bottom">
+<div class="copyright">© ${e(year)} ${e(f.copyrightHolder)}</div>
+</div>
 </footer>`;
 }

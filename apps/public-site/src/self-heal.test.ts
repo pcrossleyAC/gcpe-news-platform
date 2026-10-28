@@ -167,6 +167,21 @@ describe("selfHeal", () => {
     for (const f of SUBSCRIBE_FILES) expect(storage.files.get(f)).toContain("Published Holder");
   });
 
+  it("a published document without the land acknowledgement shows the tenant default band, the subscribe pages included", async () => {
+    const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: bcSettings() };
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    const document = bcSettings();
+    delete document.footer.landAcknowledgement;
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).settings = { revision: 1, document };
+    await selfHeal(deps);
+    const ack = bcSettings().footer.landAcknowledgement!;
+    expect(ack).not.toBe("");
+    for (const f of ["index.html", ...SUBSCRIBE_FILES]) {
+      expect(storage.files.get(f)).toContain('<aside id="landAcknowledgement"');
+      expect(storage.files.get(f)).toContain(ack);
+    }
+  });
+
   it("a settings section changed since the marker queues only its pages", async () => {
     const deps = setup(new Map([["K1", post({ key: "K1" })]]));
     const newsApi = deps.newsApi as ReturnType<typeof fakeNewsApi>;

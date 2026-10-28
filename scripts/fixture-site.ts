@@ -10,6 +10,7 @@ import type { AddressInfo } from "node:net";
 import { extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTenantConfig } from "@gcpe/config";
+import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { createSiteBuilder } from "../apps/public-site/src/builder";
 import type { CategoryDto, PostDto } from "../apps/public-site/src/dto";
 import type { NewsApiClient } from "../apps/public-site/src/news-api-client";
@@ -82,9 +83,12 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
   };
   const tenant = loadTenantConfig(BC_TENANT);
-  const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme };
+  const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme, timeZone: tenant.timeZone };
+  // BC's tenant settings, as the live site shows them before anything is published: the footer
+  // links and the land acknowledgement band, so axe and Lighthouse check them too.
+  const settings = loadSiteSettingsDefaults(BC_TENANT, tenant.site.theme);
   const builder = createSiteBuilder({ newsApi, storage: fsStorage(outDir), index: memoryIndex(), site, assetsDir: null });
-  const result = await builder.buildAll({ test: o.test, ministryMenu: ministryMenu(await newsApi.ministries()) });
+  const result = await builder.buildAll({ test: o.test, settings, ministryMenu: ministryMenu(await newsApi.ministries()) });
   if (result.failures > 0) throw new Error(`fixture site: ${result.failures} page(s) failed to build`);
 }
 

@@ -212,10 +212,10 @@ describe("renderPage footer from site settings", () => {
 
   it("the help sentence: help text, then the links with the comma rule", () => {
     const f = footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings }));
-    expect(f.querySelector(".footer-help")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+    expect(f.querySelector(".footer-bc > p")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
       "We can help in over 220 languages and through other accessible options. Call, email or text us, or find a service centre.",
     );
-    expect([...f.querySelectorAll(".footer-help a")].map((a) => a.getAttribute("href"))).toEqual([
+    expect([...f.querySelectorAll(".footer-bc > p a")].map((a) => a.getAttribute("href"))).toEqual([
       "https://www2.gov.bc.ca/gov/content/home/get-help-with-government-services",
       "https://www2.gov.bc.ca/gov/content/home/services-a-z",
     ]);
@@ -223,9 +223,9 @@ describe("renderPage footer from site settings", () => {
 
   it("the comma rule with three links and with one", () => {
     const three = { ...settings, footer: { ...settings.footer, helpText: "Help.", helpLinks: [{ text: "A", url: "/a" }, { text: "B", url: "/b" }, { text: "C", url: "/c" }] } };
-    expect(footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: three })).querySelector(".footer-help")?.textContent?.replace(/\s+/g, " ").trim()).toBe("Help. A, B, or C.");
+    expect(footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: three })).querySelector(".footer-bc > p")?.textContent?.replace(/\s+/g, " ").trim()).toBe("Help. A, B, or C.");
     const one = { ...settings, footer: { ...settings.footer, helpText: "Help.", helpLinks: [{ text: "A", url: "/a" }] } };
-    expect(footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: one })).querySelector(".footer-help")?.textContent?.replace(/\s+/g, " ").trim()).toBe("Help. A.");
+    expect(footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: one })).querySelector(".footer-bc > p")?.textContent?.replace(/\s+/g, " ").trim()).toBe("Help. A.");
   });
 
   it("Connect with Us and More Info lists carry their ids; / links get the base path", () => {
@@ -267,13 +267,89 @@ describe("renderPage footer from site settings", () => {
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("evil.example");
     expect(html).not.toContain('href="http://gov.bc.ca"');
-    expect(f.querySelector(".footer-help")?.textContent).toContain("<b>Help</b>");
-    expect(f.querySelector(".footer-help a")).toBeNull();
-    expect(f.querySelector(".footer-help")?.textContent).toContain("<i>Call</i>.");
+    expect(f.querySelector(".footer-bc > p")?.textContent).toContain("<b>Help</b>");
+    expect(f.querySelector(".footer-bc > p a")).toBeNull();
+    expect(f.querySelector(".footer-bc > p")?.textContent).toContain("<i>Call</i>.");
     expect(f.querySelector(".footer-connect a")?.id).toBe('x" onclick="alert(1)');
     expect(f.querySelector(".footer-connect a")?.getAttribute("onclick")).toBeNull();
     expect([...f.querySelectorAll(".footer-more-info li")].map((li) => [li.textContent, li.querySelector("a")])).toEqual([["Insecure", null], ["Off-site", null]]);
     expect(f.querySelector(".copyright")?.textContent).toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("renderPage footer skeleton and land acknowledgement band", () => {
+  const site = { name: "BC Gov News", baseUrl: "https://boxs.example/site", theme: DEFAULT_THEME, timeZone: "America/Vancouver" };
+  const withAck = (text: string | undefined) => {
+    const s = bcSettings();
+    if (text === undefined) delete s.footer.landAcknowledgement;
+    else s.footer.landAcknowledgement = text;
+    return s;
+  };
+
+  it("renders #landAcknowledgement with the settings text, escaped, above footer#footer", () => {
+    const html = renderPage("T", site, "/site/", "<h1>H</h1>", { settings: withAck("We <b>acknowledge</b> & thank.") });
+    const doc = expectAccessibleStructure(html);
+    const band = doc.querySelector("aside#landAcknowledgement")!;
+    expect(band).not.toBeNull();
+    expect(band.className).toBe("container-fluid");
+    expect(band.getAttribute("aria-label")).toBe("Land acknowledgement");
+    expect(band.hasAttribute("style")).toBe(false);
+    const p = band.querySelector(":scope > div.container-xl > p")!;
+    expect(p.textContent).toBe("We <b>acknowledge</b> & thank.");
+    expect(p.querySelector("b")).toBeNull();
+    expect(p.hasAttribute("style")).toBe(false);
+    expect(html).toContain("We &lt;b&gt;acknowledge&lt;/b&gt; &amp; thank.");
+    expect(band.nextElementSibling).toBe(doc.querySelector("footer#footer"));
+  });
+
+  it("no band when the text is empty or whitespace", () => {
+    for (const text of ["", "   \n\t "]) {
+      const html = renderPage("T", site, "/site/", "<h1>H</h1>", { settings: withAck(text) });
+      expect(html).not.toContain("landAcknowledgement");
+      expect(expectAccessibleStructure(html).querySelector("aside")).toBeNull();
+    }
+    // A pre-field document that reached render unfilled is no band either, not "undefined".
+    expect(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: withAck(undefined) })).not.toContain("landAcknowledgement");
+  });
+
+  it("footer#footer has .footer-bc (logo + help), nav[aria-label=Footer] with two h2 columns, hr, .bottom .copyright; no role=navigation or menu", () => {
+    const html = renderPage("T", site, "/site/", "<h1>H</h1>", { settings: bcSettings() });
+    const doc = expectAccessibleStructure(html);
+    const f = doc.querySelector("footer")!;
+    expect(f.id).toBe("footer");
+    expect(f.className).toBe("container-fluid");
+    const top = f.querySelector(":scope > div.top.container-xl")!;
+    expect([...top.children].map((c) => c.tagName.toLowerCase() + (c.className ? "." + c.className : ""))).toEqual(["div.footer-bc", "nav", "hr"]);
+    const logo = top.querySelector(".footer-bc > img#BCGov-logo-footer")!;
+    expect(logo.getAttribute("src")).toBe("/site/assets/legacy/Content/Images/Gov/BCID_H_rgb_pos_LH_crop.svg");
+    expect(logo.getAttribute("alt")).toBe("Government of B.C.");
+    expect(top.querySelector(".footer-bc > p")?.textContent).toContain("We can help in over 220 languages");
+    const nav = top.querySelector(":scope > nav")!;
+    expect(nav.getAttribute("aria-label")).toBe("Footer");
+    expect([...nav.children].map((c) => c.className)).toEqual(["footer-connect", "footer-more-info"]);
+    expect([...nav.querySelectorAll(":scope > div > h2")].map((h) => h.textContent)).toEqual(["Connect with Us", "More Info"]);
+    expect(nav.querySelector(".footer-connect > ul")).not.toBeNull();
+    expect(nav.querySelector(".footer-more-info > ul.pull-left")).not.toBeNull();
+    expect(f.querySelector(":scope > div.container-xl.bottom > div.copyright")?.textContent).toMatch(/^© \d{4} Government of British Columbia$/);
+    expect(f.querySelectorAll("h4")).toHaveLength(0);
+    expect(doc.querySelectorAll('[role="navigation"], [role="menu"], [role="menuitem"]')).toHaveLength(0);
+  });
+
+  it("empty columns are omitted", () => {
+    const s = bcSettings();
+    s.footer.connectLinks = [];
+    const nav = expectAccessibleStructure(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: s })).querySelector("footer nav")!;
+    expect([...nav.children].map((c) => c.className)).toEqual(["footer-more-info"]);
+    s.footer.moreInfoLinks = [];
+    const doc = expectAccessibleStructure(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: s }));
+    expect(doc.querySelector("footer nav")).toBeNull();
+    expect(doc.querySelector("footer .top > hr")).not.toBeNull();
+  });
+
+  it("bridge footer logo when Blue Bridge is on", () => {
+    const doc = expectAccessibleStructure(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: bcSettings(), banner: "Blue Bridge" }));
+    expect(doc.querySelector("#BCGov-logo-footer")?.getAttribute("src")).toBe("/site/assets/legacy/Content/Images/Gov/BCID_H_rgb_pos_LH_crop_bridge.svg");
+    expect(doc.querySelectorAll("footer img")).toHaveLength(1);
   });
 });
 

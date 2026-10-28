@@ -15,6 +15,9 @@ describe("the fixture site (6e exit checks)", () => {
         const html = await readFile(join(dir, fileOf(path)), "utf8");
         expect(html, path).toContain("<main");
         expect(html.includes('content="noindex, nofollow"'), path).toBe(test);
+        // BC's tenant settings: the land acknowledgement band and footer, checked by axe and Lighthouse too.
+        expect(html, path).toContain('<aside id="landAcknowledgement"');
+        expect(html, path).toContain('<footer id="footer"');
       }
     } finally {
       await rm(dir, { recursive: true, force: true });

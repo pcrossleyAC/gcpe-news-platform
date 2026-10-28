@@ -81,9 +81,10 @@ describe("renderMinistryPage", () => {
     const html = renderMinistryPage(ministry({ ministryUrl: "javascript:alert(1)" }), minister, emptyPosts, site, {});
     expect(html).not.toContain('href="javascript:');
     expect(html).not.toContain('src="javascript:');
-    expect(html.slice(html.indexOf("<main"))).not.toContain("<img"); // the header's BC logos aside
+    const main = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
+    expect(main).not.toContain("<img"); // the header's and footer's BC logos aside
     expect(html).not.toContain("Ministry Website");
-    expect(html).not.toContain("<aside");
+    expect(main).not.toContain("<aside"); // the footer's land acknowledgement band aside
   });
 
   it("links the feed alternate at /ministries/<key>/feed.xml", () => {
@@ -176,7 +177,7 @@ describe("renderMinistryPage side column", () => {
 
   it("puts Media Contacts, More from this Ministry, Featured Topics, Featured Services in an aside, in order", () => {
     const doc = render(full());
-    const aside = doc.querySelector("aside");
+    const aside = doc.querySelector("main aside");
     expect(aside).not.toBeNull();
     expect(aside?.getAttribute("aria-label") || aside?.getAttribute("aria-labelledby")).toBeTruthy();
     expect([...aside!.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(["Media Contacts", "More from this Ministry", "Featured Topics", "Featured Services"]);
@@ -206,7 +207,7 @@ describe("renderMinistryPage side column", () => {
 
   it("has no aside when every group is empty", () => {
     const doc = render(ministry({ ministryUrl: null }));
-    expect(doc.querySelector("aside")).toBeNull();
+    expect(doc.querySelector("main aside")).toBeNull();
   });
 
   it("keeps http: and https: links, resolves site-relative ones under the base path, drops javascript:/data: and escapes text", () => {
