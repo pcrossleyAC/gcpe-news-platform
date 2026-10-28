@@ -1,46 +1,20 @@
-import type { CategoryDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto } from "../dto";
+import type { CategoryDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "../dto";
 import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "../render";
 import { commContact, contactValue } from "./comm-contact";
 import { categoryPageId, factsheetsUrl, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
-import { displayDate, postListItem } from "./format";
+import { sortNewest } from "./format";
 import type { MinistryPageLabels } from "@gcpe/site-settings";
 import { themeDefaults } from "../settings";
 import { ministryLinkGroups, resourceLinks } from "./side-links";
 import { ministerCard, ministrySidebar, PREMIER_KEY } from "./minister";
+import { connectStrip } from "./connect-strip";
 import { latestCards, postCard } from "./post-card";
+import { resourcesBox } from "./resources";
 
 interface CategoryPosts {
   top: PostDto | null;
   feature: PostDto | null;
   latest: PostDto[];
-}
-
-const ENGLISH = 4105;
-const english = (p: PostDto) => p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0];
-
-function listCard(site: Pick<SiteInfo, "baseUrl">, p: PostDto): string {
-  const headline = english(p)?.headline ?? p.key;
-  const summary = p.summary ? `<p>${e(p.summary)}</p>` : "";
-  return `<div class="card"><a href="${e(pageUrl(site, { type: "post", key: p.key }))}">${e(headline)}</a> <time datetime="${e(p.publishDate)}">${e(displayDate(p.publishDate))}</time>${summary}</div>`;
-}
-
-function postsSections(site: SiteInfo, posts: CategoryPosts): string {
-  const top = posts.top ? `<section>\n<h2>Top story</h2>\n${listCard(site, posts.top)}\n</section>` : "";
-  const feature = posts.feature ? `<section>\n<h2>Featured</h2>\n${listCard(site, posts.feature)}\n</section>` : "";
-  const latest = posts.latest.length
-    ? `<section>\n<h2>Latest news</h2>\n<ul class="post-list">\n${posts.latest.map((p) => postListItem(site, { key: p.key, headline: english(p)?.headline ?? p.key, publishDate: p.publishDate, summary: p.summary })).join("\n")}\n</ul>\n</section>`
-    : "";
-  return [top, feature, latest].filter(Boolean).join("\n");
-}
-
-const SEARCH_FILTER: Partial<Record<CategoryKind, string>> = { ministries: "ministry", sectors: "sector" };
-
-/** "Browse the archive by month" plus, only for the kinds `/api/v2/search` can filter by
- * (ministries, sectors — §6.1; Q82), "search <name> news". */
-function moreLinks(site: SiteInfo, kind: CategoryKind, key: string, name: string): string {
-  const filter = SEARCH_FILTER[kind];
-  const search = filter ? ` or <a href="${e(basePath(site))}/search/?${filter}=${e(encodeURIComponent(key))}">search ${e(name)} news</a>` : "";
-  return `<p><a href="${e(basePath(site))}/archive/">Browse the archive by month</a>${search}.</p>`;
 }
 
 /** Legacy (Views/Shared/Ministry.cshtml) "Media Contacts": only when the first contact exists; the
@@ -188,11 +162,46 @@ ${ministrySidebar(site, m, minister, ctx.profile, collapsibleRegions(site, m, se
   });
 }
 
-export function renderCategoryPage(kind: Exclude<CategoryKind, "ministries">, c: CategoryDto, posts: CategoryPosts, site: SiteInfo, opts: PageOptions = {}): string {
+/**
+ * A sector, theme or tag page in legacy Sector.cshtml's look: the ministry listing's skeleton
+ * (`.ministry-listing.sector-listing > .home-layout`) with no side column. The category name is the
+ * one h1; the cards are the top, feature and latest posts in one newest-first list, each once
+ * (spec conflict 11: legacy's Sector.cshtml left the top and feature out); Load More only past
+ * three; Search News only where `/api/v2/search` can filter (sectors); then the archive link and the
+ * Resources box. The Connect strip follows in a labelled section (no <aside> inside <main>).
+ */
+export function renderCategoryPage(kind: Exclude<CategoryKind, "ministries">, c: CategoryDto, posts: CategoryPosts, links: ResourceLinkDto[], site: SiteInfo, opts: PageOptions = {}): string {
   const key = c.key.toLowerCase();
-  const body = `<h1>${e(c.name)}</h1>
-${postsSections(site, posts)}
-${moreLinks(site, kind, key, c.name)}`;
+  const base = basePath(site);
+  const settings = opts.settings ?? themeDefaults(site.theme);
+  const labels = settings.navigation.labels;
+  const merged = sortNewest([posts.top, posts.feature, ...posts.latest]);
+  const { cards, loadMore } = latestCards(site, merged, { loadMoreLabel: labels.loadMoreNews });
+  const empty = merged.length === 0 ? `<p class="listing-empty">Nothing has been published yet.</p>\n` : "";
+  const search = kind === "sectors" ? `<a href="${e(base)}/search/?sector=${e(encodeURIComponent(key))}" class="read-more">${e(labels.searchNews)}</a>\n` : "";
+  const resources = resourcesBox(site, labels.resources, links);
+  const body = `<h1 class="ministry-name-mobile">${e(c.name)}</h1>
+<div class="pt-2 ministry-listing sector-listing">
+<div class="home-layout">
+<div class="home-body" id="main-content-release">
+<div class="other-articles">
+<div id="regular-articles" class="regular-articles">
+${cards}
+</div>
+${empty}<div class="news-control">
+${loadMore}${search}<div class="clear"></div>
+</div>
+<p><a href="${e(base)}/archive/">Browse the archive by month</a></p>
+</div>
+<div class="collapsible-regions">${resources ? `\n${resources}` : ""}
+</div>
+</div>
+<section class="home-features" aria-label="${e(`About ${c.name}`)}">
+<p class="ministry-title" aria-hidden="true">${e(c.name)}</p>
+${connectStrip(settings, base)}
+</section>
+</div>
+</div>`;
 
   return renderPage(c.name, site, pageUrl(site, { type: "category", kind, key }), body, {
     ...opts,

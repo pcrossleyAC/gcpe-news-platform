@@ -41,6 +41,8 @@ export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes
     const ids = section === "labels" ? await builder.aggregatePageIds() : section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home", ...LISTING_KINDS.map((k) => `kind:${k}`)] : section === "releaseShare" || section === "releaseLicence" ? [] : [section];
     items.push(...ids.map((pageId) => ({ pageId, priority: section === "labels" ? PRIORITY.bulkAggregate : PRIORITY.liveAggregate })));
   }
+  // Sector, theme and tag pages carry the Connect strip: bulk, behind the pages people are watching.
+  if (changes.sections.includes("connect")) items.push(...(await builder.categoryListingPageIds()).map((pageId) => ({ pageId, priority: PRIORITY.bulkAggregate })));
   // Every release page bakes in the ministryPages labels (Media Contacts, More from this
   // Ministry, the side column's headings) and the connect section's Share → Instagram account
   // (releaseShare), so either change re-renders every post, at rebuild-all's bulk priority (settings

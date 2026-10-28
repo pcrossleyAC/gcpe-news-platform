@@ -1,5 +1,5 @@
 import type { StoredSiteSettings } from "@gcpe/site-settings";
-import type { CategoryDto, GovernmentTermsDto, PostDto, SlideDto } from "../src/dto";
+import type { CategoryDto, GovernmentTermsDto, PostDto, ResourceLinkDto, SlideDto } from "../src/dto";
 import type { NewsApiClient } from "../src/news-api-client";
 import { ministry } from "./fixtures";
 
@@ -16,6 +16,11 @@ export type FakeNewsApi = NewsApiClient & {
   settings: { revision: number; document: StoredSiteSettings } | null;
   /** What `categories("sectors")` answers (home's News by Sector); other kinds answer []. */
   sectors: CategoryDto[];
+  /** What `categories("themes")` and `categories("tags")` answer. */
+  themes: CategoryDto[];
+  tags: CategoryDto[];
+  /** Links `resourceLinks()` answers. */
+  links: ResourceLinkDto[];
   /** What `slides()` answers (home's carousel band). */
   slideList: SlideDto[];
   terms: GovernmentTermsDto | null;
@@ -32,6 +37,9 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     /** What `siteSettings()` answers: null is the News API's 404 (nothing published yet). */
     settings: null,
     sectors: [],
+    themes: [],
+    tags: [],
+    links: [],
     slideList: [],
     /** What `governmentTerms()` answers: null is the News API's 404. */
     terms: null,
@@ -50,10 +58,10 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     ministry: async (key) => (["health", "finance"].includes(key.toLowerCase()) ? ministry({ key: key.toLowerCase(), name: key }) : null),
     ministryProfiles: async () => [],
     minister: async () => null,
-    categories: async (kind) => (kind === "sectors" ? api.sectors : []),
-    category: async (_kind, key) => (key === "covid-19" ? { key, kind: "tags", name: "COVID-19", isActive: true, topPostKey: null, featurePostKey: null } : null),
+    categories: async (kind) => (kind === "sectors" ? api.sectors : kind === "themes" ? api.themes : kind === "tags" ? api.tags : []),
+    category: async (kind, key) => ([...api.sectors, ...api.themes, ...api.tags].find((c) => c.kind === kind && c.key === key) ?? null) ?? (key === "covid-19" ? { key, kind: "tags", name: "COVID-19", isActive: true, topPostKey: null, featurePostKey: null } : null),
     slides: async () => api.slideList,
-    resourceLinks: async () => [],
+    resourceLinks: async () => api.links,
     related: async () => [],
     postKeys: async (kind) => published().filter((p) => p.kind === kind).map((p) => p.key),
     siteSettings: async () => { calls.push("siteSettings"); return api.settings; },

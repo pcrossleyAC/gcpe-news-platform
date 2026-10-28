@@ -107,6 +107,36 @@ describe("site builder", () => {
     expect(page).toContain("<h1 class=\"listing-title\">Factsheets &amp; Opinion Editorials</h1>");
   });
 
+  it("a sector page: top, feature and latest in one date-ordered card list, each once; Resources from the News API; a ministry page shows a top that is also the feature once", async () => {
+    const posts = new Map([
+      ["T1", post({ key: "T1", publishDate: "2026-10-01T10:00:00-07:00", sectorKeys: ["economy"], ministryKeys: ["health"] })],
+      ["F1", post({ key: "F1", publishDate: "2026-10-05T10:00:00-07:00", sectorKeys: ["economy"] })],
+      ["L1", post({ key: "L1", publishDate: "2026-10-03T10:00:00-07:00", sectorKeys: ["economy"] })],
+      ["L2", post({ key: "L2", publishDate: "2026-10-04T10:00:00-07:00", sectorKeys: ["economy"] })],
+    ]);
+    const { storage, api, builder } = setup(posts);
+    api.sectors = [{ key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: "T1", featurePostKey: "F1" }];
+    api.links = [{ key: "Contact us", uri: "/contacts/" }];
+    await builder.rebuild(["category:sectors:economy"], { settings: bcSettings() });
+    const page = html(storage, "sectors/economy/index.html");
+    const order = [...page.matchAll(/href="\/releases\/(\w+)\/"/g)].map((m) => m[1]).filter((k, i, a) => a.indexOf(k) === i);
+    expect(order).toEqual(["F1", "L2", "L1", "T1"]);
+    expect(page.match(/<div class="article/g)).toHaveLength(4);
+    expect(page).toContain("sector-listing");
+    expect(page).toContain('href="/contacts/"');
+  });
+
+  it("a ministry whose top and feature are the same post shows it once", async () => {
+    const posts = new Map([["S1", post({ key: "S1", ministryKeys: ["health"] })]]);
+    const { storage, api, builder } = setup(posts);
+    const ministry = api.ministry;
+    api.ministry = async (k) => { const m = await ministry(k); return m ? { ...m, topPostKey: "S1", featurePostKey: "S1" } : m; };
+    await builder.rebuild(["category:ministries:health"], { settings: bcSettings() });
+    const page = html(storage, "ministries/health/index.html");
+    expect(page).toContain('class="top-article"');
+    expect(page).not.toContain("feature-article");
+  });
+
   it("a kind listing renders deterministically: twice writes the same bytes, one latestOfKind fetch per render", async () => {
     const { storage, api, builder } = setup(new Map([["S1", post({ key: "S1", kind: "stories" })]]));
     await builder.rebuild(["kind:stories"], { settings: bcSettings() });

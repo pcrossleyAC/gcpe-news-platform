@@ -10,7 +10,7 @@ import { renderConnectPage } from "./pages/connect";
 import { renderContactsPage } from "./pages/contacts";
 import { renderLivePage } from "./pages/live";
 import { renderPrivacyPage } from "./pages/privacy";
-import { LATEST_COUNT } from "./pages/format";
+import { LATEST_COUNT, sortNewest } from "./pages/format";
 import { renderHomePage } from "./pages/home";
 import { renderKindListing } from "./pages/listing";
 import { hasBiography, renderBiographyPage } from "./pages/minister";
@@ -73,6 +73,9 @@ export interface SiteBuilder {
   aggregatePageIds(): Promise<string[]>;
   /** Every ministry page id — what a `ministryPages` settings change rebuilds. */
   ministryPageIds(): Promise<string[]>;
+  /** Every sector, theme and tag page id — what a `resource_links` change or a `connect` settings
+   * change rebuilds (their pages carry the Resources box and the Connect strip). */
+  categoryListingPageIds(): Promise<string[]>;
   /** The terms index, the `current` alias and every public term's page — what a
    * `government_terms` change rebuilds (new-government spec §3). */
   termPageIds(): Promise<string[]>;
@@ -143,7 +146,10 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   const featured = async (top: string | null, feature: string | null) => {
     const found = await newsApi.postsByKeys([top, feature].filter((k): k is string => !!k));
     const pick = (k: string | null) => (k ? (found.find((p) => p.key.toLowerCase() === k.toLowerCase()) ?? null) : null);
-    return { top: pick(top), feature: pick(feature) };
+    const t = pick(top);
+    const f = pick(feature);
+    // The same post in both slots shows once.
+    return { top: t, feature: f && t && f.key.toLowerCase() === t.key.toLowerCase() ? null : f };
   };
 
   /**
@@ -327,7 +333,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     }
     const [latest, f] = await Promise.all([newsApi.latest(kind, key, LATEST_COUNT), featured(c.topPostKey, c.featurePostKey)]);
     feedRef.title = `${c.name}: latest news`;
-    await storage.write(page, renderCategoryPage(kind, c, { ...f, latest }, site, { ...opts, feed: feedRef }));
+    const links = await newsApi.resourceLinks();
+    await storage.write(page, renderCategoryPage(kind, c, { ...f, latest }, links, site, { ...opts, feed: feedRef }));
     await writeFeeds(`News about ${c.name}`, sortNewest([f.top, f.feature, ...latest]));
     return [];
   }
@@ -546,6 +553,19 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       return [...ids].sort();
     },
 
+    async categoryListingPageIds() {
+      const ids = new Set<string>();
+      for (const kind of CATEGORY_KINDS) {
+        if (kind === "ministries") continue;
+        for (const c of await newsApi.categories(kind)) {
+          const id = categoryPageId(kind, c.key);
+          if (id) ids.add(id);
+        }
+      }
+      for (const token of await index.categories()) if (!token.startsWith("ministries:")) ids.add(`category:${token}`);
+      return [...ids].sort();
+    },
+
     async termPageIds() {
       // Never rejects (NG-R18): during an outage, the last applied terms, else just the index and
       // the alias. Term directories already on disk are listed too, so a term that has left the
@@ -589,11 +609,4 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) =>
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
-}
-
-function sortNewest(posts: (PostDto | null)[]): PostDto[] {
-  const seen = new Set<string>();
-  return posts
-    .filter((p): p is PostDto => !!p && !seen.has(p.key.toLowerCase()) && !!seen.add(p.key.toLowerCase()))
-    .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
 }

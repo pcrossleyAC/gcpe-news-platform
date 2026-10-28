@@ -283,30 +283,69 @@ describe("renderMinistryPage", () => {
   });
 });
 
-describe("renderCategoryPage", () => {
-  it("is accessible, with the category name as h1", () => {
-    const doc = expectAccessibleStructure(renderCategoryPage("sectors", category({ name: "Economy" }), emptyPosts, site, {}));
-    expect(doc.querySelector("h1")?.textContent).toBe("Economy");
+describe("renderCategoryPage (Sector.cshtml look)", () => {
+  const links = [{ key: "Contact us", uri: "/contacts/" }];
+  const render = (kind: "sectors" | "themes" | "tags", c = category(), posts: Parameters<typeof renderCategoryPage>[2] = emptyPosts, l = links) =>
+    expectAccessibleStructure(renderCategoryPage(kind, c, posts, l, site, { settings: bcSettings() }));
+  const n = (count: number) => Array.from({ length: count }, (_, i) => post({ key: `L${i + 1}`, publishDate: `2026-10-${String(20 - i).padStart(2, "0")}T10:00:00-07:00` }));
+
+  it("sector page: one h1 (the name), .ministry-listing.sector-listing > .home-layout, no <aside>", () => {
+    const doc = render("sectors", category({ key: "economy", name: "Economy" }));
+    const h1s = doc.querySelectorAll("h1");
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]!.className).toBe("ministry-name-mobile");
+    expect(h1s[0]!.textContent).toBe("Economy");
+    expect(doc.querySelector("main .ministry-listing.sector-listing > .home-layout > .home-body#main-content-release")).not.toBeNull();
+    expect(doc.querySelector("main aside")).toBeNull();
   });
 
-  it("sectors: lists latest posts and links the archive and a sector search", () => {
-    const latest = [post({ key: "L1" })];
-    const doc = expectAccessibleStructure(renderCategoryPage("sectors", category({ key: "economy", name: "Economy" }), { ...emptyPosts, latest }, site, {}));
-    expect(doc.querySelector('a[href="/releases/L1/"]')).not.toBeNull();
-    expect(doc.querySelector('a[href="/archive/"]')).not.toBeNull();
-    expect(doc.querySelector('a[href="/search/?sector=economy"]')).not.toBeNull();
+  it("cards in date order including the top and feature posts once each", () => {
+    const top = post({ key: "TOP", publishDate: "2026-10-10T10:00:00-07:00" });
+    const feature = post({ key: "FEAT", publishDate: "2026-10-25T10:00:00-07:00" });
+    const doc = render("sectors", category(), { top, feature, latest: [...n(2), feature] });
+    const cards = [...doc.querySelectorAll(".other-articles > #regular-articles.regular-articles > .article")];
+    expect(cards.map((c) => c.querySelector("a")!.getAttribute("href"))).toEqual(["/releases/FEAT/", "/releases/L1/", "/releases/L2/", "/releases/TOP/"]);
+    expect(doc.querySelector(".top-article, .feature-article")).toBeNull();
   });
 
-  it("tags: links the archive but has no search link", () => {
-    const doc = expectAccessibleStructure(renderCategoryPage("tags", category({ key: "covid-19", name: "COVID-19", kind: "tags" }), emptyPosts, site, {}));
-    expect(doc.querySelector('a[href="/archive/"]')).not.toBeNull();
-    expect(doc.querySelector('main a[href^="/search/"]')).toBeNull();
+  it("a post that is both top and feature shows once", () => {
+    const both = post({ key: "BOTH" });
+    const doc = render("tags", category({ kind: "tags" }), { top: both, feature: both, latest: [] });
+    expect(doc.querySelectorAll("#regular-articles > .article")).toHaveLength(1);
   });
 
-  it("escapes the category name", () => {
-    const html = renderCategoryPage("sectors", category({ name: "A & <B>" }), emptyPosts, site, {});
+  it("Search News (labels.searchNews) only for sectors, filtered by sector key", () => {
+    const sector = render("sectors", category({ key: "economy" }));
+    const a = sector.querySelector('main .news-control a.read-more[href="/search/?sector=economy"]')!;
+    expect(a.textContent).toBe(bcSettings().navigation.labels.searchNews);
+    for (const kind of ["themes", "tags"] as const) expect(render(kind, category({ kind })).querySelector('main a[href^="/search/"]')).toBeNull();
+  });
+
+  it("Load More only when more than 3; Browse the archive stays; the browse-more link is the Load More button's no-script twin", () => {
+    expect(render("themes", category({ kind: "themes" }), { ...emptyPosts, latest: n(3) }).querySelector("button.load-more")).toBeNull();
+    const doc = render("themes", category({ kind: "themes" }), { ...emptyPosts, latest: n(4) });
+    expect(doc.querySelector("button.load-more")!.textContent).toBe(bcSettings().navigation.labels.loadMoreNews);
+    expect(doc.querySelector('main p > a[href="/archive/"]')!.textContent).toBe("Browse the archive by month");
+  });
+
+  it("the Connect strip and Resources are present; the strip is in section.home-features labelled About {name}", () => {
+    const doc = render("sectors", category({ name: "A & B" }));
+    const section = doc.querySelector('section.home-features[aria-label="About A & B"]')!;
+    expect(section.querySelector('p.ministry-title[aria-hidden="true"]')!.textContent).toBe("A & B");
+    expect(section.querySelector("#connectAllSocialMedia")).not.toBeNull();
+    expect(doc.querySelector(".home-body .collapsible-regions .resource-links h2")!.textContent).toBe(bcSettings().navigation.labels.resources);
+    expect(doc.querySelector('.collapsible-regions a[href="/contacts/"]')).not.toBeNull();
+  });
+
+  it("no links: no Resources box, still a collapsible-regions container-free page", () => {
+    expect(render("tags", category({ kind: "tags" }), emptyPosts, []).querySelector(".collapsible-regions .resource-links")).toBeNull();
+  });
+
+  it("escapes the category name and the key in the search href", () => {
+    const html = renderCategoryPage("sectors", category({ key: "a&b", name: "A & <B>" }), emptyPosts, [], site, { settings: bcSettings() });
     expect(html).toContain("A &amp; &lt;B&gt;");
     expect(html).not.toContain("A & <B>");
+    expect(html).toContain("/search/?sector=a%26b");
   });
 });
 

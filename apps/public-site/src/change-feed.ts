@@ -197,6 +197,8 @@ export async function syncChanges(
         // lead_ministry column too. enqueuePages de-duplicates the overlap.
         if (id && c.kind === "ministry") for (const key of await deps.index.withLeadMinistry(c.key)) changeItems.push({ pageId: `post:${key}`, priority: PRIORITY.bulkPost });
       }
+      // Every sector, theme and tag page shows the Resources box: bulk, behind home and /connect/.
+      if (c.kind === "resource_links") for (const pageId of await deps.builder.categoryListingPageIds()) changeItems.push({ pageId, priority: PRIORITY.bulkAggregate });
       // Rare (an election, a corrected date or label): every term page, at live priority, so the
       // old current term closes and the new one appears together.
       if (c.kind === "government_terms") for (const pageId of await deps.builder.termPageIds()) changeItems.push({ pageId, priority: PRIORITY.liveAggregate });

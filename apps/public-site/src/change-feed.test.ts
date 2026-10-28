@@ -279,6 +279,24 @@ describe("syncChanges", () => {
     expect((await items()).filter((x) => x.startsWith("post:"))).toEqual([]); // a sector named like the lead ministry reaches no release by lead
   });
 
+  it("a resource_links change queues every sector, theme and tag page at bulk priority, not ministry pages", async () => {
+    const { db, builder, index, newsApi } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const c = (kind: "sectors" | "themes" | "tags", key: string) => ({ key, kind, name: key, isActive: true, topPostKey: null, featurePostKey: null });
+    newsApi.sectors = [c("sectors", "economy")];
+    newsApi.themes = [c("themes", "housing")];
+    newsApi.tags = [c("tags", "covid-19")];
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "resource_links", key: null }], next: 4 },
+      { resync: false, changes: [], next: 4 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    const queued = await items();
+    for (const id of ["category:sectors:economy", "category:themes:housing", "category:tags:covid-19"]) expect(queued, id).toContain(`${id}@${PRIORITY.bulkAggregate}`);
+    expect(queued.some((x) => x.startsWith("category:ministries:"))).toBe(false);
+    expect(queued).toContain("home@1");
+  });
+
   it("a government_terms change queues every term page", async () => {
     const { db, builder, index, newsApi } = setup();
     await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
