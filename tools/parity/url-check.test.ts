@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkUrls } from "./url-check";
+import { checkUrls, formatSummary, parseList } from "./url-check";
 
 type Reply = { status: number; location?: string };
 function fakeFetch(map: Record<string, Reply>, seen: string[] = []): typeof fetch {
@@ -90,5 +90,35 @@ describe("checkUrls", () => {
     const [r] = await checkUrls("https://x.test", ["/slow"], hang, 50);
     expect(r).toMatchObject({ ok: false, status: 0 });
     expect(r?.reason).toMatch(/^fetch failed: /);
+  });
+});
+
+describe("sections", () => {
+  it("parseList assigns sections", () => {
+    const text = "# comment\n/a\n# section: feeds\n/feed\n\n# section: posts\n/p\n";
+    expect(parseList(text)).toEqual([
+      { path: "/a", section: "default" },
+      { path: "/feed", section: "feeds" },
+      { path: "/p", section: "posts" },
+    ]);
+  });
+
+  it("a result carries its section; main's summary counts per section", async () => {
+    const f = fakeFetch({
+      "https://x.test/a": { status: 200 },
+      "https://x.test/b": { status: 404 },
+      "https://x.test/c": { status: 200 },
+    });
+    const results = await checkUrls(
+      "https://x.test",
+      [
+        { path: "/a", section: "feeds" },
+        { path: "/b", section: "feeds" },
+        { path: "/c", section: "posts" },
+      ],
+      f,
+    );
+    expect(results.map((r) => r.section)).toEqual(["feeds", "feeds", "posts"]);
+    expect(formatSummary(results)).toEqual(["feeds: 1/2 passed", "posts: 1/1 passed", "2/3 passed"]);
   });
 });
