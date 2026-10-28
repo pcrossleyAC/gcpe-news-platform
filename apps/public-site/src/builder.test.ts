@@ -125,21 +125,31 @@ describe("site builder", () => {
     expect(storage.files.has("tags/gone/feed.xml")).toBe(false);
   });
 
-  it("writes ministries/<key>/biography/index.html when the minister has details; clearing details removes the file on the next render", async () => {
+  it("writes ministries/<key>/biography/index.html when the minister has details; clearing details removes the file and its folder on the next render", async () => {
     const { storage, api, builder } = setup(new Map());
+    const removeEmptyDir = vi.spyOn(storage, "removeEmptyDir");
     const minister = { headline: "Hon. Alex Example", summary: "Minister of Health.", details: "<p>Alex was elected in 2020.</p>", photo: null };
     api.minister = async (key) => (key.toLowerCase() === "health" ? minister : null);
     api.ministryProfiles = async () => [{ key: "Health", ministerEmail: "hlth@gov.example", teamLinks: [], childKeys: [] }];
-    await builder.renderPage("category:ministries:health", {});
+    // The bio page appearing re-queues sitemaps/pages.xml, which lists it; an unchanged render doesn't.
+    expect(await builder.renderPage("category:ministries:health", {})).toEqual(["sitemap:pages"]);
+    expect(await builder.renderPage("category:ministries:health", {})).toEqual([]);
+    await builder.renderPage("sitemap:pages", {});
+    expect(html(storage, "sitemaps/pages.xml")).toContain("<loc>https://news.example/ministries/health/biography/</loc>");
+    expect(html(storage, "sitemaps/pages.xml")).not.toContain("/ministries/finance/biography/");
     const bio = html(storage, "ministries/health/biography/index.html");
     expect(bio).toContain("<h1>Hon. Alex Example</h1>");
     expect(bio).toContain("Alex was elected in 2020.");
     expect(bio).toContain('href="mailto:hlth@gov.example"');
     // Cleared in the Hub: the stale bio page goes on the next render, the ministry page stays.
     minister.details = null as unknown as string;
-    await builder.renderPage("category:ministries:health", {});
+    expect(await builder.renderPage("category:ministries:health", {})).toEqual(["sitemap:pages"]);
     expect(storage.files.has("ministries/health/biography/index.html")).toBe(false);
+    expect(removeEmptyDir).toHaveBeenCalledWith("ministries/health/biography");
     expect(storage.files.has("ministries/health/index.html")).toBe(true);
+    await builder.renderPage("sitemap:pages", {});
+    expect(html(storage, "sitemaps/pages.xml")).not.toContain("/biography/");
+    expect(html(storage, "sitemaps/pages.xml")).toContain("<loc>https://news.example/ministries/health/</loc>");
     // A ministry with no minister never gets one; a vanished ministry loses all three files.
     await builder.renderPage("category:ministries:finance", {});
     expect(storage.files.has("ministries/finance/biography/index.html")).toBe(false);

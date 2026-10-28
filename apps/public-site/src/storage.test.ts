@@ -90,6 +90,34 @@ describe("fsStorage", () => {
     });
   });
 
+  describe("removeEmptyDir", () => {
+    it("removes an empty directory; leaves a non-empty, missing or file path alone", async () => {
+      const root = await mkdtemp(join(tmpdir(), "site-"));
+      const s = fsStorage(root);
+      await s.write("ministries/health/biography/index.html", "x");
+      await s.removeEmptyDir("ministries/health/biography"); // not empty
+      expect(await s.exists("ministries/health/biography/index.html")).toBe(true);
+      await s.removeEmptyDir("ministries/health/biography/index.html"); // a file
+      expect(await s.exists("ministries/health/biography/index.html")).toBe(true);
+      await s.remove("ministries/health/biography/index.html");
+      await s.removeEmptyDir("ministries/health/biography");
+      expect(await s.listDirs("ministries/health")).toEqual([]);
+      await s.removeEmptyDir("ministries/health/biography"); // already gone
+      await s.removeEmptyDir("ministries/nowhere/biography"); // parent missing
+    });
+
+    it("refuses a path outside the root, and never follows a symlink out of it", async () => {
+      const root = await mkdtemp(join(tmpdir(), "site-"));
+      const outside = await mkdtemp(join(tmpdir(), "outside-"));
+      await mkdir(join(outside, "empty"));
+      await symlink(outside, join(root, "ministries"));
+      const s = fsStorage(root);
+      await expect(s.removeEmptyDir("../x")).rejects.toThrow(/outside/);
+      await expect(s.removeEmptyDir("ministries/empty")).rejects.toThrow(/outside/);
+      expect(await readdir(outside)).toEqual(["empty"]);
+    });
+  });
+
   describe("listDirs", () => {
     it("lists immediate subdirectory names, ignoring files and nested subdirectories", async () => {
       const root = await mkdtemp(join(tmpdir(), "site-"));

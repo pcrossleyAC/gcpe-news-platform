@@ -15,7 +15,7 @@ import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
-import { categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
+import { biographyUrl, categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
 import type { SiteStorage } from "./storage";
@@ -237,13 +237,26 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return dependents(before ? membershipOfEntry(before) : null, membershipOf(post));
   }
 
-  async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions, run: RunCache): Promise<void> {
+  /** Removes a ministry's biography page and its then-empty folder. */
+  const removeBio = async (bio: string) => {
+    await storage.remove(bio);
+    await storage.removeEmptyDir(bio.slice(0, bio.lastIndexOf("/")));
+  };
+
+  /** Returns `sitemap:pages` when the biography page appeared or went (it lists the bio pages on disk). */
+  async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions, run: RunCache): Promise<string[]> {
     const p: PageId = { type: "category", kind, key };
     const [page, feed, bio] = pageFiles(p) as [string, string, string | undefined];
     const feedRef = { href: feedUrl(site, p), title: "" };
     if (kind === "ministries") {
+      const hadBio = await storage.exists(bio!);
+      const bioChanged = (has: boolean) => (has === hadBio ? [] : ["sitemap:pages"]);
       const m = await newsApi.ministry(key);
-      if (!m) return removeAll(p);
+      if (!m) {
+        await removeAll(p);
+        await removeBio(bio!);
+        return bioChanged(false);
+      }
       const [minister, latest, f, all] = await Promise.all([newsApi.minister(key), newsApi.latest(kind, key, LATEST_COUNT), featured(m.topPostKey, m.featurePostKey), profiles(run)]);
       const profileOf = (k: string) => all.find((x) => x.key.toLowerCase() === k.toLowerCase()) ?? null;
       const profile = profileOf(key);
@@ -263,16 +276,21 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       await storage.write(feed, renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `News from ${m.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
       // The biography page (H2) exists only while the minister has a bio: one cleared in the Hub
       // loses its page on this render instead of lingering.
-      if (minister && hasBiography(minister)) await storage.write(bio!, renderBiographyPage(m, minister, profile, site, opts));
-      else await storage.remove(bio!);
-      return;
+      const withBio = !!minister && hasBiography(minister);
+      if (withBio) await storage.write(bio!, renderBiographyPage(m, minister, profile, site, opts));
+      else await removeBio(bio!);
+      return bioChanged(withBio);
     }
     const c = await newsApi.category(kind, key);
-    if (!c) return removeAll(p);
+    if (!c) {
+      await removeAll(p);
+      return [];
+    }
     const [latest, f] = await Promise.all([newsApi.latest(kind, key, LATEST_COUNT), featured(c.topPostKey, c.featurePostKey)]);
     feedRef.title = `${c.name}: latest news`;
     await storage.write(page, renderCategoryPage(kind, c, { ...f, latest }, site, { ...opts, feed: feedRef }));
     await storage.write(feed, renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `News about ${c.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
+    return [];
   }
 
   async function categoryIds(run: RunCache): Promise<string[]> {
@@ -314,8 +332,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           await storage.write(pageFiles(p)[0]!, renderMinistriesPage(await ministries(run), site, opts));
           return [];
         case "category":
-          await renderCategory(p.kind, p.key, opts, run);
-          return [];
+          return renderCategory(p.kind, p.key, opts, run);
         case "archive":
           await storage.write(pageFiles(p)[0]!, renderArchiveIndex(await index.months(), site, opts));
           return [];
@@ -358,7 +375,14 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "sitemap-pages": {
           const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" }), pageUrl(site, { type: "connect" })];
-          for (const id of await categoryIds(run)) paths.push(pageUrl(site, parsePageId(id)!));
+          for (const id of await categoryIds(run)) {
+            const page = parsePageId(id)!;
+            paths.push(pageUrl(site, page));
+            // A minister's biography page, while it is on disk (renderCategory re-queues this page
+            // whenever one appears or goes).
+            const bio = pageFiles(page)[2];
+            if (page.type === "category" && page.kind === "ministries" && bio && (await storage.exists(bio))) paths.push(biographyUrl(site, page.key));
+          }
           for (const m of await index.months()) paths.push(pageUrl(site, { type: "archive-month", month: m.month }));
           // The archive by term: the entry point and every term page (not the `current` duplicate).
           paths.push(pageUrl(site, { type: "archive-terms" }));
