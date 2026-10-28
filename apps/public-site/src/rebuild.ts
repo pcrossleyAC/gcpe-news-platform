@@ -39,6 +39,8 @@ export interface SiteRenderState {
   assetLicenceHash: string;
   /** pageText.searchArchiveLinks (/search/ only). */
   searchTextHash: string;
+  /** pageText.collectionNotice and subscribeHelpHtml (the static subscribe pages only). */
+  subscribeHash: string;
   /** The Instagram account release pages' Share list links to (settings.ts releaseInstagram). */
   releaseShareHash: string;
   /** ministry-menu.ts's hash of the header menu every page bakes in. Not one of `HASHES`: it is
@@ -47,7 +49,7 @@ export interface SiteRenderState {
 }
 
 /** The pages a settings section reaches, other than through every page's footer. */
-export type SectionPages = "labels" | "static" | "home" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "live" | "releaseLicence" | "search";
+export type SectionPages = "labels" | "static" | "home" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "live" | "releaseLicence" | "search" | "subscribe";
 
 /** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
@@ -88,7 +90,7 @@ interface SiteStateMarker extends SiteRenderState {
 export const verificationKey = (site: Pick<SiteInfo, "verification">): string =>
   site.verification?.googleFile || site.verification?.googleMeta ? `${site.verification.googleFile ?? ""}|${site.verification.googleMeta ?? ""}` : "";
 
-const HASHES = ["footerHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "liveTextHash", "notFoundHash", "assetLicenceHash", "searchTextHash"] as const;
+const HASHES = ["footerHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "liveTextHash", "notFoundHash", "assetLicenceHash", "searchTextHash", "subscribeHash"] as const;
 
 /** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
  * `chromeChanges` then treats it as matching. */
@@ -132,7 +134,7 @@ export async function recordedNonEmptyMenu(storage: SiteStorage): Promise<boolea
  * `sections`: a theme or banner change reaches only the `static` page (theme.css,
  * site-banner.json), a connect change the Connect page and home, a change to the release Share
  * list's Instagram account every release page, a ministryPages change the ministry pages and every
- * release page (its labels), a contactsPage change the /contacts/ page, a labels edit every aggregate page (no post), a privacy edit /privacy/, a notFound edit 404.html (the "static" page), an assetLicence edit every release page and a searchArchiveLinks edit /search/ — spec "Delivery": the cheapest correct effect per section; see
+ * release page (its labels), a contactsPage change the /contacts/ page, a labels edit every aggregate page (no post), a privacy edit /privacy/, a notFound edit 404.html (the "static" page), an assetLicence edit every release page a searchArchiveLinks edit /search/ and a collectionNotice or subscribeHelp edit the static subscribe pages (written, not queued) — spec "Delivery": the cheapest correct effect per section; see
  * enqueueChromeChanges.
  */
 export async function chromeChanges(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<{ all: boolean; sections: SectionPages[]; adoptMenuHash?: boolean }> {
@@ -163,6 +165,7 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
   if (previous.liveTextHash !== state.liveTextHash) sections.push("live");
   if (previous.assetLicenceHash !== state.assetLicenceHash) sections.push("releaseLicence");
   if (previous.searchTextHash !== state.searchTextHash) sections.push("search");
+  if (previous.subscribeHash !== state.subscribeHash) sections.push("subscribe");
   // A marker from before the menu hash: nothing to rebuild for it, but the hash must be recorded
   // or a later menu change would still read as matching.
   return { all: false, sections, adoptMenuHash: previous.ministryMenuHash === null };

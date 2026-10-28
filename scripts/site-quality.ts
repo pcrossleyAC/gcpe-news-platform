@@ -33,10 +33,10 @@ export const THRESHOLDS: Record<string, number> = { performance: 80, accessibili
 /**
  * Pages robots.txt disallows on purpose (news.gov's own Disallows, url-compat T3). An SEO score means
  * nothing for a page crawlers are told to skip (Lighthouse's is-crawlable fails by design, and news.gov's
- * own search page has no meta description either), so these pages skip the SEO threshold. They must still
+ * own search page has no meta description either; /subscribe is one of those Disallows, prefix and all), so these pages skip the SEO threshold. They must still
  * be blocked: a page that stops being blocked fails here and comes back under the normal gate.
  */
-export const ROBOTS_BLOCKED = new Set(["/search/"]);
+export const ROBOTS_BLOCKED = new Set(["/search/", "/subscribe/", "/subscribe/manage/"]);
 
 type Lhr = { audits: Record<string, { score: number | null } | undefined> };
 

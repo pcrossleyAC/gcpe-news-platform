@@ -177,6 +177,34 @@ describe("settings sections: pageText", () => {
     expect(storage.files.get("search/index.html")).toContain("Older news, 2009 to 2011");
   });
 
+  it("a collectionNotice or subscribeHelp edit rewrites the subscribe pages and queues nothing", async () => {
+    for (const [change, text] of [
+      [(d: ReturnType<typeof bcSettings>) => { d.pageText.collectionNotice.heading = "Collecting your details"; }, "Collecting your details"],
+      [(d: ReturnType<typeof bcSettings>) => { d.pageText.subscribeHelpHtml = "<p>Ring the helpline</p>"; }, "Ring the helpline"],
+    ] as const) {
+      const storage = memoryStorage();
+      const newsApi = fakeNewsApi(new Map([["K1", post({ key: "K1" })]]));
+      const index = postIndex(tdb.db);
+      const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: null });
+      const deps: SyncDeps = { db: tdb.db, builder, index, newsApi, storage, site, test: false, batch: 200 };
+      (newsApi as FakeNewsApi).settings = { revision: 1, document: bcSettings() };
+      await syncSite(deps);
+      expect(storage.files.get("subscribe/index.html")).not.toContain(text);
+      const doc = bcSettings();
+      change(doc);
+      (newsApi as FakeNewsApi).settings = { revision: 2, document: doc };
+      const enqueue = vi.spyOn(queue, "enqueuePages");
+      try {
+        await syncSite(deps);
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(storage.files.get("subscribe/index.html")).toContain(text);
+        expect(storage.files.get("subscribe/manage/index.html")).toBeDefined();
+      } finally {
+        enqueue.mockRestore();
+      }
+    }
+  });
+
   it("a notFound edit queues exactly static", async () => {
     const { items, dependents, storage } = await edit((d) => { d.pageText.notFound.heading = "Nothing here"; });
     expect(dependents).toEqual([]);

@@ -19,6 +19,7 @@ import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index"
 import type { SiteInfo } from "../apps/public-site/src/render";
 import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
+import { writeSubscribePages } from "../apps/public-site/src/subscribe-pages";
 import { composeCategoryLatest, fakeNewsApi } from "../apps/public-site/test/fake-news-api";
 import { contact, link, ministry, post, slide } from "../apps/public-site/test/fixtures";
 
@@ -59,6 +60,8 @@ export const FIXTURE_PAGES = [
   "/contacts/",
   "/privacy/",
   "/live/",
+  "/subscribe/",
+  "/subscribe/manage/",
   "/404.html",
 ];
 
@@ -262,8 +265,11 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
   // links and the land acknowledgement band, so axe and Lighthouse check them too.
   const settings = loadSiteSettingsDefaults(BC_TENANT, tenant.site.theme);
   const builder = createSiteBuilder({ newsApi, storage: fsStorage(outDir), index: memoryIndex(), site, assetsDir: null });
-  const result = await builder.buildAll({ test: o.test, settings, ministryMenu: ministryMenu(await newsApi.ministries()) });
+  const pageOpts = { test: o.test, settings, ministryMenu: ministryMenu(await newsApi.ministries()) };
+  const result = await builder.buildAll(pageOpts);
   if (result.failures > 0) throw new Error(`fixture site: ${result.failures} page(s) failed to build`);
+  // The static subscribe pages are written by the sync (not a queue page), so the fixture writes them too.
+  await writeSubscribePages(fsStorage(outDir), site, pageOpts);
 }
 
 const TYPES: Record<string, string> = {
@@ -289,6 +295,14 @@ export async function serveStatic(dir: string): Promise<{ url: string; close(): 
   const root = resolve(dir);
   const server = createServer(async (req, res) => {
     let file: string;
+    // The subscribe page loads its category lists from the NoD API, which a static server lacks; a
+    // stub answers them (no 404s in the console for Lighthouse's best practices). Not part of the built site.
+    const list = /^\/api\/Subscribe\/SubscriptionItems\/([a-z]+)$/.exec(new URL(req.url ?? "/", "http://fixture.invalid").pathname);
+    if (list) {
+      res.writeHead(200, { "content-type": TYPES[".json"]! });
+      res.end(JSON.stringify(list[1] === "ministries" ? [{ key: "health", value: "Health" }, { key: "finance", value: "Finance" }] : list[1] === "sectors" ? [{ key: "economy", value: "Economy" }] : []));
+      return;
+    }
     try {
       file = resolve(root, `.${decodeURIComponent(new URL(req.url ?? "/", "http://fixture.invalid").pathname)}`);
       if (relative(root, file).startsWith("..")) throw new Error("outside");

@@ -106,6 +106,8 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
     assetLicenceHash: hash(settings.pageText.assetLicence),
     // Only /search/ shows the older-archive links (its Date filter).
     searchTextHash: hash(settings.pageText.searchArchiveLinks),
+    // Only the static /subscribe/ page shows the Notice of Collection and the help text.
+    subscribeHash: hash([settings.pageText.collectionNotice, settings.pageText.subscribeHelpHtml]),
     // Only the one account the release page's Share → Instagram links to, so another network's
     // edit (the Connect page's business) doesn't re-render every release.
     releaseShareHash: hash(releaseInstagram(settings) ?? null),

@@ -198,6 +198,18 @@ describe("settingsHashes: header and labels", () => {
     }
   });
 
+  it("a collection notice or subscribe help edit moves subscribeHash only", () => {
+    for (const m of [
+      (s: ReturnType<typeof bcSettings>) => { s.pageText.collectionNotice.heading = "Notice"; },
+      (s: ReturnType<typeof bcSettings>) => { s.pageText.collectionNotice.bodyHtml = "<p>x</p>"; },
+      (s: ReturnType<typeof bcSettings>) => { s.pageText.subscribeHelpHtml = "<p>y</p>"; },
+    ]) {
+      const h = hashes(m);
+      const changed = Object.keys(base).filter((k) => h[k as keyof typeof h] !== base[k as keyof typeof base]);
+      expect(changed).toEqual(["subscribeHash"]);
+    }
+  });
+
   it("an older-archive link edit moves searchTextHash only", () => {
     const h = hashes((s) => { s.pageText.searchArchiveLinks[0]!.text = "Older news"; });
     const changed = Object.keys(base).filter((k) => h[k as keyof typeof h] !== base[k as keyof typeof base]);
