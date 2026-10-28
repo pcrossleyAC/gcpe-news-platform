@@ -93,7 +93,7 @@ npm run news-api:import-files                                   # flagged posts 
 npm run news-api:import-files -- --refresh --since <full-run date minus 30 days>   # recent posts again
 ```
 
-A plain run (no `--since`, no `--refresh`) asks only for flagged posts whose lists are still empty, so it picks up every post published or newly flagged since the full run, but it never revisits a post it already filled. The `--refresh --since` run asks again for the recent posts, which is where legacy staff still add or remove translations; a changed list is rewritten, an unchanged one is not.
+A plain run (no `--since`, no `--refresh`) asks only for flagged posts whose lists are still empty, so it picks up every post published or newly flagged since the full run, but it never revisits a post it already filled. The `--refresh --since` run asks again for the recent posts, which is where legacy staff still add or remove translations; a changed list is rewritten, an unchanged one is not. Older posts are not revisited by either run: if legacy staff are known to have changed files on an older release, or to be safe once, run `--refresh` with a wider `--since` (or `--all`) before DNS moves; it is idempotent.
 
 1. **Freeze legacy subscription writes.** Put the legacy subscribe and manage pages, and the NoD admin's subscriber screens, into maintenance or read-only. From here on legacy takes no new subscribes, preference changes or unsubscribes; anyone who tries is told to come back shortly, and after DNS moves they reach the Hub.
 2. **Stop legacy NoD sending**, so no new manage links are made on the old system.

@@ -91,8 +91,8 @@ export function searchRowColumns(defaultLanguageId: number) {
     leadMinistryKey: posts.leadMinistryKey,
     hasTranslations: posts.hasTranslations,
     hasMediaAssets: posts.hasMediaAssets,
-    hasTranslationList: sql<boolean>`(${posts.hasTranslations} AND coalesce(jsonb_array_length(${posts.translations}), 0) > 0)`,
-    hasMediaAssetList: sql<boolean>`(${posts.hasMediaAssets} AND coalesce(jsonb_array_length(${posts.assets}), 0) > 0)`,
+    hasTranslationList: sql<boolean>`(${posts.hasTranslations} AND CASE WHEN jsonb_typeof(${posts.translations}) = 'array' THEN jsonb_array_length(${posts.translations}) > 0 ELSE false END)`,
+    hasMediaAssetList: sql<boolean>`(${posts.hasMediaAssets} AND CASE WHEN jsonb_typeof(${posts.assets}) = 'array' THEN jsonb_array_length(${posts.assets}) > 0 ELSE false END)`,
   };
 }
 
