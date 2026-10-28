@@ -61,11 +61,11 @@ export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
   return new URL(site.baseUrl).pathname.replace(/\/+$/, "");
 }
 
-/** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
 /** The head's inline script: marks `<html>` as `.js` before any CSS applies, so stylesheets can
  * keep no-JS fallbacks under `html:not(.js)` without a flash. A constant: nothing is interpolated. */
 export const HTML_JS_MARKER = 'document.documentElement.classList.add("js")';
 
+/** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
 export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
   const base = basePath(site);
   const theme = site.theme ?? DEFAULT_THEME;
