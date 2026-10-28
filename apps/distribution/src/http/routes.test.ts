@@ -404,4 +404,20 @@ describe("Distribution HTTP API", () => {
       expect(res.body).toEqual({ rows: expect.any(Array) });
     });
   });
+
+  it("createApp's sendCap caps one POST /messages send at N, and without it every recipient is queued", async () => {
+    const recipients = Array.from({ length: 12 }, (_, i) => ({ email: `subscriber${i}@example.com`, substitutions: {} }));
+    const secret = "z".repeat(40) + "-send-cap-local-test";
+    const token = await mintLocalToken({ secret, subject: "nod", azp: "nod", roles: ["Distribution.Send"] });
+    const capped = createApp({ db: tdb.db, auth: { local: { secret } }, internalDomains, sendCap: 5 });
+    const uncapped = createApp({ db: tdb.db, auth: { local: { secret } }, internalDomains });
+    const post = (a: ReturnType<typeof createApp>, key: string) =>
+      request(a).post("/api/messages").set("authorization", `Bearer ${token}`).send({ ...sampleMessageRequest, recipients, idempotencyKey: key });
+    const a = await post(capped, "cap-wiring-capped");
+    const b = await post(uncapped, "cap-wiring-uncapped");
+    const status = async (a2: ReturnType<typeof createApp>, id: string) =>
+      (await request(a2).get(`/api/batches/${id}`).set("authorization", `Bearer ${token}`)).body;
+    expect(await status(capped, a.body.batchId)).toMatchObject({ total: 12, pending: 5, failed: 7 });
+    expect(await status(uncapped, b.body.batchId)).toMatchObject({ total: 12, pending: 12, failed: 0 });
+  });
 });

@@ -48,7 +48,7 @@ function appIdFrom(req: Request): string {
   return req.auth!.subject;
 }
 
-export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake" | "graph"): Router {
+export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake" | "graph", sendCap?: number): Router {
   const r = Router();
   const run = <P>(h: Handler<P>): ReturnType<typeof safe<P>> =>
     safe<P>(async (req, res) => {
@@ -65,7 +65,7 @@ export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake
     run(async (req, res) => {
       const parsed = messagesService.messageRequestSchema.parse(req.body);
       const appId = appIdFrom(req);
-      const { batchId, created } = await messagesService.createBatch(db, appId, parsed, internalDomains);
+      const { batchId, created } = await messagesService.createBatch(db, appId, parsed, internalDomains, sendCap);
       res.status(created ? 202 : 200).json({ batchId });
     }),
   );
