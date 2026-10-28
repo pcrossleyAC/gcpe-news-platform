@@ -1,7 +1,8 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { noStoreOnRedirect } from "./cache-control";
-import { legacyUrls, type LegacyUrlOptions } from "./legacy/middleware";
-import { ministrySuccessorRedirects } from "./ministry-successors";
+import { legacyRewriteOf, legacyUrls, type LegacyUrlOptions } from "./legacy/middleware";
+import { parseRequestTarget } from "./legacy/safe-path";
+import { cacheMisses } from "./legacy/reference-cache";
 import { siteNotFound } from "./site-not-found";
 
 /** The static site's own cache lifetime: every page and asset is `public, max-age=60`. */
@@ -36,11 +37,28 @@ export function feedContentType(filePath: string): string | null {
   return null;
 }
 
+/** The hashed directory long post keys live in (site-paths.ts `postDir`), any case. */
+const LONG_DIR = /^\/releases\/_long(?:\/|$)/i;
+
+/**
+ * `/releases/_long/…` is served only through `legacyUrls`' rewrite of `/releases/<long key>/`
+ * (`res.locals.legacyRewrite`, kind "long"): a direct request for the hashed directory, in any
+ * case or encoding, is the site 404, so a long-key post has no second URL.
+ */
+function hashedDirGuard(outputDir: string): RequestHandler {
+  const notFound = siteNotFound(outputDir);
+  return (req, res, next) => {
+    const target = parseRequestTarget(req.url);
+    if (target && LONG_DIR.test(target.path) && legacyRewriteOf(res)?.kind !== "long") return notFound(req, res, next);
+    next();
+  };
+}
+
 function staticSite(outputDir: string) {
   // dotfiles: "deny" keeps the render-state marker (.site-state.json) and anything else
   // dot-prefixed unservable; noStoreOnRedirect gives express.static's own trailing-slash
   // 301 a no-store so the SiteGround proxy never caches it.
-  return [noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny", setHeaders: (res, filePath) => {
+  return [hashedDirGuard(outputDir), noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny", setHeaders: (res, filePath) => {
     const type = feedContentType(filePath);
     if (type !== null) res.setHeader("Content-Type", type);
   } })];
@@ -67,6 +85,25 @@ export function siteAliasRedirect(req: Request, res: Response, next: NextFunctio
 }
 
 /**
+ * Under the `/site` alias of an origin site, after `legacyUrls`: a feed or the legacy OG image it
+ * rewrote is served in place (a feed reader on an old /site/… URL keeps its feed with no hop);
+ * any other rewrite (a long key's hashed page, a gone post) is undone, so `siteAliasRedirect`
+ * sends the request as asked to the root and the page has one URL. No rewrite: next().
+ */
+function siteAliasFiles(outputDir: string): RequestHandler {
+  const files = express.Router();
+  files.use(...staticSite(outputDir), siteNotFound(outputDir));
+  return (req, res, next) => {
+    const done = legacyRewriteOf(res);
+    if (done === undefined) return next();
+    if (done.kind === "file") return files(req, res, next);
+    req.url = done.from;
+    delete res.locals.legacyRewrite;
+    next();
+  };
+}
+
+/**
  * Serves the static site from `outputDir` at the root and, while PUBLIC_SITE_URL still has a
  * path (`basePath`, e.g. "/site"), at that prefix too — so with today's boxs.ca env both
  * `/site/...` and `/...` serve pages. Once `basePath` is "" (the origin), `/site/...` 301s to
@@ -77,7 +114,9 @@ export function mountSite(
   app: express.Express,
   opts: { outputDir: string; basePath: string; passThrough?: readonly string[]; lookupReference?: LegacyUrlOptions["lookupReference"] },
 ): void {
-  const { outputDir, basePath, lookupReference } = opts;
+  const { outputDir, basePath } = opts;
+  // One negative cache for every chain (/site and the root share it).
+  const lookupReference = opts.lookupReference && cacheMisses(opts.lookupReference);
   const passThrough = opts.passThrough ?? [];
   // Old news.gov.bc.ca URLs (parity plan 3) run first in each site chain, before express.static
   // (a fallback rule checks the disk itself, so a real page still wins).
@@ -87,9 +126,12 @@ export function mountSite(
     // Successors are part of legacyUrls' category rule (an old ministry's page is still on disk, new-government §4).
     app.use(basePath, legacy(basePath), ...staticSite(outputDir), siteNotFound(outputDir));
   } else {
-    // /site/ministries/<old>/… goes straight to the successor (one hop), the rest to the root.
-    // A renamed ministry (url-compat T4) takes two hops here: /site/… → /… → the new key.
-    app.use("/site", ministrySuccessorRedirects(outputDir, ""), siteAliasRedirect);
+    // The remainder of /site/… goes through the same legacy rules as the root, with Locations at
+    // the root, so an old URL (/site/Releases/<k>, /site/Ministries/Justice, /site/<n>, a
+    // successor's ministry) reaches its page in one hop, and only to a page that exists (the
+    // category rule checks the successor's page; ministrySuccessorRedirects did not). Feeds are
+    // served in place. Anything the rules leave alone 301s to the root as it was.
+    app.use("/site", legacy(""), siteAliasFiles(outputDir), siteAliasRedirect);
   }
   // This root mount runs on every request (ahead of /files, /hub and every app), so its
   // noStoreOnRedirect makes ANY 3xx in the stack no-store, not only the site's own. Harmless

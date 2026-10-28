@@ -190,9 +190,13 @@ describe("mountSite with successor redirects", () => {
   it("base '': /ministries/a/ → /ministries/c/, and /site/ministries/a/ goes there in one hop", async () => {
     const app = appFor("");
     expect((await request(app).get("/ministries/a/").redirects(0)).headers.location).toBe("/ministries/c/");
-    const alias = await request(app).get("/site/ministries/a/feed.xml?x=1").redirects(0);
+    const alias = await request(app).get("/site/ministries/a/?x=1").redirects(0);
     expect(alias.status).toBe(301);
-    expect(alias.headers.location).toBe("/ministries/c/feed.xml?x=1");
+    expect(alias.headers.location).toBe("/ministries/c/?x=1");
+    // A feed is served in place from the successor's file (legacyUrls' feed rule), no hop.
+    await writeFile(join(outputDir, "ministries", "c", "feed.xml"), "<rss>c</rss>");
+    const feed = await request(app).get("/site/ministries/a/feed.xml?x=1").redirects(0);
+    expect({ status: feed.status, body: feed.text }).toEqual({ status: 200, body: "<rss>c</rss>" });
     // Anything else under /site still takes the plain alias redirect.
     expect((await request(app).get("/site/ministries/c/").redirects(0)).headers.location).toBe("/ministries/c/");
   });

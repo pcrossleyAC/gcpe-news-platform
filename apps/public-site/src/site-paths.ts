@@ -97,7 +97,7 @@ export function categoryPageId(kind: CategoryKind, key: string): string | null {
   return CATEGORY_KEY.test(lower) ? `category:${kind}:${lower}` : null;
 }
 
-/** `{ successors: { "<old>": "<new>" } }`, read by apps/stack's ministrySuccessorRedirects. Parity
+/** `{ successors: { "<old>": "<new>" } }`, read by apps/stack's resolveMinistrySuccessor (legacyUrls' category and feed rules). Parity
  * url-compat's per-post maps share the `legacy/` directory. */
 export const MINISTRY_SUCCESSORS_FILE = "legacy/ministry-successors.json";
 
