@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import type { TestDatabase } from "@gcpe/db-kit";
+import { createDb, type TestDatabase } from "@gcpe/db-kit";
 import { MAX_EVENT_BYTES, type SubscriberConfig } from "@gcpe/events";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { cabinetChanges, organizations, userOrganizations, users } from "../db/schema";
@@ -8,6 +8,8 @@ import {
   cabinetOperationSchema,
   cancelCabinetChange,
   getOpenCabinetChange,
+  instantToLocal,
+  localToInstant,
   previewCabinetChange,
   publishCabinetChange,
   publishDueCabinetChanges,
@@ -187,8 +189,17 @@ describe("cabinet changes (new-government spec §5)", () => {
       await org("a", "Alpha", "ALPH");
       await org("b", "Beta", "BETA");
       const change = await draft([{ op: "update", key: "a", expectedUpdatedAt: await stamp("a"), patch: { displayName: "Alpha Two" } }]);
-      await publishCabinetChange(tdb.db, change.id, subs);
-      await expect(patchOrganizationProfile(tdb.db, "b", { abbreviation: "ALPH" }, subs)).rejects.toThrow("abbreviation taken");
+      // One connection: the follow-up edit runs on the very connection the publish used, so a
+      // session-level (not transaction-local) setting would leak into it and this would pass the clash.
+      const single = createDb(tdb.url, { max: 1 });
+      try {
+        expect(await publishCabinetChange(single.db, change.id, subs)).toEqual({ result: "published" });
+        const { rows } = await single.pool.query<{ v: string | null }>("select current_setting('gcpe.defer_abbreviation_check', true) as v");
+        expect(rows[0]!.v ?? "").not.toBe("on");
+        await expect(patchOrganizationProfile(single.db, "b", { abbreviation: "ALPH" }, subs)).rejects.toThrow("abbreviation taken");
+      } finally {
+        await single.pool.end();
+      }
     });
   });
 
@@ -315,6 +326,64 @@ describe("cabinet changes (new-government spec §5)", () => {
     // One clock for every stamp in the publish.
     expect((await getOrganization(tdb.db, "a"))!.updatedAt).toBe(after().toISOString());
     expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
+  });
+
+  describe("a deadlock or serialization failure while publishing a scheduled change", () => {
+    const at = new Date("2028-11-20T08:00:00Z");
+    const after = () => new Date(at.getTime() + 1_000);
+    const failWith = (code: string) =>
+      tdb.pool.query(`
+        CREATE OR REPLACE FUNCTION cabinet_test_fail() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'injected' USING ERRCODE = '${code}'; END $$;
+        CREATE TRIGGER cabinet_test_fail BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION cabinet_test_fail();`);
+    const stopFailing = () => tdb.pool.query("DROP TRIGGER IF EXISTS cabinet_test_fail ON organizations; DROP FUNCTION IF EXISTS cabinet_test_fail()");
+    const scheduled = async () => {
+      await org("a", "Alpha", "ALPH");
+      const change = await draft([{ op: "update", key: "a", expectedUpdatedAt: await stamp("a"), patch: { displayName: "Alpha Renamed" } }]);
+      await scheduleCabinetChange(tdb.db, change.id, at, () => new Date(at.getTime() - 60_000));
+      return change;
+    };
+    afterEach(stopFailing);
+
+    it("is retried once on the next tick, and publishes if that succeeds", async () => {
+      await scheduled();
+      await failWith("40P01");
+      expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
+      expect(await getOpenCabinetChange(tdb.db)).toMatchObject({ status: "scheduled", error: null });
+      expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha");
+      await stopFailing();
+      expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 1, failed: 0 });
+      expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha Renamed");
+    });
+
+    it("goes back to draft when the retry fails too", async () => {
+      await scheduled();
+      await failWith("40001");
+      expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
+      expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 1 });
+      expect(await getOpenCabinetChange(tdb.db)).toMatchObject({ status: "draft", scheduledFor: null, error: expect.stringContaining("Not published at the scheduled time") });
+    });
+
+    it("any other database error goes back to draft at once", async () => {
+      await scheduled();
+      await failWith("23514");
+      expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 1 });
+      expect((await getOpenCabinetChange(tdb.db))!.status).toBe("draft");
+    });
+  });
+
+  it("BC wall-clock schedule times convert by the server's tzdata, across BC's 2026-11-01 move to permanent UTC−7", () => {
+    const tz = "America/Vancouver";
+    expect(localToInstant("2026-10-31T11:00", tz)!.toISOString()).toBe("2026-10-31T18:00:00.000Z");
+    // Formerly the repeated fall-back hour: now one ordinary hour at UTC−7.
+    expect(localToInstant("2026-11-01T01:30", tz)!.toISOString()).toBe("2026-11-01T08:30:00.000Z");
+    expect(localToInstant("2026-11-18T11:00", tz)!.toISOString()).toBe("2026-11-18T18:00:00.000Z");
+    expect(localToInstant("2028-01-15T00:00", tz)!.toISOString()).toBe("2028-01-15T07:00:00.000Z");
+    // Before the change, winter was UTC−8.
+    expect(localToInstant("2026-01-15T11:00", tz)!.toISOString()).toBe("2026-01-15T19:00:00.000Z");
+    expect(instantToLocal("2026-11-18T18:00:00.000Z", tz)).toBe("2026-11-18T11:00");
+    expect(instantToLocal("2028-11-20T07:00:00.000Z", tz)).toBe("2028-11-20T00:00");
+    for (const bad of ["2026-02-30T11:00", "2026-11-18T24:00", "2026-11-18 11:00", "2026-11-18T11:00Z", ""]) expect(localToInstant(bad, tz)).toBeNull();
   });
 
   describe("the worker re-checks under the lock that the change is still due", () => {

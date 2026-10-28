@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import axe from "axe-core";
@@ -185,7 +185,8 @@ describe("CabinetChangeScreen", () => {
     expect(screen.queryByRole("button", { name: "Publish now…" })).toBeNull();
     expect(screen.getByRole("list", { name: "Ministries after this change" })).toHaveTextContent("Health and Wellness");
 
-    // A clean preview: publish, confirm, and a double click still posts once.
+    // A clean preview: publish, confirm, and two clicks before React re-renders (so the button is
+    // not yet disabled) still post once: the in-flight ref guard, not just `disabled`.
     overrides["POST /core/api/cabinet-change/preview"] = () => jsonResponse(200, CLEAN_PREVIEW);
     await preview(user);
     expect(screen.queryByRole("alert")).toBeNull();
@@ -198,7 +199,10 @@ describe("CabinetChangeScreen", () => {
     await user.click(screen.getByRole("button", { name: "Publish now…" }));
     const yes = screen.getByRole("button", { name: "Yes, publish now" });
     expect(yes.closest("[role=group]")).toHaveFocus();
-    await user.dblClick(yes);
+    act(() => {
+      yes.click();
+      yes.click();
+    });
     release();
     expect(await screen.findByText(/The cabinet change is published/)).toBeInTheDocument();
     expect(posts(calls, "publish")).toHaveLength(1);
@@ -211,28 +215,109 @@ describe("CabinetChangeScreen", () => {
     stub(calls);
     overrides["POST /core/api/cabinet-change/preview"] = () => jsonResponse(200, CLEAN_PREVIEW);
     overrides["POST /core/api/cabinet-change/schedule"] = (init) => {
-      const { at } = JSON.parse(init!.body as string) as { at: string };
-      stored = change({ operations: [RENAME], status: "scheduled", scheduledFor: new Date(at).toISOString() });
+      // Core converts the BC wall-clock time itself (NG-R15) and returns both readings.
+      const { scheduledForLocal } = JSON.parse(init!.body as string) as { scheduledForLocal: string };
+      stored = change({ operations: [RENAME], status: "scheduled", scheduledFor: "2099-11-18T18:00:00.000Z", scheduledForLocal });
       return jsonResponse(200, stored);
     };
     renderScreen();
     await screen.findByText(/Rename Health to Health and Wellness/);
     await preview(user);
+    // Schedule… moves focus into the form; Cancel brings it back.
     await user.click(screen.getByRole("button", { name: "Schedule…" }));
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-11-18" } });
+    expect(screen.getByLabelText("Date")).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Schedule…" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Schedule…" }));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2099-11-18" } });
     fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "11:00" } });
     await user.click(screen.getByRole("button", { name: "Schedule" }));
     await waitFor(() => expect(posts(calls, "schedule")).toHaveLength(1));
-    // BC is on permanent UTC−7 from 2026-11-01: 11:00 in BC is 18:00 UTC.
-    expect(JSON.parse(posts(calls, "schedule")[0]!.init!.body as string)).toEqual({ at: "2026-11-18T18:00:00.000Z" });
-    expect(await screen.findByText("Publishes on November 18, 2026 at 11:00 a.m. Pacific.")).toBeInTheDocument();
+    // The wall-clock time as typed: the browser converts nothing.
+    expect(JSON.parse(posts(calls, "schedule")[0]!.init!.body as string)).toEqual({ scheduledForLocal: "2099-11-18T11:00" });
+    expect(await screen.findByText("Publishes on November 18, 2099 at 11:00 a.m. Pacific.")).toBeInTheDocument();
+  });
+
+  it("schedule refusals say nothing was scheduled: past, problems, and a change no longer open", async () => {
+    const user = userEvent.setup();
+    const calls: Call[] = [];
+    stored = change({ operations: [RENAME] });
+    stub(calls);
+    overrides["POST /core/api/cabinet-change/preview"] = () => jsonResponse(200, CLEAN_PREVIEW);
+    renderScreen();
+    await screen.findByText(/Rename Health to Health and Wellness/);
+    const attempt = async () => {
+      await preview(user);
+      await user.click(screen.getByRole("button", { name: "Schedule…" }));
+      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2099-11-18" } });
+      fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "11:00" } });
+      await user.click(screen.getByRole("button", { name: "Schedule" }));
+    };
+
+    overrides["POST /core/api/cabinet-change/schedule"] = () => jsonResponse(422, { result: "past", error: "Choose a time in the future." });
+    await attempt();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Nothing was scheduled. Choose a time in the future.");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    overrides["POST /core/api/cabinet-change/schedule"] = () =>
+      jsonResponse(422, { result: "invalid", problems: [{ op: 0, message: "Health was changed by someone else since this draft was started." }] });
+    await attempt();
+    await waitFor(() => expect(screen.getAllByRole("alert").map((a) => a.textContent)).toEqual([
+      "Nothing was scheduled. Fix the problems listed under Preview, then try again.",
+      expect.stringContaining("Change 1: Health was changed by someone else"),
+    ]));
+
+    overrides["POST /core/api/cabinet-change/preview"] = () => jsonResponse(200, CLEAN_PREVIEW);
+    overrides["POST /core/api/cabinet-change/schedule"] = () => jsonResponse(404, { error: "no open cabinet change" });
+    await attempt();
+    expect(await screen.findByText("This cabinet change is no longer open. Someone else may have published or discarded it.")).toBeInTheDocument();
+  });
+
+  it("publish refused because the change is no longer open says so and reloads", async () => {
+    const user = userEvent.setup();
+    const calls: Call[] = [];
+    stored = change({ operations: [RENAME] });
+    stub(calls);
+    overrides["POST /core/api/cabinet-change/preview"] = () => jsonResponse(200, CLEAN_PREVIEW);
+    overrides["POST /core/api/cabinet-change/publish"] = () => {
+      stored = null;
+      return jsonResponse(404, { result: "not-open" });
+    };
+    renderScreen();
+    await screen.findByText(/Rename Health to Health and Wellness/);
+    await preview(user);
+    await user.click(screen.getByRole("button", { name: "Publish now…" }));
+    await user.click(screen.getByRole("button", { name: "Yes, publish now" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This cabinet change is no longer open.");
+    expect(await screen.findByText(/No changes yet/)).toBeInTheDocument();
+  });
+
+  it("a scheduled change whose time has passed reads as being published, and refreshes", async () => {
+    stored = change({ operations: [RENAME], status: "scheduled", scheduledFor: "2020-01-01T08:00:00.000Z", scheduledForLocal: "2020-01-01T00:00" });
+    stub([]);
+    renderScreen();
+    expect(await screen.findByText(/it is being published now/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Publishes on/)).toBeNull();
+    stored = null;
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await screen.findByText("The scheduled cabinet change has been published.")).toBeInTheDocument();
   });
 
   it("an already-scheduled change shows its time, and one that failed at its time says why", async () => {
-    stored = change({ operations: [RENAME], status: "scheduled", scheduledFor: "2026-11-19T07:00:00.000Z" });
+    // The time shown is Core's own reading (scheduledForLocal), not this browser's: here they
+    // deliberately disagree by an hour, as with a browser whose tzdata predates BC's 2026 change.
+    stored = change({ operations: [RENAME], status: "scheduled", scheduledFor: "2099-11-19T07:00:00.000Z", scheduledForLocal: "2099-11-18T23:00" });
     stub([]);
     renderScreen();
-    expect(await screen.findByText("Publishes on November 19, 2026 at 12:00 a.m. Pacific.")).toBeInTheDocument();
+    expect(await screen.findByText("Publishes on November 18, 2099 at 11:00 p.m. Pacific.")).toBeInTheDocument();
+    cleanup();
+
+    stored = change({ operations: [RENAME], status: "scheduled", scheduledFor: "2099-11-19T07:00:00.000Z", scheduledForLocal: "2099-11-19T00:00" });
+    stub([]);
+    renderScreen();
+    expect(await screen.findByText("Publishes on November 19, 2099 at 12:00 a.m. Pacific.")).toBeInTheDocument();
     cleanup();
 
     stored = change({ operations: [RENAME], error: "Not published at the scheduled time: Health was changed by someone else since this draft was started." });
@@ -277,10 +362,48 @@ describe("CabinetChangeScreen", () => {
     await user.click(screen.getByRole("button", { name: "Remove change 1" }));
     await waitFor(() => expect(puts(calls)).toEqual([[{ op: "create", ref: "Tourism", displayName: "Tourism" }]]));
     await user.click(screen.getByRole("button", { name: "Discard this cabinet change…" }));
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(screen.getByRole("button", { name: "Discard this cabinet change…" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Discard this cabinet change…" }));
     await user.click(screen.getByRole("button", { name: "Yes, discard it" }));
     expect(await screen.findByText(/discarded/)).toBeInTheDocument();
     expect(posts(calls, "cancel")).toHaveLength(1);
     expect(screen.getByText(/No changes yet/)).toBeInTheDocument();
+  });
+
+  it("form problems show beside their fields, and focus goes to the first one", async () => {
+    const user = userEvent.setup();
+    const calls: Call[] = [];
+    stub(calls);
+    renderScreen();
+    await screen.findByText(/No changes yet/);
+    await user.click(screen.getByRole("button", { name: "Add a new ministry" }));
+    const create = screen.getByRole("form", { name: "Add a new ministry" });
+    await user.type(within(create).getByLabelText("Abbreviation (optional)"), "x");
+    await user.click(within(create).getByRole("button", { name: "Add this change" }));
+    const name = within(create).getByLabelText("Name");
+    expect(name).toHaveFocus();
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    expect(name).toHaveAccessibleDescription("Enter the new ministry's name.");
+    expect(within(create).getByLabelText("Abbreviation (optional)")).toHaveAccessibleDescription(/Use 2 to 10 capital letters or digits, e.g. HLTH\.$/);
+    expect(puts(calls)).toHaveLength(0);
+
+    await user.type(name, "Health");
+    await user.click(within(create).getByRole("button", { name: "Add this change" }));
+    expect(name).toHaveAccessibleDescription("Health already exists.");
+  });
+
+  it("removing a new ministry also removes the hand-overs to it, and says so", async () => {
+    const user = userEvent.setup();
+    const calls: Call[] = [];
+    const toTourism = (key: string, at: string) => ({ op: "succeed", key, expectedUpdatedAt: at, successors: [{ ref: "Tourism" }], moves: { moveSubscribers: true, moveStaff: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: false } });
+    stored = change({ operations: [RENAME, { op: "create", ref: "Tourism", displayName: "Tourism" }, toTourism("jobs", JOBS.updatedAt), toTourism("finance", FINANCE.updatedAt)] });
+    stub(calls);
+    renderScreen();
+    await screen.findByText(/Hand Finance over to Tourism/);
+    await user.click(screen.getByRole("button", { name: "Remove change 2" }));
+    await waitFor(() => expect(puts(calls)).toEqual([[RENAME]]));
+    expect(screen.getByRole("status")).toHaveTextContent("Removed change 2. The hand-overs to Tourism were removed too: Jobs, Finance.");
   });
 
   it("has no serious axe violations with changes, a preview and the schedule picker open", async () => {

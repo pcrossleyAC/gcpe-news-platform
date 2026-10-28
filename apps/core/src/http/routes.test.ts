@@ -611,7 +611,15 @@ describe("Core HTTP API", () => {
       expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ at: "soon" })).status).toBe(400);
       const scheduled = await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ at: "2099-11-20T08:00:00Z" });
       expect(scheduled.status).toBe(200);
-      expect(scheduled.body).toMatchObject({ status: "scheduled", scheduledFor: "2099-11-20T08:00:00.000Z" });
+      expect(scheduled.body).toMatchObject({ status: "scheduled", scheduledFor: "2099-11-20T08:00:00.000Z", scheduledForLocal: "2099-11-20T01:00" });
+      // NG-R15: the Hub sends BC wall-clock time; Core converts it (BC stays on UTC−7 all year after 2026-11-01).
+      const local = await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ scheduledForLocal: "2099-11-20T11:00" });
+      expect(local.status).toBe(200);
+      expect(local.body).toMatchObject({ status: "scheduled", scheduledFor: "2099-11-20T18:00:00.000Z", scheduledForLocal: "2099-11-20T11:00" });
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).body.scheduledForLocal).toBe("2099-11-20T11:00");
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ scheduledForLocal: "2099-02-30T11:00" })).status).toBe(400);
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ scheduledForLocal: "2099-11-20T11:00", at: "2099-11-20T08:00:00Z" })).status).toBe(400);
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ scheduledForLocal: "2001-01-01T00:00" })).body).toEqual({ result: "past", error: "Choose a time in the future." });
 
       expect((await request(app).post("/api/cabinet-change/cancel").set(auth(admin))).status).toBe(204);
       expect((await request(app).get("/api/cabinet-change").set(auth(admin))).status).toBe(404);

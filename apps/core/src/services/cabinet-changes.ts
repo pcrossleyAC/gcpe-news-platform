@@ -3,6 +3,7 @@ import { z } from "zod";
 import { sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
 import { orgKeyFromName, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
 import { safeErrorLabel } from "@gcpe/http-kit";
+import { wallClockToInstant } from "@gcpe/config";
 import { cabinetChanges, organizations, userOrganizations } from "../db/schema";
 import { lockAggregate, orgAggregateId, userAggregateId } from "./aggregate";
 import {
@@ -495,6 +496,52 @@ export async function scheduleCabinetChange(db: Db, id: string, at: Date, now?: 
   });
 }
 
+/** The tenant zone when none is configured. */
+export const DEFAULT_TIME_ZONE = "America/Vancouver";
+
+const LOCAL_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
+/**
+ * A BC wall-clock "YYYY-MM-DDTHH:mm" (what the Hub's schedule picker holds) as the real instant in
+ * `timeZone`, by this server's tzdata (NG-R15: the server converts, never the browser). Null for a
+ * malformed or impossible date or time (e.g. 2026-02-30, 24:00).
+ */
+export function localToInstant(local: string, timeZone: string): Date | null {
+  const m = LOCAL_DATE_TIME.exec(local);
+  if (!m) return null;
+  const [y, mo, d, h, mi] = m.slice(1).map(Number) as [number, number, number, number, number];
+  const wall = new Date(Date.UTC(y, mo - 1, d, h, mi));
+  if (wall.getUTCFullYear() !== y || wall.getUTCMonth() !== mo - 1 || wall.getUTCDate() !== d || wall.getUTCHours() !== h || wall.getUTCMinutes() !== mi) return null;
+  return wallClockToInstant(wall, timeZone);
+}
+
+/** The inverse of {@link localToInstant}: the "YYYY-MM-DDTHH:mm" `timeZone`'s clock shows at `iso`, by this server's tzdata. */
+export function instantToLocal(iso: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+  const get = (type: string) => parts.find((p) => p.type === type)!.value;
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+/** Deadlock and serialization failure: a clash with another writer, worth one more try. */
+const TRANSIENT_SQLSTATES = new Set(["40P01", "40001"]);
+
+function sqlStateOf(e: unknown): string | undefined {
+  let c: unknown = e;
+  for (let i = 0; i < 5 && c && typeof c === "object"; i++) {
+    const code = (c as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+    c = (c as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+/**
+ * Scheduled changes whose last attempt hit a deadlock or serialization failure, by id and scheduled
+ * time. They stay scheduled for one more try on the next tick; a second failure returns them to draft.
+ * In memory: a restart grants another try, which is harmless.
+ */
+const transientRetries = new Set<string>();
+
 const GENERIC_SCHEDULED_ERROR = "Not published at the scheduled time: something went wrong while publishing. Review the change and schedule it again.";
 
 /**
@@ -514,15 +561,28 @@ export async function publishDueCabinetChanges(db: Db, subscribers: SubscriberCo
   let published = 0;
   let failed = 0;
   for (const { id, scheduledFor } of due) {
+    const retryKey = `${id}@${scheduledFor!.toISOString()}`;
     let error: string;
     let reason: string;
     try {
       const result = await publish(db, id, subscribers, { now, onlyIfDue: true });
       if (result.result === "published") published++;
-      if (result.result !== "stale" && result.result !== "invalid") continue;
+      if (result.result !== "stale" && result.result !== "invalid") {
+        if (result.result !== "not-due") transientRetries.delete(retryKey);
+        continue;
+      }
+      transientRetries.delete(retryKey);
       reason = result.result;
       error = `Not published at the scheduled time: ${result.result === "stale" ? staleMessage(result.displayName) : result.problems.map((p) => p.message).join(" ")}`;
     } catch (e) {
+      const state = sqlStateOf(e);
+      if (state && TRANSIENT_SQLSTATES.has(state) && !transientRetries.has(retryKey)) {
+        // Nothing was written (one transaction): leave it scheduled and try once more next tick.
+        transientRetries.add(retryKey);
+        console.warn("[core] scheduled cabinet change hit a transient database error; retrying next tick", { id, sqlState: state });
+        continue;
+      }
+      transientRetries.delete(retryKey);
       console.error("[core] scheduled cabinet change failed", { id }, safeErrorLabel(e));
       reason = "error";
       error = GENERIC_SCHEDULED_ERROR;

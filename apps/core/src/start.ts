@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv } from "@gcpe/auth";
-import { parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
@@ -18,6 +18,8 @@ export const coreEnvSchema = z.object({
   EVENT_SUBSCRIBERS: z.string().optional(),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   SESSION_COOKIE_SECURE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  /** The tenant file: its time zone turns a cabinet change's BC schedule time into an instant (NG-R15). */
+  TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
 });
 
 export interface AppHandle {
@@ -53,10 +55,14 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
+  // Fail fast when this runtime's tzdata disagrees with the tenant's pinned self-check, as NRMS and the News API do.
+  const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
+  assertTimeZoneRules(tenant);
 
   const app = createApp({
     db,
     subscribers,
+    timeZone: tenant.timeZone,
     auth: auth.bearer,
     loginRouter: auth.loginRouter,
     session: auth.session

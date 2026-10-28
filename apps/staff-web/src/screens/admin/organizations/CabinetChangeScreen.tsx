@@ -51,6 +51,8 @@ interface CabinetChange {
   id: string;
   status: "draft" | "scheduled" | "published" | "cancelled";
   scheduledFor: string | null;
+  /** Core's own reading of `scheduledFor` on the tenant's clock, "YYYY-MM-DDTHH:mm" (NG-R15). */
+  scheduledForLocal?: string | null;
   operations: Operation[];
   error: string | null;
   updatedAt: string;
@@ -79,8 +81,24 @@ const API = "/core/api/cabinet-change";
 export const staleCopy = (ministry: string) =>
   `${ministry} was changed by someone else since this draft was started. Review it and publish again.`;
 
-/** "Publishes on {Month D, YYYY} at {h:mm a.m./p.m.} Pacific." in the tenant's time zone. */
-export function scheduledCopy(iso: string, timeZone: string): string {
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/**
+ * "Publishes on {Month D, YYYY} at {h:mm a.m./p.m.} Pacific." from Core's `scheduledForLocal`, so the
+ * time shown is the one Core will publish at, whatever this browser's tzdata says (NG-R15). Without
+ * it (an older Core), the instant is formatted in the tenant zone by the browser.
+ */
+export function scheduledCopy(change: { scheduledFor: string | null; scheduledForLocal?: string | null }, timeZone: string): string {
+  const m = change.scheduledForLocal ? /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(change.scheduledForLocal) : null;
+  if (m) {
+    const [y, mo, d, h, mi] = m.slice(1).map(Number) as [number, number, number, number, number];
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `Publishes on ${MONTHS[mo - 1]} ${d}, ${y} at ${hour12}:${String(mi).padStart(2, "0")} ${h < 12 ? "a.m." : "p.m."} Pacific.`;
+  }
+  return browserScheduledCopy(change.scheduledFor ?? "", timeZone);
+}
+
+function browserScheduledCopy(iso: string, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
@@ -129,7 +147,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Cabinet change");
   const admin = isCoreAdmin(session);
-  const { timeZone, resolved } = useTenantTimeZoneStatus();
+  const { timeZone } = useTenantTimeZoneStatus();
   const uid = useId();
 
   const [orgs, setOrgs] = useState<OrgRecord[] | null>(null);
@@ -153,6 +171,9 @@ export function CabinetChangeScreen(): React.JSX.Element {
   const statusRef = useRef<HTMLParagraphElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const publishButton = useRef<HTMLButtonElement>(null);
+  const scheduleButton = useRef<HTMLButtonElement>(null);
+  const scheduleForm = useRef<HTMLFormElement>(null);
+  const discardButton = useRef<HTMLButtonElement>(null);
   const focusNext = useRef<(() => HTMLElement | null) | null>(null);
 
   const loadOrgs = useCallback(() => {
@@ -173,6 +194,41 @@ export function CabinetChangeScreen(): React.JSX.Element {
     loadOrgs();
     loadChange();
   }, [admin, loadOrgs, loadChange]);
+
+  // F5: a scheduled change whose time has passed is being published by Core's worker. Check again
+  // every 15 seconds, and whenever the window regains focus, until it is published (or back to draft).
+  const overdue = change?.status === "scheduled" && change.scheduledFor !== null && new Date(change.scheduledFor).getTime() <= Date.now();
+  const [overdueGone, setOverdueGone] = useState(false);
+  useEffect(() => {
+    if (!overdue) return;
+    const check = () =>
+      apiFetch<CabinetChange>(API).then(
+        (c) => setChange(c),
+        (caught) => {
+          if (caught instanceof ApiError && caught.status === 404) {
+            setChange(null);
+            setPreview(null);
+            setOverdueGone(true);
+            apiFetch<OrgRecord[]>("/core/api/organizations").then(setOrgs, () => undefined);
+          }
+        },
+      );
+    const timer = setInterval(check, 15_000);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", check);
+    };
+  }, [overdue]);
+  // A change still "scheduled" whose time is about to pass: re-render then, so it reads as being published.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (change?.status !== "scheduled" || !change.scheduledFor) return;
+    const wait = new Date(change.scheduledFor).getTime() - Date.now();
+    if (wait <= 0 || wait > 2 ** 31 - 1) return;
+    const timer = setTimeout(() => setTick((t) => t + 1), wait + 1_000);
+    return () => clearTimeout(timer);
+  }, [change?.status, change?.scheduledFor]);
 
   useEffect(() => {
     const target = focusNext.current?.();
@@ -236,10 +292,18 @@ export function CabinetChangeScreen(): React.JSX.Element {
       }
     });
 
+  // F7: removing a new ministry also removes the hand-overs to it, which would otherwise name nothing.
   const remove = (index: number) =>
     run(async () => {
-      if (await save(ops.filter((_, i) => i !== index))) {
-        setStatus(`Removed change ${index + 1}.`);
+      const target = ops[index];
+      const ref = target?.op === "create" ? target.ref : null;
+      const dependents = ref === null ? [] : ops.filter((o): o is SucceedOp => o.op === "succeed" && o.successors.some((s) => "ref" in s && s.ref === ref));
+      if (await save(ops.filter((o, i) => i !== index && !dependents.includes(o as SucceedOp)))) {
+        setStatus(
+          dependents.length
+            ? `Removed change ${index + 1}. The ${dependents.length === 1 ? "hand-over" : "hand-overs"} to ${target!.op === "create" ? target!.displayName : ""} ${dependents.length === 1 ? "was" : "were"} removed too: ${dependents.map((d) => nameOf(d.key)).join(", ")}. Add ${dependents.length === 1 ? "it" : "them"} again if you still need ${dependents.length === 1 ? "it" : "them"}.`
+            : `Removed change ${index + 1}.`,
+        );
         focusNext.current = () => changesHeading.current;
       }
     });
@@ -280,9 +344,10 @@ export function CabinetChangeScreen(): React.JSX.Element {
   };
 
   /** A refusal with problems: they're listed under Preview. */
-  const showProblems = (problems: Problem[]) => {
+  const showProblems = (problems: Problem[], what: "published" | "scheduled") => {
     setPreview((p) => ({ diff: p?.diff ?? [], resulting: p?.resulting ?? [], problems }));
-    setMessages(["Nothing was published. Fix the problems listed under Preview, then try again."]);
+    setScheduling(false);
+    setMessages([`Nothing was ${what}. Fix the problems listed under Preview, then try again.`]);
   };
 
   const publish = () =>
@@ -304,7 +369,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
           setMessages([staleCopy(nameOf(r.key))]);
           setPreview(null);
           loadOrgs();
-        } else if (r?.result === "invalid" && r.problems) showProblems(r.problems);
+        } else if (r?.result === "invalid" && r.problems) showProblems(r.problems, "published");
         else if (r?.result === "not-open" || (caught instanceof ApiError && caught.status === 404)) gone();
         else setMessages(messagesOf(caught));
         focusNext.current = () => messagesRef.current;
@@ -317,25 +382,33 @@ export function CabinetChangeScreen(): React.JSX.Element {
         setMessages(["Enter the date and time to publish."]);
         return;
       }
-      if (!resolved) {
-        setMessages(["Still loading the time zone. Try again in a moment."]);
-        return;
-      }
       try {
-        const saved = await apiFetch<CabinetChange>(`${API}/schedule`, { method: "POST", body: { at: when.instant } });
+        // NG-R15: the BC wall-clock time as typed; Core converts it with the tenant zone.
+        const saved = await apiFetch<CabinetChange>(`${API}/schedule`, { method: "POST", body: { scheduledForLocal: when.local } });
         setChange(saved);
         setScheduling(false);
         setStatus("Scheduled. It publishes by itself at the time shown; you can leave this page.");
         focusNext.current = () => statusRef.current;
       } catch (caught) {
         const r = resultOf(caught);
-        if (r?.result === "invalid" && r.problems) showProblems(r.problems);
-        else if (r?.result === "past") setMessages([r.error ?? "Choose a time in the future."]);
+        if (r?.result === "invalid" && r.problems) showProblems(r.problems, "scheduled");
+        else if (r?.result === "past") setMessages([`Nothing was scheduled. ${r.error ?? "Choose a time in the future."}`]);
         else if (r?.result === "not-open" || (caught instanceof ApiError && caught.status === 404)) gone();
-        else setMessages(messagesOf(caught));
+        else setMessages(["Nothing was scheduled.", ...messagesOf(caught)]);
         focusNext.current = () => messagesRef.current;
       }
     });
+
+  const openSchedule = () => {
+    setConfirm(null);
+    setWhen(null);
+    setScheduling(true);
+    focusNext.current = () => scheduleForm.current?.querySelector<HTMLElement>("input") ?? null;
+  };
+  const closeSchedule = () => {
+    setScheduling(false);
+    focusNext.current = () => scheduleButton.current;
+  };
 
   const unschedule = () =>
     run(async () => {
@@ -434,9 +507,17 @@ export function CabinetChangeScreen(): React.JSX.Element {
 
       {!loading && !loadError && orgs && (
         <>
-          {scheduled && (
+          {overdueGone && !change && <p>The scheduled cabinet change has been published.</p>}
+          {scheduled && overdue && (
+            <InlineAlert
+              variant="info"
+              title="Publishing now"
+              description="Its scheduled time has passed, so it is being published now. This page checks again every 15 seconds."
+            />
+          )}
+          {scheduled && !overdue && (
             <>
-              <InlineAlert variant="info" title="Scheduled" description={scheduledCopy(change.scheduledFor!, timeZone)} />
+              <InlineAlert variant="info" title="Scheduled" description={scheduledCopy(change, timeZone)} />
               <p>It publishes by itself at that time; nobody needs to be here. Until then you can still edit it, publish it now, or discard it.</p>
             </>
           )}
@@ -480,7 +561,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
               {opener("succeed", "Hand over a ministry")}
             </p>
             {adding === "update" && (
-              <UpdateForm orgs={orgs} busy={busy} onCancel={cancelAdd} onAdd={(op, summary) => void add(op, summary, "update")} onError={setMessages} />
+              <UpdateForm orgs={orgs} busy={busy} onCancel={cancelAdd} onAdd={(op, summary) => void add(op, summary, "update")} />
             )}
             {adding === "create" && (
               <CreateForm
@@ -488,7 +569,6 @@ export function CabinetChangeScreen(): React.JSX.Element {
                 busy={busy}
                 onCancel={cancelAdd}
                 onAdd={(op, summary) => void add(op, summary, "create")}
-                onError={setMessages}
               />
             )}
             {adding === "succeed" && (
@@ -499,7 +579,6 @@ export function CabinetChangeScreen(): React.JSX.Element {
                 busy={busy}
                 onCancel={cancelAdd}
                 onAdd={(op, summary) => void add(op, summary, "succeed")}
-                onError={setMessages}
               />
             )}
           </section>
@@ -570,7 +649,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                         Publish now…
                       </button>{" "}
                       {!scheduling && (
-                        <button type="button" disabled={busy} onClick={() => setScheduling(true)}>
+                        <button type="button" ref={scheduleButton} disabled={busy} onClick={openSchedule}>
                           Schedule…
                         </button>
                       )}
@@ -578,6 +657,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                   )}
                   {scheduling && (
                     <form
+                      ref={scheduleForm}
                       aria-label="Schedule the cabinet change"
                       className="gcpe-stack"
                       noValidate
@@ -591,7 +671,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                       <button type="submit" disabled={busy}>
                         Schedule
                       </button>{" "}
-                      <button type="button" onClick={() => setScheduling(false)}>
+                      <button type="button" onClick={closeSchedule}>
                         Cancel
                       </button>
                     </form>
@@ -610,7 +690,13 @@ export function CabinetChangeScreen(): React.JSX.Element {
                   <button type="button" disabled={busy} onClick={() => void discard()}>
                     Yes, discard it
                   </button>{" "}
-                  <button type="button" onClick={() => setConfirm(null)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirm(null);
+                      focusNext.current = () => discardButton.current;
+                    }}
+                  >
                     Keep it
                   </button>
                 </div>
@@ -618,8 +704,10 @@ export function CabinetChangeScreen(): React.JSX.Element {
                 <p>
                   <button
                     type="button"
+                    ref={discardButton}
                     disabled={busy}
                     onClick={() => {
+                      setScheduling(false);
                       setConfirm("discard");
                       focusNext.current = () => confirmGroup.current;
                     }}
@@ -796,7 +884,45 @@ interface FormProps<T extends Operation> {
   busy: boolean;
   onCancel: () => void;
   onAdd: (op: T, summary: string) => void;
-  onError: (messages: string[]) => void;
+}
+
+/** Core's abbreviation rule (abbreviationSchema), checked here so the message sits by the field. */
+const ABBREVIATION = /^[A-Z0-9]{2,10}$/;
+const ABBREVIATION_RULE = "Use 2 to 10 capital letters or digits, e.g. HLTH.";
+
+type FieldErrors = Record<string, string>;
+
+/**
+ * A form's field errors (F6): each message sits under its field, which is marked aria-invalid; on a
+ * failed submit, focus goes to the first invalid field (the order the errors are given in).
+ */
+function useFieldErrors(): { errors: FieldErrors; fail: (errors: [id: string, message: string][]) => void; clear: () => void } {
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const focusId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusId.current) return;
+    document.getElementById(focusId.current)?.focus();
+    focusId.current = null;
+  });
+  return {
+    errors,
+    fail: (list) => {
+      setErrors(Object.fromEntries(list));
+      focusId.current = list[0]?.[0] ?? null;
+    },
+    clear: () => setErrors({}),
+  };
+}
+
+/** aria-describedby for a field with an optional hint and an optional error. */
+const describedBy = (id: string, hint: boolean, error: string | undefined) => [hint && `${id}-hint`, error !== undefined && `${id}-err`].filter(Boolean).join(" ") || undefined;
+
+function FieldError({ id, error }: { id: string; error: string | undefined }): React.JSX.Element | null {
+  return error === undefined ? null : (
+    <p id={`${id}-err`} className="gcpe-field-error">
+      {error}
+    </p>
+  );
 }
 
 /** The shell every add-a-change form shares: a named form whose heading takes focus when it opens. */
@@ -831,12 +957,34 @@ function AddForm({ title, busy, onCancel, onSubmit, children }: { title: string;
   );
 }
 
-function Field({ id, label, hint, value, onChange }: { id: string; label: string; hint?: string; value: string; onChange: (v: string) => void }): React.JSX.Element {
+function Field({
+  id,
+  label,
+  hint,
+  value,
+  error,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  value: string;
+  error?: string;
+  onChange: (v: string) => void;
+}): React.JSX.Element {
   return (
     <div className="gcpe-field">
       <label htmlFor={id}>{label}</label>
       {hint && <p id={`${id}-hint`}>{hint}</p>}
-      <input id={id} type="text" value={value} aria-describedby={hint ? `${id}-hint` : undefined} onChange={(e) => onChange(e.target.value)} />
+      <input
+        id={id}
+        type="text"
+        value={value}
+        aria-invalid={error !== undefined}
+        aria-describedby={describedBy(id, Boolean(hint), error)}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <FieldError id={id} error={error} />
     </div>
   );
 }
@@ -847,9 +995,12 @@ function UpdateForm({ orgs, ...props }: FormProps<UpdateOp> & { orgs: OrgRecord[
   const [name, setName] = useState("");
   const [abbr, setAbbr] = useState("");
   const [minister, setMinister] = useState("");
+  const { errors, fail, clear } = useFieldErrors();
   const org = orgs.find((o) => o.key === key);
+  const ids = { org: `${uid}-org`, name: `${uid}-name`, abbr: `${uid}-abbr`, minister: `${uid}-minister` };
 
   const choose = (k: string) => {
+    clear();
     const o = orgs.find((x) => x.key === k);
     setKey(k);
     setName(o?.displayName ?? "");
@@ -858,17 +1009,21 @@ function UpdateForm({ orgs, ...props }: FormProps<UpdateOp> & { orgs: OrgRecord[
   };
 
   const submit = () => {
-    if (!org) return props.onError(["Choose the ministry to change."]);
+    if (!org) return fail([[ids.org, "Choose the ministry to change."]]);
+    const problems: [string, string][] = [];
     const patch: UpdateOp["patch"] = {};
-    if (name.trim() && name.trim() !== org.displayName) patch.displayName = name.trim();
-    if (!name.trim()) return props.onError(["A ministry needs a name."]);
+    if (!name.trim()) problems.push([ids.name, "A ministry needs a name."]);
+    else if (name.trim() !== org.displayName) patch.displayName = name.trim();
     const a = normalizeAbbreviation(abbr);
     if (a !== normalizeAbbreviation(org.abbreviation ?? "")) {
-      if (!a) return props.onError(["An abbreviation can't be removed here. Enter a new one, or leave it as it was."]);
-      patch.abbreviation = a;
+      if (!a) problems.push([ids.abbr, "An abbreviation can't be removed here. Enter a new one, or leave it as it was."]);
+      else if (!ABBREVIATION.test(a)) problems.push([ids.abbr, ABBREVIATION_RULE]);
+      else patch.abbreviation = a;
     }
+    if (problems.length) return fail(problems);
     if (minister.trim() !== (org.minister.name ?? "")) patch.minister = { name: minister.trim() || null };
-    if (!Object.keys(patch).length) return props.onError(["Change the name, abbreviation or minister first."]);
+    if (!Object.keys(patch).length) return fail([[ids.name, "Change the name, abbreviation or minister first."]]);
+    clear();
     const op: UpdateOp = { op: "update", key: org.key, expectedUpdatedAt: org.updatedAt, patch };
     props.onAdd(op, updateSummary(op, org));
   };
@@ -877,8 +1032,14 @@ function UpdateForm({ orgs, ...props }: FormProps<UpdateOp> & { orgs: OrgRecord[
     <AddForm title="Rename or change a ministry" busy={props.busy} onCancel={props.onCancel} onSubmit={submit}>
       <p>Renaming keeps the ministry&rsquo;s web address, subscribers and staff.</p>
       <div className="gcpe-field">
-        <label htmlFor={`${uid}-org`}>Ministry</label>
-        <select id={`${uid}-org`} value={key} onChange={(e) => choose(e.target.value)}>
+        <label htmlFor={ids.org}>Ministry</label>
+        <select
+          id={ids.org}
+          value={key}
+          aria-invalid={errors[ids.org] !== undefined}
+          aria-describedby={describedBy(ids.org, false, errors[ids.org])}
+          onChange={(e) => choose(e.target.value)}
+        >
           <option value="">Choose a ministry</option>
           {orgs
             .filter((o) => o.isActive)
@@ -888,18 +1049,20 @@ function UpdateForm({ orgs, ...props }: FormProps<UpdateOp> & { orgs: OrgRecord[
               </option>
             ))}
         </select>
+        <FieldError id={ids.org} error={errors[ids.org]} />
       </div>
       {org && (
         <>
-          <Field id={`${uid}-name`} label="Name" value={name} onChange={setName} />
+          <Field id={ids.name} label="Name" value={name} error={errors[ids.name]} onChange={setName} />
           <Field
-            id={`${uid}-abbr`}
+            id={ids.abbr}
             label="Abbreviation"
             hint="Used in release numbers, e.g. 2026HLTH0001. 2 to 10 capital letters or digits."
             value={abbr}
+            error={errors[ids.abbr]}
             onChange={setAbbr}
           />
-          <Field id={`${uid}-minister`} label="Minister" hint="Leave empty if there is no minister yet." value={minister} onChange={setMinister} />
+          <Field id={ids.minister} label="Minister" hint="Leave empty if there is no minister yet." value={minister} onChange={setMinister} />
         </>
       )}
     </AddForm>
@@ -911,13 +1074,19 @@ function CreateForm({ existing, ...props }: FormProps<CreateOp> & { existing: st
   const [name, setName] = useState("");
   const [abbr, setAbbr] = useState("");
   const [minister, setMinister] = useState("");
+  const { errors, fail, clear } = useFieldErrors();
+  const ids = { name: `${uid}-name`, abbr: `${uid}-abbr` };
 
   const submit = () => {
     const displayName = name.trim();
-    if (!displayName) return props.onError(["Enter the new ministry's name."]);
-    if (existing.some((n) => n.trim().toLowerCase() === displayName.toLowerCase())) return props.onError([`${displayName} already exists.`]);
-    const op: CreateOp = { op: "create", ref: displayName.slice(0, 60), displayName };
     const a = normalizeAbbreviation(abbr);
+    const problems: [string, string][] = [];
+    if (!displayName) problems.push([ids.name, "Enter the new ministry's name."]);
+    else if (existing.some((n) => n.trim().toLowerCase() === displayName.toLowerCase())) problems.push([ids.name, `${displayName} already exists.`]);
+    if (a && !ABBREVIATION.test(a)) problems.push([ids.abbr, ABBREVIATION_RULE]);
+    if (problems.length) return fail(problems);
+    clear();
+    const op: CreateOp = { op: "create", ref: displayName.slice(0, 60), displayName };
     if (a) op.abbreviation = a;
     if (minister.trim()) op.minister = { name: minister.trim() };
     props.onAdd(op, `Add a new ministry: ${displayName}`);
@@ -925,12 +1094,13 @@ function CreateForm({ existing, ...props }: FormProps<CreateOp> & { existing: st
 
   return (
     <AddForm title="Add a new ministry" busy={props.busy} onCancel={props.onCancel} onSubmit={submit}>
-      <Field id={`${uid}-name`} label="Name" value={name} onChange={setName} />
+      <Field id={ids.name} label="Name" value={name} error={errors[ids.name]} onChange={setName} />
       <Field
-        id={`${uid}-abbr`}
+        id={ids.abbr}
         label="Abbreviation (optional)"
         hint="Used in release numbers, e.g. 2026HLTH0001. 2 to 10 capital letters or digits."
         value={abbr}
+        error={errors[ids.abbr]}
         onChange={setAbbr}
       />
       <Field id={`${uid}-minister`} label="Minister (optional)" value={minister} onChange={setMinister} />
@@ -957,6 +1127,8 @@ function SucceedForm({
   const [moves, setMoves] = useState<HandOverMoves>(ALL_MOVES);
   const [replaceAbbr, setReplaceAbbr] = useState(false);
   const [takeAbbr, setTakeAbbr] = useState(true);
+  const { errors, fail, clear } = useFieldErrors();
+  const orgId = `${uid}-org`;
   const org = orgs.find((o) => o.key === key);
   const sources = orgs.filter((o) => o.isActive && !handedOver.has(o.key));
   const options: SuccessorOption[] = [
@@ -976,6 +1148,7 @@ function SucceedForm({
   const showAbbrLine = abbrRelevant && (bAbbr === null || replaceAbbr);
 
   const choose = (k: string) => {
+    clear();
     setKey(k);
     setSuccessors([""]);
     setMoves(ALL_MOVES);
@@ -992,7 +1165,7 @@ function SucceedForm({
   };
 
   const submit = () => {
-    if (!org) return props.onError(["Choose the ministry to hand over."]);
+    if (!org) return fail([[orgId, "Choose the ministry to hand over."]]);
     const list: Successor[] = chosen.map((v) => (v.startsWith("ref:") ? { ref: v.slice(4) } : { key: v.slice(4) }));
     const op: SucceedOp = {
       op: "succeed",
@@ -1015,9 +1188,15 @@ function SucceedForm({
   return (
     <AddForm title="Hand over a ministry" busy={props.busy} onCancel={props.onCancel} onSubmit={submit}>
       <div className="gcpe-field">
-        <label htmlFor={`${uid}-org`}>Ministry to hand over</label>
-        <p id={`${uid}-org-hint`}>It becomes inactive when the change is published.</p>
-        <select id={`${uid}-org`} value={key} aria-describedby={`${uid}-org-hint`} onChange={(e) => choose(e.target.value)}>
+        <label htmlFor={orgId}>Ministry to hand over</label>
+        <p id={`${orgId}-hint`}>It becomes inactive when the change is published.</p>
+        <select
+          id={orgId}
+          value={key}
+          aria-invalid={errors[orgId] !== undefined}
+          aria-describedby={describedBy(orgId, true, errors[orgId])}
+          onChange={(e) => choose(e.target.value)}
+        >
           <option value="">Choose a ministry</option>
           {sources.map((o) => (
             <option key={o.key} value={o.key}>
@@ -1025,6 +1204,7 @@ function SucceedForm({
             </option>
           ))}
         </select>
+        <FieldError id={orgId} error={errors[orgId]} />
       </div>
       {org &&
         successors.map((value, index) => {

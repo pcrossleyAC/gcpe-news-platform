@@ -25,12 +25,16 @@ import {
 } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import {
+  DEFAULT_TIME_ZONE,
   cancelCabinetChange,
+  instantToLocal,
+  localToInstant,
   getOpenCabinetChange,
   previewCabinetChange,
   publishCabinetChange,
   saveCabinetChangeDraft,
   scheduleCabinetChange,
+  type CabinetChangeRecord,
 } from "../services/cabinet-changes";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
@@ -62,7 +66,8 @@ function safe<P>(fn: (req: Request<P>, res: Response) => Promise<void>) {
   return (req: Request<P>, res: Response) => fn(req, res).catch((e: unknown) => handleError(res, e));
 }
 
-export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Router {
+export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZone?: string } = {}): express.Router {
+  const timeZone = opts.timeZone ?? DEFAULT_TIME_ZONE;
   const r = express.Router();
   const admin = requireRole("Core.Admin");
 
@@ -161,12 +166,15 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
   // New-government spec §5: the staged cabinet change. One change is open (draft or scheduled) at a
   // time, so these routes address "the" open change rather than an id.
   const noOpenChange = (res: Response) => void res.status(404).json({ error: "no open cabinet change" });
+  // The scheduled time as the tenant's clock shows it, by this server's tzdata (NG-R15), so the Hub
+  // shows the same BC time Core will publish at, whatever the browser's own tzdata says.
+  const view = (c: CabinetChangeRecord) => ({ ...c, scheduledForLocal: c.scheduledFor ? instantToLocal(c.scheduledFor, timeZone) : null });
   r.get(
     "/cabinet-change",
     admin,
     safe(async (_req, res) => {
       const change = await getOpenCabinetChange(db);
-      change ? res.json(change) : noOpenChange(res);
+      change ? res.json(view(change)) : noOpenChange(res);
     }),
   );
   const draftSchema = z.object({ operations: z.array(z.unknown()) }).strict();
@@ -175,7 +183,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     admin,
     safe(async (req, res) => {
       const { operations } = draftSchema.parse(req.body);
-      res.json(await saveCabinetChangeDraft(db, operations, actorOf(req).name));
+      res.json(view(await saveCabinetChangeDraft(db, operations, actorOf(req).name)));
     }),
   );
   r.post(
@@ -198,16 +206,26 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
       res.status(status).json(result);
     }),
   );
-  const scheduleSchema = z.object({ at: z.string().datetime({ offset: true }) }).strict();
+  // NG-R15: the Hub sends the BC wall-clock time ("YYYY-MM-DDTHH:mm") and Core converts it with the
+  // tenant zone; an explicit instant (`at`) is still accepted.
+  const scheduleSchema = z.union([
+    z
+      .object({
+        scheduledForLocal: z.string().refine((v) => localToInstant(v, timeZone) !== null, "Enter a real date and time."),
+      })
+      .strict(),
+    z.object({ at: z.string().datetime({ offset: true }) }).strict(),
+  ]);
   r.post(
     "/cabinet-change/schedule",
     admin,
     safe(async (req, res) => {
-      const { at } = scheduleSchema.parse(req.body);
+      const body = scheduleSchema.parse(req.body);
+      const at = "at" in body ? new Date(body.at) : localToInstant(body.scheduledForLocal, timeZone)!;
       const change = await getOpenCabinetChange(db);
       if (!change) return noOpenChange(res);
-      const result = await scheduleCabinetChange(db, change.id, new Date(at));
-      if (result.result === "scheduled") return void res.json(result.change);
+      const result = await scheduleCabinetChange(db, change.id, at);
+      if (result.result === "scheduled") return void res.json(view(result.change));
       if (result.result === "not-open") return noOpenChange(res);
       if (result.result === "past") return void res.status(422).json({ result: "past", error: "Choose a time in the future." });
       res.status(422).json(result);
