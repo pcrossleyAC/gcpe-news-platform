@@ -328,6 +328,21 @@ describe("accessibility — Website section screens", () => {
     expect(await seriousViolations(container)).toEqual([]);
   });
 
+  it("SocialScreen, with errors on the Connect page fields", async () => {
+    const state = settingsState(
+      (d) => ({ ...d, connect: { ...d.connect, policyLink: { text: "", url: "https://x.invalid/p" }, intro: "<b>hi</b>" } }),
+      [
+        { field: "connect.policyLink.text", message: "Enter the link text." },
+        { field: "connect.intro", message: "Use plain text." },
+      ],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<SocialScreen />));
+    await screen.findByRole("heading", { name: "Social links", level: 1 });
+    expect(await screen.findByLabelText("Introduction")).toBeInvalid();
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
   it("ThemeScreen, with a contrast error, a faint colour and the other badges", async () => {
     const state = settingsState(
       (d) => ({ ...d, theme: { colors: { ...d.theme.colors, bannerInfo: "#8899AA" } } }),
