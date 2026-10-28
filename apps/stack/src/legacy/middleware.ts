@@ -41,7 +41,8 @@ export interface LegacyUrlOptions {
  *    the post's page when the lookup finds a published post whose page exists. It sits before
  *    the case rule and the fallbacks, and no other rule claims a bare `/<digits>` (a fixed rule
  *    or category needs a word, the post rule a kind prefix). One DB lookup per request, served
- *    by `posts_reference_lower_idx`; a throwing lookup is logged once per message, then next();
+ *    by `posts_reference_lower_idx`; a throwing lookup is logged once per message until a lookup
+ *    succeeds again, then next();
  * 5. the case rule: a path with uppercase that is not a page in exactly that case, whose
  *    lowercase is one (`caseRule`) — before the fallback rules, so `/Releases` reaches a built
  *    `/releases/` in one hop, also on case-sensitive Linux;
@@ -158,6 +159,8 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
     let key: string | null;
     try {
       key = await opts.lookupReference!(`NEWS-${n}`);
+      // A success ends the outage: the next failure (a second outage, even the same message) logs again.
+      lookupFailures.clear();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!lookupFailures.has(message)) {

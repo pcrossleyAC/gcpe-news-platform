@@ -695,6 +695,24 @@ describe("legacyUrls: NEWS-n short links (url-compat T5)", () => {
     expect(err.mock.calls.filter((c) => String(c[0]).includes("[stack] reference lookup failed: db down"))).toHaveLength(1);
   });
 
+  it("a failure after a successful lookup is logged again (a second outage is not silent)", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    let down = true;
+    const app = appWith(async () => {
+      if (down) throw new Error("db down");
+      return "2026TT0103-001121";
+    });
+    const logged = () => err.mock.calls.filter((c) => String(c[0]).includes("[stack] reference lookup failed: db down")).length;
+    await request(app).get("/34336");
+    await request(app).get("/34336");
+    expect(logged()).toBe(1);
+    down = false;
+    expect((await request(app).get("/34336").redirects(0)).status).toBe(301);
+    down = true;
+    await request(app).get("/34336");
+    expect(logged()).toBe(2);
+  });
+
   it("/2026 with no reference → 404 (no clash with archive paths, which live under /archive/)", async () => {
     expect((await request(appWith(async () => null)).get("/2026")).status).toBe(404);
     await expectRedirect(appWith(lookup), "/archive/2026/10", "/archive/2026/10/");
