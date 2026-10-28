@@ -43,10 +43,11 @@ export const SITE_STATE_PATH = ".site-state.json";
  * type, archives, feeds, sitemaps; spec §6). 4: the site settings' footer and banner placeholder.
  * 5: ministry Media Contacts and filter-only search links (PR #46). 6: the legacy <head> (favicon,
  * html.js marker, vendored legacy CSS, overrides.css) and the theme's legacy variable aliases. 7: the
- * news.gov header (BC logo, News ministry menu, Subscribe, search, phone drawer) and site.js. Bump for body render changes
+ * news.gov header (BC logo, News ministry menu, Subscribe, search, phone drawer) and site.js. 8: the
+ * archive by government term (/archive/terms/, its link from /archive/, sitemap entries). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 7;
+export const RENDER_CHROME_VERSION = 8;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must

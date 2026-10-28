@@ -75,6 +75,62 @@ export async function getMinistry(db: Db, key: string, tz: string) {
   return toMinistryDto(row, await getFeatures(db, "ministries", row.key), activeChildKey(row.key, rows), tz);
 }
 
+/** How far `resolveSuccessors` follows a chain before giving up on it. */
+const MAX_SUCCESSOR_HOPS = 20;
+
+/**
+ * Each handed-over ministry → the active ministry its URLs should 301 to (new-government §4).
+ * Follows the first successor (N7) until it reaches a key in `active`; a cycle, a successor that
+ * is neither active nor itself handed over (a dead end), or more than 20 hops gives no entry.
+ * A key that is itself active never redirects. Keys are compared as given: pass them lowercased.
+ */
+export function resolveSuccessors(raw: Record<string, string[]>, active: Set<string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [from, successors] of Object.entries(raw)) {
+    if (active.has(from) || !successors.length) continue;
+    const seen = new Set([from]);
+    let cur = successors[0]!;
+    for (let hop = 1; hop <= MAX_SUCCESSOR_HOPS; hop++) {
+      if (active.has(cur)) {
+        out[from] = cur;
+        break;
+      }
+      const next = Object.hasOwn(raw, cur) ? raw[cur]![0] : undefined;
+      if (next === undefined || seen.has(cur)) break;
+      seen.add(cur);
+      cur = next;
+    }
+  }
+  return out;
+}
+
+/** `GET /api/v2/ministry-successors`: every inactive ministry's final active, public successor,
+ * keys lowercased. An active ministry's (stale) list is ignored; reactivating clears it anyway (N12). */
+export async function ministrySuccessors(db: Db): Promise<Record<string, string>> {
+  const rows = await db
+    .select({ key: categories.key, isActive: categories.isActive, isPublic: categories.isPublic, ministry: categories.ministry })
+    .from(categories)
+    .where(eq(categories.kind, "ministries"));
+  const raw: Record<string, string[]> = {};
+  const active = new Set<string>();
+  const hidden = new Set<string>();
+  for (const r of rows) {
+    const key = r.key.toLowerCase();
+    if (r.isActive) {
+      if (r.isPublic) active.add(key);
+      continue;
+    }
+    if (!r.isPublic) hidden.add(key);
+    const successors = (r.ministry?.successorKeys ?? []).map((k) => k.toLowerCase());
+    if (successors.length) raw[key] = successors;
+  }
+  // A non-public ministry's key never appears in this public answer (it has no public page to
+  // redirect from), but it still carries a chain through it.
+  const resolved = resolveSuccessors(raw, active);
+  for (const key of hidden) delete resolved[key];
+  return resolved;
+}
+
 export async function getMinister(db: Db, key: string, tz: string) {
   const [row] = await db
     .select()

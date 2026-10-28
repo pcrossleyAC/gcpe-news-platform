@@ -41,12 +41,16 @@ export const rebuildQueue = pgTable(
   (t) => [index("rebuild_queue_order_idx").on(t.priority, t.seq)],
 );
 
-/** One row (id 1): the change-feed cursor (spec §6.2), null until the first sync. */
+/** One row (id 1): the change-feed cursor (spec §6.2), null until the first sync, and the applied terms hash. */
 export const siteState = pgTable(
   "site_state",
   {
     id: integer("id").primaryKey(),
     changeCursor: bigint("change_cursor", { mode: "number" }),
+    /** sha256 of the government-terms snapshot the term pages were last queued for (NG-R18):
+     * written in the same transaction as those queue rows, null after an outage that rendered
+     * without terms, so a differing snapshot always re-queues every term page. */
+    termsHash: text("terms_hash"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [check("site_state_single_row", sql`${t.id} = 1`)],

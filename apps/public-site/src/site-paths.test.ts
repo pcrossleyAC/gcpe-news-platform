@@ -18,6 +18,11 @@ describe("parsePageId", () => {
     ["sitemap:pages", { type: "sitemap-pages" }],
     ["static", { type: "static" }],
     ["connect", { type: "connect" }],
+    ["archive-terms", { type: "archive-terms" }],
+    ["archive-term:2024-11-18", { type: "archive-term", slug: "2024-11-18" }],
+    ["archive-term:2017-2017", { type: "archive-term", slug: "2017-2017" }],
+    ["archive-term:pre2001", { type: "archive-term", slug: "pre2001" }],
+    ["archive-term:current", { type: "archive-term", slug: "current" }],
   ])("%s", (id, expected) => {
     expect(parsePageId(id)).toEqual(expected);
     expect(formatPageId(parsePageId(id)!)).toBe(id);
@@ -27,6 +32,7 @@ describe("parsePageId", () => {
     "", "post:", "post:..", "post:a/b", "post:a.b", "post:../etc", `post:${"a".repeat(101)}`, "post:a:b",
     "category:ministries:Health", "category:ministries:../../etc", "category:ministries:a/b", "category:people:x", "category:ministries", "category:ministries:x:y",
     "archive:2026-13", "archive:2026-00", "archive:26-10", "archive:2026-10:x", "sitemap:2026-1", "nope", "home:x",
+    "archive-term:../x", "archive-term:", "archive-term:A", "archive-term:a/b", "archive-term:a.b", `archive-term:${"a".repeat(41)}`, "archive-term:a:b", "archive-terms:x",
   ])("refuses %j", (id) => {
     expect(parsePageId(id)).toBeNull();
   });
@@ -55,6 +61,10 @@ describe("pageFiles", () => {
     ["sitemap:pages", ["sitemaps/pages.xml"]],
     ["static", ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"]],
     ["connect", ["connect/index.html"]],
+    ["archive-terms", ["archive/terms/index.html"]],
+    ["archive-term:2017-2017", ["archive/terms/2017-2017/index.html"]],
+    ["archive-term:current", ["archive/terms/current/index.html"]],
+    ["legacy-redirects", ["legacy/ministry-successors.json"]],
   ])("%s", (id, files) => {
     expect(pageFiles(parsePageId(id)!)).toEqual(files);
   });
@@ -68,6 +78,9 @@ describe("urls", () => {
     expect(pageUrl(site, { type: "archive-month", month: "2026-10" })).toBe("/site/archive/2026/10/");
     expect(pageUrl(site, { type: "search" })).toBe("/site/search/");
     expect(pageUrl(site, { type: "connect" })).toBe("/site/connect/");
+    expect(pageUrl(site, { type: "archive-terms" })).toBe("/site/archive/terms/");
+    expect(pageUrl(site, { type: "archive-term", slug: "2028-11-20" })).toBe("/site/archive/terms/2028-11-20/");
+    expect(pageUrl(site, { type: "legacy-redirects" })).toBe("/site/legacy/ministry-successors.json");
     expect(feedUrl(site, { type: "home" })).toBe("/site/feed.xml");
     expect(feedUrl(site, { type: "category", kind: "tags", key: "covid-19" })).toBe("/site/tags/covid-19/feed.xml");
     expect(absoluteUrl(site, "/site/x/")).toBe("https://boxs.example/site/x/");

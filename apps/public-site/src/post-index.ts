@@ -1,6 +1,6 @@
 import { arrayContains, asc, desc, eq, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
-import { sitePosts } from "./db/schema";
+import { sitePosts, siteState } from "./db/schema";
 import type { PostDto } from "./dto";
 import { membershipOf, type Membership } from "./rebuild-set";
 
@@ -29,7 +29,7 @@ export function indexEntryOf(key: string, post: PostDto): IndexedPost | null {
   return { key, kind: post.kind, headline: headlineOf(post), summary: post.summary, publishDate: post.publishDate, month: m.month, categories: m.categories };
 }
 
-export const membershipOfEntry = (p: IndexedPost): Membership => ({ month: p.month, categories: p.categories });
+export const membershipOfEntry = (p: IndexedPost): Membership => ({ month: p.month, day: p.publishDate.slice(0, 10), categories: p.categories });
 
 export interface PostIndex {
   get(key: string): Promise<IndexedPost | null>;
@@ -40,6 +40,13 @@ export interface PostIndex {
   keys(): Promise<string[]>;
   categories(): Promise<string[]>;
   inCategory(token: string): Promise<string[]>;
+  /** Posts whose BC calendar day (the publish date as written) is in [start, endExclusive), newest
+   * first; a null end is open. The government-term rule (new-government spec N1). */
+  inDayRange(start: string, endExclusive: string | null): Promise<IndexedPost[]>;
+  countInDayRange(start: string, endExclusive: string | null): Promise<number>;
+  /** NG-R18: the hash of the terms snapshot the term pages were last queued for (site_state). */
+  appliedTermsHash(): Promise<string | null>;
+  setAppliedTermsHash(hash: string | null): Promise<void>;
 }
 
 const columns = {
@@ -50,6 +57,12 @@ const columns = {
   publishDate: sitePosts.publishDate,
   month: sitePosts.month,
   categories: sitePosts.categories,
+};
+
+/** The BC day is the publish date's own calendar date (no time-zone maths), like `month`. */
+const inDays = (start: string, endExclusive: string | null) => {
+  const day = sql`substr(${sitePosts.publishDate}, 1, 10)`;
+  return endExclusive === null ? sql`${day} >= ${start}` : sql`${day} >= ${start} AND ${day} < ${endExclusive}`;
 };
 
 export function postIndex(db: DbOrTx): PostIndex {
@@ -81,6 +94,20 @@ export function postIndex(db: DbOrTx): PostIndex {
     async categories() {
       const { rows } = await db.execute<{ c: string }>(sql`SELECT DISTINCT unnest(categories) AS c FROM site_posts ORDER BY 1`);
       return rows.map((r) => r.c);
+    },
+    async inDayRange(start, endExclusive) {
+      return db.select(columns).from(sitePosts).where(inDays(start, endExclusive)).orderBy(desc(sitePosts.publishedAt), sql`${sitePosts.key} collate "C" desc`);
+    },
+    async countInDayRange(start, endExclusive) {
+      const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(sitePosts).where(inDays(start, endExclusive));
+      return row?.n ?? 0;
+    },
+    async appliedTermsHash() {
+      const [row] = await db.select({ h: siteState.termsHash }).from(siteState).where(eq(siteState.id, 1));
+      return row?.h ?? null;
+    },
+    async setAppliedTermsHash(hash) {
+      await db.insert(siteState).values({ id: 1, termsHash: hash }).onConflictDoUpdate({ target: siteState.id, set: { termsHash: hash, updatedAt: sql`now()` } });
     },
     async inCategory(token) {
       return (await db.select({ key: sitePosts.key }).from(sitePosts).where(arrayContains(sitePosts.categories, [token])).orderBy(asc(sitePosts.key))).map((r) => r.key);

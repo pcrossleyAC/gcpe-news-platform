@@ -19,7 +19,7 @@
  * naturally gives us exactly those rows and none of the unchanged ones (same technique as
  * apps/news-api/src/projections.ts's `applyRelease`).
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type MediaListRecord, type SubscriberConfig } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
@@ -223,6 +223,21 @@ async function importTerms(tx: Tx, rows: LegacyCollectionRow[], report: ImportRe
   for (const row of rows) {
     report.count("government_terms", "legacy");
     const legacyId = row.Id.toLowerCase();
+    // NG-R17: NRMS may have seeded this term from the tenant config before the import ran (same
+    // name, no legacy id). Adopt that row (dates and URLs kept) rather than fail on the name.
+    const adopted = await tx
+      .update(governmentTerms)
+      .set({ legacyId })
+      .where(
+        and(
+          eq(governmentTerms.name, row.Name),
+          isNull(governmentTerms.legacyId),
+          // A row already imported under this legacy id wins (the upsert below renames it).
+          sql`NOT EXISTS (SELECT 1 FROM government_terms g WHERE g.legacy_id = ${legacyId})`,
+        ),
+      )
+      .returning({ id: governmentTerms.id });
+    if (adopted.length > 0) report.adopt("government_terms");
     await tx
       .insert(governmentTerms)
       .values({ name: row.Name, legacyId })

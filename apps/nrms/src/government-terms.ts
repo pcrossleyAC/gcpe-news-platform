@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, count, eq, ne, sql } from "drizzle-orm";
 import { sqlNow, type TestClock, type Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type GovernmentTermsPayload, type SubscriberConfig } from "@gcpe/events";
+import type { TenantGovernmentTerm } from "@gcpe/config";
 import { formatLongDate } from "@gcpe/nrms-contract";
 import { governmentTerms, governmentTermsPublished, newsReleases } from "./db/schema";
 
@@ -266,4 +267,22 @@ export async function deleteGovernmentTerm(tx: Tx, id: string, opts: TermWriteOp
   if (n > 0) throw new GovernmentTermConflictError("A term with releases can't be deleted.");
   await tx.delete(governmentTerms).where(eq(governmentTerms.id, id));
   await syncGovernmentTerms(tx, opts);
+}
+
+/**
+ * NG-R17: an install whose data didn't come from the legacy database (boxs.ca, a fresh dev
+ * stack) has no `government_terms` rows, so the archive by term would be empty. When — and only
+ * when — the table is empty, insert the tenant's configured terms (bc.json: the same 9 rows
+ * migration 0017 backfills) and run the rollover, so the current term is flagged and the
+ * snapshot publishes. Never touches a table that has any row; re-running is a no-op. Under
+ * {@link GOVERNMENT_TERMS_LOCK}, so two concurrent starts seed once.
+ */
+export async function seedGovernmentTerms(tx: Tx, terms: readonly TenantGovernmentTerm[], opts: TermWriteOpts): Promise<{ seeded: number; emitted: boolean }> {
+  if (terms.length === 0) return { seeded: 0, emitted: false };
+  await lock(tx);
+  const [{ n }] = (await tx.select({ n: count() }).from(governmentTerms)) as [{ n: number }];
+  if (n > 0) return { seeded: 0, emitted: false };
+  await tx.insert(governmentTerms).values(terms.map((t) => ({ name: t.slug, startDate: t.startDate, label: t.label ?? null, legacyArchiveUrl: t.legacyArchiveUrl ?? null })));
+  const { emitted } = await syncGovernmentTerms(tx, opts);
+  return { seeded: terms.length, emitted };
 }

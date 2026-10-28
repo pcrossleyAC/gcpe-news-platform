@@ -12,6 +12,9 @@ interface TableCounts {
   legacy: number;
   imported: number;
   skipped: number;
+  /** Of the imported rows, those that took over a row NRMS already had (NG-R17's seeded
+   * government terms). Present only when non-zero; not part of `balanced()`. */
+  adopted?: number;
 }
 
 interface SkippedRow {
@@ -64,6 +67,12 @@ export class ImportReport {
   /** Adds `n` (default 1) to `table`'s count for `side`. */
   count(table: string, side: ReportSide, n = 1): void {
     this.row(table)[side] += n;
+  }
+
+  /** Records that an imported row took over an existing NRMS row (also count it as "imported"). */
+  adopt(table: string, n = 1): void {
+    const row = this.row(table);
+    row.adopted = (row.adopted ?? 0) + n;
   }
 
   /** Records a legacy row that was deliberately not imported, with its reason. Also counts it as "skipped". */
@@ -128,7 +137,7 @@ export class ImportReport {
       for (const s of json.skippedStages) lines.push(`  [${s.stage}] ${s.reason}`);
     }
     for (const [table, c] of Object.entries(json.tables)) {
-      lines.push(`  ${table}: legacy=${c.legacy} imported=${c.imported} skipped=${c.skipped}`);
+      lines.push(`  ${table}: legacy=${c.legacy} imported=${c.imported} skipped=${c.skipped}${c.adopted ? ` adopted=${c.adopted}` : ""}`);
     }
     if (json.skipped.length > 0) {
       lines.push("Skipped rows:");
