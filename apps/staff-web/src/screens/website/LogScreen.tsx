@@ -14,6 +14,7 @@ const AREA_LABEL: Record<SiteLogArea, string> = {
   links: "Resource links",
   files: "Files",
   features: "Features",
+  settings: "Site settings",
 };
 
 /**

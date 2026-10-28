@@ -93,9 +93,9 @@ export interface FeaturedWhereRow {
   feature: { id: string; key: string; headline: string } | null;
 }
 
-export type SiteLogArea = "carousel" | "pins" | "live-feed" | "blue-bridge" | "links" | "files" | "features";
+export type SiteLogArea = "carousel" | "pins" | "live-feed" | "blue-bridge" | "links" | "files" | "features" | "settings";
 
-export const SITE_LOG_AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features"];
+export const SITE_LOG_AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features", "settings"];
 
 export interface SiteLogEntry {
   at: string;

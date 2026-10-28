@@ -39,6 +39,7 @@ describe("WebsiteScreen", () => {
     renderWithRole("NRMS.SiteEditor");
     await screen.findByRole("link", { name: "Carousel" });
     expect(screen.getByRole("link", { name: "Project Blue Bridge" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Banner" })).toHaveAttribute("href", "/website/banner");
     expect(screen.getByText("index child")).toBeInTheDocument();
   });
 
@@ -56,6 +57,7 @@ describe("WebsiteScreen", () => {
     expect(screen.getByRole("link", { name: "Website log" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Carousel" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Project Blue Bridge" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Banner" })).toBeNull();
     expect(screen.getByText("index child")).toBeInTheDocument();
   });
 

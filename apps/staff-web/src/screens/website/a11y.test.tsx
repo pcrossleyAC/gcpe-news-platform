@@ -8,6 +8,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import axe from "axe-core";
+import { defaultSiteSettings } from "@gcpe/site-settings";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
@@ -19,6 +20,8 @@ import { LinksScreen } from "./LinksScreen";
 import { FilesScreen } from "./FilesScreen";
 import { FeaturedScreen } from "./FeaturedScreen";
 import { LogScreen } from "./LogScreen";
+import { BannerScreen } from "./settings/BannerScreen";
+import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
 
 async function seriousViolations(container: Element) {
@@ -173,6 +176,29 @@ describe("accessibility — Website section screens", () => {
     const { container } = render(withAuth(<LogScreen />));
     await screen.findByRole("heading", { name: "Website log", level: 1 });
     await screen.findByText("No log entries yet.");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("BannerScreen, with a field error, another section's error and a link row", async () => {
+    const document = defaultSiteSettings({
+      colors: { primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D", mutedText: "#474543", surface: "#FFFFFF", background: "#FFFFFF", border: "#D8D8D8" },
+      footerLinks: [],
+    });
+    const state: SettingsState = {
+      live: { revision: 3, publishedAt: "2026-10-27T18:00:00.000Z", publishedBy: "Sam", note: null },
+      document: { ...document, banner: { ...document.banner, enabled: true, message: "<b>x</b>", links: [{ text: "More", url: "http://x.invalid" }] } },
+      draft: { baseRevision: 3, updatedAt: "2026-10-27T18:05:00.000Z" },
+      baseRevision: 3,
+      errors: [
+        { field: "banner.message", message: "Use plain text. Add links below instead of HTML." },
+        { field: "banner.links[0].url", message: "Must start with https:// or / (a page on this site)." },
+        { field: "footer.copyrightHolder", message: "Enter who holds the copyright." },
+      ],
+    };
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<BannerScreen />));
+    await screen.findByRole("heading", { name: "Site banner", level: 1 });
+    await screen.findByDisplayValue("More");
     expect(await seriousViolations(container)).toEqual([]);
   });
 });
