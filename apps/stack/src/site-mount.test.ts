@@ -72,17 +72,12 @@ describe("mountSite / siteAliasRedirect / rootSiteNotFound", () => {
     expect(head.headers.location).toBe("/releases/k/");
   });
 
-  it("base '' — a /site// or /site/\\ URL never redirects off-site (no protocol-relative Location)", async () => {
+  it("base '' — a /site// or /site/\\ URL never redirects off-site: it is the site 404, as at the root", async () => {
     const app = appFor(outputDir, "");
     for (const path of ["/site//evil.example/x", "/site/%5Cevil.example", "/site/\\evil.example"]) {
       const res = await request(app).get(path).redirects(0);
-      expect(res.status).toBe(301);
-      const location = res.headers.location!;
-      expect(location.startsWith("/")).toBe(true);
-      expect(location[1]).not.toBe("/");
-      expect(location[1]).not.toBe("\\");
+      expect({ path, status: res.status, location: res.headers.location }).toEqual({ path, status: 404, location: undefined });
     }
-    expect((await request(app).get("/site//evil.example/x").redirects(0)).headers.location).toBe("/evil.example/x");
   });
 
   // Review T2 minor 1: an absolute-form request line (proxies may send one) used to give a
@@ -103,7 +98,8 @@ describe("mountSite / siteAliasRedirect / rootSiteNotFound", () => {
       };
       const loc = (res: string) => /\r\nLocation: ([^\r]*)/i.exec(res)?.[1];
       expect(loc(await raw("http://evil.example/site/x?q=a%2Bb"))).toBe("/x?q=a%2Bb");
-      expect(loc(await raw("https://evil.example/site//x"))).toBe("/x");
+      // "//x" is an unsafe target (legacyUrls runs on the remainder): the site 404, no Location.
+      expect(loc(await raw("https://evil.example/site//x"))).toBeUndefined();
       expect(loc(await raw("http://evil.example/site"))).toBe("/");
       expect(loc(await raw("/site/x?q=1"))).toBe("/x?q=1");
     } finally {

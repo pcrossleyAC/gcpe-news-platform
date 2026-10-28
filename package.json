@@ -7,6 +7,7 @@
   "scripts": {
     "parity": "tsx tools/parity/capture.ts",
     "parity:urls": "tsx tools/parity/url-check.ts",
+    "parity:urls:list": "tsx tools/parity/legacy-url-list.ts",
     "check": "tsc -p tsconfig.json && tsc -p apps/staff-web/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,6 +23,7 @@
     "nrms:replay-to-news-api": "npm --workspace @gcpe/nrms run replay-to-news-api --",
     "nrms:replay-activity-links": "npm --workspace @gcpe/nrms run replay-activity-links --",
     "news-api:search-backfill": "npm --workspace @gcpe/news-api run search-backfill --",
+    "news-api:import-public": "npm --workspace @gcpe/news-api run import:public --",
     "calendar:import": "npm --workspace @gcpe/calendar run import:legacy --",
     "calendar:replay-to-nrms": "npm --workspace @gcpe/calendar run replay-to-nrms --",
     "staff-web:build": "node scripts/build-staff-web.mjs",

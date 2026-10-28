@@ -4,10 +4,10 @@
 /ministries/health
 /connect
 /subscribe
+/contacts
+/privacy
 /search?q=housing
 /archive
-/site/
-/site/ministries/
 # section: fixed rules
 /more-news
 /releases/archive
@@ -15,7 +15,6 @@
 /sitemap/html
 /contact
 /newsletters
-/subscribe/save
 /Content/Images/Gov/default-og-image-new.jpg
 /search?q=housing&resultspagenum=2
 # section: robots and verification
@@ -27,7 +26,6 @@
 /stories/2026TT0105-001130
 /releases/2026TT0105-001130/image
 /Search?q=housing
-/Ministries/Health
 # section: long keys
 /releases/canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1
 # section: ministries

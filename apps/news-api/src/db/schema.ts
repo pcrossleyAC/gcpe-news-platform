@@ -113,6 +113,17 @@ export const postEmbeddingFailures = pgTable("post_embedding_failures", {
   failedAt: timestamp("failed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * The posts `import:public` (src/import/public-cli.ts) created from the public news.gov API, so
+ * `--remove` deletes exactly those and never an NRMS-published or legacy-imported post. Kept
+ * apart from `posts` so the imported rows themselves stay identical to legacy-imported ones;
+ * a post deleted any other way takes its row with it.
+ */
+export const publicImportPosts = pgTable("public_import_posts", {
+  key: text("key").primaryKey().references(() => posts.key, { onDelete: "cascade", onUpdate: "cascade" }),
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const CHANGE_KINDS = ["post.upserted", "post.unpublished", "home", "slides", "resource_links", "ministry", "sector", "theme", "tag", "site_settings", "government_terms"] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 

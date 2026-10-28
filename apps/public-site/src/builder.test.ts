@@ -435,13 +435,17 @@ describe("site builder", () => {
   });
 
   it("renders a post with a 102-char key to the hashed dir, and allPostKeys still lists it", async () => {
-    const key = "canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1";
+    // Mixed case, as News API may store it: the dir is hashed from the lowercase key.
+    const key = "Canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1";
     const posts = new Map([[key, post({ key })], ["K2", post({ key: "K2", publishDate: "2026-09-01T10:00:00-07:00" })]]);
     const { storage, builder } = setup(posts);
     await builder.rebuild([`post:${key}`, "post:K2"], {});
     const dir = "releases/_long/106422386aca9cfd948a818d5a9a92f5";
     expect(storage.files.has(`${dir}/index.html`)).toBe(true);
     expect(storage.files.has(`releases/${key}/index.html`)).toBe(false);
+    // The one page answers /releases/<key>/ in any case (the stack serves it by hash); its
+    // canonical names the key exactly as stored (C259).
+    expect(html(storage, `${dir}/index.html`)).toMatch(new RegExp(`<link rel="canonical" href="[^"]*/releases/${key}/">`));
     expect(html(storage, "sitemaps/2026-10.xml")).toContain(`/releases/${key}/`);
     // Listed from disk alone (no News API, no index): the key is recovered from the sidecar.
     const bare = createSiteBuilder({ newsApi: fakeNewsApi(new Map()), storage, index: postIndex(tdb.db), site, assetsDir: null });

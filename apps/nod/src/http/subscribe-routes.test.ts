@@ -6,6 +6,9 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { createApp } from "../app";
 import type { JourneyDeps } from "../subscribe/journeys";
+import { addSubscriber } from "../subscribers";
+import { legacyTokenHash } from "../subscribe/legacy-token";
+import { createLink } from "../subscribe/links";
 import * as journeysModule from "../subscribe/journeys";
 
 const issuer = "https://login.microsoftonline.com/t/v2.0";
@@ -81,6 +84,73 @@ describe("NoD Subscribe API HTTP routes", () => {
     expect(updated.status).toBe(204);
 
     expect((await request(app).get(`/api/Subscribe/UnsubscribeSubscriber/${token}`).set(auth)).body).toBe(true);
+  });
+
+  it("GET /ConfirmUpdateCreateSubscription/MyIRAFVEd2aImaq7zN3u_w2 returns the subscriber's info for a seeded live legacy link; an unknown legacy token → the same 'invalid' answer as an unknown 43-char token", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    const { id } = await addSubscriber(tdb.db, { email: "legacy-link@example.test", lists: "all" });
+    await tdb.db.execute(sql`
+      INSERT INTO subscriber_links (token_hash, purpose, subscriber_id, email, expires_at)
+      VALUES (${legacyTokenHash("00112233-4455-6677-8899-aabbccddeeff")}, 'manage', ${id}, 'legacy-link@example.test', now() + interval '1 hour')`);
+    const ok = await request(app).get("/api/Subscribe/ConfirmUpdateCreateSubscription/MyIRAFVEd2aImaq7zN3u_w2").set(auth);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ emailAddress: "legacy-link@example.test" });
+
+    const unknown43 = await request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${"A".repeat(43)}`).set(auth);
+    for (const t of ["AAAAAAAAAAAAAAAAAAAAAA2", "11112233-4455-6677-8899-aabbccddeeff", "MyIRAFVEd2aImaq7zN3u_w1", "!!!"]) {
+      const r = await request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${encodeURIComponent(t)}`).set(auth);
+      expect([r.status, r.body]).toEqual([unknown43.status, unknown43.body]);
+    }
+  });
+
+  it("no oracle: an invalid legacy-format token and an unknown 43-char token get identical status and body on every token route", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    const unknown43 = "A".repeat(43);
+    // Shapes findLink treats as legacy (right shape but unknown; bad padding digit; wrong GUID; not base64url) plus a lookalike.
+    const legacyShaped = ["AAAAAAAAAAAAAAAAAAAAAA2", "MyIRAFVEd2aImaq7zN3u_w1", "11112233-4455-6677-8899-aabbccddeeff", "!!!"];
+    const body = { emailAddress: "x@example.test", subscribedCategories: {}, isAllNews: true, isAsItHappens: true, isDailyDigest: false };
+    const routes: { name: string; call: (t: string) => request.Test }[] = [
+      { name: "confirm", call: (t) => request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${encodeURIComponent(t)}`).set(auth) },
+      { name: "update", call: (t) => request(app).post(`/api/Subscribe/UpdateNewsOnDemandEmailSubscriptionWithPreferences/${encodeURIComponent(t)}`).set(auth).send(body) },
+      { name: "checkToken", call: (t) => request(app).get(`/api/Subscribe/CheckEmailActivationToken/${encodeURIComponent(t)}`).set(auth) },
+      { name: "unsubscribe", call: (t) => request(app).get(`/api/Subscribe/UnsubscribeSubscriber/${encodeURIComponent(t)}`).set(auth) },
+      { name: "one-click unsubscribe", call: (t) => request(app).post(`/api/Subscribe/OneClickUnsubscribe/${encodeURIComponent(t)}`).set(auth).type("form").send("List-Unsubscribe=One-Click") },
+    ];
+    for (const route of routes) {
+      const baseline = await route.call(unknown43);
+      for (const t of legacyShaped) {
+        const r = await route.call(t);
+        expect([route.name, t, r.status, r.body]).toEqual([route.name, t, baseline.status, baseline.body]);
+      }
+    }
+  });
+
+  it("an expired legacy link answers confirm exactly as an expired native link does", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    const { id } = await addSubscriber(tdb.db, { email: "expired-both@example.test", lists: "all" });
+    const native = await createLink(tdb.db, { purpose: "manage", email: "expired-both@example.test", subscriberId: id, pending: null });
+    await tdb.db.execute(sql`UPDATE subscriber_links SET expires_at = now() - interval '1 hour' WHERE id = ${native.id}`);
+    await tdb.db.execute(sql`
+      INSERT INTO subscriber_links (token_hash, purpose, origin, subscriber_id, email, expires_at)
+      VALUES (${legacyTokenHash("00112233-4455-6677-8899-aabbccddee77")}, 'manage', 'send', ${id}, 'expired-both@example.test', now() - interval '1 hour')`);
+    const viaNative = await request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${native.token}`).set(auth);
+    for (const t of ["00112233-4455-6677-8899-aabbccddee77", "MyIRAFVEd2aImaq7zN3udw2"]) {
+      const viaLegacy = await request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${t}`).set(auth);
+      expect([viaLegacy.status, viaLegacy.body]).toEqual([viaNative.status, viaNative.body]);
+    }
+    expect(viaNative.body).toMatchObject({ emailAddress: "expired-both@example.test", expiredLinkOrUnverifiedEmail: true });
+  });
+
+  it("GET /UnsubscribeSubscriber/<bare guid> ends the subscription for a seeded legacy link", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    const guid = "aabbccdd-1122-3344-5566-778899001122";
+    const { id } = await addSubscriber(tdb.db, { email: "legacy-unsub@example.test", lists: "all" });
+    await tdb.db.execute(sql`
+      INSERT INTO subscriber_links (token_hash, purpose, subscriber_id, email, expires_at)
+      VALUES (${legacyTokenHash(guid)}, 'manage', ${id}, 'legacy-unsub@example.test', now() + interval '1 hour')`);
+    expect((await request(app).get(`/api/Subscribe/UnsubscribeSubscriber/${guid.toUpperCase()}`).set(auth)).body).toBe(true);
+    const [row] = (await tdb.db.execute<{ status: string }>(sql`SELECT status FROM subscribers WHERE id = ${id}`)).rows;
+    expect(row).toMatchObject({ status: "deleted" });
   });
 
   it("Update keeps a held list that's no longer offered, even when it was the subscriber's only one", async () => {

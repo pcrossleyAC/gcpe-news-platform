@@ -37,6 +37,7 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     app = appFor(outputDir);
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(outputDir, { recursive: true, force: true });
   });
 
@@ -80,6 +81,10 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
       const res = await request(app).get(`/${dir}/`);
       expect({ dir, status: res.status, body: res.text }).toEqual({ dir, status: 200, body: `<h1>${dir}</h1>` });
     }
+    // The root listing read by the /Sectors request above is reused for up to LISTING_MIN_REREAD_MS, so on a
+    // case-sensitive filesystem a new index reaches legacy-cased forms only after that window: step past it.
+    const later = Date.now() + LISTING_MIN_REREAD_MS + 1;
+    vi.spyOn(Date, "now").mockReturnValue(later);
     // A legacy-cased form ends on the page (the hop's exact Location depends on the filesystem's case sensitivity).
     for (const [path, dir] of [["/Sectors", "sectors"], ["/Themes", "themes"], ["/TAGS", "tags"]] as const) {
       const res = await request(app).get(path).redirects(3);
@@ -490,6 +495,12 @@ describe("legacyUrls: unsafe request targets never reach the static mount", () =
     "/archive/%2e%2e/%2e%2e/x",
     "/ministries/health%00",
     "/ministries%2Fhealth",
+    // Windows aliases: express.static on NTFS would open the file under a second name.
+    "/index.html::$DATA",
+    "/ministries/health./",
+    "/ministries/health%20/",
+    "/SITE-S~1.JSO",
+    "/releases/_LONG~1/106422386aca9cfd948a818d5a9a92f5/",
   ])("%s → 404 from legacyUrls, downstream never called", async (path) => {
     for (const basePath of ["", "/site"]) {
       let downstream = 0;
@@ -766,6 +777,14 @@ describe("legacyUrls: NEWS-n short links (url-compat T5)", () => {
     await expectRedirect(appWith(lookup), "/archive/2026/10", "/archive/2026/10/");
   });
 
+  it("a reference with no published post is looked up once a minute, not on every request", async () => {
+    const seen: string[] = [];
+    const app = appWith(async (r) => (seen.push(r), r === "NEWS-34336" ? "2026TT0103-001121" : null));
+    for (let i = 0; i < 3; i++) expect((await request(app).get("/99999")).status).toBe(404);
+    for (let i = 0; i < 2; i++) await expectRedirect(app, "/34336", "/releases/2026TT0103-001121/");
+    expect(seen).toEqual(["NEWS-99999", "NEWS-34336", "NEWS-34336"]);
+  });
+
   it("without lookupReference the rule is off", async () => {
     expect((await request(appWith()).get("/34336")).status).toBe(404);
   });
@@ -943,6 +962,82 @@ describe("legacyUrls: legacy feed URLs served in place (url-compat T6)", () => {
     ] as const) {
       const res = await get(path);
       expect({ path, status: res.status, type: res.headers["content-type"] }).toEqual({ path, status: 200, type });
+    }
+  });
+});
+
+describe("final review fixes: the /site alias, _long, Windows aliases", () => {
+  let outputDir: string;
+  const RSS = "application/rss+xml; charset=utf-8";
+  const lookup = async (r: string) => (r === "NEWS-34336" ? "2026TT0103-001121" : null);
+  function appAt(basePath: string) {
+    const app = express();
+    mountSite(app, { outputDir, basePath, passThrough: ["/api", "/hub"], lookupReference: lookup });
+    app.use(rootSiteNotFound(outputDir, ["/api", "/hub"]));
+    app.use((req, res) => void res.status(404).json({ fellThrough: true, path: req.path }));
+    return app;
+  }
+  /** One no-store 301 to `location`, which itself answers 200. */
+  async function expectOneHop(a: express.Express, path: string, location: string) {
+    await expectRedirect(a, path, location);
+    expect({ location, status: (await request(a).get(location).redirects(0)).status }).toEqual({ location, status: 200 });
+  }
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+    await mkdir(join(outputDir, "ministries", "transportation-and-transit"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "transportation-and-transit", "feed.xml"), "<rss>SUCCESSOR</rss>");
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+
+  it("/site/<legacy URL> reaches the canonical page in one hop, under basePath '' and '/site'", async () => {
+    for (const base of ["", "/site"]) {
+      const app = appAt(base);
+      await expectOneHop(app, "/site/Releases/2026tt0105-001130", `${base}/releases/2026TT0105-001130/`);
+      await expectOneHop(app, "/site/Stories/2026TT0105-001130?x=1", `${base}/releases/2026TT0105-001130/?x=1`);
+      await expectOneHop(app, "/site/Ministries/Justice", `${base}/ministries/attorney-general/`);
+      await expectOneHop(app, "/site/34336", `${base}/releases/2026TT0103-001121/`);
+      await expectOneHop(app, "/site/ministries/transportation-and-infrastructure/", `${base}/ministries/transportation-and-transit/`);
+    }
+  });
+
+  it("/site/ministries/<old>/feed.xml is served in place from the successor's file, under basePath '' and '/site'", async () => {
+    for (const base of ["", "/site"]) {
+      for (const path of ["/site/ministries/transportation-and-infrastructure/feed.xml", "/site/ministries/transportation-and-infrastructure/feed"]) {
+        const res = await request(appAt(base)).get(path).redirects(0);
+        expect({ base, path, status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ base, path, status: 200, type: RSS, body: "<rss>SUCCESSOR</rss>" });
+      }
+    }
+  });
+
+  it("/site/ministries/<old> never redirects to a successor that has no page", async () => {
+    await writeFile(join(outputDir, "legacy", "ministry-successors.json"), JSON.stringify({ successors: { "transportation-and-infrastructure": "transportation-and-transit", "old-gone": "no-page-yet" } }));
+    for (const path of ["/site/ministries/old-gone/", "/site/ministries/old-gone/releases"]) {
+      const res = await request(appAt("")).get(path).redirects(0);
+      expect({ path, location: res.headers.location ?? "" }).not.toEqual({ path, location: expect.stringContaining("no-page-yet") });
+    }
+  });
+
+  it("/site/ on an origin site still 301s the rest to the root; the hashed long-key page is not served under /site", async () => {
+    const app = appAt("");
+    await expectOneHop(app, "/site/archive/", "/archive/");
+    await expectOneHop(app, `/site/releases/${LONG_POST_KEY}/`, `/releases/${LONG_POST_KEY}/`);
+    await expectRedirect(app, "/site/subscribe/manage/?token=a%2Bb", "/subscribe/manage/?token=a%2Bb");
+  });
+
+  it("a direct request for /releases/_long/<hash>/ (any case, any spelling) is the site 404; the long key itself still serves", async () => {
+    const hash = "106422386aca9cfd948a818d5a9a92f5";
+    for (const base of ["", "/site"]) {
+      const app = appAt(base);
+      for (const path of [`/releases/_long/${hash}/`, `/releases/_long/${hash}/index.html`, `/Releases/_LONG/${hash}/`, `/releases/_%6Cong/${hash}/`, `/releases/_long/${hash}`]) {
+        for (const prefix of base === "" ? [""] : ["", "/site"]) {
+          const res = await request(app).get(`${prefix}${path}`).redirects(0);
+          expect({ base, path: `${prefix}${path}`, status: res.status, served: res.text.includes("releases/_long/") }).toEqual({ base, path: `${prefix}${path}`, status: 404, served: false });
+        }
+      }
+      const res = await request(app).get(`${base}/releases/${LONG_POST_KEY.toUpperCase()}/`).redirects(0);
+      expect({ base, status: res.status }).toEqual({ base, status: 200 });
     }
   });
 });

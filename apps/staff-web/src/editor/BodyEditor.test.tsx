@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BodyEditor } from "./BodyEditor";
+import { caretToEnd } from "../../test/editorCaret";
 
 /** Pastes through ProseMirror's own paste path (transformPastedHTML included). jsdom has no
  * ClipboardEvent, which view.pasteHTML constructs, so a plain Event stands in. */
@@ -139,6 +140,35 @@ describe("BodyEditor", () => {
     pasteHtml(field, "<asset>https://youtu.be/pasted00002</asset>");
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(onChange.mock.calls.at(-1)![0]).toContain("<asset>https://youtu.be/pasted00002</asset>");
+  });
+  it("caretToEnd holds on a slow runner: typing after stored text appends, even when ProseMirror's post-focus timer runs first", async () => {
+    // The Windows CI failure ("<p>yzx</p>"), made deterministic. On a slow runner, ProseMirror's
+    // 20ms post-focus timer (armed by the click) can run before the selectionchange event (a
+    // setImmediate in jsdom) for a caret move made just after the click. Holding that timer back
+    // and running it straight after caretToEnd forces that order. See test/editorCaret.ts.
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p>x</p>" onChange={onChange} readOnly={false} />);
+    const field = await screen.findByLabelText("Body");
+    const user = userEvent.setup();
+    const held: (() => void)[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number, ...rest: unknown[]) => {
+      if (ms === 20) {
+        held.push(fn);
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      }
+      return realSetTimeout(fn, ms, ...rest);
+    }) as typeof setTimeout);
+    try {
+      await user.click(field);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(held).toHaveLength(1);
+    caretToEnd(field);
+    held.forEach((fn) => fn());
+    await user.type(field, "yz", { skipClick: true });
+    expect(onChange.mock.calls.at(-1)![0]).toBe("<p>xyz</p>");
   });
 });
 
