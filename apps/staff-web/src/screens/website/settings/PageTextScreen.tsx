@@ -8,11 +8,21 @@ import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEdito
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { canManageWebsite } from "../access";
 import { ConflictPanel } from "./ConflictPanel";
+import { blankIfEmptyHtml } from "./format";
 import { OtherSectionErrors } from "./OtherSectionErrors";
 import { PublishBar } from "./PublishBar";
 import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
 
 const TITLE = "Page text";
+
+export const INTRO =
+  "The wording on the pages that are not news releases. The page not found heading and the privacy page title are required. Leave any other box empty to hide that wording.";
+
+export const STATEMENT_HINT =
+  "The title above is the page's main heading. For a heading inside the statement, put bold text on a line of its own.";
+
+export const LICENCE_HINT =
+  "Shown after the media assets list on each release as the text, then the link, then a period. The period is added for you.";
 
 export const NOTICE_WARNING =
   "This is legal wording. Changes may need review by your privacy office before you publish.";
@@ -57,7 +67,7 @@ function RichField({ label, value, onChange, hint, error, readOnly }: RichFieldP
       <BodyEditor id={`${id}-editor`} label={label} value={value} onChange={onChange} readOnly={readOnly} allowAssets={false} describedBy={describedBy || undefined} />
       {hint && <p id={hintId}>{hint}</p>}
       {error !== undefined && (
-        <p id={errorId} className="gcpe-link-list__error">
+        <p id={errorId} role="alert" className="gcpe-link-list__error">
           {error}
         </p>
       )}
@@ -69,7 +79,16 @@ function PageTextFields({ canEdit }: { canEdit: boolean }): React.JSX.Element {
   const timeZone = useTenantTimeZone();
   const editor = useSettingsEditor<"pageText">("pageText", {
     fromDocument: (pageText) => pageText,
-    toRequest: (pageText) => ({ ...pageText, searchArchiveLinks: withoutBlankLinks(pageText.searchArchiveLinks) }),
+    // A cleared rich-text box is sent as "" (not the editor's "<p></p>"); blank archive rows are
+    // dropped, and the hook then shows the saved document so error indexes match it.
+    toRequest: (pageText) => ({
+      ...pageText,
+      privacy: { ...pageText.privacy, bodyHtml: blankIfEmptyHtml(pageText.privacy.bodyHtml) },
+      live: { ...pageText.live, consentHtml: blankIfEmptyHtml(pageText.live.consentHtml), offAirHtml: blankIfEmptyHtml(pageText.live.offAirHtml) },
+      collectionNotice: { ...pageText.collectionNotice, bodyHtml: blankIfEmptyHtml(pageText.collectionNotice.bodyHtml) },
+      subscribeHelpHtml: blankIfEmptyHtml(pageText.subscribeHelpHtml),
+      searchArchiveLinks: withoutBlankLinks(pageText.searchArchiveLinks),
+    }),
   });
   const { value, state, fieldErrors } = editor;
 
@@ -103,7 +122,7 @@ function PageTextFields({ canEdit }: { canEdit: boolean }): React.JSX.Element {
   return (
     <div className="gcpe-site-page-text">
       <h1>{TITLE}</h1>
-      <p>The wording on the pages that are not news releases. Leave a box empty to hide that wording where the page allows it.</p>
+      <p>{INTRO}</p>
 
       <fieldset>
         <legend>Page not found</legend>
@@ -113,12 +132,13 @@ function PageTextFields({ canEdit }: { canEdit: boolean }): React.JSX.Element {
 
       <fieldset>
         <legend>Privacy page</legend>
-        {text("privacy.label", "Label", value.privacy.label, (label) => set({ privacy: { ...value.privacy, label } }), "The short name used for this page in links.")}
+        {text("privacy.label", "Label", value.privacy.label, (label) => set({ privacy: { ...value.privacy, label } }), "Shown above the title on the privacy page. Leave it empty to hide it.")}
         {text("privacy.title", "Title", value.privacy.title, (title) => set({ privacy: { ...value.privacy, title } }))}
         <RichField
           label="Statement"
           value={value.privacy.bodyHtml}
           onChange={(bodyHtml) => set({ privacy: { ...value.privacy, bodyHtml } })}
+          hint={STATEMENT_HINT}
           error={message("privacy.bodyHtml")}
           readOnly={!canEdit}
         />
@@ -166,7 +186,7 @@ function PageTextFields({ canEdit }: { canEdit: boolean }): React.JSX.Element {
 
       <fieldset>
         <legend>Media assets licence</legend>
-        {text("assetLicence.text", "Text", value.assetLicence.text, (t) => set({ assetLicence: { ...value.assetLicence, text: t } }))}
+        {text("assetLicence.text", "Text", value.assetLicence.text, (t) => set({ assetLicence: { ...value.assetLicence, text: t } }), LICENCE_HINT)}
         {text("assetLicence.linkText", "Link text", value.assetLicence.linkText, (linkText) => set({ assetLicence: { ...value.assetLicence, linkText } }))}
         {text("assetLicence.url", "Link URL", value.assetLicence.url, (url) => set({ assetLicence: { ...value.assetLicence, url } }))}
       </fieldset>

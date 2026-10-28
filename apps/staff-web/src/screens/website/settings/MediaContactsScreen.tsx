@@ -7,6 +7,7 @@ import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { canManageWebsite } from "../access";
 import { ConflictPanel } from "./ConflictPanel";
 import { DirectoryContactsEditor, withoutBlankContacts } from "./DirectoryContactsEditor";
+import { blankIfEmptyHtml } from "./format";
 import { OtherSectionErrors } from "./OtherSectionErrors";
 import { PublishBar } from "./PublishBar";
 import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
@@ -38,7 +39,9 @@ function MediaContactsFields({ canEdit }: { canEdit: boolean }): React.JSX.Eleme
   const timeZone = useTenantTimeZone();
   const editor = useSettingsEditor<"contactsPage">("contactsPage", {
     fromDocument: (page) => page,
-    toRequest: (page) => ({ ...page, contacts: withoutBlankContacts(page.contacts) }),
+    // Blank rows are dropped before sending; the hook then shows the saved document, so the form's
+    // rows (and every error index) match what the server checked.
+    toRequest: (page) => ({ ...page, introHtml: blankIfEmptyHtml(page.introHtml), contacts: withoutBlankContacts(page.contacts) }),
   });
   const { value, state, fieldErrors } = editor;
 
@@ -84,7 +87,7 @@ function MediaContactsFields({ canEdit }: { canEdit: boolean }): React.JSX.Eleme
         />
         <p id={INTRO_HINT_ID}>Include the 24-hour media line number here.</p>
         {introError && (
-          <p id={INTRO_ERROR_ID} className="gcpe-link-list__error">
+          <p id={INTRO_ERROR_ID} role="alert" className="gcpe-link-list__error">
             {introError}
           </p>
         )}

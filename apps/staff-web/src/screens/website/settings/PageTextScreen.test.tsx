@@ -8,7 +8,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import type { SettingsState } from "./api";
-import { PageTextScreen } from "./PageTextScreen";
+import { INTRO, LICENCE_HINT, PageTextScreen, STATEMENT_HINT } from "./PageTextScreen";
 
 const BASE: SiteSettings = defaultSiteSettings({
   colors: { primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D", mutedText: "#474543", surface: "#FFFFFF", background: "#FFFFFF", border: "#D8D8D8" },
@@ -151,6 +151,47 @@ describe("PageTextScreen", () => {
     const again = await screen.findByRole("group", { name: "Search: older archives" });
     expect(await within(again).findByText("Must start with https:// or / (a page on this site).")).toBeInTheDocument();
     expect(within(again).getByLabelText("Web address")).toBeInvalid();
+  });
+
+  it("a server error on the privacy statement is announced beside the editor and describes it", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "pageText.privacy.bodyHtml", message: "Keep it to 50000 characters or fewer." }]));
+    renderScreen();
+    const group = await screen.findByRole("group", { name: "Privacy page" });
+    const alert = await within(group).findByRole("alert");
+    expect(alert).toHaveTextContent("Keep it to 50000 characters or fewer.");
+    expect(within(group).getByRole("textbox", { name: "Statement" })).toHaveAccessibleDescription(`${STATEMENT_HINT} Keep it to 50000 characters or fewer.`);
+  });
+
+  it("the intro says which boxes are required; the privacy label, statement and licence have plain hints", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC));
+    renderScreen();
+    expect(await screen.findByText(INTRO)).toBeInTheDocument();
+    expect(INTRO).toMatch(/page not found heading and the privacy page title are required/);
+    const privacy = screen.getByRole("group", { name: "Privacy page" });
+    expect(within(privacy).getByLabelText("Label")).toHaveAccessibleDescription(/above the title on the privacy page/);
+    expect(within(screen.getByRole("group", { name: "Media assets licence" })).getByLabelText("Text")).toHaveAccessibleDescription(LICENCE_HINT);
+    expect(LICENCE_HINT).toMatch(/period is added/);
+  });
+
+  it("a too-many-links error on the older archives list shows on the list", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "pageText.searchArchiveLinks", message: "Keep the list to 10 or fewer." }]));
+    renderScreen();
+    const group = await screen.findByRole("group", { name: "Search: older archives" });
+    expect(await within(group).findByRole("alert")).toHaveTextContent("Keep the list to 10 or fewer.");
+  });
+
+  it("emptied rich-text boxes are sent as empty strings", async () => {
+    const empty = { ...PAGE_TEXT, live: { ...PAGE_TEXT.live, offAirHtml: "<p></p>" }, subscribeHelpHtml: "<p><br></p>" };
+    const calls = stub(["NRMS.SiteEditor"], stateOf({ ...DOC, pageText: empty }));
+    renderScreen();
+    const user = userEvent.setup();
+    await screen.findByRole("group", { name: "Privacy page" });
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { value: SiteSettings["pageText"] };
+    expect(body.value.live.offAirHtml).toBe("");
+    expect(body.value.subscribeHelpHtml).toBe("");
+    expect(body.value.privacy.bodyHtml).toBe(PAGE_TEXT.privacy.bodyHtml);
   });
 
   it("Core.Admin alone sees disabled inputs and no write buttons", async () => {

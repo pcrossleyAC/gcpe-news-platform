@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Radio, RadioGroup, TextField } from "@bcgov/design-system-react-components";
 import type { DirectoryContact, FieldError } from "@gcpe/site-settings";
 import { useAnnouncer } from "../../../shared/Announcer";
@@ -23,16 +23,17 @@ export interface DirectoryContactsEditorProps {
 }
 
 type TextKey = "group" | "groupUrl" | "subgroup" | "name" | "phone" | "cell" | "email";
-const FIELDS: { key: TextKey; label: string; type?: "tel" | "email" }[] = [
+const FIELDS: { key: TextKey; label: string; type?: "tel" | "email"; description?: string }[] = [
   { key: "group", label: "Group" },
-  { key: "groupUrl", label: "Group link" },
+  { key: "groupUrl", label: "Group link", description: "Optional. A page on this site, like /ministries/health/, or a full web address starting with https://." },
   { key: "subgroup", label: "Subgroup" },
   { key: "name", label: "Name" },
   { key: "phone", label: "Phone", type: "tel" },
   { key: "cell", label: "Cell", type: "tel" },
   { key: "email", label: "Email", type: "email" },
 ];
-const ROW_ERROR = /^\[(\d+)\]\.(\w+)$/;
+/** `[1].email` (a field on row 2) or `[1]` (row 2 as a whole, kept under the key ""). */
+const ROW_ERROR = /^\[(\d+)\](?:\.(\w+))?$/;
 
 /**
  * The editable list of other media contacts (Media contacts page). One boxed row each, with
@@ -41,7 +42,6 @@ const ROW_ERROR = /^\[(\d+)\]\.(\w+)$/;
  */
 export function DirectoryContactsEditor({ value, onChange, errors, pathPrefix, disabled = false }: DirectoryContactsEditorProps): React.JSX.Element {
   const { announce } = useAnnouncer();
-  const legendId = useId();
   const moveFocus = useMoveFocusRestore<HTMLFieldSetElement>();
   const addRef = useRef<HTMLSpanElement>(null);
   const pendingFocus = useRef<string | "add" | null>(null);
@@ -66,7 +66,8 @@ export function DirectoryContactsEditor({ value, onChange, errors, pathPrefix, d
     const m = ROW_ERROR.exec(e.field.slice(pathPrefix.length));
     if (!m) continue;
     const row = rowErrors.get(Number(m[1])) ?? new Map<string, string>();
-    if (!row.has(m[2]!)) row.set(m[2]!, e.message);
+    const name = m[2] ?? "";
+    if (!row.has(name)) row.set(name, e.message);
     rowErrors.set(Number(m[1]), row);
   }
   const shown = new Set<string>([...FIELDS.map((f) => f.key), "placement"]);
@@ -96,7 +97,7 @@ export function DirectoryContactsEditor({ value, onChange, errors, pathPrefix, d
 
   return (
     <fieldset className="gcpe-link-list" ref={moveFocus.containerRef}>
-      <legend id={legendId}>Other media contacts</legend>
+      <legend>Other media contacts</legend>
       <p>Ministry contacts come from each ministry&rsquo;s Organizations form.</p>
       {value.length === 0 && <p>No other contacts yet.</p>}
       {value.map((contact, index) => {
@@ -109,6 +110,7 @@ export function DirectoryContactsEditor({ value, onChange, errors, pathPrefix, d
               <TextField
                 key={f.key}
                 label={f.label}
+                description={f.description}
                 type={f.type}
                 value={contact[f.key]}
                 onChange={(v) => update(index, { [f.key]: v })}
@@ -127,7 +129,7 @@ export function DirectoryContactsEditor({ value, onChange, errors, pathPrefix, d
               <Radio value="bottom">Below the ministries</Radio>
             </RadioGroup>
             {others.map(([name, message]) => (
-              <p key={name} className="gcpe-link-list__error">
+              <p key={name || "row"} className="gcpe-link-list__error">
                 {message}
               </p>
             ))}

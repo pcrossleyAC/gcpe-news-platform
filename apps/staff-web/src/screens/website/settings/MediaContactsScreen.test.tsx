@@ -51,6 +51,25 @@ function stub(roles: string[], initial: SettingsState) {
   return calls;
 }
 
+/** Like {@link stub}, but publish answers 422 with `fieldErrors` and the reload after it returns `saved`. */
+function stubInvalidPublish(initial: SettingsState, saved: SettingsState, fieldErrors: SettingsState["errors"]) {
+  const calls: Call[] = [];
+  let gets = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const call: Call = { url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(init.body as string) : undefined };
+      calls.push(call);
+      if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+      if (url === "/nrms/api/site/settings" && call.method === "GET") return jsonResponse(200, gets++ === 0 ? initial : saved);
+      if (url === "/nrms/api/site/settings/publish") return jsonResponse(422, { errors: fieldErrors.map((e) => `${e.field}: ${e.message}`), fieldErrors });
+      throw new Error(`unhandled: ${call.method} ${url}`);
+    }),
+  );
+  return calls;
+}
+
 const stateOf = (document: SiteSettings, errors: SettingsState["errors"] = []): SettingsState => ({
   live: { revision: 4, publishedAt: "2026-10-20T17:30:00.000Z", publishedBy: "Sam", note: null },
   document,
@@ -132,6 +151,54 @@ describe("MediaContactsScreen", () => {
     const row = await screen.findByRole("group", { name: "Contact 2" });
     expect(within(row).getByText("Enter an email address like name@gov.bc.ca.")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "Contact 1" })).queryByText(/Enter an email/)).toBeNull();
+  });
+
+  it("with a blank row dropped before sending, a server error lands on the row it was about", async () => {
+    // The sent list is PAGE.contacts (the blank row left out), so contacts[1] is "News Desk".
+    const error = { field: "contactsPage.contacts[1].email", message: "Enter an email address like name@gov.bc.ca." };
+    const calls = stubInvalidPublish(stateOf(DOC), { ...stateOf(DOC), draft: { baseRevision: 4, updatedAt: "2026-10-28T17:00:00.000Z" } }, [error]);
+    renderScreen();
+    const user = userEvent.setup();
+    await screen.findByLabelText("Page heading");
+    await user.click(screen.getByRole("button", { name: "Add contact" }));
+    for (const n of [4, 3, 2]) await user.click(screen.getByRole("button", { name: `Move contact ${n} up` }));
+    expect((within(screen.getByRole("group", { name: "Contact 1" })).getByLabelText("Name") as HTMLInputElement).value).toBe("");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    const sent = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { value: SiteSettings["contactsPage"] };
+    expect(sent.value.contacts).toEqual(PAGE.contacts);
+    // The form now shows what was saved (no blank row), so row 2 is News Desk and carries the error.
+    const row = await screen.findByRole("group", { name: "Contact 2" });
+    expect(await within(row).findByText(error.message)).toBeInTheDocument();
+    expect((within(row).getByLabelText("Name") as HTMLInputElement).value).toBe("News Desk");
+    expect(screen.queryByRole("group", { name: "Contact 4" })).toBeNull();
+  });
+
+  it("a row-level server error with no field name shows on that row", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "contactsPage.contacts[2]", message: "This contact is listed twice." }]));
+    renderScreen();
+    const row = await screen.findByRole("group", { name: "Contact 3" });
+    expect(within(row).getByText("This contact is listed twice.")).toBeInTheDocument();
+  });
+
+  it("an emptied Introduction is sent as an empty string, not the editor's empty paragraph", async () => {
+    const calls = stub(["NRMS.SiteEditor"], stateOf({ ...DOC, contactsPage: { ...PAGE, introHtml: "<p></p>" } }));
+    renderScreen();
+    const user = userEvent.setup();
+    await screen.findByLabelText("Page heading");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const sent = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { value: SiteSettings["contactsPage"] };
+    expect(sent.value.introHtml).toBe("");
+  });
+
+  it("an Introduction server error is announced and describes the editor; Group link has a hint", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "contactsPage.introHtml", message: "Keep it to 50000 characters or fewer." }]));
+    renderScreen();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Keep it to 50000 characters or fewer.");
+    expect(screen.getByRole("textbox", { name: "Introduction" })).toHaveAccessibleDescription(/24-hour media line.*50000 characters/);
+    const row = screen.getByRole("group", { name: "Contact 1" });
+    expect(within(row).getByLabelText("Group link")).toHaveAccessibleDescription(/\/ministries\/health\/.*https:\/\//);
   });
 
   it("a Core.Admin without NRMS.SiteEditor sees the fields disabled", async () => {
