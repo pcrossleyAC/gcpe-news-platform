@@ -4,6 +4,7 @@ import {
   boolean,
   check,
   customType,
+  date,
   index,
   integer,
   jsonb,
@@ -53,11 +54,25 @@ export const governmentTerms = pgTable("government_terms", {
   name: text("name").notNull().unique(),
   isCurrent: boolean("is_current").notNull().default(false),
   legacyId: uuid("legacy_id"),
+  /** BC calendar date of the swearing-in. Null = "needs a start date": ignored by the archive and by "current". */
+  startDate: date("start_date", { mode: "string" }),
+  label: text("label"),
+  /** Link to the frozen archive.news.gov.bc.ca index for this collection. */
+  legacyArchiveUrl: text("legacy_archive_url"),
+  createdAt: tz("created_at").notNull().defaultNow(),
 }, (t) => [
+  uniqueIndex("government_terms_start_date_idx").on(t.startDate).where(sql`${t.startDate} IS NOT NULL`),
   uniqueIndex("government_terms_one_current_idx").on(t.isCurrent).where(sql`${t.isCurrent}`),
   // Phase 3e importer (task 2 fix round 1): backs the upsert-by-legacy-id's ON CONFLICT target.
   uniqueIndex("government_terms_legacy_id_idx").on(t.legacyId).where(sql`${t.legacyId} IS NOT NULL`),
 ]);
+
+/** Single row: the hash and time of the last `government_terms.published` snapshot, so the rollover emits only on change. */
+export const governmentTermsPublished = pgTable("government_terms_published", {
+  id: integer("id").primaryKey().default(1),
+  hash: text("hash").notNull(),
+  publishedAt: tz("published_at").notNull(),
+}, (t) => [check("government_terms_published_single_row", sql`${t.id} = 1`)]);
 
 export const newsReleases = pgTable(
   "news_releases",

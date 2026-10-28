@@ -184,3 +184,43 @@ describe("default page types: does not touch an already-imported table", () => {
     expect(rows).toEqual([{ pageTitle: "Legacy Title", languageId: 4105, releaseType: "release", sortOrder: 1, layout: "formal", pageImageId: null }]);
   });
 });
+
+describe("government term dates backfill", () => {
+  let tdb: TestDatabase;
+  let partial: string;
+  const legacyNames = ["pre2001", "2001-2005", "2005-2009", "2009-2013", "2013-2017", "2017-2017", "2017-2021", "2020-2024", "2024-2028"];
+  beforeAll(async () => {
+    partial = await partialMigrations("0016_site_settings");
+    tdb = await createTestDatabase({ migrationsFolder: partial });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+    await rm(partial, { recursive: true, force: true });
+  });
+
+  it("backfills legacy start dates", async () => {
+    for (const name of [...legacyNames, "Custom Term"]) {
+      await tdb.pool.query(`INSERT INTO government_terms (name, is_current) VALUES ($1, $2)`, [name, name === "2024-2028"]);
+    }
+    await runMigrations(tdb.db, nrmsMigrations);
+    const rows = (await tdb.pool.query(`SELECT name, start_date::text AS start_date, legacy_archive_url, is_current FROM government_terms ORDER BY name`)).rows as {
+      name: string; start_date: string | null; legacy_archive_url: string | null; is_current: boolean;
+    }[];
+    const by = new Map(rows.map((r) => [r.name, r]));
+    expect(by.get("2017-2021")!.start_date).toBe("2017-07-18");
+    expect(by.get("pre2001")!.start_date).toBe("1994-01-01");
+    expect(by.get("2020-2024")!.start_date).toBe("2020-11-26");
+    expect(by.get("2024-2028")!.start_date).toBe("2024-11-18");
+    expect(by.get("2024-2028")!.legacy_archive_url).toBe("https://archive.news.gov.bc.ca/releases/index_current.htm");
+    expect(by.get("2017-2021")!.legacy_archive_url).toBe("https://archive.news.gov.bc.ca/releases/index_2017-2021.htm");
+    expect(by.get("2024-2028")!.is_current).toBe(true);
+    // A term the backfill does not know is left undated.
+    expect(by.get("Custom Term")).toMatchObject({ start_date: null, legacy_archive_url: null });
+    expect(new Set(legacyNames.map((n) => by.get(n)!.start_date)).size).toBe(9);
+  });
+
+  it("keeps the single-row published table to one row", async () => {
+    await tdb.pool.query(`INSERT INTO government_terms_published (hash, published_at) VALUES ('h', now())`);
+    await expect(tdb.pool.query(`INSERT INTO government_terms_published (id, hash, published_at) VALUES (2, 'h', now())`)).rejects.toThrow();
+  });
+});
