@@ -156,7 +156,7 @@ describe("NRMS government-term admin API", () => {
     const holder = await tdb.pool.connect();
     try {
       await holder.query("BEGIN");
-      await holder.query("SELECT pg_advisory_xact_lock($1, $2)", GOVERNMENT_TERMS_LOCK);
+      await holder.query("SELECT pg_advisory_xact_lock($1, $2)", [...GOVERNMENT_TERMS_LOCK]);
       let done = false;
       const pending = post({ startDate: "2028-11-20" }).then((r) => ((done = true), r));
       await new Promise((r) => setTimeout(r, 400));
