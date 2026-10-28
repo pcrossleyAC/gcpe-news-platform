@@ -37,6 +37,7 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     app = appFor(outputDir);
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(outputDir, { recursive: true, force: true });
   });
 
@@ -67,6 +68,33 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
 
   it("/{kind} (kind index, fallback) → 301 /, query dropped", async () => {
     for (const path of ["/releases", "/Stories/", "/factsheets?x=1"]) await expectRedirect(app, path, "/");
+  });
+
+  it("once the category index pages exist: /sectors/, /themes/, /tags/ and /ministries/ serve 200; /Sectors, /sectors and /news-subscribe still reach them", async () => {
+    // Before the pages exist the fallback sends the bare forms home.
+    await expectRedirect(app, "/Sectors", "/");
+    for (const dir of ["sectors", "themes", "tags", "ministries"]) {
+      await mkdir(join(outputDir, dir), { recursive: true });
+      await writeFile(join(outputDir, dir, "index.html"), `<h1>${dir}</h1>`);
+    }
+    for (const dir of ["sectors", "themes", "tags", "ministries"]) {
+      const res = await request(app).get(`/${dir}/`);
+      expect({ dir, status: res.status, body: res.text }).toEqual({ dir, status: 200, body: `<h1>${dir}</h1>` });
+    }
+    // The root listing read by the /Sectors request above is reused for up to LISTING_MIN_REREAD_MS, so on a
+    // case-sensitive filesystem a new index reaches legacy-cased forms only after that window: step past it.
+    const later = Date.now() + LISTING_MIN_REREAD_MS + 1;
+    vi.spyOn(Date, "now").mockReturnValue(later);
+    // A legacy-cased form ends on the page (the hop's exact Location depends on the filesystem's case sensitivity).
+    for (const [path, dir] of [["/Sectors", "sectors"], ["/Themes", "themes"], ["/TAGS", "tags"]] as const) {
+      const res = await request(app).get(path).redirects(3);
+      expect({ path, status: res.status, body: res.text }).toEqual({ path, status: 200, body: `<h1>${dir}</h1>` });
+    }
+    await expectRedirect(app, "/sectors", "/sectors/");
+    await expectRedirect(app, "/news-subscribe", "/tags/");
+    await expectRedirect(app, "/news-subscribe?x=1", "/tags/");
+    // A category page under an index is untouched.
+    expect((await request(app).get("/sectors/services/")).status).toBe(200);
   });
 
   it("/sectors, /themes, /tags (fallback) → 301 /; /news-subscribe → /tags/ when it exists, else /", async () => {
@@ -173,6 +201,24 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     expect(page.text).toBe("<h1>releases</h1>");
   });
 
+  it("each built kind listing wins over the fallback: /<kind>/ → 200 and /<kind>, /<Kind> → 301 /<kind>/, under basePath too", async () => {
+    const kinds = ["releases", "stories", "factsheets", "updates"];
+    for (const kind of kinds) await expectRedirect(app, `/${kind}`, "/");
+    for (const kind of kinds) {
+      await mkdir(join(outputDir, kind), { recursive: true });
+      await writeFile(join(outputDir, kind, "index.html"), `<h1>${kind}</h1>`);
+    }
+    // The site root's listing is re-checked at most every LISTING_MIN_REREAD_MS: step the clock past it.
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + LISTING_MIN_REREAD_MS + 1);
+    for (const kind of kinds) {
+      await expectRedirect(app, `/${kind}`, `/${kind}/`);
+      await expectRedirect(app, `/${kind[0]!.toUpperCase()}${kind.slice(1)}`, `/${kind}/`);
+      const page = await request(app).get(`/${kind}/`);
+      expect({ kind, status: page.status, text: page.text }).toEqual({ kind, status: 200, text: `<h1>${kind}</h1>` });
+      await expectRedirect(appFor(outputDir, "/site"), `/site/${kind}`, `/site/${kind}/`);
+    }
+  });
+
   it("under basePath '/site': /site/newsletters → 301 /site/", async () => {
     const site = appFor(outputDir, "/site");
     await expectRedirect(site, "/site/newsletters", "/site/");
@@ -223,6 +269,13 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     const negotiate = await request(stackLike).post("/updates/negotiate");
     expect(negotiate.status).toBe(200);
     expect(negotiate.body).toEqual({ negotiated: true });
+    // Once the site builds /updates/ (H5), a GET is that page; the hub's POST still reaches News API.
+    await mkdir(join(outputDir, "updates"), { recursive: true });
+    await writeFile(join(outputDir, "updates", "index.html"), "<h1>updates</h1>");
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + LISTING_MIN_REREAD_MS + 1);
+    expect((await request(stackLike).get("/updates/")).text).toBe("<h1>updates</h1>");
+    await expectRedirect(stackLike, "/updates", "/updates/");
+    expect((await request(stackLike).post("/updates/negotiate")).body).toEqual({ negotiated: true });
     // The other stack-owned prefixes are still untouched.
     const api = await request(stackLike).get("/api/x").redirects(0);
     expect(api.body).toEqual({ fellThrough: true, method: "GET", path: "/api/x" });

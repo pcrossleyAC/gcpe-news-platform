@@ -56,7 +56,7 @@ async function drainLocked(deps: { db: Db; builder: SiteBuilder }, opts: { budge
         // this doesn't reproduce I1: at most one of these transactions is ever open at once.
         await deps.db.transaction(async (tx) => {
           const dependents = await deps.builder.renderPage(item.pageId, opts.pageOpts, run, tx);
-          if (dependents.length) await enqueuePages(tx, dependents.map((pageId) => ({ pageId, priority: dependentPriority(item.priority) })));
+          if (dependents.length) await enqueuePages(tx, dependents.map((pageId) => ({ pageId, priority: dependentPriority(item.priority, pageId) })));
           await completePage(tx, item);
         });
         rendered++;

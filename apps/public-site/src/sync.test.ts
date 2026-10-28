@@ -21,6 +21,9 @@ import { degradedSubscribe, syncSite, type SyncDeps } from "./sync";
 import * as subscribePages from "./subscribe-pages";
 import * as rebuildAll from "./rebuild-all";
 
+const KIND_IDS = ["kind:releases", "kind:stories", "kind:factsheets", "kind:updates"];
+const INDEX_IDS = ["ministries", "index:sectors", "index:themes", "index:tags"];
+
 describe("syncSite", () => {
   let tdb: TestDatabase;
   beforeAll(async () => { tdb = await createPublicSiteTestDb(); });
@@ -607,7 +610,8 @@ describe("syncSite", () => {
       api(deps).settings = published(doc, 2);
       const r = recording(deps);
       await syncSite(r.deps);
-      expect(r.rendered).toEqual(["connect", "home"]);
+      // The sector, theme and tag pages carry the strip too (here the one tag K1 has), then the four indexes.
+      expect(r.rendered).toEqual(["connect", "home", ...KIND_IDS, "category:tags:covid-19", ...INDEX_IDS]);
       expect(html(deps, "connect/index.html")).toContain("@NewBluesky");
       expect(html(deps, "index.html")).not.toContain("threads_logo.svg");
     });
@@ -657,6 +661,9 @@ describe("syncSite", () => {
         expect(enqueue.mock.calls[0]![1]).toEqual([
           { pageId: "connect", priority: PRIORITY.liveAggregate },
           { pageId: "home", priority: PRIORITY.liveAggregate },
+          ...KIND_IDS.map((pageId) => ({ pageId, priority: PRIORITY.liveAggregate })),
+          { pageId: "category:tags:covid-19", priority: PRIORITY.bulkAggregate },
+          ...INDEX_IDS.map((pageId) => ({ pageId, priority: PRIORITY.bulkAggregate })),
           { pageId: "post:K1", priority: PRIORITY.bulkPost },
           { pageId: "post:K2", priority: PRIORITY.bulkPost },
         ]);

@@ -9,7 +9,7 @@ import { createSiteBuilder, SECTOR_FETCHES } from "./builder";
 import type { GovernmentTermDto, GovernmentTermsDto, PostDto } from "./dto";
 import { drainQueue } from "./drain";
 import { postIndex } from "./post-index";
-import { enqueuePages } from "./queue";
+import { enqueuePages, PRIORITY } from "./queue";
 import { rebuildAllItems } from "./rebuild-all";
 
 describe("site builder", () => {
@@ -82,6 +82,255 @@ describe("site builder", () => {
     const { storage, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     await builder.rebuild(["home", "kind-feeds", "category:ministries:health", "sitemap:pages"], {});
     expect(html(storage, "sitemaps/pages.xml")).not.toMatch(/\.xml<|atom|feed/);
+  });
+
+  it("factsheets listing includes a factsheet that is the home top post, newest first, no duplicates", async () => {
+    const posts = new Map([
+      ["F1", post({ key: "F1", kind: "factsheets", publishDate: "2026-10-01T10:00:00-07:00" })],
+      ["F2", post({ key: "F2", kind: "factsheets", publishDate: "2026-10-02T10:00:00-07:00" })],
+      ["F3", post({ key: "F3", kind: "factsheets", publishDate: "2026-10-04T10:00:00-07:00" })],
+      ["R1", post({ key: "R1", kind: "releases", publishDate: "2026-10-03T10:00:00-07:00" })],
+    ]);
+    const { storage, api, builder } = setup(posts);
+    api.home = async () => ({ granville: null, topPostKey: "F1", featurePostKey: "F3" });
+    // The real API's latest list leaves out the home top post; the feature one is repeated to prove de-duplication.
+    const latestOfKind = api.latestOfKind;
+    api.latestOfKind = async (k, n) => (await latestOfKind(k, n)).filter((p) => p.key !== "F1");
+    await builder.rebuild(["kind:factsheets", "kind:releases"], { settings: bcSettings() });
+    const page = html(storage, "factsheets/index.html");
+    const order = [...page.matchAll(/href="\/releases\/(\w+)\/"/g)].map((m) => m[1]).filter((k, i, a) => a.indexOf(k) === i);
+    expect(order).toEqual(["F3", "F2", "F1"]);
+    expect(page.match(/<div class="article/g)).toHaveLength(3);
+    expect(page).not.toContain("/releases/R1/");
+    expect(html(storage, "releases/index.html")).toContain("/releases/R1/");
+    expect(html(storage, "releases/index.html")).not.toContain("/releases/F1/");
+    expect(page).toContain("<h1 class=\"listing-title\">Factsheets &amp; Opinion Editorials</h1>");
+  });
+
+  it("a sector page: top, feature and latest in one date-ordered card list, each once; Resources from the News API; a ministry page shows a top that is also the feature once", async () => {
+    const posts = new Map([
+      ["T1", post({ key: "T1", publishDate: "2026-10-01T10:00:00-07:00", sectorKeys: ["economy"], ministryKeys: ["health"] })],
+      ["F1", post({ key: "F1", publishDate: "2026-10-05T10:00:00-07:00", sectorKeys: ["economy"] })],
+      ["L1", post({ key: "L1", publishDate: "2026-10-03T10:00:00-07:00", sectorKeys: ["economy"] })],
+      ["L2", post({ key: "L2", publishDate: "2026-10-04T10:00:00-07:00", sectorKeys: ["economy"] })],
+    ]);
+    const { storage, api, builder } = setup(posts);
+    api.sectors = [{ key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: "T1", featurePostKey: "F1" }];
+    api.links = [{ key: "Contact us", uri: "/contacts/" }];
+    await builder.rebuild(["category:sectors:economy"], { settings: bcSettings() });
+    const page = html(storage, "sectors/economy/index.html");
+    const order = [...page.matchAll(/href="\/releases\/(\w+)\/"/g)].map((m) => m[1]).filter((k, i, a) => a.indexOf(k) === i);
+    expect(order).toEqual(["F1", "L2", "L1", "T1"]);
+    expect(page.match(/<div class="article/g)).toHaveLength(4);
+    expect(page).toContain("sector-listing");
+    expect(page).toContain('href="/contacts/"');
+  });
+
+  it("a ministry whose top and feature are the same post shows it once", async () => {
+    const posts = new Map([["S1", post({ key: "S1", ministryKeys: ["health"] })]]);
+    const { storage, api, builder } = setup(posts);
+    const ministry = api.ministry;
+    api.ministry = async (k) => { const m = await ministry(k); return m ? { ...m, topPostKey: "S1", featurePostKey: "S1" } : m; };
+    await builder.rebuild(["category:ministries:health"], { settings: bcSettings() });
+    const page = html(storage, "ministries/health/index.html");
+    expect(page).toContain('class="top-article"');
+    expect(page).not.toContain("feature-article");
+  });
+
+  it("home: a top post that is also the feature shows once, as the top; no feature slot and no empty box in its place", async () => {
+    const posts = new Map([["S1", post({ key: "S1", publishDate: "2026-10-02T10:00:00-07:00" })], ["L1", post({ key: "L1", publishDate: "2026-10-01T10:00:00-07:00" })]]);
+    const { storage, api, builder } = setup(posts);
+    api.home = async () => ({ granville: null, topPostKey: "S1", featurePostKey: "S1" });
+    // The real API's latest list leaves out the home top and feature posts.
+    const latestHome = api.latestHome;
+    api.latestHome = async (n) => (await latestHome(n)).filter((p) => p.key !== "S1");
+    await builder.rebuild(["home"], { settings: bcSettings() });
+    const doc = new JSDOM(html(storage, "index.html")).window.document;
+    expect(doc.querySelectorAll('.home-body a[href="/releases/S1/"]').length).toBeGreaterThan(0);
+    expect([...doc.querySelectorAll(".home-body .article")].filter((a) => a.querySelector('a[href="/releases/S1/"]'))).toHaveLength(1);
+    expect(doc.querySelector('.top-article a[href="/releases/S1/"]')).not.toBeNull();
+    expect(doc.querySelector(".feature-article")).toBeNull();
+    expect(doc.querySelector(".other-articles")!.firstElementChild!.id).toBe("regular-articles");
+    // (legacy clearfix divs aside)
+    expect([...doc.querySelectorAll(".home-body div:not(.clear)")].filter((d) => d.innerHTML.trim() === "").map((d) => d.outerHTML)).toEqual([]);
+  });
+
+  it("a kind listing renders deterministically: twice writes the same bytes, one latestOfKind fetch per render", async () => {
+    const { storage, api, builder } = setup(new Map([["S1", post({ key: "S1", kind: "stories" })]]));
+    await builder.rebuild(["kind:stories"], { settings: bcSettings() });
+    const first = html(storage, "stories/index.html");
+    await builder.rebuild(["kind:stories"], { settings: bcSettings() });
+    expect(html(storage, "stories/index.html")).toBe(first);
+    expect(api.calls.filter((c) => c === "latestOfKind:stories")).toHaveLength(2);
+  });
+
+  it("one run fetches the resource links once, for every page that shows them (home, connect, kind listings, category pages, indexes)", async () => {
+    const { api, builder } = setup(new Map());
+    api.sectors = [{ key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: null, featurePostKey: null }];
+    const links = vi.spyOn(api, "resourceLinks");
+    await builder.rebuild(["home", "connect", "kind:releases", "kind:stories", "category:sectors:economy", "index:sectors", "ministries"], { settings: bcSettings() });
+    expect(links).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed resource-links or home fetch fails only the page that hit it: the next page in the run fetches again", async () => {
+    const { storage, api, builder } = setup(new Map([["S1", post({ key: "S1", kind: "stories" })]]));
+    const links = api.resourceLinks;
+    let linkFailures = 1;
+    api.resourceLinks = async () => { if (linkFailures-- > 0) throw new Error("News API 503"); return links(); };
+    const home = api.home;
+    let homeFailures = 1;
+    api.home = async () => { if (homeFailures-- > 0) throw new Error("News API 502"); return home(); };
+    const run = {};
+    // Both fetches fail on the first page; the second page succeeds only if both were forgotten.
+    await expect(builder.renderPage("kind:stories", { settings: bcSettings() }, run)).rejects.toThrow(/News API 50[23]/);
+    await builder.renderPage("kind:stories", { settings: bcSettings() }, run);
+    expect(html(storage, "stories/index.html")).toContain("/releases/S1/");
+    expect(linkFailures).toBeLessThan(0);
+    expect(homeFailures).toBeLessThan(0);
+  });
+
+  it("aggregatePageIds and sitemap:pages include the four kind listings", async () => {
+    const { storage, builder } = setup(new Map());
+    expect(await builder.aggregatePageIds()).toEqual(expect.arrayContaining(["kind:releases", "kind:stories", "kind:factsheets", "kind:updates"]));
+    await builder.rebuild(["sitemap:pages"], {});
+    for (const k of ["releases", "stories", "factsheets", "updates"]) expect(html(storage, "sitemaps/pages.xml")).toContain(`https://news.example/${k}/<`);
+  });
+
+  describe("category indexes (M8, M16)", () => {
+    const cat = (kind: "sectors" | "themes" | "tags", key: string, over: Partial<{ name: string; isActive: boolean; topPostKey: string | null; featurePostKey: string | null }> = {}) =>
+      ({ key, kind, name: key[0]!.toUpperCase() + key.slice(1), isActive: true, topPostKey: null, featurePostKey: null, ...over });
+    const dayPost = (key: string, day: number, over: Partial<PostDto> = {}) => post({ key, publishDate: `2026-10-${String(day).padStart(2, "0")}T10:00:00-07:00`, ...over });
+
+    it("ministries index: a group per active ministry in API order, with its top, feature and newest latest; Browse More News and ?ministry=", async () => {
+      const posts = new Map([
+        ["T1", dayPost("T1", 1, { ministryKeys: ["health"] })],
+        ["F1", dayPost("F1", 2, { ministryKeys: ["health"] })],
+        ["L1", dayPost("L1", 3, { ministryKeys: ["health"] })],
+        ["L2", dayPost("L2", 4, { ministryKeys: ["health"] })],
+        ["N1", dayPost("N1", 5, { ministryKeys: ["finance"] })],
+      ]);
+      const { storage, api, builder } = setup(posts);
+      const base = api.ministries;
+      api.ministries = async () => (await base()).map((m) => (m.key === "health" ? { ...m, topPostKey: "T1", featurePostKey: "F1" } : m));
+      await builder.rebuild(["ministries"], { settings: bcSettings() });
+      const doc = new JSDOM(html(storage, "ministries/index.html")).window.document;
+      expect(doc.querySelector("h1")!.textContent).toBe("News by Ministry");
+      const groups = [...doc.querySelectorAll(".grouped-articles")];
+      expect(groups.map((g) => g.querySelector("h2 a")!.getAttribute("href"))).toEqual(["/ministries/health/", "/ministries/finance/"]);
+      const [health, finance] = groups;
+      expect(health!.querySelector(".top-article a[href='/releases/T1/']")).not.toBeNull();
+      expect(health!.querySelector(".feature-article a[href='/releases/F1/']")).not.toBeNull();
+      expect(health!.querySelectorAll(".regular-articles .article")).toHaveLength(1);
+      expect(health!.querySelector(".regular-articles a[href='/releases/L2/']")).not.toBeNull();
+      expect(health!.querySelector(".news-control a.read-more")!.getAttribute("href")).toBe("/search/?ministry=health");
+      expect(finance!.querySelector("a.load-more")!.getAttribute("href")).toBe("/ministries/finance/");
+      expect(finance!.querySelector(".regular-articles a[href='/releases/N1/']")).not.toBeNull();
+    });
+
+    it("sectors index: the active sectors, 3 latest each, none inactive; a sector with no posts still has its heading", async () => {
+      const posts = new Map(["A", "B", "C", "D"].map((k, i) => [k, dayPost(k, i + 1, { sectorKeys: ["economy"] })] as const));
+      const { storage, api, builder } = setup(posts);
+      api.sectors = [cat("sectors", "economy"), cat("sectors", "empty-sector"), cat("sectors", "retired", { isActive: false })];
+      await builder.rebuild(["index:sectors"], { settings: bcSettings() });
+      const doc = new JSDOM(html(storage, "sectors/index.html")).window.document;
+      expect(doc.querySelector("h1")!.textContent).toBe("News by Sector");
+      const groups = [...doc.querySelectorAll(".grouped-articles")];
+      expect(groups).toHaveLength(2);
+      expect([...groups[0]!.querySelectorAll(".article h2 a")].map((a) => a.getAttribute("href"))).toEqual(["/releases/D/", "/releases/C/", "/releases/B/"]);
+      expect(groups[0]!.querySelector(".news-control a.read-more")!.getAttribute("href")).toBe("/search/?sector=economy");
+      expect(groups[1]!.querySelector("h2 a")!.textContent).toBe("Empty-sector");
+      expect(groups[1]!.querySelector("a.load-more")).not.toBeNull();
+      expect(html(storage, "sectors/index.html")).not.toContain("retired");
+    });
+
+    it("tags index: heading News by Topic; top and feature from the one categoryLatest call; no Search News", async () => {
+      const posts = new Map([["T1", dayPost("T1", 1, { tagKeys: ["covid-19"] })], ["F1", dayPost("F1", 2, { tagKeys: ["covid-19"] })], ["T2", dayPost("T2", 3, { tagKeys: ["wildfires"] })]]);
+      const { storage, api, builder } = setup(posts);
+      api.tags = [cat("tags", "covid-19", { topPostKey: "T1", featurePostKey: "F1" }), cat("tags", "wildfires", { topPostKey: "T2" })];
+      const byKeys = vi.spyOn(api, "postsByKeys");
+      await builder.rebuild(["index:tags"], { settings: bcSettings() });
+      expect(byKeys).not.toHaveBeenCalled();
+      expect(api.calls).toEqual(["categoryLatest:tags:1"]);
+      const doc = new JSDOM(html(storage, "tags/index.html")).window.document;
+      expect(doc.querySelector("h1")!.textContent).toBe("News by Topic");
+      expect(doc.querySelector(".top-article a[href='/releases/T1/']")).not.toBeNull();
+      expect(doc.querySelector(".feature-article a[href='/releases/F1/']")).not.toBeNull();
+      expect(doc.querySelector(".news-control a.read-more")).toBeNull();
+    });
+
+    it("News API calls per render (P4-R11): one categoryLatest call and the resource links, whatever the number of categories", async () => {
+      const { api, storage } = setup(new Map());
+      api.themes = Array.from({ length: 20 }, (_, i) => cat("themes", `t${i}`, { topPostKey: i % 2 ? "X" : null }));
+      api.sectors = Array.from({ length: 7 }, (_, i) => cat("sectors", `s${i}`));
+      api.tags = Array.from({ length: 300 }, (_, i) => cat("tags", `g${i}`));
+      // Every method call on the client, whatever it is.
+      const counted: string[] = [];
+      const counting = new Proxy(api, {
+        get: (target, prop) => {
+          const v = Reflect.get(target, prop);
+          return typeof v === "function" ? (...args: unknown[]) => (counted.push(String(prop)), v(...args)) : v;
+        },
+      });
+      const b = createSiteBuilder({ newsApi: counting, storage, index: postIndex(tdb.db), site, assetsDir: null });
+      for (const [id, kind, n] of [["ministries", "ministries", 1], ["index:sectors", "sectors", 3], ["index:themes", "themes", 1], ["index:tags", "tags", 1]] as const) {
+        counted.length = 0;
+        api.calls.length = 0;
+        await b.renderPage(id, {}, {});
+        expect(counted.sort(), id).toEqual(["categoryLatest", "resourceLinks"]);
+        expect(api.calls, id).toEqual([`categoryLatest:${kind}:${n}`]);
+      }
+      expect(storage.files.has("tags/index.html")).toBe(true);
+    });
+
+    it("a failed categoryLatest call rejects the render and leaves the page as it was", async () => {
+      const { api, builder, storage } = setup(new Map());
+      api.tags = [cat("tags", "a"), cat("tags", "b")];
+      await builder.renderPage("index:tags", {});
+      const before = html(storage, "tags/index.html");
+      api.tags = [cat("tags", "a", { name: "Changed" }), cat("tags", "b")];
+      api.categoryLatest = async () => { throw new Error("News API 500"); };
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      await expect(builder.renderPage("index:tags", {})).rejects.toThrow("News API 500");
+      expect(html(storage, "tags/index.html")).toBe(before);
+    });
+
+    it("a key that can't be a page is left out; the same post as top and feature shows once", async () => {
+      const posts = new Map([["T1", dayPost("T1", 1, { tagKeys: ["a"] })]]);
+      const { api, builder, storage } = setup(posts);
+      api.tags = [cat("tags", "a", { topPostKey: "T1", featurePostKey: "T1" }), cat("tags", "../evil")];
+      await builder.renderPage("index:tags", {});
+      const doc = new JSDOM(html(storage, "tags/index.html")).window.document;
+      expect([...doc.querySelectorAll(".grouped-articles")].map((g) => g.querySelector("h2 a")!.getAttribute("href"))).toEqual(["/tags/a/"]);
+      expect(doc.querySelector(".top-article a[href='/releases/T1/']")).not.toBeNull();
+      expect(doc.querySelector(".feature-article")).toBeNull();
+    });
+
+    it("aggregatePageIds and sitemap:pages include the three new indexes", async () => {
+      const { storage, builder } = setup(new Map());
+      expect(await builder.aggregatePageIds()).toEqual(expect.arrayContaining(["ministries", "index:sectors", "index:themes", "index:tags"]));
+      await builder.rebuild(["sitemap:pages"], {});
+      for (const k of ["ministries", "sectors", "themes", "tags"]) expect(html(storage, "sitemaps/pages.xml")).toContain(`https://news.example/${k}/<`);
+    });
+
+    it("a post change queues its indexes at bulkAggregate even when the post is live, once however many posts changed", async () => {
+      const { api, builder } = setup(new Map([
+        ["K1", dayPost("K1", 1, { sectorKeys: ["economy"], ministryKeys: ["health"] })],
+        ["K2", dayPost("K2", 2, { sectorKeys: ["economy"], ministryKeys: ["health"] })],
+      ]));
+      api.sectors = [cat("sectors", "economy")];
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      await enqueuePages(tdb.db, [{ pageId: "post:K1", priority: PRIORITY.livePost }, { pageId: "post:K2", priority: PRIORITY.livePost }]);
+      await drainQueue({ db: tdb.db, builder }, { budget: 2, pageOpts: {} });
+      const { rows } = await tdb.pool.query("SELECT page_id, priority FROM rebuild_queue WHERE page_id = ANY($1) ORDER BY page_id", [["ministries", "index:sectors", "category:sectors:economy"]]);
+      expect(rows.map((r) => [r.page_id, Number(r.priority)])).toEqual([["category:sectors:economy", PRIORITY.liveAggregate], ["index:sectors", PRIORITY.bulkAggregate], ["ministries", PRIORITY.bulkAggregate]]);
+      const rendered: string[] = [];
+      const renderPage = builder.renderPage;
+      builder.renderPage = (id, ...rest) => { rendered.push(id); return renderPage(id, ...rest); };
+      await drainQueue({ db: tdb.db, builder }, { budget: 500, pageOpts: {} });
+      expect(rendered.filter((id) => id === "index:sectors" || id === "ministries")).toEqual(expect.arrayContaining(["index:sectors", "ministries"]));
+      expect(rendered.filter((id) => id === "index:sectors")).toHaveLength(1);
+      expect(rendered.filter((id) => id === "ministries")).toHaveLength(1);
+    });
   });
 
   it("aggregatePageIds includes kind-feeds", async () => {
@@ -264,6 +513,51 @@ describe("site builder", () => {
     for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) await storage.write(f, "x");
     await builder.renderPage("category:ministries:gone", {});
     for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) expect(storage.files.has(f), f).toBe(false);
+  });
+
+  it("a ministry's factsheets page: its factsheets (and a factsheet top post) newest first, an empty message when none, vanished ministry removes it, sitemap lists every ministry's", async () => {
+    const { storage, api, builder } = setup(new Map([
+      ["F1", post({ key: "F1", kind: "factsheets", ministryKeys: ["Health"], publishDate: "2026-10-01T10:00:00-07:00" })],
+      ["F2", post({ key: "F2", kind: "factsheets", ministryKeys: ["Health"], publishDate: "2026-10-03T10:00:00-07:00" })],
+      ["R1", post({ key: "R1", kind: "releases", ministryKeys: ["Health"], publishDate: "2026-10-02T10:00:00-07:00" })],
+      ["F3", post({ key: "F3", kind: "factsheets", ministryKeys: ["Health"], publishDate: "2026-10-04T10:00:00-07:00" })],
+    ]));
+    // F3 is the ministry's top post: the News API's latest list leaves it out.
+    const ministry = api.ministry;
+    api.ministry = async (k) => { const m = await ministry(k); return m && k.toLowerCase() === "health" ? { ...m, topPostKey: "F3" } : m; };
+    const latest = api.latest;
+    api.latest = async (kind, key, n, o) => (await latest(kind, key, n, o)).filter((p) => p.key !== "F3");
+    await builder.renderPage("category:ministries:health", {});
+    const page = html(storage, "ministries/health/factsheets/index.html");
+    expect([...page.matchAll(/href="\/releases\/(\w+)\/"/g)].map((x) => x[1]).filter((k, i, a) => a.indexOf(k) === i).slice(0, 3)).toEqual(["F3", "F2", "F1"]);
+    expect(page).not.toContain("/releases/R1/");
+    expect(page).toMatch(/<title>Factsheets: health \|/);
+    expect(api.calls).toContain("latest:ministries:health:factsheets");
+    // No factsheets: the page is still written, with the empty message.
+    await builder.renderPage("category:ministries:finance", {});
+    expect(html(storage, "ministries/finance/factsheets/index.html")).toContain("Nothing has been published yet.");
+    await builder.renderPage("sitemap:pages", {});
+    for (const k of ["health", "finance"]) expect(html(storage, "sitemaps/pages.xml")).toContain(`<loc>https://news.example/ministries/${k}/factsheets/</loc>`);
+    // A vanished ministry loses the page and its folder.
+    const removeEmptyDir = vi.spyOn(storage, "removeEmptyDir");
+    await storage.write("ministries/gone/factsheets/index.html", "x");
+    await builder.renderPage("category:ministries:gone", {});
+    expect(storage.files.has("ministries/gone/factsheets/index.html")).toBe(false);
+    expect(removeEmptyDir).toHaveBeenCalledWith("ministries/gone/factsheets");
+  });
+
+  it("a ministry render starts its factsheets fetch alongside the others, not after them", async () => {
+    const { api, builder } = setup(new Map());
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const started: (string | undefined)[] = [];
+    const latest = api.latest;
+    api.latest = async (kind, key, n, o) => { started.push(o?.postKind ?? "all"); await gate; return latest(kind, key, n, o); };
+    const run = builder.renderPage("category:ministries:health", {});
+    await new Promise((r) => setTimeout(r, 20));
+    expect(started.sort()).toEqual(["all", "factsheets"]);
+    release();
+    await run;
   });
 
   it("renders each childKey's ministry and minister; a null child ministry is skipped", async () => {

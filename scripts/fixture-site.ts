@@ -19,7 +19,7 @@ import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index"
 import type { SiteInfo } from "../apps/public-site/src/render";
 import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
-import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
+import { composeCategoryLatest, fakeNewsApi } from "../apps/public-site/test/fake-news-api";
 import { contact, link, ministry, post, slide } from "../apps/public-site/test/fixtures";
 
 const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
@@ -28,7 +28,7 @@ const SLIDE_IMAGE = fileURLToPath(new URL("./fixture-assets/slide.jpg", import.m
 const CATEGORIES: CategoryDto[] = [
   { key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: null, featurePostKey: null },
   { key: "housing", kind: "themes", name: "Housing", isActive: true, topPostKey: null, featurePostKey: null },
-  { key: "covid-19", kind: "tags", name: "COVID-19", isActive: true, topPostKey: null, featurePostKey: null },
+  { key: "covid-19", kind: "tags", name: "COVID-19", isActive: true, topPostKey: "2026HLTH0008-000008", featurePostKey: "2026HLTH0007-000007" },
 ];
 
 const FIRST_KEY = "2026HLTH0001-000001";
@@ -38,12 +38,18 @@ export const FIXTURE_PAGES = [
   "/",
   `/releases/${FIRST_KEY}/`,
   "/ministries/",
+  "/sectors/",
+  "/themes/",
+  "/tags/",
   "/ministries/health/",
   "/ministries/health/biography/",
+  "/ministries/health/factsheets/",
   "/ministries/office-of-the-premier/",
   "/sectors/economy/",
   "/themes/housing/",
   "/tags/covid-19/",
+  "/factsheets/",
+  "/stories/",
   "/archive/",
   "/archive/2026/10/",
   "/archive/terms/",
@@ -113,6 +119,8 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
         sectorKeys: ["economy"],
         themeKeys: ["housing"],
         tagKeys: ["covid-19"],
+        // A few of the other kinds, so /factsheets/ and /stories/ have cards to show (and hide behind Load More).
+        kind: i >= 13 && i <= 18 ? "factsheets" : i >= 19 && i <= 22 ? "stories" : "releases",
         hasTranslations: i % 3 === 0,
         hasMediaAssets: i % 4 === 0,
         // No Flickr assetUrl: its thumbnail would make site:quality fetch live.staticflickr.com, so
@@ -245,6 +253,7 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     ],
     resourceLinks: async () => [link({ uri: "/contacts/", key: "Media Contacts" }), link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
+    categoryLatest: (kind, n) => composeCategoryLatest(newsApi, posts)(kind, n),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
     governmentTerms: async () => termsSnapshot(tenant.governmentTerms ?? []),
   };

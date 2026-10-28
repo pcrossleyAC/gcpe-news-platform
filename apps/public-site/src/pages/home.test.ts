@@ -41,6 +41,11 @@ describe("home page", () => {
     expect(doc.querySelector("main aside")).toBeNull();
   });
 
+  it("no links and no sector news: no empty .collapsible-regions container", () => {
+    const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, latest: latest(1) }, site, {}));
+    expect(doc.querySelector(".collapsible-regions")).toBeNull();
+  });
+
   it("top-article and feature-article hold one div.article each; regular-articles shows 3 and hides the rest with .hidden-article; Load More only when something is hidden", () => {
     const view = { ...emptyView, top: post({ key: "TOP1", documents: headline("Top headline") }), feature: post({ key: "FEAT1", documents: headline("Feature headline") }), latest: latest(5) };
     const doc = expectAccessibleStructure(renderHomePage(view, site, {}));

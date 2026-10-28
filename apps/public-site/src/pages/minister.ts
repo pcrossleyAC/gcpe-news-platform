@@ -99,7 +99,7 @@ ${ministerCard(site, m, minister, profile)}${extra ? `\n${extra}` : ""}
 export function renderBiographyPage(m: MinistryDto, minister: MinisterDto, profile: MinistryProfileDto | null, site: SiteInfo, opts: PageOptions = {}): string {
   const name = ministerName(m, minister);
   const labels = (opts.settings ?? themeDefaults(site.theme)).ministryPages;
-  const [, topics, services] = ministryLinkGroups(m, labels);
+  const [, topics, services] = ministryLinkGroups(site, m, labels);
   const extra = [topics!, services!].map((g) => resourceLinks(site, g.heading, g.links)).filter(Boolean).join("\n");
   const photo = safeSrc(minister.photo);
   const picture = photo ? `\n<div class="minister-bio-picture">\n<img src="${e(photo)}" alt="${e(name)}">\n</div>` : "";

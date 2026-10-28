@@ -42,6 +42,42 @@ describe("the fixture site (6e exit checks)", () => {
     }
   });
 
+  it("the category indexes list each category with its latest posts, Browse More News and (ministries, sectors) Search News", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      for (const [path, heading] of [["/ministries/", "News by Ministry"], ["/sectors/", "News by Sector"], ["/themes/", "News by Theme"], ["/tags/", "News by Topic"]] as const) {
+        expect(FIXTURE_PAGES, path).toContain(path);
+        const html = await readFile(join(dir, fileOf(path)), "utf8");
+        expect(html, path).toContain(`<h1>${heading}</h1>`);
+        expect(html, path).toContain('class="grouped-articles"');
+        expect(html, path).toContain(">Browse More News</a>");
+        expect(html.includes(">Search News</a>"), path).toBe(path === "/ministries/" || path === "/sectors/");
+      }
+      // The tag's top and feature posts show as the group's top and feature article.
+      const tags = await readFile(join(dir, "tags/index.html"), "utf8");
+      expect(tags).toContain('class="top-article"');
+      expect(tags).toContain('class="feature-article"');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Before/after guard for the category-index batch endpoint (P4-R11): the four index pages were
+  // captured from the per-category builder (d0008cb) and must render byte-identically from the
+  // batch call. A deliberate template change updates them with `vitest -u`.
+  it("the category index pages render exactly as captured (batch-endpoint guard)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      for (const index of ["ministries", "sectors", "themes", "tags"]) {
+        await expect(await readFile(join(dir, index, "index.html"), "utf8")).toMatchFileSnapshot(`__snapshots__/category-index-${index}.html`);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("/contacts/ lists Health, its child Trade indented under it, and BC's bottom Premier row", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
     try {

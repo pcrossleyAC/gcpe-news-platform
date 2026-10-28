@@ -145,6 +145,19 @@ export async function listCategories(db: Db, kind: Exclude<CategoryKind, "minist
   return rows.map((r) => toCategoryDto(r, features.get(r.key.toLowerCase()), tz));
 }
 
+/**
+ * The categories a kind's index page lists: the active ones (ministries: also public, as v1's
+ * ministry list), in v1's order (sortOrder then key), each with its top and feature post keys.
+ */
+export async function activeCategoriesWithFeatures(db: Db, kind: CategoryKind): Promise<{ row: CategoryRow; feature: FeatureRow | undefined }[]> {
+  const rows =
+    kind === "ministries"
+      ? await allMinistries(db)
+      : await db.select().from(categories).where(eq(categories.kind, kind)).orderBy(asc(categories.sortOrder), asc(categories.key));
+  const features = await featureMap(db, kind);
+  return rows.filter((r) => r.isActive).map((row) => ({ row, feature: features.get(row.key.toLowerCase()) }));
+}
+
 export async function getCategory(db: Db, kind: Exclude<CategoryKind, "ministries">, key: string, tz: string) {
   const [row] = await db.select().from(categories).where(and(eq(categories.kind, kind), lowerEq(categories.key, key)));
   return row ? toCategoryDto(row, await getFeatures(db, kind, row.key), tz) : null;

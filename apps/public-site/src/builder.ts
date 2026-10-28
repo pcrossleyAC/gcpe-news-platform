@@ -1,24 +1,26 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import type { GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto } from "./dto";
+import type { GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "./dto";
 import { renderAtomFeed, renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
 import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex } from "./pages/archive";
-import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
+import { renderCategoryPage, renderMinistryFactsheetsPage, renderMinistryPage } from "./pages/categories";
+import { renderCategoryIndex, SECTOR_INDEX_LATEST, type IndexGroup } from "./pages/category-index";
 import { renderConnectPage } from "./pages/connect";
 import { renderContactsPage } from "./pages/contacts";
 import { renderLivePage } from "./pages/live";
 import { renderPrivacyPage } from "./pages/privacy";
-import { LATEST_COUNT } from "./pages/format";
+import { LATEST_COUNT, sortNewest } from "./pages/format";
 import { renderHomePage } from "./pages/home";
+import { renderKindListing } from "./pages/listing";
 import { hasBiography, renderBiographyPage } from "./pages/minister";
 import { renderReleasePage } from "./pages/release";
 import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
-import { atomUrl, biographyUrl, categoryFiles, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
+import { atomUrl, biographyUrl, categoryFiles, factsheetsUrl, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, INDEX_KINDS, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
 import { liveJson, liveStreamUrl, themeDefaults } from "./settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
@@ -44,6 +46,26 @@ export interface RunCache {
   /** Each lead ministry's latest posts (lower-cased key), the release page's related-band
    * fallback: fetched at most once per run, and only by a post with no related posts. */
   ministryLatest?: Map<string, Promise<PostDto[]>>;
+  /** The home top and feature posts (the News API's latest lists leave them out), fetched once per run: every kind listing and feed adds back the ones of its kind. Forgotten if the fetch fails. */
+  homeFeatured?: Promise<{ top: PostDto | null; feature: PostDto | null }>;
+  /** The Resources box's links, fetched once per run for every page that shows them. Forgotten if the fetch fails. */
+  resourceLinks?: Promise<ResourceLinkDto[]>;
+}
+
+/**
+ * `run[key]`, fetched on first use. A rejected fetch is forgotten, so a transient failure fails
+ * only the pages already waiting on it and the run's next page fetches again (the queue retries
+ * the failed ones).
+ */
+function runMemo<K extends "homeFeatured" | "resourceLinks">(run: RunCache, key: K, fetch: () => NonNullable<RunCache[K]>): NonNullable<RunCache[K]> {
+  const held = run[key];
+  if (held) return held as NonNullable<RunCache[K]>;
+  const p = fetch();
+  run[key] = p;
+  p.catch(() => {
+    if (run[key] === p) delete run[key];
+  });
+  return p;
 }
 
 /** How many of a ministry's latest posts the related band's fallback fetches: three to show, plus
@@ -70,6 +92,9 @@ export interface SiteBuilder {
   aggregatePageIds(): Promise<string[]>;
   /** Every ministry page id — what a `ministryPages` settings change rebuilds. */
   ministryPageIds(): Promise<string[]>;
+  /** Every sector, theme and tag page id — what a `resource_links` change or a `connect` settings
+   * change rebuilds (their pages carry the Resources box and the Connect strip). */
+  categoryListingPageIds(): Promise<string[]>;
   /** The terms index, the `current` alias and every public term's page — what a
    * `government_terms` change rebuilds (new-government spec §3). */
   termPageIds(): Promise<string[]>;
@@ -78,6 +103,7 @@ export interface SiteBuilder {
 export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null; searchApiBase?: string }): SiteBuilder {
   const { newsApi, storage, index, site } = deps;
   const ministries = (run: RunCache) => (run.ministries ??= newsApi.ministries());
+  const resourceLinks = (run: RunCache) => runMemo(run, "resourceLinks", () => newsApi.resourceLinks());
   /** Never rejects (NG-R18): a terms outage degrades to the last applied snapshot, else none. */
   const governmentTerms = async (run: RunCache): Promise<TermsView> => {
     if (run.governmentTerms) return run.governmentTerms;
@@ -140,8 +166,22 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   const featured = async (top: string | null, feature: string | null) => {
     const found = await newsApi.postsByKeys([top, feature].filter((k): k is string => !!k));
     const pick = (k: string | null) => (k ? (found.find((p) => p.key.toLowerCase() === k.toLowerCase()) ?? null) : null);
-    return { top: pick(top), feature: pick(feature) };
+    const t = pick(top);
+    const f = pick(feature);
+    // The same post in both slots shows once.
+    return { top: t, feature: f && t && f.key.toLowerCase() === t.key.toLowerCase() ? null : f };
   };
+
+  /**
+   * A kind's newest posts: the News API's latest-of-kind list plus the home top and feature posts
+   * when they are of that kind (its latest lists leave them out), newest first, no duplicates. The
+   * one merge behind both the kind listings and the kind feeds.
+   */
+  async function kindPosts(run: RunCache, kind: ListingKind): Promise<PostDto[]> {
+    const homeFeatured = runMemo(run, "homeFeatured", () => newsApi.home().then((home) => featured(home.topPostKey, home.featurePostKey)));
+    const [f, latest] = await Promise.all([homeFeatured, newsApi.latestOfKind(kind, LATEST_COUNT)]);
+    return sortNewest([...[f.top, f.feature].filter((x) => x?.kind === kind), ...latest]);
+  }
 
   /**
    * Home's News by Sector: the active sectors by name, each with its newest post (legacy TopSectors).
@@ -165,6 +205,25 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       }
     });
     return withLatest.sort((a, b) => a.name.localeCompare(b.name, "en"));
+  }
+
+  /**
+   * One index page's groups (M8, M16) from one `categoryLatest` call (P4-R11), whatever the number
+   * of categories: the active categories in the News API's order (sort order, then key), each with
+   * its newest posts (three for a sector, else one) and, except for sectors, its top and feature
+   * posts. A key that can't be a page is left out. A failed call rejects, so the queue retries the
+   * render and the page stays as it was.
+   */
+  async function indexGroups(kind: CategoryKind): Promise<IndexGroup[]> {
+    const groups = await newsApi.categoryLatest(kind, kind === "sectors" ? SECTOR_INDEX_LATEST : 1);
+    return groups.flatMap((g) => {
+      if (!categoryPageId(kind, g.key)) return [];
+      // Sectors show only their latest posts.
+      const top = kind === "sectors" ? null : g.topPost;
+      const feature = kind === "sectors" ? null : g.featurePost;
+      // The same post in both slots shows once.
+      return [{ key: g.key.toLowerCase(), name: g.name, top, feature: feature && top && feature.key.toLowerCase() === top.key.toLowerCase() ? null : feature, latest: g.latest }];
+    });
   }
 
   async function renderPost(key: string, opts: PageOptions, run: RunCache, tx?: DbOrTx): Promise<string[]> {
@@ -245,16 +304,16 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return dependents(before ? membershipOfEntry(before) : null, membershipOf(post));
   }
 
-  /** Removes a ministry's biography page and its then-empty folder. */
-  const removeBio = async (bio: string) => {
-    await storage.remove(bio);
-    await storage.removeEmptyDir(bio.slice(0, bio.lastIndexOf("/")));
+  /** Removes a ministry's sub-page (biography, factsheets) and its then-empty folder. */
+  const removeSubPage = async (file: string) => {
+    await storage.remove(file);
+    await storage.removeEmptyDir(file.slice(0, file.lastIndexOf("/")));
   };
 
   /** Returns `sitemap:pages` when the biography page appeared or went (it lists the bio pages on disk). */
   async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions, run: RunCache): Promise<string[]> {
     const p: PageId = { type: "category", kind, key };
-    const { page, feed, atom, bio } = categoryFiles({ kind, key });
+    const { page, feed, atom, bio, factsheets } = categoryFiles({ kind, key });
     const feedRef = { href: feedUrl(site, p), title: "" };
     const feedChannel = (description: string) => ({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description });
     const writeFeeds = async (description: string, posts: PostDto[]) => {
@@ -267,10 +326,18 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       const m = await newsApi.ministry(key);
       if (!m) {
         await removeAll(p);
-        await removeBio(bio!);
+        await removeSubPage(bio!);
+        await removeSubPage(factsheets!);
         return bioChanged(false);
       }
-      const [minister, latest, f, all] = await Promise.all([newsApi.minister(key), newsApi.latest(kind, key, LATEST_COUNT), featured(m.topPostKey, m.featurePostKey), profiles(run)]);
+      // The factsheets fetch runs with the others, not after them.
+      const [minister, latest, factsheetPosts, f, all] = await Promise.all([
+        newsApi.minister(key),
+        newsApi.latest(kind, key, LATEST_COUNT),
+        newsApi.latest(kind, key, LATEST_COUNT, { postKind: "factsheets" }),
+        featured(m.topPostKey, m.featurePostKey),
+        profiles(run),
+      ]);
       const profileOf = (k: string) => all.find((x) => x.key.toLowerCase() === k.toLowerCase()) ?? null;
       const profile = profileOf(key);
       // The ministries of state under this one (legacy MinisterOfState): a child that no longer
@@ -287,11 +354,15 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       feedRef.title = `${m.name}: latest news`;
       await storage.write(page, renderMinistryPage(m, minister, { ...f, latest }, site, { ...opts, feed: feedRef }, { profile, children }));
       await writeFeeds(`News from ${m.name}`, sortNewest([f.top, f.feature, ...latest]));
+      // The factsheets page (H5) is always written: the ministry's top and feature posts when they are
+      // factsheets (the latest list leaves them out), then its factsheets; empty is an empty message.
+      const ministryFactsheets = sortNewest([...[f.top, f.feature].filter((x) => x?.kind === "factsheets"), ...factsheetPosts]);
+      await storage.write(factsheets!, renderMinistryFactsheetsPage(m, minister, ministryFactsheets, site, opts, { profile, children }));
       // The biography page (H2) exists only while the minister has a bio: one cleared in the Hub
       // loses its page on this render instead of lingering.
       const withBio = !!minister && hasBiography(minister);
       if (withBio) await storage.write(bio!, renderBiographyPage(m, minister, profile, site, opts));
-      else await removeBio(bio!);
+      else await removeSubPage(bio!);
       return bioChanged(withBio);
     }
     const c = await newsApi.category(kind, key);
@@ -301,7 +372,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     }
     const [latest, f] = await Promise.all([newsApi.latest(kind, key, LATEST_COUNT), featured(c.topPostKey, c.featurePostKey)]);
     feedRef.title = `${c.name}: latest news`;
-    await storage.write(page, renderCategoryPage(kind, c, { ...f, latest }, site, { ...opts, feed: feedRef }));
+    const links = await resourceLinks(run);
+    await storage.write(page, renderCategoryPage(kind, c, { ...f, latest }, links, site, { ...opts, feed: feedRef }));
     await writeFeeds(`News about ${c.name}`, sortNewest([f.top, f.feature, ...latest]));
     return [];
   }
@@ -319,12 +391,20 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return [{ title: site.name, href: feedUrl(site, { type: "home" }) }, ...cats];
   }
 
-  async function categoryIds(run: RunCache): Promise<string[]> {
+  /** Every ministry page id: the given ministry list's, then any the post index still holds. */
+  async function ministryIds(list: Promise<MinistryDto[]>): Promise<string[]> {
     const ids = new Set<string>();
-    for (const m of await ministries(run)) {
+    for (const m of await list) {
       const id = categoryPageId("ministries", m.key);
       if (id) ids.add(id);
     }
+    for (const token of await index.categories()) if (token.startsWith("ministries:")) ids.add(`category:${token}`);
+    return [...ids].sort();
+  }
+
+  /** Every sector, theme and tag page id: the News API's lists, then any the post index still holds. */
+  async function listingIds(): Promise<string[]> {
+    const ids = new Set<string>();
     for (const kind of CATEGORY_KINDS) {
       if (kind === "ministries") continue;
       for (const c of await newsApi.categories(kind)) {
@@ -332,8 +412,13 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         if (id) ids.add(id);
       }
     }
-    for (const token of await index.categories()) ids.add(`category:${token}`);
+    for (const token of await index.categories()) if (!token.startsWith("ministries:")) ids.add(`category:${token}`);
     return [...ids].sort();
+  }
+
+  /** Every category page id (the run's ministry list, then the sector, theme and tag ones). */
+  async function categoryIds(run: RunCache): Promise<string[]> {
+    return [...new Set([...(await ministryIds(ministries(run))), ...(await listingIds())])].sort();
   }
 
   const builder: SiteBuilder = {
@@ -348,7 +433,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return renderPost(p.key, opts, run, tx);
         case "home": {
           const home = await newsApi.home();
-          const [f, latest, slides, links, sectors] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), newsApi.resourceLinks(), sectorsWithLatest()]);
+          const [f, latest, slides, links, sectors] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), resourceLinks(run), sectorsWithLatest()]);
           const feedRef = { href: feedUrl(site, p), title: `${site.name}: latest news` };
           // The Live button's state, beside the page that polls for it (site.js); the flag only.
           await storage.write("assets/live.json", liveJson(home));
@@ -360,23 +445,34 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         }
         case "kind-feeds": {
-          // The News API's latest list leaves out the home top and feature posts, so those are
-          // added back when they are of the kind. Six calls (home, the featured posts, one per
-          // kind), all made before any file is written: a failed fetch leaves every feed as it was.
-          // The channel link is the home page: a kind has no page of its own.
-          const home = await newsApi.home();
-          const [f, latest] = await Promise.all([featured(home.topPostKey, home.featurePostKey), Promise.all(FEED_POST_KINDS.map((kind) => newsApi.latestOfKind(kind, LATEST_COUNT)))]);
+          // Each kind's posts come from kindPosts (the home top and feature posts added back when
+          // they are of the kind). Home, the featured posts and one list per kind, all fetched
+          // before any file is written: a failed fetch leaves every feed as it was.
+          // The channel link is the home page.
+          const all = await Promise.all(FEED_POST_KINDS.map((kind) => kindPosts(run, kind)));
           for (const [i, kind] of FEED_POST_KINDS.entries()) {
-            const posts = sortNewest([...[f.top, f.feature].filter((x) => x?.kind === kind), ...latest[i]!]);
+            const posts = all[i]!;
             const rss = { title: `${site.name}: ${kind}`, pagePath: pageUrl(site, p), feedPath: kindFeedUrl(site, kind, "rss"), description: `The latest ${kind} from ${site.name}` };
             await storage.write(kindFeedFile(kind, "rss"), renderRssFeed(rss, posts, site));
             await storage.write(kindFeedFile(kind, "atom"), renderAtomFeed({ ...rss, feedPath: kindFeedUrl(site, kind, "atom") }, posts, site));
           }
           return [];
         }
-        case "ministries":
-          await storage.write(pageFiles(p)[0]!, renderMinistriesPage(await ministries(run), site, opts));
+        case "kind": {
+          // Everything is fetched before the write: a failed fetch leaves the page as it was.
+          const [posts, links] = await Promise.all([kindPosts(run, p.kind), resourceLinks(run)]);
+          const settings = opts.settings ?? themeDefaults(site.theme);
+          await storage.write(pageFiles(p)[0]!, renderKindListing(p.kind, settings.navigation.listingTitles[p.kind], posts, links, site, opts));
           return [];
+        }
+        case "ministries":
+        case "category-index": {
+          const kind = p.type === "ministries" ? "ministries" : p.kind;
+          // Everything is fetched before the write: a failed fetch leaves the page as it was.
+          const [groups, links] = await Promise.all([indexGroups(kind), resourceLinks(run)]);
+          await storage.write(pageFiles(p)[0]!, renderCategoryIndex(kind, groups, links, site, opts));
+          return [];
+        }
         case "category":
           return renderCategory(p.kind, p.key, opts, run);
         case "archive":
@@ -421,10 +517,12 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "sitemap-pages": {
           // Not /search/: robots.txt disallows it, and Search Console flags sitemap URLs blocked by robots.
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" })];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), ...INDEX_KINDS.map((kind) => pageUrl(site, { type: "category-index", kind })), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" }), ...LISTING_KINDS.map((kind) => pageUrl(site, { type: "kind", kind }))];
           for (const id of await categoryIds(run)) {
             const page = parsePageId(id)!;
             paths.push(pageUrl(site, page));
+            // Every ministry has a factsheets page (written on every render, empty or not).
+            if (page.type === "category" && page.kind === "ministries") paths.push(factsheetsUrl(site, page.key));
             // A minister's biography page, while it is on disk (renderCategory re-queues this page
             // whenever one appears or goes).
             const bio = page.type === "category" ? categoryFiles(page).bio : null;
@@ -441,7 +539,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           await writeStaticPages(storage, site, opts, deps.assetsDir);
           return [];
         case "connect":
-          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run), await newsApi.resourceLinks()));
+          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run), await resourceLinks(run)));
           return [];
         case "contacts":
           await storage.write(pageFiles(p)[0]!, renderContactsPage(await ministries(run), (opts.settings ?? themeDefaults(site.theme)).contactsPage, site, opts));
@@ -495,7 +593,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     async aggregatePageIds() {
       const run: RunCache = {};
       // sitemap:pages after the category pages: it lists the biography pages they write.
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", "kind-feeds", ...(await categoryIds(run)), "sitemap:pages"];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", "kind-feeds", ...INDEX_KINDS.map((k) => `index:${k}`), ...LISTING_KINDS.map((k) => `kind:${k}`), ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;
@@ -503,13 +601,11 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
 
     async ministryPageIds() {
       // categoryIds' ministry half, without its sector/theme/tag list fetches.
-      const ids = new Set<string>();
-      for (const m of await newsApi.ministries()) {
-        const id = categoryPageId("ministries", m.key);
-        if (id) ids.add(id);
-      }
-      for (const token of await index.categories()) if (token.startsWith("ministries:")) ids.add(`category:${token}`);
-      return [...ids].sort();
+      return ministryIds(newsApi.ministries());
+    },
+
+    async categoryListingPageIds() {
+      return listingIds();
     },
 
     async termPageIds() {
@@ -555,11 +651,4 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) =>
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
-}
-
-function sortNewest(posts: (PostDto | null)[]): PostDto[] {
-  const seen = new Set<string>();
-  return posts
-    .filter((p): p is PostDto => !!p && !seen.has(p.key.toLowerCase()) && !!seen.add(p.key.toLowerCase()))
-    .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
 }

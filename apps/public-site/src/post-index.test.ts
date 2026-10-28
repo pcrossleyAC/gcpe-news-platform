@@ -38,7 +38,7 @@ describe("post index", () => {
   it("put, get, replace and remove", async () => {
     const idx = postIndex(tdb.db);
     await idx.put(indexEntryOf("K1", dto({}))!);
-    expect(membershipOfEntry((await idx.get("K1"))!)).toEqual({ month: "2026-10", day: "2026-10-03", categories: ["ministries:health", "tags:covid-19"] });
+    expect(membershipOfEntry((await idx.get("K1"))!)).toEqual({ month: "2026-10", day: "2026-10-03", categories: ["ministries:health", "tags:covid-19"], kind: "releases" });
     await idx.put(indexEntryOf("K1", dto({ ministryKeys: ["finance"], tagKeys: [] }))!);
     expect((await idx.get("K1"))!.categories).toEqual(["ministries:finance"]);
     await idx.remove("K1");

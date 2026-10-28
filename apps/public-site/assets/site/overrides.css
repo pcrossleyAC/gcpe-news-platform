@@ -169,6 +169,9 @@ html:not(.js) #btnCloseBannerBridge{display:none}
 .resource-links h3{font-size:14px;font-weight:600;color:var(--color-text);margin-top:15px !important;margin-bottom:2px;padding-bottom:0;line-height:1.2}
 /* An emergency card's headline is an h3 under the region's h2: legacy's .home-body .article h2. */
 .home-body .article h3{font-size:20px;font-weight:600;color:var(--color-primary)}
+/* A kind listing's title (pages/listing.ts) is the page's h1 where legacy's was an h3: legacy's .fact-sheets .home-body h3 metrics. */
+.home-body .listing-title{font-size:36px;font-weight:600;color:var(--color-text);line-height:1.2;border-bottom:1px solid var(--color-border);margin-top:35px;padding-bottom:10px;margin-bottom:40px}
+.listing-empty{margin:0 0 20px}
 /* Legacy's "Load More News" was a link (a.load-more.link-button); ours is a button. */
 .home-body .news-control button.load-more{height:auto;min-height:28px;cursor:pointer}
 /* Legacy hid later cards in site.css; without JavaScript there is nothing to reveal them, so all show. */

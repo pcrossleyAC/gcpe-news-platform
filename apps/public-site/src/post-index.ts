@@ -37,7 +37,7 @@ export function indexEntryOf(key: string, post: PostDto): IndexedPost | null {
   return { key, kind: post.kind, headline: headlineOf(post), summary: post.summary, publishDate: post.publishDate, month: m.month, categories: m.categories, leadMinistry: leadMinistryOf(post) };
 }
 
-export const membershipOfEntry = (p: IndexedPost): Membership => ({ month: p.month, day: p.publishDate.slice(0, 10), categories: p.categories });
+export const membershipOfEntry = (p: IndexedPost): Membership => ({ month: p.month, day: p.publishDate.slice(0, 10), categories: p.categories, kind: p.kind });
 
 export interface PostIndex {
   get(key: string): Promise<IndexedPost | null>;

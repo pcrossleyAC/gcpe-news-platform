@@ -1,3 +1,4 @@
+import type { PostDto } from "../dto";
 import { e, type SiteInfo } from "../render";
 import { pageUrl } from "../site-paths";
 
@@ -52,4 +53,13 @@ export function postListItem(site: Pick<SiteInfo, "baseUrl">, p: { key: string; 
 /** h1→h2 … h5→h6 (h6 stays), so staff HTML inside a page never adds a second h1. */
 export function demoteHeadings(html: string): string {
   return html.replace(/<(\/?)h([1-6])(?=[\s>])/gi, (_m, slash: string, level: string) => `<${slash}h${Math.min(Number(level) + 1, 6)}`);
+}
+
+/** Posts newest first, each once (a key repeated, in any case, keeps its first copy): the one merge
+ * behind every listing and feed that folds the top and feature posts into a "latest" list. */
+export function sortNewest(posts: (PostDto | null)[]): PostDto[] {
+  const seen = new Set<string>();
+  return posts
+    .filter((p): p is PostDto => !!p && !seen.has(p.key.toLowerCase()) && !!seen.add(p.key.toLowerCase()))
+    .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
 }

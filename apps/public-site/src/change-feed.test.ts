@@ -12,24 +12,29 @@ import { nextBatch, PRIORITY } from "./queue";
 import { syncSite } from "./sync";
 import { CATEGORY_CHANGE, ChangeFeedError, changesClient, pagesForChange, syncChanges, type ChangeRow, type ChangesClient, type ChangesPage } from "./change-feed";
 
+const KIND_ITEMS = ["releases", "stories", "factsheets", "updates"].map((k) => `kind:${k}@1`);
+/** The four category indexes, which a Resources or Connect edit reaches: bulk, behind the pages people are watching. */
+const INDEX_PAGES = ["ministries", "index:sectors", "index:themes", "index:tags"].map((pageId) => ({ pageId, priority: 3 }));
+const KIND_PAGES = ["releases", "stories", "factsheets", "updates"].map((k) => ({ pageId: `kind:${k}`, priority: 1 }));
+
 describe("pagesForChange", () => {
   it.each([
     // /connect/'s RSS Feeds list names every active ministry, sector and tag, not themes.
-    [{ id: 13, kind: "theme", key: "housing" }, [{ pageId: "category:themes:housing", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 13, kind: "theme", key: "housing" }, [{ pageId: "category:themes:housing", priority: 1 }, { pageId: "index:themes", priority: 3 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 1, kind: "post.upserted", key: "K1" }, [{ pageId: "post:K1", priority: 0 }]],
     [{ id: 2, kind: "post.unpublished", key: "K1" }, [{ pageId: "post:K1", priority: 0 }]],
-    [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "live", priority: 1 }]],
+    [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "live", priority: 1 }, ...KIND_PAGES]],
     [{ id: 4, kind: "slides", key: null }, [{ pageId: "home", priority: 1 }]],
-    [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }]],
+    [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }, ...KIND_PAGES, ...INDEX_PAGES]],
     // A ministry change can start or stop a successor redirect, so it also queues legacy-redirects,
     // one priority lower, so a new successor's page is written before anything 301s to it.
-    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "contacts", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "sitemap:pages", priority: 1 }]],
-    [{ id: 7, kind: "tag", key: "covid-19" }, [{ pageId: "category:tags:covid-19", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "contacts", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "ministries", priority: 3 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 7, kind: "tag", key: "covid-19" }, [{ pageId: "category:tags:covid-19", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "index:tags", priority: 3 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 8, kind: "post.upserted", key: "../x" }, []],
     [{ id: 9, kind: "ministry", key: null }, []],
     [{ id: 10, kind: "sector", key: "a b" }, []],
     // The home page's News by Sector box lists each sector's latest post.
-    [{ id: 12, kind: "sector", key: "economy" }, [{ pageId: "category:sectors:economy", priority: 1 }, { pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 12, kind: "sector", key: "economy" }, [{ pageId: "category:sectors:economy", priority: 1 }, { pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "index:sectors", priority: 3 }, { pageId: "sitemap:pages", priority: 1 }]],
     // The next sync turn fetches the settings and decides what each changed section needs.
     [{ id: 11, kind: "site_settings", key: null }, []],
     // Every term page is added by syncChanges, from the builder's terms.
@@ -232,7 +237,7 @@ describe("syncChanges", () => {
       { resync: false, changes: [], next: 5 },
     ]);
     const result = await syncChanges({ db, client, builder, index });
-    expect(await items()).toEqual(["post:K9@0", "home@1", "live@1"]);
+    expect(await items()).toEqual(["post:K9@0", "home@1", "live@1", ...KIND_ITEMS]);
     expect(await readCursor(db)).toBe(5);
     expect(result).toEqual({ changes: 2, resynced: false });
   });
@@ -274,6 +279,49 @@ describe("syncChanges", () => {
     ]);
     await syncChanges({ db, client: sector, builder, index });
     expect((await items()).filter((x) => x.startsWith("post:"))).toEqual([]); // a sector named like the lead ministry reaches no release by lead
+  });
+
+  it("a resource_links change queues the four category indexes at bulk priority", async () => {
+    const { db, builder, index } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "resource_links", key: null }], next: 4 },
+      { resync: false, changes: [], next: 4 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    const queued = await items();
+    for (const id of ["ministries", "index:sectors", "index:themes", "index:tags"]) expect(queued, id).toContain(`${id}@${PRIORITY.bulkAggregate}`);
+  });
+
+  it("a resource_links change queues every sector, theme and tag page at bulk priority, not ministry pages", async () => {
+    const { db, builder, index, newsApi } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const c = (kind: "sectors" | "themes" | "tags", key: string) => ({ key, kind, name: key, isActive: true, topPostKey: null, featurePostKey: null });
+    newsApi.sectors = [c("sectors", "economy")];
+    newsApi.themes = [c("themes", "housing")];
+    newsApi.tags = [c("tags", "covid-19")];
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "resource_links", key: null }], next: 4 },
+      { resync: false, changes: [], next: 4 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    const queued = await items();
+    for (const id of ["category:sectors:economy", "category:themes:housing", "category:tags:covid-19"]) expect(queued, id).toContain(`${id}@${PRIORITY.bulkAggregate}`);
+    expect(queued.some((x) => x.startsWith("category:ministries:"))).toBe(false);
+    expect(queued).toContain("home@1");
+  });
+
+  it("the sector, theme and tag page list is fetched once per page of changes, and only when a resource_links change needs it", async () => {
+    const { db, builder, index } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const listing = vi.spyOn(builder, "categoryListingPageIds");
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "resource_links", key: null }, { id: 5, kind: "home", key: null }, { id: 6, kind: "resource_links", key: null }], next: 6 },
+      { resync: false, changes: [{ id: 7, kind: "home", key: null }], next: 7 },
+      { resync: false, changes: [], next: 7 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    expect(listing).toHaveBeenCalledTimes(1);
   });
 
   it("a government_terms change queues every term page", async () => {
@@ -349,7 +397,7 @@ describe("syncChanges", () => {
     await syncChanges({ db, client, builder, index });
     expect(await readCursor(db)).toBe(5);
     const queued = await items();
-    expect(queued).toEqual(["home@1", "live@1"]);
+    expect(queued).toEqual(["home@1", "live@1", ...KIND_ITEMS]);
   });
 
   // `kind` is validated only as a non-empty string (changeRowSchema), so a value such as
@@ -365,7 +413,7 @@ describe("syncChanges", () => {
     await syncChanges({ db, client, builder, index });
     expect(await readCursor(db)).toBe(5);
     const queued = await items();
-    expect(queued).toEqual(["home@1", "live@1"]);
+    expect(queued).toEqual(["home@1", "live@1", ...KIND_ITEMS]);
     expect(queued.some((pageId) => pageId.includes("undefined"))).toBe(false);
   });
 

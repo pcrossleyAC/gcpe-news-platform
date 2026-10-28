@@ -1,10 +1,15 @@
 import { sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
+import { CATEGORY_INDEX_IDS } from "./site-paths";
 
 /** Lower drains first. A post's dependents go one step later (dependentPriority). */
 export const PRIORITY = { livePost: 0, liveAggregate: 1, bulkPost: 2, bulkAggregate: 3 } as const;
 
-export const dependentPriority = (p: number): number => (p === PRIORITY.livePost ? PRIORITY.liveAggregate : p === PRIORITY.bulkPost ? PRIORITY.bulkAggregate : p);
+export const dependentPriority = (p: number, pageId?: string): number =>
+  // A category index fetches the latest posts of every category of its kind, so a post change (even
+  // a live one) queues it behind everything else; the queue's one row per page folds a batch of
+  // posts into one render.
+  pageId !== undefined && (CATEGORY_INDEX_IDS as readonly string[]).includes(pageId) ? PRIORITY.bulkAggregate : p === PRIORITY.livePost ? PRIORITY.liveAggregate : p === PRIORITY.bulkPost ? PRIORITY.bulkAggregate : p;
 
 export interface QueueItem {
   pageId: string;

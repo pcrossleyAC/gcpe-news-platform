@@ -1,6 +1,6 @@
 import { storedSiteSettingsSchema } from "@gcpe/site-settings";
 import { z } from "zod";
-import type { CategoryDto, GovernmentTermsDto, HomeDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
+import type { CategoryDto, CategoryLatestDto, GovernmentTermsDto, HomeDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
 import { CATEGORY_KEY, TERM_SLUG, type CategoryKind } from "./site-paths";
 
 export interface NewsApiClient {
@@ -8,7 +8,8 @@ export interface NewsApiClient {
   latestHome(count: number): Promise<PostDto[]>;
   /** The latest posts of one post kind (`releases`, `stories`, ...), home-wide. */
   latestOfKind(postKind: string, count: number): Promise<PostDto[]>;
-  latest(kind: CategoryKind, key: string, count: number): Promise<PostDto[]>;
+  /** A category's latest posts; `postKind` limits them to one kind (a ministry's factsheets). */
+  latest(kind: CategoryKind, key: string, count: number, o?: { postKind?: string }): Promise<PostDto[]>;
   /** The home settings News API already projects (plan 3d tasks 1–3) — used here for
    * Project Blue Bridge's `granville` (plan 3d task 4) and the home page's top/feature posts. */
   home(): Promise<HomeDto>;
@@ -19,6 +20,9 @@ export interface NewsApiClient {
   ministryProfiles(): Promise<MinistryProfileDto[]>;
   minister(key: string): Promise<MinisterDto | null>;
   categories(kind: Exclude<CategoryKind, "ministries">): Promise<CategoryDto[]>;
+  /** `GET /api/v2/categories/{kind}/latest?count=n` (n 1–3): an index page's every category with
+   * its top, feature and newest posts, in one call. Any failure, a 404 included, rejects. */
+  categoryLatest(kind: CategoryKind, count: number): Promise<CategoryLatestDto[]>;
   category(kind: Exclude<CategoryKind, "ministries">, key: string): Promise<CategoryDto | null>;
   slides(): Promise<SlideDto[]>;
   resourceLinks(): Promise<ResourceLinkDto[]>;
@@ -50,6 +54,12 @@ const governmentTermsBodySchema = z.object({
 
 const ministryProfilesBodySchema = z.object({
   ministries: z.array(z.object({ key: z.string(), ministerEmail: z.string().nullable(), teamLinks: z.array(z.object({ text: z.string(), url: z.string() })), childKeys: z.array(z.string()) })),
+});
+
+// Structural: the posts are v1 PostDtos (only their key is checked), as the v1 calls cast them.
+const postShape = z.object({ key: z.string() }).passthrough();
+const categoryLatestBodySchema = z.object({
+  categories: z.array(z.object({ key: z.string(), name: z.string(), topPost: postShape.nullable(), featurePost: postShape.nullable(), latest: z.array(postShape) })),
 });
 
 const ministrySuccessorsBodySchema = z.object({ successors: z.record(z.string(), z.string()) });
@@ -85,7 +95,7 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
     getPost: async (key) => (await get(`api/Posts/${enc(key)}?${v1}`)) as PostDto | null,
     latestHome: async (count) => ((await get(`api/Posts/Latest/home/default?${v1}&count=${count}`)) as PostDto[] | null) ?? [],
     latestOfKind: async (postKind, count) => ((await get(`api/Posts/Latest/home/default?${v1}&postKind=${enc(postKind)}&count=${count}`)) as PostDto[] | null) ?? [],
-    latest: async (kind, key, count) => ((await getOr404(`api/Posts/Latest/${LATEST_PATH[kind]}/${enc(key)}?${v1}&count=${count}`)) as PostDto[] | null) ?? [],
+    latest: async (kind, key, count, o) => ((await getOr404(`api/Posts/Latest/${LATEST_PATH[kind]}/${enc(key)}?${v1}${o?.postKind ? `&postKind=${enc(o.postKind)}` : ""}&count=${count}`)) as PostDto[] | null) ?? [],
     home: async () => (await get(`api/Home?${v1}`)) as HomeDto,
     postsByKeys: async (keys) => (keys.length ? (((await get(`api/Posts?${v1}&postKeys=${enc(keys.join(","))}`)) as PostDto[] | null) ?? []) : []),
     ministries: async () => ((await get(`api/Ministries?${v1}`)) as MinistryDto[] | null) ?? [],
@@ -100,6 +110,8 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
     },
     minister: async (key) => (await get(`api/Ministries/${enc(key)}/Minister?${v1}`)) as MinisterDto | null,
     categories: async (kind) => ((await get(`api/${LIST_PATH[kind]}?${v1}`)) as CategoryDto[] | null) ?? [],
+    categoryLatest: async (kind, count) =>
+      categoryLatestBodySchema.parse(await get(`api/v2/categories/${LATEST_PATH[kind]}/latest?count=${count}`)).categories as unknown as CategoryLatestDto[],
     category: async (kind, key) => (await get(`api/${LIST_PATH[kind]}/${enc(key)}?${v1}`)) as CategoryDto | null,
     slides: async () => (((await get("api/v2/slides")) as { slides: SlideDto[] } | null)?.slides ?? []),
     resourceLinks: async () => ((await get(`api/ResourceLinks?${v1}`)) as ResourceLinkDto[] | null) ?? [],

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { GOVERNMENT_TERM_SLUG } from "@gcpe/config";
+import { LISTING_KINDS, type ListingKind } from "@gcpe/site-settings";
 import { basePath, type SiteInfo } from "./render";
 
 /** A post key as NRMS and the News API produce it. 200 matches RELATED_MAX_KEY_CHARS; news.gov has
@@ -19,14 +20,28 @@ export const TERM_SLUG = GOVERNMENT_TERM_SLUG;
 /** A BC calendar month. */
 export const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
+/** The per-kind listing pages (`/releases/`, `/stories/`, `/factsheets/`, `/updates/`); the one definition is the settings'. */
+export { LISTING_KINDS, type ListingKind };
+export const isListingKind = (s: string): s is ListingKind => (LISTING_KINDS as readonly string[]).includes(s);
+
 export const CATEGORY_KINDS = ["ministries", "sectors", "themes", "tags"] as const;
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
 export const isCategoryKind = (s: string): s is CategoryKind => (CATEGORY_KINDS as readonly string[]).includes(s);
+
+/** The category kinds whose index page has the id `index:<kind>`; the ministries index keeps the id `ministries`. */
+export const INDEX_KINDS = ["sectors", "themes", "tags"] as const;
+export type IndexKind = (typeof INDEX_KINDS)[number];
+const isIndexKind = (s: string): s is IndexKind => (INDEX_KINDS as readonly string[]).includes(s);
+
+/** The four category index pages' ids: each render fetches the latest posts of every category of its kind. */
+export const CATEGORY_INDEX_IDS = ["ministries", ...INDEX_KINDS.map((k) => `index:${k}`)] as const;
 
 export type PageId =
   | { type: "home" }
   | { type: "post"; key: string }
   | { type: "ministries" }
+  /** `/sectors/`, `/themes/` and `/tags/` (M16): each category's latest posts, id `index:<kind>`. */
+  | { type: "category-index"; kind: IndexKind }
   | { type: "category"; kind: CategoryKind; key: string }
   | { type: "archive" }
   | { type: "archive-month"; month: string }
@@ -47,7 +62,9 @@ export type PageId =
   /** Not a page: the successor-redirect table the stack's middleware reads (new-government §4). */
   | { type: "legacy-redirects" }
   /** The per-kind feeds (`feeds/<kind>.xml` and `.atom.xml`), one page so one render fetches each kind once. */
-  | { type: "kind-feeds" };
+  | { type: "kind-feeds" }
+  /** A per-kind listing (H5): `/<kind>/`, id `kind:<kind>`. */
+  | { type: "kind"; kind: ListingKind };
 
 const SINGLE: Record<string, PageId> = {
   home: { type: "home" },
@@ -73,6 +90,8 @@ export function parsePageId(id: string): PageId | null {
   const [head] = parts;
   if (head === "post" && parts.length === 2 && POST_KEY.test(parts[1]!)) return { type: "post", key: parts[1]! };
   if (head === "category" && parts.length === 3 && isCategoryKind(parts[1]!) && CATEGORY_KEY.test(parts[2]!)) return { type: "category", kind: parts[1] as CategoryKind, key: parts[2]! };
+  if (head === "index" && parts.length === 2 && isIndexKind(parts[1]!)) return { type: "category-index", kind: parts[1] };
+  if (head === "kind" && parts.length === 2 && isListingKind(parts[1]!)) return { type: "kind", kind: parts[1] };
   if (head === "archive" && parts.length === 2 && MONTH.test(parts[1]!)) return { type: "archive-month", month: parts[1]! };
   if (head === "sitemap" && parts.length === 2 && MONTH.test(parts[1]!)) return { type: "sitemap-month", month: parts[1]! };
   if (head === "archive-term" && parts.length === 2 && TERM_SLUG.test(parts[1]!)) return { type: "archive-term", slug: parts[1]! };
@@ -83,6 +102,8 @@ export function formatPageId(p: PageId): string {
   switch (p.type) {
     case "post": return `post:${p.key}`;
     case "category": return `category:${p.kind}:${p.key}`;
+    case "kind": return `kind:${p.kind}`;
+    case "category-index": return `index:${p.kind}`;
     case "archive-month": return `archive:${p.month}`;
     case "sitemap-month": return `sitemap:${p.month}`;
     case "sitemap-pages": return "sitemap:pages";
@@ -118,10 +139,11 @@ export const FEED_POST_KINDS = ["releases", "stories", "factsheets", "updates"] 
 export type FeedPostKind = (typeof FEED_POST_KINDS)[number];
 export const kindFeedFile = (kind: FeedPostKind, format: "rss" | "atom"): string => `feeds/${kind}${format === "atom" ? ".atom" : ""}.xml`;
 
-/** A category page's files by role. The biography page exists only for a ministry. */
-export function categoryFiles(p: { kind: CategoryKind; key: string }): { page: string; feed: string; atom: string; bio: string | null } {
+/** A category page's files by role. The biography and factsheets pages exist only for a ministry. */
+export function categoryFiles(p: { kind: CategoryKind; key: string }): { page: string; feed: string; atom: string; bio: string | null; factsheets: string | null } {
   const dir = `${p.kind}/${p.key}`;
-  return { page: `${dir}/index.html`, feed: `${dir}/feed.xml`, atom: `${dir}/atom.xml`, bio: p.kind === "ministries" ? `${dir}/biography/index.html` : null };
+  const ministry = p.kind === "ministries";
+  return { page: `${dir}/index.html`, feed: `${dir}/feed.xml`, atom: `${dir}/atom.xml`, bio: ministry ? `${dir}/biography/index.html` : null, factsheets: ministry ? `${dir}/factsheets/index.html` : null };
 }
 
 /** Relative output files for a page. Only ever called with a parsed (validated) PageId. */
@@ -131,12 +153,13 @@ export function pageFiles(p: PageId): string[] {
     // A long key's directory also holds the sidecar naming the key; it goes with the page.
     case "post": return [postPath(p.key), postKeyFile(p.key)].filter((f): f is string => f !== null);
     case "ministries": return ["ministries/index.html"];
+    case "category-index": return [`${p.kind}/index.html`];
     // A ministry's third file is its minister's biography page (H2): written only while the
     // minister has a bio, and removed with the rest when the ministry goes.
-    // Order: page, RSS, Atom, then the biography (last; the builder reads the roles through categoryFiles).
+    // Order: page, RSS, Atom, the biography, then the factsheets page (the builder reads the roles through categoryFiles).
     case "category": {
       const f = categoryFiles(p);
-      return [f.page, f.feed, f.atom, ...(f.bio ? [f.bio] : [])];
+      return [f.page, f.feed, f.atom, ...(f.bio ? [f.bio] : []), ...(f.factsheets ? [f.factsheets] : [])];
     }
     case "archive": return ["archive/index.html"];
     case "archive-month": return [`archive/${p.month.slice(0, 4)}/${p.month.slice(5)}/index.html`];
@@ -153,6 +176,7 @@ export function pageFiles(p: PageId): string[] {
     case "archive-terms": return ["archive/terms/index.html"];
     case "archive-term": return [`archive/terms/${p.slug}/index.html`];
     case "legacy-redirects": return [MINISTRY_SUCCESSORS_FILE];
+    case "kind": return [`${p.kind}/index.html`];
     case "kind-feeds": return FEED_POST_KINDS.flatMap((k) => [kindFeedFile(k, "rss"), kindFeedFile(k, "atom")]);
   }
 }
@@ -164,6 +188,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "home": return `${base}/`;
     case "post": return `${base}/releases/${encodeURIComponent(p.key)}/`;
     case "ministries": return `${base}/ministries/`;
+    case "category-index": return `${base}/${p.kind}/`;
     case "category": return `${base}/${p.kind}/${p.key}/`;
     case "archive": return `${base}/archive/`;
     case "archive-month": return `${base}/archive/${p.month.slice(0, 4)}/${p.month.slice(5)}/`;
@@ -179,6 +204,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "archive-terms": return `${base}/archive/terms/`;
     case "archive-term": return `${base}/archive/terms/${p.slug}/`;
     case "legacy-redirects": return `${base}/${MINISTRY_SUCCESSORS_FILE}`;
+    case "kind": return `${base}/${p.kind}/`;
     case "kind-feeds": return `${base}/`;
   }
 }
@@ -196,5 +222,12 @@ export const kindFeedUrl = (site: Pick<SiteInfo, "baseUrl">, kind: FeedPostKind,
 
 /** A ministry's minister biography page (the third file of its category page). */
 export const biographyUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/biography/`;
+
+/** A ministry's factsheets page (H5), site-relative without the base path: what a side-column
+ * link carries, since `sideLinkItems` resolves "/..." under the base path itself. */
+export const factsheetsPath = (key: string): string => `/ministries/${encodeURIComponent(key.toLowerCase())}/factsheets/`;
+
+/** A ministry's factsheets page (H5), under the base path. */
+export const factsheetsUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}${factsheetsPath(key)}`;
 
 export const absoluteUrl = (site: Pick<SiteInfo, "baseUrl">, path: string) => new URL(site.baseUrl).origin + path;

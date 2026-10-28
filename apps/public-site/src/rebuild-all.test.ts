@@ -33,6 +33,33 @@ describe("enqueueRebuildAll", () => {
     expect(at(PRIORITY.bulkAggregate)).toContain("category:ministries:health");
   });
 
+  it("a connect settings change queues connect, home and the four kind listings", async () => {
+    const builder = createSiteBuilder({ newsApi: fakeNewsApi(), storage: memoryStorage(), index: postIndex(tdb.db), site, assetsDir: null });
+    await enqueueChromeChanges(tdb.db, builder, { all: false, sections: ["connect"] });
+    const ids = (await nextBatch(tdb.db, 1000, [])).map((i) => i.pageId);
+    expect(ids).toEqual(expect.arrayContaining(["connect", "home", "kind:releases", "kind:stories", "kind:factsheets", "kind:updates"]));
+  });
+
+  it("a connect settings change queues every sector, theme and tag page at bulk priority, no ministry page", async () => {
+    const api = fakeNewsApi();
+    const c = (kind: "sectors" | "themes" | "tags", key: string) => ({ key, kind, name: key, isActive: true, topPostKey: null, featurePostKey: null });
+    api.sectors = [c("sectors", "economy")];
+    api.themes = [c("themes", "housing")];
+    api.tags = [c("tags", "covid-19")];
+    const builder = createSiteBuilder({ newsApi: api, storage: memoryStorage(), index: postIndex(tdb.db), site, assetsDir: null });
+    await enqueueChromeChanges(tdb.db, builder, { all: false, sections: ["connect"] });
+    const batch = await nextBatch(tdb.db, 1000, []);
+    for (const id of ["category:sectors:economy", "category:themes:housing", "category:tags:covid-19"]) expect(batch.find((i) => i.pageId === id)?.priority, id).toBe(PRIORITY.bulkAggregate);
+    expect(batch.some((i) => i.pageId.startsWith("category:ministries:"))).toBe(false);
+  });
+
+  it("a connect settings change queues the four category indexes at bulk priority", async () => {
+    const builder = createSiteBuilder({ newsApi: fakeNewsApi(), storage: memoryStorage(), index: postIndex(tdb.db), site, assetsDir: null });
+    await enqueueChromeChanges(tdb.db, builder, { all: false, sections: ["connect"] });
+    const batch = await nextBatch(tdb.db, 1000, []);
+    for (const id of ["ministries", "index:sectors", "index:themes", "index:tags"]) expect(batch.find((i) => i.pageId === id)?.priority, id).toBe(PRIORITY.bulkAggregate);
+  });
+
   it("a labels edit queues every aggregate page and no post", async () => {
     const storage = memoryStorage();
     const api = fakeNewsApi();

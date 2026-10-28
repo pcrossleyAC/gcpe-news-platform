@@ -189,7 +189,7 @@ function sideColumn(site: SiteInfo, post: PostDto, main: PostDocument | null, la
 ${present(main?.pageTitle) ? `<h2>${e(main.pageTitle)}</h2>\n` : ""}${present(post.location) ? `<p class="location">${e(post.location)}</p>\n` : ""}<div>${e(parts.date)}</div>${assetsLink}
 </div>`;
   const contacts = contactsOf(main).length ? `<div class="resource-links comm-contacts">\n${contactsBlock(contactsOf(main), labels.mediaContacts, 2)}\n</div>` : "";
-  const ministry = ctx.leadMinistry ? ministryLinkGroups(ctx.leadMinistry, labels).map((g) => resourceLinks(site, g.heading, g.links)) : [];
+  const ministry = ctx.leadMinistry ? ministryLinkGroups(site, ctx.leadMinistry, labels).map((g) => resourceLinks(site, g.heading, g.links)) : [];
   const blocks = [translations, parts.share, locationAndDate, contacts, ...ministry].filter(Boolean).join("\n");
   return `<section class="story-features" id="sidebar" aria-label="About this release">\n${blocks}\n</section>`;
 }
