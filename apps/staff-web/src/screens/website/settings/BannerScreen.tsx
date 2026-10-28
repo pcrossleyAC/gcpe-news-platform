@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Checkbox, InlineAlert, Radio, RadioGroup, TextArea, TextField } from "@bcgov/design-system-react-components";
 import type { BannerSettings, LinkSetting, SiteSettings } from "@gcpe/site-settings";
-import { useTenantTimeZone } from "../../../format/tenantTimeZone";
+import { useTenantTimeZoneStatus } from "../../../format/tenantTimeZone";
 import { useSession } from "../../../session/SessionContext";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -48,8 +48,22 @@ export function BannerScreen(): React.JSX.Element {
   return <BannerEditor canEdit={session.has("NRMS.SiteEditor")} />;
 }
 
+/** Waits for the tenant time zone before loading: the form shows the schedule in that zone's
+ * wall-clock, and the server reads what it sends back in the same zone. */
 function BannerEditor({ canEdit }: { canEdit: boolean }): React.JSX.Element {
-  const timeZone = useTenantTimeZone();
+  const { timeZone, resolved } = useTenantTimeZoneStatus();
+  if (!resolved) {
+    return (
+      <div className="gcpe-site-banner">
+        <h1>{TITLE}</h1>
+        <p>Loading…</p>
+      </div>
+    );
+  }
+  return <BannerFields canEdit={canEdit} timeZone={timeZone} />;
+}
+
+function BannerFields({ canEdit, timeZone }: { canEdit: boolean; timeZone: string }): React.JSX.Element {
   const editor = useSettingsEditor<"banner", BannerForm>("banner", {
     fromDocument: ({ startsAt, endsAt, ...rest }) => ({ ...rest, startsAtLocal: toLocal(startsAt, timeZone), endsAtLocal: toLocal(endsAt, timeZone) }),
     // The server converts the BC wall-clock times to instants (site-routes.ts's bannerWithInstants).

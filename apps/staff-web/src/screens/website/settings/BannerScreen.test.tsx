@@ -23,9 +23,9 @@ interface Call {
   body: unknown;
 }
 
-type Handler = (call: Call) => Response | undefined;
+type Handler = (call: Call) => Response | undefined | Promise<Response | undefined>;
 
-function stub(roles: string[], handler: Handler, initial: SettingsState = NOTHING_LIVE) {
+function stub(roles: string[], handler: Handler, initial: SettingsState = NOTHING_LIVE, config: () => Promise<Response> | Response = () => jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true })) {
   const calls: Call[] = [];
   vi.stubGlobal(
     "fetch",
@@ -33,8 +33,8 @@ function stub(roles: string[], handler: Handler, initial: SettingsState = NOTHIN
       const call: Call = { url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(init.body as string) : undefined };
       calls.push(call);
       if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
-      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
-      const handled = handler(call);
+      if (url === "/nrms/api/config") return config();
+      const handled = await handler(call);
       if (handled) return handled;
       if (url === "/nrms/api/site/settings" && call.method === "GET") return jsonResponse(200, initial);
       throw new Error(`unhandled: ${call.method} ${url}`);
@@ -252,5 +252,52 @@ describe("BannerScreen", () => {
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Message"), "Hello");
     expect(screen.getByText("5 / 300")).toBeInTheDocument();
+  });
+
+  // Fix round 1: the schedule is shown and sent in the tenant's zone, even when the config
+  // answers after the settings would have.
+  it("waits for a late tenant time zone (America/Moncton) before showing and sending the schedule", async () => {
+    let answerConfig!: () => void;
+    const configAnswered = new Promise<void>((resolve) => (answerConfig = resolve));
+    const calls = stub(
+      ["NRMS.SiteEditor"],
+      (c) => (c.url === "/nrms/api/site/settings/draft" ? jsonResponse(200, NOTHING_LIVE) : undefined),
+      withBanner(NOTHING_LIVE, { enabled: true, message: "Hi", startsAt: "2026-11-02T13:00:00.000Z" }),
+      async () => {
+        await configAnswered;
+        return jsonResponse(200, { timeZone: "America/Moncton" });
+      },
+    );
+    renderScreen();
+    await screen.findByText("Loading…");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls.some((c) => c.url === "/nrms/api/site/settings")).toBe(false);
+    answerConfig();
+    // 13:00Z is 09:00 in Moncton (UTC-4); Vancouver's wall-clock would be 06:00.
+    await waitFor(() => expect(screen.getByLabelText(/Show from/)).toHaveValue("2026-11-02T09:00"));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/draft")).toBe(true));
+    expect((calls.find((c) => c.url === "/nrms/api/site/settings/draft")!.body as { value: { startsAtLocal: string } }).value.startsAtLocal).toBe("2026-11-02T09:00");
+  });
+
+  it("keeps what the editor types while a save is in flight", async () => {
+    let answerSave!: () => void;
+    const saveAnswered = new Promise<void>((resolve) => (answerSave = resolve));
+    stub(["NRMS.SiteEditor"], async (c) => {
+      if (c.url !== "/nrms/api/site/settings/draft") return undefined;
+      await saveAnswered;
+      return jsonResponse(200, withBanner({ ...NOTHING_LIVE, draft: { baseRevision: null, updatedAt: "2026-10-27T18:00:00.000Z" } }, { message: "Roads" }));
+    });
+    renderScreen();
+    const user = userEvent.setup();
+    const message = await screen.findByLabelText("Message");
+    await user.type(message, "Roads");
+    await user.click(screen.getByRole("button", { name: "Save draft" }));
+    await user.type(message, " closed");
+    answerSave();
+    expect(await screen.findByText("Draft saved. It isn't live until you publish.")).toBeInTheDocument();
+    expect(screen.getByText("Draft saved · not yet live")).toBeInTheDocument();
+    expect(screen.getByLabelText("Message")).toHaveValue("Roads closed");
   });
 });

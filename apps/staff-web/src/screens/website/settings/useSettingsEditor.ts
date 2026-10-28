@@ -88,10 +88,15 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
   const statusRef = useRef<HTMLParagraphElement>(null);
   const [focusStatus, setFocusStatus] = useState(0);
 
+  // Counts form edits. An action records the count when it starts; if the editor typed while
+  // it was in flight, its result updates everything but the form, so the typing isn't lost.
+  const edits = useRef(0);
+  const editsAtSend = useRef(0);
+
   const show = useCallback(
     (next: SettingsState, nextErrors: FieldError[] = next.errors) => {
       setState(next);
-      setFormValue(optionsRef.current.fromDocument(next.document[section]));
+      if (edits.current === editsAtSend.current) setFormValue(optionsRef.current.fromDocument(next.document[section]));
       setErrors(nextErrors);
     },
     [section],
@@ -124,6 +129,7 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
   const run = async <T>(action: SettingsAction, body: () => Promise<T>): Promise<T | undefined> => {
     if (pending) return undefined;
     setPending(action);
+    editsAtSend.current = edits.current;
     setError(null);
     setStatus(null);
     try {
@@ -202,6 +208,7 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
   };
 
   const setValue = useCallback((next: F | ((prev: F) => F)) => {
+    edits.current += 1;
     setFormValue((prev) => (prev === null ? prev : typeof next === "function" ? (next as (p: F) => F)(prev) : next));
   }, []);
 
