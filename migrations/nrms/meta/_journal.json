@@ -113,6 +113,13 @@
       "when": 1791682364383,
       "tag": "0015_calendar_link",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793150080230,
+      "tag": "0016_site_settings",
+      "breakpoints": true
     }
   ]
 }
