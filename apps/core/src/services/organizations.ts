@@ -4,7 +4,7 @@ import type { Db, DbOrTx, TestClock, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, orgKeyFromName, orgRecordSchema, type OrgRecord, type OrgSucceeded, type SubscriberConfig } from "@gcpe/events";
 import { isSafeUrl } from "@gcpe/site-settings";
 import { organizations, userOrganizations } from "../db/schema";
-import { CORE_SOURCE, lockAggregate, orgAggregateId, userAggregateId } from "./aggregate";
+import { CORE_SOURCE, lockAggregate, orgAggregateId, orgSuccessionAggregateId, userAggregateId } from "./aggregate";
 import { emitUserUpserted } from "./users";
 
 /**
@@ -442,7 +442,7 @@ export class SuccessionError extends Error {
  * A's user_organizations rows move to the first successor (B), skipping users already on B; with
  * takeAbbreviation, B gets A's abbreviation (free once A is inactive, N11). Emits org.upserted for A
  * (when it changed), org.deactivated (when A was active), org.upserted for B (when it changed),
- * org.succeeded, then user.upserted per moved user. NoD, the Calendar and NRMS do their own moves
+ * org.succeeded (on `org-succession:<key>`, not A's own aggregate), then user.upserted per moved user. NoD, the Calendar and NRMS do their own moves
  * from org.succeeded, so it is emitted even when nothing changed in Core (a re-sent hand-over).
  *
  * Returns null when A does not exist. Throws SuccessionError (a missing or inactive successor, A
@@ -515,8 +515,8 @@ export async function succeedOrganization(
       await tx.delete(userOrganizations).where(and(eq(userOrganizations.organizationId, a.id), inArray(userOrganizations.userId, movers)));
     }
 
-    const event = (type: string, aggregateKey: string, data: unknown) =>
-      enqueueEvent(tx, { type, source: CORE_SOURCE, aggregateId: orgAggregateId(aggregateKey), data }, subscribers);
+    const event = (type: string, aggregateKey: string, data: unknown, aggregateId = orgAggregateId(aggregateKey)) =>
+      enqueueEvent(tx, { type, source: CORE_SOURCE, aggregateId, data }, subscribers);
     if (changedA) await event("org.upserted", key, recordA);
     if (a.isActive) await event("org.deactivated", key, { key });
     if (recordB) await event("org.upserted", b.key, recordB);
@@ -529,7 +529,8 @@ export async function succeedOrganization(
       takeAbbreviation,
       at: stampedAt.toISOString(),
     };
-    await event("org.succeeded", key, succeeded);
+    // Its own aggregate, never `org:<key>`: see orgSuccessionAggregateId.
+    await event("org.succeeded", key, succeeded, orgSuccessionAggregateId(key));
     for (const id of movers) await emitUserUpserted(tx, id, subscribers);
     return recordA;
   };

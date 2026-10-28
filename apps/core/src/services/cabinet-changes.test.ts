@@ -76,11 +76,11 @@ describe("cabinet changes (new-government spec §5)", () => {
       "org.upserted org:a",
       "org.deactivated org:a",
       "org.upserted org:c",
-      "org.succeeded org:a",
+      "org.succeeded org-succession:a",
       `user.upserted user:${u!.id}`,
       "org.upserted org:b",
       "org.deactivated org:b",
-      "org.succeeded org:b",
+      "org.succeeded org-succession:b",
     ]);
     expect(events.filter((e) => e.type === "org.succeeded").map((e) => e.data)).toEqual([
       { key: "a", successorKeys: ["c"], moveSubscribers: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true, at: expect.any(String) },

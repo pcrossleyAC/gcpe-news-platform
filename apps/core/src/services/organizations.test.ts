@@ -370,13 +370,13 @@ describe("organizations service", () => {
       expect(events.map((e) => `${e.type} ${e.aggregateId}`)).toEqual([
         "org.upserted org:a",
         "org.deactivated org:a",
-        "org.succeeded org:a",
         "org.upserted org:b",
+        "org.succeeded org-succession:a",
         ...[onlyA, both].sort().map((id) => `user.upserted user:${id}`),
       ]);
       expect(events[0]!.data).toMatchObject({ key: "a", isActive: false, successorKeys: ["b"] });
-      expect(events[3]!.data).toMatchObject({ key: "b", abbreviation: "ALPH", successorKeys: [] });
-      expect(events[2]!.data).toEqual({ key: "a", successorKeys: ["b"], moveSubscribers: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true, at: expect.any(String) });
+      expect(events[2]!.data).toMatchObject({ key: "b", abbreviation: "ALPH", successorKeys: [] });
+      expect(events[3]!.data).toEqual({ key: "a", successorKeys: ["b"], moveSubscribers: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true, at: expect.any(String) });
       for (const e of events.slice(4)) expect(e.data.organizationKeys).toEqual(["b"]);
     });
 
@@ -386,7 +386,7 @@ describe("organizations service", () => {
       await clearOutbox();
       await succeedOrganization(tdb.db, "a", { successorKeys: ["b"], ...all, takeAbbreviation: false }, subs);
       expect((await getOrganization(tdb.db, "b"))!.abbreviation).toBe("BETA");
-      expect((await outbox()).map((e) => `${e.type} ${e.aggregateId}`)).toEqual(["org.upserted org:a", "org.deactivated org:a", "org.succeeded org:a"]);
+      expect((await outbox()).map((e) => `${e.type} ${e.aggregateId}`)).toEqual(["org.upserted org:a", "org.deactivated org:a", "org.succeeded org-succession:a"]);
     });
 
     it("a split keeps the successor order; staff go to the first", async () => {
