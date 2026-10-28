@@ -3,7 +3,7 @@ import { ZodError } from "zod";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import type { SiteSettings } from "@gcpe/site-settings";
-import { bcSettings, prePlan4Settings } from "../../../../packages/site-settings/src/fixtures";
+import { bcSettings, prePlan4Settings, prePlan5Settings } from "../../../../packages/site-settings/src/fixtures";
 import type { Actor } from "../releases/store";
 import { createNrmsTestDb, editor } from "../../test/helpers";
 import {
@@ -133,6 +133,27 @@ describe("website/site-settings", () => {
     expect(event!.data.document.pageText.notFound.heading).toBe("Not here.");
     expect(event!.data.document.navigation).toEqual(defaults.navigation);
     expect(event!.data.document.connect.policyLink).toEqual(defaults.connect.policyLink);
+  });
+
+  it("PUT section 'siteIdentity' saves a draft; a stored revision without siteIdentity reads back filled", async () => {
+    await tdb.pool.query("INSERT INTO site_settings_revisions (revision, document, published_by_id, published_by_name) VALUES (1, $1, 'u', 'Jane')", [
+      JSON.stringify(prePlan5Settings()),
+    ]);
+    const before = await getSettingsState(tdb.db, jane, defaults);
+    expect(before.document).toEqual(defaults);
+    expect(before.errors).toEqual([]);
+
+    const siteIdentity = { ...defaults.siteIdentity, description: "Updated description" };
+    const state = await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "siteIdentity", value: siteIdentity });
+    expect(state.draft).toMatchObject({ baseRevision: 1 });
+    expect(state.document.siteIdentity).toEqual(siteIdentity);
+    expect(state.errors).toEqual([]);
+
+    await expect(saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "siteIdentity", value: { description: "x" } })).rejects.toBeInstanceOf(ZodError);
+
+    expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "siteIdentity", value: siteIdentity })).toEqual({ result: "published", revision: 2 });
+    const [event] = await publishedEvents();
+    expect(event!.data.document.siteIdentity).toEqual(siteIdentity);
   });
 
   it("conflict, rebase and history on a pre-plan-4 live document report only the sections really edited", async () => {

@@ -2,7 +2,7 @@ import type { SiteSettings } from "@gcpe/site-settings";
 import type { NewsApiClient } from "./news-api-client";
 import { ministryMenuHash, type MenuMinistry } from "./ministry-menu";
 import type { SiteInfo } from "./render";
-import { DEFAULT_TIME_ZONE, settingsHashes } from "./settings";
+import { blueBridgeTextHash, DEFAULT_TIME_ZONE, settingsHashes } from "./settings";
 import { blueBridgeBanner, isGranvilleOn } from "./site-env";
 import type { SiteStorage } from "./storage";
 
@@ -21,6 +21,10 @@ export interface SiteRenderState {
    * the footer (and its copyright year), so `footerHash` is chrome like Blue Bridge; the others
    * reach only some pages — see `chromeChanges`. */
   footerHash: string;
+  /** The site description and X account (siteIdentity): every page's meta description and twitter:site. */
+  identityHash: string;
+  /** The Blue Bridge message and birth date while the banner shows ("" while it is off): every page bakes in the banner. */
+  blueBridgeTextHash: string;
   /** The header (News and Live labels, header links, search switch) and the footer column headings: every page. */
   headerHash: string;
   /** The page labels and listing titles (navigation.labels, listingTitles): the aggregate pages. */
@@ -77,7 +81,7 @@ export const SITE_STATE_PATH = ".site-state.json";
  * Translations / Media Assets links only when a file list is non-empty (legacy file import). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 19;
+export const RENDER_CHROME_VERSION = 20;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
@@ -95,7 +99,7 @@ interface SiteStateMarker extends SiteRenderState {
 export const verificationKey = (site: Pick<SiteInfo, "verification">): string =>
   site.verification?.googleFile || site.verification?.googleMeta ? `${site.verification.googleFile ?? ""}|${site.verification.googleMeta ?? ""}` : "";
 
-const HASHES = ["footerHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "liveTextHash", "notFoundHash", "assetLicenceHash", "searchTextHash", "subscribeHash"] as const;
+const HASHES = ["footerHash", "identityHash", "blueBridgeTextHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "liveTextHash", "notFoundHash", "assetLicenceHash", "searchTextHash", "subscribeHash"] as const;
 
 /** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
  * `chromeChanges` then treats it as matching. */
@@ -151,6 +155,8 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
     previous.chrome === RENDER_CHROME_VERSION &&
     previous.baseUrl === site.baseUrl &&
     previous.footerHash === state.footerHash &&
+    previous.identityHash === state.identityHash &&
+    previous.blueBridgeTextHash === state.blueBridgeTextHash &&
     previous.headerHash === state.headerHash &&
     (previous.ministryMenuHash === null || previous.ministryMenuHash === state.ministryMenuHash)
   );
@@ -202,9 +208,10 @@ export async function writeSiteState(storage: SiteStorage, state: SiteRenderStat
 /** `granville`, `test`, the site settings and the ministries menu together, as both the render state (for the
  * marker) and the banner text (for this render, with today's age). */
 export function stateAndBanner(granville: string | null, test: boolean, now: Date, settings: SiteSettings, site: Pick<SiteInfo, "timeZone">, menu: MenuMinistry[] | null): { state: SiteRenderState; banner: string | null } {
+  const granvilleOn = isGranvilleOn(granville);
   return {
-    state: { granvilleOn: isGranvilleOn(granville), test, ...settingsHashes(settings, site.timeZone ?? DEFAULT_TIME_ZONE, now), ministryMenuHash: ministryMenuHash(menu) },
-    banner: blueBridgeBanner(granville, now, test),
+    state: { granvilleOn, test, ...settingsHashes(settings, site.timeZone ?? DEFAULT_TIME_ZONE, now), blueBridgeTextHash: blueBridgeTextHash(granvilleOn, settings), ministryMenuHash: ministryMenuHash(menu) },
+    banner: blueBridgeBanner(granville, now, test, settings.siteIdentity.blueBridge),
   };
 }
 

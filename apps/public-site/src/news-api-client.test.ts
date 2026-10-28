@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { newsApiClient } from "./news-api-client";
 import { bcSettings } from "../test/fixtures";
-import { prePlan4Settings } from "../../../packages/site-settings/src/fixtures";
+import { prePlan4Settings, prePlan5Settings } from "../../../packages/site-settings/src/fixtures";
 
 function fakeResponse(opts: { ok: boolean; status?: number; body: string }): Response {
   return {
@@ -221,6 +221,12 @@ describe("newsApiClient", () => {
 
     it("a published document without the plan-4 parts parses (unfilled; currentSettings fills it)", async () => {
       const document = prePlan4Settings();
+      const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ revision: 2, publishedAt: "2026-10-27T17:00:00.000Z", document }) }));
+      expect(await newsApiClient("http://host", fetchImpl as unknown as typeof fetch).siteSettings()).toEqual({ revision: 2, document });
+    });
+
+    it("a published document without siteIdentity (before plan 5) parses unfilled", async () => {
+      const document = prePlan5Settings();
       const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ revision: 2, publishedAt: "2026-10-27T17:00:00.000Z", document }) }));
       expect(await newsApiClient("http://host", fetchImpl as unknown as typeof fetch).siteSettings()).toEqual({ revision: 2, document });
     });

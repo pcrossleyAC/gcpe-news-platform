@@ -76,6 +76,7 @@ export function renderMinistryPage(m: MinistryDto, minister: MinisterDto | null,
   const { cards, loadMore } = latestCards(site, posts.latest, { loadMoreLabel: settings.navigation.labels.loadMoreNews });
   return ministryListing(m, minister, site, opts, ctx, {
     title: m.name,
+    description: `News from ${m.name}`,
     url: pageUrl(site, { type: "category", kind: "ministries", key }),
     listingClass: "",
     intro: top + feature,
@@ -98,6 +99,7 @@ export function renderMinistryFactsheetsPage(m: MinistryDto, minister: MinisterD
   const { cards, loadMore } = latestCards(site, posts, { loadMoreLabel: "Load More" });
   return ministryListing(m, minister, site, opts, ctx, {
     title: `Factsheets: ${m.name}`,
+    description: `News from ${m.name}`,
     url: factsheetsUrl(site, key),
     listingClass: " fact-sheets",
     intro: `<h2 class="listing-title">Factsheets</h2>\n`,
@@ -115,7 +117,7 @@ function ministryListing(
   site: SiteInfo,
   opts: PageOptions,
   ctx: MinistryPageContext,
-  v: { title: string; url: string; listingClass: string; intro: string; cards: string; loadMore: string; empty: string; searchHref: string },
+  v: { title: string; description: string; url: string; listingClass: string; intro: string; cards: string; loadMore: string; empty: string; searchHref: string },
 ): string {
   const key = m.key.toLowerCase();
   const base = basePath(site);
@@ -141,6 +143,7 @@ ${ministrySidebar(site, m, minister, ctx.profile, collapsibleRegions(site, m, se
 
   return renderPage(v.title, site, v.url, body, {
     ...opts,
+    description: v.description,
     feed: { href: feedUrl(site, { type: "category", kind: "ministries", key }), title: `${site.name}: ${m.name}` },
   });
 }
@@ -186,6 +189,7 @@ ${connectStrip(settings, base)}
 
   return renderPage(c.name, site, pageUrl(site, { type: "category", kind, key }), body, {
     ...opts,
+    description: `News about ${c.name}`,
     feed: { href: feedUrl(site, { type: "category", kind, key }), title: `${site.name}: ${c.name}` },
   });
 }

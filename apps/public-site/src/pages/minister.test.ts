@@ -130,7 +130,7 @@ describe("renderBiographyPage", () => {
     expect(texts(d, "h1")).toEqual(["Hon. Alex Example"]);
     expect(d.title).toBe(`Hon. Alex Example | ${site.name}`);
     expect(d.querySelector('link[rel="canonical"]')!.getAttribute("href")).toBe("https://news.example/ministries/health/biography/");
-    expect(d.querySelector('meta[name="description"]')!.getAttribute("content")).toBe("Minister of Health.\nMLA for Victoria.");
+    expect(d.querySelector('meta[name="description"]')!.getAttribute("content")).toBe("Minister of Health. MLA for Victoria.");
     expect(d.querySelector('meta[property="og:image"]')!.getAttribute("content")).toBe("https://gov.example/alex.jpg");
     const layout = d.querySelector("main > div.ministry-listing > div.home-layout")!;
     expect(layout).not.toBeNull();

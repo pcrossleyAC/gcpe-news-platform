@@ -1193,6 +1193,8 @@ describe("apps/stack: without CALENDAR_DATABASE_URL", () => {
 // in the backfill or the tick still fails with a clear message instead of waiting out the timeout.
 const BACKFILL_STACK_TIMEOUT_MS = 60_000;
 const BACKFILL_POLL_DEADLINE_MS = 20_000;
+// The tick does a full sync of every app; a loaded Windows CI runner has needed more than 10 s.
+const BACKFILL_TICK_TIMEOUT_MS = 30_000;
 
 describe("apps/stack: reference-data backfill from Core at startup", { timeout: BACKFILL_STACK_TIMEOUT_MS }, () => {
   // A second ministry, distinct from the shared instance's `healthOrg`, so a leftover row from
@@ -1213,7 +1215,7 @@ describe("apps/stack: reference-data backfill from Core at startup", { timeout: 
       const nodHasFinance = async (): Promise<boolean> => {
         // The backfill enqueues the republished event asynchronously (fire-and-forget) and it
         // only reaches NoD on a dispatch tick, so poll both together until it lands.
-        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(10_000) });
+        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(BACKFILL_TICK_TIMEOUT_MS) });
         const rows = await stack.dbs.nod.pool.query<{ list_key: string; name: string }>(
           "SELECT list_key, name FROM lists WHERE list_key = $1",
           [`ministries:${financeOrg.key}`],
@@ -1238,7 +1240,7 @@ describe("apps/stack: reference-data backfill from Core at startup", { timeout: 
     });
     try {
       const nrmsHasViewers = async (): Promise<boolean> => {
-        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(10_000) });
+        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(BACKFILL_TICK_TIMEOUT_MS) });
         const rows = await stack.dbs.nrms.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM calendar_viewers");
         return rows.rows[0]!.n > 0;
       };
@@ -1272,7 +1274,7 @@ describe("apps/stack: reference-data backfill from Core at startup", { timeout: 
       // write) happens well before this; the wait plus a tick just gives it generous room to
       // have finished either way before asserting its absence.
       await new Promise((r) => setTimeout(r, 300));
-      await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(10_000) });
+      await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` }, signal: AbortSignal.timeout(BACKFILL_TICK_TIMEOUT_MS) });
 
       const backfillLogs = logSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("Core republished"));
       expect(backfillLogs).toEqual([]);

@@ -6,8 +6,15 @@ export function bcSettings(): SiteSettings {
   return JSON.parse(readFileSync(new URL("../../../config/tenants/bc.site-settings.json", import.meta.url), "utf8")) as SiteSettings;
 }
 
+/** Test-only: the bc settings as a document published before parity plan 5: no `siteIdentity`. */
+export function prePlan5Settings(): StoredSiteSettings {
+  const d: StoredSiteSettings = bcSettings();
+  delete d.siteIdentity;
+  return d;
+}
+
 /** Test-only: the bc settings as a document published before parity plan 4 — no `contactsPage`,
- * `pageText` or `navigation`, and no `connect.linkedin`, `policyLink` or `intro`. */
+ * `pageText` or `navigation`, and no `connect.linkedin`, `policyLink` or `intro` (nor, being older, `siteIdentity`). */
 export function prePlan4Settings(): StoredSiteSettings {
   const d: StoredSiteSettings = bcSettings();
   delete d.contactsPage;
@@ -17,6 +24,7 @@ export function prePlan4Settings(): StoredSiteSettings {
   delete d.connect.policyLink;
   delete d.connect.intro;
   delete d.theme.colors.sectionBar;
+  delete d.siteIdentity;
   for (const n of Object.values(d.connect)) if (n && typeof n === "object" && "collapseAfter" in n) delete n.collapseAfter;
   return d;
 }

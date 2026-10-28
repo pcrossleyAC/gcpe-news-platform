@@ -200,7 +200,7 @@ describe("release page", () => {
     expect(jump.getAttribute("href")).toBe("#assets");
     expect(jump.textContent?.trim()).toBe("Media Assets");
 
-    for (const off of [dom({ hasMediaAssets: false }), dom({}), dom({ hasMediaAssets: true, azureAssets: [] })]) {
+    for (const off of [dom({ hasMediaAssets: false, azureTranslations: [] }), dom({ azureTranslations: [] }), dom({ hasMediaAssets: true, azureAssets: [], azureTranslations: [] })]) {
       expect(off.querySelector("#assets")).toBeNull();
       expect(off.querySelector("a.assets-link")).toBeNull();
     }
@@ -249,12 +249,57 @@ describe("release page", () => {
     expect(unknown.hasAttribute("lang") || unknown.hasAttribute("hreflang")).toBe(false);
     // The phone copy has no id.
     expect(d.querySelector(".story-info .resource-links.translate:not([id]) a")?.textContent).toBe("简体中文");
-    const body = d.querySelector(".story-body > div#translations.assets.expanded")!;
-    expect(body.querySelector("h2")?.textContent).toBe("Translations");
-    expect(texts(body, "ul > li > a[hreflang]")).toEqual(["简体中文"]);
+    const body = d.querySelector(".story-body > div#assets.assets.expanded")!;
+    expect(body.querySelector("h2#translations")?.textContent).toBe("Translations");
+    expect(texts(body, ".media-assets-container > ul > li > a[hreflang]")).toEqual(["简体中文"]);
 
     const none = dom({ azureTranslations: [] });
     expect(none.querySelector("#translationList, #translations, .translate")).toBeNull();
+  });
+
+  describe("translations and media assets share legacy's div#assets skeleton", () => {
+    const tr = { azureTranslations: [{ key: "https://files.example/t/zh.pdf", label: "Chinese(Simplified)", length: 10 }] };
+    const as = { hasMediaAssets: true, azureAssets: [{ key: "https://files.example/a/photo.jpg", label: "Photo", length: 10 }] };
+
+    it("translations only: one div#assets.assets.expanded holds h2#translations and .media-assets-container > ul", () => {
+      const d = dom(tr, ctx, { settings: bcSettings() });
+      expect(d.querySelectorAll("#assets")).toHaveLength(1);
+      const box = d.querySelector(".story-body > div#assets.assets.expanded")!;
+      expect(box.querySelector(":scope > h2#translations")?.textContent).toBe("Translations");
+      expect(box.querySelectorAll(":scope > .media-assets-container > ul > li")).toHaveLength(1);
+      expect(d.querySelector("div#translations")).toBeNull();
+      expect(d.querySelector(".assets-licence")).toBeNull();
+    });
+
+    it("media assets and translations: #assets is the media block, the translations block has no id, and #assets and #translations each appear once", () => {
+      const d = dom({ ...as, ...tr }, ctx, { settings: bcSettings() });
+      expect(d.querySelectorAll("#assets")).toHaveLength(1);
+      expect(d.querySelectorAll("#translations")).toHaveLength(1);
+      expect(d.querySelector("#assets > h2")?.textContent).toBe("Media Assets");
+      const blocks = [...d.querySelectorAll(".story-body > div.assets.expanded")];
+      expect(blocks).toHaveLength(2);
+      expect(blocks[1]!.hasAttribute("id")).toBe(false);
+      expect(blocks[1]!.querySelector(":scope > h2#translations")).not.toBeNull();
+      expect(d.querySelectorAll(".assets-licence")).toHaveLength(1);
+      expect(d.querySelector("#assets > p.assets-licence")).not.toBeNull();
+    });
+
+    it("media assets only: #assets is the media block and there is no #translations", () => {
+      const d = dom({ ...as, azureTranslations: [] });
+      expect(d.querySelector("#assets > h2")?.textContent).toBe("Media Assets");
+      expect(d.querySelector("#translations")).toBeNull();
+    });
+
+    it("expectAccessibleStructure passes for all four", () => {
+      for (const over of [tr, { ...as, ...tr }, { ...as, azureTranslations: [] }, { azureTranslations: [] }]) {
+        expectAccessibleStructure(render(over));
+      }
+    });
+
+    it("neither: no #assets, no #translations", () => {
+      const d = dom({ azureTranslations: [] });
+      expect(d.querySelector("#assets, #translations")).toBeNull();
+    });
   });
 
   it("an imported translation (absolute news.gov files-host URL with encoded parentheses) renders as a link in the Translations list", () => {

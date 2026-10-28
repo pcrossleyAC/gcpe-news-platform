@@ -118,4 +118,20 @@ describe("BlueBridgeScreen", () => {
     render(withAuth(<BlueBridgeScreen />));
     expect(await screen.findByText("This is a TEST site.")).toBeInTheDocument();
   });
+
+  it("links to the Site identity screen for the banner text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return stubConfig(false);
+        if (url === "/nrms/api/site/blue-bridge") return jsonResponse(200, OFF);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<BlueBridgeScreen />));
+    await screen.findByRole("heading", { name: "Project Blue Bridge", level: 1 });
+    expect(await screen.findByText(/The banner text is on/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Site identity" })).toHaveAttribute("href", "/website/identity");
+  });
 });

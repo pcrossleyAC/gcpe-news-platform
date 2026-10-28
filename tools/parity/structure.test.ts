@@ -28,6 +28,11 @@ describe("STRUCTURE", () => {
     }
   });
 
+  it("STRUCTURE.home includes the description meta and STRUCTURE.release the twitter:site meta", () => {
+    expect(STRUCTURE.home).toContain('meta[name="description"]');
+    expect(STRUCTURE.release).toContain('meta[name="twitter:site"]');
+  });
+
   it("every PARITY_PAGES name has a STRUCTURE entry", () => {
     for (const p of PARITY_PAGES) expect(STRUCTURE[p.name], p.name).toBeDefined();
   });

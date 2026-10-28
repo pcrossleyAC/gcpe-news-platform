@@ -28,6 +28,7 @@ import { MinistryPagesScreen } from "./settings/MinistryPagesScreen";
 import { MediaContactsScreen } from "./settings/MediaContactsScreen";
 import { PageTextScreen } from "./settings/PageTextScreen";
 import { NavigationScreen } from "./settings/NavigationScreen";
+import { SiteIdentityScreen } from "./settings/SiteIdentityScreen";
 import { HistoryScreen } from "./settings/HistoryScreen";
 import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
@@ -313,6 +314,22 @@ describe("accessibility — Website section screens", () => {
     const { container } = render(withAuth(<NavigationScreen />));
     await screen.findByRole("heading", { name: "Navigation and labels", level: 1 });
     await screen.findByDisplayValue("Link 4");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("SiteIdentityScreen, with a field error on each field", async () => {
+    const state = settingsState(
+      (d) => ({ ...d, siteIdentity: { ...d.siteIdentity, description: "Plain", twitterSite: "BCGov" } }),
+      [
+        { field: "siteIdentity.twitterSite", message: "Enter an X account like @BCGovNews." },
+        { field: "siteIdentity.blueBridge.message", message: "The only placeholder is {age}." },
+        { field: "siteIdentity.blueBridge.birthDate", message: "Enter a date like 1948-11-14." },
+      ],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<SiteIdentityScreen />));
+    await screen.findByRole("heading", { name: "Site identity", level: 1 });
+    await screen.findByDisplayValue("Plain");
     expect(await seriousViolations(container)).toEqual([]);
   });
 

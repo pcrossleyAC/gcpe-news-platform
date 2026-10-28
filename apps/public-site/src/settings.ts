@@ -83,6 +83,10 @@ export function liveJson(home: Pick<HomeDto, "liveWebcastM3uPlaylist">): string 
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+/** The Blue Bridge message and birth date as one hash, "" while the switch is off: an edit then
+ * reaches no page, and a marker from before this hash existed (read as "") still matches. */
+export const blueBridgeTextHash = (on: boolean, settings: SiteSettings): string => (on ? hash(settings.siteIdentity.blueBridge) : "");
+
 /** The settings' part of the site-state marker (rebuild.ts): one hash per way a section reaches
  * the site. The footer's includes the copyright year, so the year rolls over each January. */
 export function settingsHashes(settings: SiteSettings, timeZone: string, now: Date) {
@@ -92,6 +96,8 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
     headerHash: hash([settings.navigation.newsLabel, settings.navigation.liveLabel, settings.navigation.headerLinks, settings.navigation.showHeaderSearch, settings.navigation.footerConnectHeading, settings.navigation.footerMoreInfoHeading]),
     // The page labels and listing titles: aggregate pages only (no post shows them).
     labelsHash: hash([settings.navigation.labels, settings.navigation.listingTitles]),
+    // The site description and X account: every page's head (meta description, twitter:site).
+    identityHash: hash([settings.siteIdentity.description, settings.siteIdentity.twitterSite]),
     themeHash: hash(settings.theme),
     bannerHash: hash(settings.banner),
     connectHash: hash(settings.connect),
