@@ -20,18 +20,23 @@ describe("dependentPages (spec §6.2's post row)", () => {
 
   it("a new post: home, its categories, its month's archive and sitemap, the archive index and the sitemap index", () => {
     expect(dependentPages(null, m("2026-10", "ministries:health", "tags:covid-19"))).toEqual([
-      "archive", "archive:2026-10", "category:ministries:health", "category:tags:covid-19", "home", "sitemap", "sitemap:2026-10",
+      "archive", "archive:2026-10", "category:ministries:health", "category:tags:covid-19", "home", "kind-feeds", "sitemap", "sitemap:2026-10",
     ]);
   });
 
   it("an unpublished post rebuilds the same pages from the stored row", () => {
-    expect(dependentPages(m("2026-10", "ministries:health"), null)).toEqual(["archive", "archive:2026-10", "category:ministries:health", "home", "sitemap", "sitemap:2026-10"]);
+    expect(dependentPages(m("2026-10", "ministries:health"), null)).toEqual(["archive", "archive:2026-10", "category:ministries:health", "home", "kind-feeds", "sitemap", "sitemap:2026-10"]);
   });
 
   it("a post that moves ministry and month rebuilds both old and new pages", () => {
     expect(dependentPages(m("2026-09", "ministries:health"), m("2026-10", "ministries:finance"))).toEqual([
-      "archive", "archive:2026-09", "archive:2026-10", "category:ministries:finance", "category:ministries:health", "home", "sitemap", "sitemap:2026-09", "sitemap:2026-10",
+      "archive", "archive:2026-09", "archive:2026-10", "category:ministries:finance", "category:ministries:health", "home", "kind-feeds", "sitemap", "sitemap:2026-09", "sitemap:2026-10",
     ]);
+  });
+
+  it("a post change re-queues kind-feeds", () => {
+    expect(dependentPages(null, m("2026-10"))).toContain("kind-feeds");
+    expect(dependentPages(m("2026-10"), null)).toContain("kind-feeds");
   });
 
   it("nothing before and nothing after: nothing", () => {

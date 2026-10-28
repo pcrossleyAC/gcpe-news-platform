@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { absoluteUrl, biographyUrl, categoryPageId, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, postDir, postPath } from "./site-paths";
+import { kindFeedFile, absoluteUrl, biographyUrl, categoryPageId, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, postDir, postPath } from "./site-paths";
 
 const site = { name: "N", baseUrl: "https://boxs.example/site" };
 
@@ -49,11 +49,11 @@ describe("categoryPageId", () => {
 
 describe("pageFiles", () => {
   it.each([
-    ["home", ["index.html", "feed.xml"]],
+    ["home", ["index.html", "feed.xml", "atom.xml"]],
     ["post:K1", ["releases/K1/index.html"]],
     ["ministries", ["ministries/index.html"]],
-    ["category:sectors:economy", ["sectors/economy/index.html", "sectors/economy/feed.xml"]],
-    ["category:ministries:health", ["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/biography/index.html"]],
+    ["category:sectors:economy", ["sectors/economy/index.html", "sectors/economy/feed.xml", "sectors/economy/atom.xml"]],
+    ["category:ministries:health", ["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/atom.xml", "ministries/health/biography/index.html"]],
     ["archive", ["archive/index.html"]],
     ["archive:2026-10", ["archive/2026/10/index.html"]],
     ["search", ["search/index.html"]],
@@ -73,10 +73,22 @@ describe("pageFiles", () => {
 
 describe("pageFiles: the biography page (H2)", () => {
   it("a ministries category page owns index.html, feed.xml and biography/index.html; a sector page still owns two files", () => {
-    expect(pageFiles({ type: "category", kind: "ministries", key: "health" })).toEqual(["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/biography/index.html"]);
-    expect(pageFiles({ type: "category", kind: "sectors", key: "economy" })).toHaveLength(2);
+    expect(pageFiles({ type: "category", kind: "ministries", key: "health" })).toEqual(["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/atom.xml", "ministries/health/biography/index.html"]);
+    expect(pageFiles({ type: "category", kind: "sectors", key: "economy" })).toHaveLength(3);
     expect(biographyUrl(site, "Citizens-Services")).toBe("/site/ministries/citizens-services/biography/");
     expect(biographyUrl({ baseUrl: "https://news.example" }, "health")).toBe("/ministries/health/biography/");
+  });
+});
+
+describe("kind feeds", () => {
+  it("pageFiles(kind-feeds) is the eight feeds/* files; parsePageId('kind-feeds') round-trips", () => {
+    const p = parsePageId("kind-feeds")!;
+    expect(formatPageId(p)).toBe("kind-feeds");
+    expect(pageFiles(p)).toEqual([
+      "feeds/releases.xml", "feeds/releases.atom.xml", "feeds/stories.xml", "feeds/stories.atom.xml",
+      "feeds/factsheets.xml", "feeds/factsheets.atom.xml", "feeds/updates.xml", "feeds/updates.atom.xml",
+    ]);
+    expect(kindFeedFile("stories", "atom")).toBe("feeds/stories.atom.xml");
   });
 });
 

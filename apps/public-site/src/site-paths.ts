@@ -39,7 +39,9 @@ export type PageId =
   | { type: "archive-terms" }
   | { type: "archive-term"; slug: string }
   /** Not a page: the successor-redirect table the stack's middleware reads (new-government §4). */
-  | { type: "legacy-redirects" };
+  | { type: "legacy-redirects" }
+  /** The per-kind feeds (`feeds/<kind>.xml` and `.atom.xml`), one page so one render fetches each kind once. */
+  | { type: "kind-feeds" };
 
 const SINGLE: Record<string, PageId> = {
   home: { type: "home" },
@@ -52,6 +54,7 @@ const SINGLE: Record<string, PageId> = {
   connect: { type: "connect" },
   "archive-terms": { type: "archive-terms" },
   "legacy-redirects": { type: "legacy-redirects" },
+  "kind-feeds": { type: "kind-feeds" },
 };
 
 /** The one gate between a page id (from an event, the change feed or the queue) and a path. */
@@ -97,16 +100,31 @@ export function postDir(key: string): string {
 }
 export const postPath = (key: string) => `${postDir(key)}/index.html`;
 
+/** The post kinds that get their own feed (news.gov's per-kind feeds). */
+export const FEED_POST_KINDS = ["releases", "stories", "factsheets", "updates"] as const;
+export type FeedPostKind = (typeof FEED_POST_KINDS)[number];
+export const kindFeedFile = (kind: FeedPostKind, format: "rss" | "atom"): string => `feeds/${kind}${format === "atom" ? ".atom" : ""}.xml`;
+
+/** A category page's files by role. The biography page exists only for a ministry. */
+export function categoryFiles(p: { kind: CategoryKind; key: string }): { page: string; feed: string; atom: string; bio: string | null } {
+  const dir = `${p.kind}/${p.key}`;
+  return { page: `${dir}/index.html`, feed: `${dir}/feed.xml`, atom: `${dir}/atom.xml`, bio: p.kind === "ministries" ? `${dir}/biography/index.html` : null };
+}
+
 /** Relative output files for a page. Only ever called with a parsed (validated) PageId. */
 export function pageFiles(p: PageId): string[] {
   switch (p.type) {
-    case "home": return ["index.html", "feed.xml"];
+    case "home": return ["index.html", "feed.xml", "atom.xml"];
     // A long key's directory also holds the sidecar naming the key; it goes with the page.
     case "post": return p.key.length > SHORT_POST_KEY_MAX ? [postPath(p.key), `${postDir(p.key)}/${LONG_POST_KEY_FILE}`] : [postPath(p.key)];
     case "ministries": return ["ministries/index.html"];
     // A ministry's third file is its minister's biography page (H2): written only while the
     // minister has a bio, and removed with the rest when the ministry goes.
-    case "category": return [`${p.kind}/${p.key}/index.html`, `${p.kind}/${p.key}/feed.xml`, ...(p.kind === "ministries" ? [`${p.kind}/${p.key}/biography/index.html`] : [])];
+    // Order: page, RSS, Atom, then the biography (last; the builder reads the roles through categoryFiles).
+    case "category": {
+      const f = categoryFiles(p);
+      return [f.page, f.feed, f.atom, ...(f.bio ? [f.bio] : [])];
+    }
     case "archive": return ["archive/index.html"];
     case "archive-month": return [`archive/${p.month.slice(0, 4)}/${p.month.slice(5)}/index.html`];
     case "search": return ["search/index.html"];
@@ -118,6 +136,7 @@ export function pageFiles(p: PageId): string[] {
     case "archive-terms": return ["archive/terms/index.html"];
     case "archive-term": return [`archive/terms/${p.slug}/index.html`];
     case "legacy-redirects": return [MINISTRY_SUCCESSORS_FILE];
+    case "kind-feeds": return FEED_POST_KINDS.flatMap((k) => [kindFeedFile(k, "rss"), kindFeedFile(k, "atom")]);
   }
 }
 
@@ -140,12 +159,20 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "archive-terms": return `${base}/archive/terms/`;
     case "archive-term": return `${base}/archive/terms/${p.slug}/`;
     case "legacy-redirects": return `${base}/${MINISTRY_SUCCESSORS_FILE}`;
+    case "kind-feeds": return `${base}/`;
   }
 }
 
 export function feedUrl(site: Pick<SiteInfo, "baseUrl">, p: { type: "home" } | { type: "category"; kind: CategoryKind; key: string }): string {
   return p.type === "home" ? `${basePath(site)}/feed.xml` : `${basePath(site)}/${p.kind}/${p.key}/feed.xml`;
 }
+
+export function atomUrl(site: Pick<SiteInfo, "baseUrl">, p: { type: "home" } | { type: "category"; kind: CategoryKind; key: string }): string {
+  return p.type === "home" ? `${basePath(site)}/atom.xml` : `${basePath(site)}/${p.kind}/${p.key}/atom.xml`;
+}
+
+/** A per-kind feed's in-site path. */
+export const kindFeedUrl = (site: Pick<SiteInfo, "baseUrl">, kind: FeedPostKind, format: "rss" | "atom"): string => `${basePath(site)}/${kindFeedFile(kind, format)}`;
 
 /** A ministry's minister biography page (the third file of its category page). */
 export const biographyUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/biography/`;

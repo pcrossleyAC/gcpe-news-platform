@@ -36,6 +36,47 @@ describe("site builder", () => {
     expect(html(storage, "sitemaps/2026-10.xml")).toContain("https://news.example/releases/K1/");
   });
 
+  it("a ministry render writes ministries/<k>/atom.xml", async () => {
+    const { storage, builder } = setup(new Map([["K1", post({ key: "K1", ministryKeys: ["Health"] })]]));
+    await builder.rebuild(["home", "category:ministries:health", "category:tags:covid-19"], {});
+    for (const f of ["atom.xml", "ministries/health/atom.xml", "tags/covid-19/atom.xml"]) expect(storage.files.has(f), f).toBe(true);
+    expect(html(storage, "ministries/health/atom.xml")).toContain("<id>https://news.example/releases/K1/</id>");
+    expect(html(storage, "ministries/health/atom.xml")).toContain("https://news.example/ministries/health/atom.xml");
+  });
+
+  it("the factsheets feed holds only factsheets and includes a factsheet that is the home top post", async () => {
+    const posts = new Map([
+      ["F1", post({ key: "F1", kind: "factsheets", publishDate: "2026-10-01T10:00:00-07:00" })],
+      ["F2", post({ key: "F2", kind: "factsheets", publishDate: "2026-10-02T10:00:00-07:00" })],
+      ["R1", post({ key: "R1", kind: "releases", publishDate: "2026-10-03T10:00:00-07:00" })],
+    ]);
+    const { storage, api, builder } = setup(posts);
+    api.home = async () => ({ granville: null, topPostKey: "F1", featurePostKey: null });
+    // The real API's latest list leaves out the home top post.
+    const latestOfKind = api.latestOfKind;
+    api.latestOfKind = async (k, n) => (await latestOfKind(k, n)).filter((p) => p.key !== "F1");
+    await builder.rebuild(["kind-feeds"], {});
+    for (const f of ["feeds/releases.xml", "feeds/releases.atom.xml", "feeds/stories.xml", "feeds/updates.atom.xml"]) expect(storage.files.has(f), f).toBe(true);
+    for (const f of ["feeds/factsheets.xml", "feeds/factsheets.atom.xml"]) {
+      expect(html(storage, f), f).toContain("/releases/F1/");
+      expect(html(storage, f), f).toContain("/releases/F2/");
+      expect(html(storage, f), f).not.toContain("/releases/R1/");
+    }
+    expect(html(storage, "feeds/releases.xml")).not.toContain("/releases/F1/");
+    expect(html(storage, "feeds/factsheets.atom.xml")).toContain("https://news.example/feeds/factsheets.atom.xml");
+  });
+
+  it("the sitemap pages list no feed files", async () => {
+    const { storage, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+    await builder.rebuild(["home", "kind-feeds", "category:ministries:health", "sitemap:pages"], {});
+    expect(html(storage, "sitemaps/pages.xml")).not.toMatch(/\.xml<|atom|feed/);
+  });
+
+  it("aggregatePageIds includes kind-feeds", async () => {
+    const { builder } = setup(new Map());
+    expect(await builder.aggregatePageIds()).toContain("kind-feeds");
+  });
+
   it("home: News by Sector lists the active sectors by name, each with its latest post; a sector with none is left out", async () => {
     const posts = new Map([
       ["K1", post({ key: "K1", sectorKeys: ["economy"], documents: [{ languageId: 4105, headline: "Economy headline", subheadline: null, detailsHtml: null, contacts: [] }] })],
