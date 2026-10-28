@@ -45,7 +45,10 @@ param(
     [string]$EntraTenantId,
     [string]$EntraClientId,
     [Security.SecureString]$EntraClientSecret,
-    [string]$EntraAudience
+    [string]$EntraAudience,
+    # Google Search Console verification (optional; formats are checked by windows-env.js).
+    [string]$GoogleVerificationFile,
+    [string]$GoogleSiteVerification
 )
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
@@ -186,6 +189,8 @@ if ($existingEnv) {
         db = @{ host = $admin.Host; port = $(if ($admin.Port -gt 0) { $admin.Port } else { 5432 }); user = $db.user; password = $db.password; prefix = $db.prefix }
         smtp = $smtp; mailFrom = $MailFrom; mailRedirectTo = @($MailRedirectTo)
     }
+    if ($GoogleVerificationFile) { $settings.googleVerificationFile = $GoogleVerificationFile }
+    if ($GoogleSiteVerification) { $settings.googleSiteVerification = $GoogleSiteVerification }
     if ($EntraTenantId) {
         if (-not ($EntraClientId -and $EntraClientSecret -and $EntraAudience)) { throw 'Entra needs -EntraTenantId, -EntraClientId, -EntraClientSecret and -EntraAudience together.' }
         $settings.entra = @{ tenantId = $EntraTenantId; clientId = $EntraClientId; clientSecret = ConvertFrom-GcpeSecureString $EntraClientSecret; audience = $EntraAudience }

@@ -17,6 +17,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { hashPassword } from "../packages/auth/src/password";
 import { parseJsonQuietly } from "./windows-json";
+import { GOOGLE_SITE_VERIFICATION_RE, GOOGLE_VERIFICATION_FILE_RE } from "../apps/public-site/src/verification";
 import { APP_PREFIXES, eventRoutesFor, internalEventEnv, type AppPrefix } from "../apps/stack/src/env";
 
 // Not imported from ./siteground-env: bundled into one file, that module's own entry-point guard
@@ -84,6 +85,10 @@ export const windowsEnvInputSchema = z
         audience: envValue.pipe(z.string().min(1)),
       })
       .optional(),
+    // Google Search Console verification (url-compat §1d), optional: set when this host is the
+    // one Search Console should verify. Same token shapes the public site enforces at startup.
+    googleVerificationFile: z.string().regex(GOOGLE_VERIFICATION_FILE_RE, "must look like google<16 hex>.html").optional(),
+    googleSiteVerification: z.string().regex(GOOGLE_SITE_VERIFICATION_RE, "must be 20-100 letters, digits, - or _").optional(),
   })
   .strict();
 
@@ -125,8 +130,8 @@ export function buildWindowsEnvLines(input: WindowsEnvInput, adminPasswordHash: 
     "SITE_NEWS_API_URL=self:/",
     "SITE_OUTPUT_DIR=./site-output",
     envLine("SITE_PUBLIC_SITE_URL", origin),
-    // SITE_GOOGLE_VERIFICATION_FILE / SITE_GOOGLE_SITE_VERIFICATION (Search Console, optional) are
-    // deliberately not set here: this is a test deployment (noindex). docs/deploy/windows.md, Step 9.
+    ...(input.googleVerificationFile ? [envLine("SITE_GOOGLE_VERIFICATION_FILE", input.googleVerificationFile)] : []),
+    ...(input.googleSiteVerification ? [envLine("SITE_GOOGLE_SITE_VERIFICATION", input.googleSiteVerification)] : []),
     "NOD_DISTRIBUTION_URL=self:/distribution",
     envLine("NOD_PUBLIC_SITE_URL", origin),
     "",

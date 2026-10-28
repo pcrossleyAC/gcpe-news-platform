@@ -33,7 +33,7 @@ export interface SiteRenderState {
 }
 
 /** The pages a settings section reaches, other than through every page's footer. */
-export type SectionPages = "static" | "connect" | "ministryPages" | "releaseShare";
+export type SectionPages = "static" | "home" | "connect" | "ministryPages" | "releaseShare";
 
 /** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
@@ -59,7 +59,15 @@ export const RENDER_CHROME_VERSION = 11;
 interface SiteStateMarker extends SiteRenderState {
   chrome: number;
   baseUrl: string | null;
+  /** verificationKey(): the Search Console values baked into robots-adjacent static files and the
+   * home <head>. "" = none (also what a marker written before this reads as). */
+  verification: string;
 }
+
+/** The operator's Search Console verification as one comparable string ("" when none). Public
+ * values, so stored as is. A change reaches only the static page (the file) and home (the meta). */
+export const verificationKey = (site: Pick<SiteInfo, "verification">): string =>
+  site.verification?.googleFile || site.verification?.googleMeta ? `${site.verification.googleFile ?? ""}|${site.verification.googleMeta ?? ""}` : "";
 
 const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash"] as const;
 
@@ -82,6 +90,7 @@ async function readSiteState(storage: SiteStorage): Promise<ReadMarker | null> {
         ministryMenuHash: typeof parsed.ministryMenuHash === "string" ? parsed.ministryMenuHash : null,
         chrome: typeof parsed.chrome === "number" ? parsed.chrome : 1,
         baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : null,
+        verification: typeof parsed.verification === "string" ? parsed.verification : "",
       };
     }
   } catch {
@@ -120,7 +129,11 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
   );
   if (all || !previous) return { all: true, sections: [] };
   const sections: SectionPages[] = [];
-  if (previous.themeHash !== state.themeHash || previous.bannerHash !== state.bannerHash) sections.push("static");
+  const staticChanged = previous.themeHash !== state.themeHash || previous.bannerHash !== state.bannerHash;
+  // Changing SITE_GOOGLE_* (the cutover step) rewrites the verification file (static) and the home <head>.
+  const verificationChanged = previous.verification !== verificationKey(site);
+  if (staticChanged || verificationChanged) sections.push("static");
+  if (verificationChanged) sections.push("home");
   if (previous.connectHash !== state.connectHash) sections.push("connect");
   if (previous.ministryPagesHash !== state.ministryPagesHash) sections.push("ministryPages");
   if (previous.releaseShareHash !== state.releaseShareHash) sections.push("releaseShare");
@@ -148,7 +161,7 @@ export async function keepSettingsHashes(storage: SiteStorage, state: SiteRender
 }
 
 export async function writeSiteState(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<void> {
-  const marker: SiteStateMarker = { ...state, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl };
+  const marker: SiteStateMarker = { ...state, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl, verification: verificationKey(site) };
   await storage.write(SITE_STATE_PATH, JSON.stringify(marker));
 }
 

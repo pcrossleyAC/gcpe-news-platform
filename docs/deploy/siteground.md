@@ -1523,7 +1523,7 @@ Two optional, operator-owned variables (the stack prefixes them with `SITE_`) pr
 | `SITE_GOOGLE_VERIFICATION_FILE` | `google` + 16 lowercase hex digits + `.html` | Writes that file at the site root, containing `google-site-verification: <file name>`. |
 | `SITE_GOOGLE_SITE_VERIFICATION` | 20 to 100 letters, digits, `-` or `_` | Adds `<meta name="google-site-verification" content="…">` to the home page `<head>` only. |
 
-`npm run siteground:env` sets both for boxs.ca (the real values belong to news.gov.bc.ca, so they prove nothing for boxs.ca; they let the rehearsal exercise the path). At cutover, set the values Search Console issues for the live domain. Clearing `SITE_GOOGLE_VERIFICATION_FILE` stops writing the file but does not delete one already written: remove it from `site-output/` by hand. Adding or changing the meta changes the home `<head>`, so it ships with a `RENDER_CHROME_VERSION` bump.
+`npm run siteground:env` sets both for boxs.ca (the real values belong to news.gov.bc.ca, so they prove nothing for boxs.ca; they let the rehearsal exercise the path). At cutover, set the values Search Console issues for the live domain. Clearing `SITE_GOOGLE_VERIFICATION_FILE` stops writing the file but does not delete one already written: remove it from `site-output/` by hand. Setting, changing or clearing either value is recorded in the render-state marker and queues exactly the static page (the file) and the home page (the meta), not a full rebuild.
 
 ### Carousel images
 
