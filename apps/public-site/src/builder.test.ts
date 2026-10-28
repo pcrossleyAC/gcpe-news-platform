@@ -218,6 +218,27 @@ describe("site builder", () => {
     expect(html(storage, "releases/K3/index.html")).not.toContain("story-ministry");
   });
 
+  it("an inactive lead ministry is linked only when a successor resolves; successors are fetched once per run, only for an inactive lead", async () => {
+    const posts = new Map([["K1", post({ key: "K1", leadMinistryKey: "old-health" })], ["K2", post({ key: "K2", leadMinistryKey: "gone" })], ["K3", post({ key: "K3", leadMinistryKey: "health" })]]);
+    const { storage, api, builder } = setup(posts);
+    api.ministries = async () => [ministry({ key: "health", name: "Health" }), ministry({ key: "old-health", name: "Old Health", isActive: false }), ministry({ key: "gone", name: "Gone", isActive: false })];
+    api.successors = { "old-health": "health" };
+    await builder.rebuild(["post:K1", "post:K2", "post:K3"], {});
+    expect(html(storage, "releases/K1/index.html")).toContain('<p class="story-ministry"><a href="/ministries/old-health/">Old Health</a></p>');
+    expect(html(storage, "releases/K2/index.html")).toContain('<p class="story-ministry">Gone</p>');
+    expect(api.calls.filter((c) => c === "ministrySuccessors")).toHaveLength(1);
+
+    // A successors outage leaves the inactive ministry unlinked; the page still renders.
+    const { storage: s2, api: api2, builder: b2 } = setup(new Map([["K1", post({ key: "K1", leadMinistryKey: "old-health" })]]));
+    api2.ministries = api.ministries;
+    api2.ministrySuccessors = async () => { throw new Error("News API 500"); };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await b2.rebuild(["post:K1"], {});
+    expect(html(s2, "releases/K1/index.html")).toContain('<p class="story-ministry">Old Health</p>');
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes("successors"))).toHaveLength(1);
+    errors.mockRestore();
+  });
+
   it("a related-posts failure doesn't block the release page", async () => {
     const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     api.related = async () => { throw new Error("News API 500"); };

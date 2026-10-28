@@ -18,6 +18,9 @@ export interface ReleaseContext {
   related: RelatedPost[];
   /** The lead ministry (`leadMinistryKey ?? ministryKeys[0]`, matched case-insensitively), or null. */
   leadMinistry: MinistryDto | null;
+  /** For an inactive lead ministry: the active ministry its URLs now 301 to (apps/stack's
+   * ministry-successors), or null/absent when none resolves (abolished, or the table unavailable). */
+  leadMinistrySuccessor?: string | null;
   /** The lead ministry's latest posts: the related band's fallback when `related` is empty (the
    * builder fetches them only then). This page's post may be among them; it is left out. */
   ministryLatest: PostDto[];
@@ -155,10 +158,11 @@ function relatedBand(site: SiteInfo, post: PostDto, ctx: ReleaseContext): string
   return `<section class="media-container" aria-label="Related">\n<div class="story-parts">\n${[articles, image, connect].filter(Boolean).join("\n")}\n</div>\n</section>`;
 }
 
-/** The lead ministry's name above the headline, linked to its page while it is active. */
-function storyMinistry(site: SiteInfo, m: MinistryDto | null): string {
+/** The lead ministry's name above the headline, linked to its page while it is active, or while a
+ * successor resolves (the stack 301s the old page to it). An abolished ministry is named, unlinked. */
+function storyMinistry(site: SiteInfo, m: MinistryDto | null, successor: string | null | undefined): string {
   if (!m) return "";
-  const pageId = m.isActive ? categoryPageId("ministries", m.key) : null;
+  const pageId = m.isActive || successor ? categoryPageId("ministries", m.key) : null;
   const parsed = pageId ? parsePageId(pageId) : null;
   const name = parsed ? `<a href="${e(pageUrl(site, parsed))}">${e(m.name)}</a>` : e(m.name);
   return `<p class="story-ministry">${name}</p>`;
@@ -272,7 +276,7 @@ ${present(d.subheadline) ? `<p class="subheadline">${e(d.subheadline)}</p>\n` : 
 
   const header = [
     `<button type="button" class="print-document">${icon("print", e(base))} Print</button>`,
-    storyMinistry(site, ctx.leadMinistry),
+    storyMinistry(site, ctx.leadMinistry, ctx.leadMinistrySuccessor),
     `<div class="print-title">${e(site.name)}</div>`,
     `<h1 class="story-lang primary"${mainLang}>${e(headline)}</h1>${frHeadline}`,
     `<div class="print-url">${e(canonical)}</div>`,

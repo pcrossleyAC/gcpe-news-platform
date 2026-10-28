@@ -34,6 +34,9 @@ export interface RunCache {
   /** This run already compared the fetched snapshot with site_state's applied hash. */
   termsHashChecked?: boolean;
   profiles?: Promise<MinistryProfileDto[]>;
+  /** Ministry successors (old key → active key), fetched only when a release's lead ministry is
+   * inactive; a failure is logged once per run and read as none. */
+  successors?: Promise<Record<string, string>>;
   /** Each lead ministry's latest posts (lower-cased key), the release page's related-band
    * fallback: fetched at most once per run, and only by a post with no related posts. */
   ministryLatest?: Map<string, Promise<PostDto[]>>;
@@ -122,6 +125,11 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       console.error(`[public-site] ministry profiles unavailable this run; minister emails are left out ${safeErrorLabel(err)}`);
       return [];
     }));
+  const successors = (run: RunCache) =>
+    (run.successors ??= newsApi.ministrySuccessors().catch((err: unknown): Record<string, string> => {
+      console.error(`[public-site] ministry successors unavailable this run; inactive lead ministries are left unlinked ${safeErrorLabel(err)}`);
+      return {};
+    }));
   const removeAll = async (p: PageId) => {
     for (const f of pageFiles(p)) await storage.remove(f);
   };
@@ -207,6 +215,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     // The side column's ministry: matched case-insensitively (News API and NRMS key casing can differ).
     const leadKey = (post.leadMinistryKey ?? post.ministryKeys[0])?.toLowerCase();
     const leadMinistry = (leadKey && all.find((m) => m.key.toLowerCase() === leadKey)) || null;
+    const leadMinistrySuccessor = leadMinistry && !leadMinistry.isActive ? ((await successors(run))[leadMinistry.key.toLowerCase()] ?? null) : null;
     let ministryLatest: PostDto[] = [];
     if (related.length === 0 && leadKey) {
       const cache = (run.ministryLatest ??= new Map());
@@ -218,7 +227,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         console.error(`[public-site] the ministry's latest posts are unavailable for post:${key} ${safeErrorLabel(err)}`);
       }
     }
-    await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { related, leadMinistry, ministryLatest }));
+    await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { related, leadMinistry, leadMinistrySuccessor, ministryLatest }));
     const entry = indexEntryOf(key, post);
     if (entry) await writeIndex.put(entry);
     else await writeIndex.remove(key);

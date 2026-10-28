@@ -246,10 +246,18 @@ describe("release page", () => {
     expect(unknown.querySelector("p.story-ministry")).toBeNull();
   });
 
-  it("an inactive lead ministry is named without a link", () => {
-    const d = dom({}, { ...ctx, leadMinistry: { ...health, isActive: false } });
-    expect(d.querySelector("p.story-ministry")?.textContent).toBe("Health");
-    expect(d.querySelector("p.story-ministry a")).toBeNull();
+  it("an inactive lead ministry with no successor (abolished) is named without a link", () => {
+    for (const c of [{ ...ctx, leadMinistry: { ...health, isActive: false } }, { ...ctx, leadMinistry: { ...health, isActive: false }, leadMinistrySuccessor: null }]) {
+      const d = dom({}, c);
+      expect(d.querySelector("p.story-ministry")?.textContent).toBe("Health");
+      expect(d.querySelector("p.story-ministry a")).toBeNull();
+    }
+  });
+
+  it("an inactive lead ministry whose successor resolves links its own page, which the stack 301s to the successor", () => {
+    const d = dom({}, { ...ctx, leadMinistry: { ...health, isActive: false }, leadMinistrySuccessor: "health-new" });
+    expect(d.querySelector("p.story-ministry a")?.getAttribute("href")).toBe("/ministries/health/");
+    expect(d.querySelector("p.story-ministry a")?.textContent).toBe("Health");
   });
 
   it("a body <asset> YouTube link renders as div.asset.youtube; an <iframe> in the body is dropped", () => {

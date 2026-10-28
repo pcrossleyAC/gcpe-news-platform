@@ -235,8 +235,10 @@ html:not(.js) #carousel-holder .carousel-controls{display:none}
 body.lang-secondary .story-lang.primary{display:none}
 body.lang-secondary .story-lang.secondary{display:block}
 html:not(.js) .story-lang.secondary{display:block}
-/* .story-lang in the selector keeps it above the html:not(.js) .story-lang.secondary rule (0,3,1). */
-html:not(.js) .language-selector.story-lang, html:not(.js) .print-document{display:none}
+/* div.language-selector.story-lang (0,3,2) outranks html:not(.js) .story-lang.secondary (0,3,1) by
+ * specificity, not source order, so the secondary selector stays hidden wherever the rules sit
+ * (pinned in theme-css.test.ts). */
+html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{display:none}
 /* Share (legacy ShareSocialMedia): the side column's icons at legacy's .fa-customized-sm 1.6em. */
 .story-features .resource-links.share .icon{width:1.6em;height:1.6em}
 /* The phone row (legacy .story-info): Share, then the kind/location/date, each on its own row, as

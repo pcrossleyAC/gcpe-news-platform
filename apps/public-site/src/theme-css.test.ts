@@ -120,3 +120,35 @@ describe("overrides.css", () => {
     expect(overrides).not.toMatch(/(^|[,}])\s*:focus-visible\s*\{/m);
   });
 });
+
+/** Specificity (ids, classes/attributes/pseudo-classes, types) of the simple selectors overrides.css
+ * uses: `:not(x)` counts as its argument; no pseudo-elements or attribute values with spaces. */
+function specificity(selector: string): [number, number, number] {
+  let rest = selector;
+  const parts: [number, number, number] = [0, 0, 0];
+  rest = rest.replace(/:not\(([^)]*)\)/g, (_m, inner: string) => {
+    const [a, b, c] = specificity(inner);
+    parts[0] += a;
+    parts[1] += b;
+    parts[2] += c;
+    return " ";
+  });
+  parts[0] += (rest.match(/#[\w-]+/g) ?? []).length;
+  parts[1] += (rest.match(/\.[\w-]+|\[[^\]]*\]|:[\w-]+/g) ?? []).length;
+  parts[2] += (rest.replace(/#[\w-]+|\.[\w-]+|\[[^\]]*\]|:[\w-]+/g, " ").match(/[a-z][\w-]*/gi) ?? []).length;
+  return parts;
+}
+const outranks = (a: [number, number, number], b: [number, number, number]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+
+describe("overrides.css no-JS language rules", () => {
+  it("the rule hiding the language selector outranks the rule showing .story-lang.secondary, so source order can't regress it", () => {
+    const rules = [...overrides.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({ selectors: m[1]!.replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()), body: m[2]! }));
+    const hide = rules.flatMap((r) => (/display:\s*none/.test(r.body) ? r.selectors : [])).find((s) => /^html:not\(\.js\) .*\.language-selector/.test(s));
+    const show = rules.flatMap((r) => (/display:\s*block/.test(r.body) ? r.selectors : [])).find((s) => s === "html:not(.js) .story-lang.secondary");
+    expect(hide).toBeDefined();
+    expect(show).toBeDefined();
+    expect(specificity("html:not(.js) .story-lang.secondary")).toEqual([0, 3, 1]);
+    expect(outranks(specificity(hide!), specificity(show!))).toBeGreaterThan(0);
+  });
+});
+
