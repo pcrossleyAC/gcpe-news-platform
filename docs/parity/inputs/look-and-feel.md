@@ -576,7 +576,7 @@ Suggested verification harness (all chunks): a Playwright script that loads the 
 
   - The remaining 0.0062 is the same icon-glyph difference as the hamburger's (home 390 header: 0.0052).
 - **The stack compresses text itself (R13):** brotli, else gzip, for HTML, CSS, JS, JSON, SVG and XML (`apps/stack/src/compress.ts`). The performance gate's assumption of compressed text (C212) now holds on every host, including the Windows/IIS package.
-- `npm run site:quality` at the fix-round head: PASS. axe found 0 violations on all 11 pages; Lighthouse performance was 84–85.
+- `npm run site:quality` at the fix-round head: PASS. axe found 0 violations on all 11 pages; Lighthouse performance was 84–86 over two runs.
 
 ### Pending: the gate against boxs.ca (after the plan 1 deploy; the controller runs it)
 Not run yet. The local runs above stand in until then.
