@@ -1,6 +1,6 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import type { MinistryDto, PostDto } from "./dto";
+import type { MinistryDto, MinistryProfileDto, PostDto } from "./dto";
 import { renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { renderArchiveIndex, renderArchiveMonth } from "./pages/archive";
@@ -24,6 +24,7 @@ export const POST_KINDS = ["releases", "stories", "factsheets", "updates", "advi
 /** Per-run memo, so a run rendering many pages fetches the ministry list once. */
 export interface RunCache {
   ministries?: Promise<MinistryDto[]>;
+  profiles?: Promise<MinistryProfileDto[]>;
 }
 
 export interface SiteBuilder {
@@ -51,6 +52,7 @@ export interface SiteBuilder {
 export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null; searchApiBase?: string }): SiteBuilder {
   const { newsApi, storage, index, site } = deps;
   const ministries = (run: RunCache) => (run.ministries ??= newsApi.ministries());
+  const profiles = (run: RunCache) => (run.profiles ??= newsApi.ministryProfiles());
   const removeAll = async (p: PageId) => {
     for (const f of pageFiles(p)) await storage.remove(f);
   };
