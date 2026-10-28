@@ -106,6 +106,11 @@ export function buildEnvLines(input: SiteGroundEnvInput, secrets: GeneratedSecre
     "SITE_NEWS_API_URL=self:/",
     "SITE_OUTPUT_DIR=./site-output",
     `SITE_PUBLIC_SITE_URL=${publicSiteUrl}`,
+    // Google Search Console verification (url-compat §1d): public values, operator-owned, optional.
+    // The file is served at the site root and the token goes in the home page's <head>. Both are
+    // format-checked at startup (apps/public-site/src/verification.ts); clear them to drop either.
+    "SITE_GOOGLE_VERIFICATION_FILE=google790b0529c8dcfaff.html",
+    "SITE_GOOGLE_SITE_VERIFICATION=ss-eO0gSqB1_GY5aWryEXVmGQBHJgpe9-hdwcskzjss",
     "",
     `NOD_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.nod)}`,
     "NOD_DISTRIBUTION_URL=self:/distribution",

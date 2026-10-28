@@ -9,6 +9,7 @@ import { DEFAULT_THEME } from "./theme-css";
 import type { MenuMinistry } from "./ministry-menu";
 import { renderHeader } from "./header";
 import { icon } from "./icons";
+import { GOOGLE_SITE_VERIFICATION_RE, type SiteVerification } from "./verification";
 
 export type { PostDocument, PostDto } from "./dto";
 
@@ -19,9 +20,14 @@ export interface SiteInfo {
   theme?: SiteTheme;
   /** The tenant's IANA time zone (the footer's copyright year); DEFAULT_TIME_ZONE when absent. */
   timeZone?: string;
+  /** Operator-set Search Console verification (verification.ts). Absent or null fields: none. */
+  verification?: SiteVerification;
 }
 
 export interface PageOptions {
+  /** Emit `<meta name="google-site-verification">` with this token (home page only; re-checked
+   * against the token shape, so a bad value emits nothing). */
+  googleVerificationMeta?: string | null;
   /** A test site gets `<meta name="robots" content="noindex, nofollow">` (@gcpe/config's isTestSite). */
   test?: boolean;
   /** Project Blue Bridge's banner text (site-env.ts's blueBridgeBanner), or null/absent for none. */
@@ -145,6 +151,7 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const base = basePath(site);
   const theme = site.theme ?? DEFAULT_THEME;
   const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
+  const gsc = opts.googleVerificationMeta && GOOGLE_SITE_VERIFICATION_RE.test(opts.googleVerificationMeta) ? `\n<meta name="google-site-verification" content="${e(opts.googleVerificationMeta)}">` : "";
   const description = opts.description ? `\n<meta name="description" content="${e(opts.description)}">` : "";
   const canonical = new URL(site.baseUrl).origin + canonicalPath;
   // Defence in depth: the tenant config schema (`@gcpe/config`'s siteThemeSchema) already
@@ -173,7 +180,7 @@ ${opts.trail ? `${opts.trail}\n` : ""}${renderFooter(settings, site, opts)}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
-<link rel="canonical" href="${e(canonical)}">${robots}${description}${socialMeta(title, site, canonical, opts)}
+<link rel="canonical" href="${e(canonical)}">${robots}${gsc}${description}${socialMeta(title, site, canonical, opts)}
 <link rel="icon" href="${e(base)}/favicon.ico">
 <script>${HTML_JS_MARKER}</script>
 <link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>

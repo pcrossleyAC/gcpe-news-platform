@@ -114,6 +114,21 @@ describe("buildWindowsEnvLines", () => {
   });
 });
 
+describe("Search Console verification inputs", () => {
+  const keys = ["SITE_GOOGLE_VERIFICATION_FILE", "SITE_GOOGLE_SITE_VERIFICATION"];
+  it("are emitted as SITE_GOOGLE_* only when given, and read back by Node", () => {
+    expect(buildWindowsEnvLines(input(), HASH, generateSecrets()).join("\n")).not.toContain("SITE_GOOGLE");
+    const env = readWithNode(buildWindowsEnvLines(input({ googleVerificationFile: "google790b0529c8dcfaff.html", googleSiteVerification: "ss-eO0gSqB1_GY5aWryEXVmGQBHJgpe9-hdwcskzjss" }), HASH, generateSecrets()), keys);
+    expect(env).toEqual({ SITE_GOOGLE_VERIFICATION_FILE: "google790b0529c8dcfaff.html", SITE_GOOGLE_SITE_VERIFICATION: "ss-eO0gSqB1_GY5aWryEXVmGQBHJgpe9-hdwcskzjss" });
+  });
+  it("the schema refuses a path or markup in either value", () => {
+    const ok = windowsEnvInputSchema.safeParse({ ...input(), googleVerificationFile: "google790b0529c8dcfaff.html", googleSiteVerification: "abcdefghij0123456789" });
+    expect(ok.success).toBe(true);
+    expect(windowsEnvInputSchema.safeParse({ ...input(), googleVerificationFile: "../x.html" }).success).toBe(false);
+    expect(windowsEnvInputSchema.safeParse({ ...input(), googleSiteVerification: 'abcdefghij0123456789"' }).success).toBe(false);
+  });
+});
+
 describe("windowsEnvInputSchema", () => {
   it("accepts the sample input", () => {
     expect(windowsEnvInputSchema.safeParse(input()).success).toBe(true);

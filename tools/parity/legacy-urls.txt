@@ -8,3 +8,23 @@
 /archive
 /site/
 /site/ministries/
+# section: fixed rules
+/more-news
+/releases/archive
+/archive/2026
+/sitemap/html
+/contact
+/newsletters
+/subscribe/save
+/Content/Images/Gov/default-og-image-new.jpg
+/search?q=housing&resultspagenum=2
+# section: robots and verification
+/robots.txt
+/google790b0529c8dcfaff.html
+# section: posts and case
+/releases/2026TT0105-001130
+/Releases/2026tt0105-001130
+/stories/2026TT0105-001130
+/releases/2026TT0105-001130/image
+/Search?q=housing
+/Ministries/Health

@@ -39,7 +39,7 @@ export interface SiteRenderState {
 }
 
 /** The pages a settings section reaches, other than through every page's footer. */
-export type SectionPages = "static" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "releaseLicence";
+export type SectionPages = "static" | "home" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "releaseLicence";
 
 /** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
@@ -54,11 +54,12 @@ export const SITE_STATE_PATH = ".site-state.json";
  * news.gov header (BC logo, News ministry menu, Subscribe, search, phone drawer) and site.js. 8: the
  * archive by government term (/archive/terms/, its link from /archive/, sitemap entries). 9: the
  * news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector) and the BC Sans Bold preload. 10: the news.gov release page, minister card and biography page, and
- * ministry page (parity plan 2). 11: the Media Contacts directory /contacts/ (a new page id) and the
- * home Resources links' base path (parity plan 4, batch B). Bump for body render changes
+ * ministry page (parity plan 2). 11: the home <head>'s optional Search Console verification meta (parity plan 3).
+ * 12: the Media Contacts directory /contacts/ and /privacy/ (new page ids), the home Resources links' base
+ * path and the BC Sans Italic preload on pages that use italics (parity plan 4, batch B). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 11;
+export const RENDER_CHROME_VERSION = 12;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
@@ -66,7 +67,15 @@ export const RENDER_CHROME_VERSION = 11;
 interface SiteStateMarker extends SiteRenderState {
   chrome: number;
   baseUrl: string | null;
+  /** verificationKey(): the Search Console values baked into robots-adjacent static files and the
+   * home <head>. "" = none (also what a marker written before this reads as). */
+  verification: string;
 }
+
+/** The operator's Search Console verification as one comparable string ("" when none). Public
+ * values, so stored as is. A change reaches only the static page (the file) and home (the meta). */
+export const verificationKey = (site: Pick<SiteInfo, "verification">): string =>
+  site.verification?.googleFile || site.verification?.googleMeta ? `${site.verification.googleFile ?? ""}|${site.verification.googleMeta ?? ""}` : "";
 
 const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "notFoundHash", "assetLicenceHash"] as const;
 
@@ -89,6 +98,7 @@ async function readSiteState(storage: SiteStorage): Promise<ReadMarker | null> {
         ministryMenuHash: typeof parsed.ministryMenuHash === "string" ? parsed.ministryMenuHash : null,
         chrome: typeof parsed.chrome === "number" ? parsed.chrome : 1,
         baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : null,
+        verification: typeof parsed.verification === "string" ? parsed.verification : "",
       };
     }
   } catch {
@@ -127,7 +137,11 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
   );
   if (all || !previous) return { all: true, sections: [] };
   const sections: SectionPages[] = [];
-  if (previous.themeHash !== state.themeHash || previous.bannerHash !== state.bannerHash || previous.notFoundHash !== state.notFoundHash) sections.push("static");
+  const staticChanged = previous.themeHash !== state.themeHash || previous.bannerHash !== state.bannerHash || previous.notFoundHash !== state.notFoundHash;
+  // Changing SITE_GOOGLE_* (the cutover step) rewrites the verification file (static) and the home <head>.
+  const verificationChanged = previous.verification !== verificationKey(site);
+  if (staticChanged || verificationChanged) sections.push("static");
+  if (verificationChanged) sections.push("home");
   if (previous.connectHash !== state.connectHash) sections.push("connect");
   if (previous.ministryPagesHash !== state.ministryPagesHash) sections.push("ministryPages");
   if (previous.releaseShareHash !== state.releaseShareHash) sections.push("releaseShare");
@@ -158,7 +172,7 @@ export async function keepSettingsHashes(storage: SiteStorage, state: SiteRender
 }
 
 export async function writeSiteState(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<void> {
-  const marker: SiteStateMarker = { ...state, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl };
+  const marker: SiteStateMarker = { ...state, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl, verification: verificationKey(site) };
   await storage.write(SITE_STATE_PATH, JSON.stringify(marker));
 }
 

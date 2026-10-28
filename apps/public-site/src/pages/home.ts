@@ -167,6 +167,7 @@ ${resourceBoxes(view, site)}
 </div>`;
   return renderPage("Home", site, `${base}/`, body, {
     ...opts,
+    googleVerificationMeta: site.verification?.googleMeta ?? null,
     lead: renderCarousel(view.slides, base) || undefined,
     feed: { href: feedUrl(site, { type: "home" }), title: `${site.name}: latest news` },
   });

@@ -254,3 +254,22 @@ describe("newsApiTokenOptions", () => {
     expect(() => serviceTokenProvider(opts)).toThrow(/NEWS_API_TOKEN_URL/);
   });
 });
+
+describe("Google Search Console verification env", () => {
+  const parse = (extra: Record<string, string>) => parseEnv(publicSiteEnvSchema(tenant), { ...BASE, ...extra });
+  it("accepts valid values, and unset or empty means none", () => {
+    const ok = parse({ GOOGLE_VERIFICATION_FILE: "google790b0529c8dcfaff.html", GOOGLE_SITE_VERIFICATION: "ss-eO0gSqB1_GY5aWryEXVmGQBHJgpe9-hdwcskzjss" });
+    expect(ok.GOOGLE_VERIFICATION_FILE).toBe("google790b0529c8dcfaff.html");
+    expect(ok.GOOGLE_SITE_VERIFICATION).toBe("ss-eO0gSqB1_GY5aWryEXVmGQBHJgpe9-hdwcskzjss");
+    expect(parse({}).GOOGLE_VERIFICATION_FILE).toBeUndefined();
+    expect(parse({ GOOGLE_VERIFICATION_FILE: "", GOOGLE_SITE_VERIFICATION: "" }).GOOGLE_SITE_VERIFICATION).toBeUndefined();
+  });
+  it("env rejects GOOGLE_VERIFICATION_FILE='../x.html' and a meta value with a quote", () => {
+    for (const bad of ["../x.html", "google790b0529c8dcfaff.html/../a", "google790b0529c8dcfaf.html", "google790b0529c8dcfaff.html\n"]) {
+      expect(() => parse({ GOOGLE_VERIFICATION_FILE: bad }), bad).toThrow();
+    }
+    for (const bad of ['abcdefghij0123456789"', 'abcdefghij0123456789"><script>', "short", "a".repeat(101), "abcdefghij 0123456789"]) {
+      expect(() => parse({ GOOGLE_SITE_VERIFICATION: bad }), bad).toThrow();
+    }
+  });
+});
