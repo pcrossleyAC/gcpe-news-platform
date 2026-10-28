@@ -84,7 +84,9 @@ export async function writeBuiltinAssets(storage: SiteStorage, sources: BuiltinA
   // Only the five bundle sources are kept in memory; every other file is written and dropped.
   const bundleSources = new Set<string>(LEGACY_BUNDLE_SOURCES);
   const read = new Map<string, Buffer>();
+  let wroteHls = false;
   for (const rel of await filesUnder(root)) {
+    if (rel === `vendor/${HLS_FILE}`) wroteHls = true;
     const buf = await readFile(join(root, rel));
     if (bundleSources.has(rel)) read.set(rel, buf);
     const bytes = new Uint8Array(buf);
@@ -100,7 +102,8 @@ export async function writeBuiltinAssets(storage: SiteStorage, sources: BuiltinA
     }),
   );
   await storage.write("assets/site/site.js", SITE_SCRIPT);
-  await storage.write(`assets/vendor/${HLS_FILE}`, new Uint8Array(await readFile(hlsFile)));
+  // A bundle already carries it under root (vendor/); a checkout takes it from node_modules.
+  if (!wroteHls) await storage.write(`assets/vendor/${HLS_FILE}`, new Uint8Array(await readFile(hlsFile)));
   for (const f of BC_SANS_FILES) await storage.write(`assets/legacy/fonts/${f}`, new Uint8Array(await readFile(join(fontsDir, f))));
   const license = [join(fontsDir, FONT_LICENSE), join(fontsDir, "..", FONT_LICENSE)].find((p) => existsSync(p));
   if (!license) throw new Error(`${FONT_LICENSE} not found beside ${fontsDir}`);

@@ -50,6 +50,23 @@ describe("live page (/live/)", () => {
     expect(html).toContain("&quot;&gt;&lt;b&gt;");
   });
 
+  it("{host} substitution is literal: $&, $`, $' in a host cannot expand or break out of an attribute", () => {
+    const consent = `<p>Streamed from <a href="https://{host}/">{host}</a></p>`;
+    for (const host of ["a$&b.example", "a$`b.example", "a$'b.example", "x$`onmouseover=window.pwned=1;\".example"]) {
+      const html = renderLivePage(`https://${host}/live.m3u8`, text({ consentHtml: consent }), site, {});
+      expect(html, host).not.toMatch(/onmouseover|\$&|\$`/);
+      expect(html, host).not.toContain("data-stream");
+    }
+  });
+
+  it("a userinfo URL or a host with markup characters is off air", () => {
+    for (const bad of ["https://user:pw@stream.example/x.m3u8", "https://user@stream.example/x.m3u8", "https://x$`onmouseover=window.pwned=1;\".example/live.m3u8"]) {
+      const html = renderLivePage(bad, text(), site, {});
+      expect(html, bad).not.toMatch(/data-stream|<video|play-button/);
+    }
+    expect(renderLivePage("https://xn--bcher-kva.example:8443/x.m3u8", text(), site, {})).toContain("data-stream");
+  });
+
   it("plain-text settings are not an attack surface: the heading is escaped", () => {
     const html = renderLivePage(STREAM, text({ heading: "<b>Live</b>" }), site, {});
     expect(html).toContain("&lt;b&gt;Live&lt;/b&gt;");

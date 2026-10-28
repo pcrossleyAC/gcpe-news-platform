@@ -638,7 +638,7 @@ describe("site.js live webcast player (/live/)", () => {
     onError("hlsError", { fatal: true });
     expect(fatal.status.textContent).toBe(ERROR_TEXT);
 
-    const rejected = livePlayer("maybe", { play: async () => { throw new Error("NotAllowedError"); } });
+    const rejected = livePlayer("maybe", { play: async () => { throw new DOMException("no", "NotSupportedError"); } });
     rejected.button.click();
     await settle();
     expect(rejected.status.textContent).toBe(ERROR_TEXT);
@@ -647,6 +647,30 @@ describe("site.js live webcast player (/live/)", () => {
     media.button.click();
     media.video.dispatchEvent(new media.dom.window.Event("error"));
     expect(media.status.textContent).toBe(ERROR_TEXT);
+  });
+
+  it("blocked autoplay or an aborted load (NotAllowedError, AbortError) leaves the controls and no error text", async () => {
+    for (const name of ["NotAllowedError", "AbortError"]) {
+      const p = livePlayer("maybe", { play: async () => { throw new DOMException("x", name); } });
+      p.button.click();
+      await settle();
+      expect(p.status.textContent, name).toBe("");
+      expect(p.video.hidden).toBe(false);
+    }
+  });
+
+  it("after Play, keyboard focus moves to the video, not <body>", () => {
+    const p = livePlayer("maybe");
+    p.button.focus();
+    p.button.click();
+    expect(p.doc.activeElement).toBe(p.video);
+  });
+
+  it("without site.js's script tag the hls URL keeps the page's base path", () => {
+    const p = livePlayer("");
+    p.doc.querySelector('script[src$="/assets/site/site.js"]')!.remove();
+    p.button.click();
+    expect(p.hlsScripts()[0]!.getAttribute("src")).toBe("/site/assets/vendor/hls.light.min.js");
   });
 
   it("a page with no .play-button (off air, any other page) is untouched", () => {

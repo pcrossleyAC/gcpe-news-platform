@@ -302,7 +302,8 @@ export const SITE_SCRIPT = String.raw`(() => {
     const start = () => {
       try {
         const p = player.play();
-        if (p && p.catch) p.catch(fail);
+        // Blocked autoplay or an interrupted load: the controls are shown, so the visitor can press play.
+        if (p && p.catch) p.catch((err) => { if (!err || (err.name !== "AbortError" && err.name !== "NotAllowedError")) fail(); });
       } catch (_) { fail(); }
     };
     const withHls = () => {
@@ -321,6 +322,7 @@ export const SITE_SCRIPT = String.raw`(() => {
       started = true;
       if (holder) holder.hidden = true;
       player.hidden = false;
+      player.focus();
       player.addEventListener("error", fail);
       if (player.canPlayType && player.canPlayType("application/vnd.apple.mpegurl")) {
         player.src = stream;
@@ -328,7 +330,9 @@ export const SITE_SCRIPT = String.raw`(() => {
       }
       const site = doc.querySelector('script[src$="/assets/site/site.js"]');
       const s = doc.createElement("script");
-      s.src = ((site && site.getAttribute("src")) || "/assets/site/site.js").replace(/site\/site\.js$/, "vendor/hls.light.min.js");
+      // Beside site.js; failing that, the page's own base: /live/ minus its tail.
+      const own = site && site.getAttribute("src");
+      s.src = own ? own.replace(/site\/site\.js$/, "vendor/hls.light.min.js") : location.pathname.replace(/\/live\/(index\.html)?$/, "") + "/assets/vendor/hls.light.min.js";
       s.addEventListener("load", withHls);
       s.addEventListener("error", fail);
       doc.head.appendChild(s);

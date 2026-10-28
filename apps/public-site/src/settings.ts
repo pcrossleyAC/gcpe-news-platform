@@ -49,6 +49,17 @@ export function bannerJson(settings: SiteSettings): string {
   return JSON.stringify({ visible: b.enabled, style: b.style, message: b.message, links: b.links, dismissible: b.dismissible, startsAt: b.startsAt, endsAt: b.endsAt });
 }
 
+/** A parsed host of letters, digits, dots and hyphens (punycode included) and an optional port, no
+ * userinfo: WHATWG URL hosts may also hold $ ` " ' = ; ( ), which must never reach a page. */
+function plainHost(u: string): boolean {
+  try {
+    const parsed = new URL(u);
+    return !parsed.username && !parsed.password && /^[a-z0-9.-]+(:\d+)?$/i.test(parsed.host);
+  } catch {
+    return false;
+  }
+}
+
 let warnedLiveUrl = false;
 
 /** The News API home settings' live webcast playlist, only when it is an absolute https URL (the
@@ -57,7 +68,7 @@ let warnedLiveUrl = false;
 export function liveStreamUrl(home: Pick<HomeDto, "liveWebcastM3uPlaylist">): string | null {
   const u = home.liveWebcastM3uPlaylist;
   if (typeof u !== "string" || u.trim() === "") return null;
-  if (isSafeAbsoluteUrl(u, { relative: false, schemes: ["https:"] })) return u;
+  if (isSafeAbsoluteUrl(u, { relative: false, schemes: ["https:"] }) && plainHost(u)) return u;
   if (!warnedLiveUrl) {
     warnedLiveUrl = true;
     console.error("[public-site] live webcast URL is not https; shown as off air");

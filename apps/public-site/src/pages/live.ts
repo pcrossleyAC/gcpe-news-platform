@@ -41,7 +41,7 @@ ${image}
 <div class="off-air-text">${rich(t.offAirHtml)}</div>
 </div>`;
   } else {
-    const consent = rich(t.consentHtml).replaceAll("{host}", e(hostOf(stream)));
+    const consent = rich(t.consentHtml).split("{host}").join(e(hostOf(stream)));
     player = `<div class="wowza-wrapper asset wowza video" data-stream="${e(stream)}">
 <div class="placeholder-container">
 ${image}
@@ -50,7 +50,7 @@ ${image}
 <div id="live-consent" class="play-instructions preface">${consent}</div>
 </div></div></div>
 </div>
-<video controls preload="none" playsinline hidden></video>
+<video controls preload="none" playsinline tabindex="-1" hidden></video>
 <p id="live-status" role="status"></p>
 <p class="live-stream-link"><a href="${e(stream)}">Open the stream in your media player</a></p>
 </div>`;
