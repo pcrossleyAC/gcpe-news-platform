@@ -163,6 +163,13 @@ describe("settings sections: pageText", () => {
     expect(storage.files.get("privacy/index.html")).toContain("Our privacy promise");
   });
 
+  it("a pageText.live edit queues exactly live", async () => {
+    const { items, dependents, storage } = await edit((d) => { d.pageText.live.heading = "Watch live"; });
+    expect(dependents).toEqual([]);
+    expect(items).toEqual([{ pageId: "live", priority: PRIORITY.liveAggregate }]);
+    expect(storage.files.get("live/index.html")).toContain("Watch live");
+  });
+
   it("a notFound edit queues exactly static", async () => {
     const { items, dependents, storage } = await edit((d) => { d.pageText.notFound.heading = "Nothing here"; });
     expect(dependents).toEqual([]);

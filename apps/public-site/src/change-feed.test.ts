@@ -16,7 +16,7 @@ describe("pagesForChange", () => {
   it.each([
     [{ id: 1, kind: "post.upserted", key: "K1" }, [{ pageId: "post:K1", priority: 0 }]],
     [{ id: 2, kind: "post.unpublished", key: "K1" }, [{ pageId: "post:K1", priority: 0 }]],
-    [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }]],
+    [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "live", priority: 1 }]],
     [{ id: 4, kind: "slides", key: null }, [{ pageId: "home", priority: 1 }]],
     [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }]],
     // A ministry change can start or stop a successor redirect, so it also queues legacy-redirects,
@@ -230,7 +230,7 @@ describe("syncChanges", () => {
       { resync: false, changes: [], next: 5 },
     ]);
     const result = await syncChanges({ db, client, builder, index });
-    expect(await items()).toEqual(["post:K9@0", "home@1"]);
+    expect(await items()).toEqual(["post:K9@0", "home@1", "live@1"]);
     expect(await readCursor(db)).toBe(5);
     expect(result).toEqual({ changes: 2, resynced: false });
   });
@@ -347,7 +347,7 @@ describe("syncChanges", () => {
     await syncChanges({ db, client, builder, index });
     expect(await readCursor(db)).toBe(5);
     const queued = await items();
-    expect(queued).toEqual(["home@1"]);
+    expect(queued).toEqual(["home@1", "live@1"]);
   });
 
   // `kind` is validated only as a non-empty string (changeRowSchema), so a value such as
@@ -363,7 +363,7 @@ describe("syncChanges", () => {
     await syncChanges({ db, client, builder, index });
     expect(await readCursor(db)).toBe(5);
     const queued = await items();
-    expect(queued).toEqual(["home@1"]);
+    expect(queued).toEqual(["home@1", "live@1"]);
     expect(queued.some((pageId) => pageId.includes("undefined"))).toBe(false);
   });
 

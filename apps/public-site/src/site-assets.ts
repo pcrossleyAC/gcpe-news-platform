@@ -20,6 +20,8 @@ export const BC_SANS_FILES = [
   "BCSans-LightItalic.woff2",
 ];
 const FONT_LICENSE = "LICENSE_OFL.txt";
+/** hls.js's light build (no subtitles, no alternate audio), written to assets/vendor/. */
+export const HLS_FILE = "hls.light.min.js";
 
 import { LEGACY_BUNDLE, LEGACY_BUNDLE_SOURCES } from "./legacy-bundle";
 
@@ -42,6 +44,8 @@ export interface BuiltinAssetSources {
   root: string;
   /** Holds BC_SANS_FILES; LICENSE_OFL.txt is beside them in a bundle and one level up in @bcgov/bc-sans. */
   fontsDir: string;
+  /** hls.js's light build, which the /live/ page loads on Play when the browser lacks native HLS. */
+  hlsFile: string;
 }
 
 /**
@@ -51,9 +55,11 @@ export interface BuiltinAssetSources {
  */
 export function builtinAssetSources(here: string = import.meta.url, exists: (path: string) => boolean = existsSync): BuiltinAssetSources {
   const bundled = fileURLToPath(new URL(`./${BUNDLED_SITE_ASSETS}`, here));
-  if (exists(bundled)) return { root: bundled, fontsDir: join(bundled, "legacy", "fonts") };
-  const fontsDir = join(dirname(nodeModule.createRequire(here).resolve("@bcgov/bc-sans/package.json")), "fonts");
-  return { root: fileURLToPath(new URL("../assets", here)), fontsDir };
+  if (exists(bundled)) return { root: bundled, fontsDir: join(bundled, "legacy", "fonts"), hlsFile: join(bundled, "vendor", HLS_FILE) };
+  const require = nodeModule.createRequire(here);
+  const fontsDir = join(dirname(require.resolve("@bcgov/bc-sans/package.json")), "fonts");
+  const hlsFile = join(dirname(require.resolve("hls.js/package.json")), "dist", HLS_FILE);
+  return { root: fileURLToPath(new URL("../assets", here)), fontsDir, hlsFile };
 }
 
 /** Every file under `dir` (dotfiles skipped), as POSIX paths relative to `dir`. */
@@ -70,11 +76,11 @@ async function filesUnder(dir: string): Promise<string[]> {
 
 /**
  * Writes the vendored legacy CSS and images, the BC logos, BC Sans and the icon sprite into the
- * output folder's assets/, the generated legacy CSS bundle beside them, assets/site/site.js (SITE_SCRIPT), and favicon.ico at its root. Idempotent and cheap, so it runs on every
+ * output folder's assets/, the generated legacy CSS bundle beside them, assets/site/site.js (SITE_SCRIPT), assets/vendor/hls.light.min.js and favicon.ico at its root. Idempotent and cheap, so it runs on every
  * start (self-heal.ts) and every static-pages build, whatever else the folder holds.
  */
 export async function writeBuiltinAssets(storage: SiteStorage, sources: BuiltinAssetSources = builtinAssetSources()): Promise<void> {
-  const { root, fontsDir } = sources;
+  const { root, fontsDir, hlsFile } = sources;
   // Only the five bundle sources are kept in memory; every other file is written and dropped.
   const bundleSources = new Set<string>(LEGACY_BUNDLE_SOURCES);
   const read = new Map<string, Buffer>();
@@ -94,6 +100,7 @@ export async function writeBuiltinAssets(storage: SiteStorage, sources: BuiltinA
     }),
   );
   await storage.write("assets/site/site.js", SITE_SCRIPT);
+  await storage.write(`assets/vendor/${HLS_FILE}`, new Uint8Array(await readFile(hlsFile)));
   for (const f of BC_SANS_FILES) await storage.write(`assets/legacy/fonts/${f}`, new Uint8Array(await readFile(join(fontsDir, f))));
   const license = [join(fontsDir, FONT_LICENSE), join(fontsDir, "..", FONT_LICENSE)].find((p) => existsSync(p));
   if (!license) throw new Error(`${FONT_LICENSE} not found beside ${fontsDir}`);

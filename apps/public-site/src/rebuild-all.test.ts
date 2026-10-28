@@ -29,6 +29,7 @@ describe("enqueueRebuildAll", () => {
     expect(at(PRIORITY.bulkAggregate)).toContain("sitemap:pages");
     expect(at(PRIORITY.bulkAggregate)).toContain("connect");
     expect(at(PRIORITY.bulkAggregate)).toContain("privacy");
+    expect(at(PRIORITY.bulkAggregate)).toContain("live");
     expect(at(PRIORITY.bulkAggregate)).toContain("category:ministries:health");
   });
 

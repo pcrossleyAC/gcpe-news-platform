@@ -45,6 +45,15 @@
  *     `live_button_show`; anything else, or any failure, leaves (or puts) it hidden. Errors are
  *     swallowed: a dead file must not spam every visitor's console.
  *
+ * 13. The /live/ page's Play button (`.wowza-wrapper[data-stream] button.play-button`, pages/live.ts),
+ *     the only thing that ever contacts the stream host: on click it hides `.placeholder-container`
+ *     and shows the `video`; with native HLS (`canPlayType("application/vnd.apple.mpegurl")`) it sets
+ *     `video.src`, otherwise it appends one `<script>` for `{base}/assets/vendor/hls.light.min.js`
+ *     (the base is site.js's own URL minus its tail), and on its load runs `new Hls()`,
+ *     `loadSource(stream)`, `attachMedia(video)`. Then `video.play()`. Any failure (script, an
+ *     unsupported Hls, a fatal hls.js error, the media element's error, a rejected play()) writes the
+ *     fallback sentence into `#live-status`.
+ *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
  */
@@ -279,6 +288,51 @@ export const SITE_SCRIPT = String.raw`(() => {
     };
     poll();
     setInterval(poll, 60000);
+  }
+
+  const wowza = doc.querySelector(".wowza-wrapper[data-stream]");
+  const playBtn = wowza && wowza.querySelector("button.play-button");
+  const player = wowza && wowza.querySelector("video");
+  if (playBtn && player) {
+    const stream = wowza.getAttribute("data-stream");
+    const status = doc.getElementById("live-status");
+    const holder = wowza.querySelector(".placeholder-container");
+    let started = false;
+    const fail = () => { if (status) status.textContent = "The webcast can't play here. Use the stream link below."; };
+    const start = () => {
+      try {
+        const p = player.play();
+        if (p && p.catch) p.catch(fail);
+      } catch (_) { fail(); }
+    };
+    const withHls = () => {
+      const H = window.Hls;
+      if (!H || (H.isSupported && !H.isSupported())) return fail();
+      try {
+        const hls = new H();
+        if (hls.on && H.Events) hls.on(H.Events.ERROR, (_ev, d) => { if (d && d.fatal) fail(); });
+        hls.loadSource(stream);
+        hls.attachMedia(player);
+        start();
+      } catch (_) { fail(); }
+    };
+    playBtn.addEventListener("click", () => {
+      if (started) return;
+      started = true;
+      if (holder) holder.hidden = true;
+      player.hidden = false;
+      player.addEventListener("error", fail);
+      if (player.canPlayType && player.canPlayType("application/vnd.apple.mpegurl")) {
+        player.src = stream;
+        return start();
+      }
+      const site = doc.querySelector('script[src$="/assets/site/site.js"]');
+      const s = doc.createElement("script");
+      s.src = ((site && site.getAttribute("src")) || "/assets/site/site.js").replace(/site\/site\.js$/, "vendor/hls.light.min.js");
+      s.addEventListener("load", withHls);
+      s.addEventListener("error", fail);
+      doc.head.appendChild(s);
+    });
   }
 
   const prefill = doc.querySelector("form[data-prefill-from-path] #not-found-q");

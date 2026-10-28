@@ -21,8 +21,9 @@ source difference, not a vendoring error.
 - Commit: `3fdf3e6b6faa92172ba60f8bd2951bce96dbe2de`
 - Source root: `Gov.News.WebApp/wwwroot/` (`lib/bootstrap5/css/bootstrap.min.css`, `Content/*.css`, `Content/Images/**` and `favicon.ico` keep their relative paths; the logo and `Gov/` images come from `Content/Images/Gov/`).
 - The BC logo SVGs under `Content/Images/Gov/` are committed by owner decision (Q76, 2026-10-28).
-- Two non-legacy assets ship beside these files under their own licences:
+- Three non-legacy assets ship beside these files under their own licences:
   - BC Sans (`fonts/BCSans-*.woff2`), copied from the `@bcgov/bc-sans` 2.1.2 npm package by `writeBuiltinAssets` and the build scripts, is under the SIL Open Font License 1.1; its text ships beside the fonts as `fonts/LICENSE_OFL.txt`.
+  - hls.js 1.7.3 (Apache-2.0, https://github.com/video-dev/hls.js), its `dist/hls.light.min.js` copied from the `hls.js` npm package by `writeBuiltinAssets` and the build scripts to `assets/vendor/hls.light.min.js`; the /live/ page loads it only when the visitor presses Play in a browser without native HLS.
   - The icon sprite: Font Awesome Free 6.7.2 icons (CC BY 4.0, https://fontawesome.com/license/free), with the attribution comment inside the file, in `assets/site/icons.svg`.
 - `Content/legacy.bundle.css` is not in this folder: `writeBuiltinAssets` (apps/public-site/src/site-assets.ts) generates it in the output folder on every start and build. It is `lib/bootstrap5/css/bootstrap.min.css`, `Content/site.css`, `Content/custom.css`, `Content/transforms.css` and `Content/accessibility-styles.css`, byte-for-byte in that order, each followed by a newline, with one leading UTF-8 BOM dropped from each (the one a browser strips from a separate file). It sits in `Content/` so every relative `url()` resolves as it does in the separate files. The files listed below are unchanged.
 
@@ -34,6 +35,7 @@ source difference, not a vendoring error.
 | `Content/Images/Gov/BC_Mark_bridge.svg` | 066f21b0a7f5f06d4099dd28980d55165d80858f69bca477c50f3536fff75c5b |
 | `Content/Images/Gov/default-og-image-new.jpg` | 0375219008afedc75b59c7b039677a3b3ae9061f1310818215e234fcda345d98 |
 | `Content/Images/Gov/default-og-meta-image-1.jpg` | 2386ad715913ee35b7b09c1b1ef4e2331bb2a8863179585b580ff9e2d25a2707 |
+| `Content/Images/Gov/Live_Webcast.png` | 3b23d33f261d8eda323b53933ec59c36c3aefe0058bb2433ffb053d005183086 |
 | `Content/Images/Gov/media_background_audio.png` | 51008fe15d7fcea7f73849894f9db77be659ae7eb6025b15608839a745b11d9d |
 | `Content/Images/SocialMedia/20x20-white-close.png` | 565150f51c643a87c5309dda9c2fcf00e7c55b813fdf3252e7c3c5bb5851b20c |
 | `Content/Images/SocialMedia/32x32-bc-logo.png` | 0d222c488cd8102875871b3f87ae72feccca7c162403cb4047df18f532ec0b5a |

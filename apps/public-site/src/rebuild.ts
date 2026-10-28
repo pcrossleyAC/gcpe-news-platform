@@ -33,6 +33,8 @@ export interface SiteRenderState {
   contactsPageHash: string;
   /** pageText.privacy (/privacy/), pageText.notFound (404.html) and pageText.assetLicence (every release's licence line). */
   privacyHash: string;
+  /** pageText.live (/live/ only; the stream URL itself comes from the home settings). */
+  liveTextHash: string;
   notFoundHash: string;
   assetLicenceHash: string;
   /** The Instagram account release pages' Share list links to (settings.ts releaseInstagram). */
@@ -43,7 +45,7 @@ export interface SiteRenderState {
 }
 
 /** The pages a settings section reaches, other than through every page's footer. */
-export type SectionPages = "labels" | "static" | "home" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "releaseLicence";
+export type SectionPages = "labels" | "static" | "home" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "live" | "releaseLicence";
 
 /** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
@@ -81,7 +83,7 @@ interface SiteStateMarker extends SiteRenderState {
 export const verificationKey = (site: Pick<SiteInfo, "verification">): string =>
   site.verification?.googleFile || site.verification?.googleMeta ? `${site.verification.googleFile ?? ""}|${site.verification.googleMeta ?? ""}` : "";
 
-const HASHES = ["footerHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "notFoundHash", "assetLicenceHash"] as const;
+const HASHES = ["footerHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "liveTextHash", "notFoundHash", "assetLicenceHash"] as const;
 
 /** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
  * `chromeChanges` then treats it as matching. */
@@ -153,6 +155,7 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
   if (previous.releaseShareHash !== state.releaseShareHash) sections.push("releaseShare");
   if (previous.contactsPageHash !== state.contactsPageHash) sections.push("contacts");
   if (previous.privacyHash !== state.privacyHash) sections.push("privacy");
+  if (previous.liveTextHash !== state.liveTextHash) sections.push("live");
   if (previous.assetLicenceHash !== state.assetLicenceHash) sections.push("releaseLicence");
   // A marker from before the menu hash: nothing to rebuild for it, but the hash must be recorded
   // or a later menu change would still read as matching.

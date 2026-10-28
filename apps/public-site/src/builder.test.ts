@@ -337,12 +337,30 @@ describe("site builder", () => {
     const r = await builder.buildAll({});
     expect(r).toEqual({ posts: 3, failures: 0 });
     expect(storage.files.has("releases/OLD/index.html")).toBe(false);
-    for (const f of ["releases/K1/index.html", "releases/S1/index.html", "index.html", "ministries/index.html", "ministries/health/index.html", "ministries/finance/index.html", "archive/index.html", "search/index.html", "sitemap.xml", "sitemaps/pages.xml", "assets/theme.css", "assets/site-banner.json", "connect/index.html", "privacy/index.html", "robots.txt", "404.html"]) {
+    for (const f of ["releases/K1/index.html", "releases/S1/index.html", "index.html", "ministries/index.html", "ministries/health/index.html", "ministries/finance/index.html", "archive/index.html", "search/index.html", "sitemap.xml", "sitemaps/pages.xml", "assets/theme.css", "assets/site-banner.json", "connect/index.html", "privacy/index.html", "live/index.html", "assets/live.json", "robots.txt", "404.html"]) {
       expect(storage.files.has(f), f).toBe(true);
     }
     expect(html(storage, "sitemaps/pages.xml")).not.toContain("/search/");
     expect(html(storage, "sitemaps/pages.xml")).toContain("https://news.example/connect/");
     expect(html(storage, "sitemaps/pages.xml")).toContain("https://news.example/privacy/");
+    expect(html(storage, "sitemaps/pages.xml")).toContain("https://news.example/live/");
+  });
+
+  it("live: renders live/index.html and assets/live.json from the home settings; an https playlist plays, none or http is off air; the flag file never holds the URL", async () => {
+    const { storage, api, builder } = setup(new Map());
+    await builder.rebuild(["live"], { settings: bcSettings() });
+    expect(html(storage, "assets/live.json")).toBe('{"live":false}');
+    expect(html(storage, "live/index.html")).toContain("There is no live webcast right now.");
+    expect(html(storage, "live/index.html")).not.toContain("<video");
+    api.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null, liveWebcastM3uPlaylist: "https://stream.example/secret/live.m3u8" });
+    await builder.rebuild(["live"], { settings: bcSettings() });
+    expect(html(storage, "assets/live.json")).toBe('{"live":true}');
+    expect(html(storage, "live/index.html")).toContain('data-stream="https://stream.example/secret/live.m3u8"');
+    expect(html(storage, "live/index.html")).toContain("<strong>stream.example</strong>");
+    api.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null, liveWebcastM3uPlaylist: "http://stream.example/live.m3u8" });
+    await builder.rebuild(["live"], { settings: bcSettings() });
+    expect(html(storage, "assets/live.json")).toBe('{"live":false}');
+    expect(html(storage, "live/index.html")).not.toContain("data-stream");
   });
 
   it("legacy-redirects writes legacy/ministry-successors.json from the News API, and is an aggregate page", async () => {

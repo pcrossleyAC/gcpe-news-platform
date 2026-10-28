@@ -8,6 +8,7 @@ import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsInde
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
 import { renderConnectPage } from "./pages/connect";
 import { renderContactsPage } from "./pages/contacts";
+import { renderLivePage } from "./pages/live";
 import { renderPrivacyPage } from "./pages/privacy";
 import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
@@ -18,7 +19,7 @@ import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIn
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
 import { biographyUrl, categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
-import { liveJson, themeDefaults } from "./settings";
+import { liveJson, liveStreamUrl, themeDefaults } from "./settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
 import type { SiteStorage } from "./storage";
@@ -380,7 +381,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "sitemap-pages": {
           // Not /search/: robots.txt disallows it, and Search Console flags sitemap URLs blocked by robots.
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" })];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" })];
           for (const id of await categoryIds(run)) {
             const page = parsePageId(id)!;
             paths.push(pageUrl(site, page));
@@ -408,6 +409,12 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         case "privacy":
           await storage.write(pageFiles(p)[0]!, renderPrivacyPage((opts.settings ?? themeDefaults(site.theme)).pageText.privacy, site, opts));
           return [];
+        case "live": {
+          const home = await newsApi.home();
+          await storage.write("assets/live.json", liveJson(home));
+          await storage.write(pageFiles(p)[0]!, renderLivePage(liveStreamUrl(home), (opts.settings ?? themeDefaults(site.theme)).pageText.live, site, opts));
+          return [];
+        }
         case "legacy-redirects": {
           // Sorted, so an unchanged map writes the same bytes.
           const successors = Object.fromEntries(Object.entries(await newsApi.ministrySuccessors()).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -442,7 +449,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     async aggregatePageIds() {
       const run: RunCache = {};
       // sitemap:pages after the category pages: it lists the biography pages they write.
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "legacy-redirects", ...(await categoryIds(run)), "sitemap:pages"];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;
