@@ -52,6 +52,7 @@ describe("GET /api/v2/ministries", () => {
     await apply(org("health-b", { parentKey: "Health", sortOrder: 2 }));
     await apply(org("health-a", { parentKey: "health", sortOrder: 1 }));
     await apply(org("health-old", { parentKey: "health", sortOrder: 0, isActive: false }));
+    await apply(org("health-hidden", { parentKey: "health", sortOrder: 3, isPublic: false }));
     await apply(org("secret", { isPublic: false }));
     // A row stored before teamLinks existed: no teamLinks in the jsonb.
     await tdb.db.insert(categories).values({
@@ -73,7 +74,7 @@ describe("GET /api/v2/ministries", () => {
   it("lists public ministries with ministerEmail, teamLinks and childKeys; a non-public ministry is absent", async () => {
     const byKey = new Map((await list()).map((m) => [m.key, m]));
     expect(byKey.has("secret")).toBe(false);
-    expect(byKey.get("health")).toEqual({ key: "health", ministerEmail: "a@gov.bc.ca", teamLinks: [{ text: "Deputy", url: "https://example.com/d" }], childKeys: expect.any(Array) });
+    expect(byKey.get("health")).toEqual({ key: "health", ministerEmail: "a@gov.bc.ca", teamLinks: [{ text: "Deputy", url: "https://example.com/d" }], childKeys: ["health-a", "health-b"] });
     expect(byKey.get("health-a")).toEqual({ key: "health-a", ministerEmail: null, teamLinks: [], childKeys: [] });
   });
 
@@ -81,11 +82,13 @@ describe("GET /api/v2/ministries", () => {
     expect((await list()).find((m) => m.key === "legacy")!.teamLinks).toEqual([]);
   });
 
-  it("childKeys holds only active public children, ordered by sortOrder", async () => {
-    expect((await list()).find((m) => m.key === "health")!.childKeys).toEqual(["health-a", "health-b"]);
+  it("childKeys holds only active public children, ordered by sortOrder: inactive and non-public children are excluded", async () => {
+    const all = await list();
+    expect(all.find((m) => m.key === "health")!.childKeys).toEqual(["health-a", "health-b"]);
+    expect(all.some((m) => m.key === "health-hidden")).toBe(false);
   });
 
   it("is no-store", async () => {
-    expect((await request(app).get("/api/v2/ministries")).headers["cache-control"]).toBe("no-store");
+    expect((await request(app).get("/api/v2/ministries").expect(200)).headers["cache-control"]).toBe("no-store");
   });
 });

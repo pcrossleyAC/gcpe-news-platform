@@ -20,7 +20,7 @@ function withAccounts(...keys: (keyof SiteSettings["connect"])[]): SiteSettings 
 }
 
 describe("home page", () => {
-  it("exactly one h1 (visually hidden); .home-layout > section.home-features[aria-label] + .home-body; no <aside> inside main", () => {
+  it("exactly one h1 (visually hidden); .home-layout > .home-body + section.home-features[aria-label]; no <aside> inside main", () => {
     const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, top: post({ key: "T1" }), latest: latest(2), links: [link({})] }, site, {}));
     const h1 = doc.querySelectorAll("h1");
     expect(h1).toHaveLength(1);
@@ -29,9 +29,11 @@ describe("home page", () => {
     const layout = doc.querySelector("main > .home-layout")!;
     expect(layout).not.toBeNull();
     const children = [...layout.children];
-    expect(children.map((c) => `${c.tagName.toLowerCase()}.${c.className}`)).toEqual(["section.home-features", "div.home-body"]);
-    expect(children[0]!.getAttribute("aria-label")).toBe("Connect and resources");
-    expect(children[1]!.id).toBe("main-content-release");
+    // The news first in the DOM, so phone reading and focus order match the visual order (the
+    // column stacks below the news there); CSS order puts the column on the left on a desktop.
+    expect(children.map((c) => `${c.tagName.toLowerCase()}.${c.className}`)).toEqual(["div.home-body", "section.home-features"]);
+    expect(children[1]!.getAttribute("aria-label")).toBe("Connect and resources");
+    expect(children[0]!.id).toBe("main-content-release");
     // Resources render once, inside the features column (legacy's JS clone, replaced by CSS order).
     expect(doc.querySelectorAll(".collapsible-regions")).toHaveLength(1);
     expect(doc.querySelector(".home-features > .collapsible-regions")).not.toBeNull();

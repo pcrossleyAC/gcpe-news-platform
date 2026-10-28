@@ -20,7 +20,7 @@ import type { SiteInfo } from "../apps/public-site/src/render";
 import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
 import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
-import { link, post, slide } from "../apps/public-site/test/fixtures";
+import { contact, link, ministry, post, slide } from "../apps/public-site/test/fixtures";
 
 const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
 const SLIDE_IMAGE = fileURLToPath(new URL("./fixture-assets/slide.jpg", import.meta.url));
@@ -39,6 +39,8 @@ export const FIXTURE_PAGES = [
   `/releases/${FIRST_KEY}/`,
   "/ministries/",
   "/ministries/health/",
+  "/ministries/health/biography/",
+  "/ministries/office-of-the-premier/",
   "/sectors/economy/",
   "/themes/housing/",
   "/tags/covid-19/",
@@ -67,6 +69,7 @@ function memoryIndex(): PostIndex {
     keys: async () => [...rows.keys()],
     categories: async () => [...new Set([...rows.values()].flatMap((p) => p.categories))].sort(),
     inCategory: async (token) => [...rows.values()].filter((p) => p.categories.includes(token)).map((p) => p.key).sort(),
+    withLeadMinistry: async (key) => [...rows.values()].filter((p) => p.leadMinistry === key.toLowerCase()).map((p) => p.key).sort(),
     inDayRange: async (start, end) => [...rows.values()].filter((p) => inDays(p, start, end)).sort(newest),
     countInDayRange: async (start, end) => [...rows.values()].filter((p) => inDays(p, start, end)).length,
     appliedTermsHash: async () => termsHash,
@@ -113,6 +116,54 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
       }),
     );
   }
+  // The first release carries everything the release page can show (its fixture-page check):
+  // two backgrounders, a French document, two translations, two media assets and a byline.
+  const first = posts.get(FIRST_KEY)!;
+  posts.set(FIRST_KEY, {
+    ...first,
+    hasMediaAssets: true,
+    hasTranslations: true,
+    // A YouTube lead: the page shows a link with the vendored placeholder (no third-party load),
+    // and only og:image names YouTube's thumbnail.
+    assetUrl: "https://www.youtube.com/watch?v=abc123DEF45",
+    documents: [
+      {
+        languageId: 4105,
+        pageTitle: "News Release",
+        headline: "Clinics to open across the province",
+        subheadline: "Twelve new clinics open this month",
+        byline: "Ministry of Health\nJoint statement",
+        detailsHtml: "<p>Twelve clinics will open across the province this month, the Ministry of Health announced today.</p><p>Each clinic is open seven days a week.</p>",
+        contacts: [{ title: "Ministry of Health", details: "Media Relations\n250 555-0100" }],
+      },
+      {
+        languageId: 3084,
+        pageTitle: "Communiqué",
+        headline: "Ouverture de cliniques dans la province",
+        subheadline: "Douze nouvelles cliniques ouvrent ce mois-ci",
+        byline: null,
+        detailsHtml: "<p>Douze cliniques ouvriront dans la province ce mois-ci.</p>",
+        contacts: [],
+      },
+      { languageId: 4105, pageTitle: "Backgrounder", headline: "Where the clinics are", subheadline: null, detailsHtml: "<ul><li>Victoria</li><li>Kelowna</li></ul>", contacts: [] },
+      {
+        languageId: 4105,
+        pageTitle: "Backgrounder",
+        headline: "How to book",
+        subheadline: "Booking opens Monday",
+        detailsHtml: "<p>Book online or by phone.</p>",
+        contacts: [{ title: "Booking line", details: "1 800 555-0100" }],
+      },
+    ],
+    azureAssets: [
+      { key: `${o.baseUrl}/fixture/clinic-photo.jpg`, label: "Clinic photo", length: 524288 },
+      { key: `${o.baseUrl}/fixture/fact-sheet.pdf`, label: "Fact sheet", length: 1229 },
+    ],
+    azureTranslations: [
+      { key: `${o.baseUrl}/fixture/translation-zh.pdf`, label: "Chinese(Simplified)", length: 2048 },
+      { key: `${o.baseUrl}/fixture/translation-pa.pdf`, label: "Punjabi", length: 2048 },
+    ],
+  });
   // Home's carousel band: two slides with images and the second right-justified. The image is a
   // local file (no network in CI): scripts/fixture-assets/slide.jpg, legacy's default-og-image-new.jpg
   // (Apache-2.0) resized to 1280px at JPEG quality 45, 64 KB — the weight an optimised slide should have.
@@ -129,6 +180,55 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     // A top and a feature post, as news.gov's home always has.
     home: async () => ({ granville: null, topPostKey: "2026HLTH0010-000010", featurePostKey: "2026HLTH0009-000009" }),
     slides: async () => slides,
+    // Health has Flickr and YouTube links, so the release's related band shows Connect with the Ministry.
+    ministry: async (key) => (await newsApi.ministries()).find((m) => m.key === key.toLowerCase()) ?? null,
+    ministries: async () => [
+      ministry({
+        key: "health",
+        name: "Health",
+        flickrUri: "https://www.flickr.com/photos/bcgovphotos/",
+        youtubeUri: "https://www.youtube.com/user/ProvinceofBC",
+        topicLinks: [link({ uri: "https://www2.gov.bc.ca/gov/content/health", key: "Health care in B.C." })],
+        serviceLinks: [link({ uri: "https://www2.gov.bc.ca/gov/content/health/health-drug-coverage", key: "Health coverage" })],
+        contactUser: contact({ fullName: "Sam Example", phoneNumber: "250-555-0100", mobileNumber: "250-555-0101", emailAddress: "Sam.Example@gov.bc.ca" }),
+        secondContactUser: contact({ fullName: "Jordan Example", phoneNumber: "250-555-0102", emailAddress: "Jordan.Example@gov.bc.ca" }),
+        weekendContactNumber: "250-555-0199",
+      }),
+      ministry({ key: "finance", name: "Finance" }),
+      // The Premier: "More from the Premier", Meet the Team (team links) and a top story.
+      ministry({ key: "office-of-the-premier", name: "Office of the Premier", ministryUrl: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/office-of-the-premier", topPostKey: "2026HLTH0010-000010" }),
+      ministry({ key: "trade", name: "Minister of State for Trade", ministryUrl: null }),
+    ],
+    // Health's minister has a photo and a bio, so the biography page (H2) is built; the photo is the
+    // local slide image (no network in CI).
+    minister: async (key) =>
+      key.toLowerCase() === "office-of-the-premier"
+        ? { headline: "Hon. Casey Example", summary: "Premier of British Columbia.", details: null, photo: image }
+        : key.toLowerCase() === "trade"
+        ? { headline: "Hon. Robin Example", summary: "Minister of State for Trade.", details: "<p>Robin Example was elected in 2024.</p>", photo: image }
+        : key.toLowerCase() === "health"
+        ? {
+            headline: "Hon. Alex Example",
+            summary: "Minister of Health.\nMLA for Victoria-Example.",
+            // Core's bio allow-list (BIO_TAGS): paragraphs, strong, lists and links, no headings.
+            details: "<p>Alex Example was elected MLA for Victoria-Example in 2020.</p><p>Before politics, Alex worked as a <strong>family physician</strong> for fifteen years.</p><ul><li>Minister of Health, 2024</li></ul>",
+            photo: image,
+          }
+        : null,
+    // Health has a minister of state (legacy MinisterOfState); the Premier has Meet the Team links.
+    ministryProfiles: async () => [
+      { key: "health", ministerEmail: "HLTH.Minister@gov.bc.ca", teamLinks: [], childKeys: ["trade"] },
+      {
+        key: "office-of-the-premier",
+        ministerEmail: null,
+        teamLinks: [
+          { text: "Cabinet Ministers", url: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/cabinet/cabinet-ministers" },
+          { text: "Deputy Ministers", url: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/deputy-ministers" },
+          { text: "Cabinet Committees", url: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/cabinet/cabinet-committees" },
+        ],
+        childKeys: [],
+      },
+    ],
     resourceLinks: async () => [link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,

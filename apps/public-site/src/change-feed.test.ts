@@ -245,6 +245,30 @@ describe("syncChanges", () => {
     expect(queued).toContain("post:K2@2");
   });
 
+  it("a ministry change queues the release pages it leads even when the lead is not one of the post's ministries; another ministry's change queues none of them", async () => {
+    const { db, builder, index } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    // Legacy has releases whose lead ministry is not among their ministries (90 of 34,895).
+    await index.put({ key: "LED", kind: "releases", headline: "Led", summary: null, publishDate: "2026-10-01T09:00:00-07:00", month: "2026-10", categories: ["ministries:finance"], leadMinistry: "health" });
+    await index.put({ key: "OTHER", kind: "releases", headline: "Other", summary: null, publishDate: "2026-10-02T09:00:00-07:00", month: "2026-10", categories: ["ministries:finance"], leadMinistry: "finance" });
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "ministry", key: "Health" }], next: 4 },
+      { resync: false, changes: [], next: 4 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    const queued = await items();
+    expect(queued).toContain("post:LED@2");
+    expect(queued.filter((x) => x.startsWith("post:"))).toEqual(["post:LED@2"]);
+
+    await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+    const sector = scriptedClient([
+      { resync: false, changes: [{ id: 5, kind: "sector", key: "health" }], next: 5 },
+      { resync: false, changes: [], next: 5 },
+    ]);
+    await syncChanges({ db, client: sector, builder, index });
+    expect((await items()).filter((x) => x.startsWith("post:"))).toEqual([]); // a sector named like the lead ministry reaches no release by lead
+  });
+
   it("a government_terms change queues every term page", async () => {
     const { db, builder, index, newsApi } = setup();
     await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");

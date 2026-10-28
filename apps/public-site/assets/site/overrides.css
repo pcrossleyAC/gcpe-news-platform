@@ -31,11 +31,6 @@ main:focus { outline: none; }
 .connect-list { list-style: none; padding: 0; }
 .connect-list li { border-bottom: 1px solid var(--color-border); padding: 0.5rem 0; }
 .connect-list p { margin: 0.25rem 0 0; color: var(--color-muted-text); }
-.ministry-layout { display: grid; gap: 1rem; }
-.ministry-layout aside h2 { font-size: 1.125rem; }
-@media (min-width: 48rem) {
-  .ministry-layout { grid-template-columns: 18rem minmax(0, 1fr); gap: 2rem; align-items: start; }
-}
 figure { margin: 1rem 0; }
 img { max-width: 100%; height: auto; }
 
@@ -151,13 +146,16 @@ html:not(.js) #btnCloseBannerBridge{display:none}
  * our markup differs from legacy's HomeView (look-and-feel §2.1). */
 /* Legacy floats .home-features and .home-body side by side and, under 768px, hides the column and
  * shows a JS clone of Resources/News by Sector below the news. Ours renders them once, inside the
- * column, and CSS order moves the whole column below the news on a phone. */
+ * column, which follows the news in the DOM (home, ministry and bio pages): order:-1 puts it on the
+ * left on a desktop, and on a phone it stacks below the news in DOM order, so reading and focus
+ * order match what is seen there (WCAG 1.3.2, 2.4.3). */
 .home-layout{display:flex}
+.home-layout>.home-features{order:-1}
 .home-layout>.home-body{flex:1 1 0;min-width:0}
 .home-features .collapsible-regions{display:block}
 @media (max-width: 768px) {
   .home-layout{flex-direction:column}
-  .home-layout>.home-features{display:block;order:2;width:100%}
+  .home-layout>.home-features{display:block;order:0;width:100%}
   .home-layout>.home-body{width:100%;padding-left:0}
   /* Legacy's phone accordion (transforms.css) needs its click handler; ours stays open. */
   .home-features .collapsible-regions .resource-links ul, .home-features .collapsible-regions .resource-links div{display:block}
@@ -200,3 +198,103 @@ html.js #carousel-holder .carousel-slides>.home-banner.current{display:block}
 html:not(.js) #carousel-holder{height:auto;top:0;margin-top:0}
 html:not(.js) #carousel-holder .carousel-slides>.home-banner{position:relative;display:block}
 html:not(.js) #carousel-holder .carousel-controls{display:none}
+
+/* The release page (pages/release.ts): legacy site.css/transforms.css/print.css style PostView;
+ * these rules cover where our markup differs (look-and-feel §2.2). Legacy floats the side column
+ * and the body inside .story-page and clears them with an empty div; ours clears itself. */
+.story-page{display:flow-root}
+/* The headline is the h1 (legacy: .story-page h2), the French one a p, the subheadlines p (legacy:
+ * h3.subheadline) and the lead ministry a p (legacy: an h3 above the headline): legacy's metrics. */
+.story-page h1, .story-page .story-headline{font-size:36px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:20px;margin-bottom:16px}
+.story-page .subheadline{font-size:30px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:0;margin-bottom:16px}
+.story-ministry{font-size:18px;font-weight:600;line-height:1.2;margin:0 0 .5rem}
+.story-ministry a{text-decoration:none}
+@media only screen and (max-width: 768px) {
+  .story-page h1, .story-page .story-headline{font-size:26px;margin-top:10px;margin-bottom:10px}
+  .story-page .subheadline{font-size:22px}
+  .story-ministry{font-size:16px}
+}
+/* The side column's location (legacy: an h4) and the phone row's (legacy: an h6). */
+.story-features .location-and-date p.location{font-size:14px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:15px;margin-bottom:2px;padding-bottom:0}
+.story-page .story-info .resource-links > p{display:inline-block;font-weight:600;padding-right:5px;font-size:14px;margin:0}
+.translate a .icon{margin-right:6px}
+.story-features .resource-links:first-child h2{margin-top:0 !important}
+/* Body headings one level up: Backgrounders, Media Assets, Translations (legacy h4); a
+ * backgrounder's title (legacy h5) and subheadline (legacy h6, margin set inline). */
+.story-body > h2, .story-body > .assets > h2{font-size:18px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:0;padding-bottom:15px}
+.story-body .backgrounder-header h3{color:var(--color-primary);font-size:18px;font-weight:400;line-height:1.2;margin-top:3px;margin-bottom:8px}
+.story-body .backgrounder p.subheadline{color:var(--color-text);font-size:14px;font-weight:600;line-height:1.2;margin:10px 0}
+/* Legacy hid .backgrounder-content in site.css and showed it with an inline display:block !important. */
+.story-body .backgrounder .backgrounder-content{display:block}
+/* Contacts (legacy ContactsDetails: h3 + h4 per contact; ours h2 + h3, or h4 + h5 in a backgrounder). */
+.comm-contacts-body h2, .backgrounder .comm-contacts h4{font-size:18px;font-weight:600;line-height:1.2;color:var(--color-text)}
+.comm-contacts-body .comm-contact h3, .story-body .backgrounder .comm-contact h5{font-size:18px;font-weight:600;line-height:1.2;color:var(--color-text);padding-bottom:0;margin-top:15px;margin-bottom:2px}
+/* Print and the language toggle are buttons (legacy: links without an href). */
+.story-page button.print-document{background:none;border:0;color:var(--color-primary);cursor:pointer;min-height:24px}
+.story-page button.print-document .icon{width:2em;height:2em;vertical-align:middle}
+.story-body .language-selector button{background:none;border:0;padding:0 4px;min-height:24px;font-size:14px;color:var(--color-primary);text-decoration:underline;cursor:pointer}
+/* French: site.js toggles body.lang-secondary; without JavaScript both languages show, and the
+ * controls that can't work are hidden. */
+body.lang-secondary .story-lang.primary{display:none}
+body.lang-secondary .story-lang.secondary{display:block}
+html:not(.js) .story-lang.secondary{display:block}
+/* div.language-selector.story-lang (0,3,2) outranks html:not(.js) .story-lang.secondary (0,3,1) by
+ * specificity, not source order, so the secondary selector stays hidden wherever the rules sit
+ * (pinned in theme-css.test.ts). */
+html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{display:none}
+/* Share (legacy ShareSocialMedia): the side column's icons at legacy's .fa-customized-sm 1.6em. */
+.story-features .resource-links.share .icon{width:1.6em;height:1.6em}
+/* The phone row (legacy .story-info): Share, then the kind/location/date, each on its own row, as
+ * news.gov shows them on a phone (legacy's flex .mobile-toolbar squeezes Share into a column). */
+.story-page .story-info .mobile-toolbar{display:block;clear:both}
+.story-page .story-info .mobile-toolbar > .resource-links{float:none;display:block}
+/* Legacy's 20px share links fall short of WCAG 2.5.8's 24px target. */
+.resource-links.share ul li a{min-width:24px;min-height:24px;display:inline-flex;align-items:center;justify-content:center}
+/* The related band (legacy AssortedMedia), headings one level up: the band headings (legacy h3),
+ * the article titles (legacy h4, Bootstrap's size) and Connect's Photos/Videos (legacy h4). */
+.media-container .story-parts > div h2{margin-top:0;font-size:18px;font-weight:600;line-height:1.2;color:var(--color-text)}
+.media-container .story-parts .related-articles h3{margin-top:20px;margin-bottom:.5rem;font-size:calc(1.275rem + .3vw);font-weight:500;line-height:1.2}
+@media (min-width: 1200px) { .media-container .story-parts .related-articles h3{font-size:1.5rem} }
+.media-container .story-parts .related-articles h3 a{font-size:16px;font-weight:400;line-height:22px}
+@media only screen and (max-width: 860px) { .media-container .story-parts .related-articles h3{margin-top:15px;margin-bottom:0} }
+.media-container .connect-with-bc h3{background-image:url(../legacy/Content/Images/link-arrow-bl.png);background-repeat:no-repeat;background-position:left center;padding-left:10px;font-weight:400;margin-top:25px;margin-bottom:0;font-size:1.05rem;line-height:1.2}
+/* Legacy's light grey date fails 4.5:1 on the band's grey background (WCAG 1.4.3). */
+.media-container .story-parts .related-articles .item-date{color:var(--color-muted-text)}
+/* Print (legacy print.css, linked media=print, does the rest): legacy linked its screen CSS with
+ * media=screen, ours applies to print too, so the screen rules that would win over print.css are
+ * undone here — the Print button, the floated 76% body beside the (hidden) side column — and the
+ * land acknowledgement band goes with the footer it sat in. */
+@media print {
+  .story-page .print-document, #landAcknowledgement{display:none !important}
+  .story-page .story-body{width:auto;float:none;padding:0}
+  /* Legacy printed the body's contacts (its screen CSS, which hides them on a desktop, wasn't linked for print). */
+  .comm-contacts-body-section, .comm-contacts-body{display:block}
+}
+
+/* The minister card and the biography page (pages/minister.ts): legacy Minister.cshtml and
+ * Biography.cshtml, headings one level up. The column's ministry name is a presentational p (legacy:
+ * .ministry-listing .home-features h3); the card's Contact is an h3 (legacy: .resource-links.minister h4). */
+.home-features .ministry-title{margin-top:0;margin-bottom:.5rem;font-size:18px;font-weight:600;line-height:1.2;color:var(--color-text)}
+.ministry-listing .home-features .resource-links.minister h3{font-size:14px;margin-bottom:10px}
+/* Legacy's .ministry-listing is a flex row of its two columns; ours holds the one .home-layout, which fills it. */
+.ministry-listing>.home-layout{flex:1 1 auto;min-width:0}
+/* The minister's name is the page's h1 (legacy: .ministry-listing .home-body .biography-details h2). */
+.ministry-listing .home-body .biography-details h1{font-size:36px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:0;margin-bottom:30px}
+/* Legacy wrapped the photo in <center>. */
+.minister-bio-picture{text-align:center}
+
+/* The ministry page (pages/categories.ts renderMinistryPage): legacy Ministry.cshtml. The ministry
+ * name is the page's one h1 (legacy: h2.ministry-name-mobile, display:none above 768px): legacy's
+ * phone metrics, measured live; visually hidden, not display:none, on wider screens so the page
+ * keeps its h1 there. */
+.ministry-name-mobile{font-size:18px;font-weight:500;line-height:1.2;color:var(--color-text);margin:20px 0 8px}
+@media (min-width: 769px) {
+  .ministry-name-mobile{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+}
+/* A minister-of-state card (legacy MinisterOfState.cshtml: both names h3 at 18px): the ministry is
+ * the h2 above, the minister's name the card's first h3, which the Contact h3 rule above would shrink. */
+.ministry-listing .collapsible-regions .resource-links.minister>h3:first-of-type{font-size:18px}
+/* On a phone the h1 already names the ministry above the news; the column's title would repeat it. */
+@media (max-width: 768px) {
+  .ministry-name-mobile~.ministry-listing .home-features .ministry-title{display:none}
+}

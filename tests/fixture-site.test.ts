@@ -24,6 +24,42 @@ describe("the fixture site (6e exit checks)", () => {
     }
   });
 
+  it("the first release shows every release-page block: backgrounders, French, assets, translations, byline", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      const html = await readFile(join(dir, fileOf(FIXTURE_PAGES[1]!)), "utf8");
+      expect(FIXTURE_PAGES[1]).toMatch(/^\/releases\//);
+      expect(html.match(/class="backgrounder"/g)).toHaveLength(2);
+      expect(html).toContain('data-story-lang="secondary"');
+      expect(html).toContain('id="assets"');
+      expect(html).toContain('id="translations"');
+      expect(html).toContain('hreflang="zh-Hans"');
+      expect(html).toContain('class="story-lang primary byline"');
+      expect(html).toContain('<p class="story-ministry">');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("the ministry pages show the plan-2 blocks: minister card, Media Contacts, a minister of state; the Premier's Meet the Team", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      const health = await readFile(join(dir, "ministries/health/index.html"), "utf8");
+      expect(health).toContain('<h1 class="ministry-name-mobile">Health</h1>');
+      expect(health.match(/class="resource-links minister"/g)).toHaveLength(2);
+      expect(health).toContain("<h2>Media Contacts</h2>");
+      expect(health).toContain('<h2><a href="/ministries/trade/">Minister of State for Trade</a></h2>');
+      const premier = await readFile(join(dir, "ministries/office-of-the-premier/index.html"), "utf8");
+      expect(premier).toContain("<h2>Meet the Team</h2>");
+      expect(premier).toContain("<h2>More from the Premier</h2>");
+      expect(premier).toContain('<div class="top-article">');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("serves directory pages, files and a 404", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
     const server = await serveStatic(dir);

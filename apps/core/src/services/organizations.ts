@@ -108,6 +108,9 @@ export async function upsertOrganization(
       ...parsed,
       isHq: parsed.isHq ?? (existing ? existing.isHq : (opts.isHqOnCreate ?? false)),
       isPublic: parsed.isPublic ?? (existing ? existing.isPublic : (opts.isPublicOnCreate ?? true)),
+      // An omitted list keeps the stored one (the importer and seed never send it), so it is neither
+      // a change nor a reset; a new organization gets the column default.
+      teamLinks: parsed.teamLinks ?? existing?.teamLinks ?? [],
     };
     const abbreviation = data.abbreviation?.trim().toUpperCase() || null;
     if (opts.checkAbbreviation && data.isActive && abbreviation !== null) {
@@ -196,7 +199,7 @@ const mediaContactSchema = z
  */
 const bioHtmlSchema = z
   .string()
-  .max(100_000, "Keep the biography to 20,000 characters or fewer.")
+  .max(100_000, "This biography is too large to process (over 100,000 characters before cleaning). Paste it as plain text and format it in the editor.")
   .nullable()
   .transform((html, ctx) => {
     if (html === null) return null;

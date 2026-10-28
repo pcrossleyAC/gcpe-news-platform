@@ -17,8 +17,10 @@ const YOUTUBE_ID = /^[A-Za-z0-9_-]{6,20}$/;
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com"]);
 const LIVE = /^https:\/\/news\.gov\.bc\.ca\/live\/?$/;
 
-/** The vendored image a YouTube link shows instead of YouTube's own thumbnail. */
-export const YOUTUBE_PLACEHOLDER = "/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg";
+/** The vendored image a YouTube link shows instead of YouTube's own thumbnail: legacy's 1920×1080
+ * card image (`default-og-image-new.jpg`), large enough for the story column at phone pixel
+ * densities (the 300px square it replaced was upscaled; Lighthouse image-size-responsive). */
+export const YOUTUBE_PLACEHOLDER = "/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
 
 function youtubeId(url: string): string | null {
   let u: URL;
@@ -45,16 +47,25 @@ export function leadMedia(url: string | null | undefined): LeadMedia | null {
   return null;
 }
 
-/** One lead media block. `base` is the site's base path ("" or "/site"); `alt` is the image's alt
+/** What names a Flickr photo link whose image has no alt text, when the caller gives nothing better. */
+export const FLICKR_LINK_NAME = "Photo on Flickr";
+
+/** One lead media block. `lazy` defers its image's load (body embeds; a lead stays eager, as it
+ * is likely the page's largest paint). `base` is the site's base path ("" or "/site"); `alt` is the image's alt
  * text (the headline for a lead), escaped here. With an empty `alt` a YouTube link carries no
- * visually-hidden suffix. */
-export function renderMedia(m: LeadMedia, base: string, alt: string): string {
+ * visually-hidden suffix, and a Flickr photo link — whose only content is the image — is named by
+ * visually hidden `name` instead, so it is never a nameless link (WCAG 2.4.4, 4.1.2). */
+export function renderMedia(m: LeadMedia, base: string, alt: string, name = FLICKR_LINK_NAME, lazy = false): string {
   switch (m.kind) {
-    case "image":
-      return `<div class="asset flickr"><a href="${e(m.href)}"><img src="${e(m.src)}" alt="${e(alt)}"></a></div>`;
+    case "image": {
+      const label = alt ? "" : `<span class="visually-hidden">${e(name.trim() || FLICKR_LINK_NAME)}</span>`;
+      // A 3:2 size hint (Flickr's usual landscape; CSS keeps height:auto, so a portrait photo still
+      // shows at its own ratio) reserves the box before the photo loads.
+      return `<div class="asset flickr"><a href="${e(m.href)}"><img src="${e(m.src)}" alt="${e(alt)}" width="1024" height="683"${lazy ? ' loading="lazy"' : ""}>${label}</a></div>`;
+    }
     case "youtube": {
       const suffix = alt ? `<span class="visually-hidden">: ${e(alt)}</span>` : "";
-      return `<div class="asset youtube"><a href="${e(m.href)}"><img src="${e(base)}${YOUTUBE_PLACEHOLDER}" alt=""><span>Watch on YouTube</span>${suffix}</a></div>`;
+      return `<div class="asset youtube"><a href="${e(m.href)}"><img src="${e(base)}${YOUTUBE_PLACEHOLDER}" alt="" width="1920" height="1080"${lazy ? ' loading="lazy"' : ""}><span>Watch on YouTube</span>${suffix}</a></div>`;
     }
     case "live":
       return `<p><a href="${e(m.href)}">Watch the live webcast</a></p>`;
@@ -77,16 +88,19 @@ function decodeEntities(s: string): string {
 
 /**
  * Replaces each `<asset>URL</asset>` in a release body (legacy `AssetHelper`'s body embeds) with
- * what {@link renderMedia} renders for it (alt ""), a plain link for any other absolute http(s) URL
+ * what {@link renderMedia} renders for it (alt "", the photo link named by `photoName`, lazy), a plain link for any other absolute http(s) URL
  * (SoundCloud included — no player), or nothing for an unparseable or unsafe one. The URL is
  * entity-decoded first and checked with `isSafeUrl` after decoding. Runs before
- * `sanitizeBodyHtml`, which keeps the classes these blocks carry.
+ * `sanitizeBodyHtml`, which keeps the classes these blocks carry only where they carry
+ * `data-embed="<embedMark>"` — stamped here on every classed element of the embed, so a class
+ * staff typed into the body never survives.
  */
-export function renderBodyAssets(html: string, base: string): string {
+export function renderBodyAssets(html: string, base: string, photoName = FLICKR_LINK_NAME, embedMark?: string): string {
+  const stamp = (markup: string) => (embedMark === undefined ? markup : markup.replace(/ class="/g, ` data-embed="${e(embedMark)}" class="`));
   return html.replace(/<asset>([\s\S]*?)<\/asset>/gi, (_whole, raw: string) => {
     const url = decodeEntities(raw).trim();
     const media = leadMedia(url);
-    if (media) return renderMedia(media, base, "");
+    if (media) return stamp(renderMedia(media, base, "", photoName, true));
     if (isSafeUrl(url, { relative: false, schemes: ["http:", "https:"] })) return `<p><a href="${e(url)}">${e(url)}</a></p>`;
     return "";
   });

@@ -16,9 +16,23 @@ describe("post index", () => {
   beforeEach(async () => { await tdb.pool.query("TRUNCATE site_posts"); });
 
   it("indexEntryOf takes the English headline, the BC month and category tokens", () => {
-    expect(indexEntryOf("K1", dto({}))).toEqual({ key: "K1", kind: "releases", headline: "Clinics open", summary: "S", publishDate: "2026-10-03T10:00:00-07:00", month: "2026-10", categories: ["ministries:health", "tags:covid-19"] });
+    expect(indexEntryOf("K1", dto({}))).toEqual({ key: "K1", kind: "releases", headline: "Clinics open", summary: "S", publishDate: "2026-10-03T10:00:00-07:00", month: "2026-10", categories: ["ministries:health", "tags:covid-19"], leadMinistry: "health" });
     expect(indexEntryOf("K1", dto({ documents: [] }))!.headline).toBe("K1");
     expect(indexEntryOf("K1", dto({ publishDate: "x" }))).toBeNull();
+  });
+
+  it("indexes the lead ministry (leadMinistryKey, else the first ministry), lower-cased, and finds posts by it", async () => {
+    const idx = postIndex(tdb.db);
+    await idx.put(indexEntryOf("K1", dto({ leadMinistryKey: "Health", ministryKeys: ["Finance"] }))!);
+    await idx.put(indexEntryOf("K2", dto({ key: "K2", ministryKeys: ["Health", "Finance"] }))!);
+    await idx.put(indexEntryOf("K3", dto({ key: "K3", ministryKeys: ["Finance", "Health"] }))!);
+    await idx.put(indexEntryOf("K4", dto({ key: "K4", ministryKeys: [] }))!);
+    expect(await idx.withLeadMinistry("HEALTH")).toEqual(["K1", "K2"]);
+    expect(await idx.withLeadMinistry("finance")).toEqual(["K3"]);
+    expect((await idx.get("K4"))!.leadMinistry).toBeNull();
+    // A row from before the column (no leadMinistry) is null, never matched.
+    await idx.put({ key: "K5", kind: "releases", headline: "H", summary: null, publishDate: "2026-10-03T10:00:00-07:00", month: "2026-10", categories: ["ministries:health"] });
+    expect(await idx.withLeadMinistry("health")).toEqual(["K1", "K2"]);
   });
 
   it("put, get, replace and remove", async () => {

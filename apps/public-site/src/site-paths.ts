@@ -89,7 +89,9 @@ export function pageFiles(p: PageId): string[] {
     case "home": return ["index.html", "feed.xml"];
     case "post": return [postPath(p.key)];
     case "ministries": return ["ministries/index.html"];
-    case "category": return [`${p.kind}/${p.key}/index.html`, `${p.kind}/${p.key}/feed.xml`];
+    // A ministry's third file is its minister's biography page (H2): written only while the
+    // minister has a bio, and removed with the rest when the ministry goes.
+    case "category": return [`${p.kind}/${p.key}/index.html`, `${p.kind}/${p.key}/feed.xml`, ...(p.kind === "ministries" ? [`${p.kind}/${p.key}/biography/index.html`] : [])];
     case "archive": return ["archive/index.html"];
     case "archive-month": return [`archive/${p.month.slice(0, 4)}/${p.month.slice(5)}/index.html`];
     case "search": return ["search/index.html"];
@@ -129,5 +131,8 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
 export function feedUrl(site: Pick<SiteInfo, "baseUrl">, p: { type: "home" } | { type: "category"; kind: CategoryKind; key: string }): string {
   return p.type === "home" ? `${basePath(site)}/feed.xml` : `${basePath(site)}/${p.kind}/${p.key}/feed.xml`;
 }
+
+/** A ministry's minister biography page (the third file of its category page). */
+export const biographyUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/biography/`;
 
 export const absoluteUrl = (site: Pick<SiteInfo, "baseUrl">, path: string) => new URL(site.baseUrl).origin + path;

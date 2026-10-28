@@ -31,6 +31,9 @@ export function sanitizeBioHtml(html: string): string {
       },
     },
     nonTextTags: ["script", "style", "textarea", "option", "noscript", "iframe", "object", "embed"],
+    // An <a> with no href left (none given, or refused above) is unwrapped to its contents: no
+    // hrefless <a> reaches a page (plan 2 P6). The public sanitizeBodyHtml does the same.
+    exclusiveFilter: (frame) => (frame.tag === "a" && !frame.attribs.href ? "excludeTag" : false),
     selfClosing: ["br"],
   });
   return cleaned.replace(EMPTY_PARAGRAPH, "").trim();

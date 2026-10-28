@@ -31,6 +31,14 @@
  * 9. "Load More News" (`button.load-more[aria-controls]`): reveals every `.hidden-article` in its
  *    target, removes itself and moves focus to the first revealed card's headline link.
  *
+ * 10. The release page's Print button (`button.print-document`, pages/release.ts) calls `window.print()`.
+ * 11. The release page's language buttons (`button[data-story-lang]`): "secondary" adds
+ *     `body.lang-secondary` (overrides.css shows the French `.story-lang.secondary` and hides the
+ *     English `.story-lang.primary`, the h1 among them) and makes `.story-headline` the level-1
+ *     heading (`role="heading" aria-level="1"`); "primary" undoes both. `<html lang>` stays "en"
+ *     (P2-R3): the French content carries its own `lang="fr"`. The pressed button's own line is
+ *     hidden by the switch, so focus moves to the button that switches back.
+ *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
  */
@@ -221,6 +229,29 @@ export const SITE_SCRIPT = String.raw`(() => {
       btn.remove();
       const link = shown.length ? shown[0].querySelector("h2 a") : null;
       if (link) link.focus();
+    });
+  });
+
+  Array.prototype.slice.call(doc.querySelectorAll("button.print-document")).forEach((btn) => {
+    btn.addEventListener("click", () => window.print());
+  });
+
+  const langButtons = Array.prototype.slice.call(doc.querySelectorAll("button[data-story-lang]"));
+  langButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const secondary = btn.getAttribute("data-story-lang") === "secondary";
+      doc.body.classList.toggle("lang-secondary", secondary);
+      Array.prototype.slice.call(doc.querySelectorAll(".story-headline")).forEach((h) => {
+        if (secondary) {
+          h.setAttribute("role", "heading");
+          h.setAttribute("aria-level", "1");
+        } else {
+          h.removeAttribute("role");
+          h.removeAttribute("aria-level");
+        }
+      });
+      const back = langButtons.filter((b) => b.getAttribute("data-story-lang") === (secondary ? "primary" : "secondary"))[0];
+      if (back) back.focus();
     });
   });
 

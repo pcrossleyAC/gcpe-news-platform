@@ -306,7 +306,7 @@ describe("OrganizationEditForm", () => {
       const sent = sentBody(calls) as { minister: { detailsHtml: string } };
       expect(Object.keys(sent)).toEqual(["minister"]);
       expect(Object.keys(sent.minister)).toEqual(["detailsHtml"]);
-      expect(sent.minister.detailsHtml).toMatch(/^<p>[xyz]{3}<\/p>$/);
+      expect(sent.minister.detailsHtml).toBe("<p>xyz</p>");
     });
 
     it("emptying the biography sends minister.detailsHtml: null", async () => {
@@ -341,6 +341,17 @@ describe("OrganizationEditForm", () => {
         minister: { ...HEALTH.minister, detailsHtml: "<p>a</p>\r\n<p>b <b>c</b></p>" },
       } as OrgRecord);
       expect(bio().innerHTML).toContain("<strong>c</strong>");
+      await user.type(screen.getByLabelText("Minister summary"), "Hi");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({ minister: { summary: "Hi" } });
+    });
+
+    it("a stored biography with no text (<p>&nbsp;</p>) is not sent as null on an unrelated save", async () => {
+      const { calls, user } = setup(false, undefined, {
+        ...HEALTH,
+        minister: { ...HEALTH.minister, detailsHtml: "<p>&nbsp;</p>" },
+      } as OrgRecord);
       await user.type(screen.getByLabelText("Minister summary"), "Hi");
       await user.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => expect(calls).toHaveLength(1));

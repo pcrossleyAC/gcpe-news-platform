@@ -4,7 +4,7 @@ import { sanitizeBodyHtml } from "../sanitize-body";
 import { leadMedia, renderBodyAssets, renderMedia } from "./media";
 
 const frag = (html: string) => JSDOM.fragment(html);
-const PLACEHOLDER = "/site/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg";
+const PLACEHOLDER = "/site/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
 
 describe("leadMedia", () => {
   it("leadMedia: live.staticflickr.com jpg → image with the bcgovphotos page; youtu.be/x and youtube.com/watch?v=x → youtube; news.gov.bc.ca/live → live; flickr.com page, javascript:, '' → null", () => {
@@ -53,12 +53,16 @@ describe("renderMedia", () => {
     for (const el of ytDoc.querySelectorAll("[src]")) expect(el.getAttribute("src")).not.toMatch(/youtube|ytimg/);
     expect(ytDoc.querySelector("img")?.getAttribute("src")).toBe(PLACEHOLDER);
     expect(ytDoc.querySelector("img")?.getAttribute("alt")).toBe("");
+    // Legacy's own 1920×1080 card image, sized so the box is reserved; a lead is eager.
+    expect([ytDoc.querySelector("img")?.getAttribute("width"), ytDoc.querySelector("img")?.getAttribute("height")]).toEqual(["1920", "1080"]);
+    expect(ytDoc.querySelector("img")?.hasAttribute("loading")).toBe(false);
     expect(ytDoc.querySelector("a")?.textContent).toBe('Watch on YouTube: A "quoted" <headline>');
     expect(ytDoc.querySelector("span.visually-hidden")?.textContent).toBe(': A "quoted" <headline>');
     expect(yt).not.toContain("<headline>");
 
     const img = renderMedia({ kind: "image", src: "https://live.staticflickr.com/65535/1_ab.jpg", href: "https://www.flickr.com/photos/bcgovphotos/1/" }, "/site", 'Tom & "Jerry" <b>');
-    expect(img).toBe('<div class="asset flickr"><a href="https://www.flickr.com/photos/bcgovphotos/1/"><img src="https://live.staticflickr.com/65535/1_ab.jpg" alt="Tom &amp; &quot;Jerry&quot; &lt;b&gt;"></a></div>');
+    // A lead photo is likely the page's largest paint: eager, with a 3:2 size hint (CSS keeps height:auto).
+    expect(img).toBe('<div class="asset flickr"><a href="https://www.flickr.com/photos/bcgovphotos/1/"><img src="https://live.staticflickr.com/65535/1_ab.jpg" alt="Tom &amp; &quot;Jerry&quot; &lt;b&gt;" width="1024" height="683"></a></div>');
   });
 
   it("live is a plain link to the webcast", () => {
@@ -71,6 +75,7 @@ describe("renderBodyAssets", () => {
     const yt = frag(renderBodyAssets("<p>Before</p><asset>https://www.youtube.com/watch?v=abcdef1&amp;t=2</asset><p>After</p>", "/site"));
     expect(yt.querySelector("div.asset.youtube > a")?.getAttribute("href")).toBe("https://www.youtube.com/watch?v=abcdef1");
     expect(yt.querySelector("div.asset.youtube img")?.getAttribute("src")).toBe(PLACEHOLDER);
+    expect(yt.querySelector("div.asset.youtube img")?.getAttribute("loading")).toBe("lazy");
     expect([...yt.querySelectorAll("p")].map((p) => p.textContent)).toEqual(["Before", "After"]);
     expect(yt.querySelector("asset")).toBeNull();
 
@@ -83,8 +88,16 @@ describe("renderBodyAssets", () => {
   it("a Flickr asset becomes the image embed with alt=''; the live URL the webcast link; several in one body; case and whitespace tolerated", () => {
     const html = renderBodyAssets("<ASSET> https://live.staticflickr.com/65535/42_ab.jpg </ASSET>\n<asset>https://news.gov.bc.ca/live</asset>", "");
     expect(html).toBe(
-      '<div class="asset flickr"><a href="https://www.flickr.com/photos/bcgovphotos/42/"><img src="https://live.staticflickr.com/65535/42_ab.jpg" alt=""></a></div>\n<p><a href="https://news.gov.bc.ca/live">Watch the live webcast</a></p>',
+      '<div class="asset flickr"><a href="https://www.flickr.com/photos/bcgovphotos/42/"><img src="https://live.staticflickr.com/65535/42_ab.jpg" alt="" width="1024" height="683" loading="lazy"><span class="visually-hidden">Photo on Flickr</span></a></div>\n<p><a href="https://news.gov.bc.ca/live">Watch the live webcast</a></p>',
     );
+  });
+
+  it("names a body Flickr link (its image's alt is empty) with visually hidden text: the caller's, escaped, else 'Photo on Flickr'", () => {
+    const named = frag(renderBodyAssets("<asset>https://live.staticflickr.com/65535/42_ab.jpg</asset>", "", "Photo: Tom & <Jerry>"));
+    expect(named.querySelector("a span.visually-hidden")?.textContent).toBe("Photo: Tom & <Jerry>");
+    expect(frag(renderBodyAssets("<asset>https://live.staticflickr.com/65535/42_ab.jpg</asset>", "", " ")).querySelector("a span.visually-hidden")?.textContent).toBe("Photo on Flickr");
+    // A lead with alt text needs no extra name.
+    expect(renderMedia({ kind: "image", src: "https://live.staticflickr.com/65535/1_ab.jpg", href: "https://www.flickr.com/photos/bcgovphotos/1/" }, "", "Alt")).not.toContain("visually-hidden");
   });
 
   it("removes an unparseable, relative, protocol-relative, data: or entity-smuggled javascript: URL, and an empty asset", () => {
@@ -100,9 +113,14 @@ describe("renderBodyAssets", () => {
     expect(frag(out).querySelector("a")?.getAttribute("href")).toBe('https://ok.example/?q="><script>');
   });
 
-  it("every embed survives sanitizeBodyHtml unchanged (bar its self-closing img style)", () => {
-    const body = renderBodyAssets("<p>x</p><asset>https://youtu.be/abcdef1</asset><asset>https://live.staticflickr.com/1/2_ab.jpg</asset><asset>https://soundcloud.com/a?b=1&amp;c=2</asset>", "/site");
-    expect(sanitizeBodyHtml(body).replace(/ \/>/g, ">")).toBe(body);
+  it("every embed survives sanitizeBodyHtml with its mark unchanged (bar its self-closing img style); without the mark its classes go", () => {
+    const input = "<p>x</p><asset>https://youtu.be/abcdef1</asset><asset>https://live.staticflickr.com/1/2_ab.jpg</asset><asset>https://soundcloud.com/a?b=1&amp;c=2</asset>";
+    const plain = renderBodyAssets(input, "/site");
+    const marked = renderBodyAssets(input, "/site", undefined, "m-1");
+    expect(marked).toBe(plain.replace(/ class="/g, ' data-embed="m-1" class="'));
+    expect(sanitizeBodyHtml(marked, { embedMark: "m-1" }).replace(/ \/>/g, ">")).toBe(plain);
+    expect(sanitizeBodyHtml(marked, { embedMark: "other" })).not.toContain("class=");
+    expect(sanitizeBodyHtml(marked)).not.toContain("class=");
   });
 
   it("leaves a body with no asset untouched", () => {
