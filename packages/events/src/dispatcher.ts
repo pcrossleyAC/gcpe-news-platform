@@ -65,20 +65,31 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
   // Phase 1: claim (short transaction, no network I/O while holding row locks).
   const sinceClaim = stopwatch();
   const now = sqlNow(opts.now);
+  // Order (NG-R16): rows that tie on next_attempt_at — every event one transaction wrote — are
+  // delivered in write order (created_at, then the aggregate's sequence), so a subscriber sees a
+  // multi-event aggregate change in sequence order and its receiver does not drop the earlier
+  // events as stale. An UPDATE … RETURNING has no defined row order, hence the outer ORDER BY.
   const claimed = await opts.db.execute<ClaimedRow>(sql`
-    UPDATE outbox_deliveries d
-       SET locked_until = ${now} + ${sqlInterval(lockMs)}
-      FROM outbox_events e
-     WHERE e.id = d.event_id
-       AND (d.event_id, d.subscriber) IN (
-             SELECT event_id, subscriber FROM outbox_deliveries
-              WHERE status = 'pending'
-                AND next_attempt_at <= ${now}
-                AND (locked_until IS NULL OR locked_until < ${now})
-              ORDER BY next_attempt_at
-              LIMIT ${opts.batchSize ?? DEFAULT_BATCH_SIZE}
-              FOR UPDATE SKIP LOCKED)
-    RETURNING d.event_id, d.subscriber, d.attempts, e.envelope, ${lockTokenOf(sql`d.locked_until`)} AS lock_token, ${ageMsOf(sql`e.created_at`, now)} AS age_ms`);
+    WITH claimed AS (
+      UPDATE outbox_deliveries d
+         SET locked_until = ${now} + ${sqlInterval(lockMs)}
+        FROM outbox_events e
+       WHERE e.id = d.event_id
+         AND (d.event_id, d.subscriber) IN (
+               SELECT od.event_id, od.subscriber
+                 FROM outbox_deliveries od
+                 JOIN outbox_events oe ON oe.id = od.event_id
+                WHERE od.status = 'pending'
+                  AND od.next_attempt_at <= ${now}
+                  AND (od.locked_until IS NULL OR od.locked_until < ${now})
+                ORDER BY od.next_attempt_at, oe.created_at, oe.sequence, od.event_id, od.subscriber
+                LIMIT ${opts.batchSize ?? DEFAULT_BATCH_SIZE}
+                FOR UPDATE OF od SKIP LOCKED)
+      RETURNING d.event_id, d.subscriber, d.attempts, d.next_attempt_at, e.created_at, e.sequence, e.envelope,
+                ${lockTokenOf(sql`d.locked_until`)} AS lock_token, ${ageMsOf(sql`e.created_at`, now)} AS age_ms)
+    SELECT event_id, subscriber, attempts, envelope, lock_token, age_ms
+      FROM claimed
+     ORDER BY next_attempt_at, created_at, sequence, event_id, subscriber`);
 
   const result = { delivered: 0, retried: 0, dead: 0 };
   for (const row of claimed.rows) {
