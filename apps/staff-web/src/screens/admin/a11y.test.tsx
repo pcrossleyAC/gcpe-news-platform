@@ -154,7 +154,7 @@ describe("accessibility — Users, Media list names and error log", () => {
       weekendContactNumber: null,
       social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null },
       topicLinks: [], serviceLinks: [], teamLinks: [{ text: "Cabinet Ministers", url: "cabinet" }],
-      sectorKeys: [], isHq: false, isPublic: true, updatedAt: "2026-10-02T16:46:05.527-07:00",
+      sectorKeys: [], isHq: false, isPublic: true, successorKeys: [], updatedAt: "2026-10-02T16:46:05.527-07:00",
     } as OrgRecord;
     const { container } = render(<OrganizationEditForm org={org} orgs={[org]} isAdmin={false} onSaved={() => {}} onCancel={() => {}} />);
     const user = userEvent.setup();
