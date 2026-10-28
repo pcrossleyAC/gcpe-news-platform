@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { blueBridgeBanner } from "./site-env";
 import { renderPage, safeHref, safeSrc } from "./render";
 import { expectAccessibleStructure } from "../test/structure";
 import { DEFAULT_THEME } from "./theme-css";
@@ -445,6 +446,13 @@ describe("renderPage site banner placeholder", () => {
       "BC_Mark_bridge.svg",
       "BCID_H_rgb_pos_LH_crop_bridge.svg",
     ]);
+  });
+
+  it("the Blue Bridge text is escaped in the page", () => {
+    const banner = blueBridgeBanner("true", new Date("2026-10-04T18:00:00Z"), false, { message: 'A & B "c" {age}', birthDate: "1948-11-14" });
+    const html = renderPage("T", site, "/site/", "<h1>H</h1>", { banner });
+    expect(html).toContain("A &amp; B &quot;c&quot; 77");
+    expect(html).not.toContain('A & B "c"');
   });
 
   it("no Blue Bridge: no #bridge-banner, no granville CSS, the standard logos", () => {

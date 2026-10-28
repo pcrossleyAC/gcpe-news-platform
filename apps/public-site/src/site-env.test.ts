@@ -59,7 +59,10 @@ describe("blueBridgeBanner", () => {
     expect(at("2026-10-04T18:00:00Z", DEFAULT_TEXT, true)?.startsWith("TEST — ALERT:")).toBe(true);
   });
 
-  it("an unparseable birth date leaves {age} out and logs once per process", () => {
+  it("an unparseable birth date leaves {age} out and logs once per process", async () => {
+    vi.resetModules();
+    const { blueBridgeBanner: fresh } = await import("./site-env");
+    const at = (iso: string, text: { message: string; birthDate: string }) => fresh("true", new Date(iso), false, text);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const bad = { message: "Aged {age}.", birthDate: "soon" };
     expect(at("2026-10-04T18:00:00Z", bad)).toBe("Aged .");
