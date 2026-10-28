@@ -313,6 +313,18 @@ describe("Core HTTP API", () => {
     it("400s a name with no letters or digits", async () => {
       expect((await create(admin, { displayName: "!!!" })).status).toBe(400);
     });
+
+    it("stores an optional abbreviation upper-case; a taken one is 409 abbreviation-taken naming its holder; a malformed one 400", async () => {
+      const res = await create(admin, { displayName: "Water Stewardship", abbreviation: "wls" });
+      expect(res.status).toBe(201);
+      expect(res.body.abbreviation).toBe("WLS");
+      const taken = await create(admin, { displayName: "Water Again", abbreviation: "WLS" });
+      expect(taken.status).toBe(409);
+      expect(taken.body).toEqual({ error: "abbreviation-taken", takenBy: "Water Stewardship" });
+      const bad = await create(admin, { displayName: "Water Third", abbreviation: "W" });
+      expect(bad.status).toBe(400);
+      expect(bad.body.issues[0].message).toBe("Use 2 to 10 capital letters or digits, e.g. HLTH.");
+    });
   });
 
   it("PUT 409s a staff-edited organization unless overwriteStaffEdits=true", async () => {
@@ -409,6 +421,49 @@ describe("Core HTTP API", () => {
       expect((await get("forests-bio2")).minister.detailsHtml).toBeTruthy();
       await patch(siteEditor, { minister: { detailsHtml: null } }, "forests-bio2").expect(200);
       expect((await get("forests-bio2")).minister.detailsHtml).toBeNull();
+    });
+
+    it("a SiteEditor sets the side-column links; topicLinks replace the list in order", async () => {
+      await seed("forests-links");
+      const topicLinks = [
+        { text: "Wildfire", url: "https://www2.gov.bc.ca/wildfire" },
+        { text: "Contact", url: "/contact" },
+      ];
+      const body = { url: "https://gov.bc.ca/forests", topicLinks, serviceLinks: [{ text: "Permits", url: "https://permits.gov.bc.ca" }], social: { flickrUrl: "https://flickr.com/x", youtubeUrl: "https://youtube.com/x" } };
+      const res = await patch(siteEditor, body, "forests-links");
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ ...body, social: { ...body.social, twitterUsername: healthOrg.social.twitterUsername, audioUrl: null } });
+      const reordered = await patch(siteEditor, { topicLinks: [topicLinks[1], topicLinks[0]] }, "forests-links");
+      expect(reordered.body.topicLinks).toEqual([topicLinks[1], topicLinks[0]]);
+    });
+
+    it("an http topic link is 400 invalid request with issues; 21 links is 400", async () => {
+      await seed("forests-badlinks");
+      const res = await patch(siteEditor, { topicLinks: [{ text: "x", url: "http://x.ca" }] }, "forests-badlinks");
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("invalid request");
+      expect(res.body.issues[0]).toMatchObject({ path: ["topicLinks", 0, "url"], message: "Must start with https:// or / (a page on this site)." });
+      const many = Array.from({ length: 21 }, (_, i) => ({ text: `L${i}`, url: `/p${i}` }));
+      expect((await patch(siteEditor, { serviceLinks: many }, "forests-badlinks")).status).toBe(400);
+    });
+
+    it("abbreviation: Core.Admin only; stored upper-case; malformed 400; another organization's 409 naming it", async () => {
+      await request(app).put("/api/organizations/abbr-a").set(auth(admin)).send({ ...healthOrg, key: "abbr-a", displayName: "Abbr A", abbreviation: "ABBRA" }).expect(200);
+      await request(app).put("/api/organizations/abbr-b").set(auth(admin)).send({ ...healthOrg, key: "abbr-b", displayName: "Abbr B", abbreviation: "ABBRB" }).expect(200);
+      expect((await patch(siteEditor, { abbreviation: "ABBRC" }, "abbr-b")).status).toBe(403);
+      expect((await get("abbr-b")).abbreviation).toBe("ABBRB");
+      const set = await patch(admin, { abbreviation: "abbrc" }, "abbr-b");
+      expect(set.status).toBe(200);
+      expect(set.body.abbreviation).toBe("ABBRC");
+      for (const bad of ["H", "HEALTH-1"]) {
+        const res = await patch(admin, { abbreviation: bad }, "abbr-b");
+        expect(res.status).toBe(400);
+        expect(res.body.issues[0].message).toBe("Use 2 to 10 capital letters or digits, e.g. HLTH.");
+      }
+      const taken = await patch(admin, { abbreviation: "abbra" }, "abbr-b");
+      expect(taken.status).toBe(409);
+      expect(taken.body).toEqual({ error: "abbreviation-taken", takenBy: "Abbr A" });
+      expect((await get("abbr-b")).abbreviation).toBe("ABBRC");
     });
 
     it("rejects a non-https photo URL and a bad email", async () => {

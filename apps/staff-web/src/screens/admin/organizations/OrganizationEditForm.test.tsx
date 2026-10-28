@@ -5,11 +5,13 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import {
+  ABBREVIATION_HINT,
   OrganizationEditForm,
   SAVED_MESSAGE,
   deactivateWarning,
@@ -371,6 +373,225 @@ describe("OrganizationEditForm", () => {
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
       minister: { name: "Honourable New Person" },
+    });
+  });
+
+  describe("ministry page links", () => {
+    const TOPIC_A = { text: "Wildfire", url: "https://www2.gov.bc.ca/wildfire" };
+    const TOPIC_B = { text: "Contact", url: "/contact" };
+    const SERVICE = { text: "Permits", url: "https://permits.gov.bc.ca" };
+    const LINKED = {
+      ...HEALTH,
+      url: "https://www2.gov.bc.ca/health",
+      social: {
+        ...HEALTH.social,
+        flickrUrl: "https://www.flickr.com/photos/bcgovphotos",
+      },
+      topicLinks: [TOPIC_A, TOPIC_B],
+      serviceLinks: [SERVICE],
+    } as OrgRecord;
+    const sent = (calls: { init?: RequestInit }[]) =>
+      JSON.parse(calls[0]!.init!.body as string) as Record<string, unknown>;
+    const topics = () => screen.getByRole("group", { name: "Featured Topics" });
+    const services = () =>
+      screen.getByRole("group", { name: "Featured Services" });
+
+    it("shows the current addresses and links in a Ministry page links group", () => {
+      setup(false, undefined, LINKED);
+      const group = screen.getByRole("group", { name: "Ministry page links" });
+      expect(within(group).getByLabelText("Ministry website")).toHaveValue(
+        "https://www2.gov.bc.ca/health",
+      );
+      expect(
+        within(group).getByLabelText("Photos (Flickr) address"),
+      ).toHaveValue("https://www.flickr.com/photos/bcgovphotos");
+      expect(
+        within(group).getByLabelText("Videos (YouTube) address"),
+      ).toHaveValue("");
+      const row2 = within(topics()).getByRole("group", { name: "Link 2" });
+      expect(within(row2).getByLabelText("Link text")).toHaveValue("Contact");
+      expect(within(row2).getByLabelText("Web address")).toHaveValue(
+        "/contact",
+      );
+      expect(
+        within(services()).getByRole("group", { name: "Link 1" }),
+      ).toBeInTheDocument();
+    });
+
+    it("sends only a changed address, and social addresses under social", async () => {
+      const { calls, user } = setup(false, undefined, LINKED);
+      await user.clear(screen.getByLabelText("Ministry website"));
+      await user.type(
+        screen.getByLabelText("Ministry website"),
+        "https://gov.bc.ca/health ",
+      );
+      await user.type(
+        screen.getByLabelText("Videos (YouTube) address"),
+        "https://youtube.com/bcgov",
+      );
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sent(calls)).toEqual({
+        url: "https://gov.bc.ca/health",
+        social: { youtubeUrl: "https://youtube.com/bcgov" },
+      });
+    });
+
+    it("reorder and remove send each changed list whole, and nothing else", async () => {
+      const { calls, user } = setup(false, undefined, LINKED);
+      await user.click(
+        within(topics()).getByRole("button", { name: "Move link 2 up" }),
+      );
+      await user.click(
+        within(services()).getByRole("button", { name: "Remove link 1" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sent(calls)).toEqual({
+        topicLinks: [TOPIC_B, TOPIC_A],
+        serviceLinks: [],
+      });
+    });
+
+    it("adds a link; a row left blank is dropped", async () => {
+      const { calls, user } = setup(false);
+      await user.click(
+        within(topics()).getByRole("button", { name: "+ Add a link" }),
+      );
+      const row = within(topics()).getByRole("group", { name: "Link 1" });
+      await user.type(within(row).getByLabelText("Link text"), "Vaccines");
+      await user.type(
+        within(row).getByLabelText("Web address"),
+        "https://immunizebc.ca",
+      );
+      await user.click(
+        within(topics()).getByRole("button", { name: "+ Add a link" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sent(calls)).toEqual({
+        topicLinks: [{ text: "Vaccines", url: "https://immunizebc.ca" }],
+      });
+    });
+
+    it("shows a server issue on its link row and on its address field", async () => {
+      const { onSaved, user } = setup(
+        false,
+        () =>
+          jsonResponse(400, {
+            error: "invalid request",
+            issues: [
+              {
+                code: "custom",
+                path: ["topicLinks", 1, "url"],
+                message: "Must start with https:// or / (a page on this site).",
+              },
+              {
+                code: "custom",
+                path: ["social", "flickrUrl"],
+                message: "Must start with https://.",
+              },
+            ],
+          }),
+        LINKED,
+      );
+      await user.click(
+        within(topics()).getByRole("button", { name: "Move link 2 up" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const row2 = within(topics()).getByRole("group", { name: "Link 2" });
+      expect(
+        await within(row2).findByText(
+          "Must start with https:// or / (a page on this site).",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Photos (Flickr) address")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      expect(
+        screen.getByLabelText("Photos (Flickr) address"),
+      ).toHaveAccessibleDescription("Must start with https://.");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Fix the problems shown below, then save.",
+      );
+      expect(onSaved).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("abbreviation", () => {
+    it("is shown only to Core.Admin, with its hint", () => {
+      setup(false);
+      expect(screen.queryByLabelText("Abbreviation")).toBeNull();
+      cleanup();
+      setup(true);
+      const field = screen.getByLabelText("Abbreviation");
+      expect(field).toHaveValue("HLTH");
+      expect(field).toHaveAccessibleDescription(ABBREVIATION_HINT);
+      expect(ABBREVIATION_HINT).toBe(
+        "Used in release numbers, e.g. 2026HLTH0001. Changing it affects only releases approved from now on.",
+      );
+    });
+
+    it("sends a changed abbreviation trimmed and upper-cased, and not an unchanged one", async () => {
+      const { calls, user } = setup(true);
+      const field = screen.getByLabelText("Abbreviation");
+      await user.clear(field);
+      await user.type(field, " hlth ");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByText("No changes to save.")).toBeInTheDocument();
+      await user.clear(field);
+      await user.type(field, "health1");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+        abbreviation: "HEALTH1",
+      });
+    });
+
+    it("a 409 names the ministry that already uses it, on the field", async () => {
+      const { onSaved, user } = setup(true, () =>
+        jsonResponse(409, { error: "abbreviation-taken", takenBy: "Finance" }),
+      );
+      const field = screen.getByLabelText("Abbreviation");
+      await user.clear(field);
+      await user.type(field, "FIN");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(field).toHaveAccessibleDescription(
+          expect.stringContaining(
+            "That abbreviation is already used by Finance.",
+          ),
+        ),
+      );
+      expect(field).toHaveAttribute("aria-invalid", "true");
+      expect(onSaved).not.toHaveBeenCalled();
+    });
+
+    it("a 400 shows the format message on the field", async () => {
+      const { user } = setup(true, () =>
+        jsonResponse(400, {
+          error: "invalid request",
+          issues: [
+            {
+              code: "invalid_string",
+              path: ["abbreviation"],
+              message: "Use 2 to 10 capital letters or digits, e.g. HLTH.",
+            },
+          ],
+        }),
+      );
+      const field = screen.getByLabelText("Abbreviation");
+      await user.clear(field);
+      await user.type(field, "H");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(field).toHaveAccessibleDescription(
+          expect.stringContaining(
+            "Use 2 to 10 capital letters or digits, e.g. HLTH.",
+          ),
+        ),
+      );
     });
   });
 });

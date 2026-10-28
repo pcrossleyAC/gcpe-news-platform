@@ -134,6 +134,63 @@ describe("AddOrganizationForm", () => {
     );
   });
 
+  describe("abbreviation", () => {
+    it("is an optional field with its hint; blank is not sent", async () => {
+      const calls: { url: string; init?: RequestInit }[] = [];
+      stub(() => jsonResponse(201, { key: "mining" }), calls);
+      render(<AddOrganizationForm onCreated={() => {}} onCancel={() => {}} />);
+      expect(screen.getByLabelText("Abbreviation")).toHaveAccessibleDescription(
+        "Used in release numbers, e.g. 2026HLTH0001. Changing it affects only releases approved from now on.",
+      );
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(/Ministry name/), "Mining");
+      await user.click(screen.getByRole("button", { name: "Create ministry" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+        displayName: "Mining",
+      });
+    });
+
+    it("sends it trimmed and upper-cased", async () => {
+      const calls: { url: string; init?: RequestInit }[] = [];
+      stub(() => jsonResponse(201, { key: "mining" }), calls);
+      render(<AddOrganizationForm onCreated={() => {}} onCancel={() => {}} />);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(/Ministry name/), "Mining");
+      await user.type(screen.getByLabelText("Abbreviation"), " mcm ");
+      await user.click(screen.getByRole("button", { name: "Create ministry" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+        displayName: "Mining",
+        abbreviation: "MCM",
+      });
+    });
+
+    it("a 409 abbreviation-taken names the ministry that uses it, on the field", async () => {
+      stub(
+        () =>
+          jsonResponse(409, { error: "abbreviation-taken", takenBy: "Health" }),
+        [],
+      );
+      const onCreated = vi.fn();
+      render(<AddOrganizationForm onCreated={onCreated} onCancel={() => {}} />);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(/Ministry name/), "Mining");
+      await user.type(screen.getByLabelText("Abbreviation"), "HLTH");
+      await user.click(screen.getByRole("button", { name: "Create ministry" }));
+      const field = screen.getByLabelText("Abbreviation");
+      await waitFor(() =>
+        expect(field).toHaveAccessibleDescription(
+          expect.stringContaining(
+            "That abbreviation is already used by Health.",
+          ),
+        ),
+      );
+      expect(field).toHaveAttribute("aria-invalid", "true");
+      expect(onCreated).not.toHaveBeenCalled();
+    });
+  });
+
   it("will not submit a name that has no letters or digits", async () => {
     render(<AddOrganizationForm onCreated={() => {}} onCancel={() => {}} />);
     await userEvent.setup().type(screen.getByLabelText(/Ministry name/), "!!!");

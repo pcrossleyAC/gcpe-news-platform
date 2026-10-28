@@ -4,7 +4,7 @@ import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { EventTooLargeError, orgKeyFromName, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
-import { ADMIN_ONLY_PROFILE_FIELDS, createOrganization, deactivateOrganization, orgCreateSchema, getOrganization, listOrganizations, orgInputSchema, orgProfilePatchSchema, patchOrganizationProfile, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
+import { ADMIN_ONLY_PROFILE_FIELDS, AbbreviationTakenError, createOrganization, deactivateOrganization, orgCreateSchema, getOrganization, listOrganizations, orgInputSchema, orgProfilePatchSchema, patchOrganizationProfile, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
@@ -22,6 +22,7 @@ function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | nu
 
 function handleError(res: Response, e: unknown) {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
+  if (e instanceof AbbreviationTakenError) return void res.status(409).json({ error: "abbreviation-taken", takenBy: e.takenBy });
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: "record too large to publish" });
   // Only the label: a failed query's message carries its bound parameters, which can be an email.
   console.error("[core] request failed", safeErrorLabel(e));

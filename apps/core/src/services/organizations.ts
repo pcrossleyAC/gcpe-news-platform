@@ -1,7 +1,8 @@
-import { asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { Db } from "@gcpe/db-kit";
+import type { Db, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, orgKeyFromName, orgRecordSchema, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
+import { isSafeUrl } from "@gcpe/site-settings";
 import { organizations } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, orgAggregateId } from "./aggregate";
 
@@ -120,6 +121,57 @@ const trimmedOrNull = z
   .nullable()
   .transform((v) => (v === null ? null : v.trim() || null));
 
+/** An absolute https address with a host (the ministry website, Flickr and YouTube addresses); blank clears it. */
+const httpsUrlOrNull = trimmedOrNull.pipe(
+  z
+    .string()
+    .refine((u) => isSafeUrl(u) && !u.startsWith("/"), "Must start with https://.")
+    .nullable(),
+);
+
+/** A side-column link (Featured Topics / Featured Services): the site-settings safe-URL rule and messages. */
+const sideLinkSchema = z
+  .object({
+    text: z.string().trim().min(1, "Enter the link text."),
+    url: z.string().trim().refine(isSafeUrl, "Must start with https:// or / (a page on this site)."),
+  })
+  .strict();
+
+export const MAX_SIDE_LINKS = 20;
+const sideLinksSchema = z.array(sideLinkSchema).max(MAX_SIDE_LINKS, `Use ${MAX_SIDE_LINKS} links or fewer.`);
+
+/** The NRMS release-number prefix (e.g. 2026HLTH0001): trimmed, upper-cased, 2 to 10 capital letters or digits. */
+export const abbreviationSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9]{2,10}$/, "Use 2 to 10 capital letters or digits, e.g. HLTH.");
+
+/** Another organization already uses this abbreviation (compared case-insensitively). The route answers 409. */
+export class AbbreviationTakenError extends Error {
+  constructor(readonly takenBy: string) {
+    super("abbreviation taken");
+    this.name = "AbbreviationTakenError";
+  }
+}
+
+/**
+ * Refuses an abbreviation another organization holds. There is no unique index: the legacy importer
+ * and seed write abbreviations as news.gov has them, so existing data may already repeat one. Instead,
+ * every Hub write of an abbreviation takes one shared lock first, so two concurrent claims serialise
+ * and the second sees the first. Callers hold their own org lock already (always taken before this one).
+ */
+async function assertAbbreviationFree(tx: Tx, abbreviation: string, key: string): Promise<void> {
+  await lockAggregate(tx, "org-abbreviations");
+  const [other] = await tx
+    .select({ displayName: organizations.displayName })
+    .from(organizations)
+    .where(and(sql`upper(trim(${organizations.abbreviation})) = ${abbreviation}`, ne(organizations.key, key)))
+    .orderBy(asc(organizations.sortOrder), asc(organizations.key))
+    .limit(1);
+  if (other) throw new AbbreviationTakenError(other.displayName);
+}
+
 /** What the Hub's organization form may change. Everything else on the record survives a save untouched. */
 export const orgProfilePatchSchema = z
   .object({
@@ -144,18 +196,25 @@ export const orgProfilePatchSchema = z
       .strict(),
     parentKey: trimmedOrNull,
     isActive: z.boolean(),
+    abbreviation: abbreviationSchema,
+    /** The ministry page's side column (More from this Ministry, Featured Topics, Featured Services). */
+    url: httpsUrlOrNull,
+    topicLinks: sideLinksSchema,
+    serviceLinks: sideLinksSchema,
+    social: z.object({ flickrUrl: httpsUrlOrNull, youtubeUrl: httpsUrlOrNull }).partial().strict(),
   })
   .partial()
   .strict();
 export type OrgProfilePatch = z.infer<typeof orgProfilePatchSchema>;
 
 /** Profile fields only Core.Admin may change. isHq and isPublic are not in the schema at all; the route rejects them first. */
-export const ADMIN_ONLY_PROFILE_FIELDS = ["parentKey", "isActive"] as const;
+export const ADMIN_ONLY_PROFILE_FIELDS = ["parentKey", "isActive", "abbreviation"] as const;
 
 /**
- * Staff edit of the form fields. Merges `minister` field by field onto the stored minister, reuses the
+ * Staff edit of the form fields. Merges `minister` and `social` field by field onto the stored ones
+ * (lists are replaced whole), refuses an abbreviation another organization holds, reuses the
  * upsert path (so org.upserted fires only on a real change) and stamps staffEditedAt when it writes.
- * Returns null when the key does not exist.
+ * Returns null when the key does not exist; throws AbbreviationTakenError.
  */
 export async function patchOrganizationProfile(
   db: Db,
@@ -169,8 +228,11 @@ export async function patchOrganizationProfile(
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
     if (!existing) return null;
     const { updatedAt: _u, isHq: _h, isPublic: _p, ...current } = toOrgRecord(existing);
-    const { minister, ...rest } = parsed;
-    const merged: OrgInput = { ...current, ...rest, minister: { ...current.minister, ...minister } };
+    const { minister, social, ...rest } = parsed;
+    if (rest.abbreviation !== undefined && rest.abbreviation !== current.abbreviation?.trim().toUpperCase()) {
+      await assertAbbreviationFree(tx, rest.abbreviation, key);
+    }
+    const merged: OrgInput = { ...current, ...rest, minister: { ...current.minister, ...minister }, social: { ...current.social, ...social } };
     // tx is a Db-compatible handle; upsertOrganization opens a nested transaction (savepoint) on it and re-takes the same lock.
     return (await upsertOrganization(tx as unknown as Db, merged, subscribers, { staffEdit: true })).record;
   });
@@ -182,6 +244,7 @@ export const orgCreateSchema = z
     sortOrder: z.number().int().optional(),
     parentKey: trimmedOrNull.optional(),
     minister: orgProfilePatchSchema.shape.minister.optional(),
+    abbreviation: abbreviationSchema.optional(),
   })
   .strict();
 export type OrgCreate = z.infer<typeof orgCreateSchema>;
@@ -189,18 +252,21 @@ export type OrgCreate = z.infer<typeof orgCreateSchema>;
 /**
  * Creates an organization whose key is derived from its name. New ministries are public, active, not HQ,
  * and staff-edited (so the seed and importer leave them alone). Returns `{ conflict: key }` when the key
- * already exists (active or not) and throws when the name yields no key.
+ * already exists (active or not), throws when the name yields no key, and throws AbbreviationTakenError
+ * when another organization holds the abbreviation.
  */
 export async function createOrganization(
   db: Db,
-  input: { displayName: string; sortOrder?: number; parentKey?: string | null; minister?: Partial<OrgRecord["minister"]> },
+  input: { displayName: string; sortOrder?: number; parentKey?: string | null; minister?: Partial<OrgRecord["minister"]>; abbreviation?: string },
   subscribers: SubscriberConfig[],
 ): Promise<{ record: OrgRecord } | { conflict: string }> {
   const displayName = input.displayName.trim();
   const key = orgKeyFromName(displayName);
   if (!key) throw new Error("displayName must contain a letter or digit");
+  const abbreviation = input.abbreviation === undefined ? null : abbreviationSchema.parse(input.abbreviation);
   return db.transaction(async (tx) => {
     await lockAggregate(tx, orgAggregateId(key));
+    if (abbreviation !== null) await assertAbbreviationFree(tx, abbreviation, key);
     const sortOrder = input.sortOrder ?? ((await tx.select({ m: max(organizations.sortOrder) }).from(organizations))[0]?.m ?? 0) + 10;
     const now = new Date();
     const [row] = await tx
@@ -208,7 +274,7 @@ export async function createOrganization(
       .values({
         key,
         displayName,
-        abbreviation: null,
+        abbreviation,
         sortOrder,
         isActive: true,
         parentKey: input.parentKey ?? null,

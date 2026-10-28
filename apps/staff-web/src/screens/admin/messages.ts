@@ -11,3 +11,18 @@ export function messagesOf(caught: unknown): string[] {
   }
   return ["Something went wrong."];
 }
+
+/** A 400's zod issues as `{field, message}`, the field path written like site settings' —
+ * `["topicLinks", 1, "url"]` ⇒ `topicLinks[1].url`, `["social", "flickrUrl"]` ⇒ `social.flickrUrl`
+ * — so a form can put each message beside its field. Empty for anything else. */
+export function fieldErrorsOf(caught: unknown): { field: string; message: string }[] {
+  if (!(caught instanceof ApiError) || !caught.issues?.length) return [];
+  return caught.issues.map((issue) => {
+    const { path = [], message = "Invalid request." } = issue as { path?: (string | number)[]; message?: string };
+    const field = path.map((p, i) => (typeof p === "number" ? `[${p}]` : i === 0 ? p : `.${p}`)).join("");
+    return { field, message };
+  });
+}
+
+/** The alert a form shows when it has put the server's messages beside their fields. */
+export const FIX_BELOW = "Fix the problems shown below, then save.";
