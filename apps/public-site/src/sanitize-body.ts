@@ -43,7 +43,7 @@ export function sanitizeBodyHtml(html: string): string {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
       a: ["href"],
-      img: ["src", "alt", "width", "height"],
+      img: ["src", "alt", "width", "height", { name: "loading", multiple: false, values: ["lazy"] }],
       th: ["colspan", "rowspan"],
       td: ["colspan", "rowspan"],
     },

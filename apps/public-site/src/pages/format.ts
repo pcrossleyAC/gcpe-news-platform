@@ -20,13 +20,16 @@ const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
  * `dddd, MMMM d, yyyy h:mm tt`) from the News API's BC-local ISO string. The wall clock is read
  * as written — the News API already converted it to America/Vancouver from the tz database — so
  * there is no time-zone maths and no hard-coded offset here. The weekday is the calendar date's,
- * via `Date.UTC`. A string without a date and time is returned as is.
+ * via `Date.UTC`. A string without a date and time, or with an impossible one, is returned as is.
  */
 export function displayDateTime(publishDate: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(publishDate);
   if (!m) return publishDate;
   const [y, mo, d, h, min] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), m[5]!];
-  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23) return publishDate;
+  // A real calendar day (day 0 of the next month is this month's last) and clock, so an impossible
+  // date never rolls over into another day's weekday.
+  const daysInMonth = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  if (mo < 1 || mo > 12 || d < 1 || d > daysInMonth || h > 23 || Number(min) > 59) return publishDate;
   const weekday = WEEKDAYS[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${weekday}, ${MONTHS[mo - 1]} ${d}, ${m[1]} ${hour12}:${min} ${h < 12 ? "AM" : "PM"}`;

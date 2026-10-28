@@ -138,7 +138,7 @@ export function renderMinistryPage(m: MinistryDto, minister: MinisterDto | null,
   const key = m.key.toLowerCase();
   const base = basePath(site);
   const settings = opts.settings ?? themeDefaults(site.theme);
-  const top = posts.top ? `<div class="top-article">\n${postCard(site, posts.top)}\n</div>\n` : "";
+  const top = posts.top ? `<div class="top-article">\n${postCard(site, posts.top, { eager: true })}\n</div>\n` : "";
   const feature = posts.feature ? `<div class="feature-article">\n${postCard(site, posts.feature)}\n</div>\n` : "";
   const cards = posts.latest.map((p, i) => postCard(site, p, { hidden: i >= VISIBLE_LATEST }));
   const loadMore = posts.latest.length > VISIBLE_LATEST ? `<button type="button" class="load-more link-button" aria-controls="regular-articles">Load More News</button>\n` : "";

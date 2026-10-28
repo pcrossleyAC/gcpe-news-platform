@@ -138,7 +138,7 @@ export function renderHomePage(view: HomeView, site: SiteInfo, opts: PageOptions
   const emergency = emergencySlides.length
     ? `<section aria-labelledby="emergency-heading">\n<h2 id="emergency-heading">Emergency information</h2>\n${emergencySlides.map((s, i) => emergencyCard(s, base, i, emergencySlides.length)).join("\n")}\n</section>\n`
     : "";
-  const top = view.top ? `<div class="top-article">\n${postCard(site, view.top)}\n</div>\n` : "";
+  const top = view.top ? `<div class="top-article">\n${postCard(site, view.top, { eager: true })}\n</div>\n` : "";
   const feature = view.feature ? `<div class="feature-article">\n${postCard(site, view.feature)}\n</div>\n` : "";
   const cards = view.latest.map((p, i) => postCard(site, p, { hidden: i >= VISIBLE_LATEST }));
   const loadMore = view.latest.length > VISIBLE_LATEST ? `<button type="button" class="load-more link-button" aria-controls="regular-articles">Load More News</button>\n` : "";

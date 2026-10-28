@@ -61,6 +61,9 @@ describe("postCard", () => {
     expect(a.querySelector("img")?.getAttribute("srcset")).toBe(`${stem}_n.jpg 320w, ${stem}_z.jpg 640w, ${stem}_b.jpg 1024w`);
     expect(a.querySelector("img")?.getAttribute("sizes")).toBe("(max-width: 1120px) 100vw, 222px");
     expect([a.querySelector("img")?.getAttribute("width"), a.querySelector("img")?.getAttribute("height")]).toEqual(["320", "213"]);
+    // Below the fold in a list: lazy. The top story's thumbnail (eager: true) may be the largest paint.
+    expect(a.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+    expect(card(postCard(site, post({ assetUrl: FLICKR }), { eager: true })).querySelector(".item-asset img")?.hasAttribute("loading")).toBe(false);
     // A URL with no size suffix (the 500px default) gets the same set.
     const plain = card(postCard(site, post({ assetUrl: `${stem}.jpg` })));
     expect(plain.querySelector(".item-asset img")?.getAttribute("src")).toBe(`${stem}_n.jpg`);
@@ -104,5 +107,26 @@ describe("postCard", () => {
   it("a multi-line summary is one paragraph per line, as legacy AsHtmlParagraphs", () => {
     const el = card(postCard(site, post({ summary: "One\nTwo" })));
     expect([...el.querySelectorAll(".item-text p")].map((p) => p.textContent)).toEqual(["One", "Two"]);
+  });
+
+  it("never yields a nameless link: every <a> has text, or is aria-hidden and out of the tab order", () => {
+    const variants = [
+      post(),
+      post({ assetUrl: FLICKR, hasMediaAssets: true, hasTranslations: true }),
+      post({ assetUrl: "https://youtu.be/abcdef1", summary: null }),
+      post({ assetUrl: "https://news.gov.bc.ca/live", summary: "a\nb" }),
+      post({ documents: [] }),
+    ];
+    for (const p of variants) {
+      for (const eager of [false, true]) {
+        const links = [...card(postCard(site, p, { eager })).querySelectorAll("a")];
+        expect(links.length).toBeGreaterThan(0);
+        for (const a of links) {
+          const named = (a.textContent ?? "").trim() !== "" || (a.getAttribute("aria-label") ?? "").trim() !== "";
+          const hidden = a.getAttribute("aria-hidden") === "true" && a.getAttribute("tabindex") === "-1";
+          expect(named || hidden, a.outerHTML).toBe(true);
+        }
+      }
+    }
   });
 });
