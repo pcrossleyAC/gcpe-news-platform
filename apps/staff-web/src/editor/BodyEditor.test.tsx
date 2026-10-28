@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BodyEditor } from "./BodyEditor";
 import { caretToEnd } from "../../test/editorCaret";
@@ -145,6 +145,7 @@ describe("BodyEditor", () => {
     await user.type(field, "hi");
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(onChange.mock.calls.at(-1)![0]).toContain("<em>hi</em>");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Italic" })).toHaveAttribute("aria-pressed", "true"));
   });
 
   it("with allowItalic, stored '<p>under the <i>FOIPP Act</i></p>' loads italic and an edit elsewhere keeps '<em>FOIPP Act</em>'", async () => {
@@ -169,6 +170,21 @@ describe("BodyEditor", () => {
     const { bodyExtensions } = await import("./schema");
     expect(bodyExtensions().some((e) => e.name === "italic")).toBe(false);
     expect(bodyExtensions(null, { italic: true }).some((e) => e.name === "italic")).toBe(true);
+  });
+
+  it.each([
+    ["Italic", "<p>a <em>b</em> c</p>"],
+    ["Bold", "<p>a <strong>b</strong> c</p>"],
+  ])("the %s toggle's aria-pressed follows the caret in and out of the formatting", async (name, html) => {
+    render(<BodyEditor id="body" label="Body" value={html} onChange={() => {}} readOnly={false} allowItalic />);
+    const field = await screen.findByLabelText("Body");
+    const editor = (field as unknown as { editor: { commands: { setTextSelection(p: number): void } } }).editor;
+    const button = screen.getByRole("button", { name });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    act(() => editor.commands.setTextSelection(4)); // inside "b" (doc: p@0, "a " = 1-2, b = 3-4)
+    await waitFor(() => expect(button).toHaveAttribute("aria-pressed", "true"));
+    act(() => editor.commands.setTextSelection(6)); // in " c"
+    await waitFor(() => expect(button).toHaveAttribute("aria-pressed", "false"));
   });
 
   it("allowAssets default: a pasted <asset> stays an asset embed", async () => {

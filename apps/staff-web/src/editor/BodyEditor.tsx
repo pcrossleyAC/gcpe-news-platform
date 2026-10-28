@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
+import { EditorContent, ReactNodeViewRenderer, useEditor, useEditorState } from "@tiptap/react";
 import { Button, ToggleButton } from "@bcgov/design-system-react-components";
 import { Asset, bodyExtensions } from "./schema";
 import { AssetChip } from "./AssetChip";
@@ -65,6 +65,19 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
     [],
   );
 
+  // The toolbar's pressed states follow the caret (WCAG 4.1.2): useEditor does not re-render on
+  // selection changes, so the active marks are subscribed to here.
+  const active = useEditorState({
+    editor,
+    selector: ({ editor: e }) => ({
+      bold: !!e?.isActive("bold"),
+      italic: !!e?.isActive("italic"),
+      bullet: !!e?.isActive("bulletList"),
+      ordered: !!e?.isActive("orderedList"),
+      link: !!e?.isActive("link"),
+    }),
+  });
+
   // Not a content change, so no update event: TipTap's default would call onChange on mount with
   // its own rewrite of `value` (<b> as <strong>, line breaks dropped), which reads as an edit.
   useEffect(() => {
@@ -106,21 +119,21 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
       </span>
       {!readOnly && editor && (
         <div className="gcpe-body-editor__toolbar" role="toolbar" aria-label={`${label} formatting`}>
-          <ToggleButton isSelected={editor.isActive("bold")} onChange={() => editor.chain().focus().toggleBold().run()}>
+          <ToggleButton isSelected={active.bold} onChange={() => editor.chain().focus().toggleBold().run()}>
             Bold
           </ToggleButton>
           {allowItalic && (
-            <ToggleButton isSelected={editor.isActive("italic")} onChange={() => editor.chain().focus().toggleItalic().run()}>
+            <ToggleButton isSelected={active.italic} onChange={() => editor.chain().focus().toggleItalic().run()}>
               Italic
             </ToggleButton>
           )}
-          <ToggleButton isSelected={editor.isActive("bulletList")} onChange={() => editor.chain().focus().toggleBulletList().run()}>
+          <ToggleButton isSelected={active.bullet} onChange={() => editor.chain().focus().toggleBulletList().run()}>
             Bulleted list
           </ToggleButton>
-          <ToggleButton isSelected={editor.isActive("orderedList")} onChange={() => editor.chain().focus().toggleOrderedList().run()}>
+          <ToggleButton isSelected={active.ordered} onChange={() => editor.chain().focus().toggleOrderedList().run()}>
             Numbered list
           </ToggleButton>
-          <ToggleButton isSelected={editor.isActive("link")} onChange={toggleLink}>
+          <ToggleButton isSelected={active.link} onChange={toggleLink}>
             Link
           </ToggleButton>
           {allowAssets && <Button onPress={insertAsset}>Insert asset</Button>}
