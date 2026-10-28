@@ -390,6 +390,28 @@ describe("apps/stack", () => {
     expect(res.headers.get("cache-control")).toBe("public, max-age=60");
   });
 
+  // R13: the stack compresses text itself (the Windows/IIS package has no dynamic compression).
+  it("compresses the site's text (br, Vary: Accept-Encoding, its public cache kept); no Accept-Encoding gets identity", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    const css = "body { color: #013366; }\n".repeat(400);
+    await fsStorage(instance.outputDir).write("assets/probe-compress.css", css);
+    const res = await fetch(`${instance.stackUrl}/assets/probe-compress.css`, { headers: { "accept-encoding": "br" } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-encoding")).toBe("br");
+    expect(res.headers.get("vary")).toMatch(/accept-encoding/i);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(await res.text()).toBe(css); // fetch decodes it
+    const { request: httpRequest } = await import("node:http");
+    const plain = await new Promise<{ encoding: string | undefined; body: string }>((resolve, reject) => {
+      httpRequest(`${instance.stackUrl}/assets/probe-compress.css`, (r) => {
+        const chunks: Buffer[] = [];
+        r.on("data", (c: Buffer) => chunks.push(c));
+        r.on("end", () => resolve({ encoding: r.headers["content-encoding"], body: Buffer.concat(chunks).toString("utf8") }));
+      }).on("error", reject).end();
+    });
+    expect(plain).toEqual({ encoding: undefined, body: css });
+  });
+
   // Fix round 1, P2-R30 M4: express.static's own directory redirect (no trailing slash) must
   // not be cacheable by the SiteGround proxy either.
   it("/site/<dir without trailing slash> redirects 301 with Cache-Control: no-store", async () => {

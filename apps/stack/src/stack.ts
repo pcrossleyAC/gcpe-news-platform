@@ -28,6 +28,7 @@ import { publicSiteEnvSchema } from "../../public-site/src/env";
 import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../public-site/src/start";
 
 import { noStoreByDefault } from "./cache-control";
+import { textCompression } from "./compress";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { checkCalendarDbTimeZone, pgOffsetOf, type DbTimeZoneStatus } from "./db-time-zone";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
@@ -346,6 +347,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", 1); // one hop: SiteGround's nginx
+  // R13: text responses are compressed here, ahead of every mount, so a host whose proxy doesn't
+  // compress (the Windows/IIS package) still serves compressed CSS, HTML and JSON (compress.ts).
+  app.use(textCompression());
 
   // startPublicSite(siteEnv) above already validated OUTPUT_DIR (its own schema requires a
   // non-empty string with no default) — if it were missing, that call would already have
