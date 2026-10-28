@@ -26,7 +26,7 @@ const CURRENT = term({});
 const SCHEDULED = term({ id: "33333333-3333-4333-8333-333333333333", slug: "2028-onward", startDate: "2028-11-20", status: "scheduled", releaseCount: 0 });
 const UNDATED = term({ id: "44444444-4444-4444-8444-444444444444", slug: "old-archive", label: "Old archive", startDate: null, endDate: null, status: "undated", releaseCount: 5 });
 
-let failures: Record<string, () => Response> = {};
+let failures: Record<string, () => Response | Promise<Response>> = {};
 
 function stub(roles: string[], calls: { url: string; init?: RequestInit }[], terms: GovernmentTermView[]) {
   vi.stubGlobal(
@@ -234,6 +234,22 @@ describe("GovernmentTermsScreen", () => {
     await screen.findByText("Couldn't load government terms. Try again, or ask a Hub administrator if this keeps happening.");
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
+  it("Try again shows it is busy until the retry answers", async () => {
+    stub(["Core.Admin"], [], [CURRENT]);
+    failures["GET /nrms/api/government-terms"] = () => jsonResponse(500, { error: "boom" });
+    renderScreen();
+    const user = userEvent.setup();
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    let answer!: (r: Response) => void;
+    failures["GET /nrms/api/government-terms"] = () => new Promise<Response>((resolve) => (answer = resolve));
+    await user.click(retry);
+    const busy = screen.getByRole("button", { name: "Trying again…" });
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
+    answer(jsonResponse(200, { today: "2026-10-27", terms: [CURRENT] } satisfies GovernmentTermList));
+    await screen.findByText("2024-onward");
+    expect(screen.queryByRole("button", { name: /Try again|Trying again/ })).toBeNull();
+  });
   it("does not offer Delete on a scheduled term that has releases", async () => {
     stub(["Core.Admin"], [], [CURRENT, { ...SCHEDULED, releaseCount: 2 }]);
     renderScreen();
@@ -291,9 +307,23 @@ describe("GovernmentTermsScreen", () => {
     await user.type(date, "2030-01-01");
     await user.click(within(form).getByRole("button", { name: "Save" }));
     const group = within(form).getByRole("group", { name: "Confirm the new start date" });
-    expect(group.textContent).toMatch(/Change the start date to January 1, 2030\? Releases published from that day will be listed under this term/);
+    expect(group.textContent).toMatch(/Change the start date to January 1, 2030\? Releases published from that day will be listed under this term, and the term before it will end the day before\./);
     expect(calls.some((c) => c.init?.method === "PATCH")).toBe(false);
     await user.click(within(group).getByRole("button", { name: "Confirm" }));
     expect((await within(group).findByRole("alert")).textContent).toBe("A term that has started can't be moved to a date after today.");
+  });
+  it("does not mention a term before it when the edited term is the first one", async () => {
+    stub(["Core.Admin"], [], [PAST, CURRENT]);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit Horgan era" }));
+    const form = screen.getByRole("form", { name: "Edit Horgan era" });
+    const date = within(form).getByLabelText(/Start date/);
+    await user.clear(date);
+    await user.type(date, "2017-07-01");
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    const group = within(form).getByRole("group", { name: "Confirm the new start date" });
+    expect(group.textContent).toMatch(/Change the start date to July 1, 2017\? Releases published from that day will be listed under this term\./);
+    expect(group.textContent).not.toMatch(/term before it/);
   });
 });

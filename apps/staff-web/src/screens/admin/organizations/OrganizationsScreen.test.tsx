@@ -854,8 +854,13 @@ describe("OrganizationsScreen", () => {
     expect(screen.getByRole("button", { name: "Set successor for Old Ministry" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Reactivate Old Ministry" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add ministry" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit Health" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit Old Ministry" })).toBeDisabled();
     release();
     expect(await screen.findByRole("status")).toHaveTextContent("Health is deactivated.");
     expect(screen.getByRole("button", { name: "Reactivate Old Ministry" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Add ministry" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Edit Old Ministry" })).toBeEnabled();
   });
 });

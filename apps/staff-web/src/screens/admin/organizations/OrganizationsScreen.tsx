@@ -249,6 +249,7 @@ export function OrganizationsScreen(): React.JSX.Element {
           <button
             type="button"
             ref={addButton}
+            disabled={panelBusy}
             onClick={() => {
               setStatus(null);
               setEditingKey(null);
@@ -393,6 +394,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                       else editButtons.current.delete(o.key);
                     }}
                     aria-label={`Edit ${o.displayName}`}
+                    disabled={panelBusy}
                     onClick={() => {
                       setStatus(null);
                       setEditingKey(o.key);

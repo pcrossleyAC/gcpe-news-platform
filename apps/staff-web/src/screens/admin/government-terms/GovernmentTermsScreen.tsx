@@ -40,6 +40,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
   const [today, setToday] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -56,18 +57,23 @@ export function GovernmentTermsScreen(): React.JSX.Element {
 
   const reload = useCallback(() => {
     const call = ++latest.current;
-    apiFetch<GovernmentTermList>("/nrms/api/government-terms").then(
-      (l) => {
-        if (call === latest.current) {
-          setTerms(l.terms);
-          setToday(l.today);
-          setLoadError(null);
-        }
-      },
-      () => {
-        if (call === latest.current) setLoadError("Couldn't load government terms. Try again, or ask a Hub administrator if this keeps happening.");
-      },
-    );
+    setLoading(true);
+    apiFetch<GovernmentTermList>("/nrms/api/government-terms")
+      .then(
+        (l) => {
+          if (call === latest.current) {
+            setTerms(l.terms);
+            setToday(l.today);
+            setLoadError(null);
+          }
+        },
+        () => {
+          if (call === latest.current) setLoadError("Couldn't load government terms. Try again, or ask a Hub administrator if this keeps happening.");
+        },
+      )
+      .finally(() => {
+        if (call === latest.current) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -133,8 +139,8 @@ export function GovernmentTermsScreen(): React.JSX.Element {
         <>
           <InlineAlert variant="danger" role="alert" description={loadError} />
           <p>
-            <button type="button" onClick={reload}>
-              Try again
+            <button type="button" onClick={reload} disabled={loading} aria-busy={loading}>
+              {loading ? "Trying again…" : "Try again"}
             </button>
           </p>
         </>
@@ -187,6 +193,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
         <TermEditForm
           key={editing.id}
           term={editing}
+          hasEarlier={editing.startDate !== null && (terms ?? []).some((t) => t.startDate !== null && t.startDate < editing.startDate!)}
           onCancel={() => {
             focusNext.current = { kind: "edit", id: editing.id };
             setEditingId(null);
@@ -308,10 +315,13 @@ export function GovernmentTermsScreen(): React.JSX.Element {
 /** Edits a term's name, start date and old-archive address; sends only what changed. */
 function TermEditForm({
   term,
+  hasEarlier,
   onSaved,
   onCancel,
 }: {
   term: GovernmentTermView;
+  /** Another dated term starts before this one (so moving this start also moves that term's end). */
+  hasEarlier: boolean;
   onSaved: () => void;
   onCancel: () => void;
 }): React.JSX.Element {
@@ -407,7 +417,7 @@ function TermEditForm({
       {confirmingMove && (
         <div role="group" tabIndex={-1} ref={confirmRef} aria-label="Confirm the new start date" aria-describedby={`${uid}-move`}>
           <p id={`${uid}-move`}>
-            {`Change the start date to ${formatLongDate(startDate)}? Releases published from that day will be listed under this term, and the term before it will end the day before.`}
+            {`Change the start date to ${formatLongDate(startDate)}? Releases published from that day will be listed under this term${hasEarlier ? ", and the term before it will end the day before" : ""}.`}
           </p>
           {messages.map((m) => (
             <p role="alert" key={m}>
