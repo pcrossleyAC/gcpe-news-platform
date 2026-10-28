@@ -38,6 +38,7 @@ export const FIXTURE_PAGES = [
   `/releases/${FIRST_KEY}/`,
   "/ministries/",
   "/ministries/health/",
+  "/ministries/health/biography/",
   "/sectors/economy/",
   "/themes/housing/",
   "/tags/covid-19/",
@@ -154,10 +155,31 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     home: async () => ({ granville: null, topPostKey: "2026HLTH0010-000010", featurePostKey: "2026HLTH0009-000009" }),
     slides: async () => slides,
     // Health has Flickr and YouTube links, so the release's related band shows Connect with the Ministry.
+    ministry: async (key) => (await newsApi.ministries()).find((m) => m.key === key.toLowerCase()) ?? null,
     ministries: async () => [
-      ministry({ key: "health", name: "Health", flickrUri: "https://www.flickr.com/photos/bcgovphotos/", youtubeUri: "https://www.youtube.com/user/ProvinceofBC" }),
+      ministry({
+        key: "health",
+        name: "Health",
+        flickrUri: "https://www.flickr.com/photos/bcgovphotos/",
+        youtubeUri: "https://www.youtube.com/user/ProvinceofBC",
+        topicLinks: [link({ uri: "https://www2.gov.bc.ca/gov/content/health", key: "Health care in B.C." })],
+        serviceLinks: [link({ uri: "https://www2.gov.bc.ca/gov/content/health/health-drug-coverage", key: "Health coverage" })],
+      }),
       ministry({ key: "finance", name: "Finance" }),
     ],
+    // Health's minister has a photo and a bio, so the biography page (H2) is built; the photo is the
+    // local slide image (no network in CI).
+    minister: async (key) =>
+      key.toLowerCase() === "health"
+        ? {
+            headline: "Hon. Alex Example",
+            summary: "Minister of Health.\nMLA for Victoria-Example.",
+            // Core's bio allow-list (BIO_TAGS): paragraphs, strong, lists and links, no headings.
+            details: "<p>Alex Example was elected MLA for Victoria-Example in 2020.</p><p>Before politics, Alex worked as a <strong>family physician</strong> for fifteen years.</p><ul><li>Minister of Health, 2024</li></ul>",
+            photo: image,
+          }
+        : null,
+    ministryProfiles: async () => [{ key: "health", ministerEmail: "HLTH.Minister@gov.bc.ca", teamLinks: [], childKeys: [] }],
     resourceLinks: async () => [link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,

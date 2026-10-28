@@ -8,6 +8,7 @@ import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./
 import { renderConnectPage } from "./pages/connect";
 import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
+import { hasBiography, renderBiographyPage } from "./pages/minister";
 import { renderReleasePage } from "./pages/release";
 import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
@@ -59,7 +60,13 @@ export interface SiteBuilder {
 export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null; searchApiBase?: string }): SiteBuilder {
   const { newsApi, storage, index, site } = deps;
   const ministries = (run: RunCache) => (run.ministries ??= newsApi.ministries());
-  const profiles = (run: RunCache) => (run.profiles ??= newsApi.ministryProfiles());
+  // Profiles (minister email, team links) only add to a ministry's pages: a failed fetch is logged
+  // once per run and read as none, never failing the render.
+  const profiles = (run: RunCache) =>
+    (run.profiles ??= newsApi.ministryProfiles().catch((err: unknown) => {
+      console.error(`[public-site] ministry profiles unavailable this run; minister emails are left out ${safeErrorLabel(err)}`);
+      return [];
+    }));
   const removeAll = async (p: PageId) => {
     for (const f of pageFiles(p)) await storage.remove(f);
   };
@@ -140,17 +147,22 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return dependentPages(before ? membershipOfEntry(before) : null, membershipOf(post));
   }
 
-  async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions): Promise<void> {
+  async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions, run: RunCache): Promise<void> {
     const p: PageId = { type: "category", kind, key };
-    const [page, feed] = pageFiles(p) as [string, string];
+    const [page, feed, bio] = pageFiles(p) as [string, string, string | undefined];
     const feedRef = { href: feedUrl(site, p), title: "" };
     if (kind === "ministries") {
       const m = await newsApi.ministry(key);
       if (!m) return removeAll(p);
-      const [minister, latest, f] = await Promise.all([newsApi.minister(key), newsApi.latest(kind, key, LATEST_COUNT), featured(m.topPostKey, m.featurePostKey)]);
+      const [minister, latest, f, all] = await Promise.all([newsApi.minister(key), newsApi.latest(kind, key, LATEST_COUNT), featured(m.topPostKey, m.featurePostKey), profiles(run)]);
+      const profile = all.find((x) => x.key.toLowerCase() === key) ?? null;
       feedRef.title = `${m.name}: latest news`;
       await storage.write(page, renderMinistryPage(m, minister, { ...f, latest }, site, { ...opts, feed: feedRef }));
       await storage.write(feed, renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `News from ${m.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
+      // The biography page (H2) exists only while the minister has a bio: one cleared in the Hub
+      // loses its page on this render instead of lingering.
+      if (minister && hasBiography(minister)) await storage.write(bio!, renderBiographyPage(m, minister, profile, site, opts));
+      else await storage.remove(bio!);
       return;
     }
     const c = await newsApi.category(kind, key);
@@ -200,7 +212,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           await storage.write(pageFiles(p)[0]!, renderMinistriesPage(await ministries(run), site, opts));
           return [];
         case "category":
-          await renderCategory(p.kind, p.key, opts);
+          await renderCategory(p.kind, p.key, opts, run);
           return [];
         case "archive":
           await storage.write(pageFiles(p)[0]!, renderArchiveIndex(await index.months(), site, opts));

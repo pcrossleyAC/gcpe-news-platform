@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { absoluteUrl, categoryPageId, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId } from "./site-paths";
+import { absoluteUrl, biographyUrl, categoryPageId, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId } from "./site-paths";
 
 const site = { name: "N", baseUrl: "https://boxs.example/site" };
 
@@ -47,6 +47,7 @@ describe("pageFiles", () => {
     ["post:K1", ["releases/K1/index.html"]],
     ["ministries", ["ministries/index.html"]],
     ["category:sectors:economy", ["sectors/economy/index.html", "sectors/economy/feed.xml"]],
+    ["category:ministries:health", ["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/biography/index.html"]],
     ["archive", ["archive/index.html"]],
     ["archive:2026-10", ["archive/2026/10/index.html"]],
     ["search", ["search/index.html"]],
@@ -57,6 +58,15 @@ describe("pageFiles", () => {
     ["connect", ["connect/index.html"]],
   ])("%s", (id, files) => {
     expect(pageFiles(parsePageId(id)!)).toEqual(files);
+  });
+});
+
+describe("pageFiles: the biography page (H2)", () => {
+  it("a ministries category page owns index.html, feed.xml and biography/index.html; a sector page still owns two files", () => {
+    expect(pageFiles({ type: "category", kind: "ministries", key: "health" })).toEqual(["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/biography/index.html"]);
+    expect(pageFiles({ type: "category", kind: "sectors", key: "economy" })).toHaveLength(2);
+    expect(biographyUrl(site, "Citizens-Services")).toBe("/site/ministries/citizens-services/biography/");
+    expect(biographyUrl({ baseUrl: "https://news.example" }, "health")).toBe("/ministries/health/biography/");
   });
 });
 

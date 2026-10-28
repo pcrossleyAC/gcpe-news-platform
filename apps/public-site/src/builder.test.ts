@@ -122,6 +122,51 @@ describe("site builder", () => {
     expect(storage.files.has("tags/gone/feed.xml")).toBe(false);
   });
 
+  it("writes ministries/<key>/biography/index.html when the minister has details; clearing details removes the file on the next render", async () => {
+    const { storage, api, builder } = setup(new Map());
+    const minister = { headline: "Hon. Alex Example", summary: "Minister of Health.", details: "<p>Alex was elected in 2020.</p>", photo: null };
+    api.minister = async (key) => (key.toLowerCase() === "health" ? minister : null);
+    api.ministryProfiles = async () => [{ key: "Health", ministerEmail: "hlth@gov.example", teamLinks: [], childKeys: [] }];
+    await builder.renderPage("category:ministries:health", {});
+    const bio = html(storage, "ministries/health/biography/index.html");
+    expect(bio).toContain("<h1>Hon. Alex Example</h1>");
+    expect(bio).toContain("Alex was elected in 2020.");
+    expect(bio).toContain('href="mailto:hlth@gov.example"');
+    // Cleared in the Hub: the stale bio page goes on the next render, the ministry page stays.
+    minister.details = null as unknown as string;
+    await builder.renderPage("category:ministries:health", {});
+    expect(storage.files.has("ministries/health/biography/index.html")).toBe(false);
+    expect(storage.files.has("ministries/health/index.html")).toBe(true);
+    // A ministry with no minister never gets one; a vanished ministry loses all three files.
+    await builder.renderPage("category:ministries:finance", {});
+    expect(storage.files.has("ministries/finance/biography/index.html")).toBe(false);
+    await storage.write("ministries/gone/biography/index.html", "x");
+    await builder.renderPage("category:ministries:gone", {});
+    expect(storage.files.has("ministries/gone/biography/index.html")).toBe(false);
+  });
+
+  it("profile fetch failure: renders the pages without the Contact email (profiles(run) failure is logged, not thrown)", async () => {
+    const { storage, api, builder } = setup(new Map());
+    api.minister = async () => ({ headline: "Hon. Alex Example", summary: null, details: "Bio text", photo: null });
+    api.ministryProfiles = async () => { throw Object.assign(new Error("secret detail"), { code: "ECONNREFUSED" }); };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await builder.rebuild(["category:ministries:health", "category:ministries:finance"], {});
+      expect(storage.files.has("ministries/health/index.html")).toBe(true);
+      const bio = html(storage, "ministries/health/biography/index.html");
+      expect(bio).toContain("<h1>Hon. Alex Example</h1>");
+      expect(bio).not.toContain("minister-email");
+      expect(bio).not.toContain("mailto:");
+      // Logged once for the run (the result is memoised), with the error's safe label.
+      const logged = error.mock.calls.map((c) => String(c[0])).filter((m) => m.includes("ministry profiles"));
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toContain("ECONNREFUSED");
+      expect(logged[0]).not.toContain("secret detail");
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("skips (and never writes for) an invalid page id", async () => {
     const { storage, builder } = setup(new Map());
     await builder.rebuild(["post:../../etc", "category:ministries:../x", "bogus"], {});
