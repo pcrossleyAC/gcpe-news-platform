@@ -1,14 +1,13 @@
 import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
-import { request as httpRequest, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
-import { ministrySuccessorRedirects, resolveMinistrySuccessor } from "./ministry-successors";
+import { resolveMinistrySuccessor } from "./ministry-successors";
 import { mountSite } from "./site-mount";
 
-describe("ministrySuccessorRedirects", () => {
+describe("resolveMinistrySuccessor (the successor table)", () => {
   let outputDir: string;
   const file = () => join(outputDir, "legacy", "ministry-successors.json");
   const writeTable = async (successors: Record<string, string>, mtime?: Date) => {
@@ -16,13 +15,7 @@ describe("ministrySuccessorRedirects", () => {
     await writeFile(file(), JSON.stringify({ successors }));
     if (mtime) await utimes(file(), mtime, mtime);
   };
-  const appFor = (basePath = "") => {
-    const app = express();
-    app.use(ministrySuccessorRedirects(outputDir, basePath));
-    app.use((req, res) => void res.status(404).json({ fellThrough: true, path: req.path }));
-    return app;
-  };
-  const get = (app: express.Express, path: string) => request(app).get(path).redirects(0);
+  const to = (key: string) => resolveMinistrySuccessor(outputDir, key);
 
   beforeEach(async () => {
     outputDir = await mkdtemp(join(tmpdir(), "gcpe-ministry-successors-"));
@@ -31,129 +24,55 @@ describe("ministrySuccessorRedirects", () => {
     await rm(outputDir, { recursive: true, force: true });
   });
 
-  it("/ministries/a/ → 301 /ministries/c/, no-store", async () => {
+  it("the table's target, case-insensitively, or null", async () => {
     await writeTable({ a: "c" });
-    const res = await get(appFor(), "/ministries/a/");
-    expect(res.status).toBe(301);
-    expect(res.headers.location).toBe("/ministries/c/");
-    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(await to("a")).toBe("c");
+    expect(await to("A")).toBe("c");
+    expect(await to("c")).toBeNull();
+    expect(await to("constructor")).toBeNull();
   });
 
-  it("keeps the rest of the path and the query, byte for byte", async () => {
-    await writeTable({ a: "c" });
-    expect((await get(appFor(), "/ministries/a/feed.xml?x=1")).headers.location).toBe("/ministries/c/feed.xml?x=1");
-    expect((await get(appFor(), "/ministries/a/feed.xml?t=a%2Bb&y")).headers.location).toBe("/ministries/c/feed.xml?t=a%2Bb&y");
-    expect((await get(appFor(), "/ministries/a?x=1")).headers.location).toBe("/ministries/c/?x=1");
-  });
-
-  it("/ministries/<old>/biography[/] → the successor's ministry page (its minister's bio may not exist), query kept", async () => {
-    await writeTable({ a: "c" });
-    expect((await get(appFor(), "/ministries/a/biography/")).headers.location).toBe("/ministries/c/");
-    expect((await get(appFor(), "/ministries/a/biography")).headers.location).toBe("/ministries/c/");
-    expect((await get(appFor(), "/ministries/A/Biography/?x=1")).headers.location).toBe("/ministries/c/?x=1");
-    // Anything beneath it, or a longer segment, keeps the general rule.
-    expect((await get(appFor(), "/ministries/a/biography/x")).headers.location).toBe("/ministries/c/biography/x");
-    expect((await get(appFor(), "/ministries/a/biographyx")).headers.location).toBe("/ministries/c/biographyx");
-  });
-
-  it("matches whole segments only, case-insensitively", async () => {
-    await writeTable({ a: "c" });
-    expect((await get(appFor(), "/ministries/ab/")).status).toBe(404);
-    expect((await get(appFor(), "/ministries/")).status).toBe(404);
-    expect((await get(appFor(), "/ministriesa/")).status).toBe(404);
-    expect((await get(appFor(), "/x/ministries/a/")).status).toBe(404);
-    const upper = await get(appFor(), "/ministries/A");
-    expect(upper.status).toBe(301);
-    expect(upper.headers.location).toBe("/ministries/c/");
-    expect((await get(appFor(), "/MINISTRIES/A/feed.xml")).headers.location).toBe("/ministries/c/feed.xml");
-  });
-
-  it("carries the mount's base path", async () => {
-    await writeTable({ a: "c" });
-    const app = express();
-    app.use("/site", ministrySuccessorRedirects(outputDir, "/site"));
-    expect((await get(app, "/site/ministries/a/feed.xml?x=1")).headers.location).toBe("/site/ministries/c/feed.xml?x=1");
-  });
-
-  it("never leaves the site", async () => {
-    await writeTable({ a: "c" });
-    for (const path of ["/ministries/a//evil.example/", "/ministries/a/%2F%2Fevil.example", "/ministries/a/\\evil.example"]) {
-      const loc = (await get(appFor(), path)).headers.location!;
-      expect(loc.startsWith("/ministries/c/"), `${path} → ${loc}`).toBe(true);
-    }
-    // An absolute-form request line still answers with a path, not the client's host.
-    const app = appFor();
-    const server = app.listen(0);
-    try {
-      const { port } = server.address() as { port: number };
-      const res = await new Promise<{ status: number; location: string | undefined }>((resolve, reject) => {
-        const req = httpRequest({ host: "127.0.0.1", port, path: "http://evil.example/ministries/a/x?q=1" }, (r: IncomingMessage) => {
-          r.resume();
-          resolve({ status: r.statusCode!, location: r.headers.location });
-        });
-        req.on("error", reject);
-        req.end();
-      });
-      expect(res).toEqual({ status: 301, location: "/ministries/c/x?q=1" });
-    } finally {
-      await new Promise<void>((r) => server.close(() => r()));
-    }
-  });
-
-  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("an unreadable file passes through and is logged once, not per request", async () => {
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("an unreadable file is an empty table, logged once, not per lookup", async () => {
     await writeTable({ a: "c" });
     await chmod(join(outputDir, "legacy"), 0o000);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      for (let i = 0; i < 3; i++) expect((await get(appFor(), "/ministries/a/")).status).toBe(404);
+      for (let i = 0; i < 3; i++) expect(await to("a")).toBeNull();
       expect(warn.mock.calls.filter(([m]) => String(m).includes("unreadable"))).toEqual([["[stack] ministry successors unreadable: EACCES"]]);
     } finally {
       warn.mockRestore();
       await chmod(join(outputDir, "legacy"), 0o755);
     }
-    expect((await get(appFor(), "/ministries/a/")).status).toBe(301);
+    expect(await to("a")).toBe("c");
   });
 
   it("a table entry that isn't two lowercased category keys is ignored", async () => {
     await writeTable({ a: "//evil.example", b: "c/../d", e: "e", F: "c", g: "c" });
-    for (const k of ["a", "b", "e", "f"]) expect((await get(appFor(), `/ministries/${k}/`)).status, k).toBe(404);
-    expect((await get(appFor(), "/ministries/g/")).headers.location).toBe("/ministries/c/");
+    for (const k of ["a", "b", "e", "f"]) expect(await to(k), k).toBeNull();
+    expect(await to("g")).toBe("c");
   });
 
-  it("GET and HEAD only", async () => {
-    await writeTable({ a: "c" });
-    expect((await request(appFor()).head("/ministries/a/").redirects(0)).status).toBe(301);
-    expect((await request(appFor()).post("/ministries/a/").redirects(0)).status).toBe(404);
-  });
-
-  it("a missing or malformed file passes through", async () => {
-    expect((await get(appFor(), "/ministries/a/")).status).toBe(404);
+  it("a missing or malformed file is an empty table", async () => {
+    expect(await to("a")).toBeNull();
     await mkdir(join(outputDir, "legacy"), { recursive: true });
     await writeFile(file(), "{not json");
-    expect((await get(appFor(), "/ministries/a/")).status).toBe(404);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await to("a")).toBeNull();
+    vi.restoreAllMocks();
   });
 
-  it("an updated file is picked up; a deleted one stops the redirects", async () => {
-    const app = appFor();
+  it("an updated file is picked up; a deleted one empties the table", async () => {
     await writeTable({ a: "c" }, new Date("2026-10-28T10:00:00Z"));
-    expect((await get(app, "/ministries/a/")).headers.location).toBe("/ministries/c/");
+    expect(await to("a")).toBe("c");
     await writeTable({ a: "d", b: "d" }, new Date("2026-10-28T10:00:05Z"));
-    expect((await get(app, "/ministries/a/")).headers.location).toBe("/ministries/d/");
-    expect((await get(app, "/ministries/b/")).headers.location).toBe("/ministries/d/");
+    expect(await to("a")).toBe("d");
+    expect(await to("b")).toBe("d");
     await rm(file());
-    expect((await get(app, "/ministries/a/")).status).toBe(404);
-  });
-
-  it("resolveMinistrySuccessor: the table's target, case-insensitively, or null", async () => {
-    await writeTable({ a: "c" });
-    expect(await resolveMinistrySuccessor(outputDir, "a")).toBe("c");
-    expect(await resolveMinistrySuccessor(outputDir, "A")).toBe("c");
-    expect(await resolveMinistrySuccessor(outputDir, "c")).toBeNull();
-    expect(await resolveMinistrySuccessor(outputDir, "constructor")).toBeNull();
+    expect(await to("a")).toBeNull();
   });
 });
 
-describe("mountSite with successor redirects", () => {
+describe("mountSite with successors", () => {
   let outputDir: string;
   beforeEach(async () => {
     outputDir = await mkdtemp(join(tmpdir(), "gcpe-site-mount-successors-"));
@@ -190,9 +109,13 @@ describe("mountSite with successor redirects", () => {
   it("base '': /ministries/a/ → /ministries/c/, and /site/ministries/a/ goes there in one hop", async () => {
     const app = appFor("");
     expect((await request(app).get("/ministries/a/").redirects(0)).headers.location).toBe("/ministries/c/");
-    const alias = await request(app).get("/site/ministries/a/feed.xml?x=1").redirects(0);
+    const alias = await request(app).get("/site/ministries/a/?x=1").redirects(0);
     expect(alias.status).toBe(301);
-    expect(alias.headers.location).toBe("/ministries/c/feed.xml?x=1");
+    expect(alias.headers.location).toBe("/ministries/c/?x=1");
+    // A feed is served in place from the successor's file (legacyUrls' feed rule), no hop.
+    await writeFile(join(outputDir, "ministries", "c", "feed.xml"), "<rss>c</rss>");
+    const feed = await request(app).get("/site/ministries/a/feed.xml?x=1").redirects(0);
+    expect({ status: feed.status, body: feed.text }).toEqual({ status: 200, body: "<rss>c</rss>" });
     // Anything else under /site still takes the plain alias redirect.
     expect((await request(app).get("/site/ministries/c/").redirects(0)).headers.location).toBe("/ministries/c/");
   });

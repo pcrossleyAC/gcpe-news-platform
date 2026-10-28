@@ -9,6 +9,28 @@ import { exactPagePath, pagePath, resolvePostKey } from "./site-files";
 import { resolveCategory } from "./ministry-renames";
 import { categoryFiles, isCategoryKind, POST_KEY, postDir, SHORT_POST_KEY_MAX, type CategoryKind } from "../../../public-site/src/site-paths";
 
+/**
+ * What `legacyUrls` leaves in `res.locals.legacyRewrite` when it rewrites `req.url` for the
+ * static mount: `from` is `req.url` as it was, `kind` what the new one names. "file": a feed or
+ * the legacy OG image, served in place under any URL. "long": a long key's hashed page
+ * (`/releases/_long/<hash>/`), which the static mount serves only for this rewrite (a direct
+ * request for it is the site 404). "page": a listed post whose page is gone, handed to static to 404.
+ */
+export interface LegacyRewrite {
+  from: string;
+  kind: "file" | "long" | "page";
+}
+
+/** The rewrite `legacyUrls` made for this request, if any. */
+export function legacyRewriteOf(res: Response): LegacyRewrite | undefined {
+  return res.locals.legacyRewrite as LegacyRewrite | undefined;
+}
+
+function rewrite(req: Request, res: Response, url: string, kind: LegacyRewrite["kind"]): void {
+  res.locals.legacyRewrite = { from: req.url, kind } satisfies LegacyRewrite;
+  req.url = url;
+}
+
 export interface LegacyUrlOptions {
   outputDir: string;
   /** The prefix this handler is mounted under: "" at the root, "/site" under /site. */
@@ -21,10 +43,12 @@ export interface LegacyUrlOptions {
 
 /**
  * Old news.gov.bc.ca URLs (parity plan 3, url-compat §T1). Mounted by `mountSite` first in
- * each site chain, ahead of `ministrySuccessorRedirects` and `express.static`. Per request it:
+ * each site chain, ahead of `express.static` (and, on an origin site, of the `/site` alias
+ * redirect). Per request it:
  * - answers a no-store 301 whose Location is `${basePath}<path>` (root-relative, so the
  *   X-Forwarded-Host behind nginx or IIS/ARR never matters) and names a page that exists now; or
- * - rewrites `req.url` so the static mount serves a file in place (the legacy OG image); or
+ * - rewrites `req.url` so the static mount serves a file in place (a feed, the legacy OG image,
+ *   a long key's hashed page), noting it in `res.locals.legacyRewrite` (`LegacyRewrite`); or
  * - falls through (`next()`) to the static mount and the site 404.
  *
  * Order: method (GET/HEAD), then `parseRequestTarget` (anything unsafe is the site's 404, never
@@ -45,7 +69,8 @@ export interface LegacyUrlOptions {
  *    the post's page when the lookup finds a published post whose page exists. It sits before
  *    the case rule and the fallbacks, and no other rule claims a bare `/<digits>` (a fixed rule
  *    or category needs a word, the post rule a kind prefix). One DB lookup per request, served
- *    by `posts_reference_lower_idx`; a throwing lookup is logged once per message until a lookup
+ *    by `posts_reference_lower_idx` (`mountSite` caches misses for a minute, `cacheMisses`); a
+ *    throwing lookup is logged once per message until a lookup
  *    succeeds again, then next();
  * 7. the case rule: a path with uppercase that is not a page in exactly that case, whose
  *    lowercase is one (`caseRule`) — before the fallback rules, so `/Releases` reaches a built
@@ -76,6 +101,9 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
     // On the decoded path, the same one the rules match (/%75pdates/x is /updates/x to them).
     const lower = target.path.toLowerCase();
     if (prefixes.some((p) => lower === p || lower.startsWith(`${p}/`))) return next();
+    // The hashed directory of long post keys has no URL of its own (any case): only the long-key
+    // rule below reaches it, by rewrite. Before the case rule, which would 301 /Releases/_LONG/… to it.
+    if (/^\/releases\/_long(?:\/|$)/.test(lower)) return notFound(req, res, next);
     const action = fixedRule(target.path, target.query);
     const feed = feedRule(target.path);
     const post = POST_PATH.exec(target.path);
@@ -100,7 +128,7 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
         if (!isFile) return next();
         // express.static's `send` keeps a Content-Type that is already set.
         res.setHeader("Content-Type", action.type);
-        req.url = `/${action.file}${target.query}`;
+        rewrite(req, res, `/${action.file}${target.query}`, "file");
         return next();
       }
 
@@ -111,14 +139,12 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
 
       if (post) {
         const key = post[1]!;
-        // The hashed-dir parent is not a post: `/releases/_long` must not reach static's directory 301.
-        if (key.toLowerCase() === "_long") return notFound(req, res, next);
         if (key.length > SHORT_POST_KEY_MAX && POST_KEY.test(key)) {
           const long = await longPostRule(key, post[2] !== undefined, target);
           if (long === null) return next();
           if (long === "serve") {
             // In place: the only rewrite ever produced is /releases/_long/<32 hex>/.
-            req.url = `/${postDir(key)}/${target.query}`;
+            rewrite(req, res, `/${postDir(key)}/${target.query}`, "long");
             return next();
           }
           return redirect(long.status, long.to);
@@ -128,7 +154,7 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
         if (done.status === 404) {
           // Listed but not a page (a directory a delete left empty): hand static the slash
           // form, which it 404s, so no platform answers a trailing-slash 301 to a 404 first.
-          req.url = `${done.to}${target.query}`;
+          rewrite(req, res, `${done.to}${target.query}`, "page");
           return next();
         }
         return redirect(done.status, done.to);
@@ -206,7 +232,7 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
       // Missing or unreadable: the site 404.
     }
     if (!isFile) return feed.kind === "category" && feed.direct && moved ? notFound(req, res, next) : next();
-    req.url = `/${file}`;
+    rewrite(req, res, `/${file}`, "file");
     return next();
   }
 

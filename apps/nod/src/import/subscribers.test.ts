@@ -397,6 +397,182 @@ describe("importing legacy subscribers", () => {
     expect((await tdb.db.select().from(subscriberHistory)).length).toBe(historyBefore);
   });
 
+  it("re-run: a legacy unsubscribe since the last import ends a record NoD hasn't touched (legacy's IsDeleted wins)", async () => {
+    await run();
+    await importedOn("2026-08-01T00:00:00Z");
+    const { report } = await run(unsubscribedInLegacy(G.subMedia, "2026-09-01T10:00:00"));
+    const s = await subscriber(G.subMedia);
+    expect(s).toMatchObject({ status: "deleted" });
+    expect(s!.endedAt).not.toBeNull();
+    expect(await listsOf(G.subMedia)).toEqual([]);
+    expect(await unsubscribedHistory(id(G.subMedia))).toEqual([["2026-09-01T17:00:00.000Z", "Legacy import"]]);
+    expect(report.toJSON().tables.Subscriber).toMatchObject({ imported: 7 });
+    await expect(addMediaMember(tdb.db, "sample-town", { email: "journo@example.test", source: "manual-media" }, "staff:jamie")).rejects.toBeInstanceOf(OptedOutError);
+  });
+
+  it("re-run: a legacy unsubscribe made while the previous run was importing still ends a NoD-changed record", async () => {
+    // The previous run read legacy at its start (runAt); the unsubscribe landed a moment later,
+    // before that run wrote the record. The next run must treat it as new.
+    const report = new NodImportReport();
+    const source = legacyNodSource();
+    const lists = await importLists(tdb.db, source, report);
+    const runAt = new Date(Date.now() - 120_000);
+    await importSubscribers(tdb.db, source, { report, timeZone: TZ, lists, runAt });
+    await tdb.db.update(subscribers).set({ digest: true }).where(eq(subscribers.id, id(G.subMedia)));
+    const wall = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+      .format(new Date(runAt.getTime() + 30_000))
+      .replace(" ", "T");
+    const again = new NodImportReport();
+    const tables = unsubscribedInLegacy(G.subMedia, wall);
+    await importSubscribers(tdb.db, legacyNodSource(tables), { report: again, timeZone: TZ, lists: await importLists(tdb.db, legacyNodSource(tables), again), runAt: new Date() });
+    expect(await subscriber(G.subMedia)).toMatchObject({ status: "deleted" });
+    expect(again.toJSON().skipped).toContainEqual({ table: "Subscriber", reason: ENDED, count: 1, sample: [id(G.subMedia)] });
+  });
+
+  it("re-run: a legacy unsubscribe of a record legacy has since purged still ends NoD's record, once", async () => {
+    await run();
+    await importedOn("2026-08-01T00:00:00Z");
+    const tables = legacyNodTables();
+    tables.subscribers = tables.subscribers!.filter((s) => s.SubscriberGuid !== G.subMedia);
+    tables.subscriberLists = tables.subscriberLists!.filter((s) => s.SubscriberGuid !== G.subMedia);
+    tables.unsubscribed = [...tables.unsubscribed!, { SubscriberGuid: G.subMedia, UnsubscribedAt: new Date("2026-09-01T10:00:00Z") }];
+    const { report } = await run(tables);
+    const s = await subscriber(G.subMedia);
+    expect(s).toMatchObject({ status: "deleted" });
+    expect(await listsOf(G.subMedia)).toEqual([]);
+    expect(await unsubscribedHistory(id(G.subMedia))).toEqual([["2026-09-01T17:00:00.000Z", "Legacy import"]]);
+    expect(report.toJSON().notes).toContainEqual(expect.stringContaining(`1 record legacy no longer holds was ended by its legacy unsubscribe: ${id(G.subMedia)}`));
+    await expect(addMediaMember(tdb.db, "sample-town", { email: "journo@example.test", source: "manual-media" }, "staff:jamie")).rejects.toBeInstanceOf(OptedOutError);
+
+    // Once: a confirmed staff re-add afterwards stands on the next run.
+    await addMediaMember(tdb.db, "sample-town", { email: "journo@example.test", source: "manual-media", confirmOptOut: true }, "staff:jamie");
+    await run(tables);
+    expect(await subscriber(G.subMedia)).toMatchObject({ status: "active" });
+  });
+
+  it("re-run: an unsubscribe already imported for a record legacy has since purged changes nothing", async () => {
+    await run(unsubscribedInLegacy(G.subMedia, "2026-07-01T10:00:00"));
+    await importedOn("2026-08-01T00:00:00Z");
+    await addMediaMember(tdb.db, "sample-town", { email: "journo@example.test", source: "manual-media", confirmOptOut: true }, "staff:jamie");
+    const tables = unsubscribedInLegacy(G.subMedia, "2026-07-01T10:00:00");
+    tables.subscribers = tables.subscribers!.filter((s) => s.SubscriberGuid !== G.subMedia);
+    await run(tables);
+    expect(await subscriber(G.subMedia)).toMatchObject({ status: "active" });
+  });
+
+  describe("someone who unsubscribed in legacy and signed up again (a new legacy record)", () => {
+    const G2 = "C0000000-0000-4000-8000-0000000000AA";
+    const byAddress = async () =>
+      (await tdb.db.select({ id: subscribers.id, status: subscribers.status }).from(subscribers).where(sql`lower(${subscribers.email}) = 'digest@example.test'`)).map((r) => [r.id, r.status]);
+    /** Legacy after digest@'s record unsubscribed on 2026-09-01 and the address signed up again on 2026-09-05. */
+    const signedUpAgain = (purged: boolean, opts: { registered?: string; enabled?: boolean; self?: boolean } = {}) => {
+      const t = legacyNodTables();
+      const old = t.subscribers!.find((x) => x.SubscriberGuid === G.subDigest)!;
+      t.subscribers = t.subscribers!.map((x) => (x.SubscriberGuid === G.subDigest ? { ...x, IsDeleted: true, IsEnabled: false } : x));
+      if (purged) {
+        t.subscribers = t.subscribers.filter((x) => x.SubscriberGuid !== G.subDigest);
+        t.subscriberLists = t.subscriberLists!.filter((x) => x.SubscriberGuid !== G.subDigest);
+      }
+      t.subscribers.push({ ...old, SubscriberGuid: G2, RegisteredDateTime: new Date(opts.registered ?? "2026-09-05T10:00:00Z"), IsDeleted: false, IsEnabled: opts.enabled ?? true, IsSelfSubscription: opts.self ?? true });
+      t.subscriberLists = [...t.subscriberLists!, { SubscriberGuid: G2, ListGuid: G.listHealth }];
+      t.unsubscribed = [...t.unsubscribed!, { SubscriberGuid: G.subDigest, UnsubscribedAt: new Date("2026-09-01T10:00:00Z") }];
+      return t;
+    };
+
+    for (const purged of [false, true]) {
+      it(`the new record takes the address over, carrying its lists and the old record's history (old record ${purged ? "purged" : "kept"} in legacy)`, async () => {
+        await run();
+        await importedOn("2026-08-01T00:00:00Z");
+        const { report } = await run(signedUpAgain(purged));
+        expect(await byAddress()).toEqual([[id(G2), "active"]]);
+        expect(await subscriber(G.subDigest)).toBeUndefined();
+        expect(await listsOf(G2)).toEqual(["ministries:health"]);
+        const history = await historyOf(id(G2));
+        expect(history).toContainEqual(["record-merged", "deleted", "Legacy import"]);
+        expect(await unsubscribedHistory(id(G2))).toEqual([["2026-09-01T17:00:00.000Z", "Legacy import"]]);
+        expect(report.toJSON()).toMatchObject({ balanced: true });
+        expect(report.toJSON().skipped.filter((x) => x.table === "Subscriber").flatMap((x) => x.sample)).not.toContain(id(G2));
+        // A re-run changes nothing: the new record is untouched since it was imported.
+        const before = (await tdb.db.select().from(subscriberHistory)).length;
+        await run(signedUpAgain(purged));
+        expect(await byAddress()).toEqual([[id(G2), "active"]]);
+        expect((await tdb.db.select().from(subscriberHistory)).length).toBe(before);
+      });
+    }
+
+    it("an end in NoD newer than the legacy sign-up is never undone", async () => {
+      await run();
+      await importedOn("2026-08-01T00:00:00Z");
+      await tdb.db.update(subscribers).set({ status: "deleted", endedAt: new Date("2026-09-10T00:00:00Z") }).where(eq(subscribers.id, id(G.subDigest)));
+      await tdb.db.insert(subscriberHistory).values({ subscriberId: id(G.subDigest), at: new Date("2026-09-10T00:00:00Z"), actor: "self", action: "unsubscribed" });
+      const { report } = await run(signedUpAgain(false));
+      expect(await byAddress()).toEqual([[id(G.subDigest), "deleted"]]);
+      expect(report.toJSON().skipped).toContainEqual(expect.objectContaining({ table: "Subscriber", sample: expect.arrayContaining([id(G2)]) }));
+    });
+
+    for (const purged of [false, true]) {
+      it(`a record staff created in legacy (not the person's own sign-up) doesn't take the address over (old record ${purged ? "purged" : "kept"})`, async () => {
+        // Legacy's admin screen makes an enabled record with no opt-in once the old one is deleted;
+        // only the person's own re-subscribe may undo their unsubscribe (as in NoD).
+        await run();
+        await importedOn("2026-08-01T00:00:00Z");
+        const { report } = await run(signedUpAgain(purged, { self: false }));
+        expect(await byAddress()).toEqual([[id(G.subDigest), "deleted"]]);
+        expect(await subscriber(G2)).toBeUndefined();
+        expect(report.toJSON()).toMatchObject({ balanced: true });
+      });
+    }
+
+    it("the takeover's report doesn't claim the old record's unsubscribe was skipped", async () => {
+      await run();
+      await importedOn("2026-08-01T00:00:00Z");
+      const { report } = await run(signedUpAgain(false));
+      expect(report.toJSON().notes.join("\n")).not.toMatch(/unsubscribe on a duplicate legacy record not applied/);
+    });
+
+    it("a sign-up legacy hasn't confirmed (not enabled) doesn't take the address over", async () => {
+      await run();
+      await importedOn("2026-08-01T00:00:00Z");
+      await run(signedUpAgain(true, { enabled: false }));
+      expect(await byAddress()).toEqual([[id(G.subDigest), "deleted"]]);
+    });
+  });
+
+  it("re-run: an unsubscribe in the repeated 01:xx hour as DST ends (read an hour early) still counts as since the last import", async () => {
+    // The previous run started at 2026-11-01 01:00 PST (09:00Z). The unsubscribe came at 01:30 PST
+    // (09:30Z); legacy's wall clock "01:30" is read as the first 01:30, PDT (08:30Z).
+    const at = async (runAt: Date, tables = legacyNodTables()) => {
+      const report = new NodImportReport();
+      const source = legacyNodSource(tables);
+      await importSubscribers(tdb.db, source, { report, timeZone: TZ, lists: await importLists(tdb.db, source, report), runAt });
+      return report;
+    };
+    await at(new Date("2026-11-01T09:00:00Z"));
+    await tdb.db.update(subscribers).set({ digest: true }).where(eq(subscribers.id, id(G.subMedia)));
+    const report = await at(new Date("2026-11-01T12:00:00Z"), unsubscribedInLegacy(G.subMedia, "2026-11-01T01:30:00"));
+    expect(await subscriber(G.subMedia)).toMatchObject({ status: "deleted" });
+    expect(report.toJSON().skipped).toContainEqual({ table: "Subscriber", reason: ENDED, count: 1, sample: [id(G.subMedia)] });
+    // Applied once: a confirmed staff re-add afterwards stands on the next run.
+    await addMediaMember(tdb.db, "sample-town", { email: "journo@example.test", source: "manual-media", confirmOptOut: true }, "staff:jamie");
+    await at(new Date("2026-11-01T12:30:00Z"), unsubscribedInLegacy(G.subMedia, "2026-11-01T01:30:00"));
+    expect(await subscriber(G.subMedia)).toMatchObject({ status: "active" });
+  });
+
+  it("re-run: an unsubscribe within the margin of an untouched record's import is not applied twice", async () => {
+    // Imported deleted (legacy's state) 20 minutes after the unsubscribe; a confirmed staff re-add then stands.
+    const tables = unsubscribedInLegacy(G.subMedia, "2026-09-01T10:00:00");
+    const report = new NodImportReport();
+    const source = legacyNodSource(legacyNodTables());
+    await importSubscribers(tdb.db, source, { report, timeZone: TZ, lists: await importLists(tdb.db, source, report), runAt: new Date("2026-08-01T00:00:00Z") });
+    const again = new NodImportReport();
+    await importSubscribers(tdb.db, legacyNodSource(tables), { report: again, timeZone: TZ, lists: await importLists(tdb.db, legacyNodSource(tables), again), runAt: new Date("2026-09-01T17:20:00Z") });
+    expect(await subscriber(G.subMedia)).toMatchObject({ status: "deleted" });
+    await addMediaMember(tdb.db, "sample-town", { email: "journo@example.test", source: "manual-media", confirmOptOut: true }, "staff:jamie");
+    const third = new NodImportReport();
+    await importSubscribers(tdb.db, legacyNodSource(tables), { report: third, timeZone: TZ, lists: await importLists(tdb.db, legacyNodSource(tables), third), runAt: new Date("2026-09-01T17:40:00Z") });
+    expect(await subscriber(G.subMedia)).toMatchObject({ status: "active" });
+  });
+
   it("a legacy unsubscribe ends a NoD-changed record only once: a later NoD re-add stands", async () => {
     await run();
     await importedOn("2026-08-01T00:00:00Z");

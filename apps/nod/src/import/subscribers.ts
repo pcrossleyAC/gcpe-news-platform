@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { wallClockToInstant } from "@gcpe/config";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import type { LegacySource } from "@gcpe/legacy-import";
-import { legacySubscriberImports, subscribers, subscriptions, type SubscriberSource, type SubscriberStatus } from "../db/schema";
+import { legacySubscriberImports, subscriberHistory, subscribers, subscriptions, type SubscriberRow, type SubscriberSource, type SubscriberStatus } from "../db/schema";
 import { lockAddress, withLockedSubscriber } from "../locks";
 import { ALL_MEDIA_LISTS, keepOptOutHashes, optedOutKeys } from "../opt-outs";
 import { writeHistory } from "../subscribe/history";
@@ -45,6 +45,8 @@ export interface SubscriberStageContext {
   runAt: Date;
   /** Filled in by the stage: each legacy record that lost its address's pick → the record that won it. */
   winnerOf?: Map<string, string>;
+  /** Filled in by the stage: each legacy record → its address, normalised (what legacy mails to). */
+  legacyEmailOf?: Map<string, string>;
 }
 
 /** What became of an unsubscribe from a duplicate legacy record of the address (see
@@ -124,7 +126,29 @@ async function withoutOptedOut(tx: Tx, m: MappedSubscriber, existing: CurrentRow
   return { m: { ...m, state, fingerprint: fingerprintOf(state) }, optedOut };
 }
 
-async function insertSubscriber(tx: Tx, m: MappedSubscriber): Promise<void> {
+/**
+ * How far before the last import a legacy unsubscribe still counts as new to a re-run. Legacy
+ * dates are another machine's wall clock, read in the tenant zone: the hour repeated when DST
+ * ends is read an hour early, and that clock need not agree with the database's. Applying an
+ * unsubscribe twice is harmless (newer consent still wins, and applying one moves the import
+ * time past it plus this margin); missing one is not.
+ */
+const UNSUBSCRIBE_MARGIN_MS = 60 * 60 * 1000;
+
+/**
+ * The `imported_at` a record written in this run gets: the run's start (`runAt`, read before
+ * legacy is), not the time of the write, so a legacy unsubscribe made while the run was importing
+ * is "since the last import" to the next run ({@link unsubscribedSince}). A record written ended,
+ * with the address's legacy unsubscribe kept as its history, gets a time past that unsubscribe by
+ * the margin, so the next run doesn't apply it again over a later re-add in NoD.
+ */
+function importedAtFor(c: Candidate, written: MappedSubscriber, runAt: Date): Date {
+  if (written.state.status !== "deleted" || !c.unsubscribedAt) return runAt;
+  const past = new Date(c.unsubscribedAt.getTime() + UNSUBSCRIBE_MARGIN_MS + 1);
+  return past > runAt ? past : runAt;
+}
+
+async function insertSubscriber(tx: Tx, m: MappedSubscriber, importedAt: Date): Promise<void> {
   await tx.insert(subscribers).values({
     id: m.id,
     email: m.state.email,
@@ -138,10 +162,11 @@ async function insertSubscriber(tx: Tx, m: MappedSubscriber): Promise<void> {
   });
   if (m.state.listKeys.length > 0) await tx.insert(subscriptions).values(m.state.listKeys.map((listKey) => ({ subscriberId: m.id, listKey })));
   await writeHistory(tx, m.id, IMPORT_ACTOR, "legacy-imported", `status ${m.state.status}`);
-  await tx.insert(legacySubscriberImports).values({ subscriberId: m.id, fingerprint: m.fingerprint });
+  await tx.insert(legacySubscriberImports).values({ subscriberId: m.id, fingerprint: m.fingerprint, importedAt });
 }
 
-async function updateSubscriber(tx: Tx, m: MappedSubscriber, currentEmail: string): Promise<void> {
+/** `importedAt` from {@link importedAtFor}. */
+async function updateSubscriber(tx: Tx, m: MappedSubscriber, currentEmail: string, importedAt: Date): Promise<void> {
   await tx
     .update(subscribers)
     .set({
@@ -160,7 +185,7 @@ async function updateSubscriber(tx: Tx, m: MappedSubscriber, currentEmail: strin
   await writeHistory(tx, m.id, IMPORT_ACTOR, "legacy-imported", `updated from legacy: status ${m.state.status}`);
   // Marks the move for the opt-out check: adds made at the old address don't count at the new one.
   if (currentEmail !== m.state.email) await writeHistory(tx, m.id, IMPORT_ACTOR, "legacy-email-changed");
-  await tx.update(legacySubscriberImports).set({ fingerprint: m.fingerprint, importedAt: sql`now()` }).where(eq(legacySubscriberImports.subscriberId, m.id));
+  await tx.update(legacySubscriberImports).set({ fingerprint: m.fingerprint, importedAt }).where(eq(legacySubscriberImports.subscriberId, m.id));
 }
 
 /**
@@ -242,9 +267,9 @@ async function applyToAddress(tx: Tx, email: string, leaves: Leave[], unsubscrib
 }
 
 /** The candidate's legacy unsubscribe if NoD hasn't had it yet: made at or after the last import of
- * this id (an earlier one was imported then, as history). */
+ * this id, less {@link UNSUBSCRIBE_MARGIN_MS} (an earlier one was imported then, as history). */
 function unsubscribedSince(c: Candidate, importedAt: string | Date | null): Date | null {
-  return c.unsubscribedAt && importedAt && c.unsubscribedAt >= new Date(importedAt) ? c.unsubscribedAt : null;
+  return c.unsubscribedAt && importedAt && c.unsubscribedAt.getTime() >= new Date(importedAt).getTime() - UNSUBSCRIBE_MARGIN_MS ? c.unsubscribedAt : null;
 }
 
 /**
@@ -260,7 +285,7 @@ async function endForLegacyUnsubscribe(tx: Tx, mine: Pick<CurrentRow, "id" | "st
   await keepLegacyUnsubscribe(tx, mine.id, at);
   await tx
     .update(legacySubscriberImports)
-    .set({ importedAt: sql`GREATEST(now(), ${at.toISOString()}::timestamptz + interval '1 millisecond')` })
+    .set({ importedAt: sql`GREATEST(now(), ${new Date(at.getTime() + UNSUBSCRIBE_MARGIN_MS + 1).toISOString()}::timestamptz)` })
     .where(eq(legacySubscriberImports.subscriberId, mine.id));
 }
 
@@ -317,7 +342,7 @@ async function nodReAdds(tx: Tx, mine: CurrentRow, m: MappedSubscriber, leaves: 
  * is false, so the caller can redo this under withLockedSubscriber. Must run holding the address
  * locks of `mine` and `m`.
  */
-async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHeldElsewhere: boolean, locked: boolean): Promise<Outcome | "defer"> {
+async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHeldElsewhere: boolean, locked: boolean, runAt: Date): Promise<Outcome | "defer"> {
   const { m } = c;
   if (mine.fingerprint === null) return skipped("a NoD record already has this id");
   const since = unsubscribedSince(c, mine.imported_at);
@@ -354,10 +379,64 @@ async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHel
     return skipped(ENDED);
   }
   if (!locked) return "defer";
-  await updateSubscriber(tx, allowed, mine.email);
+  await updateSubscriber(tx, allowed, mine.email, importedAtFor(c, allowed, runAt));
   await applyLegacyLeaves(tx, m.id, c.leaves);
   const duplicate = (await duplicateUnsubscribe(tx, c, { id: m.id, createdAt: mine.created_at, status: allowed.state.status })) ?? undefined;
   return { kind: "updated", optedOut, duplicate };
+}
+
+/** When NoD's record last ended: its latest unsubscribe, staff delete or media end in history
+ * (an unsubscribe is kept at its own date, legacy's included), else its `ended_at`. */
+async function lastEndedAt(tx: Tx, s: Pick<SubscriberRow, "id" | "endedAt">): Promise<Date | null> {
+  const { rows } = await tx.execute<{ at: string | Date | null }>(sql`
+    SELECT max(at) AS at FROM subscriber_history
+     WHERE subscriber_id = ${s.id}::uuid AND action IN ('unsubscribed', 'staff-deleted', 'media-ended')`);
+  const at = rows[0]?.at;
+  return at ? new Date(at) : s.endedAt;
+}
+
+/**
+ * A newer legacy record for an address whose NoD record has ended takes the address over. Legacy
+ * only finds a record by address while it isn't deleted, so someone who unsubscribes and later
+ * signs up again gets a new legacy record (a new id) while the old one stays deleted or is purged.
+ * When the candidate is active in legacy and registered after the NoD record's last end (its
+ * consent is newer than that unsubscribe), NoD's ended record is replaced by it, as NoD's own
+ * re-subscribe does (journeys.ts "record-merged"): its history moves onto the new record (the
+ * unsubscribe stays as consent evidence, and its media-list opt-outs still hold: staff confirm a
+ * re-add), and the old row goes. An ended record whose end is newer than the registration is
+ * never brought back. Returns the outcome, or null when it doesn't apply. The caller holds the
+ * address lock and the record's row.
+ */
+async function replaceHolder(tx: Tx, c: Candidate, holderId: string, runAt: Date): Promise<Outcome | null> {
+  const { m } = c;
+  const [h] = await tx.select().from(subscribers).where(eq(subscribers.id, holderId));
+  // Only the person's own sign-up undoes their unsubscribe; a record staff made in legacy (no
+  // opt-in) never does, as NoD's own setStatus and addSubscriber refuse it.
+  if (!h || h.id === m.id || h.status !== "deleted" || m.state.status !== "active" || m.state.source !== "self") return null;
+  const ended = await lastEndedAt(tx, h);
+  if (ended === null || ended >= m.createdAt) return null;
+  const existing: CurrentRow = {
+    id: h.id,
+    email: normaliseEmail(h.email),
+    status: h.status,
+    as_it_happens: h.asItHappens,
+    digest: h.digest,
+    source: h.source,
+    list_keys: [],
+    fingerprint: null,
+    imported_at: null,
+    created_at: h.createdAt,
+  };
+  const { m: allowed, optedOut } = await withoutOptedOut(tx, m, existing);
+  // Frees the address for the new row; the old row goes once its history has moved.
+  await tx.update(subscribers).set({ email: `${h.id}@replaced.invalid` }).where(eq(subscribers.id, h.id));
+  await insertSubscriber(tx, allowed, importedAtFor(c, allowed, runAt));
+  await tx.update(subscriberHistory).set({ subscriberId: m.id }).where(eq(subscriberHistory.subscriberId, h.id));
+  await tx.delete(subscribers).where(eq(subscribers.id, h.id));
+  await writeHistory(tx, m.id, IMPORT_ACTOR, "record-merged", h.status);
+  await applyLegacyLeaves(tx, m.id, c.leaves);
+  // No duplicate-unsubscribe note: the old record's unsubscribe was applied (it ended the record this one replaces).
+  return { kind: "imported", optedOut };
 }
 
 /**
@@ -369,13 +448,14 @@ async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHel
  * that changes an existing record (a legacy update, a leave that takes them off a list) is done
  * afterwards, one record at a time, through withLockedSubscriber like any other writer.
  */
-async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outcome>> {
+async function writeBatch(db: Db, batch: Candidate[], runAt: Date): Promise<Map<string, Outcome>> {
   const ids = batch.map((c) => c.m.id);
   const emails = batch.map((c) => c.m.state.email);
   const toLock = [...new Set([...emails, ...(await currentRows(db, ids, emails)).map((r) => r.email)])].sort();
   const out = new Map<string, Outcome>();
   const deferred: Candidate[] = [];
   const forHolder: { c: Candidate; unsubscribedAt: Date | null }[] = [];
+  const seenIds = new Set<string>();
   await db.transaction(async (tx) => {
     for (const a of toLock) await lockAddress(tx, a);
     await lockRows(tx, ids, emails, toLock);
@@ -386,6 +466,7 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
       sql`SELECT subscriber_id, imported_at FROM legacy_subscriber_imports WHERE subscriber_id = ANY(${sql.param(ids)}::uuid[])`,
     );
     const seen = new Map(importedBefore.map((r) => [r.subscriber_id, r.imported_at]));
+    for (const id of seen.keys()) seenIds.add(id);
     for (const c of batch) {
       const { m } = c;
       const mine = byId.get(m.id);
@@ -397,16 +478,18 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
         // address still count: on NoD's record, else as kept hashes, as the purge would. An
         // unsubscribe already imported for a purged record was kept by the purge itself.
         const unsubscribedAt = seen.has(m.id) ? unsubscribedSince(c, seen.get(m.id)!) : c.unsubscribedAt;
-        if (holder && (c.leaves.length > 0 || unsubscribedAt)) forHolder.push({ c, unsubscribedAt });
+        // A newer legacy record of an address whose NoD record has ended may take it over (replaceHolder).
+        const mayReplace = !seen.has(m.id) && m.state.status === "active" && m.state.source === "self" && holder?.status === "deleted";
+        if (holder && (c.leaves.length > 0 || unsubscribedAt || mayReplace)) forHolder.push({ c, unsubscribedAt });
         else if (!holder) await applyToAddress(tx, m.state.email, c.leaves, unsubscribedAt);
         outcome = skipped(seen.has(m.id) ? "removed in NoD since the last import" : "address already in NoD (NoD's record kept)");
       } else if (!mine) {
         const { m: allowed, optedOut } = await withoutOptedOut(tx, m, null);
-        await insertSubscriber(tx, allowed);
+        await insertSubscriber(tx, allowed, importedAtFor(c, allowed, runAt));
         await applyLegacyLeaves(tx, m.id, c.leaves);
         const duplicate = (await duplicateUnsubscribe(tx, c, { id: m.id, createdAt: allowed.createdAt, status: allowed.state.status })) ?? undefined;
         outcome = { kind: "imported", optedOut, duplicate };
-      } else outcome = await settleExisting(tx, c, mine, holder !== undefined && holder.id !== m.id, false);
+      } else outcome = await settleExisting(tx, c, mine, holder !== undefined && holder.id !== m.id, false, runAt);
       if (outcome === "defer") deferred.push(c);
       else out.set(m.id, outcome);
     }
@@ -418,7 +501,7 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
       const rows = await currentRows(tx, [m.id], [m.state.email]);
       const mine = rows.find((r) => r.id === m.id)!;
       const elsewhere = rows.some((r) => r.id !== m.id && r.email === m.state.email);
-      const settled = await settleExisting(tx, c, mine, elsewhere, true);
+      const settled = await settleExisting(tx, c, mine, elsewhere, true, runAt);
       return settled === "defer" ? skipped("changed while importing: run the import again") : settled;
     });
     out.set(m.id, outcome);
@@ -428,15 +511,50 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
     const holderId = (await db.select({ id: subscribers.id }).from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`))[0]?.id;
     // Locks the holder's row and address, plus the legacy address in case it has moved on since.
     const applied = holderId
-      ? await withLockedSubscriber(db, holderId, email, (tx) => applyToAddress(tx, email, c.leaves, unsubscribedAt))
+      ? await withLockedSubscriber(db, holderId, email, async (tx, h) => {
+          const done = await applyToAddress(tx, email, c.leaves, unsubscribedAt);
+          const replaced = h && !seenIds.has(c.m.id) ? await replaceHolder(tx, c, h.id, runAt) : null;
+          return replaced ?? done;
+        })
       : await db.transaction(async (tx) => {
           await lockAddress(tx, email);
           return applyToAddress(tx, email, c.leaves, unsubscribedAt);
         });
     if (applied === "ended") out.set(c.m.id, skipped(HOLDER_ENDED));
     else if (applied === "newer-in-nod") out.set(c.m.id, skipped(NEWER_IN_NOD));
+    else if (applied !== null) out.set(c.m.id, applied);
   }
   return out;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Records imported before that legacy no longer holds (its purge task, `PermanentlyDeleteSubscriber`,
+ * removed the row) but whose legacy unsubscribe (SysLog 104, which the purge leaves) NoD hasn't had
+ * yet: each NoD record still standing is ended as for any other legacy unsubscribe
+ * ({@link endForLegacyUnsubscribe}), unless NoD holds newer consent ({@link consentedSince}).
+ * Without this the unsubscribe would be lost: no legacy row means no candidate. A record NoD has
+ * purged too has no address left to keep a hash for. Returns the ids ended.
+ */
+async function endPurgedInLegacy(db: Db, present: Set<string>, unsubscribedAt: Map<string, Date>): Promise<string[]> {
+  const gone = [...unsubscribedAt.keys()].filter((g) => !present.has(g) && UUID.test(g));
+  if (gone.length === 0) return [];
+  const { rows } = await db.execute<{ subscriber_id: string; imported_at: string | Date }>(
+    sql`SELECT subscriber_id, imported_at FROM legacy_subscriber_imports WHERE subscriber_id = ANY(${sql.param(gone)}::uuid[]) ORDER BY subscriber_id`,
+  );
+  const ended: string[] = [];
+  for (const r of rows) {
+    const at = unsubscribedAt.get(r.subscriber_id)!;
+    if (at.getTime() < new Date(r.imported_at).getTime() - UNSUBSCRIBE_MARGIN_MS) continue;
+    const done = await withLockedSubscriber(db, r.subscriber_id, null, async (tx, s) => {
+      if (!s || s.status === "deleted" || (await consentedSince(tx, s, at))) return false;
+      await endForLegacyUnsubscribe(tx, s, at);
+      return true;
+    });
+    if (done) ended.push(r.subscriber_id);
+  }
+  return ended;
 }
 
 /** Legacy Subscriber + SubscriberList → NoD subscribers, subscriptions and history, in batches of 500. */
@@ -468,6 +586,7 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
   // Leaves are an address's consent, so they're kept by address: a duplicate legacy record's
   // leave counts against the record imported for that address, or NoD's own record of it.
   const emailOf = new Map(legacy.map((s) => [guidKey(s.SubscriberGuid), normaliseEmail(s.EmailAddress ?? "")]));
+  for (const [guid, email] of emailOf) ctx.legacyEmailOf?.set(guid, email);
   const latestLeave = new Map<string, Map<string, Date>>();
   for (const l of leaves) {
     const mapped = lists.byGuid.get(guidKey(l.ListGuid));
@@ -513,9 +632,11 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
 
   const result = new Map<string, ImportedSubscriber>();
   const duplicateUnsubscribes: Record<DuplicateUnsubscribe, string[]> = { ended: [], "newer-in-nod": [] };
+  // First, so a newer legacy record of the same address can take over the record it ends (replaceHolder).
+  const purgedEnded = await endPurgedInLegacy(db, new Set(emailOf.keys()), unsubscribedAt);
   for (let i = 0; i < candidates.length; i += BATCH) {
     const batch = candidates.slice(i, i + BATCH);
-    const outcomes = await writeBatch(db, batch);
+    const outcomes = await writeBatch(db, batch, ctx.runAt);
     for (const { m } of batch) {
       const o = outcomes.get(m.id)!;
       if (o.kind === "skipped") {
@@ -538,6 +659,10 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
   }
   // Ids only, a sample of them, like the skip groups.
   const sample = (ids: string[]) => ids.slice(0, 10).join(", ");
+  if (purgedEnded.length > 0) {
+    const n = purgedEnded.length;
+    report.note(`${n} record${n === 1 ? "" : "s"} legacy no longer holds ${n === 1 ? "was" : "were"} ended by ${n === 1 ? "its" : "their"} legacy unsubscribe: ${sample(purgedEnded)}`);
+  }
   const { ended: endedByDuplicate, "newer-in-nod": notApplied } = duplicateUnsubscribes;
   if (endedByDuplicate.length > 0) {
     const n = endedByDuplicate.length;

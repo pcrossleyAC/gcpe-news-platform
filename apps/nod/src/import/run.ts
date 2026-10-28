@@ -67,10 +67,11 @@ export async function runNodImport(db: Db, nrms: Db, source: LegacySource, opts:
       log("[nod:import] lists mapped");
       stage = "subscribers";
       const winnerOf = new Map<string, string>();
-      const subscribers = await importSubscribers(db, source, { report, timeZone: opts.timeZone, lists, runAt, winnerOf });
+      const legacyEmailOf = new Map<string, string>();
+      const subscribers = await importSubscribers(db, source, { report, timeZone: opts.timeZone, lists, runAt, winnerOf, legacyEmailOf });
       log(`[nod:import] subscribers: ${subscribers.size} in NoD from legacy`);
       stage = "links";
-      await importManageLinks(db, source, { report, timeZone: opts.timeZone, runAt, winnerOf });
+      await importManageLinks(db, source, { report, timeZone: opts.timeZone, runAt, winnerOf, legacyEmailOf });
       log("[nod:import] live manage links copied");
       stage = "articles";
       await importArticles(db, nrms, source, { report, lists, subscribers, sinceDays: opts.sinceDays, publicSiteUrl: opts.publicSiteUrl });

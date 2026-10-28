@@ -23,6 +23,30 @@ describe("parseRequestTarget", () => {
   it.each(["/a/./b", "/a/%2E/b", "/a%2Fb", "/a%5Cb", "/a%0Ab", "/a%7F", "http://evil.example//x", "x/y"])("also rejects %s", (raw) => {
     expect(parseRequestTarget(raw)).toBeNull();
   });
+
+  // Windows file-name aliases: an NTFS stream (":"), an 8.3 short name ("~"), and a name with a
+  // trailing "." or " " (Win32 strips them, so "health." opens "health").
+  it.each([
+    "/index.html::$DATA",
+    "/index.html%3A%3A$DATA",
+    "/releases/_long::$INDEX_ALLOCATION/x/",
+    "/ministries/health./",
+    "/ministries/health%2E/",
+    "/ministries/health%20/",
+    "/ministries/health /",
+    "/SITE-S~1.JSO",
+    "/releases/_LONG~1/x/",
+    "/ministries/HEALTH~1/",
+    "/archive/2026/10.",
+  ])("rejects the Windows alias %s", (raw) => {
+    expect(parseRequestTarget(raw)).toBeNull();
+  });
+
+  it("keeps ordinary names with a dot or a space inside a segment", () => {
+    expect(parseRequestTarget("/feeds/releases.atom.xml")?.path).toBe("/feeds/releases.atom.xml");
+    expect(parseRequestTarget("/a%20b/c.d")?.path).toBe("/a b/c.d");
+    expect(parseRequestTarget("/x?q=a:b~c.")?.query).toBe("?q=a:b~c.");
+  });
 });
 
 describe("pagePath", () => {
