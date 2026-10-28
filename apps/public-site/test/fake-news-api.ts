@@ -1,5 +1,5 @@
 import type { SiteSettings } from "@gcpe/site-settings";
-import type { PostDto } from "../src/dto";
+import type { CategoryDto, PostDto, SlideDto } from "../src/dto";
 import type { NewsApiClient } from "../src/news-api-client";
 import { ministry } from "./fixtures";
 
@@ -10,7 +10,15 @@ import { ministry } from "./fixtures";
  * `calls` to assert which News API calls a run actually made) instead of re-deriving responses
  * from a closed-over literal in each file.
  */
-export type FakeNewsApi = NewsApiClient & { posts: Map<string, PostDto>; calls: string[]; settings: { revision: number; document: SiteSettings } | null };
+export type FakeNewsApi = NewsApiClient & {
+  posts: Map<string, PostDto>;
+  calls: string[];
+  settings: { revision: number; document: SiteSettings } | null;
+  /** What `categories("sectors")` answers (home's News by Sector); other kinds answer []. */
+  sectors: CategoryDto[];
+  /** What `slides()` answers (home's carousel band). */
+  slideList: SlideDto[];
+};
 
 export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
   const calls: string[] = [];
@@ -21,6 +29,8 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     calls,
     /** What `siteSettings()` answers: null is the News API's 404 (nothing published yet). */
     settings: null,
+    sectors: [],
+    slideList: [],
     getPost: async (key) => { calls.push(`getPost:${key}`); return posts.get(key) ?? null; },
     latestHome: async (n) => published().slice(0, n),
     latest: async (kind, key, n) => inCat(({ ministries: "ministryKeys", sectors: "sectorKeys", themes: "themeKeys", tags: "tagKeys" } as const)[kind], key).slice(0, n),
@@ -30,9 +40,9 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     ministry: async (key) => (["health", "finance"].includes(key.toLowerCase()) ? ministry({ key: key.toLowerCase(), name: key }) : null),
     ministryProfiles: async () => [],
     minister: async () => null,
-    categories: async () => [],
+    categories: async (kind) => (kind === "sectors" ? api.sectors : []),
     category: async (_kind, key) => (key === "covid-19" ? { key, kind: "tags", name: "COVID-19", isActive: true, topPostKey: null, featurePostKey: null } : null),
-    slides: async () => [],
+    slides: async () => api.slideList,
     resourceLinks: async () => [],
     related: async () => [],
     postKeys: async (kind) => published().filter((p) => p.kind === kind).map((p) => p.key),

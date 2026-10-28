@@ -62,6 +62,13 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return { top: pick(top), feature: pick(feature) };
   };
 
+  /** Home's News by Sector: the active sectors by name, each with its newest post (legacy TopSectors). */
+  async function sectorsWithLatest(): Promise<{ key: string; name: string; latest: PostDto | null }[]> {
+    const active = (await newsApi.categories("sectors")).filter((c) => c.isActive);
+    const withLatest = await Promise.all(active.map(async (c) => ({ key: c.key, name: c.name, latest: (await newsApi.latest("sectors", c.key, 1))[0] ?? null })));
+    return withLatest.sort((a, b) => a.name.localeCompare(b.name, "en"));
+  }
+
   async function renderPost(key: string, opts: PageOptions, run: RunCache, tx?: DbOrTx): Promise<string[]> {
     const p: PageId = { type: "post", key };
     // The write below goes through `tx` when the caller gave one (M1), so a transaction that
@@ -145,9 +152,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return renderPost(p.key, opts, run, tx);
         case "home": {
           const home = await newsApi.home();
-          const [f, latest, slides, links] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), newsApi.resourceLinks()]);
+          const [f, latest, slides, links, sectors] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), newsApi.resourceLinks(), sectorsWithLatest()]);
           const feedRef = { href: feedUrl(site, p), title: `${site.name}: latest news` };
-          await storage.write("index.html", renderHomePage({ ...f, latest, slides, links }, site, { ...opts, feed: feedRef }));
+          await storage.write("index.html", renderHomePage({ ...f, latest, slides, links, sectors }, site, { ...opts, feed: feedRef }));
           await storage.write("feed.xml", renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `The latest news from ${site.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
           return [];
         }

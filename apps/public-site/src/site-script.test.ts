@@ -5,6 +5,8 @@ import { renderPage, type PageOptions } from "./render";
 import { renderNotFoundPage } from "./static-pages";
 import { SITE_BANNER_SCRIPT } from "./banner-script";
 import { pathWords, SITE_SCRIPT } from "./site-script";
+import { renderHomePage } from "./pages/home";
+import { post, slide } from "../test/fixtures";
 
 const MENU: MenuMinistry[] = [
   { key: "office-of-the-premier", name: "Office of the Premier" },
@@ -410,5 +412,43 @@ describe("site.js", () => {
     });
     expect((doc.getElementById("not-found-q") as HTMLInputElement).value).toBe("");
     expect(doc.querySelectorAll("[data-prefill-from-path]")).toHaveLength(0);
+  });
+  it("Next/Previous move .current and wrap; Load More reveals hidden cards, removes itself, focuses the first revealed link", () => {
+    const slides = ["A", "B", "C"].map((h, i) => slide({ key: `S${i}`, headline: h, sortIndex: i }));
+    const latest = Array.from({ length: 5 }, (_, i) => post({ key: `L${i + 1}`, documents: [{ languageId: 4105, headline: `Latest ${i + 1}`, subheadline: null, detailsHtml: null, contacts: [] }] }));
+    const html = renderHomePage({ top: null, feature: null, latest, slides, links: [], sectors: [] }, site, { ministryMenu: MENU });
+    const dom = new JSDOM(html, { url: "https://boxs.example/site/", runScripts: "outside-only" });
+    dom.window.eval(SITE_SCRIPT);
+    const doc = dom.window.document;
+    const holder = doc.getElementById("carousel-holder")!;
+    const current = () => [...holder.querySelectorAll(".home-banner")].findIndex((b) => b.classList.contains("current"));
+    const button = (cls: string) => holder.querySelector<HTMLButtonElement>(`.home-banner.current .${cls}`)!;
+    expect(current()).toBe(0);
+    expect(holder.hasAttribute("aria-live")).toBe(false);
+    button("story-next").click();
+    expect(current()).toBe(1);
+    expect(holder.querySelectorAll(".home-banner.current")).toHaveLength(1);
+    expect(holder.getAttribute("aria-live")).toBe("polite");
+    // Focus follows to the same control on the slide now showing (the clicked one is hidden).
+    expect(doc.activeElement).toBe(button("story-next"));
+    button("story-next").click();
+    button("story-next").click();
+    expect(current()).toBe(0);
+    button("story-previous").click();
+    expect(current()).toBe(2);
+    expect(doc.activeElement).toBe(button("story-previous"));
+    button("story-previous").click();
+    expect(current()).toBe(1);
+
+    const regular = doc.getElementById("regular-articles")!;
+    const hidden = [...regular.querySelectorAll(".hidden-article")];
+    expect(hidden).toHaveLength(2);
+    doc.querySelector<HTMLButtonElement>("button.load-more")!.click();
+    expect(regular.querySelectorAll(".hidden-article")).toHaveLength(0);
+    expect(doc.querySelector(".load-more")).toBeNull();
+    expect(doc.activeElement).toBe(hidden[0]!.querySelector("h2 a"));
+    expect(doc.activeElement?.textContent).toBe("Latest 4");
+    // The Search News link stays.
+    expect(doc.querySelector(".news-control a.read-more")).not.toBeNull();
   });
 });

@@ -24,6 +24,12 @@
  * 7. The search page's phone search control (`a[data-page-search]`, header.ts: a link to the page's
  *    own box) scrolls that box to the middle of the view and focuses it, instead of a jump that
  *    would leave it under the header unfocused. A missing target is left to the browser.
+ * 8. The home carousel (`#carousel-holder`, pages/home.ts): Previous/Next move `.current` to the
+ *    previous/next `.home-banner`, wrapping around, and keep focus on the same control in the slide
+ *    now showing (the clicked one has just been hidden). The holder gets `aria-live="polite"` on the
+ *    first click only, so nothing is announced at load. There is no auto-advance (C205).
+ * 9. "Load More News" (`button.load-more[aria-controls]`): reveals every `.hidden-article` in its
+ *    target, removes itself and moves focus to the first revealed card's headline link.
  *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
@@ -189,6 +195,35 @@ export const SITE_SCRIPT = String.raw`(() => {
       box.focus({ preventScroll: true });
     });
   }
+
+  const carousel = doc.getElementById("carousel-holder");
+  if (carousel) {
+    const slides = Array.prototype.slice.call(carousel.querySelectorAll(".home-banner"));
+    carousel.addEventListener("click", (ev) => {
+      const t = ev.target;
+      const nav = t && t.closest ? t.closest("button.story-nav") : null;
+      if (!nav || slides.length < 2) return;
+      const at = Math.max(0, slides.findIndex((s) => s.classList.contains("current")));
+      const back = nav.classList.contains("story-previous");
+      const next = slides[(at + (back ? -1 : 1) + slides.length) % slides.length];
+      carousel.setAttribute("aria-live", "polite");
+      slides.forEach((s) => s.classList.toggle("current", s === next));
+      const same = next.querySelector(back ? ".story-previous" : ".story-next");
+      if (same) same.focus();
+    });
+  }
+
+  Array.prototype.slice.call(doc.querySelectorAll("button.load-more[aria-controls]")).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = doc.getElementById(btn.getAttribute("aria-controls"));
+      if (!target) return;
+      const shown = Array.prototype.slice.call(target.querySelectorAll(".hidden-article"));
+      shown.forEach((card) => card.classList.remove("hidden-article"));
+      btn.remove();
+      const link = shown.length ? shown[0].querySelector("h2 a") : null;
+      if (link) link.focus();
+    });
+  });
 
   const prefill = doc.querySelector("form[data-prefill-from-path] #not-found-q");
   if (prefill && !prefill.value) {

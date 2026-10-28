@@ -176,5 +176,6 @@ describe("enqueueSiteWrite", () => {
 describe("RENDER_CHROME_VERSION", () => {
   // 6: the legacy <head> (favicon, html.js marker, vendored legacy CSS, overrides.css, theme aliases).
   // 7: the news.gov header (logo, News ministry menu, Subscribe, search, phone drawer) and site.js.
-  it("RENDER_CHROME_VERSION is 7", () => expect(RENDER_CHROME_VERSION).toBe(7));
+  // 8: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
+  it("RENDER_CHROME_VERSION is 8", () => expect(RENDER_CHROME_VERSION).toBe(8));
 });

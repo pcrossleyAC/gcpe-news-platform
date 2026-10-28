@@ -12,14 +12,14 @@ import { fileURLToPath } from "node:url";
 import { loadTenantConfig } from "@gcpe/config";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { createSiteBuilder } from "../apps/public-site/src/builder";
-import type { CategoryDto, PostDto } from "../apps/public-site/src/dto";
+import type { CategoryDto, PostDto, SlideDto } from "../apps/public-site/src/dto";
 import type { NewsApiClient } from "../apps/public-site/src/news-api-client";
 import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index";
 import type { SiteInfo } from "../apps/public-site/src/render";
 import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
 import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
-import { post } from "../apps/public-site/test/fixtures";
+import { link, post, slide } from "../apps/public-site/test/fixtures";
 
 const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
 
@@ -74,11 +74,34 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     const day = String(((i - 1) % 28) + 1).padStart(2, "0");
     posts.set(
       key,
-      post({ key, publishDate: `2026-${i <= 12 ? "10" : "09"}-${day}T10:00:00-07:00`, ministryKeys: [ministry], leadMinistryKey: ministry, sectorKeys: ["economy"], themeKeys: ["housing"], tagKeys: ["covid-19"] }),
+      post({
+        key,
+        publishDate: `2026-${i <= 12 ? "10" : "09"}-${day}T10:00:00-07:00`,
+        ministryKeys: [ministry],
+        leadMinistryKey: ministry,
+        sectorKeys: ["economy"],
+        themeKeys: ["housing"],
+        tagKeys: ["covid-19"],
+        hasTranslations: i % 3 === 0,
+        hasMediaAssets: i % 4 === 0,
+        // One Flickr lead (a real BC Gov photo, as news.gov's home showed it on 2026-10-28), so the
+        // PostCard thumbnail — C209's one allowed third-party load — is checked by axe and Lighthouse.
+        assetUrl: i === 11 ? "https://live.staticflickr.com/65535/55541987722_14f8c2f9f4_b.jpg" : null,
+      }),
     );
   }
+  // Home's carousel band: two slides with images (served from the site itself) and the second right-justified.
+  const image = `${o.baseUrl}/assets/legacy/Content/Images/Gov/default-og-image-new.jpg`;
+  const slides: SlideDto[] = [
+    slide({ key: "slide-1", headline: "Clinics opening across the province", actionUri: `${o.baseUrl}/releases/${FIRST_KEY}/`, actionLabel: "Read the release", imageUrl: image, sortIndex: 0 }),
+    slide({ key: "slide-2", headline: "Have your say on housing", summary: "Share your views before the end of the month.", actionUri: `${o.baseUrl}/themes/housing/`, actionLabel: null, imageUrl: image, sortIndex: 1, justify: "right" }),
+  ];
   const newsApi: NewsApiClient = {
     ...fakeNewsApi(posts),
+    // A top and a feature post, as news.gov's home always has.
+    home: async () => ({ granville: null, topPostKey: "2026HLTH0010-000010", featurePostKey: "2026HLTH0009-000009" }),
+    slides: async () => slides,
+    resourceLinks: async () => [link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
   };

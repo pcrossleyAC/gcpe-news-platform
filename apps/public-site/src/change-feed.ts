@@ -84,7 +84,13 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       const kind = CATEGORY_CHANGE[c.kind];
       const id = c.key ? categoryPageId(kind, c.key) : null;
       if (!id) return [];
-      return [{ pageId: id, priority: live }, ...(kind === "ministries" ? [{ pageId: "ministries", priority: live }, { pageId: "search", priority: live }] : []), { pageId: "sitemap:pages", priority: live }];
+      return [
+        { pageId: id, priority: live },
+        ...(kind === "ministries" ? [{ pageId: "ministries", priority: live }, { pageId: "search", priority: live }] : []),
+        // Home's News by Sector box names each active sector.
+        ...(kind === "sectors" ? [{ pageId: "home", priority: live }] : []),
+        { pageId: "sitemap:pages", priority: live },
+      ];
     }
     // Queues nothing itself: every sync turn fetches the settings and queues what each changed
     // section needs (sync.ts), so the change only has to wake the site up.

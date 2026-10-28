@@ -595,17 +595,20 @@ describe("syncSite", () => {
       expect(JSON.parse(html(deps, "assets/site-banner.json"))).toMatchObject({ visible: true, message: "Offices closed" });
     });
 
-    it("a connect-only change rebuilds only the Connect page", async () => {
+    it("a connect-only change rebuilds only the Connect page and home (its Connect With Us icons)", async () => {
       const deps = setup(new Map([["K1", post({ key: "K1" })]]));
       api(deps).settings = published(bcSettings());
       await syncSite(deps);
+      expect(html(deps, "index.html")).toContain("threads_logo.svg");
       const doc = bcSettings();
-      doc.connect.threads.accounts = [{ text: "@NewThreads", url: "https://threads.net/@new" }];
+      doc.connect.threads = { featured: [], accounts: [] };
+      doc.connect.bluesky.accounts = [...doc.connect.bluesky.accounts, { text: "@NewBluesky", url: "https://bsky.app/profile/new" }];
       api(deps).settings = published(doc, 2);
       const r = recording(deps);
       await syncSite(r.deps);
-      expect(r.rendered).toEqual(["connect"]);
-      expect(html(deps, "connect/index.html")).toContain("@NewThreads");
+      expect(r.rendered).toEqual(["connect", "home"]);
+      expect(html(deps, "connect/index.html")).toContain("@NewBluesky");
+      expect(html(deps, "index.html")).not.toContain("threads_logo.svg");
     });
 
     it("a ministryPages-only change rebuilds only the ministry pages", async () => {
