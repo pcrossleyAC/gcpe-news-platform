@@ -18,7 +18,7 @@ const TZ = "America/Vancouver";
 const SECRET = "s".repeat(40) + "-nrms-succession-test";
 const AT = "2028-11-20T17:00:00.000Z";
 const data = (over: Partial<OrgSucceeded> = {}): OrgSucceeded => ({ key: "health", successorKeys: ["wellness"], moveSubscribers: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true, at: AT, ...over });
-const ev = (d: OrgSucceeded, source = "core") => ({ id: crypto.randomUUID(), type: "org.succeeded", source, aggregateId: d.key, sequence: 1, occurredAt: AT, data: d }) as unknown as EventEnvelope;
+const ev = (d: OrgSucceeded, source = "core") => ({ id: crypto.randomUUID(), type: "org.succeeded", source, aggregateId: `org-succession:${d.key}`, sequence: 1, occurredAt: AT, data: d }) as unknown as EventEnvelope;
 
 describe("NRMS org.succeeded", () => {
   let tdb: TestDatabase;

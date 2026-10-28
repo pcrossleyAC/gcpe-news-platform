@@ -122,10 +122,10 @@ describe("calendar succession", () => {
     expect(changes).toHaveLength(1);
     // Through the receiver too: the event applies, and its copy is a duplicate.
     const later = await act("later", { startAt: new Date("2026-12-02T18:00:00Z") });
-    const ev = envelope("core", "org.succeeded", DATA, "org:health");
+    const ev = envelope("core", "org.succeeded", DATA, "org-succession:health");
     expect((await sendEvent(app, ev)).status).toBe(200);
     expect((await sendEvent(app, ev)).status).toBe(200);
-    expect((await sendEvent(app, envelope("core", "org.succeeded", DATA, "org:health"))).status).toBe(200);
+    expect((await sendEvent(app, envelope("core", "org.succeeded", DATA, "org-succession:health"))).status).toBe(200);
     expect((await get(later)).contactMinistryKey).toBe("wellness");
     expect(await tdb.db.select().from(activityChanges).where(eq(activityChanges.activityId, later))).toHaveLength(1);
     expect(await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, `activity:${later}`))).toHaveLength(1);
@@ -133,7 +133,7 @@ describe("calendar succession", () => {
 
   it("is applied through the event receiver", async () => {
     const id = await act("future", { startAt: new Date("2026-12-01T18:00:00Z") });
-    expect((await sendEvent(app, envelope("core", "org.succeeded", DATA, "org:health"))).status).toBe(200);
+    expect((await sendEvent(app, envelope("core", "org.succeeded", DATA, "org-succession:health"))).status).toBe(200);
     expect((await get(id)).contactMinistryKey).toBe("wellness");
   });
 

@@ -188,7 +188,7 @@ So a term entered weeks ahead goes live at the first tick after 00:00 Pacific on
 4. If `takeAbbreviation`, copy the abbreviation to B (the uniqueness check now ignores inactive ministries, N11).
 5. Emit `org.upserted` for A, and for B if it changed, then `org.succeeded`.
 
-Event `org.succeeded`: `{ key, successorKeys, moveSubscribers, moveCalendar, moveDrafts, takeAbbreviation, at }`. It is routed Core → NoD, Calendar and NRMS in `INTERNAL_EVENT_ROUTES` [V `apps/stack/src/env.ts:339-377`]. Each handler is idempotent (it moves rows still keyed to A):
+Event `org.succeeded`: `{ key, successorKeys, moveSubscribers, moveCalendar, moveDrafts, takeAbbreviation, at }`. It is published on its own aggregate, `org-succession:<key>`, never on A's `org:<key>` (NG-R16): on one aggregate a receiver that applied it first would drop A's `org.upserted`/`org.deactivated` as stale. The dispatcher also delivers each transaction's events in write order. It is routed Core → NoD, Calendar and NRMS in `INTERNAL_EVENT_ROUTES` [V `apps/stack/src/env.ts:339-377`]. Each handler is idempotent (it moves rows still keyed to A):
 
 | Service | Effect |
 |---|---|

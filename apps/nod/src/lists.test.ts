@@ -134,7 +134,7 @@ describe("lists from Core events", () => {
   });
   describe("org.succeeded", () => {
     const succeeded = (key: string, successorKeys: string[], moveSubscribers = true) =>
-      envelope("core", "org.succeeded", { key, successorKeys, moveSubscribers, moveCalendar: false, moveDrafts: false, takeAbbreviation: false, at: "2028-11-20T17:00:00.000Z" }, `org-succeeded:${key}`);
+      envelope("core", "org.succeeded", { key, successorKeys, moveSubscribers, moveCalendar: false, moveDrafts: false, takeAbbreviation: false, at: "2028-11-20T17:00:00.000Z" }, `org-succession:${key}`);
     const keysOf = async (id: string) =>
       (await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, id))).map((r) => r.listKey).sort();
     const historyOf = (id: string) => tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, id));
