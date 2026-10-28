@@ -25,6 +25,8 @@ import { FooterScreen } from "./settings/FooterScreen";
 import { SocialScreen } from "./settings/SocialScreen";
 import { ThemeScreen } from "./settings/ThemeScreen";
 import { MinistryPagesScreen } from "./settings/MinistryPagesScreen";
+import { MediaContactsScreen } from "./settings/MediaContactsScreen";
+import { PageTextScreen } from "./settings/PageTextScreen";
 import { HistoryScreen } from "./settings/HistoryScreen";
 import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
@@ -242,6 +244,55 @@ describe("accessibility — Website section screens", () => {
     await screen.findByRole("heading", { name: "Footer links", level: 1 });
     await screen.findByDisplayValue(ack);
     expect(await screen.findAllByText("Use plain text.")).not.toHaveLength(0);
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("MediaContactsScreen, with contact rows and field errors", async () => {
+    const state = settingsState(
+      (d) => ({
+        ...d,
+        contactsPage: {
+          ...d.contactsPage,
+          introHtml: "<p>Call <b>250-555-0100</b>.</p>",
+          contacts: [
+            { group: "Office of the Premier", groupUrl: "/ministries/office-of-the-premier/", subgroup: "", name: "Media Line", phone: "250 555 0100", cell: "", email: "bad", placement: "bottom" },
+            { group: "Other", groupUrl: "", subgroup: "", name: "Desk", phone: "", cell: "", email: "", placement: "top" },
+          ],
+        },
+      }),
+      [
+        { field: "contactsPage.contacts[0].email", message: "Enter an email address like name@gov.bc.ca." },
+        { field: "contactsPage.introHtml", message: "Too long." },
+      ],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<MediaContactsScreen />));
+    await screen.findByRole("heading", { name: "Media contacts page", level: 1 });
+    await screen.findByDisplayValue("Media Line");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("PageTextScreen, with rich fields, an archive link row and field errors", async () => {
+    const state = settingsState(
+      (d) => ({
+        ...d,
+        pageText: {
+          ...d.pageText,
+          privacy: { ...d.pageText.privacy, bodyHtml: "<p>Statement</p>" },
+          collectionNotice: { ...d.pageText.collectionNotice, bodyHtml: "<p>Notice</p>" },
+          searchArchiveLinks: [{ text: "2015", url: "http://x.invalid" }],
+        },
+      }),
+      [
+        { field: "pageText.assetLicence.url", message: "Must start with https:// or / (a page on this site)." },
+        { field: "pageText.privacy.bodyHtml", message: "Too long." },
+        { field: "pageText.searchArchiveLinks[0].url", message: "Must start with https:// or / (a page on this site)." },
+      ],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<PageTextScreen />));
+    await screen.findByRole("heading", { name: "Page text", level: 1 });
+    await screen.findByDisplayValue("2015");
     expect(await seriousViolations(container)).toEqual([]);
   });
 

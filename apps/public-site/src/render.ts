@@ -131,6 +131,21 @@ export const HTML_JS_MARKER = 'document.documentElement.classList.add("js")';
  * stays a link). A constant: nothing is interpolated. */
 export const SITE_SCRIPT_ONERROR = 'document.documentElement.classList.remove("js")';
 
+/** Elements browsers draw in italics by default, and the classes our CSS sets `font-style: italic`
+ * on (bootstrap's `.fst-italic`, legacy site.css's `.quotes .quote p`). */
+const ITALIC_TAG = /<(?:em|i|cite|address|var|dfn)[\s>/]/i;
+const ITALIC_CLASS = /\sclass="(?:[^"]*\s)?(?:fst-italic|quote)(?:\s[^"]*)?"/;
+
+/**
+ * Whether a rendered page shows italic text, so its head preloads BC Sans Italic (P4-R6): without
+ * the preload the italic face is found only at layout, late enough that Lighthouse's mobile run
+ * reports first paint after it (FCP 1.2 s -> 2.3 s on /privacy/). Pages with no italics don't pay
+ * for the extra font. Bold italic (BoldItalic) is not preloaded.
+ */
+export function usesItalic(html: string): boolean {
+  return ITALIC_TAG.test(html) || ITALIC_CLASS.test(html);
+}
+
 /** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
 export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
   const base = basePath(site);
@@ -148,6 +163,17 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   // Legacy loads the Granville Bridge theme only while Project Blue Bridge is on.
   const bridgeCss = opts.banner ? `\n<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/granville-bridge-theme.css">` : "";
   const settings = opts.settings ?? themeDefaults(theme);
+  const page = `<body${bodyAttr}>
+<a class="skip-link" href="#main">Skip to main content</a>
+${renderBanner(base, opts.banner)}
+${renderHeader(site, opts)}
+${opts.lead ? `${opts.lead}\n` : ""}<div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
+${body}
+</main></div>
+${opts.trail ? `${opts.trail}\n` : ""}${renderFooter(settings, site, opts)}
+<script src="${e(base)}/assets/site/site.js" defer onerror="${e(SITE_SCRIPT_ONERROR)}"></script>
+</body>`;
+  const italicPreload = usesItalic(page) ? `\n<link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Italic.woff2" as="font" type="font/woff2" crossorigin>` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -158,22 +184,13 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <link rel="icon" href="${e(base)}/favicon.ico">
 <script>${HTML_JS_MARKER}</script>
 <link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Bold.woff2" as="font" type="font/woff2" crossorigin>${italicPreload}
 <link rel="stylesheet" href="${e(base)}/assets/${LEGACY_BUNDLE}">
 <link rel="stylesheet" href="${e(base)}/assets/legacy/Content/print.css" media="print">${bridgeCss}
 <link rel="stylesheet" href="${e(base)}/assets/site/overrides.css">
 <link rel="stylesheet" href="${e(base)}/assets/theme.css">${font}${feed}
 </head>
-<body${bodyAttr}>
-<a class="skip-link" href="#main">Skip to main content</a>
-${renderBanner(base, opts.banner)}
-${renderHeader(site, opts)}
-${opts.lead ? `${opts.lead}\n` : ""}<div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
-${body}
-</main></div>
-${opts.trail ? `${opts.trail}\n` : ""}${renderFooter(settings, site, opts)}
-<script src="${e(base)}/assets/site/site.js" defer onerror="${e(SITE_SCRIPT_ONERROR)}"></script>
-</body>
+${page}
 </html>
 `;
 }

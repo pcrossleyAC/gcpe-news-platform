@@ -87,7 +87,8 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       // A ministry change can start (a hand-over) or stop (a reactivation) a successor redirect.
       // The table goes one priority lower than the category pages, so a hand-over to a brand-new
       // ministry has that ministry's page on disk before anything 301s to it.
-      const ministryPages = kind === "ministries" ? ["ministries", "search"] : [];
+      // /contacts/ lists every ministry's name, minister and media contacts.
+      const ministryPages = kind === "ministries" ? ["ministries", "search", "contacts"] : [];
       const redirects = kind === "ministries" ? [{ pageId: "legacy-redirects", priority: PRIORITY.bulkPost }] : [];
       return [
         { pageId: id, priority: live },

@@ -79,6 +79,15 @@ describe("currentSettings with a document published before plan 4", () => {
     expect(JSON.parse(storage.files.get(SITE_SETTINGS_PATH) as string)).toEqual(defaults);
   });
 
+  it("a pageText missing notFound, assetLicence or privacy entirely is refused, so the last applied settings stand", async () => {
+    for (const part of ["notFound", "assetLicence", "privacy"] as const) {
+      const doc = structuredClone(defaults) as Record<string, unknown> & typeof defaults;
+      delete (doc.pageText as Partial<typeof doc.pageText>)[part];
+      // The News API client parses with this schema; a refused body is a failed fetch.
+      expect(storedSiteSettingsSchema.safeParse(doc).success, part).toBe(false);
+    }
+  });
+
   it("steady state: a pre-plan-4 document's section hashes are identical across fetch → persist → re-read, connect key order included", async () => {
     // As the client hands it over: parsed with the stored schema (zod emits keys in schema order).
     const fetched = storedSiteSettingsSchema.parse(JSON.parse(JSON.stringify(prePlan4Settings())));

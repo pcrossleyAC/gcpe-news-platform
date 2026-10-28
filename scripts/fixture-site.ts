@@ -49,6 +49,8 @@ export const FIXTURE_PAGES = [
   "/archive/terms/",
   "/archive/terms/2024-2028/",
   "/search/",
+  "/contacts/",
+  "/privacy/",
   "/404.html",
 ];
 
@@ -186,6 +188,9 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
       ministry({
         key: "health",
         name: "Health",
+        // Shown in brackets and italics under the name on /contacts/ (legacy <i>), so the page is
+        // scored with the italic face it really loads (P4-R6).
+        displayAdditionalName: "Health Services",
         flickrUri: "https://www.flickr.com/photos/bcgovphotos/",
         youtubeUri: "https://www.youtube.com/user/ProvinceofBC",
         topicLinks: [link({ uri: "https://www2.gov.bc.ca/gov/content/health", key: "Health care in B.C." })],
@@ -197,7 +202,14 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
       ministry({ key: "finance", name: "Finance" }),
       // The Premier: "More from the Premier", Meet the Team (team links) and a top story.
       ministry({ key: "office-of-the-premier", name: "Office of the Premier", ministryUrl: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/office-of-the-premier", topPostKey: "2026HLTH0010-000010" }),
-      ministry({ key: "trade", name: "Minister of State for Trade", ministryUrl: null }),
+      // A child of Health with its own media contact: /contacts/ lists it indented under Health.
+      ministry({
+        key: "trade",
+        name: "Minister of State for Trade",
+        ministryUrl: null,
+        parentMinistryKey: "health",
+        contactUser: contact({ fullName: "Trade Media Desk", mobileNumber: "250-555-0103", emailAddress: "Trade.Media@gov.bc.ca" }),
+      }),
     ],
     // Health's minister has a photo and a bio, so the biography page (H2) is built; the photo is the
     // local slide image (no network in CI).
@@ -229,7 +241,7 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
         childKeys: [],
       },
     ],
-    resourceLinks: async () => [link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
+    resourceLinks: async () => [link({ uri: "/contacts/", key: "Media Contacts" }), link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
     governmentTerms: async () => termsSnapshot(tenant.governmentTerms ?? []),

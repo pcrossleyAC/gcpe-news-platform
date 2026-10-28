@@ -2,16 +2,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { EventEnvelope } from "@gcpe/events";
 import { createPublicSiteTestDb } from "../test/helpers";
-import { fakeNewsApi } from "../test/fake-news-api";
+import { fakeNewsApi, type FakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
 import { bcSettings, post, site } from "../test/fixtures";
+import { prePlan4Settings } from "../../../packages/site-settings/src/fixtures";
 import type { SiteStorage } from "./storage";
 import type { PostDto } from "./dto";
 import { createSiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
-import { queueDepth } from "./queue";
+import * as queue from "./queue";
+import { PRIORITY, queueDepth } from "./queue";
 import { chromeChanges, enqueueSiteWrite, RENDER_CHROME_VERSION, stateAndBanner, writeSiteState } from "./rebuild";
-import { createRebuildHandler, kickBackgroundSync, type SyncDeps } from "./sync";
+import { createRebuildHandler, kickBackgroundSync, syncSite, type SyncDeps } from "./sync";
 
 function envelope(data: unknown): EventEnvelope {
   return {
@@ -75,6 +77,106 @@ describe("createRebuildHandler", () => {
       }),
     ).rejects.toThrow("something else in this transaction failed");
     expect(await queueDepth(tdb.db)).toBe(0);
+  });
+});
+
+describe("settings sections: contactsPage", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => { tdb = await createPublicSiteTestDb(); });
+  afterAll(async () => { await tdb.drop(); });
+  beforeEach(async () => { await tdb.pool.query("TRUNCATE site_posts"); await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY"); });
+
+  it("a contactsPage edit queues exactly contacts", async () => {
+    const storage = memoryStorage();
+    const newsApi = fakeNewsApi(new Map([["K1", post({ key: "K1" })]]));
+    const index = postIndex(tdb.db);
+    const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: null });
+    const deps: SyncDeps = { db: tdb.db, builder, index, newsApi, storage, site, test: false, batch: 200 };
+    (newsApi as FakeNewsApi).settings = { revision: 1, document: bcSettings() };
+    await syncSite(deps);
+    expect(storage.files.get("contacts/index.html")).toContain("Contact List for Media");
+    const doc = bcSettings();
+    doc.contactsPage.listHeading = "Media list";
+    (newsApi as FakeNewsApi).settings = { revision: 2, document: doc };
+    const enqueue = vi.spyOn(queue, "enqueuePages");
+    try {
+      await syncSite(deps);
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      expect(enqueue.mock.calls[0]![1]).toEqual([{ pageId: "contacts", priority: PRIORITY.liveAggregate }]);
+      expect(storage.files.get("contacts/index.html")).toContain("Media list");
+    } finally {
+      enqueue.mockRestore();
+    }
+  });
+});
+
+describe("settings sections: pageText", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => { tdb = await createPublicSiteTestDb(); });
+  afterAll(async () => { await tdb.drop(); });
+  beforeEach(async () => { await tdb.pool.query("TRUNCATE site_posts"); await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY"); });
+
+  /** Syncs the BC settings, then an edited copy; returns the items the second sync queued (`items`)
+   * and any later enqueue calls of the drain that followed (`dependents`). */
+  async function edit(change: (d: ReturnType<typeof bcSettings>) => void) {
+    const storage = memoryStorage();
+    const newsApi = fakeNewsApi(new Map([["K1", post({ key: "K1", hasMediaAssets: true })], ["K2", post({ key: "K2" })]]));
+    const index = postIndex(tdb.db);
+    const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: null });
+    const deps: SyncDeps = { db: tdb.db, builder, index, newsApi, storage, site, test: false, batch: 200 };
+    (newsApi as FakeNewsApi).settings = { revision: 1, document: bcSettings() };
+    await syncSite(deps);
+    expect(storage.files.get("privacy/index.html")).toContain("B.C. Government Website Privacy Statement");
+    const doc = bcSettings();
+    change(doc);
+    (newsApi as FakeNewsApi).settings = { revision: 2, document: doc };
+    const enqueue = vi.spyOn(queue, "enqueuePages");
+    try {
+      await syncSite(deps);
+      // The sync enqueues once; any later call is the drain queueing a rebuilt post's dependents.
+      const [first, ...later] = enqueue.mock.calls.map((c) => c[1] as { pageId: string; priority: number }[]);
+      return { items: first!, dependents: later, storage };
+    } finally {
+      enqueue.mockRestore();
+    }
+  }
+
+  it("a published document with no pageText at all renders privacy, 404 and the licence line from the tenant defaults", async () => {
+    const storage = memoryStorage();
+    const newsApi = fakeNewsApi(new Map([["K1", post({ key: "K1", hasMediaAssets: true })]]));
+    const index = postIndex(tdb.db);
+    const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: null });
+    // The BC tenant file as the defaults, as start.ts loads them (loadSiteSettingsDefaults).
+    const deps: SyncDeps = { db: tdb.db, builder, index, newsApi, storage, site, test: false, batch: 200, defaultSettings: bcSettings() };
+    (newsApi as FakeNewsApi).settings = { revision: 1, document: prePlan4Settings() };
+    await syncSite(deps);
+    const defaults = bcSettings().pageText;
+    expect(storage.files.get("privacy/index.html")).toContain(`<h1>${defaults.privacy.title}</h1>`);
+    expect(storage.files.get("404.html")).toContain("<h1>That web page doesn&#39;t exist.</h1>");
+    expect(storage.files.get("releases/K1/index.html")).toContain(`>${defaults.assetLicence.linkText}</a>.</p>`);
+  });
+
+  it("a privacy edit queues exactly privacy", async () => {
+    const { items, dependents, storage } = await edit((d) => { d.pageText.privacy.title = "Our privacy promise"; });
+    expect(dependents).toEqual([]);
+    expect(items).toEqual([{ pageId: "privacy", priority: PRIORITY.liveAggregate }]);
+    expect(storage.files.get("privacy/index.html")).toContain("Our privacy promise");
+  });
+
+  it("a notFound edit queues exactly static", async () => {
+    const { items, dependents, storage } = await edit((d) => { d.pageText.notFound.heading = "Nothing here"; });
+    expect(dependents).toEqual([]);
+    expect(items).toEqual([{ pageId: "static", priority: PRIORITY.liveAggregate }]);
+    expect(storage.files.get("404.html")).toContain("Nothing here");
+  });
+
+  it("an assetLicence edit queues every post and nothing else", async () => {
+    const { items, dependents, storage } = await edit((d) => { d.pageText.assetLicence.linkText = "Footage licence v2"; });
+    expect(items.map((i) => i.pageId).sort()).toEqual(["post:K1", "post:K2"]);
+    expect(items.every((i) => i.priority === PRIORITY.bulkPost)).toBe(true);
+    // Each rebuilt post queues its dependents at bulk-aggregate priority (drain), never the sync again.
+    expect(dependents.flat().every((i) => i.priority === PRIORITY.bulkAggregate)).toBe(true);
+    expect(storage.files.get("releases/K1/index.html")).toContain("Footage licence v2");
   });
 });
 
@@ -180,7 +282,8 @@ describe("RENDER_CHROME_VERSION", () => {
   // 8: the archive by government term (new-government Task 6).
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
-  it("RENDER_CHROME_VERSION is 11", () => expect(RENDER_CHROME_VERSION).toBe(11));
+  // 12: /contacts/, /privacy/, in-site Resources links and the italic preload (parity plan 4, batch B).
+  it("RENDER_CHROME_VERSION is 12", () => expect(RENDER_CHROME_VERSION).toBe(12));
 });
 
 describe("Search Console verification in the render-state marker", () => {

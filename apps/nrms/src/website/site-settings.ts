@@ -11,6 +11,7 @@ import {
   type SiteSettings,
   type StoredSiteSettings,
 } from "@gcpe/site-settings";
+import { cleanSettingsRichHtml } from "@gcpe/site-settings/rich-html";
 import { siteSettingsDrafts, siteSettingsRevisions } from "../db/schema";
 import type { Actor } from "../releases/store";
 import { writeSiteLog } from "./events";
@@ -81,10 +82,12 @@ async function readDraft(db: DbOrTx, actor: Actor) {
 }
 
 /** Parses one section's value with its structural schema — always the complete section (a
- * ZodError ⇒ 400) — and overlays it on `doc`; the other parts stay as stored. */
+ * ZodError ⇒ 400) — and overlays it on `doc`; the other parts stay as stored. Every rich HTML
+ * field comes out cleaned with the public site's allow-list (P4-R4: what is stored is already
+ * safe; an already clean field is kept byte-identical). */
 function overlay(doc: StoredSiteSettings, input: SectionInput): StoredSiteSettings {
   const value = siteSettingsSchema.shape[input.section].parse(input.value) as SiteSettings[SectionKey];
-  return { ...doc, [input.section]: value };
+  return cleanSettingsRichHtml({ ...doc, [input.section]: value });
 }
 
 async function upsertDraft(db: DbOrTx, actor: Actor, document: StoredSiteSettings, baseRevision: number | null): Promise<void> {
@@ -147,6 +150,8 @@ async function publishDocument(
   note: string | null,
 ): Promise<PublishResult> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${SITE_SETTINGS_PUBLISH_LOCK[0]}, ${SITE_SETTINGS_PUBLISH_LOCK[1]})`);
+  // Drafts are cleaned on save; this also covers a restored revision stored before cleaning.
+  document = cleanSettingsRichHtml(document);
   const errors = validateSiteSettings(document);
   if (errors.length > 0) return { result: "invalid", errors };
 

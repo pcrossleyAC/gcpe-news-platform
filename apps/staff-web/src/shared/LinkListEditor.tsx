@@ -30,7 +30,8 @@ export interface LinkListEditorProps {
 }
 
 type Shown = "text" | "url" | "summary";
-const ROW_ERROR = /^\[(\d+)\]\.(\w+)$/;
+/** `[2].url` (a field on row 3) or `[2]` (row 3 as a whole, kept under the key ""). */
+const ROW_ERROR = /^\[(\d+)\](?:\.(\w+))?$/;
 
 /**
  * An editable list of links (site settings' banner, footer and social lists; the Organizations
@@ -69,10 +70,13 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
     const m = ROW_ERROR.exec(e.field.slice(pathPrefix.length));
     if (!m) continue;
     const row = rowErrors.get(Number(m[1])) ?? new Map<string, string>();
-    if (!row.has(m[2]!)) row.set(m[2]!, e.message);
+    const name = m[2] ?? "";
+    if (!row.has(name)) row.set(name, e.message);
     rowErrors.set(Number(m[1]), row);
   }
   const shown: Shown[] = withSummary ? ["text", "url", "summary"] : ["text", "url"];
+  // A problem with the list itself (`<pathPrefix>`, e.g. too many links) shows under its legend.
+  const listErrors = [...new Set(errors.filter((e) => e.field === pathPrefix).map((e) => e.message))];
 
   const update = (index: number, patch: Partial<LinkSetting>) => onChange(links.map((link, i) => (i === index ? { ...link, ...patch } : link)));
   const updateSummary = (index: number, summary: string) =>
@@ -110,6 +114,11 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
     <fieldset className="gcpe-link-list" ref={moveFocus.containerRef} aria-describedby={description === undefined ? undefined : descriptionId}>
       <legend>{legend}</legend>
       {description !== undefined && <p id={descriptionId}>{description}</p>}
+      {listErrors.map((message) => (
+        <p key={message} role="alert" className="gcpe-link-list__error">
+          {message}
+        </p>
+      ))}
       {links.length === 0 && <p>No links yet.</p>}
       {links.map((link, index) => {
         const key = keys.current[index]!;
@@ -123,7 +132,7 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
               <TextField label="Description (optional)" value={link.summary ?? ""} onChange={(v) => updateSummary(index, v)} isDisabled={isDisabled} {...fieldError(index, "summary")} />
             )}
             {others.map(([name, message]) => (
-              <p key={name} className="gcpe-link-list__error">
+              <p key={name || "row"} className="gcpe-link-list__error">
                 {message}
               </p>
             ))}

@@ -378,6 +378,73 @@ describe("website/site-settings", () => {
     expect((await getSettingsState(tdb.db, sam, defaults)).document.banner.message).toBe("Sam");
   });
 
+  describe("rich HTML fields are cleaned on save (P4-R4)", () => {
+    const NASTY = '<p>Hi<script>alert(1)</script></p><img src="https://x.example/a.png" onerror="alert(2)"><p><a href="javascript:alert(3)">Click</a></p>';
+    const CLEAN = "<p>Hi</p><p>Click</p>";
+    const storedDraft = async (actor: Actor) =>
+      (await tdb.pool.query("SELECT document FROM site_settings_drafts WHERE editor_id = $1", [actor.id])).rows[0].document as SiteSettings;
+    const storedRevision = async (n: number) =>
+      (await tdb.pool.query("SELECT document FROM site_settings_revisions WHERE revision = $1", [n])).rows[0].document as SiteSettings;
+
+    it("a saved draft and a published revision store inert HTML for every rich pageText field", async () => {
+      const pageText = {
+        ...defaults.pageText,
+        privacy: { ...defaults.pageText.privacy, bodyHtml: NASTY },
+        live: { ...defaults.pageText.live, consentHtml: NASTY, offAirHtml: NASTY },
+        collectionNotice: { ...defaults.pageText.collectionNotice, bodyHtml: NASTY },
+        subscribeHelpHtml: NASTY,
+      };
+      const state = await saveDraft(tdb.db, jane, defaults, { baseRevision: null, section: "pageText", value: pageText });
+      expect(state.document.pageText.privacy.bodyHtml).toBe(CLEAN);
+      const draft = await storedDraft(jane);
+      for (const html of [draft.pageText.privacy.bodyHtml, draft.pageText.live.consentHtml, draft.pageText.live.offAirHtml, draft.pageText.collectionNotice.bodyHtml, draft.pageText.subscribeHelpHtml]) {
+        expect(html).toBe(CLEAN);
+      }
+      expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: null, section: "pageText", value: pageText })).toEqual({ result: "published", revision: 1 });
+      expect((await storedRevision(1)).pageText.privacy.bodyHtml).toBe(CLEAN);
+      expect((await publishedEvents())[0]!.data.document.pageText.subscribeHelpHtml).toBe(CLEAN);
+    });
+
+    it("the Media contacts introduction is cleaned on save and on rebase", async () => {
+      const contactsPage = { ...defaults.contactsPage, introHtml: NASTY };
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: null, section: "contactsPage", value: contactsPage });
+      expect((await storedDraft(jane)).contactsPage.introHtml).toBe(CLEAN);
+      await rebaseDraft(tdb.db, sam, defaults, { section: "contactsPage", value: contactsPage });
+      expect((await storedDraft(sam)).contactsPage.introHtml).toBe(CLEAN);
+    });
+
+    it("restoring a revision stored before cleaning existed publishes it cleaned", async () => {
+      const dirty = structuredClone(defaults);
+      dirty.pageText.privacy.bodyHtml = NASTY;
+      await tdb.pool.query("INSERT INTO site_settings_revisions (revision, document, published_by_id, published_by_name) VALUES (1, $1, 'u', 'Jane')", [
+        JSON.stringify(dirty),
+      ]);
+      expect(await restoreRevision(tdb.db, jane, defaults, subs, { revision: 1, baseRevision: 1 })).toEqual({ result: "published", revision: 2 });
+      expect((await storedRevision(2)).pageText.privacy.bodyHtml).toBe(CLEAN);
+    });
+
+    it("a clean document round-trips byte-identical (re-saving published text changes nothing)", async () => {
+      // jsonb reorders object keys, so "byte-identical" is checked per stored HTML string.
+      const richStrings = (d: SiteSettings) => [
+        d.contactsPage.introHtml,
+        d.pageText.privacy.bodyHtml,
+        d.pageText.live.consentHtml,
+        d.pageText.live.offAirHtml,
+        d.pageText.collectionNotice.bodyHtml,
+        d.pageText.subscribeHelpHtml,
+      ];
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: null, section: "pageText", value: defaults.pageText });
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: null, section: "contactsPage", value: defaults.contactsPage });
+      const draft = await storedDraft(jane);
+      expect(draft).toEqual(defaults);
+      richStrings(draft).forEach((html, i) => expect(html).toBe(richStrings(defaults)[i]));
+      expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: null, section: "pageText", value: defaults.pageText })).toEqual({ result: "published", revision: 1 });
+      const live = await storedRevision(1);
+      expect(live).toEqual(defaults);
+      richStrings(live).forEach((html, i) => expect(html).toBe(richStrings(defaults)[i]));
+    });
+  });
+
   it("accented names and notes survive history", async () => {
     await publishBanner(andre, "x", "Feux de forêt — mise à jour");
     const history = await listHistory(tdb.db);
