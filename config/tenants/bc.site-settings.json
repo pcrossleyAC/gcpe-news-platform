@@ -566,7 +566,7 @@
     },
     "collectionNotice": {
       "heading": "Notice of Collection",
-      "bodyHtml": "<p>This information is collected by Government Communications and Public Engagement under Section 26(c) of the <i>Freedom of Information and Protection of Privacy Act</i> and will be used to provide you with email updates from the Government of B.C. Should you have any questions about the collection of your personal information, please contact:</p>\n<p>Executive Director<br />\nDigital Communications<br />\nPO Box 9409, Stn Prov Govt, Victoria,  BC  V8W 9V1<br />\n<a href=\"tel:2503871337\">250 387-1337</a></p>"
+      "bodyHtml": "<p>This information is collected by Government Communications and Public Engagement under Section 26(c) of the <i>Freedom of Information and Protection of Privacy Act</i> and will be used to provide you with email updates from the Government of B.C. Should you have any questions about the collection of your personal information, please contact:</p>\n<p>Executive Director<br />\nDigital Communications<br />\nPO Box 9409, Stn Prov Govt, Victoria,  BC  V8W 9V1<br />\n250 387-1337</p>"
     },
     "subscribeHelpHtml": "<p>If you have difficulties subscribing, please <a href=\"https://forms.gov.bc.ca/\">contact us</a>.</p>",
     "assetLicence": {
