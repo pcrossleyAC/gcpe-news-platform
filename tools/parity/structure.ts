@@ -5,6 +5,24 @@ const MINISTRY_SELECTORS = [
   ".collapsible-regions .resource-links",
 ];
 
+const LISTING = [
+  ".home-body .other-articles .regular-articles .article h2 a",
+  ".regular-articles .article .item-date",
+  ".news-control .read-more",
+];
+const STORY_LISTING = [
+  ...LISTING,
+  ".home-features .resource-links.connect",
+  ".collapsible-regions .resource-links",
+  ".news-control .load-more",
+];
+const GROUPED_LISTING = [
+  ".news-listing .home-features .resource-links.connect",
+  ".news-listing .home-body .grouped-articles a",
+  ".grouped-articles .article",
+  ".news-control .load-more",
+];
+
 /** Selectors the legacy page carries that our port must also carry (queried on the whole document). */
 export const STRUCTURE: Record<string, string[]> = {
   home: [
@@ -27,6 +45,48 @@ export const STRUCTURE: Record<string, string[]> = {
   ],
   ministry: MINISTRY_SELECTORS,
   premier: MINISTRY_SELECTORS,
+  sector: [
+    ".ministry-listing.sector-listing",
+    ".home-features .resource-links.connect",
+    ".regular-articles .article",
+    ".collapsible-regions .resource-links",
+  ],
+  search: [
+    ".search .search-body",
+    ".search-panel.search-filters .search-filter",
+    ".search-results .search-panel-bar",
+    ".search-results .search-numbers",
+    ".search-results .article",
+  ],
+  subscribe: [".connect.subscribe .home-body", "#noticeOfCollection", ".expandable-section", 'a[href*="/subscribe/manage"]'],
+  connect: [
+    ".connect .home-body",
+    ".expandable-section.facebook",
+    ".expandable-section.linkedin",
+    ".expandable-section.rss",
+    ".home-body > p a",
+  ],
+  contacts: [
+    ".comm-contacts",
+    ".comm-contacts .header",
+    ".comm-contacts .row .contact-name",
+    '.comm-contacts .row a[href^="mailto:"]',
+  ],
+  live: [".connect .home-body", ".wowza-wrapper.asset.video", ".placeholder-container img"],
+  privacy: [".connect .home-body", ".connect .home-body h1", "#body p"],
+  factsheets: STORY_LISTING,
+  stories: STORY_LISTING,
+  archive: LISTING,
+  "ministry-factsheets": [
+    ".ministry-listing.fact-sheets",
+    ".home-features .resource-links.minister",
+    ".regular-articles .article",
+    ".collapsible-regions .resource-links",
+  ],
+  ministries: GROUPED_LISTING,
+  sectors: GROUPED_LISTING,
+  themes: GROUPED_LISTING,
+  topics: GROUPED_LISTING,
   biography: [".ministry-listing", ".biography-details", ".minister-bio-picture img", ".news-control .read-more"],
 };
 

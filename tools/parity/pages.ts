@@ -15,7 +15,24 @@ export const PARITY_PAGES: ParityPage[] = [
   { name: "search", path: "/search?q=housing" },
   { name: "subscribe", path: "/subscribe" },
   { name: "connect", path: "/connect" },
-  { name: "contacts", path: "/contacts" },
+  { name: "contacts", path: "/contacts", oursPath: "/contacts/" },
+  { name: "live", path: "/live", oursPath: "/live/" },
+  { name: "privacy", path: "/privacy", oursPath: "/privacy/" },
+  { name: "factsheets", path: "/factsheets", oursPath: "/factsheets/" },
+  { name: "stories", path: "/stories", oursPath: "/stories/" },
+  { name: "ministry-factsheets", path: "/ministries/health/factsheets", oursPath: "/ministries/health/factsheets/" },
+  { name: "ministries", path: "/ministries", oursPath: "/ministries/" },
+  { name: "sectors", path: "/sectors", oursPath: "/sectors/" },
+  { name: "themes", path: "/themes", oursPath: "/themes/" },
+  { name: "topics", path: "/news-subscribe", oursPath: "/tags/" },
+  // Legacy has no archive page; paired with /stories for chrome and listing look (spec conflict 1).
+  { name: "archive", path: "/stories", oursPath: "/archive/2026/10/" },
+];
+
+/** Page names added by plan 4; their ours paths are directory-style (trailing slash). */
+export const PLAN4_PAGE_NAMES = [
+  "contacts", "live", "privacy", "factsheets", "stories", "ministry-factsheets",
+  "ministries", "sectors", "themes", "topics", "archive",
 ];
 
 export const VIEWPORTS = [

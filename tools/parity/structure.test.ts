@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { PARITY_PAGES, buildOursUrl, parseOursOverrides } from "./pages";
+import { PARITY_PAGES, PLAN4_PAGE_NAMES, buildOursUrl, parseOursOverrides } from "./pages";
 import { STRUCTURE, structureFailed, structureReport } from "./structure";
 
 describe("structureReport", () => {
@@ -26,6 +26,20 @@ describe("STRUCTURE", () => {
       expect(selectors.length).toBeGreaterThan(0);
       for (const s of selectors) expect(() => document.querySelector(s), s).not.toThrow();
     }
+  });
+
+  it("every PARITY_PAGES name has a STRUCTURE entry", () => {
+    for (const p of PARITY_PAGES) expect(STRUCTURE[p.name], p.name).toBeDefined();
+  });
+
+  it("oursPath of every plan-4 page ends with '/'", () => {
+    for (const name of PLAN4_PAGE_NAMES) {
+      const p = PARITY_PAGES.find((x) => x.name === name);
+      expect(p, name).toBeDefined();
+      expect(p!.oursPath, name).toMatch(/\/$/);
+    }
+    expect(PARITY_PAGES.find((p) => p.name === "topics")).toMatchObject({ path: "/news-subscribe", oursPath: "/tags/" });
+    expect(PARITY_PAGES.find((p) => p.name === "archive")).toMatchObject({ path: "/stories", oursPath: "/archive/2026/10/" });
   });
 
   it("biography and premier pages are registered with ours paths", () => {
