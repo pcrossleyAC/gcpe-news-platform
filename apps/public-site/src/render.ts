@@ -33,6 +33,8 @@ export interface PageOptions {
   settings?: SiteSettings;
   /** The header's ministries menu (ministry-menu.ts). Null or absent: unavailable. */
   ministryMenu?: MenuMinistry[] | null;
+  /** Leaves the header's search (both forms and the phone drawer toggle) off: the search page has its own. */
+  hideHeaderSearch?: boolean;
 }
 
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");

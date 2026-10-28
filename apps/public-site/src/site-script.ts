@@ -9,8 +9,9 @@
  *    open at a time, as legacy's `data-bs-parent` did — except that News inside the open phone
  *    drawer keeps the drawer open, and closing the drawer closes the menu too.
  * 3. `body.menu-open` while `#menu` is open (overrides.css locks the page's scroll).
- * 4. Escape closes the open panel and returns focus to its button.
- * 5. The banner toggle (hidden, no aria-expanded) and the 404 prefill are left for Tasks 9 and 10.
+ * 4. Escape, with focus on an open panel's button or inside the panel, closes it and returns focus
+ *    to its button.
+ * 5. The banner toggle and the 404 prefill are left for Tasks 9 and 10.
  *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
@@ -89,11 +90,14 @@ export const SITE_SCRIPT = String.raw`(() => {
     });
   });
 
-  // Escape closes the innermost open panel: the one holding no other open panel's button.
+  // Escape acts only when focus is on an open panel's button or inside the panel, and then closes
+  // the innermost such panel (the one holding no other candidate's button), so a keypress elsewhere
+  // on the page never moves focus.
   doc.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
-    const open = toggles.filter(isOpen);
-    const btn = open.find((b) => !open.some((o) => o !== b && targetOf(b) && targetOf(b).contains(o))) || open[0];
+    const at = doc.activeElement;
+    const open = toggles.filter((b) => isOpen(b) && at && (b === at || (targetOf(b) && targetOf(b).contains(at))));
+    const btn = open.find((b) => !open.some((o) => o !== b && targetOf(b).contains(o)));
     if (!btn) return;
     close(btn);
     btn.focus();

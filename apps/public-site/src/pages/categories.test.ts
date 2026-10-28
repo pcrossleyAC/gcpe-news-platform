@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectAccessibleStructure, withoutBannerScript } from "../../test/structure";
+import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { bcSettings, category, contact, ministry, post, site } from "../../test/fixtures";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./categories";
 
@@ -56,7 +56,7 @@ describe("renderMinistryPage", () => {
 
   it("sanitises the minister's details (C209)", () => {
     const minister = { headline: "H", summary: null, details: '<p>Safe.</p><script>alert(1)</script><a href="javascript:alert(1)">Click</a>', photo: null };
-    const html = withoutBannerScript(renderMinistryPage(ministry({}), minister, emptyPosts, site, {}));
+    const html = withoutChromeScripts(renderMinistryPage(ministry({}), minister, emptyPosts, site, {}));
     expect(html).toContain("<p>Safe.</p>");
     expect(html).not.toContain("<script");
     expect(html).not.toContain("javascript:");
@@ -131,7 +131,7 @@ describe("renderMinistryPage", () => {
   });
 
   it("escapes every contact value, including inside the mailto link", () => {
-    const html = withoutBannerScript(
+    const html = withoutChromeScripts(
       renderMinistryPage(
         ministry({ contactUser: contact({ fullName: "A <b>", phoneNumber: "<i>1</i>", mobileNumber: null, emailAddress: 'x"><script>alert(1)</script>@example.test' }), weekendContactNumber: "<u>9</u>" }),
         null,

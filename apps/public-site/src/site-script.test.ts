@@ -113,6 +113,7 @@ describe("site.js", () => {
     const menu = doc.getElementById("menu")!;
     burger.click();
     news.click();
+    news.focus();
     expect([drawer.classList.contains("show"), menu.classList.contains("show")]).toEqual([true, true]);
     key("Escape");
     expect([drawer.classList.contains("show"), menu.classList.contains("show")]).toEqual([true, false]);
@@ -133,11 +134,27 @@ describe("site.js", () => {
     }
   });
 
-  it("leaves the hidden banner toggle alone (Task 9 wires it)", () => {
-    const { doc } = page();
-    const toggle = doc.getElementById("bannerToggleLink")!;
-    toggle.click();
-    expect(toggle.hidden).toBe(true);
-    expect(toggle.getAttribute("aria-expanded")).toBeNull();
+  it("Escape with focus outside the open panel and its button does nothing", () => {
+    const { doc, key } = page();
+    const news = doc.getElementById("news-dropdown")!;
+    news.click();
+    const h1 = doc.querySelector("h1")!;
+    h1.setAttribute("tabindex", "-1");
+    h1.focus();
+    key("Escape", h1);
+    expect(doc.getElementById("menu")!.classList.contains("show")).toBe(true);
+    expect(doc.activeElement).toBe(h1);
+    // On the toggle itself, it closes.
+    news.focus();
+    key("Escape", news);
+    expect(doc.getElementById("menu")!.classList.contains("show")).toBe(false);
+    expect(doc.activeElement).toBe(news);
+  });
+
+  it("on the search page (no header search) the remaining toggles still work", () => {
+    const { doc } = page({ ministryMenu: MENU, hideHeaderSearch: true });
+    expect(doc.getElementById("search-md-button")).toBeNull();
+    doc.getElementById("news-dropdown")!.click();
+    expect(doc.getElementById("menu")!.classList.contains("show")).toBe(true);
   });
 });

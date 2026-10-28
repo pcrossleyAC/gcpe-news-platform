@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectAccessibleStructure, withoutBannerScript } from "../../test/structure";
+import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { post, site } from "../../test/fixtures";
 import { renderReleasePage } from "./release";
 
@@ -84,8 +84,8 @@ describe("release page", () => {
       ctx,
     );
     expect(html).toContain("<p>Safe.</p>");
-    expect(withoutBannerScript(html)).not.toContain("<script");
-    expect(withoutBannerScript(html)).not.toContain("onerror");
+    expect(withoutChromeScripts(html)).not.toContain("<script");
+    expect(withoutChromeScripts(html)).not.toContain("onerror");
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("<iframe");
     expect(html).not.toContain("<style");

@@ -8,7 +8,7 @@ const SITE_JS_TAG = /<script src="[^"]*\/assets\/site\/site\.js" defer onerror="
 /** A page without the chrome's scripts (the head's html.js marker, the site banner's inline
  * script, banner-script.ts, and the site.js tag with its onerror; all on every page), for a test
  * asserting that the page's *own* content carries no script — exactly those are removed, nothing else. */
-export const withoutBannerScript = (html: string): string =>
+export const withoutChromeScripts = (html: string): string =>
   html.replace(`<script>${HTML_JS_MARKER}</script>`, "").replace(`<script>${SITE_BANNER_SCRIPT}</script>`, "").replace(SITE_JS_TAG, "");
 
 /**
@@ -31,5 +31,10 @@ export function expectAccessibleStructure(html: string): Document {
   expect(firstFocusable?.getAttribute("href")).toBe("#main");
   for (const img of document.querySelectorAll("img")) expect(img.hasAttribute("alt"), img.outerHTML).toBe(true);
   for (const el of document.querySelectorAll("[tabindex]")) expect(Number(el.getAttribute("tabindex"))).toBeLessThanOrEqual(0);
+  // P6: no duplicate ids anywhere on the page, chrome and body together.
+  const ids = [...document.querySelectorAll("[id]")].map((el) => el.id);
+  expect(ids.filter((id, i) => ids.indexOf(id) !== i), "duplicate ids").toEqual([]);
+  // Every aria-controls names an element on the page.
+  for (const el of document.querySelectorAll("[aria-controls]")) expect(document.getElementById(el.getAttribute("aria-controls")!), el.outerHTML.slice(0, 80)).not.toBeNull();
   return document;
 }

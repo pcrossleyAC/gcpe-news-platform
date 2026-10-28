@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectAccessibleStructure, withoutBannerScript } from "../../test/structure";
+import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { link, post, site, slide } from "../../test/fixtures";
 import { renderHomePage, type HomeView } from "./home";
 
@@ -93,7 +93,7 @@ describe("home page", () => {
 
   it("emits no <script> tag but the site banner's — the carousel doesn't rotate (C205)", () => {
     const full: HomeView = { top: post({ key: "T1" }), feature: post({ key: "F1" }), latest: [post({ key: "L1" })], slides: [slide({})], links: [link({})] };
-    const html = withoutBannerScript(renderHomePage(full, site, {}));
+    const html = withoutChromeScripts(renderHomePage(full, site, {}));
     expect(html).not.toContain("<script");
   });
 

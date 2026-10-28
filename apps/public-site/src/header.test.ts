@@ -79,18 +79,25 @@ describe("renderHeader", () => {
     expect(doc.querySelector("#menu")).toBeNull();
   });
 
-  it("Subscribe link, and the hidden banner toggle as a labelled button with an empty-alt image", () => {
+  it("the nav list is News then Subscribe; no banner toggle (or empty item for it) until Task 9", () => {
     const doc = header({ ministryMenu: MENU });
-    const sub = [...doc.querySelectorAll("#sm-nav-ul li.nav-item > a.nav-link")].find((a) => a.textContent === "Subscribe")!;
-    expect(sub.getAttribute("href")).toBe("/site/subscribe/");
-    const toggle = doc.querySelector("button#bannerToggleLink.nav-link")!;
-    expect(toggle.hasAttribute("hidden")).toBe(true);
-    expect(toggle.getAttribute("type")).toBe("button");
-    expect(toggle.getAttribute("aria-controls")).toBe("banner");
-    expect(toggle.getAttribute("aria-label")).toBe("Show site notice");
-    const img = toggle.querySelector("img")!;
-    expect(img.getAttribute("src")).toBe("/site/assets/legacy/Content/Images/banner-toggle.svg");
-    expect(img.getAttribute("alt")).toBe("");
+    const items = [...doc.querySelectorAll("#sm-nav-ul > li")];
+    expect(items.map((li) => li.textContent?.trim())).toEqual(["News", "Subscribe"]);
+    expect(items[1]!.querySelector("a.nav-link")?.getAttribute("href")).toBe("/site/subscribe/");
+    expect(doc.querySelector("#bannerToggleLink, .nav-item-link")).toBeNull();
+  });
+
+  it("a ministry key is URL-encoded in its link, then HTML-escaped", () => {
+    const doc = header({ ministryMenu: [{ key: 'a/b?c#d&"e', name: "Odd" }] });
+    const a = doc.querySelector("#menu a")!;
+    expect(a.getAttribute("href")).toBe("/site/ministries/a%2Fb%3Fc%23d%26%22e/");
+  });
+
+  it("hideHeaderSearch leaves off both search forms and the drawer toggle together", () => {
+    const doc = header({ ministryMenu: MENU, hideHeaderSearch: true });
+    expect(doc.querySelector("form, #smd-search-container, #search-md-button, .search-toggle-container")).toBeNull();
+    expect([...doc.querySelectorAll("[aria-controls]")].map((t) => t.id)).toEqual(["nav-menu-sm"]);
+    expect(doc.querySelector("#news-dropdown")?.getAttribute("href")).toBe("/site/ministries/");
   });
 
   it("no role=menu or menuitem anywhere; every id in the header is unique", () => {
@@ -131,16 +138,13 @@ describe("renderHeader", () => {
 
   it("every toggle is a <button type=button> with aria-controls pointing at an element that exists", () => {
     const doc = header({ ministryMenu: MENU });
-    // #banner (the banner toggle's target) is the page's banner wrapper, outside the header.
     const toggles = [...doc.querySelectorAll("[aria-controls]")];
-    expect(toggles.map((t) => t.id)).toEqual(["nav-menu-sm", "search-md-button", "bannerToggleLink"]);
+    expect(toggles.map((t) => t.id)).toEqual(["nav-menu-sm", "search-md-button"]);
     for (const t of toggles) {
       expect(t.tagName).toBe("BUTTON");
       expect(t.getAttribute("type")).toBe("button");
-      if (t.id !== "bannerToggleLink") {
-        expect(doc.getElementById(t.getAttribute("aria-controls")!), t.id).not.toBeNull();
-        expect(t.getAttribute("aria-expanded")).toBe("false");
-      }
+      expect(doc.getElementById(t.getAttribute("aria-controls")!), t.id).not.toBeNull();
+      expect(t.getAttribute("aria-expanded")).toBe("false");
     }
     const burger = doc.querySelector("button#nav-menu-sm.navbar-toggler")!;
     expect([burger.getAttribute("aria-controls"), burger.getAttribute("aria-label")]).toEqual(["navbarSupportedContent", "Menu"]);
