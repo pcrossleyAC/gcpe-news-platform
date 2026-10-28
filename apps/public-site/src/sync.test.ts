@@ -16,7 +16,8 @@ import { settingsHashes } from "./settings";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
-import { syncSite, type SyncDeps } from "./sync";
+import { degradedSubscribe, syncSite, type SyncDeps } from "./sync";
+import * as subscribePages from "./subscribe-pages";
 
 describe("syncSite", () => {
   let tdb: TestDatabase;
@@ -203,16 +204,86 @@ describe("syncSite", () => {
       deps.newsApi.ministries = async () => [ministry({ key: "health", name: "Health and Wellness" }), ministry({ key: "finance", name: "Finance" })];
     };
 
+    const queued = async () => new Set((await tdb.pool.query("SELECT page_id FROM rebuild_queue")).rows.map((r: { page_id: string }) => r.page_id));
+    /** A rebuild-all (with batch 1, the first page is drained) holds every post and aggregate page; a partial rebuild does not. */
+    const expectRebuildAll = async () => {
+      const q = await queued();
+      for (const id of ["post:K1", "post:K2", "post:K3", "archive", "sitemap"]) expect(q.has(id)).toBe(true);
+    };
+    const reset = () => tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+
     it("a ministry renamed since the marker queues one rebuild-all; the next identical turn queues nothing", async () => {
       const deps = setup(posts(), 1);
       await syncSite(deps); // cold start: marker written
-      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      await reset();
       renameHealth(deps);
       await syncSite(deps);
-      expect(await queueDepth(tdb.db)).toBeGreaterThan(0);
-      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      await expectRebuildAll();
+      await reset();
       await syncSite(deps);
       expect(await queueDepth(tdb.db)).toBe(0);
+    });
+
+    it("an empty ministries() answer is unavailable: the turn rejects, and recovery queues exactly one rebuild-all", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps);
+      const before = (deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json");
+      await reset();
+      deps.newsApi.ministries = async () => [];
+      await expect(syncSite(deps)).rejects.toThrow(/no ministries/);
+      expect(await queueDepth(tdb.db)).toBe(0);
+      expect((deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json")).toBe(before);
+      renameHealth(deps); // back, with a renamed ministry
+      await syncSite(deps);
+      await expectRebuildAll();
+      await reset();
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+    });
+
+    it("an outage then recovery with the same menu queues nothing", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps);
+      await reset();
+      const good = deps.newsApi.ministries;
+      deps.newsApi.ministries = async () => [];
+      await expect(syncSite(deps)).rejects.toThrow();
+      deps.newsApi.ministries = good;
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+    });
+
+    it("a menu change on a fallback-defaults turn rebuilds every page", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps);
+      await reset();
+      renameHealth(deps);
+      deps.newsApi.siteSettings = async () => {
+        throw new Error("settings down");
+      };
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await syncSite(deps);
+      } finally {
+        error.mockRestore();
+      }
+      await expectRebuildAll();
+    });
+
+    it("subscribe pages selfHeal wrote without the menu are rewritten by the first good turn", async () => {
+      const deps = setup(posts());
+      await syncSite(deps);
+      const rewritten: unknown[] = [];
+      degradedSubscribe.add(deps.storage);
+      const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async (_s, _site, o) => void rewritten.push(o.ministryMenu));
+      try {
+        await syncSite(deps);
+        await syncSite(deps);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(rewritten).toHaveLength(1);
+      expect(rewritten[0]).toEqual(expect.arrayContaining([{ key: "health", name: "Health" }]));
     });
 
     it("a ministries() failure rejects the turn and leaves the marker untouched", async () => {

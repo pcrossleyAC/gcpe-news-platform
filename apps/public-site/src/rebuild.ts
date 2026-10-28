@@ -57,8 +57,8 @@ interface SiteStateMarker extends SiteRenderState {
 
 const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash"] as const;
 
-/** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`. */
-/** Null: the marker predates the menu hash; `chromeChanges` then treats it as matching. */
+/** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
+ * `chromeChanges` then treats it as matching. */
 type ReadMarker = Omit<SiteStateMarker, "ministryMenuHash"> & { ministryMenuHash: string | null };
 
 async function readSiteState(storage: SiteStorage): Promise<ReadMarker | null> {

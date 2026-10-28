@@ -84,6 +84,23 @@ describe("selfHeal", () => {
     }
   });
 
+  it("an empty ministries() answer is treated as down: ministryMenu null, marker untouched, returns null", async () => {
+    const deps = setup();
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    deps.newsApi.ministries = async () => [];
+    const opts: PageOptions[] = [];
+    const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async (_s, _site, o) => void opts.push(o as PageOptions));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await selfHeal(deps)).toBeNull();
+      expect(opts[0]?.ministryMenu).toBeNull();
+      expect(storage.files.has(".site-state.json")).toBe(false);
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
   it("writes the builtin assets even when the News API is down", async () => {
     const deps = setup();
     const storage = deps.storage as ReturnType<typeof memoryStorage>;

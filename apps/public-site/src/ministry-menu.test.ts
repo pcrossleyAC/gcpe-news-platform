@@ -20,6 +20,13 @@ describe("ministryMenu", () => {
     ]);
   });
 
+  it("orders equal names by key, whatever order the API answers in", () => {
+    const a = ministry({ key: "b", name: "Same" });
+    const b = ministry({ key: "a", name: "Same" });
+    expect(ministryMenu([a, b])).toEqual(ministryMenu([b, a]));
+    expect(ministryMenu([a, b]).map((m) => m.key)).toEqual(["a", "b"]);
+  });
+
   it("drops a key that isn't a safe category key", () => {
     const menu = ministryMenu([ministry({ key: "../evil", name: "Evil" }), ministry({ key: "a b", name: "Spacey" }), ministry({ key: "Health", name: "Health" })]);
     expect(menu.map((m) => m.name)).toEqual(["Health"]);

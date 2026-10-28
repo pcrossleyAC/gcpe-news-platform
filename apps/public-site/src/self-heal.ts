@@ -1,15 +1,17 @@
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { drainQueue } from "./drain";
-import { ministryMenu, type MenuMinistry } from "./ministry-menu";
+import { ministryMenu, NO_MINISTRIES, type MenuMinistry } from "./ministry-menu";
 import { enqueueSiteWrite, tryHome } from "./rebuild";
-import { applyChromeChanges, turnOptions, type SyncDeps } from "./sync";
+import { applyChromeChanges, degradedSubscribe, turnOptions, type SyncDeps } from "./sync";
 import { writeBuiltinAssets } from "./site-assets";
 import { writeSubscribePages } from "./subscribe-pages";
 
 /** A tolerant ministries fetch, like `tryHome`: `null` on failure, logged. */
 async function tryMinistryMenu(deps: SyncDeps): Promise<MenuMinistry[] | null> {
   try {
-    return ministryMenu(await deps.newsApi.ministries());
+    const menu = ministryMenu(await deps.newsApi.ministries());
+    if (menu.length === 0) throw new Error(NO_MINISTRIES);
+    return menu;
   } catch (err) {
     console.error(`[public-site] failed to fetch ministries() for the header menu ${safeErrorLabel(err)}`);
     return null;
@@ -47,6 +49,8 @@ export function selfHeal(deps: SyncDeps): Promise<{ rebuilt: number } | null> {
     // Cheap and stateless, so rewritten on every start regardless of what follows.
     await writeSubscribePages(storage, site, home ? pageOpts : { ...pageOpts, banner: null });
 
+    if (!menu) degradedSubscribe.add(storage);
+    else degradedSubscribe.delete(storage);
     if (!home || !menu) return null; // News API unreachable: nothing more can be rendered correctly now
 
     await applyChromeChanges(deps, turn, !(await storage.exists("index.html")));

@@ -7,7 +7,7 @@ import { drainQueue } from "./drain";
 import type { NewsApiClient } from "./news-api-client";
 import type { PostIndex } from "./post-index";
 import { enqueuePages, PRIORITY } from "./queue";
-import { ministryMenu, type MenuMinistry } from "./ministry-menu";
+import { ministryMenu, NO_MINISTRIES, type MenuMinistry } from "./ministry-menu";
 import { chromeChanges, enqueueSiteWrite, keepSettingsHashes, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
 import { enqueueChromeChanges } from "./rebuild-all";
 import type { PageOptions, SiteInfo } from "./render";
@@ -31,6 +31,10 @@ export interface SyncDeps {
    * shows while nothing is published. Absent ⇒ derived from `site.theme`. */
   defaultSettings?: SiteSettings;
 }
+
+/** Storages whose subscribe pages selfHeal wrote with `ministryMenu: null`; the next successful
+ * `syncSite` turn rewrites them (in-process only: a restart runs selfHeal again). */
+export const degradedSubscribe = new WeakSet<SiteStorage>();
 
 /**
  * This turn's render options and site-state: Blue Bridge from `home()` and the ministries menu (a failure of either rejects), then
@@ -141,8 +145,13 @@ export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Prom
   return enqueueSiteWrite(deps.storage, async () => {
     const { granville } = await deps.newsApi.home();
     const menu = ministryMenu(await deps.newsApi.ministries());
+    // The client answers [] for an empty or "not found" body: that is an outage, not a site with
+    // no ministries, and rendering it would rebuild every page twice (down, then back up).
+    if (menu.length === 0) throw new Error(NO_MINISTRIES);
     const turn = await turnOptions(deps, granville, menu);
     const { pageOpts } = turn;
+    // selfHeal wrote the subscribe pages without the menu (ministries() was down); now it is back.
+    if (degradedSubscribe.delete(deps.storage)) await writeSubscribePages(deps.storage, deps.site, pageOpts);
     if (extra.pages?.length) await enqueuePages(deps.db, extra.pages.map((pageId) => ({ pageId, priority: livePriority(pageId) })));
     await applyChromeChanges(deps, turn);
     if (feedRead) {
