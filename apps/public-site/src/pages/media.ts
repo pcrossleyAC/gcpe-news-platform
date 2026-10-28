@@ -45,13 +45,19 @@ export function leadMedia(url: string | null | undefined): LeadMedia | null {
   return null;
 }
 
+/** What names a Flickr photo link whose image has no alt text, when the caller gives nothing better. */
+export const FLICKR_LINK_NAME = "Photo on Flickr";
+
 /** One lead media block. `base` is the site's base path ("" or "/site"); `alt` is the image's alt
  * text (the headline for a lead), escaped here. With an empty `alt` a YouTube link carries no
- * visually-hidden suffix. */
-export function renderMedia(m: LeadMedia, base: string, alt: string): string {
+ * visually-hidden suffix, and a Flickr photo link — whose only content is the image — is named by
+ * visually hidden `name` instead, so it is never a nameless link (WCAG 2.4.4, 4.1.2). */
+export function renderMedia(m: LeadMedia, base: string, alt: string, name = FLICKR_LINK_NAME): string {
   switch (m.kind) {
-    case "image":
-      return `<div class="asset flickr"><a href="${e(m.href)}"><img src="${e(m.src)}" alt="${e(alt)}"></a></div>`;
+    case "image": {
+      const label = alt ? "" : `<span class="visually-hidden">${e(name.trim() || FLICKR_LINK_NAME)}</span>`;
+      return `<div class="asset flickr"><a href="${e(m.href)}"><img src="${e(m.src)}" alt="${e(alt)}">${label}</a></div>`;
+    }
     case "youtube": {
       const suffix = alt ? `<span class="visually-hidden">: ${e(alt)}</span>` : "";
       return `<div class="asset youtube"><a href="${e(m.href)}"><img src="${e(base)}${YOUTUBE_PLACEHOLDER}" alt=""><span>Watch on YouTube</span>${suffix}</a></div>`;
@@ -77,16 +83,16 @@ function decodeEntities(s: string): string {
 
 /**
  * Replaces each `<asset>URL</asset>` in a release body (legacy `AssetHelper`'s body embeds) with
- * what {@link renderMedia} renders for it (alt ""), a plain link for any other absolute http(s) URL
+ * what {@link renderMedia} renders for it (alt "", the photo link named by `photoName`), a plain link for any other absolute http(s) URL
  * (SoundCloud included — no player), or nothing for an unparseable or unsafe one. The URL is
  * entity-decoded first and checked with `isSafeUrl` after decoding. Runs before
  * `sanitizeBodyHtml`, which keeps the classes these blocks carry.
  */
-export function renderBodyAssets(html: string, base: string): string {
+export function renderBodyAssets(html: string, base: string, photoName = FLICKR_LINK_NAME): string {
   return html.replace(/<asset>([\s\S]*?)<\/asset>/gi, (_whole, raw: string) => {
     const url = decodeEntities(raw).trim();
     const media = leadMedia(url);
-    if (media) return renderMedia(media, base, "");
+    if (media) return renderMedia(media, base, "", photoName);
     if (isSafeUrl(url, { relative: false, schemes: ["http:", "https:"] })) return `<p><a href="${e(url)}">${e(url)}</a></p>`;
     return "";
   });

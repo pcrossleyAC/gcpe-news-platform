@@ -24,6 +24,24 @@ describe("the fixture site (6e exit checks)", () => {
     }
   });
 
+  it("the first release shows every release-page block: backgrounders, French, assets, translations, byline", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      const html = await readFile(join(dir, fileOf(FIXTURE_PAGES[1]!)), "utf8");
+      expect(FIXTURE_PAGES[1]).toMatch(/^\/releases\//);
+      expect(html.match(/class="backgrounder"/g)).toHaveLength(2);
+      expect(html).toContain('data-story-lang="secondary"');
+      expect(html).toContain('id="assets"');
+      expect(html).toContain('id="translations"');
+      expect(html).toContain('hreflang="zh-Hans"');
+      expect(html).toContain('class="story-lang primary byline"');
+      expect(html).toContain('<p class="story-ministry">');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("serves directory pages, files and a 404", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
     const server = await serveStatic(dir);

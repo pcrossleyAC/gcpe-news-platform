@@ -134,6 +134,15 @@ describe("site builder", () => {
     expect(storage.files.has("releases/K1/index.html")).toBe(false);
   });
 
+  it("the release page's lead ministry is found case-insensitively by leadMinistryKey, else the first ministryKey", async () => {
+    const { storage, builder } = setup(new Map([["K1", post({ key: "K1", leadMinistryKey: "HEALTH", ministryKeys: ["finance"] })], ["K2", post({ key: "K2", leadMinistryKey: null, ministryKeys: ["Finance"] })], ["K3", post({ key: "K3", leadMinistryKey: "nope" })]]));
+    await builder.rebuild(["post:K1", "post:K2", "post:K3"], {});
+    expect(html(storage, "releases/K1/index.html")).toContain('<p class="story-ministry"><a href="/ministries/health/">Health</a></p>');
+    expect(html(storage, "releases/K1/index.html")).toContain("More from this Ministry");
+    expect(html(storage, "releases/K2/index.html")).toContain('<p class="story-ministry"><a href="/ministries/finance/">Finance</a></p>');
+    expect(html(storage, "releases/K3/index.html")).not.toContain("story-ministry");
+  });
+
   it("a related-posts failure doesn't block the release page", async () => {
     const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     api.related = async () => { throw new Error("News API 500"); };

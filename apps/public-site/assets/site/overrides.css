@@ -200,3 +200,54 @@ html.js #carousel-holder .carousel-slides>.home-banner.current{display:block}
 html:not(.js) #carousel-holder{height:auto;top:0;margin-top:0}
 html:not(.js) #carousel-holder .carousel-slides>.home-banner{position:relative;display:block}
 html:not(.js) #carousel-holder .carousel-controls{display:none}
+
+/* The release page (pages/release.ts): legacy site.css/transforms.css/print.css style PostView;
+ * these rules cover where our markup differs (look-and-feel §2.2). Legacy floats the side column
+ * and the body inside .story-page and clears them with an empty div; ours clears itself. */
+.story-page{display:flow-root}
+/* The headline is the h1 (legacy: .story-page h2), the French one a p, the subheadlines p (legacy:
+ * h3.subheadline) and the lead ministry a p (legacy: an h3 above the headline): legacy's metrics. */
+.story-page h1, .story-page .story-headline{font-size:36px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:20px;margin-bottom:16px}
+.story-page .subheadline{font-size:30px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:0;margin-bottom:16px}
+.story-ministry{font-size:18px;font-weight:600;line-height:1.2;margin:0 0 .5rem}
+.story-ministry a{text-decoration:none}
+@media only screen and (max-width: 768px) {
+  .story-page h1, .story-page .story-headline{font-size:26px;margin-top:10px;margin-bottom:10px}
+  .story-page .subheadline{font-size:22px}
+  .story-ministry{font-size:16px}
+}
+/* The side column's location (legacy: an h4) and the phone row's (legacy: an h6). */
+.story-features .location-and-date p.location{font-size:14px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:15px;margin-bottom:2px;padding-bottom:0}
+.story-page .story-info .resource-links > p{display:inline-block;font-weight:600;padding-right:5px;font-size:14px;margin:0}
+.translate a .icon{margin-right:6px}
+.story-features .resource-links:first-child h2{margin-top:0 !important}
+/* Body headings one level up: Backgrounders, Media Assets, Translations (legacy h4); a
+ * backgrounder's title (legacy h5) and subheadline (legacy h6, margin set inline). */
+.story-body > h2, .story-body > .assets > h2{font-size:18px;font-weight:600;line-height:1.2;color:var(--color-text);margin-top:0;padding-bottom:15px}
+.story-body .backgrounder-header h3{color:var(--color-primary);font-size:18px;font-weight:400;line-height:1.2;margin-top:3px;margin-bottom:8px}
+.story-body .backgrounder p.subheadline{color:var(--color-text);font-size:14px;font-weight:600;line-height:1.2;margin:10px 0}
+/* Legacy hid .backgrounder-content in site.css and showed it with an inline display:block !important. */
+.story-body .backgrounder .backgrounder-content{display:block}
+/* Contacts (legacy ContactsDetails: h3 + h4 per contact; ours h2 + h3, or h4 + h5 in a backgrounder). */
+.comm-contacts-body h2, .backgrounder .comm-contacts h4{font-size:18px;font-weight:600;line-height:1.2;color:var(--color-text)}
+.comm-contacts-body .comm-contact h3, .story-body .backgrounder .comm-contact h5{font-size:18px;font-weight:600;line-height:1.2;color:var(--color-text);padding-bottom:0;margin-top:15px;margin-bottom:2px}
+/* Print and the language toggle are buttons (legacy: links without an href). */
+.story-page button.print-document{background:none;border:0;color:var(--color-primary);cursor:pointer;min-height:24px}
+.story-page button.print-document .icon{width:2em;height:2em;vertical-align:middle}
+.story-body .language-selector button{background:none;border:0;padding:0 4px;min-height:24px;font-size:14px;color:var(--color-primary);text-decoration:underline;cursor:pointer}
+/* French: site.js toggles body.lang-secondary; without JavaScript both languages show, and the
+ * controls that can't work are hidden. */
+body.lang-secondary .story-lang.primary{display:none}
+body.lang-secondary .story-lang.secondary{display:block}
+html:not(.js) .story-lang.secondary{display:block}
+html:not(.js) .language-selector, html:not(.js) .print-document{display:none}
+/* Print (legacy print.css, linked media=print, does the rest): legacy linked its screen CSS with
+ * media=screen, ours applies to print too, so the screen rules that would win over print.css are
+ * undone here — the Print button, the floated 76% body beside the (hidden) side column — and the
+ * land acknowledgement band goes with the footer it sat in. */
+@media print {
+  .story-page .print-document, #landAcknowledgement{display:none !important}
+  .story-page .story-body{width:auto;float:none;padding:0}
+  /* Legacy printed the body's contacts (its screen CSS, which hides them on a desktop, wasn't linked for print). */
+  .comm-contacts-body-section, .comm-contacts-body{display:block}
+}

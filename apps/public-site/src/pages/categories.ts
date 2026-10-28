@@ -1,9 +1,10 @@
 import type { CategoryDto, MinisterDto, MinistryContactDto, MinistryDto, PostDto } from "../dto";
-import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
+import { basePath, e, renderPage, safeSrc, type PageOptions, type SiteInfo } from "../render";
 import { categoryPageId, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
 import { displayDate, postListItem } from "./format";
 import type { MinistryPageLabels } from "@gcpe/site-settings";
-import { settingsHref, themeDefaults } from "../settings";
+import { themeDefaults } from "../settings";
+import { ministryLinkGroups, sideLinks } from "./side-links";
 import { sanitizeBodyHtml } from "../sanitize-body";
 
 interface CategoryPosts {
@@ -74,29 +75,12 @@ function mediaContactsSection(heading: string, m: Pick<MinistryDto, "contactUser
   return `<section>\n<h2>${e(heading)}</h2>\n<ul class="media-contacts">\n${items}\n</ul>${after}\n</section>`;
 }
 
-/** A side-column link list; links whose URL is not safe (absolute http/https, or site-relative;
- * no javascript:/data:) are dropped, and a list with none left renders nothing. */
-function sideLinks(site: Pick<SiteInfo, "baseUrl">, heading: string, links: { text: string; url: string | null | undefined }[]): string {
-  const items = links.flatMap((l) => {
-    // "/..." resolves under the base path (settings rule); absolute http/https via safeHref, as the old link did.
-    const href = l.url?.startsWith("/") ? settingsHref(l.url, site) : safeHref(l.url);
-    return href ? [`<li><a href="${e(href)}">${e(l.text)}</a></li>`] : [];
-  });
-  return items.length ? `<section>\n<h2>${e(heading)}</h2>\n<ul>\n${items.join("\n")}\n</ul>\n</section>` : "";
-}
-
 /** The ministry page's side column: Media Contacts, More from this Ministry, Featured Topics,
  * Featured Services (left column on wide screens, after the heading on narrow); empty groups omitted, and no `<aside>` when all are. */
 function ministrySideColumn(site: Pick<SiteInfo, "baseUrl">, m: MinistryDto, labels: MinistryPageLabels): string {
   const sections = [
     mediaContactsSection(labels.mediaContacts, m),
-    sideLinks(site, labels.moreFromMinistry, [
-      { text: labels.ministryWebsite, url: m.ministryUrl },
-      { text: labels.ministryPhotos, url: m.flickrUri },
-      { text: labels.ministryVideos, url: m.youtubeUri },
-    ]),
-    sideLinks(site, labels.featuredTopics, (m.topicLinks ?? []).map((l) => ({ text: l.key, url: l.uri }))),
-    sideLinks(site, labels.featuredServices, (m.serviceLinks ?? []).map((l) => ({ text: l.key, url: l.uri }))),
+    ...ministryLinkGroups(m, labels).map((g) => sideLinks(site, g.heading, g.links)),
   ].filter(Boolean);
   return sections.length ? `<aside aria-label="${e(`About ${m.name}`)}">\n${sections.join("\n")}\n</aside>` : "";
 }

@@ -90,6 +90,51 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
       }),
     );
   }
+  // The first release carries everything the release page can show (its fixture-page check):
+  // two backgrounders, a French document, two translations, two media assets and a byline.
+  const first = posts.get(FIRST_KEY)!;
+  posts.set(FIRST_KEY, {
+    ...first,
+    hasMediaAssets: true,
+    hasTranslations: true,
+    documents: [
+      {
+        languageId: 4105,
+        pageTitle: "News Release",
+        headline: "Clinics to open across the province",
+        subheadline: "Twelve new clinics open this month",
+        byline: "Ministry of Health\nJoint statement",
+        detailsHtml: "<p>Twelve clinics will open across the province this month, the Ministry of Health announced today.</p><p>Each clinic is open seven days a week.</p>",
+        contacts: [{ title: "Ministry of Health", details: "Media Relations\n250 555-0100" }],
+      },
+      {
+        languageId: 3084,
+        pageTitle: "Communiqué",
+        headline: "Ouverture de cliniques dans la province",
+        subheadline: "Douze nouvelles cliniques ouvrent ce mois-ci",
+        byline: null,
+        detailsHtml: "<p>Douze cliniques ouvriront dans la province ce mois-ci.</p>",
+        contacts: [],
+      },
+      { languageId: 4105, pageTitle: "Backgrounder", headline: "Where the clinics are", subheadline: null, detailsHtml: "<ul><li>Victoria</li><li>Kelowna</li></ul>", contacts: [] },
+      {
+        languageId: 4105,
+        pageTitle: "Backgrounder",
+        headline: "How to book",
+        subheadline: "Booking opens Monday",
+        detailsHtml: "<p>Book online or by phone.</p>",
+        contacts: [{ title: "Booking line", details: "1 800 555-0100" }],
+      },
+    ],
+    azureAssets: [
+      { key: `${o.baseUrl}/fixture/clinic-photo.jpg`, label: "Clinic photo", length: 524288 },
+      { key: `${o.baseUrl}/fixture/fact-sheet.pdf`, label: "Fact sheet", length: 1229 },
+    ],
+    azureTranslations: [
+      { key: `${o.baseUrl}/fixture/translation-zh.pdf`, label: "Chinese(Simplified)", length: 2048 },
+      { key: `${o.baseUrl}/fixture/translation-pa.pdf`, label: "Punjabi", length: 2048 },
+    ],
+  });
   // Home's carousel band: two slides with images and the second right-justified. The image is a
   // local file (no network in CI): scripts/fixture-assets/slide.jpg, legacy's default-og-image-new.jpg
   // (Apache-2.0) resized to 1280px at JPEG quality 45, 64 KB — the weight an optimised slide should have.

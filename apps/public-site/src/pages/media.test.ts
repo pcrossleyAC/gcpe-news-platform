@@ -83,8 +83,16 @@ describe("renderBodyAssets", () => {
   it("a Flickr asset becomes the image embed with alt=''; the live URL the webcast link; several in one body; case and whitespace tolerated", () => {
     const html = renderBodyAssets("<ASSET> https://live.staticflickr.com/65535/42_ab.jpg </ASSET>\n<asset>https://news.gov.bc.ca/live</asset>", "");
     expect(html).toBe(
-      '<div class="asset flickr"><a href="https://www.flickr.com/photos/bcgovphotos/42/"><img src="https://live.staticflickr.com/65535/42_ab.jpg" alt=""></a></div>\n<p><a href="https://news.gov.bc.ca/live">Watch the live webcast</a></p>',
+      '<div class="asset flickr"><a href="https://www.flickr.com/photos/bcgovphotos/42/"><img src="https://live.staticflickr.com/65535/42_ab.jpg" alt=""><span class="visually-hidden">Photo on Flickr</span></a></div>\n<p><a href="https://news.gov.bc.ca/live">Watch the live webcast</a></p>',
     );
+  });
+
+  it("names a body Flickr link (its image's alt is empty) with visually hidden text: the caller's, escaped, else 'Photo on Flickr'", () => {
+    const named = frag(renderBodyAssets("<asset>https://live.staticflickr.com/65535/42_ab.jpg</asset>", "", "Photo: Tom & <Jerry>"));
+    expect(named.querySelector("a span.visually-hidden")?.textContent).toBe("Photo: Tom & <Jerry>");
+    expect(frag(renderBodyAssets("<asset>https://live.staticflickr.com/65535/42_ab.jpg</asset>", "", " ")).querySelector("a span.visually-hidden")?.textContent).toBe("Photo on Flickr");
+    // A lead with alt text needs no extra name.
+    expect(renderMedia({ kind: "image", src: "https://live.staticflickr.com/65535/1_ab.jpg", href: "https://www.flickr.com/photos/bcgovphotos/1/" }, "", "Alt")).not.toContain("visually-hidden");
   });
 
   it("removes an unparseable, relative, protocol-relative, data: or entity-smuggled javascript: URL, and an empty asset", () => {
