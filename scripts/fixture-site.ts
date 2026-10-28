@@ -300,7 +300,14 @@ export async function serveStatic(dir: string): Promise<{ url: string; close(): 
     const list = /^\/api\/Subscribe\/SubscriptionItems\/([a-z]+)$/.exec(new URL(req.url ?? "/", "http://fixture.invalid").pathname);
     if (list) {
       res.writeHead(200, { "content-type": TYPES[".json"]! });
-      res.end(JSON.stringify(list[1] === "ministries" ? [{ key: "health", value: "Health" }, { key: "finance", value: "Finance" }] : list[1] === "sectors" ? [{ key: "economy", value: "Economy" }] : []));
+      // A few of each list, so every fieldset is on the page for axe; Emergency stays empty (its fieldset is removed, as live).
+      const LISTS: Record<string, { key: string; value: string }[]> = {
+        ministries: [{ key: "health", value: "Health" }, { key: "finance", value: "Finance" }],
+        sectors: [{ key: "economy", value: "Economy" }],
+        themes: [{ key: "housing", value: "Housing" }, { key: "climate", value: "Climate" }],
+        tags: [{ key: "covid-19", value: "COVID-19" }, { key: "cleanbc", value: "CleanBC" }],
+      };
+      res.end(JSON.stringify(LISTS[list[1]!] ?? []));
       return;
     }
     try {

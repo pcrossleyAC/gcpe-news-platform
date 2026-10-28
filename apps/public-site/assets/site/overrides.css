@@ -379,8 +379,8 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 /* A link alone in its row (and the policy link) has no underline, as legacy; hover and keyboard
  * focus add one (theme.css draws the focus ring). A link with its summary beside it keeps the
  * underline (main li a), so it is told apart from that text by more than colour (WCAG 1.4.1, P4-R16). */
-.connect .expandable-section ul.external-links li>a:only-child,.connect .home-body#main-content-release>p>a{text-decoration:none}
-.connect .expandable-section ul.external-links li>a:only-child:hover,.connect .expandable-section ul.external-links li>a:only-child:focus-visible,.connect .home-body#main-content-release>p>a:hover,.connect .home-body#main-content-release>p>a:focus-visible{text-decoration:underline}
+#connect-content .expandable-section ul.external-links li>a:only-child,#connect-content .home-body>p>a{text-decoration:none}
+#connect-content .expandable-section ul.external-links li>a:only-child:hover,#connect-content .expandable-section ul.external-links li>a:only-child:focus-visible,#connect-content .home-body>p>a:hover,#connect-content .home-body>p>a:focus-visible{text-decoration:underline}
 .connect .home-body#main-content-release>p>a{font-size:16px}
 .connect .home-body#main-content-release h1.connect-title{font-size:36px;font-weight:600;line-height:1.2;border-bottom:1px solid var(--color-border);margin:15px 0 10px;padding-bottom:10px}
 /* A long list paints collapsed (pages/connect.ts marks it; html.js is set in the head, so before

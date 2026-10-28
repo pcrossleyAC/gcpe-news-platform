@@ -186,7 +186,7 @@ describe("news.gov subscribe page", () => {
     expect(custom.hasAttribute("hidden")).toBe(true);
   });
 
-  const submit = async (doc: Document, win: Window) => {
+  const submit = async (doc: Document, win: { Event: typeof Event }) => {
     doc.getElementById("subscribe-form")!.dispatchEvent(new win.Event("submit", { cancelable: true }));
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
   };
@@ -198,13 +198,13 @@ describe("news.gov subscribe page", () => {
     customize.dispatchEvent(new win.Event("change", { bubbles: true }));
     doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
     doc.querySelector<HTMLButtonElement>("#save")!.focus();
-    await submit(doc, win as unknown as Window);
+    await submit(doc, win);
     expect(posted).toEqual([]);
     expect(doc.getElementById("message-alert")!.getAttribute("role")).toBe("alert");
     expect(doc.getElementById("message-alert")!.textContent).toBe("Choose at least one area, or select all news.");
     expect(doc.activeElement).toBe(customize);
     doc.querySelector<HTMLInputElement>('input[name="sectors:economy"]')!.checked = true;
-    await submit(doc, win as unknown as Window);
+    await submit(doc, win);
     expect(posted).toEqual([{ emailAddress: "a@b.test", subscribedCategories: { sectors: ["economy"] }, isAllNews: false, isAsItHappens: true, isDailyDigest: false }]);
     expect(doc.getElementById("message-alert")!.textContent).toBe("");
   });
@@ -212,7 +212,7 @@ describe("news.gov subscribe page", () => {
   it("all news with nothing checked still posts (the check is only for customize)", async () => {
     const { doc, posted, win } = await run("", ITEMS);
     doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
-    await submit(doc, win as unknown as Window);
+    await submit(doc, win);
     expect(posted).toEqual([{ emailAddress: "a@b.test", subscribedCategories: {}, isAllNews: true, isAsItHappens: true, isDailyDigest: false }]);
   });
 
@@ -225,7 +225,7 @@ describe("news.gov subscribe page", () => {
       expect(save.disabled).toBe(true);
       expect(doc.getElementById("message-alert")!.textContent).toBe("Couldn't load the topics your link chose, so you can't subscribe to them yet. Reload the page to try again.");
       doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
-      await submit(doc, win as unknown as Window);
+      await submit(doc, win);
       expect(posted).toEqual([]);
     }
   });
@@ -235,7 +235,7 @@ describe("news.gov subscribe page", () => {
     expect(doc.getElementById("message-alert")!.textContent).toBe("Couldn't load topics. Reload the page to try again.");
     expect(doc.querySelector<HTMLButtonElement>("#save")!.disabled).toBe(false);
     doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
-    await submit(doc, win as unknown as Window);
+    await submit(doc, win);
     expect(posted).toHaveLength(1);
   });
 });

@@ -172,6 +172,24 @@ export async function checkSearchLayout(browser: import("@playwright/test").Brow
   return failures;
 }
 
+/**
+ * The subscribe page's customize options start hidden (all news is chosen), so the per-page axe pass
+ * never sees them. A prefill link selects customize: axe that state, with every list the fixture
+ * server stubs (Emergency's empty list removes its fieldset, as live).
+ */
+export async function checkSubscribeCustomize(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(url + "/subscribe/?ministries=health&themes=housing&tags=covid-19");
+  await page.locator('fieldset[data-category="tags"] input:checked').waitFor();
+  const fieldsets = await page.locator("#newsOnDemandCustomOptions fieldset[data-category]").evaluateAll((els) => els.filter((el) => el.getClientRects().length > 0).map((el) => `${el.getAttribute("data-category")} ${el.querySelectorAll("input").length}`));
+  const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+  log(`axe /subscribe/ (customize, prefilled): ${violations.length} violation(s); fieldsets shown: ${fieldsets.join(", ")}`);
+  const failures = violations.map((v) => `/subscribe/ (customize): ${v.id} (${v.nodes.length} node(s))`);
+  if (fieldsets.length !== 4) failures.push(`/subscribe/ (customize): ${fieldsets.length} category fieldsets shown, expected ministries, sectors, themes and tags`);
+  await page.context().close();
+  return failures;
+}
+
 type Box = { x: number; y: number; width: number; height: number };
 
 /**
@@ -246,6 +264,7 @@ export async function runSiteQuality(log: (line: string) => void = console.log):
       failures.push(...(await checkLayoutOrder(browser, server.url, log)));
       failures.push(...(await checkHeaderLive(browser, server.url, log)));
       failures.push(...(await checkSearchLayout(browser, server.url, log)));
+      failures.push(...(await checkSubscribeCustomize(browser, server.url, log)));
     } finally {
       await browser.close();
     }

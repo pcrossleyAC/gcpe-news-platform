@@ -12,7 +12,8 @@ const postCount = (count: number) => `${count} post${count === 1 ? "" : "s"}`;
 /**
  * One archived post as news.gov's listing card (the markup of `postCard`, from the post index
  * alone: no thumbnail, no Media Assets or Translations links, which need the News API). The link
- * goes through `pageUrl`, so a key over 100 characters reaches its hashed directory.
+ * is the post's public `/releases/<key>/` (`pageUrl`), whatever the key's length; where a long
+ * key's files live on disk (`postDir`) is mapped by the stack (apps/stack's legacy middleware).
  */
 export function archiveCard(site: Pick<SiteInfo, "baseUrl">, p: IndexedPost): string {
   const base = e(basePath(site));
