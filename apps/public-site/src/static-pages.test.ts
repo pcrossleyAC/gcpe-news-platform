@@ -62,9 +62,13 @@ describe("static pages", () => {
     expect(html).not.toContain("<fishing>");
     expect(doc.querySelector("main form[data-prefill-from-path]")).not.toBeNull();
     expect(doc.querySelector("title")?.textContent).toContain("Gone <fishing>");
-    // Empty strings (a stored document missing them) do not crash.
-    settings.pageText.notFound = { heading: "", text: "" };
-    expect(() => renderNotFoundPage(site, { settings })).not.toThrow();
+    // Empty strings do not crash, leave no blank h1 and no empty line where the text was.
+    settings.pageText.notFound = { heading: " ", text: "" };
+    const empty = renderNotFoundPage(site, { settings });
+    const emptyDoc = expectAccessibleStructure(empty);
+    expect(emptyDoc.querySelector("main h1")?.textContent).toBe("Page not found");
+    expect(emptyDoc.querySelector("title")?.textContent).toContain("Page not found");
+    expect(empty).toContain('<h1>Page not found</h1>\n<form class="search-panel-bar"');
   });
   it("robots.txt: a test site disallows everything; production names the sitemap", () => {
     expect(renderRobots(site, true)).toBe("User-agent: *\nDisallow: /\n");

@@ -1,5 +1,5 @@
 import type { ContactsPageSettings, DirectoryContact } from "@gcpe/site-settings";
-import type { MinistryContactDto, MinistryDto } from "../dto";
+import type { MinistryDto } from "../dto";
 import { e, renderPage, type PageOptions, type SiteInfo } from "../render";
 import { sanitizeBodyHtml } from "../sanitize-body";
 import { settingsHref } from "../settings";
@@ -13,8 +13,9 @@ interface ContactRow {
   /** Escaped `div`s under the name (the additional display name, the minister, a settings subgroup). */
   lines: string[];
   child: boolean;
-  primary: MinistryContactDto;
-  alternate: MinistryContactDto | null;
+  /** The contacts' CommContact HTML, each rendered once ("" when the contact has nothing to show). */
+  primary: string;
+  alternate: string;
   afterHours: string | undefined;
 }
 
@@ -25,13 +26,13 @@ function settingsRow(c: DirectoryContact, site: Pick<SiteInfo, "baseUrl">): Cont
     href: contactValue(c.groupUrl) ? settingsHref(c.groupUrl.trim(), site) : null,
     lines: subgroup !== undefined ? [`<div>${e(subgroup)}</div>`] : [],
     child: false,
-    primary: directoryContact(c),
-    alternate: null,
+    primary: commContact(directoryContact(c)),
+    alternate: "",
     afterHours: undefined,
   };
 }
 
-function ministryRow(m: MinistryDto, child: boolean, site: Pick<SiteInfo, "baseUrl">): ContactRow {
+function ministryRow({ ministry: m, child, primary }: DirectoryMinistry, site: Pick<SiteInfo, "baseUrl">): ContactRow {
   const id = categoryPageId("ministries", m.key);
   const page = id ? parsePageId(id) : null;
   const extra = contactValue(m.displayAdditionalName);
@@ -41,10 +42,17 @@ function ministryRow(m: MinistryDto, child: boolean, site: Pick<SiteInfo, "baseU
     href: page ? pageUrl(site, page) : null,
     lines: [extra !== undefined ? `<div><i>(${e(extra)})</i></div>` : "", minister !== undefined ? `<div>${e(minister)}</div>` : ""].filter(Boolean),
     child,
-    primary: m.contactUser!,
-    alternate: m.secondContactUser,
+    primary,
+    alternate: commContact(m.secondContactUser),
     afterHours: contactValue(m.weekendContactNumber),
   };
+}
+
+/** A listed ministry, whether it is indented under its parent, and its primary contact's HTML. */
+interface DirectoryMinistry {
+  ministry: MinistryDto;
+  child: boolean;
+  primary: string;
 }
 
 /**
@@ -53,17 +61,18 @@ function ministryRow(m: MinistryDto, child: boolean, site: Pick<SiteInfo, "baseU
  * (parentMinistryKey) right after its parent, indented; a child whose parent isn't listed keeps its
  * place, not indented.
  */
-export function directoryMinistries(ministries: MinistryDto[]): { ministry: MinistryDto; child: boolean }[] {
-  const listed = ministries.filter((m) => m.isActive && commContact(m.contactUser) !== "");
+export function directoryMinistries(ministries: MinistryDto[]): DirectoryMinistry[] {
+  const primary = new Map(ministries.filter((m) => m.isActive).map((m) => [m, commContact(m.contactUser)]));
+  const listed = ministries.filter((m) => primary.get(m));
   const keyOf = (k: string | null | undefined) => (k ?? "").toLowerCase();
   const keys = new Set(listed.map((m) => keyOf(m.key)));
   const isPlacedChild = (m: MinistryDto) => !!m.parentMinistryKey && keyOf(m.parentMinistryKey) !== keyOf(m.key) && keys.has(keyOf(m.parentMinistryKey));
-  const out: { ministry: MinistryDto; child: boolean }[] = [];
+  const out: DirectoryMinistry[] = [];
   const seen = new Set<MinistryDto>();
   const place = (m: MinistryDto, child: boolean) => {
     if (seen.has(m)) return;
     seen.add(m);
-    out.push({ ministry: m, child });
+    out.push({ ministry: m, child, primary: primary.get(m)! });
     for (const c of listed) if (isPlacedChild(c) && keyOf(c.parentMinistryKey) === keyOf(m.key)) place(c, true);
   };
   for (const m of listed) if (!isPlacedChild(m)) place(m, false);
@@ -72,14 +81,14 @@ export function directoryMinistries(ministries: MinistryDto[]): { ministry: Mini
   return out;
 }
 
-const contactCell = (label: string, c: MinistryContactDto) => `<div class="col-xs-12 col-sm-4">
+const contactCell = (label: string, html: string) => `<div class="col-xs-12 col-sm-4">
 <span class="visually-hidden">${label} contact: </span>
-${commContact(c)}
+${html}
 </div>`;
 
 function renderRow(r: ContactRow): string {
   const name = r.href ? `<a href="${e(r.href)}">${e(r.name)}</a>` : `<span>${e(r.name)}</span>`;
-  const alternate = r.alternate && commContact(r.alternate) ? `\n${contactCell("Alternate", r.alternate)}` : "";
+  const alternate = r.alternate ? `\n${contactCell("Alternate", r.alternate)}` : "";
   const afterHours = r.afterHours !== undefined ? `\n<div class="text-center after-hours">\n<div>\n<span><strong>After hours:</strong> ${e(r.afterHours)}</span>\n</div>\n</div>` : "";
   return `<div class="row contact-row">
 <div class="col-xs-12 col-sm-4 contact-org${r.child ? " child" : ""}">
@@ -99,9 +108,9 @@ ${contactCell("Primary", r.primary)}${alternate}${afterHours}
 export function renderContactsPage(ministries: MinistryDto[], cp: ContactsPageSettings, site: SiteInfo, opts: PageOptions = {}): string {
   const rows = [
     ...cp.contacts.filter((c) => c.placement === "top").map((c) => settingsRow(c, site)),
-    ...directoryMinistries(ministries).map(({ ministry, child }) => ministryRow(ministry, child, site)),
+    ...directoryMinistries(ministries).map((d) => ministryRow(d, site)),
     ...cp.contacts.filter((c) => c.placement === "bottom").map((c) => settingsRow(c, site)),
-  ].filter((r) => contactValue(r.name) !== undefined && commContact(r.primary) !== "");
+  ].filter((r) => contactValue(r.name) !== undefined && r.primary !== "");
   const lineHeading = contactValue(cp.lineHeading);
   const listHeading = contactValue(cp.listHeading);
   const body = `<div class="comm-contacts">

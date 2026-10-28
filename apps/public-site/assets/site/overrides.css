@@ -316,7 +316,7 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 /* Legacy's CommContact always emitted the numbers' div, so the email sat on its own line even with
  * no number; ours leaves the empty div out, so the name breaks the line itself. */
 .comm-contacts .contact-name{display:block}
-@media (min-width: 768px) { .after-hours span{padding-left:200px} }
+@media (min-width: 768px) { .comm-contacts .after-hours span{padding-left:200px} }
 
 /* The privacy page (pages/privacy.ts): legacy Privacy.cshtml's label h3 is a paragraph here, the title the h1. */
 .connect .page-label{font-size:calc(1.3rem + .6vw);font-weight:500;line-height:1.2;margin:0 0 .5rem;padding-top:10px;color:var(--color-text)}

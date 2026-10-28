@@ -194,14 +194,6 @@ ${present(main?.pageTitle) ? `<h2>${e(main.pageTitle)}</h2>\n` : ""}${present(po
   return `<section class="story-features" id="sidebar" aria-label="About this release">\n${blocks}\n</section>`;
 }
 
-/**
- * The release page, in legacy PostView's skeleton (look-and-feel §2.2) with the plan's
- * accessibility deviations: one h1 (the headline; legacy's lead-ministry h3 becomes
- * `p.story-ministry`), legacy's h3–h6 one level up, a labelled `<section>` side column instead of
- * a floating div, and buttons for Print and the language toggle. French renders with the English
- * (`.story-lang.secondary`, `lang="fr"`): site.js toggles `body.lang-secondary`; without script
- * both languages show (overrides.css).
- */
 /** The licence sentence after the Media Assets list (L3), from pageText.assetLicence: plain text,
  * escaped; the link only for a safe URL (else its text alone) and only when it has text. */
 function licenceLine(l: PageTextSettings["assetLicence"], site: SiteInfo): string {
@@ -211,6 +203,14 @@ function licenceLine(l: PageTextSettings["assetLicence"], site: SiteInfo): strin
   return `\n<p class="assets-licence">${e(l.text)}${link}.</p>`;
 }
 
+/**
+ * The release page, in legacy PostView's skeleton (look-and-feel §2.2) with the plan's
+ * accessibility deviations: one h1 (the headline; legacy's lead-ministry h3 becomes
+ * `p.story-ministry`), legacy's h3–h6 one level up, a labelled `<section>` side column instead of
+ * a floating div, and buttons for Print and the language toggle. French renders with the English
+ * (`.story-lang.secondary`, `lang="fr"`): site.js toggles `body.lang-secondary`; without script
+ * both languages show (overrides.css).
+ */
 export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptions, ctx: ReleaseContext): string {
   const base = basePath(site);
   const { main, backgrounders, french, frenchBackgrounders } = documentsByLanguage(post.documents);
