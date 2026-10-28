@@ -137,6 +137,13 @@ describe("newsApiClient", () => {
     await expect(newsApiClient("http://api.example", bad as unknown as typeof fetch).ministryProfiles()).rejects.toThrow(/500/);
   });
 
+  it("ministryProfiles: a 200 with a malformed or empty body rejects (a failure), never []", async () => {
+    for (const text of ["", "{}", '{"ministries":null}', '{"ministries":[{"key":"health"}]}', "not json"]) {
+      const f = vi.fn(async () => new Response(text, { status: 200 }));
+      await expect(newsApiClient("http://api.example", f as unknown as typeof fetch).ministryProfiles(), text).rejects.toThrow();
+    }
+  });
+
   it("slides: reads the v2 shape (emergency, imageUrl) from GET api/v2/slides", async () => {
     const body = { slides: [{ id: "a", sortIndex: -1, emergency: true, headline: "h", summary: "s", actionUri: null, actionLabel: null, imageUrl: "https://files.example/x.png", justify: null }] };
     const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json(body));
