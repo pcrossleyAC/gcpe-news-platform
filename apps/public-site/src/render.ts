@@ -88,7 +88,9 @@ export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
 /** The card image a page without its own shows (legacy's `default-og-image-new.jpg`, vendored). */
 export const DEFAULT_OG_IMAGE = "/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
 
-/** The longest description a page's meta carries: search engines show about 155 characters. */
+/** The longest description a page's meta carries. Search results show only about 155 characters,
+ * but a longer text is harmless and lets the engine pick its own cut; 300 just keeps a whole
+ * release summary from filling the head. */
 const MAX_DESCRIPTION = 300;
 
 /** A description for a meta tag: whitespace collapsed, trimmed, bounded to {@link MAX_DESCRIPTION}
@@ -96,8 +98,9 @@ const MAX_DESCRIPTION = 300;
 export function pageDescription(text: string | null | undefined): string | null {
   const t = (text ?? "").replace(/\s+/g, " ").trim();
   if (!t) return null;
-  if (t.length <= MAX_DESCRIPTION) return t;
-  const cut = t.slice(0, MAX_DESCRIPTION - 1);
+  if (Array.from(t).length <= MAX_DESCRIPTION) return t;
+  // Cut by code points so an emoji (a surrogate pair) is never split.
+  const cut = Array.from(t).slice(0, MAX_DESCRIPTION - 1).join("");
   const at = cut.lastIndexOf(" ");
   return `${(at > MAX_DESCRIPTION / 2 ? cut.slice(0, at) : cut).trimEnd()}…`;
 }
@@ -117,10 +120,10 @@ export function twitterHandle(account: string): string | null {
  * on its own, so it must be absolute: anything but an absolute http(s) URL gets the default.
  * `description` is the page's resolved description (see {@link pageDescription}).
  */
-function socialMeta(title: string, site: SiteInfo, canonical: string, opts: PageOptions, description: string | null, twitterSite: string | null): string {
+function socialMeta(title: string, site: SiteInfo, canonical: string, opts: PageOptions, pageDesc: string | null, twitterSite: string | null): string {
   const s = opts.social ?? {};
   const ogTitle = s.title ?? title;
-  description = pageDescription(s.description) ?? description;
+  const description = pageDescription(s.description) ?? pageDesc;
   const ownImage = s.image && isSafeUrl(s.image, { relative: false, schemes: ["https:", "http:"] }) ? s.image : null;
   const image = ownImage ?? new URL(site.baseUrl).origin + basePath(site) + DEFAULT_OG_IMAGE;
   // Alt text describes the page's own image; the default card image carries none.

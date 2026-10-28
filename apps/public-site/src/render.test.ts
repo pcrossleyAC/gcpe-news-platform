@@ -572,5 +572,9 @@ describe("renderPage site identity: description and twitter:site", () => {
     const d = content(long, 'meta[name="description"]')!;
     expect(d.length).toBeLessThanOrEqual(300);
     expect(d.endsWith("word…")).toBe(true);
+    // An emoji (two UTF-16 units) straddling the cut is dropped whole, never split.
+    const emoji = content(page(withIdentity({}), { description: "x".repeat(298) + "😀".repeat(5) }), 'meta[name="description"]')!;
+    expect(emoji).toBe("x".repeat(298) + "😀…");
+    expect(emoji).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
   });
 });
