@@ -1,6 +1,6 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import type { GovernmentTermDto, MinistryDto, PostDto } from "./dto";
+import type { GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto } from "./dto";
 import { renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
@@ -32,6 +32,7 @@ export interface RunCache {
   termsOutage?: TermsView;
   /** This run already compared the fetched snapshot with site_state's applied hash. */
   termsHashChecked?: boolean;
+  profiles?: Promise<MinistryProfileDto[]>;
 }
 
 export interface SiteBuilder {
@@ -106,6 +107,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     for (const term of view.dto?.terms ?? []) rows.push({ term, count: await index.countInDayRange(term.startDate, termEndExclusive(term)) });
     return rows;
   };
+  const profiles = (run: RunCache) => (run.profiles ??= newsApi.ministryProfiles());
   const removeAll = async (p: PageId) => {
     for (const f of pageFiles(p)) await storage.remove(f);
   };

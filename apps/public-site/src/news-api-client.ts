@@ -1,6 +1,6 @@
 import { siteSettingsSchema } from "@gcpe/site-settings";
 import { z } from "zod";
-import type { CategoryDto, GovernmentTermsDto, HomeDto, MinisterDto, MinistryDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
+import type { CategoryDto, GovernmentTermsDto, HomeDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
 import { CATEGORY_KEY, TERM_SLUG, type CategoryKind } from "./site-paths";
 
 export interface NewsApiClient {
@@ -13,6 +13,8 @@ export interface NewsApiClient {
   postsByKeys(keys: string[]): Promise<PostDto[]>;
   ministries(): Promise<MinistryDto[]>;
   ministry(key: string): Promise<MinistryDto | null>;
+  /** `GET /api/v2/ministries`; a 404 (an older News API) is `[]`, any other failure rejects. */
+  ministryProfiles(): Promise<MinistryProfileDto[]>;
   minister(key: string): Promise<MinisterDto | null>;
   categories(kind: Exclude<CategoryKind, "ministries">): Promise<CategoryDto[]>;
   category(kind: Exclude<CategoryKind, "ministries">, key: string): Promise<CategoryDto | null>;
@@ -80,6 +82,7 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
     postsByKeys: async (keys) => (keys.length ? (((await get(`api/Posts?${v1}&postKeys=${enc(keys.join(","))}`)) as PostDto[] | null) ?? []) : []),
     ministries: async () => ((await get(`api/Ministries?${v1}`)) as MinistryDto[] | null) ?? [],
     ministry: async (key) => (await get(`api/Ministries/${enc(key)}?${v1}`)) as MinistryDto | null,
+    ministryProfiles: async () => (((await getOr404("api/v2/ministries")) as { ministries: MinistryProfileDto[] } | null)?.ministries ?? []),
     minister: async (key) => (await get(`api/Ministries/${enc(key)}/Minister?${v1}`)) as MinisterDto | null,
     categories: async (kind) => ((await get(`api/${LIST_PATH[kind]}?${v1}`)) as CategoryDto[] | null) ?? [],
     category: async (kind, key) => (await get(`api/${LIST_PATH[kind]}/${enc(key)}?${v1}`)) as CategoryDto | null,

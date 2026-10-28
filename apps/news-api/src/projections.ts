@@ -217,6 +217,7 @@ export async function applyOrg(tx: Tx, org: OrgRecord): Promise<void> {
       topicLinks: org.topicLinks,
       serviceLinks: org.serviceLinks,
       successorKeys: org.successorKeys,
+      teamLinks: org.teamLinks ?? [],
     },
     timestamp: parseOffsetDateTime(org.updatedAt),
   };

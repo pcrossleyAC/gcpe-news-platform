@@ -1,6 +1,6 @@
 import { bcSettings } from "../../site-settings/src/fixtures";
 import { describe, expect, it } from "vitest";
-import { parseEvent, termEventType, type MediaListRecord, type OrgRecord, type OrgSucceeded } from "./index";
+import { orgRecordSchema, parseEvent, termEventType, type MediaListRecord, type OrgRecord, type OrgSucceeded } from "./index";
 
 const org: OrgRecord = {
   key: "health",
@@ -77,6 +77,15 @@ describe("parseEvent", () => {
 
   it("an org.upserted carries isPublic false through", () => {
     expect((parseEvent(envelope("org.upserted", { ...org, isPublic: false })).data as OrgRecord).isPublic).toBe(false);
+  });
+
+  it("a record and an envelope without teamLinks still parse (orgRecordSchema); teamLinks carries through when present", () => {
+    expect("teamLinks" in org).toBe(false);
+    expect(orgRecordSchema.parse(org)).toEqual(org);
+    expect(parseEvent(envelope("org.upserted", org)).data).toEqual(org);
+    const teamLinks = [{ text: "Premier David Eby", url: "/office-of-the-premier/biography" }];
+    expect((parseEvent(envelope("org.upserted", { ...org, teamLinks })).data as OrgRecord).teamLinks).toEqual(teamLinks);
+    expect(() => parseEvent(envelope("org.upserted", { ...org, teamLinks: [{ text: "x" }] }))).toThrow();
   });
 });
 

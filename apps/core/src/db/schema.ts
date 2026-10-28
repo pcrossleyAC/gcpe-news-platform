@@ -24,6 +24,7 @@ export const organizations = pgTable("organizations", {
   social: jsonb("social").$type<OrgRecord["social"]>().notNull(),
   topicLinks: jsonb("topic_links").$type<Link[]>().notNull().default([]),
   serviceLinks: jsonb("service_links").$type<Link[]>().notNull().default([]),
+  teamLinks: jsonb("team_links").$type<Link[]>().notNull().default([]),
   sectorKeys: text("sector_keys").array().notNull().default(sql`'{}'::text[]`),
   /** HQ organization (spec addendum §4, C124): its members see every ministry in the Calendar. */
   isHq: boolean("is_hq").notNull().default(false),

@@ -32,6 +32,7 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     postsByKeys: async (keys) => keys.map((k) => posts.get(k)).filter((p): p is PostDto => !!p),
     ministries: async () => [ministry({ key: "health", name: "Health" }), ministry({ key: "finance", name: "Finance" })],
     ministry: async (key) => (["health", "finance"].includes(key.toLowerCase()) ? ministry({ key: key.toLowerCase(), name: key }) : null),
+    ministryProfiles: async () => [],
     minister: async () => null,
     categories: async () => [],
     category: async (_kind, key) => (key === "covid-19" ? { key, kind: "tags", name: "COVID-19", isActive: true, topPostKey: null, featurePostKey: null } : null),

@@ -126,6 +126,17 @@ describe("newsApiClient", () => {
     expect(empty.mock.calls[5]![0].toString()).toBe("http://api.example/api/ResourceLinks?api-version=1.0");
   });
 
+  it("ministryProfiles reads { ministries }; a 404 is []; a 500 rejects", async () => {
+    const body = { ministries: [{ key: "health", ministerEmail: "a@gov.bc.ca", teamLinks: [{ text: "T", url: "https://x" }], childKeys: [] }] };
+    const ok = vi.fn(async (_url: string | URL | Request) => Response.json(body));
+    expect(await newsApiClient("http://api.example", ok as unknown as typeof fetch).ministryProfiles()).toEqual(body.ministries);
+    expect(ok.mock.calls[0]![0].toString()).toBe("http://api.example/api/v2/ministries");
+    const nf = vi.fn(async () => new Response("{}", { status: 404 }));
+    expect(await newsApiClient("http://api.example", nf as unknown as typeof fetch).ministryProfiles()).toEqual([]);
+    const bad = vi.fn(async () => new Response("", { status: 500 }));
+    await expect(newsApiClient("http://api.example", bad as unknown as typeof fetch).ministryProfiles()).rejects.toThrow(/500/);
+  });
+
   it("slides: reads the v2 shape (emergency, imageUrl) from GET api/v2/slides", async () => {
     const body = { slides: [{ id: "a", sortIndex: -1, emergency: true, headline: "h", summary: "s", actionUri: null, actionLabel: null, imageUrl: "https://files.example/x.png", justify: null }] };
     const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json(body));

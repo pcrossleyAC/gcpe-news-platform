@@ -50,6 +50,24 @@ export async function listMinistries(db: Db, tz: string) {
   return rows.map((r) => toMinistryDto(r, features.get(r.key.toLowerCase()), activeChildKey(r.key, rows), tz));
 }
 
+/** `GET /api/v2/ministries`: what the ministry pages need beyond v1's DTO (v1 stays byte-identical). */
+export interface MinistryProfileDto {
+  key: string;
+  ministerEmail: string | null;
+  teamLinks: { text: string; url: string }[];
+  childKeys: string[];
+}
+
+export async function listMinistryProfiles(db: Db): Promise<MinistryProfileDto[]> {
+  const rows = await allMinistries(db); // public only, sortOrder then key
+  return rows.map((r) => ({
+    key: r.key,
+    ministerEmail: r.ministry?.minister.email ?? null,
+    teamLinks: r.ministry?.teamLinks ?? [],
+    childKeys: rows.filter((c) => c.isActive && c.ministry?.parentKey?.toLowerCase() === r.key.toLowerCase()).map((c) => c.key),
+  }));
+}
+
 export async function getMinistry(db: Db, key: string, tz: string) {
   const rows = await allMinistries(db);
   const row = rows.find((r) => r.key.toLowerCase() === key.toLowerCase());

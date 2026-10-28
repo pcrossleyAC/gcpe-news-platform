@@ -60,6 +60,45 @@ describe("BodyEditor", () => {
     expect(last).toContain("<asset>https://youtu.be/abcdef12345</asset>");
   });
 
+  it("does not call onChange on mount, even when TipTap rewrites the given HTML", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value={"<p>a</p>\r\n<p>b <b>c</b></p>"} onChange={onChange} readOnly={false} />);
+    await screen.findByRole("textbox", { name: "Body" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("allowAssets={false} shows no Insert asset button; default still does", async () => {
+    render(<BodyEditor id="bio" label="Biography" value="<p></p>" onChange={() => {}} readOnly={false} allowAssets={false} />);
+    await screen.findByRole("textbox", { name: "Biography" });
+    expect(screen.getByRole("button", { name: "Bold" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Insert asset" })).toBeNull();
+    cleanup();
+    render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={() => {}} readOnly={false} />);
+    await screen.findByRole("textbox", { name: "Body" });
+    expect(screen.getByRole("button", { name: "Insert asset" })).toBeInTheDocument();
+  });
+
+  it("describedBy sets the editing area's accessible description, and follows changes", async () => {
+    const { rerender } = render(
+      <>
+        <p id="hint">Hint text.</p>
+        <p id="note">A note.</p>
+        <BodyEditor id="bio" label="Biography" value="<p></p>" onChange={() => {}} readOnly={false} describedBy="hint" />
+      </>,
+    );
+    const field = await screen.findByRole("textbox", { name: "Biography" });
+    expect(field).toHaveAccessibleDescription("Hint text.");
+    rerender(
+      <>
+        <p id="hint">Hint text.</p>
+        <p id="note">A note.</p>
+        <BodyEditor id="bio" label="Biography" value="<p></p>" onChange={() => {}} readOnly={false} describedBy="hint note" />
+      </>,
+    );
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Biography" })).toHaveAccessibleDescription("Hint text. A note."));
+  });
+
   it("wires paste reduction to the shared allow-list filter (Step 1: disallowed paste content is stripped)", async () => {
     render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={() => {}} readOnly={false} />);
     await screen.findByLabelText("Body");

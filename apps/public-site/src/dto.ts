@@ -91,6 +91,14 @@ export interface SlideDto {
   sortIndex: number;
 }
 
+/** `GET /api/v2/ministries`: minister email, Meet the Team links and active child ministries. */
+export interface MinistryProfileDto {
+  key: string;
+  ministerEmail: string | null;
+  teamLinks: { text: string; url: string }[];
+  childKeys: string[];
+}
+
 export interface ResourceLinkDto {
   uri: string;
   key: string;

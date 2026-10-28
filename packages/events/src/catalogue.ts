@@ -41,6 +41,9 @@ export const orgRecordSchema = z.object({
   social: socialSchema,
   topicLinks: z.array(linkSchema),
   serviceLinks: z.array(linkSchema),
+  // The Premier's "Meet the Team" links (plan 2, T1). Optional so a record or envelope written
+  // before the field existed still parses; readers treat an absent value as [].
+  teamLinks: z.array(linkSchema).optional(),
   sectorKeys: z.array(z.string()),
   // HQ organization (Calendar spec addendum §4, C124). Defaulted so an envelope stored before
   // the flag existed still parses.

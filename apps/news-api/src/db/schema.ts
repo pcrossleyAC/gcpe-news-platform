@@ -147,7 +147,7 @@ export const changeFeedState = pgTable(
 
 export type MinistryDetails = Pick<
   OrgRecord,
-  "parentKey" | "url" | "displayAdditionalName" | "minister" | "contact" | "secondContact" | "weekendContactNumber" | "topicLinks" | "serviceLinks"
+  "parentKey" | "url" | "displayAdditionalName" | "minister" | "contact" | "secondContact" | "weekendContactNumber" | "topicLinks" | "serviceLinks" | "teamLinks"
 > & {
   /** Ordered successors (new-government N7); the first is the redirect target. Absent on a row
    * stored before the field existed: read it as `[]`. */
