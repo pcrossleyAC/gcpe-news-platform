@@ -12,6 +12,9 @@ import { createNewsTestDb, EVENT_SECRETS, TZ } from "../../test/helpers";
 import { createPublicApiClient, fetchPublicSlice, PUBLIC_IMPORT_USER_AGENT, RateLimitedError } from "./public-fetch";
 import { parsePublicImportArgs, type PublicImportCliOptions } from "./public-options";
 import { runPublicImport } from "./public-run";
+import { absoluteFileKey } from "./public-files";
+
+const FILES = "https://bcgovnews-etg7c8etapa6btfr.z03.azurefd.net";
 
 // ---------------------------------------------------------------- the stub legacy API
 
@@ -35,7 +38,12 @@ const POSTS: Dto[] = [
   dto("2026HLTH0002-000002", "releases", 2, { ministryKeys: ["health", "zz-retired-ministry"], tagKeys: ["zz-unlisted-tag"] }),
   dto("health-story", "stories", 3, { ministryKeys: ["health"], themeKeys: ["wellness"] }),
   dto("mining-factsheet", "factsheets", 4, { ministryKeys: ["mining"], sectorKeys: ["economy"] }),
-  dto("rural-update", "updates", 5, { ministryKeys: ["mining"], tagKeys: ["rural"] }),
+  {
+    ...dto("rural-update", "updates", 5, { ministryKeys: ["mining"], tagKeys: ["rural"] }),
+    hasTranslations: true, hasMediaAssets: true,
+    azureTranslations: [{ key: "updates/rural-update/Flyer_Chinese(simplified).pdf", label: "Chinese(Simplified)", length: 10 }],
+    azureAssets: [{ key: "updates/rural-update/photo one.jpg", label: "Photo", length: 20 }, { key: "https://elsewhere.example/a.jpg", label: "Abs", length: 5 }],
+  },
   dto("only-by-key", "stories", 6, { ministryKeys: ["mining"] }),
 ];
 
@@ -86,20 +94,41 @@ async function startStub(posts: Dto[] = POSTS): Promise<Stub> {
 }
 
 const options = (over: Partial<PublicImportCliOptions> = {}): PublicImportCliOptions => ({
-  from: "", perKind: 20, perCategory: 3, keys: [], maxRequests: 300, dryRun: false, remove: false, ...over,
+  from: "", perKind: 20, perCategory: 3, keys: [], maxRequests: 300, dryRun: false, remove: false, refresh: false, filesBase: FILES, ...over,
 });
 const fastClient = (base: string) => createPublicApiClient({ base, minIntervalMs: 0 });
 
 // ---------------------------------------------------------------- options
 
+describe("absoluteFileKey", () => {
+  it("builds the news.gov translation URL from a relative key (parentheses, spaces, non-ASCII encoded per segment)", () => {
+    expect(absoluteFileKey("releases/2026HLTH0085-001117/RSVVaccine2026_Chinese(simplified).pdf", "translations", FILES)).toBe(
+      `${FILES}/translations/releases/2026HLTH0085-001117/RSVVaccine2026_Chinese%28simplified%29.pdf`,
+    );
+    expect(absoluteFileKey("releases/K/a b#c?d.pdf", "translations", FILES)).toBe(`${FILES}/translations/releases/K/a%20b%23c%3Fd.pdf`);
+    expect(absoluteFileKey("releases/K/简体 中文.pdf", "translations", FILES + "/")).toBe(`${FILES}/translations/releases/K/${encodeURIComponent("简体 中文")}.pdf`);
+  });
+  it("uses /assets/ for media assets", () => {
+    expect(absoluteFileKey("stories/K/photo.jpg", "assets", FILES)).toBe(`${FILES}/assets/stories/K/photo.jpg`);
+  });
+  it("passes absolute https keys through unchanged and rejects anything else", () => {
+    expect(absoluteFileKey("https://x.example/a%20b(1).pdf", "translations", FILES)).toBe("https://x.example/a%20b(1).pdf");
+    for (const bad of ["http://x.example/a.pdf", "javascript:alert(1)", "//x.example/a.pdf", "a/../b.pdf", "a//b.pdf", ""]) {
+      expect(() => absoluteFileKey(bad, "assets", FILES), bad).toThrow(/unsupported/);
+    }
+  });
+});
+
 describe("parsePublicImportArgs", () => {
   it("has the documented defaults", () => {
-    expect(parsePublicImportArgs([])).toEqual({ from: "https://api.news.gov.bc.ca", perKind: 20, perCategory: 3, keys: [], maxRequests: 300, dryRun: false, remove: false });
+    expect(parsePublicImportArgs([])).toEqual({ from: "https://api.news.gov.bc.ca", perKind: 20, perCategory: 3, keys: [], maxRequests: 300, dryRun: false, remove: false, refresh: false, filesBase: "https://bcgovnews-etg7c8etapa6btfr.z03.azurefd.net" });
   });
   it("parses every option, in both --flag value and --flag=value forms", () => {
-    expect(parsePublicImportArgs(["--from", "http://x/", "--per-kind=2", "--per-category", "0", "--keys", "a, b", "--keys=c", "--max-requests", "50", "--dry-run"])).toEqual({
-      from: "http://x", perKind: 2, perCategory: 0, keys: ["a", "b", "c"], maxRequests: 50, dryRun: true, remove: false,
+    expect(parsePublicImportArgs(["--from", "http://x/", "--per-kind=2", "--per-category", "0", "--keys", "a, b", "--keys=c", "--max-requests", "50", "--dry-run", "--refresh", "--files-base", "https://files.example/"])).toEqual({
+      from: "http://x", perKind: 2, perCategory: 0, keys: ["a", "b", "c"], maxRequests: 50, dryRun: true, remove: false, refresh: true, filesBase: "https://files.example",
     });
+    expect(() => parsePublicImportArgs(["--files-base", "http://files.example"])).toThrow(/https/);
+    expect(() => parsePublicImportArgs(["--remove", "--refresh"])).toThrow(/--remove takes no fetch options/);
     expect(parsePublicImportArgs(["--remove", "--dry-run"])).toMatchObject({ remove: true, dryRun: true });
   });
   it("rejects unknown arguments, bad numbers and fetch options with --remove", () => {
@@ -179,6 +208,22 @@ describe("fetchPublicSlice", () => {
     expect(slice.keysNotFound).toEqual(["ZZ-missing"]);
     expect(slice.notListedBySource).toEqual({ ministries: { "zz-retired-ministry": 1 }, tags: { "zz-unlisted-tag": 1 } });
     expect(slice.records.every((r) => r.publishFlags.toSubscribers === false && r.publishFlags.toMediaLists === false)).toBe(true);
+  });
+
+  it("makes relative translation and asset keys absolute, honouring --files-base; a bad key invalidates only its post", async () => {
+    const rural = (await fetchPublicSlice(fastClient(stub.base), { perKind: 0, perCategory: 0, keys: ["rural-update"], maxRequests: 10 })).records[0]!;
+    expect(rural.translations).toEqual([{ key: `${FILES}/translations/updates/rural-update/Flyer_Chinese%28simplified%29.pdf`, label: "Chinese(Simplified)", length: 10 }]);
+    expect(rural.assets!.map((a) => a.key)).toEqual([`${FILES}/assets/updates/rural-update/photo%20one.jpg`, "https://elsewhere.example/a.jpg"]);
+    const other = (await fetchPublicSlice(fastClient(stub.base), { perKind: 0, perCategory: 0, keys: ["rural-update"], maxRequests: 10, filesBase: "https://cdn.example/f/" })).records[0]!;
+    expect(other.translations![0]!.key).toBe("https://cdn.example/f/translations/updates/rural-update/Flyer_Chinese%28simplified%29.pdf");
+    const bad = await startStub([{ ...POSTS[0]!, azureTranslations: [{ key: "ftp://x/y.pdf", label: "L", length: 1 }] }, POSTS[2]!]);
+    try {
+      const slice = await fetchPublicSlice(fastClient(bad.base), { perKind: 0, perCategory: 0, keys: [POSTS[0]!.key, POSTS[2]!.key], maxRequests: 10 });
+      expect(slice.records.map((r) => r.key)).toEqual([POSTS[2]!.key]);
+      expect(slice.invalid).toEqual([{ key: POSTS[0]!.key, issue: expect.stringMatching(/unsupported translations key/) }]);
+    } finally {
+      await bad.close();
+    }
   });
 
   it("drops categories, taking turns across kinds, to stay within --max-requests", async () => {
@@ -306,6 +351,37 @@ describe("runPublicImport against a News API database", () => {
     const report = await run();
     expect(report.write).toMatchObject({ created: 0, updated: 0, unchanged: 4, skippedExisting: ["2026HLTH0001-000001", "mining-factsheet"] });
     expect(changed(before, await tableCounts(tdb))).toEqual([]);
+  });
+
+  it("the API serves imported translations and assets as absolute URLs", async () => {
+    const app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
+    const res = await request(app).get("/api/Posts/rural-update?api-version=1.0");
+    expect(res.body.azureTranslations[0].key).toBe(`${FILES}/translations/updates/rural-update/Flyer_Chinese%28simplified%29.pdf`);
+    expect(res.body.azureAssets.map((a: { key: string }) => a.key)).toEqual([`${FILES}/assets/updates/rural-update/photo%20one.jpg`, "https://elsewhere.example/a.jpg"]);
+  });
+
+  it("--refresh rewrites posts it created even with an unchanged timestamp, and still never touches others", async () => {
+    const changed1 = await startStub(POSTS.map((p) => (p.key === "rural-update" ? { ...p, summary: "same timestamp, new text" } : p)));
+    const summary = async () => (await tdb.db.execute<{ summary: string }>(sql`select summary from posts where key = 'rural-update'`)).rows[0]!.summary;
+    try {
+      const mk = (refresh: boolean) => runPublicImport({ db: tdb.db, client: fastClient(changed1.base) }, options({ keys: ["only-by-key"], refresh }));
+      expect((await mk(false)).write).toMatchObject({ updated: 0, unchanged: 4 });
+      expect(await summary()).toBe("Summary of rural-update");
+      const before = (await changeRows(tdb)).length;
+      const planned = await runPublicImport({ db: tdb.db, client: fastClient(changed1.base) }, options({ keys: ["only-by-key"], refresh: true, dryRun: true }));
+      expect(planned.write).toMatchObject({ updated: 4, unchanged: 0, skippedExisting: ["2026HLTH0001-000001", "mining-factsheet"] });
+      expect((await changeRows(tdb)).length).toBe(before);
+      const report = await mk(true);
+      expect(report.write).toMatchObject({ created: 0, updated: 4, unchanged: 0, skippedExisting: ["2026HLTH0001-000001", "mining-factsheet"] });
+      expect(await summary()).toBe("same timestamp, new text");
+    } finally {
+      await changed1.close();
+    }
+    // Put it back so later tests see the source's text.
+    await runPublicImport({ db: tdb.db, client: fastClient(stub.base) }, options({ keys: ["only-by-key"], refresh: true }));
+    expect(await summary()).toBe("Summary of rural-update");
+    const kept = (await tdb.db.execute<{ summary: string }>(sql`select summary from posts where key in ('2026HLTH0001-000001', 'MINING-FACTSHEET') order by key`)).rows.map((r) => r.summary);
+    expect(kept).toEqual(["NRMS copy", "legacy copy"]);
   });
 
   it("a post the source has edited since is updated, and leaves no post it took over from NRMS", async () => {

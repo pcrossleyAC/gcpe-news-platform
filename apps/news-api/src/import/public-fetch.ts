@@ -1,5 +1,6 @@
 import { releaseRecordSchema, type CategoryKind, type ReleaseRecord } from "@gcpe/events";
 import { postToRelease } from "../dev/fixture-world";
+import { absoluteFileItems, DEFAULT_FILES_BASE } from "./public-files";
 
 /**
  * Fetching a slice of posts from the public, read-only legacy News API (api.news.gov.bc.ca) for
@@ -100,6 +101,8 @@ export interface FetchPlanOptions {
   perCategory: number;
   keys: string[];
   maxRequests: number;
+  /** Where relative translation/asset keys live (default DEFAULT_FILES_BASE). */
+  filesBase?: string;
   log?: (msg: string) => void;
 }
 
@@ -130,9 +133,9 @@ export interface FetchedSlice {
 }
 
 /** The release a public PostDto describes. Never flagged for subscribers or media lists. */
-export function publicPostToRelease(dto: Json): ReleaseRecord {
+export function publicPostToRelease(dto: Json, filesBase: string = DEFAULT_FILES_BASE): ReleaseRecord {
   const r = postToRelease(dto);
-  return { ...r, publishFlags: { toWeb: true, toSubscribers: false, toMediaLists: false }, mediaListKeys: [], renditions: null, mediaText: null };
+  return { ...r, translations: absoluteFileItems(r.translations, "translations", filesBase), assets: absoluteFileItems(r.assets, "assets", filesBase), publishFlags: { toWeb: true, toSubscribers: false, toMediaLists: false }, mediaListKeys: [], renditions: null, mediaText: null };
 }
 
 /**
@@ -229,7 +232,14 @@ export async function fetchPublicSlice(client: PublicApiClient, opts: FetchPlanO
   const notListedBySource: Record<string, Record<string, number>> = {};
   const field = { ministries: "ministryKeys", sectors: "sectorKeys", themes: "themeKeys", tags: "tagKeys" } as const;
   for (const dto of seen.values()) {
-    const parsed = releaseRecordSchema.safeParse(publicPostToRelease(dto));
+    let mapped: ReleaseRecord;
+    try {
+      mapped = publicPostToRelease(dto, opts.filesBase);
+    } catch (e) {
+      invalid.push({ key: dto.key, issue: e instanceof Error ? e.message : String(e) });
+      continue;
+    }
+    const parsed = releaseRecordSchema.safeParse(mapped);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       invalid.push({ key: dto.key, issue: issue ? `${issue.path.join(".")}: ${issue.message}` : "invalid" });
