@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { NETWORKS, type NetworkKey, type SiteSettings } from "@gcpe/site-settings";
 import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { bcSettings, link, post, site, slide } from "../../test/fixtures";
+import { renderNotFoundPage } from "../static-pages";
 import { renderCarousel, renderHomePage, type HomeView } from "./home";
 
 const emptyView: HomeView = { top: null, feature: null, latest: [], slides: [], links: [], sectors: [] };
@@ -249,5 +250,17 @@ describe("home page", () => {
     const html = renderHomePage(emptyView, site, {});
     expect(html).toContain('<link rel="alternate" type="application/rss+xml"');
     expect(html).toContain('href="/feed.xml"');
+  });
+
+  it("home <head> carries <meta name=\"google-site-verification\" content=\"…\"> only when set; other pages never", () => {
+    const token = "ss-eO0gSqB1_GY5aWryEXVmGQBHJgpe9-hdwcskzjss";
+    const meta = (html: string) => parse(html).querySelector('meta[name="google-site-verification"]');
+    expect(meta(renderHomePage(emptyView, { ...site, verification: { googleFile: null, googleMeta: token } }, {}))?.getAttribute("content")).toBe(token);
+    expect(meta(renderHomePage(emptyView, site, {}))).toBeNull();
+    expect(meta(renderHomePage(emptyView, { ...site, verification: { googleFile: null, googleMeta: null } }, {}))).toBeNull();
+    // A value that slipped past env validation still can't reach the head.
+    expect(meta(renderHomePage(emptyView, { ...site, verification: { googleFile: null, googleMeta: 'x"><script>' } }, {}))).toBeNull();
+    // Other pages never carry it, even with the site's verification set.
+    expect(renderNotFoundPage({ ...site, verification: { googleFile: null, googleMeta: token } }, {})).not.toContain("google-site-verification");
   });
 });

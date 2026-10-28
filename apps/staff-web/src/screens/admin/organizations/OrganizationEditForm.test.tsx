@@ -300,7 +300,13 @@ describe("OrganizationEditForm", () => {
         screen.queryByLabelText("Remove the previous minister's biography"),
       ).toBeNull();
       await user.click(field);
-      await user.type(field, "yz");
+      // Where a click lands in a contenteditable is the browser's (jsdom's) call and moves with
+      // timing under load: a slow Windows runner saved "<p>yzx</p>". Put the caret at the end of
+      // the stored text explicitly, then type without another click, so the order is fixed.
+      const selection = window.getSelection()!;
+      selection.selectAllChildren(field.querySelector("p")!);
+      selection.collapseToEnd();
+      await user.type(field, "yz", { skipClick: true });
       await user.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => expect(calls).toHaveLength(1));
       const sent = sentBody(calls) as { minister: { detailsHtml: string } };

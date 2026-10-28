@@ -1459,13 +1459,13 @@ describe("sendDue", () => {
 
         expect(result).toEqual({ sent: 8, retried: 0, failed: 0, rateLimited: false });
         expect(delivered).toHaveLength(8);
-        // Robust, not tight: sequential would need ~1,600ms (8 * 200ms); concurrency 4 should
-        // finish in ~2 batches of 200ms plus overhead, nowhere near that.
-        expect(elapsed).toBeLessThan(1100);
-        // The actual bound this test is about: never more than `concurrency` in flight, and
-        // genuinely overlapping (not accidentally still sequential).
-        expect(peak).toBeLessThanOrEqual(4);
-        expect(peak).toBeGreaterThanOrEqual(2);
+        // The bound this test is about: genuinely parallel, and never above `concurrency`. Peak
+        // in-flight is exact, load-independent evidence of that (a slow runner only adds overlap).
+        expect(peak).toBe(4);
+        // Wall time only has to beat the ~1,600ms (8 * 200ms) a sequential run would need; the
+        // ideal is ~400ms, so the bound sits just under sequential, leaving slow runners (a
+        // loaded Windows CI box took 1,137ms) a wide margin.
+        expect(elapsed).toBeLessThan(1500);
 
         expect(new Set(delivered).size).toBe(8); // every message sent exactly once
       } finally {

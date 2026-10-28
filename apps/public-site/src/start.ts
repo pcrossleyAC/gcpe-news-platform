@@ -77,7 +77,9 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   const newsApi = newsApiClient(parsed.NEWS_API_URL);
   const storage = fsStorage(parsed.OUTPUT_DIR);
   const theme = tenantConfig?.site.theme ?? DEFAULT_THEME;
-  const site: SiteInfo = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL, theme, timeZone: tenantConfig?.timeZone };
+  const site: SiteInfo = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL, theme, timeZone: tenantConfig?.timeZone,
+    verification: { googleFile: parsed.GOOGLE_VERIFICATION_FILE ?? null, googleMeta: parsed.GOOGLE_SITE_VERIFICATION ?? null },
+  };
   // What the site shows before any settings are published (and if the first fetch fails): the
   // tenant's <tenant>.site-settings.json, else derived from its theme — as NRMS loads them.
   // Throws on an invalid file, so a bad deploy fails here rather than on the first render.

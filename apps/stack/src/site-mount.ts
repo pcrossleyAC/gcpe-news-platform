@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { noStoreOnRedirect } from "./cache-control";
+import { legacyUrls, type LegacyUrlOptions } from "./legacy/middleware";
 import { ministrySuccessorRedirects } from "./ministry-successors";
 import { siteNotFound } from "./site-not-found";
 
@@ -48,12 +49,20 @@ export function siteAliasRedirect(req: Request, res: Response, next: NextFunctio
  * the root instead. Mount where the cacheable static mounts go (before noStoreByDefault), so
  * the static file's own Cache-Control stands.
  */
-export function mountSite(app: express.Express, opts: { outputDir: string; basePath: string }): void {
-  const { outputDir, basePath } = opts;
+export function mountSite(
+  app: express.Express,
+  opts: { outputDir: string; basePath: string; passThrough?: readonly string[]; lookupReference?: LegacyUrlOptions["lookupReference"] },
+): void {
+  const { outputDir, basePath, lookupReference } = opts;
+  const passThrough = opts.passThrough ?? [];
+  // Old news.gov.bc.ca URLs (parity plan 3) run first in each site chain: before the successor
+  // redirects (their rules never match /ministries/…; plan 3 Task 5 folds the successors in) and
+  // before express.static (a fallback rule checks the disk itself, so a real page still wins).
+  const legacy = (base: string) => legacyUrls({ outputDir, basePath: base, passThrough, lookupReference });
   if (basePath !== "") {
     // Unchanged from before the root mount: an unknown page under the prefix is the site's 404.
     // Successor redirects first: an old ministry's page is still on disk (new-government §4).
-    app.use(basePath, ministrySuccessorRedirects(outputDir, basePath), ...staticSite(outputDir), siteNotFound(outputDir));
+    app.use(basePath, legacy(basePath), ministrySuccessorRedirects(outputDir, basePath), ...staticSite(outputDir), siteNotFound(outputDir));
   } else {
     // /site/ministries/<old>/… goes straight to the successor (one hop), the rest to the root.
     app.use("/site", ministrySuccessorRedirects(outputDir, ""), siteAliasRedirect);
@@ -67,7 +76,7 @@ export function mountSite(app: express.Express, opts: { outputDir: string; baseP
   // means one fs.stat per request that isn't a site file (/api, /hub, /stack/tick…) before it
   // falls through: negligible next to the apps' own work, so not worth a prefix skip-list here.
   const root = express.Router();
-  root.use(ministrySuccessorRedirects(outputDir, ""), ...staticSite(outputDir));
+  root.use(legacy(""), ministrySuccessorRedirects(outputDir, ""), ...staticSite(outputDir));
   app.use(root);
 }
 

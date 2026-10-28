@@ -4,12 +4,13 @@ import type { EventEnvelope } from "@gcpe/events";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { post, site } from "../test/fixtures";
+import { bcSettings, post, site } from "../test/fixtures";
+import type { SiteStorage } from "./storage";
 import type { PostDto } from "./dto";
 import { createSiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
-import { enqueueSiteWrite, RENDER_CHROME_VERSION } from "./rebuild";
+import { chromeChanges, enqueueSiteWrite, RENDER_CHROME_VERSION, stateAndBanner, writeSiteState } from "./rebuild";
 import { createRebuildHandler, kickBackgroundSync, type SyncDeps } from "./sync";
 
 function envelope(data: unknown): EventEnvelope {
@@ -179,5 +180,30 @@ describe("RENDER_CHROME_VERSION", () => {
   // 8: the archive by government term (new-government Task 6).
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
-  it("RENDER_CHROME_VERSION is 10", () => expect(RENDER_CHROME_VERSION).toBe(10));
+  it("RENDER_CHROME_VERSION is 11", () => expect(RENDER_CHROME_VERSION).toBe(11));
+});
+
+describe("Search Console verification in the render-state marker", () => {
+  const verified = { ...site, verification: { googleFile: "google790b0529c8dcfaff.html", googleMeta: "ss-eO0gSqB1_GY5aWryEXVmGQBHJgpe9-hdwcskzjss" } };
+  const state = () => stateAndBanner(null, false, new Date("2026-10-28T12:00:00Z"), bcSettings(), site, []).state;
+  const marked = async (s: typeof site) => {
+    const storage = memoryStorage();
+    await writeSiteState(storage as SiteStorage, state(), s);
+    return storage;
+  };
+  it("setting, changing or clearing SITE_GOOGLE_* queues exactly the static page and home, not a rebuild-all", async () => {
+    expect(await chromeChanges(await marked(site) as SiteStorage, state(), site)).toMatchObject({ all: false, sections: [] });
+    expect(await chromeChanges(await marked(site) as SiteStorage, state(), verified)).toMatchObject({ all: false, sections: ["static", "home"] });
+    const changed = { ...verified, verification: { ...verified.verification, googleMeta: "another-token-0123456789abcdef" } };
+    expect(await chromeChanges(await marked(verified) as SiteStorage, state(), changed)).toMatchObject({ all: false, sections: ["static", "home"] });
+    expect(await chromeChanges(await marked(verified) as SiteStorage, state(), site)).toMatchObject({ all: false, sections: ["static", "home"] });
+    expect(await chromeChanges(await marked(verified) as SiteStorage, state(), verified)).toMatchObject({ all: false, sections: [] });
+  });
+  it("a marker written before verification existed reads as none", async () => {
+    const storage = await marked(site);
+    const old = JSON.parse(storage.files.get(".site-state.json") as string);
+    delete old.verification;
+    storage.files.set(".site-state.json", JSON.stringify(old));
+    expect(await chromeChanges(storage as SiteStorage, state(), site)).toMatchObject({ all: false, sections: [] });
+  });
 });

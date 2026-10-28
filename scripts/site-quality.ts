@@ -30,6 +30,25 @@ export const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa",
  */
 export const THRESHOLDS: Record<string, number> = { performance: 80, accessibility: 95, "best-practices": 90, seo: 90 };
 
+/**
+ * Pages robots.txt disallows on purpose (news.gov's own Disallows, url-compat T3). An SEO score means
+ * nothing for a page crawlers are told to skip (Lighthouse's is-crawlable fails by design, and news.gov's
+ * own search page has no meta description either), so these pages skip the SEO threshold. They must still
+ * be blocked: a page that stops being blocked fails here and comes back under the normal gate.
+ */
+export const ROBOTS_BLOCKED = new Set(["/search/"]);
+
+type Lhr = { audits: Record<string, { score: number | null } | undefined> };
+
+/** Threshold failures for one page; a robots-blocked page skips SEO but must still fail is-crawlable. */
+export function thresholdFailures(path: string, scores: Record<string, number>, lhr: Lhr): string[] {
+  const failures: string[] = [];
+  const blocked = ROBOTS_BLOCKED.has(path);
+  if (blocked && lhr.audits["is-crawlable"]?.score !== 0) failures.push(`${path}: expected robots.txt to block it (is-crawlable should fail)`);
+  for (const [id, min] of Object.entries(THRESHOLDS)) if (!(blocked && id === "seo") && (scores[id] ?? 0) < min) failures.push(`${path}: ${id} ${scores[id]} < ${min}`);
+  return failures;
+}
+
 /** The fixture release with French (FIXTURE_PAGES[1]). */
 const RELEASE = FIXTURE_PAGES[1]!;
 
@@ -158,7 +177,7 @@ export async function runSiteQuality(log: (line: string) => void = console.log):
         }
         const scores = Object.fromEntries(Object.keys(THRESHOLDS).map((id) => [id, Math.round((result.lhr.categories[id]?.score ?? 0) * 100)]));
         log(`lighthouse ${path}: ${Object.entries(scores).map(([id, s]) => `${id} ${s}`).join(", ")}`);
-        for (const [id, min] of Object.entries(THRESHOLDS)) if ((scores[id] ?? 0) < min) failures.push(`${path}: ${id} ${scores[id]} < ${min}`);
+        failures.push(...thresholdFailures(path, scores, result.lhr as unknown as Lhr));
       }
     } finally {
       chrome.kill();
