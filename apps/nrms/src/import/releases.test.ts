@@ -475,4 +475,19 @@ describe("importReleases — one release of each of the five types", () => {
 
     expect(report.toJSON().tables.news_releases).toEqual({ legacy: 5, imported: 5, skipped: 0 });
   });
+
+  it("seeds no ministry counter for a release with no printed abbreviation and a lead that has none (nothing would read it)", async () => {
+    const fixture = structuredClone(fiveTypesFixture) as unknown as YearFixture;
+    const release = fixture.years["2024"]!.releases!.find((r) => r.Key === "five-types-release")!;
+    release.MinistryRelease = 3;
+    await tdb.pool.query("UPDATE organizations SET abbreviation = NULL WHERE key = 'health'");
+    try {
+      const ctx: ImportReleasesContext = { pageImageIds: new Map(), mediaListIds: new Map(), termIds: new Map(), users: new Map(), report: new ImportReport(), timeZone: "America/Vancouver" };
+      await importReleases(tdb.db, buildFakeSource(fixture), ctx);
+      const { rows } = await tdb.pool.query("SELECT ministry FROM number_counters WHERE scope = 'ministry'");
+      expect(rows).toEqual([]);
+    } finally {
+      await tdb.pool.query("UPDATE organizations SET abbreviation = 'HLTH' WHERE key = 'health'");
+    }
+  });
 });

@@ -643,7 +643,7 @@ function accumulate(agg: CounterAggregate, row: RawReleaseRow): void {
   if (row.Year !== null && row.MinistryRelease !== null) {
     // Counters are per printed abbreviation (numbering.ts), which the legacy key spells: {year}{ABBR}{n}-{m}; ADVIS counts under ''.
     const abbr = /^\d{4}(.+)\d{4}-\d{6}$/.exec(row.Key)?.[1]?.toUpperCase();
-    // No parseable key: fall back to the lead ministry key, resolved to its abbreviation when the counters are written.
+    // No parseable key: fall back to the lead ministry key, resolved to its abbreviation when the counters are written (none: no counter).
     const ministry = abbr === "ADVIS" ? "" : (abbr ?? (row.LeadMinistryKey ?? "").toLowerCase());
     const isAbbreviation = abbr !== undefined;
     const mapKey = `${row.Year}\u0000${ministry}`;
@@ -663,8 +663,13 @@ async function seedCounters(db: Db, agg: CounterAggregate): Promise<void> {
     if (agg.maxNewsRef > 0) await seedCounter(tx, "news", 0, "", agg.maxNewsRef);
     for (const [year, max] of agg.maxYearRelease) await seedCounter(tx, "year", year, "", max);
     for (const { year, ministry, isAbbreviation, max } of agg.maxMinistryRelease.values()) {
-      const abbr = isAbbreviation || !ministry ? null : await ministryAbbreviation(tx, ministry);
-      await seedCounter(tx, "ministry", year, isAbbreviation ? ministry : abbr?.trim() ? abbr.trim().toUpperCase() : ministry, max);
+      if (isAbbreviation || !ministry) {
+        await seedCounter(tx, "ministry", year, ministry, max);
+        continue;
+      }
+      // A lead with no abbreviation: approve() refuses to number for it, so no counter is read; skip it.
+      const abbr = (await ministryAbbreviation(tx, ministry))?.trim().toUpperCase();
+      if (abbr) await seedCounter(tx, "ministry", year, abbr, max);
     }
   });
 }
