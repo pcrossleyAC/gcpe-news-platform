@@ -17,13 +17,26 @@
  *    `site-banner-shown` event (banner-script.ts) — then shown with `aria-expanded` tracking whether
  *    `#banner` is visible. `#btnCloseBanner`/`#btnCloseBannerBridge` hide `#banner` (and collapse
  *    the toggles); a toggle hides or re-shows it. The dismissal isn't remembered, as on news.gov.
- * 6. The 404 prefill is left for Task 10.
+ * 6. The 404 prefill: a form with `data-prefill-from-path` (static-pages.ts's 404 page, served for any
+ *    unknown path) gets its empty `#not-found-q` set to `pathWords(location.pathname, base)` — the
+ *    missing URL's words — with `.value` only. No script, no prefill: the box is just empty.
  *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
  */
+const PATH_WORDS_SRC = String.raw`const pathWords = (pathname, base) => {
+  let p = pathname;
+  if (base && p.indexOf(base) === 0) p = p.slice(base.length);
+  try { p = decodeURIComponent(p); } catch (_) {}
+  return p.split(/[\/\-_.+\s]+/).filter((t) => t && !/^(index|html|htm|aspx)$/i.test(t)).join(" ").slice(0, 100);
+};`;
+
+/** The 404 search prefill's words, evaluated from the same source SITE_SCRIPT embeds (so tests cover the shipped code). */
+export const pathWords: (pathname: string, base: string) => string = new Function(`${PATH_WORDS_SRC}\nreturn pathWords;`)();
+
 export const SITE_SCRIPT = String.raw`(() => {
   const doc = document;
+  ${PATH_WORDS_SRC}
   const SVG = "http://www.w3.org/2000/svg";
   const OPEN_ICON = { "i-bars": "i-xmark", "i-angle-down": "i-angle-up", "i-search": "i-xmark" };
 
@@ -138,5 +151,13 @@ export const SITE_SCRIPT = String.raw`(() => {
         syncBanner();
       }),
     );
+  }
+
+  const prefill = doc.querySelector("form[data-prefill-from-path] #not-found-q");
+  if (prefill && !prefill.value) {
+    // The base is the form's action ({base}/search/) minus its tail.
+    let base = "";
+    try { base = new URL(prefill.form.action).pathname.replace(/\/search\/$/, ""); } catch (_) {}
+    prefill.value = pathWords(location.pathname, base);
   }
 })();`;

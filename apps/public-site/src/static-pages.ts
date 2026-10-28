@@ -9,9 +9,16 @@ import { DEFAULT_THEME, themeCss } from "./theme-css";
 
 export function renderNotFoundPage(site: SiteInfo, opts: PageOptions): string {
   const base = basePath(site);
-  return renderPage("Page not found", site, `${base}/404.html`, `<h1>Page not found</h1>
+  return renderPage("Page not found", site, `${base}/404.html`, `<div class="home-body not-found">
+<h1>Page not found</h1>
 <p>The page you asked for isn't here. It may have moved or been removed.</p>
-<p><a href="${e(base)}/">Go to the home page</a> or <a href="${e(base)}/archive/">browse the archive</a>.</p>`, opts);
+<form class="search-panel-bar" role="search" action="${e(base)}/search/" method="get" data-prefill-from-path>
+<label for="not-found-q">Search for the page</label>
+<input id="not-found-q" name="q" type="search">
+<button type="submit">Search</button>
+</form>
+<p><a href="${e(base)}/">Go to the home page</a> or <a href="${e(base)}/archive/">browse the archive</a>.</p>
+</div>`, opts);
 }
 
 /** spec §6.1: test sites keep Disallow: / (constraints.md's test-site rule). */

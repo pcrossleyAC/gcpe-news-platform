@@ -25,6 +25,27 @@ describe("static pages", () => {
     expect(doc.querySelector("h1")?.textContent).toBe("Page not found");
     expect(doc.querySelector('main a[href="/"]')).not.toBeNull();
   });
+  it("404 renders inside the full chrome: header#main-nav, one h1, footer#footer, a labelled search form posting to {base}/search/", () => {
+    const doc = expectAccessibleStructure(renderNotFoundPage({ ...site, baseUrl: "https://news.example/site" }, {}));
+    expect(doc.querySelector("header#main-nav")).not.toBeNull();
+    expect(doc.querySelector("footer#footer")).not.toBeNull();
+    expect(doc.querySelectorAll("h1")).toHaveLength(1);
+    const body = doc.querySelector("main > div.home-body.not-found")!;
+    expect(body.querySelector("h1")?.textContent).toBe("Page not found");
+    const form = body.querySelector("form")!;
+    expect(form.className).toBe("search-panel-bar");
+    expect(form.getAttribute("role")).toBe("search");
+    expect(form.getAttribute("action")).toBe("/site/search/");
+    expect(form.getAttribute("method")).toBe("get");
+    expect(form.hasAttribute("data-prefill-from-path")).toBe(true);
+    const input = form.querySelector("input#not-found-q")!;
+    expect(input.getAttribute("name")).toBe("q");
+    expect(input.getAttribute("type")).toBe("search");
+    expect(input.hasAttribute("value")).toBe(false);
+    expect(form.querySelector('label[for="not-found-q"]')?.textContent).toBe("Search for the page");
+    expect(form.querySelector('button[type="submit"]')?.textContent).toBe("Search");
+    expect(body.querySelector('a[href="/site/archive/"]')).not.toBeNull();
+  });
   it("robots.txt: a test site disallows everything; production names the sitemap", () => {
     expect(renderRobots(site, true)).toBe("User-agent: *\nDisallow: /\n");
     expect(renderRobots({ ...site, baseUrl: "https://news.example/site" }, false)).toBe("User-agent: *\nAllow: /\nSitemap: https://news.example/site/sitemap.xml\n");

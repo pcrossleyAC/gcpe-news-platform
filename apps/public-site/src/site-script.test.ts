@@ -2,7 +2,8 @@ import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import type { MenuMinistry } from "./ministry-menu";
 import { renderPage, type PageOptions } from "./render";
-import { SITE_SCRIPT } from "./site-script";
+import { renderNotFoundPage } from "./static-pages";
+import { pathWords, SITE_SCRIPT } from "./site-script";
 
 const MENU: MenuMinistry[] = [
   { key: "office-of-the-premier", name: "Office of the Premier" },
@@ -271,5 +272,38 @@ describe("site.js", () => {
       expect(again.doc.getElementById("banner")!.hidden).toBe(false);
       expect(SITE_SCRIPT).not.toMatch(/localStorage|sessionStorage|document\.cookie/);
     });
+  });
+
+  // The brief's title says '2026hlth0085 housing plan', but its algorithm (and its step 5, "releases no such housing plan") keeps the leading segment.
+  it("pathWords('/releases/2026hlth0085-housing-plan/', '') keeps every segment: 'releases 2026hlth0085 housing plan'", () => {
+    expect(pathWords("/releases/2026hlth0085-housing-plan/", "")).toBe("releases 2026hlth0085 housing plan");
+  });
+  it("pathWords strips the base path and file extensions: ('/site/ministries/Health.aspx', '/site') is 'ministries Health'", () => {
+    expect(pathWords("/site/ministries/Health.aspx", "/site")).toBe("ministries Health");
+    expect(pathWords("/site/index.html", "/site")).toBe("");
+    expect(pathWords("/a%20b/c_d+e", "")).toBe("a b c d e");
+  });
+  it("pathWords survives malformed percent-encoding and caps at 100 chars", () => {
+    expect(pathWords("/50%-off/%E0%A4%A", "")).toBe("50% off %E0%A4%A");
+    expect(pathWords("/" + "word-".repeat(60), "")).toHaveLength(100);
+  });
+  it("site.js fills #not-found-q from location.pathname on a 404 page; leaves other pages' inputs alone", () => {
+    const html = renderNotFoundPage(site, {});
+    const run = (url: string, prep?: (d: Document) => void) => {
+      const dom = new JSDOM(html, { url, runScripts: "outside-only" });
+      prep?.(dom.window.document);
+      dom.window.eval(SITE_SCRIPT);
+      return dom.window.document.getElementById("not-found-q") as HTMLInputElement;
+    };
+    expect(run("https://boxs.example/site/releases/no-such-housing-plan/").value).toBe("releases no such housing plan");
+    expect(run("https://boxs.example/site/releases/x/", (d) => ((d.getElementById("not-found-q") as HTMLInputElement).value = "typed")).value).toBe("typed");
+    expect(run("https://boxs.example/site/<img src=x onerror=alert(1)>").value).toBe("<img src=x onerror=alert(1)>");
+    // Markup in the path lands as inert value text.
+    // A form without the marker, or any other page's input, is untouched.
+    const { doc } = page({ ministryMenu: MENU }, (d) => {
+      d.querySelector("main")!.insertAdjacentHTML("beforeend", '<form><input id="not-found-q"></form>');
+    });
+    expect((doc.getElementById("not-found-q") as HTMLInputElement).value).toBe("");
+    expect(doc.querySelectorAll("[data-prefill-from-path]")).toHaveLength(0);
   });
 });
