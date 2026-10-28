@@ -155,9 +155,20 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       const m = await newsApi.ministry(key);
       if (!m) return removeAll(p);
       const [minister, latest, f, all] = await Promise.all([newsApi.minister(key), newsApi.latest(kind, key, LATEST_COUNT), featured(m.topPostKey, m.featurePostKey), profiles(run)]);
-      const profile = all.find((x) => x.key.toLowerCase() === key) ?? null;
+      const profileOf = (k: string) => all.find((x) => x.key.toLowerCase() === k.toLowerCase()) ?? null;
+      const profile = profileOf(key);
+      // The ministries of state under this one (legacy MinisterOfState): a child that no longer
+      // exists is skipped; a failed fetch rejects the render, as the parent's own fetches do.
+      const children = (
+        await Promise.all(
+          (profile?.childKeys ?? []).map(async (k) => {
+            const [child, childMinister] = await Promise.all([newsApi.ministry(k), newsApi.minister(k)]);
+            return child ? { ministry: child, minister: childMinister, profile: profileOf(k) } : null;
+          }),
+        )
+      ).filter((c) => c !== null);
       feedRef.title = `${m.name}: latest news`;
-      await storage.write(page, renderMinistryPage(m, minister, { ...f, latest }, site, { ...opts, feed: feedRef }));
+      await storage.write(page, renderMinistryPage(m, minister, { ...f, latest }, site, { ...opts, feed: feedRef }, { profile, children }));
       await storage.write(feed, renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `News from ${m.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
       // The biography page (H2) exists only while the minister has a bio: one cleared in the Hub
       // loses its page on this render instead of lingering.

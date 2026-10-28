@@ -23,12 +23,6 @@ export function sideLinkItems(site: Pick<SiteInfo, "baseUrl">, links: SideLink[]
   });
 }
 
-/** A side-column group as a `<section>` with an h2 (the ministry page's form); empty → "". */
-export function sideLinks(site: Pick<SiteInfo, "baseUrl">, heading: string, links: SideLink[]): string {
-  const items = sideLinkItems(site, links);
-  return items.length ? `<section>\n<h2>${e(heading)}</h2>\n<ul>\n${items.join("\n")}\n</ul>\n</section>` : "";
-}
-
 /** A side-column group in legacy's `div.resource-links` (its h3, one level up as h2); empty → "". */
 export function resourceLinks(site: Pick<SiteInfo, "baseUrl">, heading: string, links: SideLink[]): string {
   const items = sideLinkItems(site, links);

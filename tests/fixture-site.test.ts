@@ -42,6 +42,24 @@ describe("the fixture site (6e exit checks)", () => {
     }
   });
 
+  it("the ministry pages show the plan-2 blocks: minister card, Media Contacts, a minister of state; the Premier's Meet the Team", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      const health = await readFile(join(dir, "ministries/health/index.html"), "utf8");
+      expect(health).toContain('<h1 class="ministry-name-mobile">Health</h1>');
+      expect(health.match(/class="resource-links minister"/g)).toHaveLength(2);
+      expect(health).toContain("<h2>Media Contacts</h2>");
+      expect(health).toContain('<h2><a href="/ministries/trade/">Minister of State for Trade</a></h2>');
+      const premier = await readFile(join(dir, "ministries/office-of-the-premier/index.html"), "utf8");
+      expect(premier).toContain("<h2>Meet the Team</h2>");
+      expect(premier).toContain("<h2>More from the Premier</h2>");
+      expect(premier).toContain('class="article');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("serves directory pages, files and a 404", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
     const server = await serveStatic(dir);

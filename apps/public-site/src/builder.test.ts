@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { bcSettings, post, site } from "../test/fixtures";
+import { bcSettings, ministry, post, site } from "../test/fixtures";
 import { createSiteBuilder, SECTOR_FETCHES } from "./builder";
 import type { PostDto } from "./dto";
 import { postIndex } from "./post-index";
@@ -143,6 +143,33 @@ describe("site builder", () => {
     await storage.write("ministries/gone/biography/index.html", "x");
     await builder.renderPage("category:ministries:gone", {});
     expect(storage.files.has("ministries/gone/biography/index.html")).toBe(false);
+  });
+
+  it("renders each childKey's ministry and minister; a null child ministry is skipped", async () => {
+    const { storage, api, builder } = setup(new Map());
+    const ministries = { health: "Health", finance: "Minister of State for Finance" } as Record<string, string>;
+    api.ministry = async (key) => (ministries[key.toLowerCase()] ? ministry({ key: key.toLowerCase(), name: ministries[key.toLowerCase()] }) : null);
+    api.minister = async (key) => ({ headline: key.toLowerCase() === "finance" ? "Hon. Sam State" : "Hon. Alex Example", summary: null, details: "<p>Bio.</p>", photo: null });
+    api.ministryProfiles = async () => [
+      { key: "Health", ministerEmail: null, teamLinks: [], childKeys: ["Finance", "gone"] },
+      { key: "finance", ministerEmail: "fin@gov.example", teamLinks: [], childKeys: [] },
+    ];
+    await builder.renderPage("category:ministries:health", {});
+    const page = html(storage, "ministries/health/index.html");
+    expect(page).toContain('<h2><a href="/ministries/finance/">Minister of State for Finance</a></h2>');
+    expect(page).toContain("<h3>Hon. Sam State</h3>");
+    expect(page).toContain('href="/ministries/finance/biography/"');
+    expect(page).toContain('href="mailto:fin@gov.example"');
+    expect(page.match(/resource-links minister/g)).toHaveLength(2); // Health's own card and the one child; "gone" is skipped
+  });
+
+  it("a child ministry fetch failure rejects the page render", async () => {
+    const { storage, api, builder } = setup(new Map());
+    const original = api.ministry;
+    api.ministry = async (key) => (key.toLowerCase() === "finance" ? Promise.reject(new Error("down")) : original(key));
+    api.ministryProfiles = async () => [{ key: "health", ministerEmail: null, teamLinks: [], childKeys: ["finance"] }];
+    await expect(builder.renderPage("category:ministries:health", {})).rejects.toThrow("down");
+    expect(storage.files.has("ministries/health/index.html")).toBe(false);
   });
 
   it("profile fetch failure: renders the pages without the Contact email (profiles(run) failure is logged, not thrown)", async () => {

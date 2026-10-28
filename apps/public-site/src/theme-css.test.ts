@@ -34,7 +34,7 @@ describe("themeCss", () => {
   });
   it("keeps only the token blocks and the focus rule; every other rule lives in overrides.css", () => {
     const css = themeCss(DEFAULT_THEME);
-    for (const sel of ["#landAcknowledgement", "#footer h2", ".card", ".post-list", ".ministry-layout", ".connect-list", ".site-banner-info", ".skip-link"]) {
+    for (const sel of ["#landAcknowledgement", "#footer h2", ".card", ".post-list", ".ministry-name-mobile", ".connect-list", ".site-banner-info", ".skip-link"]) {
       expect(css).not.toContain(sel);
       expect(overrides).toContain(sel);
     }

@@ -19,7 +19,7 @@ import type { SiteInfo } from "../apps/public-site/src/render";
 import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
 import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
-import { link, ministry, post, slide } from "../apps/public-site/test/fixtures";
+import { contact, link, ministry, post, slide } from "../apps/public-site/test/fixtures";
 
 const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
 const SLIDE_IMAGE = fileURLToPath(new URL("./fixture-assets/slide.jpg", import.meta.url));
@@ -39,6 +39,7 @@ export const FIXTURE_PAGES = [
   "/ministries/",
   "/ministries/health/",
   "/ministries/health/biography/",
+  "/ministries/office-of-the-premier/",
   "/sectors/economy/",
   "/themes/housing/",
   "/tags/covid-19/",
@@ -164,13 +165,23 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
         youtubeUri: "https://www.youtube.com/user/ProvinceofBC",
         topicLinks: [link({ uri: "https://www2.gov.bc.ca/gov/content/health", key: "Health care in B.C." })],
         serviceLinks: [link({ uri: "https://www2.gov.bc.ca/gov/content/health/health-drug-coverage", key: "Health coverage" })],
+        contactUser: contact({ fullName: "Sam Example", phoneNumber: "250-555-0100", mobileNumber: "250-555-0101", emailAddress: "Sam.Example@gov.bc.ca" }),
+        secondContactUser: contact({ fullName: "Jordan Example", phoneNumber: "250-555-0102", emailAddress: "Jordan.Example@gov.bc.ca" }),
+        weekendContactNumber: "250-555-0199",
       }),
       ministry({ key: "finance", name: "Finance" }),
+      // The Premier: "More from the Premier", Meet the Team (team links) and a top story.
+      ministry({ key: "office-of-the-premier", name: "Office of the Premier", ministryUrl: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/office-of-the-premier", topPostKey: "2026HLTH0010-000010" }),
+      ministry({ key: "trade", name: "Minister of State for Trade", ministryUrl: null }),
     ],
     // Health's minister has a photo and a bio, so the biography page (H2) is built; the photo is the
     // local slide image (no network in CI).
     minister: async (key) =>
-      key.toLowerCase() === "health"
+      key.toLowerCase() === "office-of-the-premier"
+        ? { headline: "Hon. Casey Example", summary: "Premier of British Columbia.", details: null, photo: image }
+        : key.toLowerCase() === "trade"
+        ? { headline: "Hon. Robin Example", summary: "Minister of State for Trade.", details: "<p>Robin Example was elected in 2024.</p>", photo: image }
+        : key.toLowerCase() === "health"
         ? {
             headline: "Hon. Alex Example",
             summary: "Minister of Health.\nMLA for Victoria-Example.",
@@ -179,7 +190,20 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
             photo: image,
           }
         : null,
-    ministryProfiles: async () => [{ key: "health", ministerEmail: "HLTH.Minister@gov.bc.ca", teamLinks: [], childKeys: [] }],
+    // Health has a minister of state (legacy MinisterOfState); the Premier has Meet the Team links.
+    ministryProfiles: async () => [
+      { key: "health", ministerEmail: "HLTH.Minister@gov.bc.ca", teamLinks: [], childKeys: ["trade"] },
+      {
+        key: "office-of-the-premier",
+        ministerEmail: null,
+        teamLinks: [
+          { text: "Cabinet Ministers", url: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/cabinet/cabinet-ministers" },
+          { text: "Deputy Ministers", url: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/deputy-ministers" },
+          { text: "Cabinet Committees", url: "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/cabinet/cabinet-committees" },
+        ],
+        childKeys: [],
+      },
+    ],
     resourceLinks: async () => [link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
