@@ -25,6 +25,8 @@ export interface SiteRenderState {
   bannerHash: string;
   connectHash: string;
   ministryPagesHash: string;
+  /** The Media contacts page settings (/contacts/ only). */
+  contactsPageHash: string;
   /** The Instagram account release pages' Share list links to (settings.ts releaseInstagram). */
   releaseShareHash: string;
   /** ministry-menu.ts's hash of the header menu every page bakes in. Not one of `HASHES`: it is
@@ -33,7 +35,7 @@ export interface SiteRenderState {
 }
 
 /** The pages a settings section reaches, other than through every page's footer. */
-export type SectionPages = "static" | "connect" | "ministryPages" | "releaseShare";
+export type SectionPages = "static" | "connect" | "ministryPages" | "releaseShare" | "contacts";
 
 /** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
@@ -48,10 +50,11 @@ export const SITE_STATE_PATH = ".site-state.json";
  * news.gov header (BC logo, News ministry menu, Subscribe, search, phone drawer) and site.js. 8: the
  * archive by government term (/archive/terms/, its link from /archive/, sitemap entries). 9: the
  * news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector) and the BC Sans Bold preload. 10: the news.gov release page, minister card and biography page, and
- * ministry page (parity plan 2). Bump for body render changes
+ * ministry page (parity plan 2). 11: the Media Contacts directory /contacts/ (a new page id) and the
+ * home Resources links' base path (parity plan 4, batch B). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 10;
+export const RENDER_CHROME_VERSION = 11;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
@@ -61,7 +64,7 @@ interface SiteStateMarker extends SiteRenderState {
   baseUrl: string | null;
 }
 
-const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash"] as const;
+const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash"] as const;
 
 /** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
  * `chromeChanges` then treats it as matching. */
@@ -104,7 +107,7 @@ export async function recordedNonEmptyMenu(storage: SiteStorage): Promise<boolea
  * `sections`: a theme or banner change reaches only the `static` page (theme.css,
  * site-banner.json), a connect change the Connect page and home, a change to the release Share
  * list's Instagram account every release page, a ministryPages change the ministry pages and every
- * release page (its labels) — spec "Delivery": the cheapest correct effect per section; see
+ * release page (its labels), a contactsPage change the /contacts/ page — spec "Delivery": the cheapest correct effect per section; see
  * enqueueChromeChanges.
  */
 export async function chromeChanges(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<{ all: boolean; sections: SectionPages[]; adoptMenuHash?: boolean }> {
@@ -124,6 +127,7 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
   if (previous.connectHash !== state.connectHash) sections.push("connect");
   if (previous.ministryPagesHash !== state.ministryPagesHash) sections.push("ministryPages");
   if (previous.releaseShareHash !== state.releaseShareHash) sections.push("releaseShare");
+  if (previous.contactsPageHash !== state.contactsPageHash) sections.push("contacts");
   // A marker from before the menu hash: nothing to rebuild for it, but the hash must be recorded
   // or a later menu change would still read as matching.
   return { all: false, sections, adoptMenuHash: previous.ministryMenuHash === null };

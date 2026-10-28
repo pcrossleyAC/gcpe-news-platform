@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { NETWORKS, type NetworkKey, type SiteSettings } from "@gcpe/site-settings";
 import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { bcSettings, link, post, site, slide } from "../../test/fixtures";
-import { renderCarousel, renderHomePage, type HomeView } from "./home";
+import { renderCarousel, renderHomePage, resourceHref, type HomeView } from "./home";
 
 const emptyView: HomeView = { top: null, feature: null, latest: [], slides: [], links: [], sectors: [] };
 const subSite = { ...site, baseUrl: "https://boxs.example/site" };
@@ -97,6 +97,16 @@ describe("home page", () => {
     expect([...full.querySelectorAll(".resource-links.connect img")].map((i) => i.getAttribute("alt"))).toEqual(["Facebook", "X", "Instagram", "Threads", "Bluesky", "Flickr", "YouTube"]);
     // A list with no network in it is left out.
     expect(parse(renderHomePage(emptyView, site, { settings: withAccounts("x") })).querySelectorAll(".resource-links.connect ul")).toHaveLength(1);
+  });
+
+  it("a '/contacts/' resource link gets the base path; an https link is unchanged", () => {
+    const links = [link({ uri: "/contacts/", key: "Media Contacts" }), link({ uri: "https://gov.example/x", key: "BC Stats" }), link({ uri: "//evil.example/", key: "Protocol-relative" })];
+    const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, links }, { ...site, baseUrl: "https://boxs.example/site" }, {}));
+    const items = [...doc.querySelectorAll(".collapsible-regions .resource-links li")];
+    expect(items.map((li) => li.querySelector("a")?.getAttribute("href") ?? null)).toEqual(["/site/contacts/", "https://gov.example/x", null]);
+    expect(resourceHref("/contacts", { baseUrl: "https://news.example" })).toBe("/contacts");
+    expect(resourceHref("mailto:a@b.example", { baseUrl: "https://boxs.example/site" })).toBe("mailto:a@b.example");
+    expect(resourceHref("javascript:alert(1)", { baseUrl: "https://boxs.example/site" })).toBeNull();
   });
 
   it("Resources and News by Sector (sector name + latest headline link); a sector with no post is left out", () => {

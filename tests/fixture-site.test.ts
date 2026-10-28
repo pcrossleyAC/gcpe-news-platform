@@ -42,6 +42,21 @@ describe("the fixture site (6e exit checks)", () => {
     }
   });
 
+  it("/contacts/ lists Health, its child Trade indented under it, and BC's bottom Premier row", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      const html = await readFile(join(dir, "contacts/index.html"), "utf8");
+      expect(html).toContain('<h1 class="comm-contacts-title">Government Communications and Public Engagement</h1>');
+      const orgs = [...html.matchAll(/class="col-xs-12 col-sm-4 contact-org( child)?">\n<(?:a href="[^"]*"|span)>([^<]*)</g)].map((m) => [m[2], !!m[1]]);
+      expect(orgs).toEqual([["Health", false], ["Minister of State for Trade", true], ["Office of the Premier", false]]);
+      const home = await readFile(join(dir, "index.html"), "utf8");
+      expect(home).toContain('href="/contacts/">Media Contacts</a>');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("the ministry pages show the plan-2 blocks: minister card, Media Contacts, a minister of state; the Premier's Meet the Team", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
     try {

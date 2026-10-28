@@ -71,6 +71,16 @@ describe("pageFiles", () => {
   });
 });
 
+describe("contacts (H3)", () => {
+  it("parsePageId('contacts') round-trips; pageFiles is contacts/index.html", () => {
+    const p = parsePageId("contacts")!;
+    expect(p).toEqual({ type: "contacts" });
+    expect(formatPageId(p)).toBe("contacts");
+    expect(pageFiles(p)).toEqual(["contacts/index.html"]);
+    expect(pageUrl(site, p)).toBe("/site/contacts/");
+  });
+});
+
 describe("pageFiles: the biography page (H2)", () => {
   it("a ministries category page owns index.html, feed.xml and biography/index.html; a sector page still owns two files", () => {
     expect(pageFiles({ type: "category", kind: "ministries", key: "health" })).toEqual(["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/biography/index.html"]);

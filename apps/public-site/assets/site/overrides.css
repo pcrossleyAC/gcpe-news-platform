@@ -298,3 +298,22 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 @media (max-width: 768px) {
   .ministry-name-mobile~.ministry-listing .home-features .ministry-title{display:none}
 }
+
+/* The Media Contacts directory (pages/contacts.ts): legacy Default/CommContacts.cshtml, headings one
+ * level up. The title is the page's h1 (legacy: .comm-contacts h3, inline padding-top 10px; Bootstrap's
+ * h3 size), the section headings h2 (legacy: .comm-contacts .header h4, a white-on-link-colour band),
+ * the column headings presentational divs (legacy: .comm-contacts h4). */
+.comm-contacts .comm-contacts-title{font-size:calc(1.3rem + .6vw);font-weight:500;line-height:1.2;margin-top:0;margin-bottom:.5rem;padding-top:10px}
+@media (min-width: 1200px) { .comm-contacts .comm-contacts-title{font-size:1.75rem} }
+.comm-contacts .header h2{color:var(--color-primary-text);background-color:var(--color-primary);border-radius:8px;font-size:24px;font-weight:500;line-height:1.2;padding:8px 10px;margin-top:10px;margin-bottom:.5rem}
+.comm-contacts .contact-columns .col{font-size:20px;font-weight:500;line-height:1.2;margin-bottom:.5rem}
+/* Legacy set these inline on each row and the after-hours span. */
+.comm-contacts .contact-row{padding-bottom:10px}
+.comm-contacts .contact-row:has(+ .clear){margin-bottom:20px}
+/* Legacy indented a child ministry's name and lines (margin-left:25px on each), not the row's
+ * other columns: the cell's own padding grows instead, so the contact columns stay aligned. */
+.contact-org.child{padding-left:calc(var(--bs-gutter-x, 1.5rem) * .5 + 25px)}
+/* Legacy's CommContact always emitted the numbers' div, so the email sat on its own line even with
+ * no number; ours leaves the empty div out, so the name breaks the line itself. */
+.comm-contacts .contact-name{display:block}
+@media (min-width: 768px) { .after-hours span{padding-left:200px} }

@@ -4,13 +4,16 @@ import type { EventEnvelope } from "@gcpe/events";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { post, site } from "../test/fixtures";
+import { bcSettings, post, site } from "../test/fixtures";
 import type { PostDto } from "./dto";
 import { createSiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
 import { enqueueSiteWrite, RENDER_CHROME_VERSION } from "./rebuild";
-import { createRebuildHandler, kickBackgroundSync, type SyncDeps } from "./sync";
+import { createRebuildHandler, kickBackgroundSync, syncSite, type SyncDeps } from "./sync";
+import * as queue from "./queue";
+import { PRIORITY } from "./queue";
+import type { FakeNewsApi } from "../test/fake-news-api";
 
 function envelope(data: unknown): EventEnvelope {
   return {
@@ -74,6 +77,35 @@ describe("createRebuildHandler", () => {
       }),
     ).rejects.toThrow("something else in this transaction failed");
     expect(await queueDepth(tdb.db)).toBe(0);
+  });
+});
+
+describe("settings sections: contactsPage", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => { tdb = await createPublicSiteTestDb(); });
+  afterAll(async () => { await tdb.drop(); });
+  beforeEach(async () => { await tdb.pool.query("TRUNCATE site_posts"); await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY"); });
+
+  it("a contactsPage edit queues exactly contacts", async () => {
+    const storage = memoryStorage();
+    const newsApi = fakeNewsApi(new Map([["K1", post({ key: "K1" })]]));
+    const index = postIndex(tdb.db);
+    const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: null });
+    const deps: SyncDeps = { db: tdb.db, builder, index, newsApi, storage, site, test: false, batch: 200 };
+    (newsApi as FakeNewsApi).settings = { revision: 1, document: bcSettings() };
+    await syncSite(deps);
+    expect(storage.files.get("contacts/index.html")).toContain("Contact List for Media");
+    const doc = bcSettings();
+    doc.contactsPage.listHeading = "Media list";
+    (newsApi as FakeNewsApi).settings = { revision: 2, document: doc };
+    const enqueue = vi.spyOn(queue, "enqueuePages");
+    try {
+      await syncSite(deps);
+      expect(enqueue.mock.calls[0]![1]).toEqual([{ pageId: "contacts", priority: PRIORITY.liveAggregate }]);
+      expect(storage.files.get("contacts/index.html")).toContain("Media list");
+    } finally {
+      enqueue.mockRestore();
+    }
   });
 });
 
@@ -179,5 +211,6 @@ describe("RENDER_CHROME_VERSION", () => {
   // 8: the archive by government term (new-government Task 6).
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
-  it("RENDER_CHROME_VERSION is 10", () => expect(RENDER_CHROME_VERSION).toBe(10));
+  // 11: the Media Contacts directory /contacts/ and in-site home Resources links (parity plan 4, batch B).
+  it("RENDER_CHROME_VERSION is 11", () => expect(RENDER_CHROME_VERSION).toBe(11));
 });

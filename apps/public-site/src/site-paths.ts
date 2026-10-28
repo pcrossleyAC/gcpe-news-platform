@@ -28,6 +28,8 @@ export type PageId =
   | { type: "sitemap-pages" }
   | { type: "static" }
   | { type: "connect" }
+  /** The Media Contacts directory (H3). */
+  | { type: "contacts" }
   | { type: "archive-terms" }
   | { type: "archive-term"; slug: string }
   /** Not a page: the successor-redirect table the stack's middleware reads (new-government §4). */
@@ -42,6 +44,7 @@ const SINGLE: Record<string, PageId> = {
   "sitemap:pages": { type: "sitemap-pages" },
   static: { type: "static" },
   connect: { type: "connect" },
+  contacts: { type: "contacts" },
   "archive-terms": { type: "archive-terms" },
   "legacy-redirects": { type: "legacy-redirects" },
 };
@@ -100,6 +103,7 @@ export function pageFiles(p: PageId): string[] {
     case "sitemap-pages": return ["sitemaps/pages.xml"];
     case "static": return ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"];
     case "connect": return ["connect/index.html"];
+    case "contacts": return ["contacts/index.html"];
     case "archive-terms": return ["archive/terms/index.html"];
     case "archive-term": return [`archive/terms/${p.slug}/index.html`];
     case "legacy-redirects": return [MINISTRY_SUCCESSORS_FILE];
@@ -122,6 +126,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "sitemap-pages": return `${base}/sitemaps/pages.xml`;
     case "static": return `${base}/404.html`;
     case "connect": return `${base}/connect/`;
+    case "contacts": return `${base}/contacts/`;
     case "archive-terms": return `${base}/archive/terms/`;
     case "archive-term": return `${base}/archive/terms/${p.slug}/`;
     case "legacy-redirects": return `${base}/${MINISTRY_SUCCESSORS_FILE}`;

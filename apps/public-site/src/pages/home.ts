@@ -2,7 +2,7 @@ import type { ConnectSettings, NetworkKey } from "@gcpe/site-settings";
 import type { PostDto, ResourceLinkDto, SlideDto } from "../dto";
 import { icon } from "../icons";
 import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
-import { themeDefaults } from "../settings";
+import { settingsHref, themeDefaults } from "../settings";
 import { feedUrl, pageUrl } from "../site-paths";
 import { latestCards, postCard } from "./post-card";
 
@@ -107,9 +107,16 @@ ${lists.join("\n")}${lists.length ? "\n" : ""}<a href="${e(base)}/connect/" clas
 </div>`;
 }
 
+/** A home Resources link's href: a "/…" path is a page on this site and gets the base path (the
+ * settingsHref rule, so "/contacts/" reaches our Media Contacts page wherever the site is mounted);
+ * anything else goes through safeHref. Null when unsafe. */
+export function resourceHref(uri: string, site: Pick<SiteInfo, "baseUrl">): string | null {
+  return typeof uri === "string" && uri.startsWith("/") ? settingsHref(uri, site) : safeHref(uri);
+}
+
 function resourceBoxes(view: HomeView, site: SiteInfo): string {
   const item = (l: ResourceLinkDto) => {
-    const href = safeHref(l.uri);
+    const href = resourceHref(l.uri, site);
     return href ? `<li><a href="${e(href)}">${e(l.key)}</a></li>` : `<li>${e(l.key)}</li>`;
   };
   const resources = view.links.length ? `<div class="resource-links">\n<h2>Resources</h2>\n<ul>\n${view.links.map(item).join("\n")}\n</ul>\n</div>` : "";

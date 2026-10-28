@@ -56,6 +56,9 @@ export interface MinistryDto {
   isActive: boolean;
   /** The parent ministry's key; null or absent for a top-level ministry. */
   parentMinistryKey?: string | null;
+  /** v1 `Ministry.displayAdditionalName` (Core's "Additional display name"): shown in brackets on
+   * /contacts/. Optional, so an older News API's answer still fits. */
+  displayAdditionalName?: string | null;
   ministerName: string | null;
   ministryUrl: string | null;
   contactUser: MinistryContactDto | null;

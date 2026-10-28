@@ -44,6 +44,12 @@ export interface BodyHtmlOptions {
    * unwrapped to its text and every id dropped.
    */
   fragmentPrefix?: string;
+  /**
+   * false: every `<img>` is dropped. Settings rich text (the Media contacts intro, the page text
+   * bodies) is edited with assets off, so an image there was pasted in; it never reaches the page
+   * (plan 4 Review Focus 2). Absent or true: images are kept (release bodies, bios).
+   */
+  images?: boolean;
 }
 
 /** The fragment names `html` both links to (`href="#x"`) and defines (`id="x"`, `<a name="x">`). */
@@ -71,7 +77,7 @@ export function sanitizeBodyHtml(html: string, opts: BodyHtmlOptions = {}): stri
   const prefix = opts.fragmentPrefix;
   const kept = prefix === undefined ? new Set<string>() : linkedFragments(html);
   const cleaned = sanitizeHtml(html, {
-    allowedTags: ALLOWED_TAGS,
+    allowedTags: opts.images === false ? ALLOWED_TAGS.filter((t) => t !== "img") : ALLOWED_TAGS,
     allowedAttributes: {
       "*": ["id"],
       a: ["href"],

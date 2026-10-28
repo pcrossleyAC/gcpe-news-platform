@@ -59,6 +59,8 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
     bannerHash: hash(settings.banner),
     connectHash: hash(settings.connect),
     ministryPagesHash: hash(settings.ministryPages),
+    // Only /contacts/ shows the Media contacts page settings.
+    contactsPageHash: hash(settings.contactsPage),
     // Only the one account the release page's Share → Instagram links to, so another network's
     // edit (the Connect page's business) doesn't re-render every release.
     releaseShareHash: hash(releaseInstagram(settings) ?? null),

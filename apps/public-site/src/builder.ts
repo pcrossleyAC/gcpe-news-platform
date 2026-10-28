@@ -7,6 +7,7 @@ import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive
 import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex } from "./pages/archive";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
 import { renderConnectPage } from "./pages/connect";
+import { renderContactsPage } from "./pages/contacts";
 import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
 import { hasBiography, renderBiographyPage } from "./pages/minister";
@@ -16,6 +17,7 @@ import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIn
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
 import { biographyUrl, categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
+import { themeDefaults } from "./settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
 import type { SiteStorage } from "./storage";
@@ -374,7 +376,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         }
         case "sitemap-pages": {
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" }), pageUrl(site, { type: "connect" })];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" })];
           for (const id of await categoryIds(run)) {
             const page = parsePageId(id)!;
             paths.push(pageUrl(site, page));
@@ -395,6 +397,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         case "connect":
           await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts));
+          return [];
+        case "contacts":
+          await storage.write(pageFiles(p)[0]!, renderContactsPage(await ministries(run), (opts.settings ?? themeDefaults(site.theme)).contactsPage, site, opts));
           return [];
         case "legacy-redirects": {
           // Sorted, so an unchanged map writes the same bytes.
@@ -430,7 +435,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     async aggregatePageIds() {
       const run: RunCache = {};
       // sitemap:pages after the category pages: it lists the biography pages they write.
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "legacy-redirects", ...(await categoryIds(run)), "sitemap:pages"];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "legacy-redirects", ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;
