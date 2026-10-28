@@ -62,10 +62,27 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return { top: pick(top), feature: pick(feature) };
   };
 
-  /** Home's News by Sector: the active sectors by name, each with its newest post (legacy TopSectors). */
+  /**
+   * Home's News by Sector: the active sectors by name, each with its newest post (legacy TopSectors).
+   * A side box, so it never fails the home render: a sector whose fetch fails is left out (logged),
+   * and so is the whole box when the sector list can't be read. At most SECTOR_FETCHES run at once.
+   */
   async function sectorsWithLatest(): Promise<{ key: string; name: string; latest: PostDto | null }[]> {
-    const active = (await newsApi.categories("sectors")).filter((c) => c.isActive);
-    const withLatest = await Promise.all(active.map(async (c) => ({ key: c.key, name: c.name, latest: (await newsApi.latest("sectors", c.key, 1))[0] ?? null })));
+    let active: Awaited<ReturnType<NewsApiClient["categories"]>>;
+    try {
+      active = (await newsApi.categories("sectors")).filter((c) => c.isActive);
+    } catch (err) {
+      console.error(`[public-site] home: News by Sector left out, the sector list is unavailable ${safeErrorLabel(err)}`);
+      return [];
+    }
+    const withLatest = await mapLimit(active, SECTOR_FETCHES, async (c) => {
+      try {
+        return { key: c.key, name: c.name, latest: (await newsApi.latest("sectors", c.key, 1))[0] ?? null };
+      } catch (err) {
+        console.error(`[public-site] home: News by Sector leaves out sector:${c.key} this render ${safeErrorLabel(err)}`);
+        return { key: c.key, name: c.name, latest: null };
+      }
+    });
     return withLatest.sort((a, b) => a.name.localeCompare(b.name, "en"));
   }
 
@@ -257,6 +274,23 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     },
   };
   return builder;
+}
+
+/** How many sector `latest` fetches one home render runs at once. */
+export const SECTOR_FETCHES = 6;
+
+/** `items.map(fn)` with at most `limit` calls in flight, results in input order. */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 function sortNewest(posts: (PostDto | null)[]): PostDto[] {

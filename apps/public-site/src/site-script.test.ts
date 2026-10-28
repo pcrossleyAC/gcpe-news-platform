@@ -421,22 +421,25 @@ describe("site.js", () => {
     dom.window.eval(SITE_SCRIPT);
     const doc = dom.window.document;
     const holder = doc.getElementById("carousel-holder")!;
-    const current = () => [...holder.querySelectorAll(".home-banner")].findIndex((b) => b.classList.contains("current"));
-    const button = (cls: string) => holder.querySelector<HTMLButtonElement>(`.home-banner.current .${cls}`)!;
+    const track = holder.querySelector(".carousel-slides")!;
+    const current = () => [...track.querySelectorAll(".home-banner")].findIndex((b) => b.classList.contains("current"));
+    const button = (cls: string) => holder.querySelector<HTMLButtonElement>(`.carousel-controls .${cls}`)!;
     expect(current()).toBe(0);
-    expect(holder.hasAttribute("aria-live")).toBe(false);
+    expect(track.hasAttribute("aria-live")).toBe(false);
+    button("story-next").focus();
     button("story-next").click();
     expect(current()).toBe(1);
-    expect(holder.querySelectorAll(".home-banner.current")).toHaveLength(1);
-    expect(holder.getAttribute("aria-live")).toBe("polite");
-    // Focus follows to the same control on the slide now showing (the clicked one is hidden).
+    expect(track.querySelectorAll(".home-banner.current")).toHaveLength(1);
+    // Only the slides are live, not the buttons (or the holder holding both).
+    expect(track.getAttribute("aria-live")).toBe("polite");
+    expect(holder.hasAttribute("aria-live")).toBe(false);
+    // The buttons sit outside the slides, so focus stays on the one pressed.
     expect(doc.activeElement).toBe(button("story-next"));
     button("story-next").click();
     button("story-next").click();
     expect(current()).toBe(0);
     button("story-previous").click();
     expect(current()).toBe(2);
-    expect(doc.activeElement).toBe(button("story-previous"));
     button("story-previous").click();
     expect(current()).toBe(1);
 

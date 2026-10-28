@@ -8,6 +8,18 @@ import { leadMedia } from "./media";
 const ENGLISH = 4105;
 
 /**
+ * A card thumbnail sized to its slot: legacy's 222px column (desktop), the full column width
+ * under 1120px. Flickr serves every size up to 1024px under the photo's one secret, by suffix
+ * (`_n` 320w, `_z` 640w, `_b` 1024w), so the browser picks instead of always fetching the 1024px
+ * `_b` the assetUrl usually names. width/height reserve a 3:2 box (CSS keeps height:auto).
+ */
+export function flickrThumb(src: string): string {
+  const stem = src.replace(/(_[a-z])?\.jpg$/, "");
+  const at = (suffix: string) => e(`${stem}_${suffix}.jpg`);
+  return `<img src="${at("n")}" srcset="${at("n")} 320w, ${at("z")} 640w, ${at("b")} 1024w" sizes="(max-width: 1120px) 100vw, 222px" width="320" height="213" alt="">`;
+}
+
+/**
  * One post as legacy `Views/Shared/PostCard.cshtml` renders it (home, ministry and category
  * lists), less its inline `<style>` and with the icons from our sprite. The Media Assets and
  * Translations links show only when the News API says so (absent flags show neither). Only a
@@ -25,7 +37,7 @@ export function postCard(site: Pick<SiteInfo, "baseUrl">, p: PostDto, o: { hidde
     p.hasTranslations === true ? `<div class="item-medialink translations"><a href="${href}#translationList">${icon("language", base)} Translations</a></div>` : "",
   ].join("");
   const lead = leadMedia(p.assetUrl);
-  const thumb = lead?.kind === "image" ? `<div class="item-asset asset flickr"><a href="${href}" aria-hidden="true" tabindex="-1"><img src="${e(lead.src)}" alt=""></a></div>` : "";
+  const thumb = lead?.kind === "image" ? `<div class="item-asset asset flickr"><a href="${href}" aria-hidden="true" tabindex="-1">${flickrThumb(lead.src)}</a></div>` : "";
   // Legacy AsHtmlParagraphs: one paragraph per line.
   const summary = p.summary?.trim()
     ? p.summary

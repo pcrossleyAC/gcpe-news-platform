@@ -108,6 +108,7 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <link rel="icon" href="${e(base)}/favicon.ico">
 <script>${HTML_JS_MARKER}</script>
 <link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="${e(base)}/assets/${LEGACY_BUNDLE}">
 <link rel="stylesheet" href="${e(base)}/assets/legacy/Content/print.css" media="print">${bridgeCss}
 <link rel="stylesheet" href="${e(base)}/assets/site/overrides.css">

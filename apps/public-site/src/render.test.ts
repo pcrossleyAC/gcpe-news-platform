@@ -200,11 +200,15 @@ describe("renderPage chrome", () => {
     expect(order).toEqual([...LEGACY_ORDER.slice(0, 2), "/site/assets/legacy/Content/granville-bridge-theme.css", ...LEGACY_ORDER.slice(2)]);
   });
 
-  it("preloads BC Sans Regular (crossorigin, as the font fetch needs) before any stylesheet", () => {
+  it("preloads BC Sans Regular and Bold (crossorigin, as the font fetch needs) before any stylesheet", () => {
     const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
-    const preload = '<link rel="preload" href="/site/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>';
-    expect(html).toContain(preload);
-    expect(html.indexOf(preload)).toBeLessThan(html.indexOf('rel="stylesheet"'));
+    // Bold too: the 600-weight headlines above the fold use it, and CSS alone discovers it late.
+    for (const face of ["Regular", "Bold"]) {
+      const preload = `<link rel="preload" href="/site/assets/legacy/fonts/BCSans-${face}.woff2" as="font" type="font/woff2" crossorigin>`;
+      expect(html).toContain(preload);
+      expect(html.indexOf(preload)).toBeLessThan(html.indexOf('rel="stylesheet"'));
+    }
+    expect(html.match(/rel="preload"/g)).toHaveLength(2);
   });
 
   it("favicon and the html.js marker script are in the head, before any stylesheet", () => {

@@ -3,7 +3,7 @@
  * site's real builder from in-memory posts, with BC's theme and no database (an in-memory post
  * index). Used by scripts/site-quality.ts (axe and Lighthouse) and tests/fixture-site.test.ts.
  */
-import { readFile, stat } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { gzipSync } from "node:zlib";
 import type { AddressInfo } from "node:net";
@@ -22,6 +22,7 @@ import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
 import { link, post, slide } from "../apps/public-site/test/fixtures";
 
 const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
+const SLIDE_IMAGE = fileURLToPath(new URL("./fixture-assets/slide.jpg", import.meta.url));
 
 const CATEGORIES: CategoryDto[] = [
   { key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: null, featurePostKey: null },
@@ -84,14 +85,17 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
         tagKeys: ["covid-19"],
         hasTranslations: i % 3 === 0,
         hasMediaAssets: i % 4 === 0,
-        // One Flickr lead (a real BC Gov photo, as news.gov's home showed it on 2026-10-28), so the
-        // PostCard thumbnail — C209's one allowed third-party load — is checked by axe and Lighthouse.
-        assetUrl: i === 11 ? "https://live.staticflickr.com/65535/55541987722_14f8c2f9f4_b.jpg" : null,
+        // No Flickr assetUrl: its thumbnail would make site:quality fetch live.staticflickr.com, so
+        // the gate would depend on a third party. post-card.test.ts pins the thumbnail markup.
       }),
     );
   }
-  // Home's carousel band: two slides with images (served from the site itself) and the second right-justified.
-  const image = `${o.baseUrl}/assets/legacy/Content/Images/Gov/default-og-image-new.jpg`;
+  // Home's carousel band: two slides with images and the second right-justified. The image is a
+  // local file (no network in CI): scripts/fixture-assets/slide.jpg, legacy's default-og-image-new.jpg
+  // (Apache-2.0) resized to 1280px at JPEG quality 45, 64 KB — the weight an optimised slide should have.
+  await mkdir(join(outDir, "fixture"), { recursive: true });
+  await copyFile(SLIDE_IMAGE, join(outDir, "fixture", "slide.jpg"));
+  const image = `${o.baseUrl}/fixture/slide.jpg`;
   const slides: SlideDto[] = [
     slide({ key: "slide-1", headline: "Clinics opening across the province", actionUri: `${o.baseUrl}/releases/${FIRST_KEY}/`, actionLabel: "Read the release", imageUrl: image, sortIndex: 0 }),
     slide({ key: "slide-2", headline: "Have your say on housing", summary: "Share your views before the end of the month.", actionUri: `${o.baseUrl}/themes/housing/`, actionLabel: null, imageUrl: image, sortIndex: 1, justify: "right" }),

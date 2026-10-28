@@ -166,6 +166,8 @@ html:not(.js) #btnCloseBannerBridge{display:none}
 /* The column's headings are one level up (legacy h3 → h2, h4 → h3): legacy's metrics, restated. */
 .resource-links h2{font-size:18px;font-weight:600;color:var(--color-text);margin-top:20px !important;padding-bottom:5px;line-height:1.2}
 .resource-links.connect h2{margin-top:0 !important}
+/* Legacy's .collapsible-regions h3:hover pointer was for its phone accordion; ours aren't controls. */
+.home-features .collapsible-regions .resource-links h3:hover{cursor:auto}
 .resource-links h3{font-size:14px;font-weight:600;color:var(--color-text);margin-top:15px !important;margin-bottom:2px;padding-bottom:0;line-height:1.2}
 /* An emergency card's headline is an h3 under the region's h2: legacy's .home-body .article h2. */
 .home-body .article h3{font-size:20px;font-weight:600;color:var(--color-primary)}
@@ -184,11 +186,17 @@ html:not(.js) .load-more{display:none}
 #carousel-holder .story h2 a{color:inherit;text-decoration:none}
 #carousel-holder .home-banner-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #carousel-holder .home-banner-content{position:relative}
-html.js #carousel-holder .home-banner:not(.current){display:none}
-html.js #carousel-holder .home-banner.current{display:block}
-/* Legacy's prev/next were empty divs with a background arrow; ours are buttons. */
+html.js #carousel-holder .carousel-slides>.home-banner:not(.current){display:none}
+html.js #carousel-holder .carousel-slides>.home-banner.current{display:block}
+/* Legacy's prev/next were empty divs inside every slide; ours are one pair of buttons after the
+ * slides (outside their live region), in a zero-height .home-banner so legacy's arrow rules apply. */
+#carousel-holder .carousel-controls{height:0;overflow:visible;z-index:11;pointer-events:none}
+#carousel-holder .carousel-controls .story-nav{pointer-events:auto}
 #carousel-holder button.story-nav{border:0;padding:0;background-color:transparent}
+/* The theme's yellow focus ring can sit on a light photo here: a primary-colour halo outside it
+ * keeps 3:1 against any background (WCAG 1.4.11). */
+#carousel-holder .story-nav:focus-visible{outline-offset:0;box-shadow:0 0 0 6px var(--color-primary)}
 /* Without JavaScript every slide shows, stacked, and the buttons that can't work are hidden. */
 html:not(.js) #carousel-holder{height:auto;top:0;margin-top:0}
-html:not(.js) #carousel-holder .home-banner{position:relative;display:block}
-html:not(.js) #carousel-holder .story-nav{display:none}
+html:not(.js) #carousel-holder .carousel-slides>.home-banner{position:relative;display:block}
+html:not(.js) #carousel-holder .carousel-controls{display:none}

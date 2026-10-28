@@ -25,9 +25,9 @@
  *    own box) scrolls that box to the middle of the view and focuses it, instead of a jump that
  *    would leave it under the header unfocused. A missing target is left to the browser.
  * 8. The home carousel (`#carousel-holder`, pages/home.ts): Previous/Next move `.current` to the
- *    previous/next `.home-banner`, wrapping around, and keep focus on the same control in the slide
- *    now showing (the clicked one has just been hidden). The holder gets `aria-live="polite"` on the
- *    first click only, so nothing is announced at load. There is no auto-advance (C205).
+ *    previous/next slide in `.carousel-slides`, wrapping around; the buttons sit outside the slides,
+ *    so focus stays on them. `.carousel-slides` (the slides only, not the buttons) gets
+ *    `aria-live="polite"` on the first click, so nothing is announced at load. No auto-advance (C205).
  * 9. "Load More News" (`button.load-more[aria-controls]`): reveals every `.hidden-article` in its
  *    target, removes itself and moves focus to the first revealed card's headline link.
  *
@@ -197,19 +197,18 @@ export const SITE_SCRIPT = String.raw`(() => {
   }
 
   const carousel = doc.getElementById("carousel-holder");
-  if (carousel) {
-    const slides = Array.prototype.slice.call(carousel.querySelectorAll(".home-banner"));
+  const track = carousel && carousel.querySelector(".carousel-slides");
+  if (carousel && track) {
+    const slides = Array.prototype.slice.call(track.querySelectorAll(":scope > .home-banner"));
     carousel.addEventListener("click", (ev) => {
       const t = ev.target;
       const nav = t && t.closest ? t.closest("button.story-nav") : null;
       if (!nav || slides.length < 2) return;
       const at = Math.max(0, slides.findIndex((s) => s.classList.contains("current")));
-      const back = nav.classList.contains("story-previous");
-      const next = slides[(at + (back ? -1 : 1) + slides.length) % slides.length];
-      carousel.setAttribute("aria-live", "polite");
+      const step = nav.classList.contains("story-previous") ? -1 : 1;
+      const next = slides[(at + step + slides.length) % slides.length];
+      track.setAttribute("aria-live", "polite");
       slides.forEach((s) => s.classList.toggle("current", s === next));
-      const same = next.querySelector(back ? ".story-previous" : ".story-next");
-      if (same) same.focus();
     });
   }
 

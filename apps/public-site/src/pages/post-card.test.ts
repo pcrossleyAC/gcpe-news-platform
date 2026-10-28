@@ -55,7 +55,15 @@ describe("postCard", () => {
     expect(asset.nextElementSibling?.className).toBe("item-text with-image");
     const a = asset.querySelector(":scope > a")!;
     expect(a.getAttribute("href")).toBe(POST);
-    expect(a.querySelector("img")?.getAttribute("src")).toBe(FLICKR);
+    // Sized to the slot: the 320w `_n` by default, larger only when the layout needs it.
+    const stem = "https://live.staticflickr.com/65535/53912345678_0a1b2c3d4e";
+    expect(a.querySelector("img")?.getAttribute("src")).toBe(`${stem}_n.jpg`);
+    expect(a.querySelector("img")?.getAttribute("srcset")).toBe(`${stem}_n.jpg 320w, ${stem}_z.jpg 640w, ${stem}_b.jpg 1024w`);
+    expect(a.querySelector("img")?.getAttribute("sizes")).toBe("(max-width: 1120px) 100vw, 222px");
+    expect([a.querySelector("img")?.getAttribute("width"), a.querySelector("img")?.getAttribute("height")]).toEqual(["320", "213"]);
+    // A URL with no size suffix (the 500px default) gets the same set.
+    const plain = card(postCard(site, post({ assetUrl: `${stem}.jpg` })));
+    expect(plain.querySelector(".item-asset img")?.getAttribute("src")).toBe(`${stem}_n.jpg`);
     expect(a.querySelector("img")?.getAttribute("alt")).toBe("");
     // A duplicate of the headline link with a decorative image: kept out of the tab order and the
     // accessibility tree, so it is not a nameless link (axe link-name).

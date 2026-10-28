@@ -141,7 +141,14 @@ describe("home page", () => {
     expect(holder.getAttribute("aria-label")).toBe("Highlights");
     expect(holder.getAttribute("aria-roledescription")).toBe("carousel");
     expect(holder.hasAttribute("aria-live")).toBe(false);
-    const banners = [...holder.querySelectorAll(":scope > div.home-banner")];
+    const track = holder.querySelector(":scope > div.carousel-slides")!;
+    expect(track.hasAttribute("aria-live")).toBe(false);
+    const banners = [...track.querySelectorAll(":scope > div.home-banner")];
+    // APG carousel: each slide a group with a position name.
+    expect(banners.map((b) => [b.getAttribute("role"), b.getAttribute("aria-roledescription"), b.getAttribute("aria-label")])).toEqual([
+      ["group", "slide", "Slide 1 of 2"],
+      ["group", "slide", "Slide 2 of 2"],
+    ]);
     expect(banners.map((b) => b.querySelector("h2")?.textContent)).toEqual(["First", "Second"]);
     expect(banners.map((b) => b.classList.contains("current"))).toEqual([true, false]);
     expect(holder.textContent).not.toContain("Flood warning");
@@ -164,24 +171,35 @@ describe("home page", () => {
     expect(img.getAttribute("loading")).toBe("lazy");
     expect(banners[0]!.querySelector("img")).toBeNull();
     for (const b of banners) expect(b.lastElementChild?.className).toBe("bottom-fade");
-    // Two slides: each carries Previous and Next buttons.
-    for (const b of banners) {
-      const prev = b.querySelector(".stories > button.story-nav.story-previous")!;
-      const next = b.querySelector(".stories > button.story-nav.story-next")!;
-      expect(prev.getAttribute("type")).toBe("button");
-      expect(prev.getAttribute("aria-label")).toBe("Previous highlight");
-      expect(next.getAttribute("type")).toBe("button");
-      expect(next.getAttribute("aria-label")).toBe("Next highlight");
-    }
+    // Two slides: one Previous/Next pair, after the slides and outside their live region.
+    expect(track.querySelector("button")).toBeNull();
+    const controls = holder.querySelector(":scope > div.carousel-controls > .home-banner-content > .stories")!;
+    const prev = controls.querySelector(":scope > button.story-nav.story-previous")!;
+    const next = controls.querySelector(":scope > button.story-nav.story-next")!;
+    expect(holder.querySelectorAll("button")).toHaveLength(2);
+    expect(prev.getAttribute("type")).toBe("button");
+    expect(prev.getAttribute("aria-label")).toBe("Previous highlight");
+    expect(next.getAttribute("type")).toBe("button");
+    expect(next.getAttribute("aria-label")).toBe("Next highlight");
 
     const one = parse(renderCarousel([slide({ key: "S1" })], ""));
     expect(one.querySelectorAll(".home-banner")).toHaveLength(1);
+    expect(one.querySelector(".carousel-controls")).toBeNull();
     expect(one.querySelector(".home-banner.current")).not.toBeNull();
     expect(one.querySelector("button")).toBeNull();
     expect(renderCarousel([], "")).toBe("");
     expect(renderCarousel([slide({ emergency: true })], "")).toBe("");
     // No slides: no lead band at all.
     expect(parse(renderHomePage(emptyView, site, {})).getElementById("carousel-holder")).toBeNull();
+  });
+
+  it("an action link with no headline is named by its position, never a bare 'Learn more'", () => {
+    const doc = parse(renderCarousel([slide({ key: "A" }), slide({ key: "B", headline: null, actionUri: "/archive/", actionLabel: null, sortIndex: 1 })], ""));
+    const a = doc.querySelectorAll(".home-banner")[1]!.querySelector("a.read-more")!;
+    expect(a.textContent?.trim()).toBe("Learn more: slide 2 of 2");
+    expect(doc.querySelectorAll(".home-banner")[1]!.querySelector("h2")).toBeNull();
+    const page = parse(renderHomePage({ ...emptyView, slides: [slide({ headline: null, emergency: true, actionUri: "/archive/", actionLabel: "Details" })] }, site, {}));
+    expect(page.querySelector(".home-body .article a.read-more")?.textContent?.trim()).toBe("Details: emergency notice 1 of 1");
   });
 
   it("a slide with a javascript: action renders its headline as text, no link", () => {

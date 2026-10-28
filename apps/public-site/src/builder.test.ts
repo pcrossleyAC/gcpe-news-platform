@@ -4,7 +4,7 @@ import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
 import { bcSettings, post, site } from "../test/fixtures";
-import { createSiteBuilder } from "./builder";
+import { createSiteBuilder, SECTOR_FETCHES } from "./builder";
 import type { PostDto } from "./dto";
 import { postIndex } from "./post-index";
 
@@ -50,6 +50,40 @@ describe("site builder", () => {
     expect(box).toContain('<a href="/releases/K1/">Economy headline</a>');
     expect(page).not.toContain("Retired sector");
     expect(page).not.toContain(">Empty<");
+  });
+
+  it("home: a sector whose latest fetch fails is left out (logged) and the page still renders; fetches run at most SECTOR_FETCHES at once", async () => {
+    const posts = new Map([["K1", post({ key: "K1", sectorKeys: ["economy", "broken"], documents: [{ languageId: 4105, headline: "Economy headline", subheadline: null, detailsHtml: null, contacts: [] }] })]]);
+    const { storage, api, builder } = setup(posts);
+    const sector = (key: string, name: string) => ({ key, kind: "sectors", name, isActive: true, topPostKey: null, featurePostKey: null });
+    api.sectors = [sector("economy", "Economy"), sector("broken", "Broken"), ...Array.from({ length: 12 }, (_, i) => sector(`s${i}`, `Sector ${i}`))];
+    const latest = api.latest;
+    let inFlight = 0;
+    let peak = 0;
+    api.latest = async (kind, key, n) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      if (key === "broken") throw new Error("News API 500");
+      return latest(kind, key, n);
+    };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await builder.rebuild(["home"], {});
+    const page = html(storage, "index.html");
+    expect(page).toContain("News by Sector");
+    expect(page).toContain('<a href="/releases/K1/">Economy headline</a>');
+    expect(page).not.toContain(">Broken<");
+    expect(error.mock.calls.flat().join(" ")).toContain("sector:broken");
+    expect(peak).toBeLessThanOrEqual(SECTOR_FETCHES);
+    expect(peak).toBeGreaterThan(1);
+
+    // The sector list itself failing: the box is left out, home still renders.
+    api.categories = async () => { throw new Error("News API down"); };
+    await builder.rebuild(["home"], {});
+    expect(html(storage, "index.html")).not.toContain("News by Sector");
+    expect(html(storage, "index.html")).toContain("Latest news");
+    error.mockRestore();
   });
 
   it("an update that moves a post to another ministry takes it off the old ministry page", async () => {
