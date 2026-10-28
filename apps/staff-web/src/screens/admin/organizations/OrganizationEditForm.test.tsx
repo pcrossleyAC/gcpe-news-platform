@@ -14,6 +14,7 @@ import {
   ABBREVIATION_HINT,
   OrganizationEditForm,
   SAVED_MESSAGE,
+  bioToPatch,
   deactivateWarning,
 } from "./OrganizationEditForm";
 
@@ -274,58 +275,367 @@ describe("OrganizationEditForm", () => {
     ...HEALTH,
     minister: { ...HEALTH.minister, detailsHtml: null },
   } as OrgRecord;
-  const BIO_LABEL = "Remove the previous minister's biography";
-  const BIO_WARNING =
-    "The public page still shows the previous minister's biography.";
+  const PREVIOUS_MINISTER_NOTE =
+    "The biography still describes the previous minister.";
+  const sentBody = (calls: { init?: RequestInit }[]) =>
+    JSON.parse(calls[0]!.init!.body as string) as Record<string, unknown>;
 
-  it("hides the biography checkbox when the minister has no biography", () => {
-    setup(false, undefined, NO_BIO);
-    expect(screen.queryByLabelText(BIO_LABEL)).toBeNull();
-  });
+  describe("minister biography", () => {
+    const bio = () => screen.getByRole("textbox", { name: "Minister biography" });
 
-  it("shows the biography checkbox with its hint and sends exactly detailsHtml null", async () => {
-    const { calls, user } = setup(false);
-    const box = screen.getByLabelText(BIO_LABEL);
-    expect(box).not.toBeChecked();
-    expect(
-      screen.getByText(
-        "The biography on the public ministry page belongs to the current minister. Remove it when the minister changes.",
-      ),
-    ).toBeInTheDocument();
-    await user.click(box);
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(calls).toHaveLength(1));
-    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
-      minister: { detailsHtml: null },
+    it("opens with the stored biography in the editor and saves an edit as minister.detailsHtml", async () => {
+      const { calls, user } = setup(false);
+      const field = bio();
+      expect(field.innerHTML).toContain("<p>x</p>");
+      expect(field).toHaveAccessibleDescription(
+        expect.stringContaining(
+          "Shown on the minister's biography page, linked as Read Bio from the ministry page. Leave it empty for no biography page.",
+        ),
+      );
+      expect(
+        screen.queryByRole("button", { name: "Insert asset" }),
+      ).toBeNull();
+      expect(
+        screen.queryByLabelText("Remove the previous minister's biography"),
+      ).toBeNull();
+      await user.click(field);
+      await user.type(field, "yz");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      const sent = sentBody(calls) as { minister: { detailsHtml: string } };
+      expect(Object.keys(sent)).toEqual(["minister"]);
+      expect(Object.keys(sent.minister)).toEqual(["detailsHtml"]);
+      expect(sent.minister.detailsHtml).toMatch(/^<p>[xyz]{3}<\/p>$/);
+    });
+
+    it("emptying the biography sends minister.detailsHtml: null", async () => {
+      const { calls, user } = setup(false);
+      await user.click(screen.getByRole("button", { name: "Clear the biography" }));
+      expect(bio()).toHaveFocus();
+      expect(bio().textContent).toBe("");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({ minister: { detailsHtml: null } });
+    });
+
+    it("bioToPatch treats editor HTML with no text as null", () => {
+      expect(bioToPatch("<p></p>")).toBeNull();
+      expect(bioToPatch("<p> </p><ul><li><p></p></li></ul>")).toBeNull();
+      expect(bioToPatch("<p>&nbsp;</p>")).toBeNull();
+      expect(bioToPatch("")).toBeNull();
+      expect(bioToPatch("<p>Hi</p>")).toBe("<p>Hi</p>");
+    });
+
+    it("an untouched biography is not sent", async () => {
+      const { calls, user } = setup(false);
+      await user.type(screen.getByLabelText("Minister summary"), "Hi");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({ minister: { summary: "Hi" } });
+    });
+
+    it("a stored biography the editor would rewrite (<b>, line breaks) is not sent untouched", async () => {
+      const { calls, user } = setup(false, undefined, {
+        ...HEALTH,
+        minister: { ...HEALTH.minister, detailsHtml: "<p>a</p>\r\n<p>b <b>c</b></p>" },
+      } as OrgRecord);
+      expect(bio().innerHTML).toContain("<strong>c</strong>");
+      await user.type(screen.getByLabelText("Minister summary"), "Hi");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({ minister: { summary: "Hi" } });
+    });
+
+    it("an empty biography stays unsent, and offers no Clear button", async () => {
+      const { user } = setup(false, undefined, NO_BIO);
+      expect(bio().textContent).toBe("");
+      expect(
+        screen.queryByRole("button", { name: "Clear the biography" }),
+      ).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByText("No changes to save.")).toBeInTheDocument();
+    });
+
+    it("renaming the minister without touching the biography shows the previous-minister note", async () => {
+      const { calls, user } = setup(false);
+      expect(screen.queryByText(PREVIOUS_MINISTER_NOTE)).toBeNull();
+      const name = screen.getByLabelText("Minister name");
+      await user.clear(name);
+      await user.type(name, "Honourable New Person");
+      expect(screen.getByText(PREVIOUS_MINISTER_NOTE)).toBeInTheDocument();
+      expect(bio()).toHaveAccessibleDescription(
+        expect.stringContaining(PREVIOUS_MINISTER_NOTE),
+      );
+      await user.click(screen.getByRole("button", { name: "Clear the biography" }));
+      expect(screen.queryByText(PREVIOUS_MINISTER_NOTE)).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({
+        minister: { name: "Honourable New Person", detailsHtml: null },
+      });
+    });
+
+    it("does not show the previous-minister note when there is no biography", async () => {
+      const { user } = setup(false, undefined, NO_BIO);
+      await user.type(screen.getByLabelText("Minister name"), "x");
+      expect(screen.queryByText(PREVIOUS_MINISTER_NOTE)).toBeNull();
+    });
+
+    it("a server biography error shows beside the editor", async () => {
+      const { user } = setup(false, () =>
+        jsonResponse(400, {
+          error: "invalid request",
+          issues: [
+            {
+              code: "custom",
+              path: ["minister", "detailsHtml"],
+              message: "Keep the biography to 20,000 characters or fewer.",
+            },
+          ],
+        }),
+      );
+      await user.click(bio());
+      await user.type(bio(), "more");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(bio()).toHaveAccessibleDescription(
+          expect.stringContaining("Keep the biography to 20,000 characters or fewer."),
+        ),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Fix the problems shown below, then save.",
+      );
     });
   });
 
-  it("combines the biography removal with other minister changes", async () => {
-    const { calls, user } = setup(false);
-    const name = screen.getByLabelText("Minister name");
-    await user.clear(name);
-    await user.type(name, "Honourable New Person");
-    await user.click(screen.getByLabelText(BIO_LABEL));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(calls).toHaveLength(1));
-    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
-      minister: { name: "Honourable New Person", detailsHtml: null },
+  describe("Meet the Team links", () => {
+    const team = () => screen.getByRole("group", { name: "Meet the Team links" });
+    const CABINET = { text: "Cabinet Ministers", url: "/cabinet" };
+
+    it("shows its description and the stored links; a record without teamLinks shows none", () => {
+      setup(false, undefined, { ...HEALTH, teamLinks: [CABINET] } as OrgRecord);
+      expect(team()).toHaveAccessibleDescription(
+        "Shown as Meet the Team on the ministry page (the Office of the Premier uses it for Cabinet Ministers, Deputy Ministers and Cabinet Committees).",
+      );
+      const row = within(team()).getByRole("group", { name: "Link 1" });
+      expect(within(row).getByLabelText("Link text")).toHaveValue("Cabinet Ministers");
+      cleanup();
+      setup(false);
+      expect(within(team()).getByText("No links yet.")).toBeInTheDocument();
+    });
+
+    it("adds a Meet the Team link and sends teamLinks whole; a server teamLinks[0].url error shows beside that row", async () => {
+      const { calls, user } = setup(
+        false,
+        () =>
+          jsonResponse(400, {
+            error: "invalid request",
+            issues: [
+              {
+                code: "custom",
+                path: ["teamLinks", 1, "url"],
+                message: "Must start with https:// or / (a page on this site).",
+              },
+            ],
+          }),
+        { ...HEALTH, teamLinks: [CABINET] } as OrgRecord,
+      );
+      // A blank row in the middle is dropped, so the server's index 1 is the third row on screen.
+      await user.click(within(team()).getByRole("button", { name: "+ Add a link" }));
+      await user.click(within(team()).getByRole("button", { name: "+ Add a link" }));
+      const row3 = within(team()).getByRole("group", { name: "Link 3" });
+      await user.type(within(row3).getByLabelText("Link text"), "Deputy Ministers");
+      await user.type(within(row3).getByLabelText("Web address"), "deputies");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({
+        teamLinks: [CABINET, { text: "Deputy Ministers", url: "deputies" }],
+      });
+      expect(
+        await within(
+          within(team()).getByRole("group", { name: "Link 3" }),
+        ).findByText("Must start with https:// or / (a page on this site)."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Fix the problems shown below, then save.",
+      );
+    });
+
+    it("an untouched list is not sent, even when the record had no teamLinks", async () => {
+      const { user } = setup(false);
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByText("No changes to save.")).toBeInTheDocument();
     });
   });
 
-  it("warns when the minister name changes while the old biography stays", async () => {
-    const { user } = setup(false);
-    expect(screen.queryByText(BIO_WARNING)).toBeNull();
-    await user.type(screen.getByLabelText("Minister name"), "x");
-    expect(screen.getByText(BIO_WARNING)).toBeInTheDocument();
-    await user.click(screen.getByLabelText(BIO_LABEL));
-    expect(screen.queryByText(BIO_WARNING)).toBeNull();
+  describe("media contacts", () => {
+    const contacts = () => screen.getByRole("group", { name: "Media contacts" });
+    const primary = () =>
+      within(contacts()).getByRole("group", { name: "Primary contact" });
+    const alternate = () =>
+      within(contacts()).getByRole("group", { name: "Alternate contact" });
+
+    it("shows the stored contacts with phone and email input types", () => {
+      setup(false, undefined, {
+        ...HEALTH,
+        contact: {
+          fullName: "Pat Doe",
+          phoneNumber: "250 555-0100",
+          mobileNumber: "250 555-0101",
+          emailAddress: "pat.doe@gov.bc.ca",
+        },
+        weekendContactNumber: "250 555-0199",
+      } as OrgRecord);
+      expect(within(primary()).getByLabelText("Name")).toHaveValue("Pat Doe");
+      const phone = within(primary()).getByLabelText("Phone");
+      expect(phone).toHaveValue("250 555-0100");
+      expect(phone).toHaveAttribute("type", "tel");
+      expect(phone).toHaveAccessibleDescription("Shown as Direct on the ministry page.");
+      expect(within(primary()).getByLabelText("Cell")).toHaveAttribute("type", "tel");
+      expect(within(primary()).getByLabelText("Email")).toHaveAttribute("type", "email");
+      expect(within(primary()).getByLabelText("Email")).toHaveValue("pat.doe@gov.bc.ca");
+      expect(within(alternate()).getByLabelText("Name")).toHaveValue("");
+      const afterHours = within(contacts()).getByLabelText("After-hours phone");
+      expect(afterHours).toHaveValue("250 555-0199");
+      expect(afterHours).toHaveAttribute("type", "tel");
+    });
+
+    it("edits the primary contact and sends contact with all four fields; an emailAddress error shows beside Primary email", async () => {
+      const { calls, user, onSaved } = setup(false, () =>
+        jsonResponse(400, {
+          error: "invalid request",
+          issues: [
+            {
+              code: "invalid_string",
+              path: ["contact", "emailAddress"],
+              message: "Enter an email address like name@gov.bc.ca.",
+            },
+          ],
+        }),
+      );
+      await user.type(within(primary()).getByLabelText("Email"), " nope ");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({
+        contact: {
+          fullName: "A",
+          phoneNumber: "",
+          mobileNumber: "",
+          emailAddress: "nope",
+        },
+      });
+      const email = within(primary()).getByLabelText("Email");
+      await waitFor(() =>
+        expect(email).toHaveAccessibleDescription(
+          "Enter an email address like name@gov.bc.ca.",
+        ),
+      );
+      expect(email).toHaveAttribute("aria-invalid", "true");
+      expect(within(alternate()).getByLabelText("Email")).not.toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Fix the problems shown below, then save.",
+      );
+      expect(onSaved).not.toHaveBeenCalled();
+    });
+
+    it("an alternate added where none was stored is sent whole as secondContact", async () => {
+      const { calls, user } = setup(false);
+      await user.type(within(alternate()).getByLabelText("Name"), "Sam Roe");
+      await user.type(within(alternate()).getByLabelText("Cell"), "250 555-0102");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({
+        secondContact: {
+          fullName: "Sam Roe",
+          phoneNumber: "",
+          mobileNumber: "250 555-0102",
+          emailAddress: "",
+        },
+      });
+    });
+
+    it("sends weekendContactNumber when the after-hours phone changes", async () => {
+      const { calls, user } = setup(false);
+      await user.type(
+        within(contacts()).getByLabelText("After-hours phone"),
+        " 250 555-0199 ",
+      );
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(sentBody(calls)).toEqual({ weekendContactNumber: "250 555-0199" });
+    });
+
+    it("a record with no contacts at all opens blank and sends nothing untouched", async () => {
+      const { user } = setup(false, undefined, {
+        ...HEALTH,
+        contact: null,
+        secondContact: null,
+        weekendContactNumber: null,
+      } as OrgRecord);
+      expect(within(primary()).getByLabelText("Name")).toHaveValue("");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByText("No changes to save.")).toBeInTheDocument();
+    });
+
+    it("notes when only the alternate is filled", async () => {
+      const { user } = setup(false, undefined, {
+        ...HEALTH,
+        contact: null,
+      } as OrgRecord);
+      const NOTE = "The public page shows the alternate only with a primary contact.";
+      expect(screen.queryByText(NOTE)).toBeNull();
+      await user.type(within(alternate()).getByLabelText("Name"), "Sam Roe");
+      expect(screen.getByText(NOTE)).toBeInTheDocument();
+      await user.type(within(primary()).getByLabelText("Name"), "Pat");
+      expect(screen.queryByText(NOTE)).toBeNull();
+    });
   });
 
-  it("does not warn about the biography when there is none", async () => {
-    const { user } = setup(false, undefined, NO_BIO);
-    await user.type(screen.getByLabelText("Minister name"), "x");
-    expect(screen.queryByText(BIO_WARNING)).toBeNull();
+  it("a SiteEditor (not Core.Admin) sees and can save biography, team links and contacts", async () => {
+    const { calls, user } = setup(false, () => jsonResponse(200, HEALTH), NO_BIO);
+    const field = screen.getByRole("textbox", { name: "Minister biography" });
+    await user.click(field);
+    await user.type(field, "New bio");
+    const team = screen.getByRole("group", { name: "Meet the Team links" });
+    await user.click(within(team).getByRole("button", { name: "+ Add a link" }));
+    await user.type(within(team).getByLabelText("Link text"), "Cabinet Ministers");
+    await user.type(within(team).getByLabelText("Web address"), "/cabinet");
+    const primary = screen.getByRole("group", { name: "Primary contact" });
+    await user.type(within(primary).getByLabelText("Phone"), "250 555-0100");
+    await user.type(screen.getByLabelText("After-hours phone"), "250 555-0199");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(sentBody(calls)).toEqual({
+      minister: { detailsHtml: "<p>New bio</p>" },
+      teamLinks: [{ text: "Cabinet Ministers", url: "/cabinet" }],
+      contact: {
+        fullName: "A",
+        phoneNumber: "250 555-0100",
+        mobileNumber: "",
+        emailAddress: "",
+      },
+      weekendContactNumber: "250 555-0199",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(SAVED_MESSAGE);
+  });
+
+  it("orders the new fields after Minister photo URL: biography, Meet the Team links, Media contacts, then Ministry page links", () => {
+    setup(false);
+    const order = [
+      screen.getByLabelText("Minister photo URL"),
+      screen.getByRole("textbox", { name: "Minister biography" }),
+      screen.getByRole("group", { name: "Meet the Team links" }),
+      screen.getByRole("group", { name: "Media contacts" }),
+      screen.getByRole("group", { name: "Ministry page links" }),
+    ];
+    for (let i = 1; i < order.length; i++)
+      expect(
+        order[i - 1]!.compareDocumentPosition(order[i]!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
   });
 
   it("unchecking Active shows the subscriber warning before Save", async () => {

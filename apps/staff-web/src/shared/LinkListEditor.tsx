@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { TextField } from "@bcgov/design-system-react-components";
 import type { FieldError, LinkSetting } from "@gcpe/site-settings";
 import { moveItemBy } from "../screens/website/reorder";
@@ -15,6 +15,8 @@ export function withoutBlankLinks(links: LinkSetting[]): LinkSetting[] {
 
 export interface LinkListEditorProps {
   legend: string;
+  /** A sentence under the legend saying where the links appear; it describes the whole group. */
+  description?: string;
   links: LinkSetting[];
   onChange(links: LinkSetting[]): void;
   /** Field errors from the server; only those under `pathPrefix` are shown, on their row by index. */
@@ -38,8 +40,9 @@ const ROW_ERROR = /^\[(\d+)\]\.(\w+)$/;
  * button, an announcement); adding a row focuses its Link text, removing one focuses the next
  * row (or "+ Add a link").
  */
-export function LinkListEditor({ legend, links, onChange, errors, pathPrefix, reorderable, withSummary, isDisabled = false }: LinkListEditorProps): React.JSX.Element {
+export function LinkListEditor({ legend, description, links, onChange, errors, pathPrefix, reorderable, withSummary, isDisabled = false }: LinkListEditorProps): React.JSX.Element {
   const { announce } = useAnnouncer();
+  const descriptionId = useId();
   const moveFocus = useMoveFocusRestore<HTMLFieldSetElement>();
   const addRef = useRef<HTMLSpanElement>(null);
   const pendingFocus = useRef<string | "add" | null>(null);
@@ -104,8 +107,9 @@ export function LinkListEditor({ legend, links, onChange, errors, pathPrefix, re
   };
 
   return (
-    <fieldset className="gcpe-link-list" ref={moveFocus.containerRef}>
+    <fieldset className="gcpe-link-list" ref={moveFocus.containerRef} aria-describedby={description === undefined ? undefined : descriptionId}>
       <legend>{legend}</legend>
+      {description !== undefined && <p id={descriptionId}>{description}</p>}
       {links.length === 0 && <p>No links yet.</p>}
       {links.map((link, index) => {
         const key = keys.current[index]!;

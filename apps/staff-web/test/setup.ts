@@ -25,3 +25,12 @@ afterEach(() => {
 if (typeof document !== "undefined" && typeof document.elementFromPoint !== "function") {
   document.elementFromPoint = () => null;
 }
+
+// Same gap for Range geometry: typing into existing editor text makes ProseMirror scroll the
+// selection into view, which measures a Range. jsdom's Range has neither method, so it gets an
+// empty measurement (nothing to scroll), as Element already does in jsdom.
+if (typeof Range !== "undefined") {
+  if (typeof Range.prototype.getClientRects !== "function")
+    Range.prototype.getClientRects = () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList;
+  if (typeof Range.prototype.getBoundingClientRect !== "function") Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
+}
