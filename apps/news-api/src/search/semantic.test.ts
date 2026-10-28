@@ -25,6 +25,11 @@ describe("pageWindow", () => {
   ])("page %i with %i vector keys", (page, count, expected) => {
     expect(pageWindow(page, count)).toEqual(expected);
   });
+
+  it("windows by the page size: page 3 of 10 with 25 vector keys; page 100 of 10 with 1000", () => {
+    expect(pageWindow(3, 25, 10)).toEqual({ vectorStart: 20, vectorEnd: 25, textOffset: 0, textLimit: 5 });
+    expect(pageWindow(100, 1000, 10)).toEqual({ vectorStart: 990, vectorEnd: 1000, textOffset: 0, textLimit: 0 });
+  });
 });
 
 const FILLER = Array.from({ length: 60 }, (_, i) => `filler${i}`).join(" ");
@@ -68,7 +73,7 @@ describe("semantic mode (spec §5.4)", () => {
     const semantic = createSemanticSearch({ db: tdb.db, embedder, cache: new QueryVectorCache(), language: "english", defaultLanguageId: 4105, threshold: 0.5 });
     return createSearchService({ db: tdb.db, timeZone: TZ, language: "english", defaultLanguageId: 4105, publicSiteUrl: "https://site.example.test", semantic, log: (l) => logs.service.push(l) });
   }
-  const q = (over: Partial<SearchQuery> = {}): SearchQuery => ({ q: "salmon habitat restoration", page: 1, ...over });
+  const q = (over: Partial<SearchQuery> = {}): SearchQuery => ({ q: "salmon habitat restoration", page: 1, pageSize: 20, ...over });
   const counting = () => {
     const base = standInProvider();
     const calls: string[][] = [];

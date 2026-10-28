@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import type { ReleaseRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNewsTestDb, TZ } from "../../test/helpers";
-import { applyRelease, unpublishRelease } from "../projections";
+import { applyGovernmentTerms, applyRelease, unpublishRelease } from "../projections";
 import type { SearchQuery } from "./query";
 import { createSearchService, type SemanticSearch } from "./service";
 import { textSearch } from "./text-search";
@@ -29,7 +29,7 @@ function release(key: string, o: { headline?: string; body?: string; publishDate
 
 describe("textSearch and the search service", () => {
   let tdb: TestDatabase;
-  const q = (over: Partial<SearchQuery>): SearchQuery => ({ q: "wildfire", page: 1, ...over });
+  const q = (over: Partial<SearchQuery>): SearchQuery => ({ q: "wildfire", page: 1, pageSize: 20, ...over });
   const keys = async (query: SearchQuery, excludeKeys?: string[]) => (await textSearch(tdb.db, query, { ...OPTS, excludeKeys })).rows.map((r) => r.key);
   const seed = async (...rs: ReleaseRecord[]) => {
     for (const r of rs) await tdb.db.transaction((tx) => applyRelease(tx, r, { notify: false }));
@@ -135,7 +135,9 @@ describe("textSearch and the search service", () => {
       expect(await service().search(q({}))).toEqual({
         mode: "text",
         page: 1,
+        pageSize: 20,
         total: 1,
+        facets: null,
         results: [{
           key: "2026TT0103-001121",
           kind: "releases",
@@ -143,14 +145,104 @@ describe("textSearch and the search service", () => {
           summary: "Crews respond.",
           publishDate: "2026-10-01T10:00:00-07:00",
           leadMinistryKey: "forests",
+          hasTranslations: false,
+          hasMediaAssets: false,
           url: "https://news.example.test/releases/2026TT0103-001121",
         }],
       });
     });
 
+    it("results carry hasTranslations and hasMediaAssets", async () => {
+      await seed(
+        { ...release("R-BOTH", { body: "wildfire", publishDate: "2026-10-03T10:00:00-07:00" }), hasTranslations: true, hasMediaAssets: true },
+        { ...release("R-TR", { body: "wildfire", publishDate: "2026-10-02T10:00:00-07:00" }), hasTranslations: true },
+        release("R-NONE", { body: "wildfire", publishDate: "2026-10-01T10:00:00-07:00" }),
+      );
+      const res = await service().search(q({}));
+      expect(res.results.map((r) => [r.key, r.hasTranslations, r.hasMediaAssets])).toEqual([
+        ["R-BOTH", true, true],
+        ["R-TR", true, false],
+        ["R-NONE", false, false],
+      ]);
+    });
+
+    it("pageSize 10 pages ten at a time with the same total", async () => {
+      await seed(...Array.from({ length: 25 }, (_, i) => release(`P-${String(i).padStart(2, "0")}`, { body: "ferry sailing" })));
+      const p1 = await service().search(q({ q: "ferry", pageSize: 10 }));
+      const p3 = await service().search(q({ q: "ferry", pageSize: 10, page: 3 }));
+      expect([p1.results.length, p3.results.length, p1.total, p3.total, p3.pageSize]).toEqual([10, 5, 25, 25, 10]);
+    });
+
+    describe("facets", () => {
+      beforeEach(async () => {
+        await tdb.pool.query("DELETE FROM government_terms");
+      });
+      const terms = (v: Parameters<typeof applyGovernmentTerms>[1]["terms"]) =>
+        tdb.db.transaction((tx) => applyGovernmentTerms(tx, { publishedAt: "2026-10-20T00:00:00-07:00", currentSlug: "t2", terms: v }));
+      const facets = async (over: Partial<SearchQuery> = {}, semantic?: SemanticSearch | null) => (await service(semantic).search(q({ facets: true, ...over }))).facets;
+
+      it("counts ministries, sectors, types and terms over the filtered set, biggest first, zero counts left out", async () => {
+        await terms([
+          { slug: "t2", label: null, startDate: "2024-10-18", endDate: null, legacyArchiveUrl: null },
+          { slug: "t1", label: null, startDate: "2017-07-18", endDate: "2024-10-17", legacyArchiveUrl: null },
+          { slug: "t0", label: null, startDate: "2001-06-05", endDate: "2017-07-17", legacyArchiveUrl: null },
+        ]);
+        await seed(
+          release("A", { body: "wildfire", ministryKeys: ["health", "finance"], sectorKeys: ["economy"], publishDate: "2025-03-01T10:00:00-08:00" }),
+          release("B", { body: "wildfire", ministryKeys: ["health"], sectorKeys: ["economy", "mining"], kind: "stories", publishDate: "2024-10-17T23:59:00-07:00" }),
+          release("C", { body: "wildfire", ministryKeys: ["finance", "finance"], kind: "stories", publishDate: "2024-10-18T00:00:00-07:00" }),
+          release("D", { body: "wildfire", ministryKeys: ["education"], publishDate: "2020-01-01T10:00:00-08:00" }),
+          release("NOMATCH", { body: "school", ministryKeys: ["health"] }),
+        );
+        expect(await facets()).toEqual({
+          ministries: [{ key: "finance", count: 2 }, { key: "health", count: 2 }, { key: "education", count: 1 }],
+          sectors: [{ key: "economy", count: 2 }, { key: "mining", count: 1 }],
+          types: [{ key: "releases", count: 2 }, { key: "stories", count: 2 }],
+          terms: [{ slug: "t1", count: 2 }, { slug: "t2", count: 2 }],
+        });
+      });
+
+      it("uses exactly the results' filters, so a filter narrows every list", async () => {
+        await seed(
+          release("A", { body: "wildfire", ministryKeys: ["health"], sectorKeys: ["economy"] }),
+          release("B", { body: "wildfire", ministryKeys: ["health"], kind: "stories" }),
+          release("C", { body: "wildfire", ministryKeys: ["finance"], sectorKeys: ["mining"] }),
+        );
+        const f = await facets({ ministry: "Health" });
+        expect(f).toEqual({
+          ministries: [{ key: "health", count: 2 }],
+          sectors: [{ key: "economy", count: 1 }],
+          types: [{ key: "releases", count: 1 }, { key: "stories", count: 1 }],
+          terms: [],
+        });
+        expect(f!.ministries.reduce((n, m) => n + m.count, 0)).toBe((await service().search(q({ ministry: "Health" }))).total);
+      });
+
+      it("never counts an unpublished post, and a no-match search has empty lists", async () => {
+        await seed(release("GONE", { body: "wildfire", ministryKeys: ["health"] }));
+        await tdb.db.transaction((tx) => unpublishRelease(tx, "GONE"));
+        const empty = { ministries: [], sectors: [], types: [], terms: [] };
+        expect(await facets()).toEqual(empty);
+        expect(await facets({ q: "nothingmatches" })).toEqual(empty);
+      });
+
+      it("is null without facets=1 and in semantic mode", async () => {
+        await seed(release("R-1", { body: "wildfire", ministryKeys: ["health"] }));
+        expect((await service().search(q({}))).facets).toBeNull();
+        const page = { total: 1, rows: [{ key: "R-1", kind: "releases", headline: "H", summary: null, publishDate: new Date("2026-10-01T17:00:00Z"), leadMinistryKey: null, hasTranslations: false, hasMediaAssets: false }] };
+        const sem = await service({ search: async () => page }).search(q({ facets: true }));
+        expect(sem).toMatchObject({ mode: "semantic", facets: null });
+      });
+
+      it("a filter-only search (empty q) has facets too", async () => {
+        await seed(release("A", { ministryKeys: ["health"], sectorKeys: ["economy"] }), release("B", { ministryKeys: ["finance"] }));
+        expect((await facets({ q: "", ministry: "health" }))?.sectors).toEqual([{ key: "economy", count: 1 }]);
+      });
+    });
+
     it("uses the semantic branch's page when it answers, and falls back to text on null or a throw", async () => {
       await seed(release("R-TEXT", { body: "wildfire" }));
-      const page = { total: 1, rows: [{ key: "R-SEM", kind: "releases", headline: "H", summary: null, publishDate: new Date("2026-10-01T17:00:00Z"), leadMinistryKey: null }] };
+      const page = { total: 1, rows: [{ key: "R-SEM", kind: "releases", headline: "H", summary: null, publishDate: new Date("2026-10-01T17:00:00Z"), leadMinistryKey: null, hasTranslations: false, hasMediaAssets: false }] };
       expect((await service({ search: async () => page }).search(q({})))).toMatchObject({ mode: "semantic", results: [{ key: "R-SEM" }] });
       expect((await service({ search: async () => null }).search(q({})))).toMatchObject({ mode: "text", results: [{ key: "R-TEXT" }] });
       const lines: string[] = [];

@@ -4,20 +4,20 @@ import type { Db, Tx } from "@gcpe/db-kit";
 import { normaliseForEmbedding, type GuardedEmbedder } from "@gcpe/embeddings";
 import { postEmbeddings, posts } from "../db/schema";
 import { VECTOR_DIMENSIONS } from "../embeddings/pgvector";
-import { SEARCH_MAX_PAGE, SEARCH_PAGE_SIZE, type SearchQuery } from "./query";
+import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULTS, type SearchPageSize, type SearchQuery } from "./query";
 import type { SemanticSearch } from "./service";
 import { READ_SNAPSHOT, searchFilters, searchRowsByKeys, textSearch } from "./text-search";
 import type { QueryVectorCache } from "./vector-cache";
 
-/** The deepest result a visitor can reach (50 pages of 20): the vector branch never needs more. */
-export const VECTOR_CANDIDATE_LIMIT = SEARCH_MAX_PAGE * SEARCH_PAGE_SIZE;
+/** The deepest result a visitor can reach: the vector branch never needs more. */
+export const VECTOR_CANDIDATE_LIMIT = SEARCH_MAX_RESULTS;
 
 /** Which slice of the vector keys, and which window of text matches, make up `page`. */
-export function pageWindow(page: number, vectorCount: number): { vectorStart: number; vectorEnd: number; textOffset: number; textLimit: number } {
-  const start = (page - 1) * SEARCH_PAGE_SIZE;
+export function pageWindow(page: number, vectorCount: number, pageSize: SearchPageSize = SEARCH_DEFAULT_PAGE_SIZE): { vectorStart: number; vectorEnd: number; textOffset: number; textLimit: number } {
+  const start = (page - 1) * pageSize;
   const vectorStart = Math.min(start, vectorCount);
-  const vectorEnd = Math.min(start + SEARCH_PAGE_SIZE, vectorCount);
-  return { vectorStart, vectorEnd, textOffset: Math.max(0, start - vectorCount), textLimit: SEARCH_PAGE_SIZE - (vectorEnd - vectorStart) };
+  const vectorEnd = Math.min(start + pageSize, vectorCount);
+  return { vectorStart, vectorEnd, textOffset: Math.max(0, start - vectorCount), textLimit: pageSize - (vectorEnd - vectorStart) };
 }
 
 export interface SemanticSearchOptions {
@@ -54,7 +54,7 @@ export function createSemanticSearch(o: SemanticSearchOptions): SemanticSearch {
       const literal = `[${vector.join(",")}]`;
       return o.db.transaction(async (tx) => {
         const keys = await vectorKeys(tx, query, literal, o.threshold);
-        const w = pageWindow(query.page, keys.length);
+        const w = pageWindow(query.page, keys.length, query.pageSize);
         const vectorRows = await searchRowsByKeys(tx, keys.slice(w.vectorStart, w.vectorEnd), o.defaultLanguageId);
         const textPage = await textSearch(tx, query, {
           language: o.language,
