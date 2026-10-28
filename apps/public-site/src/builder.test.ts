@@ -125,6 +125,14 @@ describe("site builder", () => {
     expect(storage.files.has("tags/gone/feed.xml")).toBe(false);
   });
 
+  it("a full build lists a biography page written in the same build in sitemaps/pages.xml", async () => {
+    const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1", ministryKeys: ["Health"] })]]));
+    api.minister = async (key) => (key.toLowerCase() === "health" ? { headline: "Hon. Alex Example", summary: "s", details: "<p>Bio.</p>", photo: null } : null);
+    await builder.buildAll({});
+    expect(storage.files.has("ministries/health/biography/index.html")).toBe(true);
+    expect(html(storage, "sitemaps/pages.xml")).toContain("<loc>https://news.example/ministries/health/biography/</loc>");
+  });
+
   it("writes ministries/<key>/biography/index.html when the minister has details; clearing details removes the file and its folder on the next render", async () => {
     const { storage, api, builder } = setup(new Map());
     const removeEmptyDir = vi.spyOn(storage, "removeEmptyDir");

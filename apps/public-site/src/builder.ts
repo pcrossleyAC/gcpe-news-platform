@@ -413,7 +413,10 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       for (const id of unique.filter((x) => x.startsWith("post:"))) {
         for (const dep of await builder.renderPage(id, opts, run)) rest.add(dep);
       }
-      for (const id of rest) await builder.renderPage(id, opts, run);
+      // An aggregate's own dependents (a ministry page whose bio appeared → sitemap:pages) once more.
+      const again = new Set<string>();
+      for (const id of rest) for (const dep of await builder.renderPage(id, opts, run)) again.add(dep);
+      for (const id of again) await builder.renderPage(id, opts, run);
     },
 
     async allPostKeys() {
@@ -426,7 +429,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
 
     async aggregatePageIds() {
       const run: RunCache = {};
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "sitemap:pages", "connect", "legacy-redirects", ...(await categoryIds(run))];
+      // sitemap:pages after the category pages: it lists the biography pages they write.
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "legacy-redirects", ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;
@@ -462,7 +466,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           console.error(`[public-site] build: skipping post:${key} this run ${safeErrorLabel(err)}`);
         }
       }
-      for (const id of await builder.aggregatePageIds()) await builder.renderPage(id, opts, run);
+      const again = new Set<string>();
+      for (const id of await builder.aggregatePageIds()) for (const dep of await builder.renderPage(id, opts, run)) again.add(dep);
+      for (const id of again) await builder.renderPage(id, opts, run);
       return { posts: keys.length, failures };
     },
   };
