@@ -39,6 +39,11 @@ describe("themeCss", () => {
       expect(overrides).toContain(sel);
     }
   });
+  it("never puts display:contents on an element that carries a landmark (older Safari drops its role)", () => {
+    expect(overrides).not.toMatch(/display\s*:\s*contents/);
+    // The footer nav keeps a box and lays its two columns out as legacy's flat .top row did.
+    expect(overrides).toMatch(/#footer \.top > nav\{display:flex;flex-wrap:wrap;gap:inherit;flex:2 1 50px\}/);
+  });
   it("refuses to quote a font family that could break out of the declaration", () => {
     const evil = { ...DEFAULT_THEME, font: { family: 'X"; } body { color: red', fallback: "serif" } };
     expect(themeCss(evil)).not.toContain("color: red");

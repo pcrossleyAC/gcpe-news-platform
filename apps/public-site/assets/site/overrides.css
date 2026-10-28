@@ -108,9 +108,14 @@ html:not(.js) #nav-menu-sm, html:not(.js) .search-toggle-container { display: no
 /* The footer headings are h2 (legacy: h4): legacy's #footer h4 metrics, restated. */
 #footer h2{font-size:16px;padding-right:20px;margin-top:22px;margin-bottom:10px;font-weight:600;line-height:1.2}
 @media (max-width: 767px) { #footer h2 { padding-right: 10px; white-space: normal; } }
-/* The link columns sit in one labelled nav that takes no box, so .footer-bc and the two columns
- * stay flex items of legacy's #footer .top row. */
-#footer .top > nav{display:contents}
+/* The link columns sit in one labelled nav, which keeps its own box (a box-less "contents" display made older
+ * Safari drop the landmark) and reproduces legacy's flat .top row: legacy shares the row's free
+ * space as .footer-bc 2 : .footer-connect 1 : .footer-more-info 1 with a column gap between each.
+ * The nav takes the columns' share (2) plus, as its basis, the one gap that now sits inside it
+ * (50px, custom.css's #footer .top column gap where the three share a row, >=1024px); below that
+ * .footer-bc is 100% wide and the nav fills its own row. Inside, the same gap (inherited) and
+ * legacy's flex:1 columns. */
+#footer .top > nav{display:flex;flex-wrap:wrap;gap:inherit;flex:2 1 50px}
 
 /* The banners (render.ts's #banner, banner-script.ts): legacy custom.css styles .info-blue-banner and
  * granville-bridge-theme.css (linked only while Blue Bridge is on) .info-black-banner; these rules

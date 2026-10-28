@@ -18,6 +18,7 @@ import { queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
 import { degradedSubscribe, syncSite, type SyncDeps } from "./sync";
 import * as subscribePages from "./subscribe-pages";
+import * as rebuildAll from "./rebuild-all";
 
 describe("syncSite", () => {
   let tdb: TestDatabase;
@@ -646,15 +647,24 @@ describe("syncSite", () => {
         const v6 = { ...JSON.parse(storage.files.get(".site-state.json") as string), chrome: 6, footerHash: settingsHashes(preField(), DEFAULT_TIME_ZONE, new Date()).footerHash };
         await storage.write(".site-state.json", JSON.stringify(v6));
         await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
-        await syncSite(deps);
-        const q = new Set((await tdb.pool.query("SELECT page_id FROM rebuild_queue")).rows.map((r: { page_id: string }) => r.page_id));
-        for (const id of ["post:K1", "post:K2", "post:K3", "archive", "sitemap"]) expect(q.has(id)).toBe(true);
-        const marker = JSON.parse(storage.files.get(".site-state.json") as string);
-        expect(marker.chrome).toBe(RENDER_CHROME_VERSION);
-        expect(marker.footerHash).toBe(settingsHashes(bcSettings(), DEFAULT_TIME_ZONE, new Date()).footerHash);
-        await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
-        await syncSite(deps);
-        expect(await queueDepth(tdb.db)).toBe(0);
+        // The queue de-duplicates by page id, so count the rebuild-all requests themselves.
+        const chrome = vi.spyOn(rebuildAll, "enqueueChromeChanges");
+        const rebuildAlls = () => chrome.mock.calls.filter(([, , c]) => c.all).length;
+        try {
+          await syncSite(deps);
+          expect(rebuildAlls()).toBe(1);
+          const q = new Set((await tdb.pool.query("SELECT page_id FROM rebuild_queue")).rows.map((r: { page_id: string }) => r.page_id));
+          for (const id of ["post:K1", "post:K2", "post:K3", "archive", "sitemap"]) expect(q.has(id)).toBe(true);
+          const marker = JSON.parse(storage.files.get(".site-state.json") as string);
+          expect(marker.chrome).toBe(RENDER_CHROME_VERSION);
+          expect(marker.footerHash).toBe(settingsHashes(bcSettings(), DEFAULT_TIME_ZONE, new Date()).footerHash);
+          await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+          await syncSite(deps);
+          expect(await queueDepth(tdb.db)).toBe(0);
+          expect(rebuildAlls()).toBe(1); // still the one: the next turn asked for none
+        } finally {
+          chrome.mockRestore();
+        }
       });
     });
 
