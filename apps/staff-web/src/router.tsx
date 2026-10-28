@@ -37,6 +37,7 @@ import { DeadLettersScreen } from "./screens/calendar/dead-letters/DeadLettersSc
 import { UsersScreen } from "./screens/admin/users/UsersScreen";
 import { CalendarAccessScreen } from "./screens/admin/calendar-access/CalendarAccessScreen";
 import { OrganizationsScreen } from "./screens/admin/organizations/OrganizationsScreen";
+import { GovernmentTermsScreen } from "./screens/admin/government-terms/GovernmentTermsScreen";
 import { MediaListNamesScreen } from "./screens/admin/media-lists/MediaListNamesScreen";
 import { ErrorLogScreen } from "./screens/admin/errors/ErrorLogScreen";
 import { SubscribersSection } from "./screens/subscribers/SubscribersSection";
@@ -152,6 +153,7 @@ export const routes: RouteObject[] = [
       { path: "users", element: <UsersScreen /> },
       { path: "calendar-access", element: <CalendarAccessScreen /> },
       { path: "organizations", element: <OrganizationsScreen /> },
+      { path: "government-terms", element: <GovernmentTermsScreen /> },
       { path: "media-list-names", element: <MediaListNamesScreen /> },
       { path: "error-log", element: <ErrorLogScreen /> },
       { path: "*", element: null },
