@@ -325,8 +325,8 @@ describe("RENDER_CHROME_VERSION", () => {
   // 8: the archive by government term (new-government Task 6).
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
-  // 17: search, archive, subscribe, phone Live icon, Connect collapse (parity plan 4, batch F).
-  it("RENDER_CHROME_VERSION is 17", () => expect(RENDER_CHROME_VERSION).toBe(17));
+  // 18: site map, archive Search News, kind feed links, Connect factsheets feed (parity plan 4, batch G).
+  it("RENDER_CHROME_VERSION is 18", () => expect(RENDER_CHROME_VERSION).toBe(18));
 });
 
 describe("Search Console verification in the render-state marker", () => {
