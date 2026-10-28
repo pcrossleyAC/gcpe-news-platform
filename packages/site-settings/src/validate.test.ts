@@ -47,6 +47,11 @@ describe("validateSiteSettings", () => {
     ]);
     expect(errorsFor((d) => { d.footer.landAcknowledgement = ""; })).toEqual([]);
     expect(errorsFor((d) => { delete d.footer.landAcknowledgement; })).toEqual([]);
+    // Trimmed first: whitespace-only is empty (no band), and surrounding whitespace doesn't count
+    // toward the limit.
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = " \n\t "; })).toEqual([]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = `  ${"a".repeat(1000)}\n`; })).toEqual([]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = `  ${"a".repeat(1001)}  `; })).toHaveLength(1);
   });
 
   it("checks the banner", () => {

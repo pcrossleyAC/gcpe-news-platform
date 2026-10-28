@@ -88,6 +88,14 @@ async function upsertDraft(db: DbOrTx, actor: Actor, document: SiteSettings, bas
     .onConflictDoUpdate({ target: siteSettingsDrafts.editorId, set: { document, baseRevision, updatedAt: sql`now()` } });
 }
 
+/**
+ * The sections where `a` and `b` differ as the site shows them: both filled from the tenant
+ * defaults first, so a revision stored before a field existed (no landAcknowledgement) doesn't
+ * report its section as changed against one that carries the default.
+ */
+const differing = (a: SiteSettings, b: SiteSettings, defaults: SiteSettings): SectionKey[] =>
+  differingSections(fillMissingFields(a, defaults), fillMissingFields(b, defaults));
+
 /** What the editor sees: their draft, else live, else the tenant defaults — and its problems. */
 export async function getSettingsState(db: DbOrTx, actor: Actor, defaults: SiteSettings): Promise<SettingsState> {
   const live = await readLive(db);
@@ -126,6 +134,7 @@ export async function saveDraft(
 async function publishDocument(
   tx: Tx,
   actor: Actor,
+  defaults: SiteSettings,
   subs: SubscriberConfig[],
   document: SiteSettings,
   baseRevision: number | null,
@@ -137,7 +146,7 @@ async function publishDocument(
 
   const live = await readLive(tx);
   const liveRevision = live?.info.revision ?? null;
-  if (live && liveRevision !== baseRevision) return { result: "conflict", live: live.info, differing: differingSections(document, live.document) };
+  if (live && liveRevision !== baseRevision) return { result: "conflict", live: live.info, differing: differing(document, live.document, defaults) };
   if (!live && baseRevision !== null) return { result: "conflict", live: null, differing: [] };
 
   const revision = (liveRevision ?? 0) + 1;
@@ -165,7 +174,7 @@ export async function publishSettings(
 ): Promise<PublishResult> {
   const { document } = await saveDraft(db, actor, defaults, input);
   const note = input.note?.trim() || null;
-  return db.transaction((tx) => publishDocument(tx, actor, subs, document, input.baseRevision, note));
+  return db.transaction((tx) => publishDocument(tx, actor, defaults, subs, document, input.baseRevision, note));
 }
 
 export async function discardDraft(db: DbOrTx, actor: Actor): Promise<void> {
@@ -190,8 +199,8 @@ export async function rebaseDraft(db: Db, actor: Actor, defaults: SiteSettings, 
       ? []
       : await tx.select({ document: siteSettingsRevisions.document }).from(siteSettingsRevisions).where(eq(siteSettingsRevisions.revision, draft.baseRevision));
     const baseDocument = base?.document ?? defaults;
-    const mine = new Set(differingSections(draft.document, baseDocument));
-    return differingSections(draft.document, document).filter((k) => k !== input.section && mine.has(k));
+    const mine = new Set(differing(draft.document, baseDocument, defaults));
+    return differing(draft.document, document, defaults).filter((k) => k !== input.section && mine.has(k));
   });
   return { ...(await getSettingsState(db, actor, defaults)), setAside };
 }
@@ -202,12 +211,17 @@ export async function listHistory(db: DbOrTx): Promise<LiveInfo[]> {
   return rows.map(toInfo);
 }
 
-/** One revision with the sections where it differs from live; null when there's no such revision. */
-export async function getRevision(db: DbOrTx, n: number): Promise<{ info: LiveInfo; document: SiteSettings; differing: SectionKey[] } | null> {
+/** One revision with the sections where it differs from live (compared filled from `defaults`
+ * when given); null when there's no such revision. */
+export async function getRevision(
+  db: DbOrTx,
+  n: number,
+  defaults?: SiteSettings,
+): Promise<{ info: LiveInfo; document: SiteSettings; differing: SectionKey[] } | null> {
   const [row] = await db.select({ ...infoColumns, document: siteSettingsRevisions.document }).from(siteSettingsRevisions).where(eq(siteSettingsRevisions.revision, n));
   if (!row) return null;
   const live = await readLive(db);
-  return { info: toInfo(row), document: row.document, differing: live ? differingSections(row.document, live.document) : [] };
+  return { info: toInfo(row), document: row.document, differing: !live ? [] : defaults ? differing(row.document, live.document, defaults) : differingSections(row.document, live.document) };
 }
 
 /**
@@ -218,13 +232,13 @@ export async function getRevision(db: DbOrTx, n: number): Promise<{ info: LiveIn
 export async function restoreRevision(
   db: Db,
   actor: Actor,
-  _defaults: SiteSettings,
+  defaults: SiteSettings,
   subs: SubscriberConfig[],
   input: { revision: number; baseRevision: number | null },
 ): Promise<PublishResult | { result: "not-found" }> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select({ document: siteSettingsRevisions.document }).from(siteSettingsRevisions).where(eq(siteSettingsRevisions.revision, input.revision));
     if (!row) return { result: "not-found" as const };
-    return publishDocument(tx, actor, subs, row.document, input.baseRevision, `Restored revision ${input.revision}`);
+    return publishDocument(tx, actor, defaults, subs, row.document, input.baseRevision, `Restored revision ${input.revision}`);
   });
 }

@@ -476,7 +476,8 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     "/site/settings/history/:revision",
     settingsRead,
     run(async (req: Request<Params>, res) => {
-      const found = await getRevision(db, Number(req.params.revision));
+      // Without tenant defaults (not configured) the raw documents are compared.
+      const found = await getRevision(db, Number(req.params.revision), siteSettingsDefaults ?? undefined);
       if (!found) return notFound(res);
       res.json(found);
     }),

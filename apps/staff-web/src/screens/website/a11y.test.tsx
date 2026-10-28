@@ -232,6 +232,19 @@ describe("accessibility — Website section screens", () => {
     expect(await seriousViolations(container)).toEqual([]);
   });
 
+  it("FooterScreen, with a populated land acknowledgement and its error", async () => {
+    const ack = "We acknowledge with respect the territories <b>here</b>.";
+    const state = settingsState((d) => ({ ...d, footer: { ...d.footer, landAcknowledgement: ack } }), [
+      { field: "footer.landAcknowledgement", message: "Use plain text." },
+    ]);
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<FooterScreen />));
+    await screen.findByRole("heading", { name: "Footer links", level: 1 });
+    await screen.findByDisplayValue(ack);
+    expect(await screen.findAllByText("Use plain text.")).not.toHaveLength(0);
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
   it("SocialScreen, with featured and account rows and a row error", async () => {
     const state = settingsState(
       (d) => ({ ...d, connect: { ...d.connect, facebook: { featured: [{ id: "fb", text: "BC Gov", url: "https://facebook.com/bcgov", summary: "<b>x</b>" }], accounts: [{ text: "Other", url: "https://facebook.com/o" }] } } }),

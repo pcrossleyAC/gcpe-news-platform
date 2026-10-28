@@ -73,7 +73,9 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
   if (f.copyrightHolder.trim() === "") errors.push({ field: "footer.copyrightHolder", message: "Enter who holds the copyright." });
   if (f.helpText.length > HELP_TEXT_MAX) errors.push({ field: "footer.helpText", message: `Keep the help text to ${HELP_TEXT_MAX} characters or fewer.` });
   if (hasMarkup(f.helpText)) errors.push({ field: "footer.helpText", message: "Use plain text." });
-  const ack = f.landAcknowledgement ?? "";
+  // Trimmed, as the public site shows it: whitespace-only is empty (no band, render.ts) and
+  // surrounding whitespace doesn't count toward the limit.
+  const ack = (f.landAcknowledgement ?? "").trim();
   if (ack.length > LAND_ACK_MAX) errors.push({ field: "footer.landAcknowledgement", message: `Keep the land acknowledgement to ${LAND_ACK_MAX} characters or fewer.` });
   if (hasMarkup(ack)) errors.push({ field: "footer.landAcknowledgement", message: "Use plain text." });
 
