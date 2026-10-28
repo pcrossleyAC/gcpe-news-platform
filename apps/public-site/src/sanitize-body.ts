@@ -50,9 +50,11 @@ export interface BodyHtmlOptions {
 function linkedFragments(html: string): Set<string> {
   const defined = new Set<string>();
   const linked = new Set<string>();
+  // Output discarded: only the transform's view of every opening tag (it runs before the
+  // allow-list check, so an empty list keeps nothing and warns about nothing).
   sanitizeHtml(html, {
-    allowedTags: false,
-    allowedAttributes: false,
+    allowedTags: [],
+    allowedAttributes: {},
     transformTags: {
       "*": (tagName, attribs) => {
         if (attribs.id) defined.add(attribs.id);
