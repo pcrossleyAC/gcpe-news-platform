@@ -72,6 +72,17 @@ main p a, main li a { text-decoration: underline; }
 /* Our generic img{max-width:100%} would shrink the logos inside their shrink-to-fit link. */
 #BCGov-logo, #sm-BCGov-logo { max-width: none; }
 .navbar-toggler .icon, #search-md-button .icon { width: 1.25em; height: 1.25em; }
+/* Below lg the Live button is legacy's 40px icon button (header.ts LIVE_GLYPH; the words are
+ * visually hidden), right after the brand, so the phone header keeps one row while a webcast is on. */
+.live-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin: 0 0 0 5px; padding: 0 !important; flex: none; }
+.live-icon-button .live-glyph { width: 16px; height: 16px; }
+/* At 320px (WCAG reflow width) logo, brand, Live, menu and search need 9px more than the row has;
+ * only while the Live button shows, so the off-air header is unchanged. */
+@media (max-width: 359px) {
+  #main-nav:has(.live-icon-button.live_button_show) .navbar-brand { padding-left: 0.5rem !important; }
+  #main-nav:has(.live-icon-button.live_button_show) .navbar { padding-right: 4px; }
+  .live-icon-button { margin-left: 3px; }
+}
 /* The menu heading is an h2 (legacy: a div) and its items lose legacy's .list-unstyled. */
 #menu .list-title { margin: 0; line-height: inherit; }
 #menu ul li { list-style: none; }
@@ -164,6 +175,10 @@ html:not(.js) #btnCloseBannerBridge{display:none}
 /* The column's headings are one level up (legacy h3 → h2, h4 → h3): legacy's metrics, restated. */
 .resource-links h2{font-size:18px;font-weight:600;color:var(--color-text);margin-top:20px !important;padding-bottom:5px;line-height:1.2}
 .resource-links.connect h2{margin-top:0 !important}
+/* The Resources box (pages/resources.ts): every row is a link alone, so no underline, as legacy;
+ * hover and keyboard focus add one, and theme.css keeps the focus ring. */
+.resource-links.resources-box ul li>a{text-decoration:none}
+.resource-links.resources-box ul li>a:hover,.resource-links.resources-box ul li>a:focus-visible{text-decoration:underline}
 /* Legacy's .collapsible-regions h3:hover pointer was for its phone accordion; ours aren't controls. */
 .home-features .collapsible-regions .resource-links h3:hover{cursor:auto}
 .resource-links h3{font-size:14px;font-weight:600;color:var(--color-text);margin-top:15px !important;margin-bottom:2px;padding-bottom:0;line-height:1.2}
@@ -352,15 +367,118 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 .wowza-wrapper #live-status{margin:.5rem 0 0;min-height:1.4em}
 .wowza-wrapper .live-stream-link,.wowza-wrapper .off-air-text{margin:.5rem 0 0;font-size:16px;line-height:1.4}
 
-/* The Connect page's sections (pages/connect.ts): legacy styled .expandable-section h3 as a blue bar;
- * ours is a native <details> whose <summary> holds an h2 with the same look. */
-.expandable-section>summary{list-style:none;cursor:pointer;margin-top:15px}
-.expandable-section>summary::-webkit-details-marker{display:none}
-.expandable-section>summary h2{display:flex;justify-content:space-between;align-items:center;background-color:var(--color-primary);color:var(--color-primary-text);font-size:24px;line-height:1.2;margin:0;padding:8px 10px;border-radius:6px}
-.expandable-section>summary:focus-visible{outline:3px solid var(--color-primary);outline-offset:2px}
-.expandable-section .connect-icon{background:var(--color-background);border-radius:4px;padding:2px;flex:none}
+/* The Connect page's sections (pages/connect.ts). Legacy's .expandable-section h3 is a bar in the
+ * section-bar colour (the Hub's Theme "Section bar colour", --color-section-bar; validated against
+ * white) with white text, as the banner's; ours is an h2 with the same look and the icon (a Font
+ * Awesome glyph, as news.gov uses) inline after the text.
+ * The selectors carry .home-body so they beat legacy's ".connect .home-body h2" (36px, underlined rule). */
+.connect .home-body .expandable-section>h2{display:block;box-sizing:border-box;width:100%;background-color:var(--color-section-bar);color:var(--bs-white);font-size:24px;font-weight:500;line-height:1.2;margin:15px 0 0;padding:8px 10px;border:0;border-radius:6px}
+.expandable-section .connect-icon{margin-left:4px;width:.9em;height:.9em;vertical-align:-1px}
+.expandable-section-content{padding:0 30px}
+.connect .expandable-section ul.external-links{margin-bottom:0;padding-top:12px}
+.connect .expandable-section ul.external-links li{margin:0}
+/* A link alone in its row (and the policy link) has no underline, as legacy; hover and keyboard
+ * focus add one (theme.css draws the focus ring). A link with its summary beside it keeps the
+ * underline (main li a), so it is told apart from that text by more than colour (WCAG 1.4.1, P4-R16). */
+#connect-content .expandable-section ul.external-links li>a:only-child,#connect-content .home-body>p>a{text-decoration:none}
+#connect-content .expandable-section ul.external-links li>a:only-child:hover,#connect-content .expandable-section ul.external-links li>a:only-child:focus-visible,#connect-content .home-body>p>a:hover,#connect-content .home-body>p>a:focus-visible{text-decoration:underline}
+.connect .home-body#main-content-release>p>a{font-size:16px}
+.connect .home-body#main-content-release h1.connect-title{font-size:36px;font-weight:600;line-height:1.2;border-bottom:1px solid var(--color-border);margin:15px 0 10px;padding-bottom:10px}
+/* A long list paints collapsed (pages/connect.ts marks it; html.js is set in the head, so before
+ * the first paint and with no layout shift): the entries after collapseAfter are hidden and the last
+ * one shown fades toward the page background (legacy's article-fade) by --fade-strength, which
+ * theme.css computes from the theme so its link and body text keep 4.6:1 or more (theme-css.ts
+ * fadeStrength; 34% for BC). Without script (no html.js) every entry shows and the Expand button is hidden. */
+/* Legacy site.css clips a .collapsed body to 100px with overflow:hidden, with or without script: that
+ * hid entries from no-script visitors (still focusable) and clipped a faded entry past the second. The
+ * entries above do the collapsing here, so the body always fits its visible entries. */
+.expandable-section.collapsed .expander-body{height:auto;overflow:visible}
+html.js .expandable-section.collapsed li.collapse-extra{display:none}
+html.js .expandable-section.collapsed li.collapse-last{position:relative}
+html.js .expandable-section.collapsed li.collapse-last::after{content:"";position:absolute;inset:0;pointer-events:none;background:color-mix(in srgb,var(--color-background) var(--fade-strength),transparent)}
+.expandable-section .expand-toggle{display:none;margin:20px 0 10px;padding:3px 10px;font-size:14px;font-weight:600;text-transform:uppercase;color:var(--color-primary);background:var(--color-background);border:1px solid var(--color-border);border-radius:4px;cursor:pointer}
+html.js .expandable-section .expand-toggle{display:inline-block}
+.expandable-section .expand-toggle:hover{background:var(--color-surface)}
+.expandable-section.collapsed .expand-toggle::before,.expandable-section.expanded .expand-toggle::before{content:"";display:inline-block;margin-right:6px;vertical-align:2px;border:4px solid transparent;border-top-color:currentColor;border-bottom-width:0}
+.expandable-section.expanded .expand-toggle::before{border-top-width:0;border-bottom:4px solid currentColor}
 .connect .connect-intro{font-size:16px}
 /* Connect With Us (pages/connect-strip.ts): one list of up to nine icons; legacy's inline-block items wrap, so give the rows room. */
 .resource-links.connect ul li{padding-bottom:8px}
 /* Legacy's #connect-content is a flex row of two columns; ours holds one .home-layout. */
 #connect-content>.home-layout{flex:1 1 auto;min-width:0}
+
+/* The search page (pages/search.ts): legacy Default/SearchView.cshtml, headings one level up. The
+ * title is the h1 (legacy: .search-body h3), each filter's heading an h2 (legacy: .search-filter h5,
+ * a white-on-link-colour bar); legacy's metrics, restated. The filters are always open (legacy
+ * showed them with an inline display:block). */
+.search-body h1{font-size:36px;font-weight:600;line-height:1.2;border-bottom:1px solid var(--color-border);margin-top:35px;padding-bottom:10px;margin-bottom:30px}
+.search-filters .search-filter h2{font-size:18px;font-weight:500;line-height:1.2;background-color:var(--color-primary);color:var(--color-primary-text);padding:10px;margin:0;background-image:url(../legacy/Content/Images/chevron-up-search.png);background-repeat:no-repeat;background-position:center right 12px}
+.search-filters .search-filter .search-filter-content{display:block}
+/* Legacy's facet rows were 13px high; WCAG 2.5.8 wants 24px targets (the count stays on the link's line). */
+.search-filters .search-filter .search-filter-content ul li{line-height:24px;padding:2px 5px}
+.search-filters .remove-filter{font-size:13px}
+.search-filters .date-range fieldset{border:0;padding:0;margin:0 0 10px}
+.search-filters .date-range legend{font-size:13px;font-weight:600;margin:0 0 4px}
+.search-filters .date-range label{display:block;font-size:13px;margin:4px 0 2px}
+.search-filters .date-range input{width:100%;min-height:32px;border:1px solid var(--color-border)}
+.search-filters .date-range button{margin-top:8px}
+.search-filters .reset-search{margin:0 0 10px}
+/* Legacy's search box was a text input with a clickable div; ours is a submit button, same icon. */
+.search-results .search-panel-bar .search-trigger{display:block;border:0;padding:0;background-color:transparent;min-width:25px}
+.search-results .search-numbers{font-size:15px;margin:15px 0}
+.search-results #search-alert:empty{display:none}
+.search-pagination ul li a,.search-pagination ul li b{min-width:24px;min-height:24px}
+/* The results (with the box) come before the filters in the DOM (P4-R15: reading and focus order
+ * match the layout at every width, no CSS order); at desktop they float right at legacy's 76%, so
+ * the filters (24%, floated left after them) show on the left, as legacy. */
+.search>.search-results{float:right;width:76%}
+.search>.search-filters{float:left;width:24%}
+/* Under 768px legacy transforms.css hides both panels until its header search button showed them;
+ * ours is a link to the box (R12), so both stay shown, stacked in DOM order: the results first, so a
+ * phone doesn't scroll past every ministry to reach them. */
+@media (max-width: 768px) {
+  .search>.search-results{float:none;width:100%}
+  .search>.search-filters{float:none;width:100%;padding-right:0}
+  .search .search-panel{display:block}
+  .search-panel label{display:block;padding-right:0}
+  .search-panel-bar input[type="text"]{width:calc(100% - 30px)}
+}
+
+/* Archive pages (pages/archive.ts): news.gov's listing look in one full-width column (no side column: they depend only on the post index). */
+.home-body.archive-page{float:none;padding-left:0;max-width:100%}
+.archive-page h1{font-size:36px;font-weight:600;color:var(--color-text);line-height:1.2;border-bottom:1px solid var(--color-border);margin:15px 0 10px;padding-bottom:10px}
+.archive-page .resource-links{float:none;width:100%;border-bottom:0;padding-bottom:10px}
+.archive-page .resource-links ul{list-style:none;padding:0;margin:0;font-weight:400;color:var(--color-text)}
+.archive-page .resource-links ul li{padding:4px 0;color:var(--color-text);font-size:16px}
+.archive-page .resource-links ul.term-list li{border-bottom:1px solid var(--color-border);padding:12px 0}
+.archive-page .resource-links ul.term-list li p{margin:6px 0 0;font-size:14px}
+.archive-page .resource-links ul li a{text-decoration:none;display:inline-block;min-height:24px}
+.archive-page .resource-links ul li a:hover,.archive-page .resource-links ul li a:focus-visible{text-decoration:underline}
+.archive-page .other-articles{float:none;width:100%}
+.archive-page .regular-articles .article:first-child{margin-top:0}
+
+/* The subscribe and manage pages (subscribe-pages.ts): legacy Subscribe.cshtml's look. The h1 takes
+ * the .connect-title metrics (legacy's h2); the News On Demand section is a <details> whose summary
+ * carries the Connect page's section-bar look. */
+.connect.subscribe .home-body#main-content-release>p.manage-link{background-color:var(--color-surface);color:var(--color-text);font-size:14px;padding:3px 0 0;margin:0 0 15px}
+.connect.subscribe .home-body#main-content-release>p.manage-link>a{font-size:14px;font-weight:700;display:inline;text-decoration:underline}
+.connect.subscribe details.expandable-section>summary{display:block;list-style:none;cursor:pointer;margin:15px 0 0}
+.connect.subscribe details.expandable-section>summary::-webkit-details-marker{display:none}
+.connect.subscribe details.expandable-section>summary>h2{box-sizing:border-box;width:100%;background-color:var(--color-section-bar);color:var(--bs-white);font-size:24px;font-weight:500;line-height:1.2;margin:0;padding:8px 10px;border:0;border-radius:6px}
+.connect.subscribe details.expandable-section>summary:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+.connect.subscribe .expandable-section-content{padding:0 10px}
+.connect.subscribe .expandable-section-content ul.external-links{list-style:none;margin:0;padding:0}
+.connect.subscribe fieldset{border:0;margin:0;padding:0;min-width:0}
+.connect.subscribe fieldset>legend{float:none;width:auto;font-size:16px;font-weight:700;margin:16px 0 8px;padding:0}
+.connect.subscribe label{font-weight:400}
+.connect.subscribe #newsOnDemandCustomOptions[hidden]{display:none}
+.connect.subscribe fieldset[data-category]{columns:2 260px;column-gap:40px}
+.connect.subscribe fieldset[data-category]>legend{column-span:all;font-size:16px}
+.connect.subscribe fieldset[data-category]>label{display:block;break-inside:avoid;padding:1px 0}
+.connect.subscribe #noticeOfCollection{font-size:14px;margin:20px 0 15px;padding:10px 12px;background:var(--color-surface);border-left:4px solid var(--color-section-bar)}
+.connect.subscribe #noticeOfCollection p{margin:0 0 8px}
+.connect.subscribe .email-row{margin:15px 0 10px}
+.connect.subscribe .email-row label{display:block;font-weight:700;margin-bottom:6px}
+.connect.subscribe .email-row input{width:100%;max-width:480px}
+.connect.subscribe #save.btn{background:var(--color-primary);color:var(--color-background);border:0;border-radius:4px;padding:8px 20px;font-weight:600;cursor:pointer}
+.connect.subscribe #save.btn:hover,.connect.subscribe #save.btn:focus-visible{filter:brightness(1.15)}
