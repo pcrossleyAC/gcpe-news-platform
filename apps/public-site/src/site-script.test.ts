@@ -1,5 +1,5 @@
 import { JSDOM } from "jsdom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MenuMinistry } from "./ministry-menu";
 import { renderPage, type PageOptions } from "./render";
 import { renderNotFoundPage } from "./static-pages";
@@ -7,7 +7,8 @@ import { SITE_BANNER_SCRIPT } from "./banner-script";
 import { pathWords, SITE_SCRIPT } from "./site-script";
 import { renderHomePage } from "./pages/home";
 import { renderReleasePage } from "./pages/release";
-import { post, slide } from "../test/fixtures";
+import { renderLivePage } from "./pages/live";
+import { bcSettings, post, slide } from "../test/fixtures";
 
 const MENU: MenuMinistry[] = [
   { key: "office-of-the-premier", name: "Office of the Premier" },
@@ -485,5 +486,216 @@ describe("site.js", () => {
     expect(doc.documentElement.lang).toBe("en");
     expect(frHeadline.hasAttribute("role") || frHeadline.hasAttribute("aria-level")).toBe(false);
     expect(doc.activeElement).toBe(toFrench);
+  });
+});
+
+describe("site.js live webcast button", () => {
+  /** A page with SITE_SCRIPT run, `fetch` answered by `answer` and setInterval captured (not run). */
+  function livePage(answer: () => Promise<Response>, body = "<h1>H</h1>") {
+    const dom = new JSDOM(renderPage("T", site, "/site/", body, { ministryMenu: MENU }), { url: "https://boxs.example/site/", runScripts: "outside-only" });
+    const fetchMock = vi.fn(answer);
+    const timers: { fn: () => void; ms: number }[] = [];
+    dom.window.fetch = fetchMock as unknown as typeof fetch;
+    dom.window.setInterval = ((fn: () => void, ms: number) => timers.push({ fn, ms })) as unknown as typeof setInterval;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    dom.window.eval(SITE_SCRIPT);
+    return { dom, doc: dom.window.document, fetchMock, timers, errors, button: dom.window.document.getElementById("live-button"), buttons: [...dom.window.document.querySelectorAll("a.live_button")] };
+  }
+  const json = (body: unknown, status = 200) => async () => new Response(JSON.stringify(body), { status });
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it("live.json {live:true} shows #live-button; {live:false}, a 404 and a network error leave it hidden; it polls every 60 s", async () => {
+    const on = livePage(json({ live: true }));
+    expect(on.fetchMock).toHaveBeenCalledWith("/site/assets/live.json", { cache: "no-store" });
+    await settle();
+    expect(on.button!.classList.contains("live_button_show")).toBe(true);
+    expect(on.button!.classList.contains("live_button_hide")).toBe(false);
+    expect(on.timers.map((t) => t.ms)).toEqual([60000]);
+    // The next poll hides it again when the stream has ended.
+    on.fetchMock.mockImplementation(json({ live: false }));
+    on.timers[0]!.fn();
+    await settle();
+    expect(on.fetchMock).toHaveBeenCalledTimes(2);
+    expect(on.button!.classList.contains("live_button_hide")).toBe(true);
+    expect(on.button!.classList.contains("live_button_show")).toBe(false);
+
+    for (const answer of [json({ live: false }), json({}, 404), json({ live: "true" }), async () => { throw new Error("offline"); }, async () => new Response("not json")]) {
+      const p = livePage(answer);
+      await settle();
+      expect(p.button!.classList.contains("live_button_hide")).toBe(true);
+      expect(p.button!.classList.contains("live_button_show")).toBe(false);
+      expect(p.errors).not.toHaveBeenCalled(); // errors are swallowed silently
+    }
+  });
+
+  it("toggles every .live_button (phone and desktop); a network error or bad answer hides both again", async () => {
+    const p = livePage(json({ live: true }));
+    await settle();
+    expect(p.buttons).toHaveLength(2);
+    expect(p.buttons.map((b) => b.classList.contains("live_button_show"))).toEqual([true, true]);
+    expect(p.buttons.map((b) => b.classList.contains("live_button_hide"))).toEqual([false, false]);
+    p.fetchMock.mockImplementation(async () => { throw new Error("offline"); });
+    p.timers[0]!.fn();
+    await settle();
+    expect(p.buttons.map((b) => b.classList.contains("live_button_hide"))).toEqual([true, true]);
+    expect(p.buttons.map((b) => b.classList.contains("live_button_show"))).toEqual([false, false]);
+    p.fetchMock.mockImplementation(json({ live: true }));
+    p.timers[0]!.fn();
+    await settle();
+    p.fetchMock.mockImplementation(json({}, 500));
+    p.timers[0]!.fn();
+    await settle();
+    expect(p.buttons.map((b) => b.classList.contains("live_button_hide"))).toEqual([true, true]);
+    expect(p.fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not poll on a page without #live-button", async () => {
+    const dom = new JSDOM("<!doctype html><body><h1>x</h1></body>", { url: "https://boxs.example/site/", runScripts: "outside-only" });
+    const fetchMock = vi.fn();
+    const setIntervalMock = vi.fn();
+    dom.window.fetch = fetchMock as unknown as typeof fetch;
+    dom.window.setInterval = setIntervalMock as unknown as typeof setInterval;
+    dom.window.eval(SITE_SCRIPT);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(setIntervalMock).not.toHaveBeenCalled();
+  });
+
+  it("the News button keeps the settings label", () => {
+    const dom = new JSDOM(renderPage("T", site, "/site/", "<h1>H</h1>", { ministryMenu: MENU, settings: { ...bcSettings(), navigation: { ...bcSettings().navigation, newsLabel: "Newsroom" } } }), { url: "https://boxs.example/site/", runScripts: "outside-only" });
+    dom.window.eval(SITE_SCRIPT);
+    expect(dom.window.document.getElementById("news-dropdown")!.textContent).toBe("Newsroom");
+  });
+});
+
+describe("site.js live webcast player (/live/)", () => {
+  const STREAM = "https://stream.example.gov.bc.ca/live/playlist.m3u8";
+  const ERROR_TEXT = "The webcast can't play here. Use the stream link below.";
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  /** The /live/ page with SITE_SCRIPT run; `native` is what video.canPlayType answers. fetch and
+   * every setter that would contact the stream host are recorded. */
+  function livePlayer(native: "" | "maybe" | "probably", opts: { play?: () => Promise<void> | void } = {}) {
+    const dom = new JSDOM(renderLivePage(STREAM, bcSettings().pageText.live, site, { settings: bcSettings() }), { url: "https://boxs.example/site/live/", runScripts: "outside-only" });
+    const win = dom.window as unknown as Window & typeof globalThis & { Hls?: unknown };
+    const doc = dom.window.document;
+    const video = doc.querySelector("video")!;
+    const fetchMock = vi.fn(async (_url: unknown) => new Response("{}"));
+    dom.window.fetch = fetchMock as unknown as typeof fetch;
+    dom.window.setInterval = (() => 0) as unknown as typeof setInterval;
+    const srcSets: string[] = [];
+    Object.defineProperty(video, "src", { configurable: true, get: () => srcSets.at(-1) ?? "", set: (v: string) => { srcSets.push(v); } });
+    video.canPlayType = ((t: string) => (t === "application/vnd.apple.mpegurl" ? native : "")) as typeof video.canPlayType;
+    const play = vi.fn(opts.play ?? (async () => {}));
+    video.play = play as unknown as typeof video.play;
+    dom.window.eval(SITE_SCRIPT);
+    const hlsScripts = () => [...doc.querySelectorAll("script")].filter((s) => /vendor\/hls\.light\.min\.js$/.test(s.getAttribute("src") ?? ""));
+    const hls = { loadSource: vi.fn(), attachMedia: vi.fn(), on: vi.fn(), instances: 0 };
+    const installHls = () => {
+      win.Hls = class { static Events = { ERROR: "hlsError" }; static isSupported = () => true; constructor() { hls.instances++; } loadSource = hls.loadSource; attachMedia = hls.attachMedia; on = hls.on; };
+    };
+    return { dom, doc, win, video, fetchMock, srcSets, play, hlsScripts, hls, installHls, button: doc.querySelector<HTMLButtonElement>("button.play-button")!, status: doc.getElementById("live-status")! };
+  }
+
+  it("no fetch or src for the stream host before the click", () => {
+    const p = livePlayer("maybe");
+    expect(p.fetchMock.mock.calls.filter(([u]) => String(u).includes("stream.example"))).toEqual([]);
+    expect(p.srcSets).toEqual([]);
+    expect(p.hlsScripts()).toHaveLength(0);
+    expect(p.video.hidden).toBe(true);
+    expect(p.doc.querySelector<HTMLElement>(".placeholder-container")!.hidden).toBe(false);
+    expect(p.play).not.toHaveBeenCalled();
+  });
+
+  it("play with native HLS: placeholder hidden, video shown, video.src is the stream, play() called, no script", async () => {
+    const p = livePlayer("maybe");
+    p.button.click();
+    await settle();
+    expect(p.doc.querySelector<HTMLElement>(".placeholder-container")!.hidden).toBe(true);
+    expect(p.video.hidden).toBe(false);
+    expect(p.srcSets).toEqual([STREAM]);
+    expect(p.play).toHaveBeenCalledTimes(1);
+    expect(p.hlsScripts()).toHaveLength(0);
+    expect(p.status.textContent).toBe("");
+  });
+
+  it("play without native HLS: appends one script for assets/vendor/hls.light.min.js (even on a second press), then new Hls().loadSource(stream), attachMedia(video), play()", async () => {
+    const p = livePlayer("");
+    p.button.click();
+    p.button.click();
+    const scripts = p.hlsScripts();
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]!.getAttribute("src")).toBe("/site/assets/vendor/hls.light.min.js");
+    expect(p.srcSets).toEqual([]);
+    p.installHls();
+    scripts[0]!.dispatchEvent(new p.dom.window.Event("load"));
+    await settle();
+    expect(p.hls.instances).toBe(1);
+    expect(p.hls.loadSource).toHaveBeenCalledWith(STREAM);
+    expect(p.hls.attachMedia).toHaveBeenCalledWith(p.video);
+    expect(p.play).toHaveBeenCalledTimes(1);
+    expect(p.status.textContent).toBe("");
+  });
+
+  it("error: a script that fails to load, an unsupported Hls, a fatal hls error and a rejected play() all set #live-status to the fallback text", async () => {
+    const failed = livePlayer("");
+    failed.button.click();
+    failed.hlsScripts()[0]!.dispatchEvent(new failed.dom.window.Event("error"));
+    expect(failed.status.textContent).toBe(ERROR_TEXT);
+
+    const unsupported = livePlayer("");
+    unsupported.button.click();
+    (unsupported.win as unknown as { Hls: unknown }).Hls = class { static isSupported = () => false; };
+    unsupported.hlsScripts()[0]!.dispatchEvent(new unsupported.dom.window.Event("load"));
+    expect(unsupported.status.textContent).toBe(ERROR_TEXT);
+
+    const fatal = livePlayer("");
+    fatal.button.click();
+    fatal.installHls();
+    fatal.hlsScripts()[0]!.dispatchEvent(new fatal.dom.window.Event("load"));
+    const onError = fatal.hls.on.mock.calls.find(([ev]) => ev === "hlsError")![1] as (e: string, d: { fatal: boolean }) => void;
+    onError("hlsError", { fatal: false });
+    expect(fatal.status.textContent).toBe("");
+    onError("hlsError", { fatal: true });
+    expect(fatal.status.textContent).toBe(ERROR_TEXT);
+
+    const rejected = livePlayer("maybe", { play: async () => { throw new DOMException("no", "NotSupportedError"); } });
+    rejected.button.click();
+    await settle();
+    expect(rejected.status.textContent).toBe(ERROR_TEXT);
+
+    const media = livePlayer("maybe");
+    media.button.click();
+    media.video.dispatchEvent(new media.dom.window.Event("error"));
+    expect(media.status.textContent).toBe(ERROR_TEXT);
+  });
+
+  it("blocked autoplay or an aborted load (NotAllowedError, AbortError) leaves the controls and no error text", async () => {
+    for (const name of ["NotAllowedError", "AbortError"]) {
+      const p = livePlayer("maybe", { play: async () => { throw new DOMException("x", name); } });
+      p.button.click();
+      await settle();
+      expect(p.status.textContent, name).toBe("");
+      expect(p.video.hidden).toBe(false);
+    }
+  });
+
+  it("after Play, keyboard focus moves to the video, not <body>", () => {
+    const p = livePlayer("maybe");
+    p.button.focus();
+    p.button.click();
+    expect(p.doc.activeElement).toBe(p.video);
+  });
+
+  it("without site.js's script tag the hls URL keeps the page's base path", () => {
+    const p = livePlayer("");
+    p.doc.querySelector('script[src$="/assets/site/site.js"]')!.remove();
+    p.button.click();
+    expect(p.hlsScripts()[0]!.getAttribute("src")).toBe("/site/assets/vendor/hls.light.min.js");
+  });
+
+  it("a page with no .play-button (off air, any other page) is untouched", () => {
+    const dom = new JSDOM(renderLivePage(null, bcSettings().pageText.live, site, {}), { url: "https://boxs.example/site/live/", runScripts: "outside-only" });
+    expect(() => dom.window.eval(SITE_SCRIPT)).not.toThrow();
   });
 });

@@ -21,6 +21,10 @@ export interface SiteRenderState {
    * the footer (and its copyright year), so `footerHash` is chrome like Blue Bridge; the others
    * reach only some pages — see `chromeChanges`. */
   footerHash: string;
+  /** The header (News and Live labels, header links, search switch) and the footer column headings: every page. */
+  headerHash: string;
+  /** The page labels and listing titles (navigation.labels, listingTitles): the aggregate pages. */
+  labelsHash: string;
   themeHash: string;
   bannerHash: string;
   connectHash: string;
@@ -29,6 +33,8 @@ export interface SiteRenderState {
   contactsPageHash: string;
   /** pageText.privacy (/privacy/), pageText.notFound (404.html) and pageText.assetLicence (every release's licence line). */
   privacyHash: string;
+  /** pageText.live (/live/ only; the stream URL itself comes from the home settings). */
+  liveTextHash: string;
   notFoundHash: string;
   assetLicenceHash: string;
   /** The Instagram account release pages' Share list links to (settings.ts releaseInstagram). */
@@ -39,7 +45,7 @@ export interface SiteRenderState {
 }
 
 /** The pages a settings section reaches, other than through every page's footer. */
-export type SectionPages = "static" | "home" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "releaseLicence";
+export type SectionPages = "labels" | "static" | "home" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "live" | "releaseLicence";
 
 /** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
@@ -57,10 +63,12 @@ export const SITE_STATE_PATH = ".site-state.json";
  * ministry page (parity plan 2). 11: the home <head>'s optional Search Console verification meta (parity plan 3).
  * 12: the Media Contacts directory /contacts/ and /privacy/ (new page ids), the home Resources links' base
  * path and the BC Sans Italic preload on pages that use italics (parity plan 4, batch B). 13: atom.xml beside every
- * feed.xml, the per-kind feeds/ and long post keys in releases/_long/ (parity plan 3, batches B+C). Bump for body render changes
+ * feed.xml, the per-kind feeds/ and long post keys in releases/_long/ (parity plan 3, batches B+C). 14: header,
+ * footer headings and page labels from Navigation settings, the Live Webcast buttons and /live/ (parity plan 4,
+ * batch C). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 13;
+export const RENDER_CHROME_VERSION = 14;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
@@ -78,7 +86,7 @@ interface SiteStateMarker extends SiteRenderState {
 export const verificationKey = (site: Pick<SiteInfo, "verification">): string =>
   site.verification?.googleFile || site.verification?.googleMeta ? `${site.verification.googleFile ?? ""}|${site.verification.googleMeta ?? ""}` : "";
 
-const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "notFoundHash", "assetLicenceHash"] as const;
+const HASHES = ["footerHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "liveTextHash", "notFoundHash", "assetLicenceHash"] as const;
 
 /** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
  * `chromeChanges` then treats it as matching. */
@@ -118,11 +126,11 @@ export async function recordedNonEmptyMenu(storage: SiteStorage): Promise<boolea
 
 /**
  * What differs from the marker the last build left. `all`: the chrome every page bakes in (Blue
- * Bridge, the test flag, the chrome version, the base URL, the footer, the ministries menu) — every page. Otherwise
+ * Bridge, the test flag, the chrome version, the base URL, the footer, the header, the ministries menu) — every page. Otherwise
  * `sections`: a theme or banner change reaches only the `static` page (theme.css,
  * site-banner.json), a connect change the Connect page and home, a change to the release Share
  * list's Instagram account every release page, a ministryPages change the ministry pages and every
- * release page (its labels), a contactsPage change the /contacts/ page, a privacy edit /privacy/, a notFound edit 404.html (the "static" page) and an assetLicence edit every release page — spec "Delivery": the cheapest correct effect per section; see
+ * release page (its labels), a contactsPage change the /contacts/ page, a labels edit every aggregate page (no post), a privacy edit /privacy/, a notFound edit 404.html (the "static" page) and an assetLicence edit every release page — spec "Delivery": the cheapest correct effect per section; see
  * enqueueChromeChanges.
  */
 export async function chromeChanges(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<{ all: boolean; sections: SectionPages[]; adoptMenuHash?: boolean }> {
@@ -134,6 +142,7 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
     previous.chrome === RENDER_CHROME_VERSION &&
     previous.baseUrl === site.baseUrl &&
     previous.footerHash === state.footerHash &&
+    previous.headerHash === state.headerHash &&
     (previous.ministryMenuHash === null || previous.ministryMenuHash === state.ministryMenuHash)
   );
   if (all || !previous) return { all: true, sections: [] };
@@ -143,11 +152,13 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
   const verificationChanged = previous.verification !== verificationKey(site);
   if (staticChanged || verificationChanged) sections.push("static");
   if (verificationChanged) sections.push("home");
+  if (previous.labelsHash !== state.labelsHash) sections.push("labels");
   if (previous.connectHash !== state.connectHash) sections.push("connect");
   if (previous.ministryPagesHash !== state.ministryPagesHash) sections.push("ministryPages");
   if (previous.releaseShareHash !== state.releaseShareHash) sections.push("releaseShare");
   if (previous.contactsPageHash !== state.contactsPageHash) sections.push("contacts");
   if (previous.privacyHash !== state.privacyHash) sections.push("privacy");
+  if (previous.liveTextHash !== state.liveTextHash) sections.push("live");
   if (previous.assetLicenceHash !== state.assetLicenceHash) sections.push("releaseLicence");
   // A marker from before the menu hash: nothing to rebuild for it, but the hash must be recorded
   // or a later menu change would still read as matching.

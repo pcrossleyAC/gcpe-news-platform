@@ -2,6 +2,7 @@
 // apps/public-site/src/site-assets.ts (builtinAssetSources) looks for:
 //   <outDir>/public-site-assets/{legacy,site}/…   apps/public-site/assets
 //   <outDir>/public-site-assets/legacy/fonts/     BC Sans (woff2) and LICENSE_OFL.txt
+//   <outDir>/public-site-assets/vendor/            hls.js's light build (the /live/ page)
 import { copyFileSync, cpSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -17,4 +18,7 @@ export function copyPublicSiteAssets(outDir) {
   mkdirSync(fonts, { recursive: true });
   for (const f of BC_SANS_FILES) copyFileSync(join(pkg, "fonts", f), join(fonts, f));
   copyFileSync(join(pkg, "LICENSE_OFL.txt"), join(fonts, "LICENSE_OFL.txt"));
+  const hls = dirname(createRequire(join(root, "apps/public-site/package.json")).resolve("hls.js/package.json"));
+  mkdirSync(join(dest, "vendor"), { recursive: true });
+  copyFileSync(join(hls, "dist", "hls.light.min.js"), join(dest, "vendor", "hls.light.min.js"));
 }

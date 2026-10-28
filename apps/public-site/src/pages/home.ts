@@ -1,4 +1,4 @@
-import type { ConnectSettings, NetworkKey } from "@gcpe/site-settings";
+import { DEFAULT_NAVIGATION, type ConnectSettings, type NavigationSettings, type NetworkKey } from "@gcpe/site-settings";
 import type { PostDto, ResourceLinkDto, SlideDto } from "../dto";
 import { icon } from "../icons";
 import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
@@ -50,7 +50,7 @@ const purpose = (s: SlideDto, fallback: string) => `<span class="visually-hidden
  * JavaScript every slide shows, stacked, and the buttons are hidden (overrides.css). The image is
  * decorative (alt=""): the headline says the same thing.
  */
-export function renderCarousel(slides: SlideDto[], base: string): string {
+export function renderCarousel(slides: SlideDto[], base: string, labels: Pick<NavigationSettings["labels"], "highlights" | "slideActionLabel"> = DEFAULT_NAVIGATION.labels): string {
   const shown = slides.filter((s) => !s.emergency).sort((a, b) => a.sortIndex - b.sortIndex);
   if (shown.length === 0) return "";
   const n = shown.length;
@@ -61,7 +61,7 @@ export function renderCarousel(slides: SlideDto[], base: string): string {
     const href = safeHref(s.actionUri);
     const headline = s.headline ? `<h2>${href ? `<a href="${e(href)}">${e(s.headline)}</a>` : e(s.headline)}</h2>` : "";
     const summary = s.summary ? `<p class="summary">${e(s.summary)}</p>` : "";
-    const action = href ? `<div><a href="${e(href)}" class="read-more">${icon("caret-right", e(base))} ${e(s.actionLabel || "Learn more")}${purpose(s, `slide ${i + 1} of ${n}`)}</a></div>` : "";
+    const action = href ? `<div><a href="${e(href)}" class="read-more">${icon("caret-right", e(base))} ${e(s.actionLabel || labels.slideActionLabel)}${purpose(s, `slide ${i + 1} of ${n}`)}</a></div>` : "";
     return `<div class="home-banner${i === 0 ? " current" : ""}" role="group" aria-roledescription="slide" aria-label="Slide ${i + 1} of ${n}">${img}
 <div class="home-banner-content"><div class="stories">
 <div class="story ${s.justify === "right" ? "right" : "left"}">${headline}${summary}${action}</div>
@@ -76,15 +76,15 @@ export function renderCarousel(slides: SlideDto[], base: string): string {
 <button type="button" class="story-nav story-next" aria-label="Next highlight"></button>
 </div></div></div>`
       : "";
-  return `<section id="carousel-holder" aria-label="Highlights" aria-roledescription="carousel">\n<div class="carousel-slides">\n${banners.join("\n")}\n</div>${nav}\n</section>`;
+  return `<section id="carousel-holder" aria-label="${e(labels.highlights)}" aria-roledescription="carousel">\n<div class="carousel-slides">\n${banners.join("\n")}\n</div>${nav}\n</section>`;
 }
 
 /** C208: a pinned emergency slide, as a home-body article card (under its region's h2). */
-function emergencyCard(s: SlideDto, base: string, i: number, n: number): string {
+function emergencyCard(s: SlideDto, base: string, i: number, n: number, fallbackLabel: string): string {
   const href = safeHref(s.actionUri);
   const headline = s.headline ? `<h3>${e(s.headline)}</h3>` : "";
   const summary = s.summary ? `<p>${e(s.summary)}</p>` : "";
-  const action = href ? `\n<a href="${e(href)}" class="read-more">${icon("caret-right", e(base))} ${e(s.actionLabel || "Learn more")}${purpose(s, `emergency notice ${i + 1} of ${n}`)}</a>` : "";
+  const action = href ? `\n<a href="${e(href)}" class="read-more">${icon("caret-right", e(base))} ${e(s.actionLabel || fallbackLabel)}${purpose(s, `emergency notice ${i + 1} of ${n}`)}</a>` : "";
   return `<div class="article">${headline}
 <div class="item-content"><div class="item-text">${summary}${action}
 </div></div>
@@ -92,7 +92,7 @@ function emergencyCard(s: SlideDto, base: string, i: number, n: number): string 
 </div>`;
 }
 
-function connectBox(connect: ConnectSettings, base: string): string {
+function connectBox(connect: ConnectSettings, base: string, labels: NavigationSettings["labels"]): string {
   const lists = CONNECT_ROWS.map((row) => row.filter((n) => connect[n.key].accounts.length > 0))
     .filter((row) => row.length > 0)
     .map(
@@ -102,8 +102,8 @@ function connectBox(connect: ConnectSettings, base: string): string {
           .join("\n")}\n</ul>`,
     );
   return `<div class="resource-links connect">
-<h2>Connect With Us</h2>
-${lists.join("\n")}${lists.length ? "\n" : ""}<a href="${e(base)}/connect/" class="read-more">View all Social Media</a>
+<h2>${e(labels.connectWithUs)}</h2>
+${lists.join("\n")}${lists.length ? "\n" : ""}<a href="${e(base)}/connect/" class="read-more">${e(labels.viewAllSocialMedia)}</a>
 </div>`;
 }
 
@@ -114,15 +114,15 @@ export function resourceHref(uri: string, site: Pick<SiteInfo, "baseUrl">): stri
   return typeof uri === "string" && uri.startsWith("/") ? settingsHref(uri, site) : safeHref(uri);
 }
 
-function resourceBoxes(view: HomeView, site: SiteInfo): string {
+function resourceBoxes(view: HomeView, site: SiteInfo, labels: NavigationSettings["labels"]): string {
   const item = (l: ResourceLinkDto) => {
     const href = resourceHref(l.uri, site);
     return href ? `<li><a href="${e(href)}">${e(l.key)}</a></li>` : `<li>${e(l.key)}</li>`;
   };
-  const resources = view.links.length ? `<div class="resource-links">\n<h2>Resources</h2>\n<ul>\n${view.links.map(item).join("\n")}\n</ul>\n</div>` : "";
+  const resources = view.links.length ? `<div class="resource-links">\n<h2>${e(labels.resources)}</h2>\n<ul>\n${view.links.map(item).join("\n")}\n</ul>\n</div>` : "";
   const sectors = view.sectors.filter((s): s is typeof s & { latest: PostDto } => !!s.latest);
   const bySector = sectors.length
-    ? `<div class="resource-links">\n<h2>News by Sector</h2>\n<div>\n${sectors
+    ? `<div class="resource-links">\n<h2>${e(labels.newsBySector)}</h2>\n<div>\n${sectors
         .map((s) => `<h3>${e(s.name)}</h3>\n<p><a href="${e(pageUrl(site, { type: "post", key: s.latest.key }))}">${e(headlineOf(s.latest))}</a></p>`)
         .join("\n")}\n</div>\n</div>`
     : "";
@@ -140,14 +140,15 @@ function resourceBoxes(view: HomeView, site: SiteInfo): string {
 export function renderHomePage(view: HomeView, site: SiteInfo, opts: PageOptions = {}): string {
   const base = basePath(site);
   const settings = opts.settings ?? themeDefaults(site.theme);
+  const labels = settings.navigation.labels;
   const emergencySlides = view.slides.filter((s) => s.emergency).sort((a, b) => a.sortIndex - b.sortIndex);
   const emergency = emergencySlides.length
-    ? `<section aria-labelledby="emergency-heading">\n<h2 id="emergency-heading">Emergency information</h2>\n${emergencySlides.map((s, i) => emergencyCard(s, base, i, emergencySlides.length)).join("\n")}\n</section>\n`
+    ? `<section aria-labelledby="emergency-heading">\n<h2 id="emergency-heading">${e(labels.emergencyInformation)}</h2>\n${emergencySlides.map((s, i) => emergencyCard(s, base, i, emergencySlides.length, labels.slideActionLabel)).join("\n")}\n</section>\n`
     : "";
   const top = view.top ? `<div class="top-article">\n${postCard(site, view.top, { eager: true })}\n</div>\n` : "";
   const feature = view.feature ? `<div class="feature-article">\n${postCard(site, view.feature)}\n</div>\n` : "";
-  const { cards, loadMore } = latestCards(site, view.latest);
-  const body = `<h1 class="visually-hidden">Latest news</h1>
+  const { cards, loadMore } = latestCards(site, view.latest, { loadMoreLabel: labels.loadMoreNews });
+  const body = `<h1 class="visually-hidden">${e(labels.latestNews)}</h1>
 <div class="home-layout">
 <div class="home-body" id="main-content-release">
 ${emergency}${top}<div class="other-articles">
@@ -155,20 +156,20 @@ ${feature}<div id="regular-articles" class="regular-articles">
 ${cards}
 </div>
 <div class="news-control">
-${loadMore}<a href="${e(base)}/search/" class="read-more">Search News</a>
+${loadMore}<a href="${e(base)}/search/" class="read-more">${e(labels.searchNews)}</a>
 <div class="clear"></div>
 </div>
 </div>
 </div>
 <section class="home-features" aria-label="Connect and resources">
-${connectBox(settings.connect, base)}
-${resourceBoxes(view, site)}
+${connectBox(settings.connect, base, labels)}
+${resourceBoxes(view, site, labels)}
 </section>
 </div>`;
   return renderPage("Home", site, `${base}/`, body, {
     ...opts,
     googleVerificationMeta: site.verification?.googleMeta ?? null,
-    lead: renderCarousel(view.slides, base) || undefined,
+    lead: renderCarousel(view.slides, base, labels) || undefined,
     feed: { href: feedUrl(site, { type: "home" }), title: `${site.name}: latest news` },
   });
 }

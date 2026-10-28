@@ -112,7 +112,7 @@ describe("CarouselScreen", () => {
     const saveCall = calls.find((c) => c.url === "/nrms/api/site/carousels/next-1" && c.init?.method === "PUT")!;
     expect(JSON.parse(saveCall.init!.body as string)).toEqual({
       version: 1,
-      slides: [{ headline: "Big news", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" }],
+      slides: [{ headline: "Big news", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left" }],
     });
 
     // I1: the saved slide now has a server-assigned id — the image upload control (only
@@ -153,7 +153,7 @@ describe("CarouselScreen", () => {
   // Fix round 1, item 4: a wrong-type or too-large slide image upload must show something a
   // human can act on, not a blank/undefined error.
   it("a wrong-type slide image upload shows the server's 422 message", async () => {
-    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
+    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
@@ -175,12 +175,43 @@ describe("CarouselScreen", () => {
     expect(await screen.findByText("Upload a JPEG or PNG image.")).toBeInTheDocument();
   });
 
+  it("edits a slide's Action label (with its hint), sends actionLabel, and shows a 422 message", async () => {
+    const next: CarouselView = {
+      ...NEXT_CAROUSEL,
+      slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", actionLabel: "Old label", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }],
+    };
+    const puts: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
+        if (url === "/nrms/api/site/carousels") return jsonResponse(200, { live: null, next, past: [] });
+        if (url === "/nrms/api/site/carousels/next-1" && init?.method === "PUT") {
+          puts.push(JSON.parse(init.body as string));
+          return jsonResponse(422, { errors: ["Keep the action label to 40 characters or fewer, in plain text."] });
+        }
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<CarouselScreen />));
+    const field = await screen.findByLabelText("Slide 1 action label");
+    expect(field).toHaveValue("Old label");
+    expect(screen.getByText("The link text. Leave empty for the default set in Navigation and labels.")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.clear(field);
+    await user.type(field, "Read the update");
+    await user.click(screen.getByRole("button", { name: "Save carousel" }));
+    expect(await screen.findByText("Keep the action label to 40 characters or fewer, in plain text.")).toBeInTheDocument();
+    expect((puts[0]!.slides as { actionLabel: string }[])[0]!.actionLabel).toBe("Read the update");
+  });
+
   // I1: a 409 on save must not leave the form showing the editor's stale local text once the
   // user reloads — reload must re-seed the form from the server's current values.
   it("409 on save -> Reload shows the server's current values, not the local edit", async () => {
     let next: CarouselView = {
       ...NEXT_CAROUSEL,
-      slides: [{ id: "slide-1", headline: "Old headline", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }],
+      slides: [{ id: "slide-1", headline: "Old headline", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }],
     };
     vi.stubGlobal(
       "fetch",
@@ -217,7 +248,7 @@ describe("CarouselScreen", () => {
   // I3: dragging the whole slide made it impossible to mouse-select text in its inputs. Only
   // the dedicated grip handle is draggable; the slide row and its fields are not.
   it("only the drag handle is draggable, not the slide row or its inputs", async () => {
-    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
+    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
     stubBasicFetch(["NRMS.SiteEditor"], withSlide);
     render(withAuth(<CarouselScreen />));
     const handle = await screen.findByRole("img", { name: "Drag to reorder slide 1" });
@@ -238,8 +269,8 @@ describe("CarouselScreen", () => {
       next: {
         ...NEXT_CAROUSEL,
         slides: [
-          { id: "slide-1", headline: "One", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null },
-          { id: "slide-2", headline: "Two", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null },
+          { id: "slide-1", headline: "One", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null },
+          { id: "slide-2", headline: "Two", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null },
         ],
       },
     };
@@ -257,7 +288,7 @@ describe("CarouselScreen", () => {
   });
 
   it("a too-large slide image upload (413) shows a clear message", async () => {
-    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
+    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {

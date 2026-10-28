@@ -19,6 +19,7 @@ describe("parsePageId", () => {
     ["static", { type: "static" }],
     ["connect", { type: "connect" }],
     ["privacy", { type: "privacy" }],
+    ["live", { type: "live" }],
     ["archive-terms", { type: "archive-terms" }],
     ["archive-term:2024-11-18", { type: "archive-term", slug: "2024-11-18" }],
     ["archive-term:2017-2017", { type: "archive-term", slug: "2017-2017" }],
@@ -50,7 +51,7 @@ describe("categoryPageId", () => {
 
 describe("pageFiles", () => {
   it.each([
-    ["home", ["index.html", "feed.xml", "atom.xml"]],
+    ["home", ["index.html", "feed.xml", "atom.xml", "assets/live.json"]],
     ["post:K1", ["releases/K1/index.html"]],
     ["ministries", ["ministries/index.html"]],
     ["category:sectors:economy", ["sectors/economy/index.html", "sectors/economy/feed.xml", "sectors/economy/atom.xml"]],
@@ -64,6 +65,7 @@ describe("pageFiles", () => {
     ["static", ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"]],
     ["connect", ["connect/index.html"]],
     ["privacy", ["privacy/index.html"]],
+    ["live", ["live/index.html", "assets/live.json"]],
     ["archive-terms", ["archive/terms/index.html"]],
     ["archive-term:2017-2017", ["archive/terms/2017-2017/index.html"]],
     ["archive-term:current", ["archive/terms/current/index.html"]],
@@ -112,6 +114,7 @@ describe("urls", () => {
     expect(pageUrl(site, { type: "archive-month", month: "2026-10" })).toBe("/site/archive/2026/10/");
     expect(pageUrl(site, { type: "search" })).toBe("/site/search/");
     expect(pageUrl(site, { type: "connect" })).toBe("/site/connect/");
+    expect(pageUrl(site, { type: "live" })).toBe("/site/live/");
     expect(pageUrl(site, { type: "archive-terms" })).toBe("/site/archive/terms/");
     expect(pageUrl(site, { type: "archive-term", slug: "2028-11-20" })).toBe("/site/archive/terms/2028-11-20/");
     expect(pageUrl(site, { type: "legacy-redirects" })).toBe("/site/legacy/ministry-successors.json");

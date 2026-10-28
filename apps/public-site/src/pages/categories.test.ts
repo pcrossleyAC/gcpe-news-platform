@@ -254,6 +254,15 @@ describe("renderMinistryPage", () => {
     expect(html).not.toContain('src="javascript:');
   });
 
+  it("Load More News and Search News come from navigation.labels", () => {
+    const settings = bcSettings();
+    settings.navigation.labels = { ...settings.navigation.labels, loadMoreNews: "MORE <b>", searchNews: "SRCH" };
+    const html = renderMinistryPage(ministry({ key: "health", name: "Health" }), null, { top: null, feature: null, latest: Array.from({ length: 5 }, (_, i) => post({ key: `L${i}` })) }, site, { settings }, noCtx);
+    expect(html).toContain(">MORE &lt;b&gt;</button>");
+    expect(html).toContain(">SRCH</a>");
+    expect(html).not.toMatch(/Load More News|Search News/);
+  });
+
   it("Search News links /search/?ministry=<key> with the base path", () => {
     const doc = expectAccessibleStructure(renderMinistryPage(ministry({ key: "Health" }), null, emptyPosts, { ...site, baseUrl: "https://boxs.example/site" }, {}, noCtx));
     const search = doc.querySelector(".news-control a.read-more");

@@ -20,6 +20,7 @@ import { LogScreen } from "./screens/website/LogScreen";
 import { BannerScreen } from "./screens/website/settings/BannerScreen";
 import { MediaContactsScreen } from "./screens/website/settings/MediaContactsScreen";
 import { PageTextScreen } from "./screens/website/settings/PageTextScreen";
+import { NavigationScreen } from "./screens/website/settings/NavigationScreen";
 import { FooterScreen } from "./screens/website/settings/FooterScreen";
 import { SocialScreen } from "./screens/website/settings/SocialScreen";
 import { ThemeScreen } from "./screens/website/settings/ThemeScreen";
@@ -115,6 +116,7 @@ export const routes: RouteObject[] = [
           { path: "ministry-pages", element: <MinistryPagesScreen /> },
           { path: "media-contacts", element: <MediaContactsScreen /> },
           { path: "page-text", element: <PageTextScreen /> },
+          { path: "navigation", element: <NavigationScreen /> },
           { path: "settings-history", element: <SettingsHistoryScreen /> },
         ],
       },

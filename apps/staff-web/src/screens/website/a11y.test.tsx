@@ -27,6 +27,7 @@ import { ThemeScreen } from "./settings/ThemeScreen";
 import { MinistryPagesScreen } from "./settings/MinistryPagesScreen";
 import { MediaContactsScreen } from "./settings/MediaContactsScreen";
 import { PageTextScreen } from "./settings/PageTextScreen";
+import { NavigationScreen } from "./settings/NavigationScreen";
 import { HistoryScreen } from "./settings/HistoryScreen";
 import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
@@ -67,17 +68,17 @@ function stub(roles: string[], routes: Record<string, unknown>) {
 }
 
 const CAROUSELS: CarouselsResponse = {
-  live: { id: "c1", state: "live", goLiveAt: null, wentLiveAt: "2026-01-01T00:00:00.000Z", version: 1, slides: [{ id: "s1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
+  live: { id: "c1", state: "live", goLiveAt: null, wentLiveAt: "2026-01-01T00:00:00.000Z", version: 1, slides: [{ id: "s1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
   next: null,
   past: [],
 };
 const CAROUSELS_WITH_NEXT: CarouselsResponse = {
   ...CAROUSELS,
-  next: { id: "n1", state: "next", goLiveAt: "2027-01-01T12:00:00.000Z", wentLiveAt: null, version: 1, slides: [{ id: "ns1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
+  next: { id: "n1", state: "next", goLiveAt: "2027-01-01T12:00:00.000Z", wentLiveAt: null, version: 1, slides: [{ id: "ns1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
 };
 const PINS: PinView[] = [
-  { slot: "primary", pinned: false, version: 1, slide: { id: "p1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } },
-  { slot: "secondary", pinned: true, version: 1, slide: { id: "p2", headline: "H2", summary: "S2", actionUrl: "", facebookPostUrl: "", justify: "right", hasImage: false, imageUrl: null } },
+  { slot: "primary", pinned: false, version: 1, slide: { id: "p1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } },
+  { slot: "secondary", pinned: true, version: 1, slide: { id: "p2", headline: "H2", summary: "S2", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "right", hasImage: false, imageUrl: null } },
 ];
 const LIVE_FEED: LiveFeedView = { enabled: false, manifestUrl: "", m3uUrl: "", version: 1 };
 const LINKS: LinksView = { version: 1, links: [{ id: "l1", text: "First", url: "https://a.invalid" }] };
@@ -293,6 +294,25 @@ describe("accessibility — Website section screens", () => {
     const { container } = render(withAuth(<PageTextScreen />));
     await screen.findByRole("heading", { name: "Page text", level: 1 });
     await screen.findByDisplayValue("2015");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("NavigationScreen, with header links at the limit, a row error and field errors", async () => {
+    const state = settingsState(
+      (d) => ({
+        ...d,
+        navigation: { ...d.navigation, headerLinks: [1, 2, 3, 4].map((n) => ({ text: `Link ${n}`, url: `/l${n}/` })) },
+      }),
+      [
+        { field: "navigation.labels.loadMoreNews", message: "Enter some text." },
+        { field: "navigation.headerLinks[0].url", message: "Must start with https:// or / (a page on this site)." },
+        { field: "navigation.headerLinks", message: "Keep the list to 4 or fewer." },
+      ],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<NavigationScreen />));
+    await screen.findByRole("heading", { name: "Navigation and labels", level: 1 });
+    await screen.findByDisplayValue("Link 4");
     expect(await seriousViolations(container)).toEqual([]);
   });
 

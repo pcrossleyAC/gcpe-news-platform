@@ -243,8 +243,8 @@ function renderFooter(settings: SiteSettings, site: SiteInfo, opts: PageOptions)
   const ack = f.landAcknowledgement?.trim() ? `<aside id="landAcknowledgement" class="container-fluid" aria-label="Land acknowledgement"><div class="container-xl"><p>${e(f.landAcknowledgement)}</p></div></aside>\n` : "";
   const help = [f.helpText ? e(f.helpText) : "", helpSentence(f.helpLinks, site)].filter(Boolean).join(" ");
   const column = (cls: string, heading: string, links: LinkSetting[], ulClass = "") =>
-    links.length ? `<div class="${cls}">\n<h2>${heading}</h2>\n<ul${ulClass ? ` class="${ulClass}"` : ""}>\n${linkList(links, site)}\n</ul>\n</div>` : "";
-  const columns = [column("footer-connect", "Connect with Us", f.connectLinks), column("footer-more-info", "More Info", f.moreInfoLinks, "pull-left")].filter(Boolean).join("\n");
+    links.length ? `<div class="${cls}">\n${heading.trim() ? `<h2>${e(heading)}</h2>\n` : ""}<ul${ulClass ? ` class="${ulClass}"` : ""}>\n${linkList(links, site)}\n</ul>\n</div>` : "";
+  const columns = [column("footer-connect", settings.navigation.footerConnectHeading, f.connectLinks), column("footer-more-info", settings.navigation.footerMoreInfoHeading, f.moreInfoLinks, "pull-left")].filter(Boolean).join("\n");
   const logo = `${e(basePath(site))}/assets/legacy/Content/Images/Gov/BCID_H_rgb_pos_LH_crop${opts.banner ? "_bridge" : ""}.svg`;
   const year = yearIn(site.timeZone ?? DEFAULT_TIME_ZONE, new Date());
   return `${ack}<footer id="footer" class="container-fluid">

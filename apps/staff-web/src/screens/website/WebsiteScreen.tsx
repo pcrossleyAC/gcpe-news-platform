@@ -20,6 +20,7 @@ const SECTIONS: { to: string; label: string; manageOnly: boolean }[] = [
   { to: "ministry-pages", label: "Ministry pages", manageOnly: true },
   { to: "media-contacts", label: "Media contacts page", manageOnly: true },
   { to: "page-text", label: "Page text", manageOnly: true },
+  { to: "navigation", label: "Navigation and labels", manageOnly: true },
   { to: "settings-history", label: "Settings history", manageOnly: true },
 ];
 

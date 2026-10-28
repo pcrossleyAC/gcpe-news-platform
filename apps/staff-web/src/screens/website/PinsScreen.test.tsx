@@ -18,8 +18,8 @@ function withAuth(children: React.ReactNode) {
   );
 }
 
-const PRIMARY: PinView = { slot: "primary", pinned: false, version: 1, slide: { id: "p1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } };
-const SECONDARY: PinView = { slot: "secondary", pinned: true, version: 3, slide: { id: "p2", headline: "H2", summary: "S2", actionUrl: "", facebookPostUrl: "", justify: "right", hasImage: false, imageUrl: null } };
+const PRIMARY: PinView = { slot: "primary", pinned: false, version: 1, slide: { id: "p1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } };
+const SECONDARY: PinView = { slot: "secondary", pinned: true, version: 3, slide: { id: "p2", headline: "H2", summary: "S2", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "right", hasImage: false, imageUrl: null } };
 
 describe("PinsScreen", () => {
   afterEach(() => {
@@ -83,7 +83,29 @@ describe("PinsScreen", () => {
 
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/pins/primary" && c.init?.method === "PUT")).toBe(true));
     const call = calls.find((c) => c.url === "/nrms/api/site/pins/primary" && c.init?.method === "PUT")!;
-    expect(JSON.parse(call.init!.body as string)).toEqual({ version: 1, headline: "New headline", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left" });
+    expect(JSON.parse(call.init!.body as string)).toEqual({ version: 1, headline: "New headline", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left" });
+  });
+
+  it("edits a pin's Action label (with its hint) and sends actionLabel", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/pins") return jsonResponse(200, [PRIMARY, SECONDARY]);
+        if (url === "/nrms/api/site/pins/primary" && init?.method === "PUT") return jsonResponse(422, { errors: ["Keep the action label to 40 characters or fewer, in plain text."] });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<PinsScreen />));
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Primary action label"), "Get help");
+    expect(screen.getAllByText("The link text. Leave empty for the default set in Navigation and labels.")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Save primary pin" }));
+    expect(await screen.findByText("Keep the action label to 40 characters or fewer, in plain text.")).toBeInTheDocument();
+    const call = calls.find((c) => c.init?.method === "PUT")!;
+    expect(JSON.parse(call.init!.body as string)).toMatchObject({ actionLabel: "Get help" });
   });
 
   // I1: a 409 on save must not leave the form showing the editor's stale local text once the

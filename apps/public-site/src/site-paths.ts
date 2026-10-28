@@ -40,6 +40,8 @@ export type PageId =
   | { type: "contacts" }
   /** The privacy statement (L1), from the pageText.privacy settings. */
   | { type: "privacy" }
+  /** The Live webcast page (H4), from the home live URL and the pageText.live settings; also writes assets/live.json. */
+  | { type: "live" }
   | { type: "archive-terms" }
   | { type: "archive-term"; slug: string }
   /** Not a page: the successor-redirect table the stack's middleware reads (new-government §4). */
@@ -58,6 +60,7 @@ const SINGLE: Record<string, PageId> = {
   connect: { type: "connect" },
   contacts: { type: "contacts" },
   privacy: { type: "privacy" },
+  live: { type: "live" },
   "archive-terms": { type: "archive-terms" },
   "legacy-redirects": { type: "legacy-redirects" },
   "kind-feeds": { type: "kind-feeds" },
@@ -124,7 +127,7 @@ export function categoryFiles(p: { kind: CategoryKind; key: string }): { page: s
 /** Relative output files for a page. Only ever called with a parsed (validated) PageId. */
 export function pageFiles(p: PageId): string[] {
   switch (p.type) {
-    case "home": return ["index.html", "feed.xml", "atom.xml"];
+    case "home": return ["index.html", "feed.xml", "atom.xml", "assets/live.json"];
     // A long key's directory also holds the sidecar naming the key; it goes with the page.
     case "post": return [postPath(p.key), postKeyFile(p.key)].filter((f): f is string => f !== null);
     case "ministries": return ["ministries/index.html"];
@@ -145,6 +148,8 @@ export function pageFiles(p: PageId): string[] {
     case "connect": return ["connect/index.html"];
     case "contacts": return ["contacts/index.html"];
     case "privacy": return ["privacy/index.html"];
+    // assets/live.json is also home's file: the same bytes from the same home settings, never removed by either page.
+    case "live": return ["live/index.html", "assets/live.json"];
     case "archive-terms": return ["archive/terms/index.html"];
     case "archive-term": return [`archive/terms/${p.slug}/index.html`];
     case "legacy-redirects": return [MINISTRY_SUCCESSORS_FILE];
@@ -170,6 +175,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "connect": return `${base}/connect/`;
     case "contacts": return `${base}/contacts/`;
     case "privacy": return `${base}/privacy/`;
+    case "live": return `${base}/live/`;
     case "archive-terms": return `${base}/archive/terms/`;
     case "archive-term": return `${base}/archive/terms/${p.slug}/`;
     case "legacy-redirects": return `${base}/${MINISTRY_SUCCESSORS_FILE}`;

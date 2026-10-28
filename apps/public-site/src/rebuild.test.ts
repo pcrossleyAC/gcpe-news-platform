@@ -163,6 +163,13 @@ describe("settings sections: pageText", () => {
     expect(storage.files.get("privacy/index.html")).toContain("Our privacy promise");
   });
 
+  it("a pageText.live edit queues exactly live", async () => {
+    const { items, dependents, storage } = await edit((d) => { d.pageText.live.heading = "Watch live"; });
+    expect(dependents).toEqual([]);
+    expect(items).toEqual([{ pageId: "live", priority: PRIORITY.liveAggregate }]);
+    expect(storage.files.get("live/index.html")).toContain("Watch live");
+  });
+
   it("a notFound edit queues exactly static", async () => {
     const { items, dependents, storage } = await edit((d) => { d.pageText.notFound.heading = "Nothing here"; });
     expect(dependents).toEqual([]);
@@ -282,8 +289,8 @@ describe("RENDER_CHROME_VERSION", () => {
   // 8: the archive by government term (new-government Task 6).
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
-  // 13: atom.xml, per-kind feeds and long post keys (parity plan 3, batches B+C).
-  it("RENDER_CHROME_VERSION is 13", () => expect(RENDER_CHROME_VERSION).toBe(13));
+  // 14: header/labels from Navigation settings, Live Webcast buttons and /live/ (parity plan 4, batch C).
+  it("RENDER_CHROME_VERSION is 14", () => expect(RENDER_CHROME_VERSION).toBe(14));
 });
 
 describe("Search Console verification in the render-state marker", () => {
@@ -308,5 +315,44 @@ describe("Search Console verification in the render-state marker", () => {
     delete old.verification;
     storage.files.set(".site-state.json", JSON.stringify(old));
     expect(await chromeChanges(storage as SiteStorage, state(), site)).toMatchObject({ all: false, sections: [] });
+  });
+});
+
+describe("Navigation settings in the render-state marker", () => {
+  const stateFor = (mutate: (s: ReturnType<typeof bcSettings>) => void = () => {}) => {
+    const s = bcSettings();
+    mutate(s);
+    return stateAndBanner(null, false, new Date("2026-10-28T12:00:00Z"), s, site, []).state;
+  };
+  const marked = async () => {
+    const storage = memoryStorage();
+    await writeSiteState(storage as SiteStorage, stateFor(), site);
+    return storage as SiteStorage;
+  };
+
+  it("a headerLinks edit is a rebuild-all (so are the News, Live and footer-heading labels and the search switch)", async () => {
+    expect(await chromeChanges(await marked(), stateFor(), site)).toMatchObject({ all: false, sections: [] });
+    for (const m of [
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.headerLinks.push({ text: "Extra", url: "/extra/" }); },
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.newsLabel = "Newsroom"; },
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.liveLabel = "Webcast"; },
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.showHeaderSearch = false; },
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.footerMoreInfoHeading = "Other"; },
+    ]) expect(await chromeChanges(await marked(), stateFor(m), site)).toMatchObject({ all: true });
+  });
+
+  it("a labels or listing-title edit is the labels section, not a rebuild-all", async () => {
+    expect(await chromeChanges(await marked(), stateFor((s) => { s.navigation.labels.searchNews = "Find"; }), site)).toMatchObject({ all: false, sections: ["labels"] });
+    expect(await chromeChanges(await marked(), stateFor((s) => { s.navigation.listingTitles.stories = "Features"; }), site)).toMatchObject({ all: false, sections: ["labels"] });
+  });
+
+  it("a marker written before headerHash and labelsHash existed reads as changed", async () => {
+    const storage = memoryStorage();
+    await writeSiteState(storage as SiteStorage, stateFor(), site);
+    const old = JSON.parse(storage.files.get(".site-state.json") as string);
+    delete old.headerHash;
+    delete old.labelsHash;
+    storage.files.set(".site-state.json", JSON.stringify(old));
+    expect(await chromeChanges(storage as SiteStorage, stateFor(), site)).toMatchObject({ all: true });
   });
 });

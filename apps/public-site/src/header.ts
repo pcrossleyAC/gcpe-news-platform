@@ -1,12 +1,16 @@
 import { icon } from "./icons";
 import { basePath, e, type PageOptions, type SiteInfo } from "./render";
+import { settingsHref, themeDefaults } from "./settings";
 
 const LOGO_ALT = "Government of B.C.";
 
 /**
  * Every page's header: the legacy `_Layout` skeleton (look-and-feel §1.2) with the §5 deviations —
  * one News control and one ministry list for both widths (no `#sm-menu`), no `role=menu`, unique
- * ids, real buttons for every toggle, labelled search inputs and no Live button (plan 4 adds it).
+ * ids, real buttons for every toggle and labelled search inputs. The News label, the header links
+ * (after News), the search controls and the Live button's label come from `navigation` in the site
+ * settings; a header link with an unsafe URL is plain text. The Live button (a phone/tablet anchor before `#sm-nav-container`, as legacy has, and the desktop `#live-button`) is hidden until site.js
+ * finds `assets/live.json` saying the webcast is on (`live_button_hide` → `live_button_show`).
  * Legacy's banner toggle — the (i) beside the hamburger on a phone, `#bannerToggleLink` in the nav
  * list from md up — is a pair of real buttons (`data-banner-toggle`, `aria-controls="banner"`)
  * whose wrappers start hidden; site.js shows them once a banner has been shown and they then hide
@@ -24,7 +28,16 @@ export function renderHeader(site: SiteInfo, opts: PageOptions): string {
   const gov = `${base}/assets/legacy/Content/Images/Gov`;
   const bridge = opts.banner ? "_bridge" : "";
   const menu = opts.ministryMenu?.length ? opts.ministryMenu : null;
-  const news = `<a id="news-dropdown" class="nav-link" href="${base}/ministries/"${menu ? ` data-menu="menu"` : ""}>News</a>`;
+  const nav = (opts.settings ?? themeDefaults(site.theme)).navigation;
+  const news = `<a id="news-dropdown" class="nav-link" href="${base}/ministries/"${menu ? ` data-menu="menu"` : ""}>${e(nav.newsLabel)}</a>`;
+  const headerLinks = nav.headerLinks
+    .map((l) => {
+      const href = settingsHref(l.url, site);
+      const id = l.id ? ` id="${e(l.id)}"` : "";
+      return `<li class="nav-item">${href ? `<a${id} class="nav-link" href="${e(href)}">${e(l.text)}</a>` : e(l.text)}</li>`;
+    })
+    .map((li) => `\n${li}`)
+    .join("");
   const searchForm = (cls: string, id: string) => `<form class="${cls}" role="search" aria-label="Site search" action="${base}/search/" method="get">
 <label class="visually-hidden" for="${id}">Search news</label>
 <div class="input-group">
@@ -47,9 +60,12 @@ ${menu.map((m) => `<li><a href="${base}/ministries/${e(encodeURIComponent(m.key)
   // as legacy does. Legacy still shows the phone toggle there (R12): ours keeps it, in the same
   // slot with the same look, as a link to the page's own box; site.js focuses that box on click.
   const pageSearch = opts.pageSearchInput;
-  const search = !pageSearch;
+  const search = !pageSearch && nav.showHeaderSearch;
   const toggleIcon = icon("search", base);
-  const searchToggle = search
+  // Search off: no toggle at all, except the search page's own link to its own box.
+  const searchToggle = !nav.showHeaderSearch && !pageSearch
+    ? ""
+    : search
     ? `<div class="search-toggle-container d-lg-none">
 <button type="button" id="search-md-button" class="input-group-text btn-primary-outline search-md menu-icon" aria-controls="smd-search-container" aria-expanded="false" aria-label="Search">${toggleIcon}</button>
 </div>
@@ -75,15 +91,16 @@ ${searchForm("search", "site-search-input")}
 <a class="navbar-brand ps-3" href="${base}/">${e(site.name)}</a>
 <div class="d-md-none banner-toggle-container" hidden><button id="banner-toggle-sm" class="btn btn-link banner-toggle-btn" ${toggleAttrs}>${toggleImg}</button></div>
 <button type="button" id="nav-menu-sm" class="navbar-toggler collapse-menu-icon menu-icon" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Menu">${icon("bars", base)}</button>
-${searchToggle}<div id="sm-nav-container" class="container-fluid">
+${searchToggle}<a href="${base}/live/" class="btn btn-primary-blue live_button live_button_hide d-lg-none">${e(nav.liveLabel)}</a>
+<div id="sm-nav-container" class="container-fluid">
 <div id="navbarSupportedContent" class="collapse navbar-collapse">
 <ul id="sm-nav-ul" class="navbar-nav ms-auto mb-2 me-3 mb-lg-0 gap-2">
-<li id="ministry-dropdown" class="nav-item ministry-dropdown">${news}</li>
-<li class="nav-item"><a class="nav-link" href="${base}/subscribe/">Subscribe</a></li>
+<li id="ministry-dropdown" class="nav-item ministry-dropdown">${news}</li>${headerLinks}
 <li class="nav-item-link d-none d-md-block" hidden><button id="bannerToggleLink" class="nav-link" ${toggleAttrs}>${toggleImg}</button></li>
 </ul>
 </div>
 ${desktopSearch}</div>
+<a id="live-button" href="${base}/live/" class="btn btn-primary-blue live_button live_button_hide d-none d-lg-block">${e(nav.liveLabel)}</a>
 </nav>
 </div>${searchDrawer}${menuPanel}
 </header>`;

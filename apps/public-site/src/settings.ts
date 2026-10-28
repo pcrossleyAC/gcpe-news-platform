@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import type { SiteTheme } from "@gcpe/config";
-import { safeErrorLabel } from "@gcpe/http-kit";
+import { isSafeUrl as isSafeAbsoluteUrl, safeErrorLabel } from "@gcpe/http-kit";
 import { defaultSiteSettings, fillMissingFields, isSafeUrl, storedSiteSettingsSchema, type SiteSettings, type StoredSiteSettings } from "@gcpe/site-settings";
+import type { HomeDto } from "./dto";
 import type { NewsApiClient } from "./news-api-client";
 import { basePath, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
@@ -48,6 +49,38 @@ export function bannerJson(settings: SiteSettings): string {
   return JSON.stringify({ visible: b.enabled, style: b.style, message: b.message, links: b.links, dismissible: b.dismissible, startsAt: b.startsAt, endsAt: b.endsAt });
 }
 
+/** A parsed host of letters, digits, dots and hyphens (punycode included) and an optional port, no
+ * userinfo: WHATWG URL hosts may also hold $ ` " ' = ; ( ), which must never reach a page. */
+function plainHost(u: string): boolean {
+  try {
+    const parsed = new URL(u);
+    return !parsed.username && !parsed.password && /^[a-z0-9.-]+(:\d+)?$/i.test(parsed.host);
+  } catch {
+    return false;
+  }
+}
+
+let warnedLiveUrl = false;
+
+/** The News API home settings' live webcast playlist, only when it is an absolute https URL (the
+ * /live/ page plays it); anything else (http:, a path, javascript:) is null with one log per
+ * process, and the site shows "off air". Absent or blank: null, silently. */
+export function liveStreamUrl(home: Pick<HomeDto, "liveWebcastM3uPlaylist">): string | null {
+  const u = home.liveWebcastM3uPlaylist;
+  if (typeof u !== "string" || u.trim() === "") return null;
+  if (isSafeAbsoluteUrl(u, { relative: false, schemes: ["https:"] }) && plainHost(u)) return u;
+  if (!warnedLiveUrl) {
+    warnedLiveUrl = true;
+    console.error("[public-site] live webcast URL is not https; shown as off air");
+  }
+  return null;
+}
+
+/** What `assets/live.json` holds: the flag only, never the stream URL (site.js polls it). */
+export function liveJson(home: Pick<HomeDto, "liveWebcastM3uPlaylist">): string {
+  return JSON.stringify({ live: liveStreamUrl(home) !== null });
+}
+
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /** The settings' part of the site-state marker (rebuild.ts): one hash per way a section reaches
@@ -55,6 +88,10 @@ const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(valu
 export function settingsHashes(settings: SiteSettings, timeZone: string, now: Date) {
   return {
     footerHash: hash([settings.footer, yearIn(timeZone, now)]),
+    // Every page's header and footer column headings (renderHeader, renderFooter): chrome like the footer.
+    headerHash: hash([settings.navigation.newsLabel, settings.navigation.liveLabel, settings.navigation.headerLinks, settings.navigation.showHeaderSearch, settings.navigation.footerConnectHeading, settings.navigation.footerMoreInfoHeading]),
+    // The page labels and listing titles: aggregate pages only (no post shows them).
+    labelsHash: hash([settings.navigation.labels, settings.navigation.listingTitles]),
     themeHash: hash(settings.theme),
     bannerHash: hash(settings.banner),
     connectHash: hash(settings.connect),
@@ -64,6 +101,7 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
     // Only /privacy/ shows the privacy text; the 404 page (in "static") and every release (its
     // licence line) show their own parts, so one edit reaches only the pages that show it.
     privacyHash: hash(settings.pageText.privacy),
+    liveTextHash: hash(settings.pageText.live),
     notFoundHash: hash(settings.pageText.notFound),
     assetLicenceHash: hash(settings.pageText.assetLicence),
     // Only the one account the release page's Share → Instagram links to, so another network's

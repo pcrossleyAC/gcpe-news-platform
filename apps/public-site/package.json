@@ -20,6 +20,7 @@
     "@gcpe/site-settings": "0.0.0",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "hls.js": "1.7.3",
     "sanitize-html": "^2.18.0",
     "zod": "^3.25.76"
   },

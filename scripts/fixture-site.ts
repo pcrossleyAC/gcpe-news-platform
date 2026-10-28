@@ -51,6 +51,7 @@ export const FIXTURE_PAGES = [
   "/search/",
   "/contacts/",
   "/privacy/",
+  "/live/",
   "/404.html",
 ];
 
@@ -180,7 +181,7 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
   const newsApi: NewsApiClient = {
     ...fakeNewsApi(posts),
     // A top and a feature post, as news.gov's home always has.
-    home: async () => ({ granville: null, topPostKey: "2026HLTH0010-000010", featurePostKey: "2026HLTH0009-000009" }),
+    home: async () => ({ granville: null, topPostKey: "2026HLTH0010-000010", featurePostKey: "2026HLTH0009-000009", liveWebcastM3uPlaylist: "https://stream.example.gov.bc.ca/live/playlist.m3u8" }),
     slides: async () => slides,
     // Health has Flickr and YouTube links, so the release's related band shows Connect with the Ministry.
     ministry: async (key) => (await newsApi.ministries()).find((m) => m.key === key.toLowerCase()) ?? null,

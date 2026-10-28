@@ -116,7 +116,7 @@ export function renderMinistryPage(m: MinistryDto, minister: MinisterDto | null,
   const settings = opts.settings ?? themeDefaults(site.theme);
   const top = posts.top ? `<div class="top-article">\n${postCard(site, posts.top, { eager: true })}\n</div>\n` : "";
   const feature = posts.feature ? `<div class="feature-article">\n${postCard(site, posts.feature)}\n</div>\n` : "";
-  const { cards, loadMore } = latestCards(site, posts.latest);
+  const { cards, loadMore } = latestCards(site, posts.latest, { loadMoreLabel: settings.navigation.labels.loadMoreNews });
   const body = `<h1 class="ministry-name-mobile">${e(m.name)}</h1>
 <div class="pt-2 ministry-listing">
 <div class="home-layout">
@@ -126,7 +126,7 @@ ${top}${feature}<div class="other-articles">
 ${cards}
 </div>
 <div class="news-control">
-${loadMore}<a href="${e(base)}/search/?ministry=${e(encodeURIComponent(key))}" class="read-more">Search News</a>
+${loadMore}<a href="${e(base)}/search/?ministry=${e(encodeURIComponent(key))}" class="read-more">${e(settings.navigation.labels.searchNews)}</a>
 <div class="clear"></div>
 </div>
 <p><a href="${e(base)}/archive/">Browse the archive by month</a></p>

@@ -73,7 +73,9 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
     case "post.upserted":
     case "post.unpublished":
       return c.key && POST_KEY.test(c.key) ? [{ pageId: `post:${c.key}`, priority: postPriority }] : [];
+    // A home settings change may switch the webcast on or off: /live/ reads the same settings.
     case "home":
+      return [{ pageId: "home", priority: live }, { pageId: "live", priority: live }];
     case "slides":
     case "resource_links":
       return [{ pageId: "home", priority: live }];

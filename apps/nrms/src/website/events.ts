@@ -45,6 +45,7 @@ function toSlideRecord(
     headline: string;
     summary: string;
     actionUrl: string;
+    actionLabel: string;
     facebookPostUrl: string;
     justify: "left" | "right";
     image: Buffer | null;
@@ -58,7 +59,7 @@ function toSlideRecord(
     sortIndex: s.sortIndex,
     headline: s.headline,
     summary: s.summary,
-    actionLabel: null,
+    actionLabel: s.actionLabel.trim() || null,
     actionUri: s.actionUrl || null,
     imageBase64: null,
     imageType: s.imageType,

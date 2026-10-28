@@ -21,6 +21,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
   const [headline, setHeadline] = useState(pin.slide.headline);
   const [summary, setSummary] = useState(pin.slide.summary);
   const [actionUrl, setActionUrl] = useState(pin.slide.actionUrl);
+  const [actionLabel, setActionLabel] = useState(pin.slide.actionLabel);
   const [facebookPostUrl, setFacebookPostUrl] = useState(pin.slide.facebookPostUrl);
   const [justify, setJustify] = useState<Justify>(pin.slide.justify);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -28,7 +29,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
   const save = () => {
     void section
       .run(() =>
-        apiFetch<PinView>(`/nrms/api/site/pins/${pin.slot}`, { method: "PUT", body: { version: pin.version, headline, summary, actionUrl, facebookPostUrl, justify } }),
+        apiFetch<PinView>(`/nrms/api/site/pins/${pin.slot}`, { method: "PUT", body: { version: pin.version, headline, summary, actionUrl, actionLabel, facebookPostUrl, justify } }),
       )
       .then((next) => {
         if (next) onSaved();
@@ -73,6 +74,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
       <TextField label={`${SLOT_LABEL[pin.slot]} headline`} value={headline} onChange={setHeadline} isDisabled={!canEdit} />
       <TextField label={`${SLOT_LABEL[pin.slot]} summary`} value={summary} onChange={setSummary} isDisabled={!canEdit} />
       <TextField label={`${SLOT_LABEL[pin.slot]} action URL`} value={actionUrl} onChange={setActionUrl} isDisabled={!canEdit} />
+      <TextField label={`${SLOT_LABEL[pin.slot]} action label`} description="The link text. Leave empty for the default set in Navigation and labels." value={actionLabel} onChange={setActionLabel} isDisabled={!canEdit} />
       <TextField label={`${SLOT_LABEL[pin.slot]} Facebook post URL`} value={facebookPostUrl} onChange={setFacebookPostUrl} isDisabled={!canEdit} />
       <label>
         {SLOT_LABEL[pin.slot]} justify

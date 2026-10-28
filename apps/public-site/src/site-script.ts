@@ -39,6 +39,21 @@
  *     (P2-R3): the French content carries its own `lang="fr"`. The pressed button's own line is
  *     hidden by the switch, so focus moves to the button that switches back.
  *
+ * 12. The Live Webcast buttons (every `a.live_button`: the phone/tablet one and `#live-button`, header.ts),
+ *     present on every page but only polled when one exists: on load and every 60 s, `GET {base}/assets/live.json` (no-store; the base is the
+ *     first button's own `{base}/live/` href minus its tail). `{"live":true}` swaps `live_button_hide` for
+ *     `live_button_show`; anything else, or any failure (a bad response or a network error), leaves (or puts) them hidden. Errors are
+ *     swallowed: a dead file must not spam every visitor's console.
+ *
+ * 13. The /live/ page's Play button (`.wowza-wrapper[data-stream] button.play-button`, pages/live.ts),
+ *     the only thing that ever contacts the stream host: on click it hides `.placeholder-container`
+ *     and shows the `video`; with native HLS (`canPlayType("application/vnd.apple.mpegurl")`) it sets
+ *     `video.src`, otherwise it appends one `<script>` for `{base}/assets/vendor/hls.light.min.js`
+ *     (the base is site.js's own URL minus its tail), and on its load runs `new Hls()`,
+ *     `loadSource(stream)`, `attachMedia(video)`. Then `video.play()`. Any failure (script, an
+ *     unsupported Hls, a fatal hls.js error, the media element's error, a rejected play()) writes the
+ *     fallback sentence into `#live-status`.
+ *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
  */
@@ -82,7 +97,7 @@ export const SITE_SCRIPT = String.raw`(() => {
     btn.className = "nav-link";
     btn.setAttribute("aria-expanded", "false");
     btn.setAttribute("aria-controls", "menu");
-    btn.textContent = "News";
+    btn.textContent = news.textContent;
     // The sprite URL is the one the header's other icons already use.
     const any = doc.querySelector("header use");
     const sprite = ((any && any.getAttribute("href")) || "").replace(/#.*$/, "");
@@ -254,6 +269,75 @@ export const SITE_SCRIPT = String.raw`(() => {
       if (back) back.focus();
     });
   });
+
+  const liveButtons = Array.prototype.slice.call(doc.querySelectorAll("a.live_button"));
+  if (liveButtons.length) {
+    let liveUrl = "/assets/live.json";
+    try { liveUrl = new URL(liveButtons[0].href, location.href).pathname.replace(/\/live\/$/, "") + liveUrl; } catch (_) {}
+    const setLive = (on) => liveButtons.forEach((b) => {
+      b.classList.toggle("live_button_show", on);
+      b.classList.toggle("live_button_hide", !on);
+    });
+    const poll = () => {
+      try {
+        fetch(liveUrl, { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => setLive(!!j && j.live === true))
+          .catch(() => setLive(false));
+      } catch (_) {}
+    };
+    poll();
+    setInterval(poll, 60000);
+  }
+
+  const wowza = doc.querySelector(".wowza-wrapper[data-stream]");
+  const playBtn = wowza && wowza.querySelector("button.play-button");
+  const player = wowza && wowza.querySelector("video");
+  if (playBtn && player) {
+    const stream = wowza.getAttribute("data-stream");
+    const status = doc.getElementById("live-status");
+    const holder = wowza.querySelector(".placeholder-container");
+    let started = false;
+    const fail = () => { if (status) status.textContent = "The webcast can't play here. Use the stream link below."; };
+    const start = () => {
+      try {
+        const p = player.play();
+        // Blocked autoplay or an interrupted load: the controls are shown, so the visitor can press play.
+        if (p && p.catch) p.catch((err) => { if (!err || (err.name !== "AbortError" && err.name !== "NotAllowedError")) fail(); });
+      } catch (_) { fail(); }
+    };
+    const withHls = () => {
+      const H = window.Hls;
+      if (!H || (H.isSupported && !H.isSupported())) return fail();
+      try {
+        const hls = new H();
+        if (hls.on && H.Events) hls.on(H.Events.ERROR, (_ev, d) => { if (d && d.fatal) fail(); });
+        hls.loadSource(stream);
+        hls.attachMedia(player);
+        start();
+      } catch (_) { fail(); }
+    };
+    playBtn.addEventListener("click", () => {
+      if (started) return;
+      started = true;
+      if (holder) holder.hidden = true;
+      player.hidden = false;
+      player.focus();
+      player.addEventListener("error", fail);
+      if (player.canPlayType && player.canPlayType("application/vnd.apple.mpegurl")) {
+        player.src = stream;
+        return start();
+      }
+      const site = doc.querySelector('script[src$="/assets/site/site.js"]');
+      const s = doc.createElement("script");
+      // Beside site.js; failing that, the page's own base: /live/ minus its tail.
+      const own = site && site.getAttribute("src");
+      s.src = own ? own.replace(/site\/site\.js$/, "vendor/hls.light.min.js") : location.pathname.replace(/\/live\/(index\.html)?$/, "") + "/assets/vendor/hls.light.min.js";
+      s.addEventListener("load", withHls);
+      s.addEventListener("error", fail);
+      doc.head.appendChild(s);
+    });
+  }
 
   const prefill = doc.querySelector("form[data-prefill-from-path] #not-found-q");
   if (prefill && !prefill.value) {

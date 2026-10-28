@@ -8,6 +8,7 @@ import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsInde
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
 import { renderConnectPage } from "./pages/connect";
 import { renderContactsPage } from "./pages/contacts";
+import { renderLivePage } from "./pages/live";
 import { renderPrivacyPage } from "./pages/privacy";
 import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
@@ -18,7 +19,7 @@ import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIn
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
 import { atomUrl, biographyUrl, categoryFiles, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
-import { themeDefaults } from "./settings";
+import { liveJson, liveStreamUrl, themeDefaults } from "./settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
 import type { SiteStorage } from "./storage";
@@ -336,6 +337,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           const home = await newsApi.home();
           const [f, latest, slides, links, sectors] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), newsApi.resourceLinks(), sectorsWithLatest()]);
           const feedRef = { href: feedUrl(site, p), title: `${site.name}: latest news` };
+          // The Live button's state, beside the page that polls for it (site.js); the flag only.
+          await storage.write("assets/live.json", liveJson(home));
           await storage.write("index.html", renderHomePage({ ...f, latest, slides, links, sectors }, site, { ...opts, feed: feedRef }));
           const homePosts = sortNewest([f.top, f.feature, ...latest]);
           const homeChannel = { title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `The latest news from ${site.name}` };
@@ -405,7 +408,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "sitemap-pages": {
           // Not /search/: robots.txt disallows it, and Search Console flags sitemap URLs blocked by robots.
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" })];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" })];
           for (const id of await categoryIds(run)) {
             const page = parsePageId(id)!;
             paths.push(pageUrl(site, page));
@@ -433,6 +436,12 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         case "privacy":
           await storage.write(pageFiles(p)[0]!, renderPrivacyPage((opts.settings ?? themeDefaults(site.theme)).pageText.privacy, site, opts));
           return [];
+        case "live": {
+          const home = await newsApi.home();
+          await storage.write("assets/live.json", liveJson(home));
+          await storage.write(pageFiles(p)[0]!, renderLivePage(liveStreamUrl(home), (opts.settings ?? themeDefaults(site.theme)).pageText.live, site, opts));
+          return [];
+        }
         case "legacy-redirects": {
           // Sorted, so an unchanged map writes the same bytes.
           const successors = Object.fromEntries(Object.entries(await newsApi.ministrySuccessors()).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -473,7 +482,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     async aggregatePageIds() {
       const run: RunCache = {};
       // sitemap:pages after the category pages: it lists the biography pages they write.
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "legacy-redirects", "kind-feeds", ...(await categoryIds(run)), "sitemap:pages"];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", "kind-feeds", ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;

@@ -36,8 +36,9 @@ export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes
   const items: { pageId: string; priority: number }[] = [];
   for (const section of changes.sections) {
     // Home's Connect With Us icons come from the connect settings too; "contacts" is its own page id.
-    const ids = section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home"] : section === "releaseShare" || section === "releaseLicence" ? [] : [section];
-    items.push(...ids.map((pageId) => ({ pageId, priority: PRIORITY.liveAggregate })));
+    // A labels edit reaches the aggregate pages (home, listings, ministry pages), never a post.
+    const ids = section === "labels" ? await builder.aggregatePageIds() : section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home"] : section === "releaseShare" || section === "releaseLicence" ? [] : [section];
+    items.push(...ids.map((pageId) => ({ pageId, priority: section === "labels" ? PRIORITY.bulkAggregate : PRIORITY.liveAggregate })));
   }
   // Every release page bakes in the ministryPages labels (Media Contacts, More from this
   // Ministry, the side column's headings) and the connect section's Share → Instagram account

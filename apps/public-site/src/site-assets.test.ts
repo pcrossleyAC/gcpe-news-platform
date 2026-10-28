@@ -26,6 +26,8 @@ describe("builtinAssetSources", () => {
     const src = builtinAssetSources();
     expect(src.root).toBe(ASSETS.replace(/[\\/]$/, ""));
     expect(src.fontsDir).toMatch(/@bcgov[\\/]bc-sans[\\/]fonts$/);
+    expect(src.hlsFile).toMatch(/hls\.js[\\/]dist[\\/]hls\.light\.min\.js$/);
+    expect(existsSync(src.hlsFile)).toBe(true);
     for (const f of BC_SANS_FILES) expect(existsSync(join(src.fontsDir, f))).toBe(true);
   });
 
@@ -56,6 +58,9 @@ describe("writeBuiltinAssets", () => {
     expect(has("assets/legacy/LICENSE")).toBe(true);
     expect(has("assets/legacy/NOTICE.md")).toBe(true);
     expect(has("assets/site/icons.svg")).toBe(true);
+    expect(has("assets/legacy/Content/Images/Gov/Live_Webcast.png")).toBe(true);
+    // hls.js's light build, copied from the npm package: the /live/ page loads it on Play only.
+    expect(Buffer.from(storage.files.get("assets/vendor/hls.light.min.js") as Uint8Array).includes("Hls")).toBe(true);
     expect(storage.files.get("assets/site/site.js")).toBe(SITE_SCRIPT);
   });
 
@@ -112,9 +117,9 @@ describe("writeBuiltinAssets", () => {
     expect(dead).toEqual([]);
   });
 
-  it("the vendored tree on disk holds exactly the 45 files the briefs list plus NOTICE.md", () => {
+  it("the vendored tree on disk holds exactly the 46 files the briefs list plus NOTICE.md", () => {
     const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
-    expect(walk(join(ASSETS, "legacy")).length).toBe(46);
+    expect(walk(join(ASSETS, "legacy")).length).toBe(47);
     expect(readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8")).toContain("3fdf3e6b6faa92172ba60f8bd2951bce96dbe2de");
     // The SiteGround build refuses an artifact that names the build machine's home directory.
     expect(readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8")).not.toMatch(/\/Users\/|\/home\/|[A-Za-z]:\\Users/);
@@ -122,6 +127,7 @@ describe("writeBuiltinAssets", () => {
     // The non-legacy assets shipped beside them are named with their licences too.
     const notice = readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8");
     expect(notice).toMatch(/BC Sans[^\n]*@bcgov\/bc-sans[^\n]*SIL Open Font License[^\n]*LICENSE_OFL\.txt/);
+    expect(notice).toMatch(/hls\.js[^\n]*Apache-2\.0[^\n]*assets\/vendor\/hls\.light\.min\.js/);
     expect(notice).toMatch(/Font Awesome Free[^\n]*CC BY 4\.0[^\n]*assets\/site\/icons\.svg/);
   });
 
