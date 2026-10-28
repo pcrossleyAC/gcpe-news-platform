@@ -22,7 +22,7 @@ The output has one line per address (`ok` or `FAIL`, status, where it redirects,
 |---|---|---|
 | `tools/parity/legacy-urls.txt` | Curated: every kind of old address, each checked to work on news.gov today. Sections: fixed rules, robots and verification, posts and case, long keys, ministries, references, feeds. | boxs.ca, then `https://news.gov.bc.ca` on cutover day |
 | `tools/parity/legacy-urls.generated.txt` | 243 addresses read from the live site on 2026-10-28 (its home page, `/connect` and the HTML sitemap). Sections: nav, feeds, posts, post-variants. | boxs.ca, then `https://news.gov.bc.ca` on cutover day |
-| `tools/parity/legacy-urls-ours.txt` (coming) | Rows that test our behaviour, not legacy's: the `/site` alias, and `/Ministries/Health`, which legacy answers 500 and we redirect. | boxs.ca only. Legacy fails these by design. |
+| `tools/parity/legacy-urls-ours.txt` | Rows that test our behaviour, not legacy's: the `/site` alias, and `/Ministries/Health`, which legacy answers 500 and we redirect. | boxs.ca only. Legacy fails these by design. |
 
 `tools/parity/legacy-urls-pending.txt` holds `/live`, which waits for plan 4. It moves into `legacy-urls.txt` when that page ships.
 
