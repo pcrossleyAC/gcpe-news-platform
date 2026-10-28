@@ -49,6 +49,9 @@ export const orgRecordSchema = z.object({
   // and GCPE Media Relations are not (Q54); the Office of the Premier is HQ but public, so this
   // is its own flag. Defaulted so an envelope stored before the flag existed stays public.
   isPublic: z.boolean().default(true),
+  // Ordered successor ministries (new-government spec §4, N7): the first is the redirect target.
+  // Empty for an active ministry. Defaulted so an envelope stored before the field existed parses.
+  successorKeys: z.array(z.string()).default([]),
   updatedAt: z.string().datetime({ offset: true }),
 });
 export type OrgRecord = z.infer<typeof orgRecordSchema>;
@@ -302,9 +305,48 @@ export const siteSettingsPublishedSchema = z.object({
 });
 export type SiteSettingsPublished = z.infer<typeof siteSettingsPublishedSchema>;
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * NRMS's government-terms snapshot (new-government spec §2): only past and current terms, newest
+ * first; the newest has no end date. Emitted by the rollover whenever the snapshot's hash changes.
+ * Named apart from the `term.*`-style sector/theme/tag family on purpose.
+ */
+export const governmentTermsPublishedSchema = z.object({
+  publishedAt: offsetDateTime,
+  currentSlug: z.string().nullable(),
+  terms: z.array(
+    z.object({
+      slug: z.string().min(1),
+      label: z.string().nullable(),
+      startDate: isoDate,
+      endDate: isoDate.nullable(),
+      legacyArchiveUrl: z.string().nullable(),
+    }),
+  ),
+});
+export type GovernmentTermsPayload = z.infer<typeof governmentTermsPublishedSchema>;
+
+/**
+ * Core hands ministry `key` over to `successorKeys` (new-government spec §4). NoD, Calendar and
+ * NRMS each move their own rows still keyed to `key`, idempotently, per the flags. Staff moves are
+ * Core's own and travel as user.upserted, so there is no moveStaff here.
+ */
+export const orgSucceededSchema = z.object({
+  key: z.string().min(1),
+  successorKeys: z.array(z.string().min(1)).min(1),
+  moveSubscribers: z.boolean(),
+  moveCalendar: z.boolean(),
+  moveDrafts: z.boolean(),
+  takeAbbreviation: z.boolean(),
+  at: offsetDateTime,
+});
+export type OrgSucceeded = z.infer<typeof orgSucceededSchema>;
+
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
   "org.deactivated": z.object({ key: z.string().min(1) }),
+  "org.succeeded": orgSucceededSchema,
   "user.upserted": userRecordSchema,
   "sector.upserted": termRecordSchema,
   "sector.deactivated": termDeactivated,
@@ -323,6 +365,7 @@ export const eventDataSchemas = {
   "site.content.changed": siteContentChangedSchema,
   "site.rebuild_requested": siteRebuildRequestedSchema,
   "site.settings.published": siteSettingsPublishedSchema,
+  "government_terms.published": governmentTermsPublishedSchema,
   "delivery.bounced": deliveryBouncedSchema,
   "activity.created": activityEventSchema,
   "activity.updated": activityEventSchema,

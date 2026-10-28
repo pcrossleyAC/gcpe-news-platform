@@ -6,7 +6,7 @@ import { hashPassword, localLoginRouter } from "@gcpe/auth";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { MAX_EVENT_BYTES } from "@gcpe/events";
 import { eq } from "drizzle-orm";
-import { organizations } from "../db/schema";
+import { organizations, userOrganizations, users } from "../db/schema";
 import { createApp } from "../app";
 import * as organizationsService from "../services/organizations";
 import * as republishService from "../services/republish";
@@ -109,7 +109,7 @@ describe("Core HTTP API", () => {
       const res = await request(app)
         .put("/api/organizations/boom")
         .set("authorization", `Bearer ${admin}`)
-        .send({ ...healthOrg, key: "boom" });
+        .send({ ...healthOrg, key: "boom", abbreviation: null });
       expect(res.status).toBe(500);
       expect(res.body).toEqual({ error: "internal error" });
       expect(JSON.stringify(res.body)).not.toContain("constraint");
@@ -173,8 +173,8 @@ describe("Core HTTP API", () => {
 
   it("413 when the body fits but the resulting event envelope would not", async () => {
     // Body under the limit, but the envelope adds metadata (ids, timestamps, updatedAt) on top.
-    const pad = MAX_EVENT_BYTES - JSON.stringify({ ...healthOrg, key: "edge" }).length - 20;
-    const edge = { ...healthOrg, key: "edge", minister: { ...healthOrg.minister, detailsHtml: "x".repeat(pad) } };
+    const pad = MAX_EVENT_BYTES - JSON.stringify({ ...healthOrg, key: "edge", abbreviation: null }).length - 20;
+    const edge = { ...healthOrg, key: "edge", abbreviation: null, minister: { ...healthOrg.minister, detailsHtml: "x".repeat(pad) } };
     expect(JSON.stringify(edge).length).toBeLessThanOrEqual(MAX_EVENT_BYTES);
     const res = await request(app).put("/api/organizations/edge").set("authorization", `Bearer ${admin}`).send(edge);
     expect(res.status).toBe(413);
@@ -253,7 +253,7 @@ describe("Core HTTP API", () => {
     const put = await request(localApp)
       .put("/api/organizations/local-login")
       .set("authorization", `Bearer ${login.body.access_token}`)
-      .send({ ...healthOrg, key: "local-login" });
+      .send({ ...healthOrg, key: "local-login", abbreviation: null });
     expect(put.status).toBe(200);
   });
 
@@ -327,9 +327,41 @@ describe("Core HTTP API", () => {
     });
   });
 
+  describe("PUT /api/organizations/:key abbreviation check (N11)", () => {
+    // Own keys and abbreviations: this file shares one database.
+    const putOrg = (key: string, over: Record<string, unknown>, query = "") =>
+      request(app).put(`/api/organizations/${key}${query}`).set(auth(admin)).send({ ...healthOrg, key, displayName: key, ...over });
+
+    it("refuses an abbreviation another active organization holds, case- and space-insensitively", async () => {
+      await putOrg("put-abbr-a", { abbreviation: "PUTA" }).expect(200);
+      const res = await putOrg("put-abbr-b", { abbreviation: " puta " });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "abbreviation-taken", takenBy: "put-abbr-a" });
+      expect((await request(app).get("/api/organizations/put-abbr-b").set(auth(reader))).status).toBe(404);
+      // An inactive holder frees it (N11), and an inactive organization may keep a taken one.
+      await putOrg("put-abbr-c", { abbreviation: "PUTA", isActive: false }).expect(200);
+    });
+
+    it("refuses reactivating an organization whose abbreviation a successor has taken, even with overwriteStaffEdits", async () => {
+      await putOrg("put-react-a", { abbreviation: "PUTR", isActive: false }).expect(200);
+      await putOrg("put-react-b", { abbreviation: "PUTR" }).expect(200);
+      const res = await putOrg("put-react-a", { abbreviation: "PUTR" }, "?overwriteStaffEdits=true");
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "abbreviation-taken", takenBy: "put-react-b" });
+      expect((await request(app).get("/api/organizations/put-react-a").set(auth(reader))).body.isActive).toBe(false);
+    });
+
+    it("re-sending an organization that already shares a legacy duplicate is not refused", async () => {
+      await putOrg("put-dup-a", { abbreviation: "PUTD" }).expect(200);
+      // The importer path (no route check) may still write a legacy duplicate.
+      await organizationsService.upsertOrganization(tdb.db, { ...healthOrg, key: "put-dup-b", displayName: "put-dup-b", abbreviation: "PUTD" }, []);
+      await putOrg("put-dup-a", { abbreviation: "PUTD", sortOrder: 2 }).expect(200);
+    });
+  });
+
   it("PUT 409s a staff-edited organization unless overwriteStaffEdits=true", async () => {
     const key = "labour-staff-edit";
-    const org = { ...healthOrg, key, displayName: "Labour" };
+    const org = { ...healthOrg, key, displayName: "Labour", abbreviation: null };
     await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send(org).expect(200);
     await request(app).patch(`/api/organizations/${key}/profile`).set(auth(siteEditor)).send({ displayName: "Labour and Skills" }).expect(200);
     const blocked = await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send(org);
@@ -343,7 +375,7 @@ describe("Core HTTP API", () => {
   describe("PATCH /api/organizations/:key/profile", () => {
     // Own key: this file shares one database and other tests PUT healthOrg repeatedly.
     // One key per test: a staff-edited organization must never be PUT again (it will 409 later).
-    const seed = async (key: string) => void (await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName: "Forests" }).expect(200));
+    const seed = async (key: string) => void (await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName: "Forests", abbreviation: null }).expect(200));
     const get = async (key: string) => (await request(app).get(`/api/organizations/${key}`).set(auth(reader)).expect(200)).body;
     const patch = (token: string, body: unknown, key: string) => request(app).patch(`/api/organizations/${key}/profile`).set(auth(token)).send(body as object);
 
@@ -470,6 +502,146 @@ describe("Core HTTP API", () => {
       await seed("forests-invalid");
       expect((await patch(siteEditor, { minister: { photoUrl: "http://x/y.jpg" } }, "forests-invalid")).status).toBe(400);
       expect((await patch(siteEditor, { minister: { email: "nope" } }, "forests-invalid")).status).toBe(400);
+    });
+  });
+
+  describe("ministry succession routes", () => {
+    // Own keys: this file shares one database.
+    const put = (key: string, displayName: string, abbreviation: string | null) =>
+      request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName, abbreviation }).expect(200);
+    const succeed = (token: string, key: string, body: unknown) => request(app).post(`/api/organizations/${key}/succeed`).set(auth(token)).send(body as object);
+    const flags = { moveSubscribers: true, moveStaff: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true };
+
+    it("POST /succeed hands over and answers the record; GET /succession-preview counts first", async () => {
+      await put("succ-a", "Succ A", "SUCCA");
+      await put("succ-b", "Succ B", null);
+      const [u] = await tdb.db.insert(users).values({ email: "succ-staff@example.test", displayName: "Succ Staff" }).returning({ id: users.id });
+      const [a] = await tdb.db.select({ id: organizations.id }).from(organizations).where(eq(organizations.key, "succ-a"));
+      await tdb.db.insert(userOrganizations).values({ userId: u!.id, organizationId: a!.id });
+      const preview = await request(app).get("/api/organizations/succ-a/succession-preview").set(auth(admin));
+      expect(preview.status).toBe(200);
+      expect(preview.body).toEqual({ staff: 1, abbreviation: "SUCCA" });
+      const res = await succeed(admin, "succ-a", { successorKeys: ["succ-b"], ...flags });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ key: "succ-a", isActive: false, successorKeys: ["succ-b"] });
+      expect((await request(app).get("/api/organizations/succ-b").set(auth(reader))).body.abbreviation).toBe("SUCCA");
+      expect((await request(app).get("/api/organizations/succ-a/succession-preview").set(auth(admin))).body).toEqual({ staff: 0, abbreviation: "SUCCA" });
+    });
+
+    it("404 for an unknown ministry, on both routes", async () => {
+      await put("succ-404", "Succ 404", null);
+      expect((await succeed(admin, "nope", { successorKeys: ["succ-404"], ...flags })).status).toBe(404);
+      expect((await request(app).get("/api/organizations/nope/succession-preview").set(auth(admin))).status).toBe(404);
+    });
+
+    it("422 with the copy for a refused hand-over; 400 for a malformed body", async () => {
+      await put("succ-c", "Succ C", null);
+      await put("succ-d", "Succ D", null);
+      await tdb.db.update(organizations).set({ successorKeys: ["succ-c"] }).where(eq(organizations.key, "succ-d"));
+      const loop = await succeed(admin, "succ-c", { successorKeys: ["succ-d"], ...flags });
+      expect(loop.status).toBe(422);
+      expect(loop.body).toEqual({ error: "Succ D already leads back to Succ C; that would loop." });
+      const self = await succeed(admin, "succ-c", { successorKeys: ["succ-c"], ...flags });
+      expect(self.status).toBe(422);
+      expect(self.body).toEqual({ error: "A ministry can't succeed itself." });
+      expect((await succeed(admin, "succ-c", { successorKeys: [], ...flags })).status).toBe(400);
+      expect((await succeed(admin, "succ-c", { successorKeys: ["succ-d"] })).status).toBe(400);
+    });
+
+    it("409 abbreviation-taken when another active ministry already holds A's abbreviation", async () => {
+      await put("succ-e", "Succ E", "SUCCDUP");
+      await put("succ-f", "Succ F", null);
+      // PUT now refuses a second active holder; legacy data can still carry one (the importer path writes it).
+      await organizationsService.upsertOrganization(tdb.db, { ...healthOrg, key: "succ-g", displayName: "Succ G", abbreviation: "SUCCDUP" }, []);
+      const res = await succeed(admin, "succ-e", { successorKeys: ["succ-f"], ...flags });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "abbreviation-taken", takenBy: "Succ G" });
+    });
+
+    it("403 for NRMS.SiteEditor", async () => {
+      await put("succ-h", "Succ H", null);
+      await put("succ-i", "Succ I", null);
+      expect((await succeed(siteEditor, "succ-h", { successorKeys: ["succ-i"], ...flags })).status).toBe(403);
+      expect((await request(app).get("/api/organizations/succ-h/succession-preview").set(auth(siteEditor))).status).toBe(403);
+      expect((await request(app).get("/api/organizations/succ-h").set(auth(reader))).body.isActive).toBe(true);
+    });
+
+    it("reactivating through PATCH clears successorKeys", async () => {
+      await put("succ-j", "Succ J", null);
+      await put("succ-k", "Succ K", null);
+      await succeed(admin, "succ-j", { successorKeys: ["succ-k"], ...flags }).expect(200);
+      const res = await request(app).patch("/api/organizations/succ-j/profile").set(auth(admin)).send({ isActive: true });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ isActive: true, successorKeys: [] });
+    });
+  });
+
+  describe("cabinet change routes (new-government spec §5)", () => {
+    const put = (key: string, displayName: string, abbreviation: string | null) =>
+      request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName, abbreviation }).expect(200);
+    const moves = { moveSubscribers: true, moveStaff: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: false };
+
+    it("403 for anyone but Core.Admin", async () => {
+      expect((await request(app).get("/api/cabinet-change").set(auth(siteEditor))).status).toBe(403);
+      expect((await request(app).put("/api/cabinet-change").set(auth(siteEditor)).send({ operations: [] })).status).toBe(403);
+      for (const path of ["preview", "publish", "schedule", "cancel"]) {
+        expect((await request(app).post(`/api/cabinet-change/${path}`).set(auth(siteEditor)).send({})).status).toBe(403);
+      }
+    });
+
+    it("draft, preview, schedule, cancel, then a stale and a clean publish", async () => {
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).status).toBe(404);
+      expect((await request(app).post("/api/cabinet-change/publish").set(auth(admin))).status).toBe(404);
+      await put("cab-a", "Cab A", null);
+      const a = (await request(app).get("/api/organizations/cab-a").set(auth(reader))).body as { updatedAt: string };
+      const rename = { op: "update", key: "cab-a", expectedUpdatedAt: a.updatedAt, patch: { displayName: "Cab A Renamed" } };
+
+      expect((await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [{ op: "update", key: "cab-a" }] })).status).toBe(400);
+      const saved = await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [rename] });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({ status: "draft", operations: [rename], createdBy: "svc", scheduledFor: null });
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).body.id).toBe(saved.body.id);
+
+      const preview = await request(app).post("/api/cabinet-change/preview").set(auth(admin));
+      expect(preview.status).toBe(200);
+      expect(preview.body.problems).toEqual([]);
+      expect(preview.body.diff).toEqual([{ key: "cab-a", displayName: "Cab A Renamed", kind: "changed", field: "displayName", from: "Cab A", to: "Cab A Renamed" }]);
+
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ at: "2001-01-01T00:00:00Z" })).body).toEqual({ result: "past", error: "Choose a time in the future." });
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ at: "soon" })).status).toBe(400);
+      const scheduled = await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ at: "2099-11-20T08:00:00Z" });
+      expect(scheduled.status).toBe(200);
+      expect(scheduled.body).toMatchObject({ status: "scheduled", scheduledFor: "2099-11-20T08:00:00.000Z", scheduledForLocal: "2099-11-20T01:00" });
+      // NG-R15: the Hub sends BC wall-clock time; Core converts it (BC stays on UTC−7 all year after 2026-11-01).
+      const local = await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ scheduledForLocal: "2099-11-20T11:00" });
+      expect(local.status).toBe(200);
+      expect(local.body).toMatchObject({ status: "scheduled", scheduledFor: "2099-11-20T18:00:00.000Z", scheduledForLocal: "2099-11-20T11:00" });
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).body.scheduledForLocal).toBe("2099-11-20T11:00");
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ scheduledForLocal: "2099-02-30T11:00" })).status).toBe(400);
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ scheduledForLocal: "2099-11-20T11:00", at: "2099-11-20T08:00:00Z" })).status).toBe(400);
+      expect((await request(app).post("/api/cabinet-change/schedule").set(auth(admin)).send({ scheduledForLocal: "2001-01-01T00:00" })).body).toEqual({ result: "past", error: "Choose a time in the future." });
+
+      expect((await request(app).post("/api/cabinet-change/cancel").set(auth(admin))).status).toBe(204);
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).status).toBe(404);
+
+      // A new draft; Cab A changes underneath it.
+      await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [rename, { op: "succeed", key: "cab-a", expectedUpdatedAt: a.updatedAt, successors: [], moves }] }).expect(200);
+      const invalid = await request(app).post("/api/cabinet-change/publish").set(auth(admin));
+      expect(invalid.status).toBe(422);
+      expect(invalid.body).toEqual({ result: "invalid", problems: [{ op: 1, message: "Choose a successor for Cab A, or choose “No successor (abolish it)”." }] });
+      await new Promise((r) => setTimeout(r, 5));
+      await request(app).patch("/api/organizations/cab-a/profile").set(auth(admin)).send({ sortOrder: 5 }).expect(200);
+      const stale = await request(app).post("/api/cabinet-change/publish").set(auth(admin));
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ result: "stale", key: "cab-a" });
+
+      const fresh = (await request(app).get("/api/organizations/cab-a").set(auth(reader))).body as { updatedAt: string };
+      await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [{ ...rename, expectedUpdatedAt: fresh.updatedAt }] }).expect(200);
+      const published = await request(app).post("/api/cabinet-change/publish").set(auth(admin));
+      expect(published.status).toBe(200);
+      expect(published.body).toEqual({ result: "published" });
+      expect((await request(app).get("/api/organizations/cab-a").set(auth(reader))).body.displayName).toBe("Cab A Renamed");
+      expect((await request(app).get("/api/cabinet-change").set(auth(admin))).status).toBe(404);
     });
   });
 });

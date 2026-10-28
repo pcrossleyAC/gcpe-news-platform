@@ -19,12 +19,12 @@
  * naturally gives us exactly those rows and none of the unchanged ones (same technique as
  * apps/news-api/src/projections.ts's `applyRelease`).
  */
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type MediaListRecord, type SubscriberConfig } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { governmentTerms, mediaLists, pageImageLanguages, pageImages, pageTypes } from "../db/schema";
-import { layoutFromLegacy, newestTerm, releaseTypeFromLegacy } from "./map";
+import { layoutFromLegacy, releaseTypeFromLegacy } from "./map";
 import { Q_COLLECTIONS, Q_MEDIA_LISTS, Q_PAGE_IMAGE_LANGUAGES, Q_PAGE_IMAGES, Q_PAGE_TYPES } from "./queries";
 import type { ImportReport } from "./report";
 
@@ -212,21 +212,13 @@ async function importMediaLists(tx: Tx, rows: LegacyMediaListRow[], report: Impo
 }
 
 /**
- * `NewsReleaseCollection` rows become `government_terms`, matched by legacy id. Exactly one
- * row is ever `is_current` (enforced by the partial unique index on `government_terms`), so
- * the winner — `newestTerm()` of all the names — is set only after every other current row's
- * flag is cleared, in the same transaction, and only if it isn't already the sole current row.
- *
- * A term can be `is_current` with no `legacy_id` at all — e.g. a term created directly in NRMS
- * before this import ever ran. Clearing that row is intentional (legacy is the source of truth
- * at cutover), but silent data loss on an unrelated row is exactly the kind of thing a report
- * must surface, so it's logged as a warning naming the term.
+ * `NewsReleaseCollection` rows become `government_terms`, matched by legacy id. Start dates and
+ * "current" are not the importer's business: dates come from the 0017 backfill and the Hub, and
+ * `is_current` is written only by the term rollover (a text-sorted "newest name" got it wrong).
  */
 async function importTerms(tx: Tx, rows: LegacyCollectionRow[], report: ImportReport): Promise<Map<string, string>> {
   const ids = new Map<string, string>();
   if (rows.length === 0) return ids;
-  const winnerName = newestTerm(rows.map((r) => r.Name));
-  const idByName = new Map<string, string>();
 
   for (const row of rows) {
     report.count("government_terms", "legacy");
@@ -242,25 +234,9 @@ async function importTerms(tx: Tx, rows: LegacyCollectionRow[], report: ImportRe
       });
     const [term] = await tx.select({ id: governmentTerms.id }).from(governmentTerms).where(eq(governmentTerms.legacyId, legacyId));
     ids.set(legacyId, term!.id);
-    idByName.set(row.Name, term!.id);
     report.count("government_terms", "imported");
   }
 
-  const winnerId = idByName.get(winnerName);
-  const current = await tx.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
-  const alreadyCorrect = winnerId !== undefined && current.length === 1 && current[0]!.id === winnerId;
-  if (!alreadyCorrect) {
-    const toClear = current.filter((r) => r.id !== winnerId);
-    for (const r of toClear) {
-      if (!r.legacyId) {
-        report.warn("no-legacy-id", r.name, ["Cleared is_current on a government term with no legacy id (legacy is the source of truth at cutover)"]);
-      }
-    }
-    if (toClear.length > 0) {
-      await tx.update(governmentTerms).set({ isCurrent: false }).where(inArray(governmentTerms.id, toClear.map((r) => r.id)));
-    }
-    if (winnerId) await tx.update(governmentTerms).set({ isCurrent: true }).where(eq(governmentTerms.id, winnerId));
-  }
   return ids;
 }
 

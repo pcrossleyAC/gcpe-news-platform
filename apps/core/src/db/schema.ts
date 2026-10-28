@@ -29,6 +29,8 @@ export const organizations = pgTable("organizations", {
   isHq: boolean("is_hq").notNull().default(false),
   /** Listed on public surfaces (Q54). False for GCPE Headquarters and GCPE Media Relations. */
   isPublic: boolean("is_public").notNull().default(true),
+  /** Ordered successor ministries, set by a hand-over (new-government spec §4); the first is the redirect target. Cleared on reactivation. */
+  successorKeys: text("successor_keys").array().notNull().default(sql`'{}'::text[]`),
   legacyId: uuid("legacy_id"),
   /** Set when staff edit the organization from the Hub; the seed and importer leave such rows alone. Not part of OrgRecord. */
   staffEditedAt: timestamp("staff_edited_at", { withTimezone: true }),
@@ -122,5 +124,38 @@ export const userLegacyIds = pgTable(
     primaryKey({ columns: [t.system, t.legacyId] }),
     index("user_legacy_ids_user_idx").on(t.userId),
     check("user_legacy_ids_system_check", sql`${t.system} IN ('calendar')`),
+  ],
+);
+
+/**
+ * A staged cabinet change (new-government spec §5): ministry operations saved as a draft, previewed,
+ * then published in one transaction, now or at `scheduled_for`. At most one change is open (draft or
+ * scheduled) at a time.
+ */
+export const cabinetChanges = pgTable(
+  "cabinet_changes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    status: text("status").$type<"draft" | "scheduled" | "published" | "cancelled">().notNull().default("draft"),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+    /** The draft's operations, as cabinetOperationSchema parsed them (services/cabinet-changes.ts). */
+    operations: jsonb("operations").$type<unknown[]>().notNull().default([]),
+    createdBy: text("created_by"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    /** Why the last scheduled publish failed; cleared when it is saved, scheduled or published again. */
+    error: text("error"),
+    /**
+     * Deadlocks or serialization failures the scheduler has hit publishing it at the current
+     * scheduled time. One earns a retry on the next tick; a second sends it back to draft. Stored,
+     * not in memory, so the bound holds on SiteGround, where each tick may be a fresh process.
+     * Reset whenever it is saved or scheduled.
+     */
+    transientFailures: integer("transient_failures").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("cabinet_changes_status_check", sql`${t.status} IN ('draft','scheduled','published','cancelled')`),
+    check("cabinet_changes_scheduled_for_check", sql`${t.status} <> 'scheduled' OR ${t.scheduledFor} IS NOT NULL`),
+    uniqueIndex("cabinet_changes_one_open_idx").on(sql`(true)`).where(sql`${t.status} IN ('draft','scheduled')`),
   ],
 );

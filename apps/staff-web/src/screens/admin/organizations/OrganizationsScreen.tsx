@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Link } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
@@ -6,11 +7,9 @@ import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../messages";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { AddOrganizationForm } from "./AddOrganizationForm";
-import {
-  OrganizationEditForm,
-  SAVED_MESSAGE,
-  deactivateWarning,
-} from "./OrganizationEditForm";
+import { OrganizationEditForm, SAVED_MESSAGE } from "./OrganizationEditForm";
+import { HandOverPanel } from "./HandOverPanel";
+import { abbreviationTakenMessage } from "./abbreviation";
 import { canEditOrgProfile, isCoreAdmin } from "./access";
 
 /**
@@ -22,6 +21,9 @@ import { canEditOrgProfile, isCoreAdmin } from "./access";
  * listed after every active one, so the list leads with the ministries staff actually edit.
  * Every role sees a "Not public" note beside a non-public organization's name (SiteEditors
  * have no Public column to tell them).
+ *
+ * An active row's Deactivate, and an inactive row's "Set successor…", open the hand-over panel
+ * (new-government spec §4) above the table, like the edit form.
  */
 export function OrganizationsScreen(): React.JSX.Element {
   const session = useSession();
@@ -31,17 +33,17 @@ export function OrganizationsScreen(): React.JSX.Element {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const editButtons = useRef(new Map<string, HTMLButtonElement>());
   const refocusKey = useRef<string | null>(null);
-  // Where focus goes after a row action re-renders the row (Deactivate/Reactivate/confirm).
+  // Where focus goes after a row action re-renders the row (hand-over panel/Reactivate).
   // "toggle": the row left the list (deactivated while inactive ones are hidden).
   const rowFocus = useRef<{
     key: string;
-    target: "edit" | "deactivate" | "group" | "toggle";
+    target: "edit" | "handOver" | "toggle";
   } | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const toggle = useRef<HTMLInputElement>(null);
   const toggleId = useId();
-  const deactivateButtons = useRef(new Map<string, HTMLButtonElement>());
-  const confirmGroups = useRef(new Map<string, HTMLDivElement>());
+  // Each row's Deactivate (active) or Set successor… (inactive) button: the panel's opener.
+  const handOverButtons = useRef(new Map<string, HTMLButtonElement>());
   const [rowError, setRowError] = useState<{
     key: string;
     messages: string[];
@@ -51,8 +53,10 @@ export function OrganizationsScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The hand-over panel's save in flight: every other row action waits for it.
+  const [panelBusy, setPanelBusy] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const [handOverKey, setHandOverKey] = useState<string | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const latest = useRef(0);
 
@@ -87,16 +91,14 @@ export function OrganizationsScreen(): React.JSX.Element {
     const el =
       f.target === "edit"
         ? editButtons.current.get(f.key)
-        : f.target === "deactivate"
-          ? deactivateButtons.current.get(f.key)
-          : f.target === "toggle"
-            ? toggle.current
-            : confirmGroups.current.get(f.key);
+        : f.target === "handOver"
+          ? handOverButtons.current.get(f.key)
+          : toggle.current;
     if (el) {
       el.focus();
       rowFocus.current = null;
     }
-  }, [confirmingKey, orgs]);
+  }, [handOverKey, orgs]);
 
   if (!canEdit) {
     return (
@@ -140,34 +142,26 @@ export function OrganizationsScreen(): React.JSX.Element {
   const closeFormFor = (key: string) =>
     setEditingKey((k) => (k === key ? null : k));
 
-  const deactivate = async (o: OrgRecord) => {
-    if (busy) return;
-    setBusy(true);
+  // After the hand-over panel saves: a plain deactivation (no successor) or a succession.
+  const handedOver = (o: OrgRecord, successorName: string | null) => {
+    // An already-inactive row (Set successor…) is on screen only while inactive ones are shown.
+    rowFocus.current = {
+      key: o.key,
+      target: showInactive || !o.isActive ? "edit" : "toggle",
+    };
+    closeFormFor(o.key);
+    setHandOverKey(null);
     setMessages([]);
     setRowError(null);
-    setStatus(null);
-    try {
-      await apiFetch(
-        `/core/api/organizations/${encodeURIComponent(o.key)}/deactivate`,
-        { method: "POST" },
-      );
-      rowFocus.current = {
-        key: o.key,
-        target: showInactive ? "edit" : "toggle",
-      };
-      closeFormFor(o.key);
-      setConfirmingKey(null);
-      setStatus(
-        showInactive
-          ? `${o.displayName} is deactivated.`
-          : `${o.displayName} is deactivated. Inactive organizations are hidden: tick Show inactive organizations to see it.`,
-      );
-      reload();
-    } catch (caught) {
-      setRowError({ key: o.key, messages: messagesOf(caught) });
-    } finally {
-      setBusy(false);
-    }
+    const done = successorName
+      ? `${o.displayName} is deactivated. Its pages now send visitors to ${successorName}. Moves to other services finish shortly.`
+      : `${o.displayName} is deactivated.`;
+    setStatus(
+      showInactive || !o.isActive
+        ? done
+        : `${done} Inactive organizations are hidden: tick Show inactive organizations to see it.`,
+    );
+    reload();
   };
 
   const reactivate = async (o: OrgRecord) => {
@@ -191,7 +185,17 @@ export function OrganizationsScreen(): React.JSX.Element {
       );
       reload();
     } catch (caught) {
-      setRowError({ key: o.key, messages: messagesOf(caught) });
+      // Core's 409: another active ministry (usually its successor) now holds its abbreviation.
+      const taken = abbreviationTakenMessage(caught) !== null;
+      const body = taken ? (caught as { body?: { takenBy?: string } }).body : undefined;
+      setRowError({
+        key: o.key,
+        messages: taken
+          ? [
+              `${o.displayName} can't be reactivated while ${body?.takenBy ?? "another ministry"} uses its abbreviation${o.abbreviation ? ` ${o.abbreviation}` : ""}. Give one of them a different abbreviation first.`,
+            ]
+          : messagesOf(caught),
+      });
     } finally {
       setBusy(false);
     }
@@ -222,6 +226,12 @@ export function OrganizationsScreen(): React.JSX.Element {
             Organizations that aren&rsquo;t public are left out of the public
             ministry list and the subscribe page.
           </p>
+          <p>
+            New cabinet?{" "}
+            <Link to="/organizations/cabinet-change">Cabinet change</Link> lets
+            you prepare renames, new ministries and hand-overs together, then
+            publish them all at once or at the swearing-in time.
+          </p>
         </>
       )}
       {loadError && (
@@ -239,6 +249,7 @@ export function OrganizationsScreen(): React.JSX.Element {
           <button
             type="button"
             ref={addButton}
+            disabled={panelBusy}
             onClick={() => {
               setStatus(null);
               setEditingKey(null);
@@ -287,6 +298,27 @@ export function OrganizationsScreen(): React.JSX.Element {
           }}
         />
       )}
+      {isAdmin &&
+        orgs &&
+        handOverKey &&
+        orgs.some((o) => o.key === handOverKey) && (
+          <HandOverPanel
+            key={`hand-over-${handOverKey}`}
+            org={orgs.find((o) => o.key === handOverKey)!}
+            orgs={orgs}
+            onBusyChange={setPanelBusy}
+            onCancel={() => {
+              rowFocus.current = { key: handOverKey, target: "handOver" };
+              setHandOverKey(null);
+            }}
+            onDone={(successorName) =>
+              handedOver(
+                orgs.find((o) => o.key === handOverKey)!,
+                successorName,
+              )
+            }
+          />
+        )}
       {orgs && (inactiveCount > 0 || showInactive) && (
         <p>
           <input
@@ -336,7 +368,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                       type="checkbox"
                       aria-label={`${o.displayName} is an HQ organization`}
                       checked={o.isHq}
-                      disabled={busy}
+                      disabled={busy || panelBusy}
                       onChange={(e) => void setFlag(o, "hq", e.target.checked)}
                     />
                   </td>
@@ -347,7 +379,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                       type="checkbox"
                       aria-label={`${o.displayName} is listed publicly`}
                       checked={o.isPublic}
-                      disabled={busy}
+                      disabled={busy || panelBusy}
                       onChange={(e) =>
                         void setFlag(o, "public", e.target.checked)
                       }
@@ -362,6 +394,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                       else editButtons.current.delete(o.key);
                     }}
                     aria-label={`Edit ${o.displayName}`}
+                    disabled={panelBusy}
                     onClick={() => {
                       setStatus(null);
                       setEditingKey(o.key);
@@ -369,25 +402,29 @@ export function OrganizationsScreen(): React.JSX.Element {
                   >
                     Edit
                   </button>
-                  {isAdmin && o.isActive && confirmingKey !== o.key && (
+                  {isAdmin && (
                     <>
                       {" "}
                       <button
                         type="button"
                         ref={(el) => {
-                          if (el) deactivateButtons.current.set(o.key, el);
-                          else deactivateButtons.current.delete(o.key);
+                          if (el) handOverButtons.current.set(o.key, el);
+                          else handOverButtons.current.delete(o.key);
                         }}
-                        aria-label={`Deactivate ${o.displayName}`}
-                        disabled={busy}
+                        aria-label={
+                          o.isActive
+                            ? `Deactivate ${o.displayName}`
+                            : `Set successor for ${o.displayName}`
+                        }
+                        aria-expanded={handOverKey === o.key}
+                        disabled={busy || panelBusy}
                         onClick={() => {
                           setStatus(null);
                           setRowError(null);
-                          rowFocus.current = { key: o.key, target: "group" };
-                          setConfirmingKey(o.key);
+                          setHandOverKey(o.key);
                         }}
                       >
-                        Deactivate
+                        {o.isActive ? "Deactivate" : "Set successor…"}
                       </button>
                     </>
                   )}
@@ -397,52 +434,14 @@ export function OrganizationsScreen(): React.JSX.Element {
                       <button
                         type="button"
                         aria-label={`Reactivate ${o.displayName}`}
+                        disabled={panelBusy}
                         onClick={() => void reactivate(o)}
                       >
                         Reactivate
                       </button>
                     </>
                   )}
-                  {isAdmin && confirmingKey === o.key && (
-                    <div
-                      role="group"
-                      tabIndex={-1}
-                      ref={(el) => {
-                        if (el) confirmGroups.current.set(o.key, el);
-                        else confirmGroups.current.delete(o.key);
-                      }}
-                      aria-label={`Deactivate ${o.displayName}`}
-                      aria-describedby={`confirm-${o.key}`}
-                    >
-                      <p id={`confirm-${o.key}`}>
-                        {deactivateWarning(o.displayName)}
-                      </p>
-                      <button type="button" onClick={() => void deactivate(o)}>
-                        Confirm
-                      </button>{" "}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          rowFocus.current = {
-                            key: o.key,
-                            target: "deactivate",
-                          };
-                          setRowError(null);
-                          setConfirmingKey(null);
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      {rowError?.key === o.key &&
-                        rowError.messages.map((m) => (
-                          <p role="alert" key={m}>
-                            {m}
-                          </p>
-                        ))}
-                    </div>
-                  )}
                   {rowError?.key === o.key &&
-                    confirmingKey !== o.key &&
                     rowError.messages.map((m) => (
                       <p role="alert" key={m}>
                         {m}

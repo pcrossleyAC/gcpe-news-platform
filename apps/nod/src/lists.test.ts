@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb, createTestApp, envelope, sendEvent } from "../test/helpers";
-import { mediaOptOuts, subscriptions } from "./db/schema";
-import { activeListKeys, needsReferenceData, publicListItems } from "./lists";
+import { mediaOptOuts, subscriberHistory, subscriptions } from "./db/schema";
+import { activeListKeys, moveMinistrySubscribers, needsReferenceData, publicListItems } from "./lists";
 import { addSubscriber } from "./subscribers";
 
 describe("lists from Core events", () => {
@@ -131,5 +131,75 @@ describe("lists from Core events", () => {
     expect((await sendOrgPublic("finance", "Finance", true)).status).toBe(200);
     expect(await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId))).toEqual(membershipBefore);
     expect(await tdb.db.select().from(mediaOptOuts)).toEqual(optOutsBefore);
+  });
+  describe("org.succeeded", () => {
+    const succeeded = (key: string, successorKeys: string[], moveSubscribers = true) =>
+      envelope("core", "org.succeeded", { key, successorKeys, moveSubscribers, moveCalendar: false, moveDrafts: false, takeAbbreviation: false, at: "2028-11-20T17:00:00.000Z" }, `org-succession:${key}`);
+    const keysOf = async (id: string) =>
+      (await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, id))).map((r) => r.listKey).sort();
+    const historyOf = (id: string) => tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, id));
+
+    it("moves subscribers and writes one history line each", async () => {
+      const a = await addSubscriber(tdb.db, { email: "mv-a@example.test", lists: ["ministries:old1", "sectors:x"] });
+      const b = await addSubscriber(tdb.db, { email: "mv-b@example.test", lists: ["ministries:old1"] });
+      expect((await sendEvent(app, succeeded("old1", ["new1"]))).status).toBe(200);
+      expect(await keysOf(a.id)).toEqual(["ministries:new1", "sectors:x"]);
+      expect(await keysOf(b.id)).toEqual(["ministries:new1"]);
+      const h = (await historyOf(a.id)).filter((r) => r.action === "list-moved");
+      expect(h).toHaveLength(1);
+      expect(h[0]).toMatchObject({ detail: "ministries:old1 → ministries:new1", actor: "system: ministry succession" });
+      expect((await historyOf(b.id)).filter((r) => r.action === "list-moved")).toHaveLength(1);
+    });
+
+    it("a subscriber already on B ends with exactly one B row", async () => {
+      const a = await addSubscriber(tdb.db, { email: "both@example.test", lists: ["ministries:old2", "ministries:new2"] });
+      await sendEvent(app, succeeded("old2", ["new2"]));
+      expect(await keysOf(a.id)).toEqual(["ministries:new2"]);
+    });
+
+    it("a split adds every successor", async () => {
+      const a = await addSubscriber(tdb.db, { email: "split@example.test", lists: ["ministries:old3"] });
+      await sendEvent(app, succeeded("old3", ["new3a", "new3b"]));
+      expect(await keysOf(a.id)).toEqual(["ministries:new3a", "ministries:new3b"]);
+      expect((await historyOf(a.id)).filter((r) => r.action === "list-moved")).toHaveLength(1);
+    });
+
+    it("a second delivery (the same event, or a redelivery under a new id) moves nothing and adds no history", async () => {
+      const a = await addSubscriber(tdb.db, { email: "twice@example.test", lists: ["ministries:old4"] });
+      const e = succeeded("old4", ["new4"]);
+      expect((await sendEvent(app, e)).status).toBe(200);
+      expect(await keysOf(a.id)).toEqual(["ministries:new4"]);
+      expect((await sendEvent(app, e)).status).toBe(200);
+      expect((await sendEvent(app, succeeded("old4", ["new4"]))).status).toBe(200);
+      expect(await keysOf(a.id)).toEqual(["ministries:new4"]);
+      expect((await historyOf(a.id)).filter((r) => r.action === "list-moved")).toHaveLength(1);
+      // The helper itself reports the no-op.
+      await tdb.db.transaction(async (tx) => { expect(await moveMinistrySubscribers(tx, "old4", ["new4"], "t")).toBe(0); });
+    });
+
+    it("moveSubscribers false is a no-op; the same hand-over with it on then moves", async () => {
+      const a = await addSubscriber(tdb.db, { email: "stay@example.test", lists: ["ministries:old5"] });
+      expect((await sendEvent(app, succeeded("old5", ["new5"], false))).status).toBe(200);
+      expect(await keysOf(a.id)).toEqual(["ministries:old5"]);
+      expect((await historyOf(a.id)).filter((r) => r.action === "list-moved")).toHaveLength(0);
+      expect((await sendEvent(app, succeeded("old5", ["new5"]))).status).toBe(200);
+      expect(await keysOf(a.id)).toEqual(["ministries:new5"]);
+    });
+
+    it("a successor equal to the ministry itself is ignored", async () => {
+      const a = await addSubscriber(tdb.db, { email: "self@example.test", lists: ["ministries:old6"] });
+      await sendEvent(app, succeeded("old6", ["old6"]));
+      expect(await keysOf(a.id)).toEqual(["ministries:old6"]);
+      expect((await historyOf(a.id)).filter((r) => r.action === "list-moved")).toHaveLength(0);
+      await sendEvent(app, succeeded("old6", ["old6", "new6"]));
+      expect(await keysOf(a.id)).toEqual(["ministries:new6"]);
+      expect((await historyOf(a.id)).filter((r) => r.action === "list-moved").map((r) => r.detail)).toEqual(["ministries:old6 → ministries:new6"]);
+    });
+
+    it("matches keys case-insensitively", async () => {
+      const a = await addSubscriber(tdb.db, { email: "case@example.test", lists: ["ministries:old7"] });
+      await sendEvent(app, succeeded("Old7", ["NEW7", "new7"]));
+      expect(await keysOf(a.id)).toEqual(["ministries:new7"]);
+    });
   });
 });

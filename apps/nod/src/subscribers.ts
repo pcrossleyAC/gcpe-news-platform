@@ -88,7 +88,7 @@ export async function addSubscriber(db: Db, input: AddSubscriberInput, actor = "
  * since deactivated must never be counted. Every other category's match is untouched — its
  * `lists` row (if any) is never even consulted — preserving today's semantics exactly.
  */
-export async function countSubscribers(db: Db, listKeys: string[]): Promise<number> {
+export async function countSubscribers(db: Db, listKeys: string[], opts: { exact?: boolean } = {}): Promise<number> {
   const keys = listKeys.map((k) => k.toLowerCase());
   // sql.param, not a bare `${keys}` interpolation: drizzle's sql`` template spreads a plain
   // array into a parenthesized, comma-joined param list (built for `IN (${array})`), which
@@ -100,7 +100,13 @@ export async function countSubscribers(db: Db, listKeys: string[]): Promise<numb
     JOIN ${subscriptions} sub ON sub.subscriber_id = s.id
     LEFT JOIN ${lists} l ON l.list_key = sub.list_key
     WHERE s.status = 'active'
-      AND ${matchesItem(sql`sub.list_key`, sql`${sql.param(keys)}::text[]`)}
+      AND ${
+        opts.exact
+          ? // Only subscribers of these exact lists: "all news" ('*') subscribers are left out, as
+            // the Hub's ministry hand-over counts only the people a move would take.
+            sql`sub.list_key = ANY(${sql.param(keys)}::text[])`
+          : matchesItem(sql`sub.list_key`, sql`${sql.param(keys)}::text[]`)
+      }
       AND (l.category IS DISTINCT FROM ${MEDIA_CATEGORY} OR l.active = true)`);
   return r.rows[0]!.n;
 }

@@ -134,6 +134,7 @@ export function orgRecord(key: string, over: Partial<OrgRecord> = {}): OrgRecord
     sectorKeys: [],
     isHq: false,
     isPublic: true,
+    successorKeys: [],
     updatedAt: "2026-10-08T17:00:00Z",
     ...over,
   };

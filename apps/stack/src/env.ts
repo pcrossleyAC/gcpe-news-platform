@@ -334,7 +334,8 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
  * see apps/nod/src/lists.ts); the site builder
  * only site.rebuild_requested; NRMS also keeps its own local copy of Core's ministries and
  * categories, so it receives Core's org, sector, theme and tag upserted/deactivated events too
- * (Phase 3b task 3: taxonomy.ts).
+ * (Phase 3b task 3: taxonomy.ts). Core's org.succeeded (new-government spec §4) goes to NRMS, NoD
+ * and the Calendar, which each move their own rows; the News API reads successorKeys off org.upserted.
  */
 export const INTERNAL_EVENT_ROUTES = [
   { from: "CORE", source: "core", to: "NEWSAPI", name: "news-api", url: "self:/events", types: newsApiEventTypesFromCore() },
@@ -342,16 +343,16 @@ export const INTERNAL_EVENT_ROUTES = [
     // user.upserted: Calendar roles and ministries, so NRMS's Forecast and activity lookup show
     // only what the Calendar would (spec addendum §6, §11). NRMS keeps no email or name.
     from: "CORE", source: "core", to: "NRMS", name: "nrms", url: "self:/nrms/events",
-    types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+    types: ["org.upserted", "org.deactivated", "org.succeeded", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
   },
   {
     from: "CORE", source: "core", to: "NOD", name: "nod", url: "self:/nod/events",
-    types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+    types: ["org.upserted", "org.deactivated", "org.succeeded", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
   },
   {
     // The Calendar's projections (spec addendum §4, §5.2). user.* goes here and nowhere public.
     from: "CORE", source: "core", to: "CALENDAR", name: "calendar", url: "self:/calendar/events",
-    types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+    types: ["org.upserted", "org.deactivated", "org.succeeded", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
   },
   {
     // The Calendar's activities, for NRMS's activity projection and Forecast (spec addendum §11).

@@ -61,6 +61,7 @@ EVENT_SUBSCRIBERS='[]' npm --workspace @gcpe/core run dev
 | `PORT` | no | `3001` | HTTP port (the Docker healthcheck follows it) |
 | `MIGRATIONS_FOLDER` | no | `apps/core/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/core/migrations` |
 | `EVENT_SUBSCRIBERS` | no | `[]` | JSON array of webhook subscribers, see below |
+| `TENANT_CONFIG` | no | `config/tenants/bc.json` (resolved next to the bundle) | Tenant config path, see `packages/config`. Its `timeZone` turns a cabinet change's BC schedule time into an instant. At start-up Core checks this runtime's tzdata against the tenant's pinned offset (`timeZoneCheck`) and refuses to start if they disagree (upgrade Node). The Docker image sets `/app/config/tenants/bc.json` |
 
 `EVENT_SUBSCRIBERS` is a JSON array; each entry receives the event types it lists (`"*"` means all), signed with its `secret`:
 
