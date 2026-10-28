@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "successor_keys" text[] DEFAULT '{}'::text[] NOT NULL;
