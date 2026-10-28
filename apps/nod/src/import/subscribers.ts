@@ -410,7 +410,9 @@ async function lastEndedAt(tx: Tx, s: Pick<SubscriberRow, "id" | "endedAt">): Pr
 async function replaceHolder(tx: Tx, c: Candidate, holderId: string, runAt: Date): Promise<Outcome | null> {
   const { m } = c;
   const [h] = await tx.select().from(subscribers).where(eq(subscribers.id, holderId));
-  if (!h || h.id === m.id || h.status !== "deleted" || m.state.status !== "active") return null;
+  // Only the person's own sign-up undoes their unsubscribe; a record staff made in legacy (no
+  // opt-in) never does, as NoD's own setStatus and addSubscriber refuse it.
+  if (!h || h.id === m.id || h.status !== "deleted" || m.state.status !== "active" || m.state.source !== "self") return null;
   const ended = await lastEndedAt(tx, h);
   if (ended === null || ended >= m.createdAt) return null;
   const existing: CurrentRow = {
@@ -433,8 +435,8 @@ async function replaceHolder(tx: Tx, c: Candidate, holderId: string, runAt: Date
   await tx.delete(subscribers).where(eq(subscribers.id, h.id));
   await writeHistory(tx, m.id, IMPORT_ACTOR, "record-merged", h.status);
   await applyLegacyLeaves(tx, m.id, c.leaves);
-  const duplicate = (await duplicateUnsubscribe(tx, c, { id: m.id, createdAt: allowed.createdAt, status: allowed.state.status })) ?? undefined;
-  return { kind: "imported", optedOut, duplicate };
+  // No duplicate-unsubscribe note: the old record's unsubscribe was applied (it ended the record this one replaces).
+  return { kind: "imported", optedOut };
 }
 
 /**
@@ -477,7 +479,7 @@ async function writeBatch(db: Db, batch: Candidate[], runAt: Date): Promise<Map<
         // unsubscribe already imported for a purged record was kept by the purge itself.
         const unsubscribedAt = seen.has(m.id) ? unsubscribedSince(c, seen.get(m.id)!) : c.unsubscribedAt;
         // A newer legacy record of an address whose NoD record has ended may take it over (replaceHolder).
-        const mayReplace = !seen.has(m.id) && m.state.status === "active" && holder?.status === "deleted";
+        const mayReplace = !seen.has(m.id) && m.state.status === "active" && m.state.source === "self" && holder?.status === "deleted";
         if (holder && (c.leaves.length > 0 || unsubscribedAt || mayReplace)) forHolder.push({ c, unsubscribedAt });
         else if (!holder) await applyToAddress(tx, m.state.email, c.leaves, unsubscribedAt);
         outcome = skipped(seen.has(m.id) ? "removed in NoD since the last import" : "address already in NoD (NoD's record kept)");

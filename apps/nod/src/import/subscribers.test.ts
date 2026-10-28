@@ -465,7 +465,7 @@ describe("importing legacy subscribers", () => {
     const byAddress = async () =>
       (await tdb.db.select({ id: subscribers.id, status: subscribers.status }).from(subscribers).where(sql`lower(${subscribers.email}) = 'digest@example.test'`)).map((r) => [r.id, r.status]);
     /** Legacy after digest@'s record unsubscribed on 2026-09-01 and the address signed up again on 2026-09-05. */
-    const signedUpAgain = (purged: boolean, opts: { registered?: string; enabled?: boolean } = {}) => {
+    const signedUpAgain = (purged: boolean, opts: { registered?: string; enabled?: boolean; self?: boolean } = {}) => {
       const t = legacyNodTables();
       const old = t.subscribers!.find((x) => x.SubscriberGuid === G.subDigest)!;
       t.subscribers = t.subscribers!.map((x) => (x.SubscriberGuid === G.subDigest ? { ...x, IsDeleted: true, IsEnabled: false } : x));
@@ -473,7 +473,7 @@ describe("importing legacy subscribers", () => {
         t.subscribers = t.subscribers.filter((x) => x.SubscriberGuid !== G.subDigest);
         t.subscriberLists = t.subscriberLists!.filter((x) => x.SubscriberGuid !== G.subDigest);
       }
-      t.subscribers.push({ ...old, SubscriberGuid: G2, RegisteredDateTime: new Date(opts.registered ?? "2026-09-05T10:00:00Z"), IsDeleted: false, IsEnabled: opts.enabled ?? true });
+      t.subscribers.push({ ...old, SubscriberGuid: G2, RegisteredDateTime: new Date(opts.registered ?? "2026-09-05T10:00:00Z"), IsDeleted: false, IsEnabled: opts.enabled ?? true, IsSelfSubscription: opts.self ?? true });
       t.subscriberLists = [...t.subscriberLists!, { SubscriberGuid: G2, ListGuid: G.listHealth }];
       t.unsubscribed = [...t.unsubscribed!, { SubscriberGuid: G.subDigest, UnsubscribedAt: new Date("2026-09-01T10:00:00Z") }];
       return t;
@@ -508,6 +508,26 @@ describe("importing legacy subscribers", () => {
       const { report } = await run(signedUpAgain(false));
       expect(await byAddress()).toEqual([[id(G.subDigest), "deleted"]]);
       expect(report.toJSON().skipped).toContainEqual(expect.objectContaining({ table: "Subscriber", sample: expect.arrayContaining([id(G2)]) }));
+    });
+
+    for (const purged of [false, true]) {
+      it(`a record staff created in legacy (not the person's own sign-up) doesn't take the address over (old record ${purged ? "purged" : "kept"})`, async () => {
+        // Legacy's admin screen makes an enabled record with no opt-in once the old one is deleted;
+        // only the person's own re-subscribe may undo their unsubscribe (as in NoD).
+        await run();
+        await importedOn("2026-08-01T00:00:00Z");
+        const { report } = await run(signedUpAgain(purged, { self: false }));
+        expect(await byAddress()).toEqual([[id(G.subDigest), "deleted"]]);
+        expect(await subscriber(G2)).toBeUndefined();
+        expect(report.toJSON()).toMatchObject({ balanced: true });
+      });
+    }
+
+    it("the takeover's report doesn't claim the old record's unsubscribe was skipped", async () => {
+      await run();
+      await importedOn("2026-08-01T00:00:00Z");
+      const { report } = await run(signedUpAgain(false));
+      expect(report.toJSON().notes.join("\n")).not.toMatch(/unsubscribe on a duplicate legacy record not applied/);
     });
 
     it("a sign-up legacy hasn't confirmed (not enabled) doesn't take the address over", async () => {
