@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
-import type { EventEnvelope, EventHandler, OrgRecord, ReleaseStatusChanged, TermRecord, UserRecord } from "@gcpe/events";
+import type { EventEnvelope, EventHandler, OrgRecord, OrgSucceeded, ReleaseStatusChanged, TermRecord, UserRecord } from "@gcpe/events";
+import { applySuccession, type SuccessionDeps } from "./succession";
 import { activities, orgs, releaseLinks, terms, TERM_KINDS, users, type TermKind } from "./db/schema";
 
 // Ordering and redelivery are the receiver's job: it applies an event only when its sequence is
@@ -59,8 +60,13 @@ const onReleaseStatusChanged: EventHandler = async (tx, e) => {
   await tx.insert(releaseLinks).values(row).onConflictDoUpdate({ target: releaseLinks.releaseId, set: row });
 };
 
+/** Core's org.succeeded (new-government spec §4); needs the Calendar's rules and subscribers to emit what it moves. */
+const onOrgSucceeded = (deps: SuccessionDeps): EventHandler => async (tx, e) => {
+  await applySuccession(tx, e.data as OrgSucceeded, deps);
+};
+
 const at = (iso: string | null) => (iso === null ? null : new Date(iso));
-export function projectionHandler(event: EventEnvelope): EventHandler | undefined {
+export function projectionHandler(event: EventEnvelope, deps?: SuccessionDeps): EventHandler | undefined {
   if (event.type === "release.status_changed") return event.source === "nrms" ? onReleaseStatusChanged : undefined;
   if (event.source !== "core") return undefined;
   switch (event.type) {
@@ -78,6 +84,8 @@ export function projectionHandler(event: EventEnvelope): EventHandler | undefine
       return onTermGone;
     case "user.upserted":
       return onUser;
+    case "org.succeeded":
+      return deps ? onOrgSucceeded(deps) : undefined;
     default:
       return undefined;
   }
