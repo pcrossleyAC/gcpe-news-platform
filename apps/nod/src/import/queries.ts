@@ -45,7 +45,7 @@ SELECT s.EntityGuid AS SubscriberGuid, s.EventGuid AS ListGuid, MAX(s.EventDate)
 /** Signups still waiting for their verification link: counted only, never imported. */
 export const Q_UNCONFIRMED_SIGNUPS = `-- name: unconfirmedSignups
 SELECT COUNT(*) AS Signups FROM dbo.SubscriberLink
- WHERE SubscriberGuid IS NULL AND SubscribeDate IS NULL AND ExpiryDate > DATEADD(day, -1, GETDATE())`;
+ WHERE SubscriberGuid IS NULL AND SubscribeDate IS NULL AND ExpiryDate > GETDATE()`;
 
 /** Manage links of subscribers that have not expired. The day of slack is deliberate: legacy's
  * server clock need not match the tenant zone, so the exact cut is the importer's. Never reads SubscriberInfo. */
