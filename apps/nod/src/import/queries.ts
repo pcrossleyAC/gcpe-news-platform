@@ -47,10 +47,15 @@ export const Q_UNCONFIRMED_SIGNUPS = `-- name: unconfirmedSignups
 SELECT COUNT(*) AS Signups FROM dbo.SubscriberLink
  WHERE SubscriberGuid IS NULL AND SubscribeDate IS NULL AND ExpiryDate > GETDATE()`;
 
+/** Manage links of confirmed subscribers that have not expired. Never reads SubscriberInfo. */
+export const Q_LIVE_MANAGE_LINKS = `-- name: liveManageLinks
+SELECT LinkGuid, SubscriberGuid, ExpiryDate FROM dbo.SubscriberLink
+ WHERE SubscriberGuid IS NOT NULL AND ExpiryDate > GETDATE()`;
+
 export const Q_DIGEST_END = `-- name: digestEnd
 SELECT ConfigValue FROM dbo.SysConfig WHERE ConfigKey = 'DailyDigestEndDateTimeUtc'`;
 
-export const ALL_QUERIES = [Q_LISTS, Q_SUBSCRIBERS, Q_SUBSCRIBER_LISTS, Q_ENDED, Q_UNSUBSCRIBED, Q_MEDIA_LIST_LEAVES, Q_UNCONFIRMED_SIGNUPS, Q_DIGEST_END];
+export const ALL_QUERIES = [Q_LISTS, Q_SUBSCRIBERS, Q_SUBSCRIBER_LISTS, Q_ENDED, Q_UNSUBSCRIBED, Q_MEDIA_LIST_LEAVES, Q_UNCONFIRMED_SIGNUPS, Q_LIVE_MANAGE_LINKS, Q_DIGEST_END];
 
 export const MAX_SINCE_DAYS = 92;
 
