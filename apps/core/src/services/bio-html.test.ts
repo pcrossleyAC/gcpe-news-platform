@@ -8,6 +8,10 @@ describe("sanitizeBioHtml", () => {
     expect([...BIO_TAGS]).toEqual(BODY_TAGS.filter((t) => t !== "asset"));
   });
 
+  it("keeps <em> and turns <i> into <em>; still drops <u>", () => {
+    expect(sanitizeBioHtml("<p>Under the <em>Act</em> and <i>Code</i> <u>x</u></p>")).toBe("<p>Under the <em>Act</em> and <em>Code</em> x</p>");
+  });
+
   it("keeps p, strong, ul/ol/li, a[href], br, div; b becomes strong", () => {
     const html =
       '<div><p>Minister <b>Pat</b> <strong>Doe</strong><br>was elected.</p><ul><li>One</li></ul><ol><li>Two</li></ol><p><a href="https://gov.bc.ca/x">site</a> <a href="mailto:pat@gov.bc.ca">mail</a> <a href="/about">about</a></p></div>';

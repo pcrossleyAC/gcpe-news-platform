@@ -485,6 +485,7 @@ export function OrganizationEditForm({
           onChange={setBio}
           readOnly={false}
           allowAssets={false}
+          allowItalic
           describedBy={bioDescribedBy}
         />
         <p id={id("mbio-hint")}>{BIO_HINT}</p>

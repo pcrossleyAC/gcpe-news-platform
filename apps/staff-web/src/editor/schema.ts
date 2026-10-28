@@ -87,9 +87,9 @@ export const Asset = Node.create<Record<string, never>, AssetAttrs>({
  * every other extension, and the schema it produces, stays identical to what this test suite
  * (and the Node round-trip test) exercises.
  */
-/** `opts.italic` adds the italic mark (rendered `<em>`) for the settings editors, whose server
- * allow-list keeps `em`; the release body and biography allow-lists drop it, so it stays off there.
- * `assetExtension` null leaves the `<asset>` node out (the minister biography): an `<asset>` then
+/** `opts.italic` adds the italic mark (rendered `<em>`): the server allow-lists for the settings
+ * editors, release bodies and biographies all keep `em` now, and each editor opts in. The default
+ * stays off so a caller that does not pass it keeps the narrower schema. `assetExtension` null leaves the `<asset>` node out (the minister biography): an `<asset>` then
  * parses as its URL text, which is what Core's bio sanitiser stores. */
 export function bodyExtensions(assetExtension: AnyExtension | null = Asset, opts: { italic?: boolean } = {}): AnyExtension[] {
   return [

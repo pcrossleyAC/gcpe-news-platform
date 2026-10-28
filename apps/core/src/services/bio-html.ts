@@ -24,6 +24,7 @@ export function sanitizeBioHtml(html: string): string {
     allowProtocolRelative: false,
     transformTags: {
       b: "strong",
+      i: "em",
       a: (tagName, attribs) => {
         const next = { ...attribs };
         if (next.href !== undefined && !isSafeUrl(next.href, { mailto: true })) delete next.href;

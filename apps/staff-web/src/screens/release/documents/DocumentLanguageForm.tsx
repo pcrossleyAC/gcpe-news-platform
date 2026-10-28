@@ -150,7 +150,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
         <TextField label="Subheadline" value={form.subheadline} onChange={(v) => setForm((f) => ({ ...f, subheadline: v }))} isDisabled={readOnly} maxLength={100} />
         <TextField label="Byline" value={form.byline} onChange={(v) => setForm((f) => ({ ...f, byline: v }))} isDisabled={readOnly} maxLength={250} />
 
-        <BodyEditor id={`${idBase}-body`} label="Body" value={form.bodyHtml} onChange={(html) => setForm((f) => ({ ...f, bodyHtml: html }))} readOnly={readOnly} />
+        <BodyEditor id={`${idBase}-body`} label="Body" value={form.bodyHtml} onChange={(html) => setForm((f) => ({ ...f, bodyHtml: html }))} readOnly={readOnly} allowItalic />
 
         <fieldset>
           <legend>Contacts</legend>

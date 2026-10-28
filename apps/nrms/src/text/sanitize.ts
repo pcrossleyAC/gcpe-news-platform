@@ -15,7 +15,7 @@ export function sanitizeBodyHtml(html: string): string {
     allowedSchemes: [...BODY_SCHEMES],
     allowedSchemesAppliedToAttributes: ["href"],
     allowProtocolRelative: false,
-    transformTags: { b: "strong" },
+    transformTags: { b: "strong", i: "em" },
     nonTextTags: ["script", "style", "textarea", "option", "noscript"],
     selfClosing: ["br"],
   });

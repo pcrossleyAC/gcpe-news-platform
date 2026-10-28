@@ -43,6 +43,18 @@ function html(doc: JSONContent): string {
   return generateHTML(doc, bodyExtensions());
 }
 
+describe("the body editor's italic schema ({ italic: true }) is a fixed point through the server sanitiser", () => {
+  it("an italic run — unchanged", () => {
+    const doc: JSONContent = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "under the " }, { type: "text", text: "FOIPP Act", marks: [{ type: "italic" }] }] }],
+    };
+    const out = generateHTML(doc, bodyExtensions(null, { italic: true }));
+    expect(out).toBe("<p>under the <em>FOIPP Act</em></p>");
+    expect(sanitizeBodyHtml(out)).toBe(out);
+  });
+});
+
 describe("the body editor's TipTap schema round-trips through sanitizeBodyHtml", () => {
   it("a paragraph with bold text and an allowed link — unchanged", () => {
     const doc: JSONContent = {
