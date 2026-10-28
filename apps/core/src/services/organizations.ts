@@ -83,6 +83,12 @@ export async function upsertOrganization(
     now?: TestClock;
     /** Leave a staff-edited organization untouched (no write at all, legacyId backfill included) and report skippedStaffEdit. For the seed and importer; staff edits never pass it. */
     respectStaffEdits?: boolean;
+    /**
+     * Refuse (AbbreviationTakenError) when the write makes this organization an active holder of an
+     * abbreviation another active organization holds: a new or changed abbreviation, or a reactivation (N11).
+     * For the admin PUT route. The seed and importer leave it off: legacy data may already repeat one.
+     */
+    checkAbbreviation?: boolean;
   } = {},
 ): Promise<{ record: OrgRecord; changed: boolean; skippedStaffEdit?: true }> {
   const parsed = orgInputSchema.parse(input);
@@ -97,6 +103,11 @@ export async function upsertOrganization(
       isHq: parsed.isHq ?? (existing ? existing.isHq : (opts.isHqOnCreate ?? false)),
       isPublic: parsed.isPublic ?? (existing ? existing.isPublic : (opts.isPublicOnCreate ?? true)),
     };
+    const abbreviation = data.abbreviation?.trim().toUpperCase() || null;
+    if (opts.checkAbbreviation && data.isActive && abbreviation !== null) {
+      const alreadyHeld = existing?.isActive === true && existing.abbreviation?.trim().toUpperCase() === abbreviation;
+      if (!alreadyHeld) await assertAbbreviationFree(tx, abbreviation, data.key);
+    }
     // An active ministry has no successors: reactivating one, by any path, stops its redirect (N12).
     const clearSuccessors = data.isActive && (existing?.successorKeys.length ?? 0) > 0;
     if (existing) {
@@ -466,8 +477,12 @@ export async function succeedOrganization(
     // The users' locks before any organization row is locked or written: setCalendarAccess takes a
     // user's lock and then shares the rows of that user's ministries, so the other order could deadlock.
     const b = byKey.get(successorKeys[0]!)!;
-    const movers = input.moveStaff ? await staffOf(tx, a.id) : [];
-    for (const id of movers) await lockAggregate(tx, userAggregateId(id));
+    const candidates = input.moveStaff ? await staffOf(tx, a.id) : [];
+    for (const id of candidates) await lockAggregate(tx, userAggregateId(id));
+    // Re-read under those locks: a user removed from A meanwhile must not be put on B. (One added
+    // meanwhile stays on inactive A, unlocked; the next hand-over or an admin edit moves them.)
+    const stillOnA = new Set(candidates.length ? await staffOf(tx, a.id) : []);
+    const movers = candidates.filter((id) => stillOnA.has(id));
 
     const stampedAt = now ? now() : new Date();
     const changedA = a.isActive || JSON.stringify(a.successorKeys) !== JSON.stringify(successorKeys);

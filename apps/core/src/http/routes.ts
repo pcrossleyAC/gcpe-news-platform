@@ -93,7 +93,8 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe<{ key: string }>(async (req, res) => {
       const input = orgInputSchema.parse(req.body);
       if (input.key !== req.params.key) return void res.status(400).json({ error: "body key must match path" });
-      const result = await upsertOrganization(db, input, subscribers, { respectStaffEdits: req.query.overwriteStaffEdits !== "true" });
+      // Refuses a second active holder of an abbreviation, reactivation included (N11): 409 abbreviation-taken.
+      const result = await upsertOrganization(db, input, subscribers, { respectStaffEdits: req.query.overwriteStaffEdits !== "true", checkAbbreviation: true });
       if (result.skippedStaffEdit) return void res.status(409).json({ error: "staff-edited" });
       res.json(result.record);
     }),

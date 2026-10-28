@@ -334,9 +334,14 @@ describe("organizations service", () => {
       );
       return rows.map((r) => r.m);
     }
-    /** Every outbox row in insertion order (the table is truncated before each test). */
+    /**
+     * Every outbox row, grouped by aggregate and in each aggregate's sequence order: the outbox has no
+     * global order column (random ids, one created_at per transaction), and consumers order per aggregate.
+     */
     async function outbox(): Promise<{ type: string; aggregateId: string; data: Record<string, unknown> }[]> {
-      const { rows } = await tdb.pool.query<{ type: string; aggregate_id: string; envelope: { data: Record<string, unknown> } }>("SELECT type, aggregate_id, envelope FROM outbox_events ORDER BY ctid");
+      const { rows } = await tdb.pool.query<{ type: string; aggregate_id: string; envelope: { data: Record<string, unknown> } }>(
+        "SELECT type, aggregate_id, envelope FROM outbox_events ORDER BY aggregate_id, sequence",
+      );
       return rows.map((r) => ({ type: r.type, aggregateId: r.aggregate_id, data: r.envelope.data }));
     }
     const clearOutbox = () => tdb.pool.query("TRUNCATE outbox_events, aggregate_sequences CASCADE");
@@ -365,13 +370,13 @@ describe("organizations service", () => {
       expect(events.map((e) => `${e.type} ${e.aggregateId}`)).toEqual([
         "org.upserted org:a",
         "org.deactivated org:a",
-        "org.upserted org:b",
         "org.succeeded org:a",
+        "org.upserted org:b",
         ...[onlyA, both].sort().map((id) => `user.upserted user:${id}`),
       ]);
       expect(events[0]!.data).toMatchObject({ key: "a", isActive: false, successorKeys: ["b"] });
-      expect(events[2]!.data).toMatchObject({ key: "b", abbreviation: "ALPH", successorKeys: [] });
-      expect(events[3]!.data).toEqual({ key: "a", successorKeys: ["b"], moveSubscribers: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true, at: expect.any(String) });
+      expect(events[3]!.data).toMatchObject({ key: "b", abbreviation: "ALPH", successorKeys: [] });
+      expect(events[2]!.data).toEqual({ key: "a", successorKeys: ["b"], moveSubscribers: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true, at: expect.any(String) });
       for (const e of events.slice(4)) expect(e.data.organizationKeys).toEqual(["b"]);
     });
 
@@ -544,6 +549,57 @@ describe("organizations service", () => {
       expect((await getOrganization(tdb.db, "a"))!.successorKeys).toEqual(["b"]);
       await upsertOrganization(tdb.db, { ...inactive, isActive: true }, subs);
       expect(await getOrganization(tdb.db, "a")).toMatchObject({ isActive: true, successorKeys: [] });
+    });
+
+    it("A→B, then B→A by mistake, is refused: A is no longer an active ministry", async () => {
+      await org("a", "Alpha", null);
+      await org("b", "Beta", null);
+      await succeedOrganization(tdb.db, "a", { successorKeys: ["b"], ...all }, subs);
+      const err = await succeedOrganization(tdb.db, "b", { successorKeys: ["a"], ...all }, subs).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SuccessionError);
+      expect((err as Error).message).toBe("Choose an active ministry as successor.");
+      expect(await getOrganization(tdb.db, "b")).toMatchObject({ isActive: true, successorKeys: [] });
+      expect(await getOrganization(tdb.db, "a")).toMatchObject({ isActive: false, successorKeys: ["b"] });
+    });
+
+    it("A→B, then B→C, chains: A keeps [b], B points at c, staff end on C", async () => {
+      await org("a", "Alpha", "ALPH");
+      await org("b", "Beta", null);
+      await org("c", "Gamma", null);
+      await user("u@example.test", "a");
+      await succeedOrganization(tdb.db, "a", { successorKeys: ["b"], ...all }, subs);
+      await succeedOrganization(tdb.db, "b", { successorKeys: ["c"], ...all }, subs);
+      expect(await getOrganization(tdb.db, "a")).toMatchObject({ isActive: false, successorKeys: ["b"] });
+      expect(await getOrganization(tdb.db, "b")).toMatchObject({ isActive: false, successorKeys: ["c"] });
+      expect(await getOrganization(tdb.db, "c")).toMatchObject({ isActive: true, successorKeys: [], abbreviation: "ALPH" });
+      expect(await memberships()).toEqual(["u@example.test:c"]);
+    });
+
+    it("moves only staff still on A once their locks are held (a removal racing the hand-over isn't undone)", async () => {
+      await org("a", "Alpha", null);
+      await org("b", "Beta", null);
+      const leaving = await user("leaving@example.test", "a");
+      await user("staying@example.test", "a");
+      const holder = await tdb.pool.connect();
+      try {
+        // An admin edit of `leaving` holds that user's lock and removes them from A meanwhile.
+        await holder.query("BEGIN");
+        await holder.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`user:${leaving}`]);
+        const pending = succeedOrganization(tdb.db, "a", { successorKeys: ["b"], ...all }, subs);
+        let waiting = false;
+        for (let i = 0; i < 200 && !waiting; i++) {
+          const w = await tdb.pool.query("SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted");
+          if (w.rowCount) waiting = true;
+          else await new Promise((r) => setTimeout(r, 10));
+        }
+        expect(waiting).toBe(true);
+        await holder.query("DELETE FROM user_organizations WHERE user_id = $1", [leaving]);
+        await holder.query("COMMIT");
+        await pending;
+      } finally {
+        holder.release();
+      }
+      expect(await memberships()).toEqual(["staying@example.test:b"]);
     });
 
     it("successionPreview counts A's staff and names its abbreviation", async () => {

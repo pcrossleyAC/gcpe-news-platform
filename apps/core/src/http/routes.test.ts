@@ -109,7 +109,7 @@ describe("Core HTTP API", () => {
       const res = await request(app)
         .put("/api/organizations/boom")
         .set("authorization", `Bearer ${admin}`)
-        .send({ ...healthOrg, key: "boom" });
+        .send({ ...healthOrg, key: "boom", abbreviation: null });
       expect(res.status).toBe(500);
       expect(res.body).toEqual({ error: "internal error" });
       expect(JSON.stringify(res.body)).not.toContain("constraint");
@@ -173,8 +173,8 @@ describe("Core HTTP API", () => {
 
   it("413 when the body fits but the resulting event envelope would not", async () => {
     // Body under the limit, but the envelope adds metadata (ids, timestamps, updatedAt) on top.
-    const pad = MAX_EVENT_BYTES - JSON.stringify({ ...healthOrg, key: "edge" }).length - 20;
-    const edge = { ...healthOrg, key: "edge", minister: { ...healthOrg.minister, detailsHtml: "x".repeat(pad) } };
+    const pad = MAX_EVENT_BYTES - JSON.stringify({ ...healthOrg, key: "edge", abbreviation: null }).length - 20;
+    const edge = { ...healthOrg, key: "edge", abbreviation: null, minister: { ...healthOrg.minister, detailsHtml: "x".repeat(pad) } };
     expect(JSON.stringify(edge).length).toBeLessThanOrEqual(MAX_EVENT_BYTES);
     const res = await request(app).put("/api/organizations/edge").set("authorization", `Bearer ${admin}`).send(edge);
     expect(res.status).toBe(413);
@@ -253,7 +253,7 @@ describe("Core HTTP API", () => {
     const put = await request(localApp)
       .put("/api/organizations/local-login")
       .set("authorization", `Bearer ${login.body.access_token}`)
-      .send({ ...healthOrg, key: "local-login" });
+      .send({ ...healthOrg, key: "local-login", abbreviation: null });
     expect(put.status).toBe(200);
   });
 
@@ -327,9 +327,41 @@ describe("Core HTTP API", () => {
     });
   });
 
+  describe("PUT /api/organizations/:key abbreviation check (N11)", () => {
+    // Own keys and abbreviations: this file shares one database.
+    const putOrg = (key: string, over: Record<string, unknown>, query = "") =>
+      request(app).put(`/api/organizations/${key}${query}`).set(auth(admin)).send({ ...healthOrg, key, displayName: key, ...over });
+
+    it("refuses an abbreviation another active organization holds, case- and space-insensitively", async () => {
+      await putOrg("put-abbr-a", { abbreviation: "PUTA" }).expect(200);
+      const res = await putOrg("put-abbr-b", { abbreviation: " puta " });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "abbreviation-taken", takenBy: "put-abbr-a" });
+      expect((await request(app).get("/api/organizations/put-abbr-b").set(auth(reader))).status).toBe(404);
+      // An inactive holder frees it (N11), and an inactive organization may keep a taken one.
+      await putOrg("put-abbr-c", { abbreviation: "PUTA", isActive: false }).expect(200);
+    });
+
+    it("refuses reactivating an organization whose abbreviation a successor has taken, even with overwriteStaffEdits", async () => {
+      await putOrg("put-react-a", { abbreviation: "PUTR", isActive: false }).expect(200);
+      await putOrg("put-react-b", { abbreviation: "PUTR" }).expect(200);
+      const res = await putOrg("put-react-a", { abbreviation: "PUTR" }, "?overwriteStaffEdits=true");
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "abbreviation-taken", takenBy: "put-react-b" });
+      expect((await request(app).get("/api/organizations/put-react-a").set(auth(reader))).body.isActive).toBe(false);
+    });
+
+    it("re-sending an organization that already shares a legacy duplicate is not refused", async () => {
+      await putOrg("put-dup-a", { abbreviation: "PUTD" }).expect(200);
+      // The importer path (no route check) may still write a legacy duplicate.
+      await organizationsService.upsertOrganization(tdb.db, { ...healthOrg, key: "put-dup-b", displayName: "put-dup-b", abbreviation: "PUTD" }, []);
+      await putOrg("put-dup-a", { abbreviation: "PUTD", sortOrder: 2 }).expect(200);
+    });
+  });
+
   it("PUT 409s a staff-edited organization unless overwriteStaffEdits=true", async () => {
     const key = "labour-staff-edit";
-    const org = { ...healthOrg, key, displayName: "Labour" };
+    const org = { ...healthOrg, key, displayName: "Labour", abbreviation: null };
     await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send(org).expect(200);
     await request(app).patch(`/api/organizations/${key}/profile`).set(auth(siteEditor)).send({ displayName: "Labour and Skills" }).expect(200);
     const blocked = await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send(org);
@@ -343,7 +375,7 @@ describe("Core HTTP API", () => {
   describe("PATCH /api/organizations/:key/profile", () => {
     // Own key: this file shares one database and other tests PUT healthOrg repeatedly.
     // One key per test: a staff-edited organization must never be PUT again (it will 409 later).
-    const seed = async (key: string) => void (await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName: "Forests" }).expect(200));
+    const seed = async (key: string) => void (await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName: "Forests", abbreviation: null }).expect(200));
     const get = async (key: string) => (await request(app).get(`/api/organizations/${key}`).set(auth(reader)).expect(200)).body;
     const patch = (token: string, body: unknown, key: string) => request(app).patch(`/api/organizations/${key}/profile`).set(auth(token)).send(body as object);
 
@@ -519,7 +551,8 @@ describe("Core HTTP API", () => {
     it("409 abbreviation-taken when another active ministry already holds A's abbreviation", async () => {
       await put("succ-e", "Succ E", "SUCCDUP");
       await put("succ-f", "Succ F", null);
-      await put("succ-g", "Succ G", "SUCCDUP");
+      // PUT now refuses a second active holder; legacy data can still carry one (the importer path writes it).
+      await organizationsService.upsertOrganization(tdb.db, { ...healthOrg, key: "succ-g", displayName: "Succ G", abbreviation: "SUCCDUP" }, []);
       const res = await succeed(admin, "succ-e", { successorKeys: ["succ-f"], ...flags });
       expect(res.status).toBe(409);
       expect(res.body).toEqual({ error: "abbreviation-taken", takenBy: "Succ G" });
