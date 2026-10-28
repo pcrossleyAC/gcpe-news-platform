@@ -4,7 +4,7 @@ import { imageTypeFromBytes, justifyFromLegacy, mapLegacyRelease, splitContact, 
 const row: LegacyReleaseRow = {
   Id: "9AF8CC16-0AE5-4EC6-AD58-FDB081D44E37", Key: "2026TT0103-001121", ReleaseType: 1, Reference: "NEWS-34336", AtomId: "",
   PublishDateTime: new Date("2026-10-01T22:10:00Z"), LeadMinistryKey: "transportation-and-transit", Keywords: "", AssetUrl: "",
-  RedirectUrl: "", HasMediaAssets: false, PublishOptions: 3, Timestamp: new Date("2026-10-01T22:10:28.037Z"),
+  RedirectUrl: "", HasMediaAssets: false, HasTranslations: false, PublishOptions: 3, Timestamp: new Date("2026-10-01T22:10:28.037Z"),
   Location: "Abbotsford", Summary: "Drivers can expect…", SocialMediaHeadline: null, SocialMediaSummary: null,
 };
 

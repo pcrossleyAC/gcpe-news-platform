@@ -15,6 +15,8 @@ export interface LegacyReleaseRow extends Record<string, unknown> {
   AssetUrl: string | null;
   RedirectUrl: string | null;
   HasMediaAssets: boolean;
+  /** Legacy's "has translations" flag: news.gov lists a post's translation files only when it is set. */
+  HasTranslations: boolean;
   PublishOptions: number;
   Timestamp: Date;
   Location: string | null;
@@ -91,7 +93,7 @@ export function mapLegacyRelease(
     keywords: row.Keywords,
     location: row.Location,
     hasMediaAssets: Boolean(row.HasMediaAssets),
-    hasTranslations: false,
+    hasTranslations: Boolean(row.HasTranslations),
     isNewsOnDemand,
     assetUrl: row.AssetUrl,
     redirectUri: row.RedirectUrl ? row.RedirectUrl : null,
@@ -100,6 +102,9 @@ export function mapLegacyRelease(
     sectorKeys: keysOf("sectors"),
     tagKeys: keysOf("tags"),
     themeKeys: keysOf("themes"),
+    // The files themselves live in Azure blob storage, not SQL: `import:files` (files-cli.ts) fills
+    // these from the public legacy API, and this importer's re-runs keep what it filled
+    // (applyRelease's preserveFiles).
     assets: null,
     translations: null,
     publishFlags: { toWeb: true, toSubscribers: isNewsOnDemand, toMediaLists: hasPublishOption(row.PublishOptions, PUBLISH_OPTIONS.MediaContacts) },
