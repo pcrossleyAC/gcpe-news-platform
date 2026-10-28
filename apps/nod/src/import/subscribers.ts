@@ -45,6 +45,8 @@ export interface SubscriberStageContext {
   runAt: Date;
   /** Filled in by the stage: each legacy record that lost its address's pick → the record that won it. */
   winnerOf?: Map<string, string>;
+  /** Filled in by the stage: each legacy record → its address, normalised (what legacy mails to). */
+  legacyEmailOf?: Map<string, string>;
 }
 
 /** What became of an unsubscribe from a duplicate legacy record of the address (see
@@ -124,7 +126,12 @@ async function withoutOptedOut(tx: Tx, m: MappedSubscriber, existing: CurrentRow
   return { m: { ...m, state, fingerprint: fingerprintOf(state) }, optedOut };
 }
 
-async function insertSubscriber(tx: Tx, m: MappedSubscriber): Promise<void> {
+/**
+ * `importedAt` is the run's start (`runAt`, read before legacy is), not the time of the write: a
+ * legacy unsubscribe made while the run was importing is then "since the last import" to the next
+ * run ({@link unsubscribedSince}), so it is applied, never lost between the read and the write.
+ */
+async function insertSubscriber(tx: Tx, m: MappedSubscriber, runAt: Date): Promise<void> {
   await tx.insert(subscribers).values({
     id: m.id,
     email: m.state.email,
@@ -138,10 +145,11 @@ async function insertSubscriber(tx: Tx, m: MappedSubscriber): Promise<void> {
   });
   if (m.state.listKeys.length > 0) await tx.insert(subscriptions).values(m.state.listKeys.map((listKey) => ({ subscriberId: m.id, listKey })));
   await writeHistory(tx, m.id, IMPORT_ACTOR, "legacy-imported", `status ${m.state.status}`);
-  await tx.insert(legacySubscriberImports).values({ subscriberId: m.id, fingerprint: m.fingerprint });
+  await tx.insert(legacySubscriberImports).values({ subscriberId: m.id, fingerprint: m.fingerprint, importedAt: runAt });
 }
 
-async function updateSubscriber(tx: Tx, m: MappedSubscriber, currentEmail: string): Promise<void> {
+/** `runAt` as for {@link insertSubscriber}. */
+async function updateSubscriber(tx: Tx, m: MappedSubscriber, currentEmail: string, runAt: Date): Promise<void> {
   await tx
     .update(subscribers)
     .set({
@@ -160,7 +168,7 @@ async function updateSubscriber(tx: Tx, m: MappedSubscriber, currentEmail: strin
   await writeHistory(tx, m.id, IMPORT_ACTOR, "legacy-imported", `updated from legacy: status ${m.state.status}`);
   // Marks the move for the opt-out check: adds made at the old address don't count at the new one.
   if (currentEmail !== m.state.email) await writeHistory(tx, m.id, IMPORT_ACTOR, "legacy-email-changed");
-  await tx.update(legacySubscriberImports).set({ fingerprint: m.fingerprint, importedAt: sql`now()` }).where(eq(legacySubscriberImports.subscriberId, m.id));
+  await tx.update(legacySubscriberImports).set({ fingerprint: m.fingerprint, importedAt: runAt }).where(eq(legacySubscriberImports.subscriberId, m.id));
 }
 
 /**
@@ -317,7 +325,7 @@ async function nodReAdds(tx: Tx, mine: CurrentRow, m: MappedSubscriber, leaves: 
  * is false, so the caller can redo this under withLockedSubscriber. Must run holding the address
  * locks of `mine` and `m`.
  */
-async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHeldElsewhere: boolean, locked: boolean): Promise<Outcome | "defer"> {
+async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHeldElsewhere: boolean, locked: boolean, runAt: Date): Promise<Outcome | "defer"> {
   const { m } = c;
   if (mine.fingerprint === null) return skipped("a NoD record already has this id");
   const since = unsubscribedSince(c, mine.imported_at);
@@ -354,7 +362,7 @@ async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHel
     return skipped(ENDED);
   }
   if (!locked) return "defer";
-  await updateSubscriber(tx, allowed, mine.email);
+  await updateSubscriber(tx, allowed, mine.email, runAt);
   await applyLegacyLeaves(tx, m.id, c.leaves);
   const duplicate = (await duplicateUnsubscribe(tx, c, { id: m.id, createdAt: mine.created_at, status: allowed.state.status })) ?? undefined;
   return { kind: "updated", optedOut, duplicate };
@@ -369,7 +377,7 @@ async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHel
  * that changes an existing record (a legacy update, a leave that takes them off a list) is done
  * afterwards, one record at a time, through withLockedSubscriber like any other writer.
  */
-async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outcome>> {
+async function writeBatch(db: Db, batch: Candidate[], runAt: Date): Promise<Map<string, Outcome>> {
   const ids = batch.map((c) => c.m.id);
   const emails = batch.map((c) => c.m.state.email);
   const toLock = [...new Set([...emails, ...(await currentRows(db, ids, emails)).map((r) => r.email)])].sort();
@@ -402,11 +410,11 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
         outcome = skipped(seen.has(m.id) ? "removed in NoD since the last import" : "address already in NoD (NoD's record kept)");
       } else if (!mine) {
         const { m: allowed, optedOut } = await withoutOptedOut(tx, m, null);
-        await insertSubscriber(tx, allowed);
+        await insertSubscriber(tx, allowed, runAt);
         await applyLegacyLeaves(tx, m.id, c.leaves);
         const duplicate = (await duplicateUnsubscribe(tx, c, { id: m.id, createdAt: allowed.createdAt, status: allowed.state.status })) ?? undefined;
         outcome = { kind: "imported", optedOut, duplicate };
-      } else outcome = await settleExisting(tx, c, mine, holder !== undefined && holder.id !== m.id, false);
+      } else outcome = await settleExisting(tx, c, mine, holder !== undefined && holder.id !== m.id, false, runAt);
       if (outcome === "defer") deferred.push(c);
       else out.set(m.id, outcome);
     }
@@ -418,7 +426,7 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
       const rows = await currentRows(tx, [m.id], [m.state.email]);
       const mine = rows.find((r) => r.id === m.id)!;
       const elsewhere = rows.some((r) => r.id !== m.id && r.email === m.state.email);
-      const settled = await settleExisting(tx, c, mine, elsewhere, true);
+      const settled = await settleExisting(tx, c, mine, elsewhere, true, runAt);
       return settled === "defer" ? skipped("changed while importing: run the import again") : settled;
     });
     out.set(m.id, outcome);
@@ -437,6 +445,36 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
     else if (applied === "newer-in-nod") out.set(c.m.id, skipped(NEWER_IN_NOD));
   }
   return out;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Records imported before that legacy no longer holds (its purge task, `PermanentlyDeleteSubscriber`,
+ * removed the row) but whose legacy unsubscribe (SysLog 104, which the purge leaves) NoD hasn't had
+ * yet: each NoD record still standing is ended as for any other legacy unsubscribe
+ * ({@link endForLegacyUnsubscribe}), unless NoD holds newer consent ({@link consentedSince}).
+ * Without this the unsubscribe would be lost: no legacy row means no candidate. A record NoD has
+ * purged too has no address left to keep a hash for. Returns the ids ended.
+ */
+async function endPurgedInLegacy(db: Db, present: Set<string>, unsubscribedAt: Map<string, Date>): Promise<string[]> {
+  const gone = [...unsubscribedAt.keys()].filter((g) => !present.has(g) && UUID.test(g));
+  if (gone.length === 0) return [];
+  const { rows } = await db.execute<{ subscriber_id: string; imported_at: string | Date }>(
+    sql`SELECT subscriber_id, imported_at FROM legacy_subscriber_imports WHERE subscriber_id = ANY(${sql.param(gone)}::uuid[]) ORDER BY subscriber_id`,
+  );
+  const ended: string[] = [];
+  for (const r of rows) {
+    const at = unsubscribedAt.get(r.subscriber_id)!;
+    if (at < new Date(r.imported_at)) continue;
+    const done = await withLockedSubscriber(db, r.subscriber_id, null, async (tx, s) => {
+      if (!s || s.status === "deleted" || (await consentedSince(tx, s, at))) return false;
+      await endForLegacyUnsubscribe(tx, s, at);
+      return true;
+    });
+    if (done) ended.push(r.subscriber_id);
+  }
+  return ended;
 }
 
 /** Legacy Subscriber + SubscriberList → NoD subscribers, subscriptions and history, in batches of 500. */
@@ -468,6 +506,7 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
   // Leaves are an address's consent, so they're kept by address: a duplicate legacy record's
   // leave counts against the record imported for that address, or NoD's own record of it.
   const emailOf = new Map(legacy.map((s) => [guidKey(s.SubscriberGuid), normaliseEmail(s.EmailAddress ?? "")]));
+  for (const [guid, email] of emailOf) ctx.legacyEmailOf?.set(guid, email);
   const latestLeave = new Map<string, Map<string, Date>>();
   for (const l of leaves) {
     const mapped = lists.byGuid.get(guidKey(l.ListGuid));
@@ -515,7 +554,7 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
   const duplicateUnsubscribes: Record<DuplicateUnsubscribe, string[]> = { ended: [], "newer-in-nod": [] };
   for (let i = 0; i < candidates.length; i += BATCH) {
     const batch = candidates.slice(i, i + BATCH);
-    const outcomes = await writeBatch(db, batch);
+    const outcomes = await writeBatch(db, batch, ctx.runAt);
     for (const { m } of batch) {
       const o = outcomes.get(m.id)!;
       if (o.kind === "skipped") {
@@ -538,6 +577,11 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
   }
   // Ids only, a sample of them, like the skip groups.
   const sample = (ids: string[]) => ids.slice(0, 10).join(", ");
+  const purgedEnded = await endPurgedInLegacy(db, new Set(emailOf.keys()), unsubscribedAt);
+  if (purgedEnded.length > 0) {
+    const n = purgedEnded.length;
+    report.note(`${n} record${n === 1 ? "" : "s"} legacy no longer holds ${n === 1 ? "was" : "were"} ended by ${n === 1 ? "its" : "their"} legacy unsubscribe: ${sample(purgedEnded)}`);
+  }
   const { ended: endedByDuplicate, "newer-in-nod": notApplied } = duplicateUnsubscribes;
   if (endedByDuplicate.length > 0) {
     const n = endedByDuplicate.length;

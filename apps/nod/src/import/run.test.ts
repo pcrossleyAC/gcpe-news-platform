@@ -15,6 +15,7 @@ import { createNodTestDb } from "../../test/helpers";
 import { FIXTURE_GUIDS as G, legacyNodSource, legacyNodTables, LINK_GUIDS, seedNodListsForImport } from "../../test/legacy-nod-fixture";
 import { emergencyItemKey } from "../as-it-happens";
 import { deliveries, items, nodSettings } from "../db/schema";
+import { changeEmail } from "../staff-subscribers/actions";
 import { LEGACY_BATCH_ID } from "./articles";
 import { defaultReportPath, NOD_IMPORT_LOCK, redactMessage, runNodImport, runNodImportCli } from "./run";
 
@@ -181,6 +182,18 @@ describe("nod:import on the synthetic legacy database", () => {
       expect(again.balanced).toBe(true);
       expect(tableOf(again)).toEqual({ legacy: 4, imported: 0, skipped: 4 });
       expect(again.skipped.find((s) => s.table === "SubscriberLink" && s.reason === "already present")).toMatchObject({ count: 1, sample: [G.subActive.toLowerCase()] });
+    });
+
+    it("a re-run never revives a link NoD ended (address changed in NoD) after the purge cleared it", async () => {
+      await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS);
+      expect((await linkRows()).map((r) => r.token_hash)).toEqual([legacyTokenHash(LINK_GUIDS.active)]);
+      // A staff email change ends every session link (expireSessionLinks); the purge later deletes the expired row.
+      await changeEmail(nod.db, G.subActive.toLowerCase(), "moved@example.test", "staff:jamie");
+      await nod.db.execute(sql`DELETE FROM subscriber_links WHERE expires_at <= now()`);
+      const again = (await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS)).toJSON();
+      expect(await linkRows()).toEqual([]);
+      expect(again.balanced).toBe(true);
+      expect(again.skipped.find((s) => s.table === "SubscriberLink" && s.reason === "address changed in NoD since legacy sent it (not revived)")).toMatchObject({ count: 1, sample: [G.subActive.toLowerCase()] });
     });
 
     it("a link under a duplicate record that lost the address pick imports for the winning subscriber", async () => {

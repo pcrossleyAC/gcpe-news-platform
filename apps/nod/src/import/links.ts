@@ -3,6 +3,7 @@ import { wallClockToInstant } from "@gcpe/config";
 import type { Db } from "@gcpe/db-kit";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { subscriberLinks, subscribers } from "../db/schema";
+import { normaliseEmail } from "../subscribe/info";
 import { legacyTokenHash } from "../subscribe/legacy-token";
 import { guidKey } from "./map";
 import { Q_LIVE_MANAGE_LINKS } from "./queries";
@@ -33,8 +34,18 @@ function linkId(raw: unknown): string | null {
  * shapes. Reports by SubscriberGuid: a live link id is a credential, so no link id (and no
  * address) reaches the report. A link under a duplicate record that lost its address's pick
  * follows the winner (`ctx.winnerOf`), the one NoD holds.
+ *
+ * A link legacy mailed to an address that is no longer the NoD record's (`ctx.legacyEmailOf`) is
+ * skipped: NoD changing an address ends every session link (`expireSessionLinks`), and the purge
+ * later deletes the expired row, so without this a re-run would bring the link back as a session
+ * on the moved record. Legacy only ever mails its own record's address, so the check holds for
+ * every link of the record, whenever it was made.
  */
-export async function importManageLinks(db: Db, source: LegacySource, ctx: { report: NodImportReport; timeZone: string; runAt: Date; winnerOf?: Map<string, string> }): Promise<void> {
+export async function importManageLinks(
+  db: Db,
+  source: LegacySource,
+  ctx: { report: NodImportReport; timeZone: string; runAt: Date; winnerOf?: Map<string, string>; legacyEmailOf?: Map<string, string> },
+): Promise<void> {
   const { report } = ctx;
   const rows = await source.query<LegacyLinkRow>(Q_LIVE_MANAGE_LINKS);
   const owner = (raw: unknown) => {
@@ -56,6 +67,8 @@ export async function importManageLinks(db: Db, source: LegacySource, ctx: { rep
     if (!id) report.skip(TABLE, "malformed link id", legacyId);
     else if (!subscriber) report.skip(TABLE, "subscriber not in NoD", legacyId);
     else if (subscriber.status === "deleted") report.skip(TABLE, "subscriber ended", legacyId);
+    else if (ctx.legacyEmailOf?.has(legacyId) && ctx.legacyEmailOf.get(legacyId) !== normaliseEmail(subscriber.email))
+      report.skip(TABLE, "address changed in NoD since legacy sent it (not revived)", legacyId);
     else {
       const expiresAt = wallClockToInstant(r.ExpiryDate, ctx.timeZone);
       if (expiresAt <= ctx.runAt) {
