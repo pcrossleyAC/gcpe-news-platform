@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
-import type { EventEnvelope, EventHandler, MediaListRecord, OrgRecord, TermRecord } from "@gcpe/events";
-import { listCategories, lists } from "./db/schema";
+import type { EventEnvelope, EventHandler, MediaListRecord, OrgRecord, OrgSucceeded, TermRecord } from "@gcpe/events";
+import { listCategories, lists, subscriberHistory, subscriptions } from "./db/schema";
 
 /** Categories the public Subscribe API offers (spec §4). Media lists are staff-managed (4c). */
 export const PUBLIC_CATEGORIES = ["ministries", "sectors", "themes", "tags", "emergency"] as const;
@@ -43,6 +43,39 @@ const onTermGone: EventHandler = async (tx, e) => {
   if (category) await deactivate(tx, category, d.key);
 };
 
+/** Actor on the history lines a ministry succession writes. */
+export const SUCCESSION_ACTOR = "system: ministry succession";
+
+/**
+ * Moves every subscription to `ministries:<from>` onto each of `to` (one INSERT … ON CONFLICT DO
+ * NOTHING per successor, so a subscriber already on a successor keeps exactly one row), then
+ * deletes the `from` rows and writes one `list-moved` history line per subscriber moved, taken
+ * from the deleted set. Idempotent: once the `from` rows are gone a repeat moves nothing and
+ * writes no history. Returns the number of subscriptions moved.
+ */
+export async function moveMinistrySubscribers(tx: DbOrTx, from: string, to: string[], actor: string): Promise<number> {
+  const fromKey = `ministries:${from.toLowerCase()}`;
+  const toKeys = [...new Set(to.map((k) => `ministries:${k.toLowerCase()}`))].filter((k) => k !== fromKey);
+  if (toKeys.length === 0) return 0;
+  for (const toKey of toKeys) {
+    await tx.execute(sql`
+      INSERT INTO ${subscriptions} (subscriber_id, list_key)
+      SELECT subscriber_id, ${toKey} FROM ${subscriptions} WHERE list_key = ${fromKey}
+      ON CONFLICT DO NOTHING`);
+  }
+  const moved = await tx.delete(subscriptions).where(eq(subscriptions.listKey, fromKey)).returning({ subscriberId: subscriptions.subscriberId });
+  if (moved.length === 0) return 0;
+  const detail = `${fromKey} → ${toKeys.join(", ")}`;
+  await tx.insert(subscriberHistory).values(moved.map((m) => ({ subscriberId: m.subscriberId, actor, action: "list-moved", detail })));
+  return moved.length;
+}
+
+const onOrgSucceeded: EventHandler = async (tx, e) => {
+  const s = e.data as OrgSucceeded;
+  if (!s.moveSubscribers) return;
+  await moveMinistrySubscribers(tx, s.key, s.successorKeys, SUCCESSION_ACTOR);
+};
+
 const onMediaList: EventHandler = async (tx, e) => {
   const m = e.data as MediaListRecord;
   await upsertList(tx, MEDIA_CATEGORY, m.key, m.displayName, m.sortOrder, m.isActive);
@@ -55,6 +88,7 @@ export function listsHandler(event: EventEnvelope): EventHandler | undefined {
     switch (event.type) {
       case "org.upserted": return onOrg;
       case "org.deactivated": return onOrgGone;
+      case "org.succeeded": return onOrgSucceeded;
       case "sector.upserted": case "theme.upserted": case "tag.upserted": return onTerm;
       case "sector.deactivated": case "theme.deactivated": case "tag.deactivated": return onTermGone;
       default: return undefined;
