@@ -165,4 +165,15 @@ describe("distribution env", () => {
       ).toBe(false);
     });
   });
+  it("MAIL_REDIRECT_SEND_CAP defaults to 5 and accepts a positive integer", () => {
+    const withRedirect = { ...base, MAIL_REDIRECT_TO: "qa@example.com" };
+    expect(distributionEnvSchema.parse(withRedirect).MAIL_REDIRECT_SEND_CAP).toBe(5);
+    expect(distributionEnvSchema.parse({ ...withRedirect, MAIL_REDIRECT_SEND_CAP: "12" }).MAIL_REDIRECT_SEND_CAP).toBe(12);
+  });
+  it("MAIL_REDIRECT_SEND_CAP rejects zero, negatives and non-integers", () => {
+    const withRedirect = { ...base, MAIL_REDIRECT_TO: "qa@example.com" };
+    for (const bad of ["0", "-1", "2.5", "abc", ""]) {
+      expect(distributionEnvSchema.safeParse({ ...withRedirect, MAIL_REDIRECT_SEND_CAP: bad }).success, bad).toBe(false);
+    }
+  });
 });

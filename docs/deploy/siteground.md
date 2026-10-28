@@ -63,6 +63,13 @@ left unset. A test site has no reason to send fast, and never sets a Reply-To â€
 sends is already redirected to `DIST_MAIL_REDIRECT_TO`, so a Reply-To pointed at a real
 government mailbox would put real replies to test mail in front of it.
 
+While mail is redirected, `DIST_MAIL_REDIRECT_SEND_CAP` (default 5) limits how many messages any
+one send may produce, so testing a release for a ministry with hundreds of subscribers does not
+put hundreds of copies in the redirect inboxes. Only the first 5 recipients of a send are
+delivered (to the redirect inboxes, as usual); the rest are kept in the delivery counts as
+failed with the reason "skipped: test-site send cap", and a log line names the send and how many
+went out. It has no effect at all when mail is not redirected.
+
 `npm run distribution:capacity` (Distribution's local throughput/cap measurement) is a developer
 tool, **local only**: it refuses to run against any SMTP target other than localhost, only ever
 addresses made-up `@example.test` recipients, and never reads `.env`. It is never run against

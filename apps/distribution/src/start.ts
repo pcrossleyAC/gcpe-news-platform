@@ -65,7 +65,7 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
   // The non-prod mail redirect safety rule: distributionEnvSchema already refuses to boot
   // without one of these, so exactly one of the two logs below always fires.
   if (parsed.MAIL_REDIRECT_TO.length > 0) {
-    console.log(`[distribution] mail redirect ON → ${parsed.MAIL_REDIRECT_TO.join(", ")}`);
+    console.log(`[distribution] mail redirect ON → ${parsed.MAIL_REDIRECT_TO.join(", ")} (at most ${parsed.MAIL_REDIRECT_SEND_CAP} messages per send)`);
   } else {
     console.warn("[distribution] WARNING: delivering to real recipients");
   }
@@ -90,6 +90,9 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
     loginRouter: auth.loginRouter,
     internalDomains: parsed.INTERNAL_DOMAINS,
     bounceSource: parsed.BOUNCE_SOURCE,
+    // The test-site send cap only applies while mail is redirected (sender.ts's `redirect`);
+    // with real recipients allowed it is not even passed on.
+    sendCap: parsed.MAIL_REDIRECT_TO.length > 0 ? parsed.MAIL_REDIRECT_SEND_CAP : undefined,
   });
 
   // Built once and reused by both the tick worker and startLoops()'s own interval — a Graph

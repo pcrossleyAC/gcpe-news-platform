@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { priorityFor } from "./priority";
-import { batches, messages } from "./db/schema";
+import { batches, messages, type MessageStatus } from "./db/schema";
 
 // CR/LF would let a header or the subject line smuggle extra header lines (classic header
 // injection); NUL is rejected alongside them as defence in depth. The bodies (html/text) are
@@ -96,6 +96,11 @@ export interface BatchStatus {
 // keeps a 20,000-recipient batch under Postgres's parameter-count and statement-size limits.
 const INSERT_CHUNK_SIZE = 1_000;
 
+/** The `last_error` of a message the test-site send cap (MAIL_REDIRECT_SEND_CAP) kept from being
+ * queued. Such a message is stored as `failed` — the existing terminal status every report and
+ * batchStatus count already shows — so it is accounted for, never silently dropped. */
+export const SEND_CAP_SKIPPED_REASON = "skipped: test-site send cap (MAIL_REDIRECT_SEND_CAP)";
+
 /**
  * Inserts a batch and its messages in one transaction. When `idempotencyKey` is present, a
  * Postgres advisory lock scoped to `(appId, idempotencyKey)` serialises concurrent callers
@@ -110,6 +115,12 @@ export async function createBatch(
   appId: string,
   req: MessageRequest,
   internalDomains: string[],
+  /** Test-site guard (env.ts's MAIL_REDIRECT_SEND_CAP): given only while mail is redirected.
+   * One batch is one send; only its first `sendCap` messages, in the order the sender would
+   * send them (priority, highest first; request order within a priority), are queued as
+   * pending — the rest are stored `failed` with {@link SEND_CAP_SKIPPED_REASON}. Omitted (real
+   * recipients allowed): every message is queued, exactly as before. */
+  sendCap?: number,
 ): Promise<{ batchId: string; created: boolean }> {
   return db.transaction(async (tx) => {
     if (req.idempotencyKey !== undefined) {
@@ -136,12 +147,24 @@ export async function createBatch(
       .returning({ id: batches.id });
     const batchId = batch!.id;
 
-    const rows = req.recipients.map((r) => ({
+    let rows = req.recipients.map((r) => ({
       batchId,
       email: r.email,
       substitutions: r.substitutions,
       priority: priorityFor(req.priority, r.email, internalDomains),
+      status: "pending" as MessageStatus,
+      lastError: null as string | null,
     }));
+    if (sendCap !== undefined && rows.length > sendCap) {
+      // Array.prototype.sort is stable, so equal priorities keep request order.
+      rows = rows.slice().sort((a, b) => b.priority - a.priority);
+      for (const row of rows.slice(sendCap)) {
+        row.status = "failed";
+        row.lastError = SEND_CAP_SKIPPED_REASON;
+      }
+      // No recipient address in the log line, only the batch and the counts.
+      console.warn(`[distribution] batch ${batchId} (app ${appId}): ${sendCap} of ${rows.length} sent (test-site cap MAIL_REDIRECT_SEND_CAP=${sendCap})`);
+    }
     for (let i = 0; i < rows.length; i += INSERT_CHUNK_SIZE) {
       await tx.insert(messages).values(rows.slice(i, i + INSERT_CHUNK_SIZE));
     }
