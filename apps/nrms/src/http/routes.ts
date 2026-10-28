@@ -13,6 +13,9 @@ import { calendarViewerOf } from "../calendar/viewer";
 import { forecast } from "../calendar/forecast";
 import { lookupActivity } from "../calendar/lookup";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
+import {
+  createPageType, deletePageType, PageTypeConflictError, PageTypeNotFoundError, PageTypeRuleError, pageTypeInputSchema, updatePageType,
+} from "../releases/page-types";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "../website/errors";
 import {
   goTo, listFolder, listItems, listPageImages, listPageTypes, publication, publications, releaseLog, releaseVisible, searchReleases,
@@ -71,7 +74,7 @@ export interface RouteDeps {
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
-export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string; activityId: string; revision: string };
+export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string; activityId: string; revision: string; languageId: string; pageTitle: string };
 export type Handler = (req: Request<Params>, res: Response) => Promise<void>;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -102,6 +105,9 @@ export function handleError(e: unknown, res: Response): boolean {
   // travel as inline bytes (slide events carry a URL instead, addendum §6.4), so this is no
   // longer specific to the carousel; it covers any oversized envelope, from any emitter.
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: e.message }), true;
+  if (e instanceof PageTypeConflictError) return void res.status(409).json({ error: e.message }), true;
+  if (e instanceof PageTypeRuleError) return void res.status(400).json({ error: e.message }), true;
+  if (e instanceof PageTypeNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   if (e instanceof MediaListConflictError) return void res.status(409).json({ error: e.message }), true;
   if (e instanceof MediaListNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   return false;
@@ -133,6 +139,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   const param = (name: keyof Params, ok: (v: string) => boolean) =>
     r.param(name, (_req, res, next, value: string) => (ok(value) ? next() : notFound(res)));
   param("id", (v) => UUID.test(v));
+  param("languageId", (v) => /^\d{1,9}$/.test(v));
   param("docId", (v) => UUID.test(v));
   param("lang", (v) => v === "4105" || v === "3084");
   param("pubId", (v) => /^\d{1,15}$/.test(v));
@@ -378,8 +385,22 @@ export function apiRoutes(deps: RouteDeps): Router {
     mediaListAdmin,
     run(async (_req, res) => void res.json({ count: await republishMediaLists(db, deps.subscribers ?? []) })),
   );
-  r.get("/page-types", read, run(async (_req, res) => void res.json(await listPageTypes(db))));
-  r.get("/page-images", read, run(async (_req, res) => void res.json(await listPageImages(db))));
+  // Core.Admin edits page titles (Hub screen), so it reads them and the page images too.
+  r.get("/page-types", anySignedIn, run(async (_req, res) => void res.json(await listPageTypes(db))));
+  r.get("/page-images", anySignedIn, run(async (_req, res) => void res.json(await listPageImages(db))));
+  // Releases hold their own copy of the title text, so none of these touches a release; no event is emitted.
+  const pageTypeKey = (req: Request<Params>) => ({ pageTitle: String(req.params.pageTitle), languageId: Number(req.params.languageId) });
+  r.post("/page-types", coreAdmin, run(async (req, res) => void res.status(201).json(await createPageType(db, pageTypeInputSchema.parse(req.body)))));
+  r.put(
+    "/page-types/:languageId/:pageTitle",
+    coreAdmin,
+    run(async (req, res) => void res.json(await updatePageType(db, pageTypeKey(req), pageTypeInputSchema.parse(req.body)))),
+  );
+  r.delete(
+    "/page-types/:languageId/:pageTitle",
+    coreAdmin,
+    run(async (req, res) => (await deletePageType(db, pageTypeKey(req)), void res.status(204).end())),
+  );
 
   r.put("/releases/:id/settings", edit, run(async (req, res) => void res.json(withStatus(await saveSettings(db, req.params.id, settingsSchema.parse(req.body), actorOf(req), workflow)))));
   r.put("/releases/:id/categories", edit, run(async (req, res) => void res.json(withStatus(await saveCategories(db, req.params.id, categoriesSchema.parse(req.body), actorOf(req))))));
