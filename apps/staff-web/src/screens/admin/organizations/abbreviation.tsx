@@ -29,7 +29,7 @@ export function AbbreviationField({
   error?: string;
 }): React.JSX.Element {
   return (
-    <div>
+    <div className="gcpe-field gcpe-field--abbr">
       <label htmlFor={id}>Abbreviation</label>
       <p id={`${id}-hint`}>{ABBREVIATION_HINT}</p>
       <input

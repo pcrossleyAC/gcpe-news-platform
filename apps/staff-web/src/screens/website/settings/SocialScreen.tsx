@@ -94,7 +94,7 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
     <div className="gcpe-site-social">
       <h1>{TITLE}</h1>
 
-      <nav aria-label="Networks">
+      <nav aria-label="Networks" className="gcpe-section-tabs">
         <ul>
           {NETWORKS.map((n) => (
             <li key={n.key}>

@@ -369,7 +369,7 @@ export function OrganizationEditForm({
         </div>
       </div>
 
-      <fieldset className="gcpe-stack">
+      <fieldset className="gcpe-stack gcpe-link-set">
         <legend>Ministry page links</legend>
         {ADDRESSES.map(({ field, path, label }) => {
           const error = errorFor(path);

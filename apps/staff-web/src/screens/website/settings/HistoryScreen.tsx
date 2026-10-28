@@ -154,7 +154,7 @@ function HistoryTable({ canEdit }: { canEdit: boolean }): React.JSX.Element {
       {history.revisions.length === 0 ? (
         <p>Nothing has been published yet; the site uses its built-in defaults.</p>
       ) : (
-        <table>
+        <table className="gcpe-table">
           <thead>
             <tr>
               <th scope="col">Revision</th>

@@ -1156,3 +1156,320 @@ body {
   border-radius: 4px;
   font-size: 0.875rem;
 }
+
+/* ---- Site settings (Hub > Website: banner, footer, social, theme, ministry pages, history) ---- */
+
+/* Each screen is one column of fields with the same rhythm as the stacked forms. */
+:is(.gcpe-site-banner, .gcpe-site-footer, .gcpe-site-social, .gcpe-site-theme, .gcpe-site-ministry-pages, .gcpe-site-history) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+}
+:is(.gcpe-site-banner, .gcpe-site-footer, .gcpe-site-social, .gcpe-site-theme, .gcpe-site-ministry-pages, .gcpe-site-history) > :is(h1, h2, p) {
+  margin: 0;
+}
+:is(.gcpe-site-banner, .gcpe-site-footer, .gcpe-site-social, .gcpe-site-theme, .gcpe-site-ministry-pages, .gcpe-site-history) > h2 {
+  margin-top: 0.5rem;
+}
+:is(.gcpe-site-banner, .gcpe-site-footer, .gcpe-site-social, .gcpe-site-theme, .gcpe-site-ministry-pages, .gcpe-site-history) > :is(.bcds-react-aria-TextField, .bcds-react-aria-TextArea, .bcds-react-aria-RadioGroup) {
+  align-self: stretch;
+  max-width: 40rem;
+}
+.gcpe-site-social > nav.gcpe-section-tabs {
+  align-self: stretch;
+}
+.gcpe-site-social > nav.gcpe-section-tabs ul {
+  margin-bottom: 0;
+}
+:is(.gcpe-site-banner, .gcpe-site-footer, .gcpe-site-social, .gcpe-site-theme, .gcpe-site-ministry-pages, .gcpe-site-history) > :is(section, .gcpe-link-list, .gcpe-settings-publish, .gcpe-settings-conflict, .gcpe-settings-other-errors) {
+  align-self: stretch;
+}
+
+/* Multi-line text boxes: the design system draws the border on its container, so the textarea
+ * inside (which the app-wide textarea rule would also box) goes borderless. About four rows. */
+.gcpe-shell__main .bcds-react-aria-TextArea--Input {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+}
+.gcpe-shell__main .bcds-react-aria-TextArea--Input:focus-visible {
+  outline: none;
+}
+.gcpe-shell__main .bcds-react-aria-TextArea--Container {
+  align-items: stretch;
+}
+
+/* Banner: as block-level fields in the column, each hint sits under its own input. */
+.gcpe-site-banner__preview {
+  margin-top: 0.5rem;
+}
+.gcpe-site-banner__preview > h2,
+.gcpe-site-theme__preview > h2 {
+  margin: 0 0 0.5rem;
+}
+.gcpe-site-banner__sample p {
+  margin: 0;
+}
+.gcpe-site-banner__sample ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+}
+.gcpe-site-banner__preview > p {
+  margin: 0;
+}
+
+/* Link list editor: a group of rows, each a boxed pair/triple of fields with its buttons. */
+.gcpe-link-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+}
+.gcpe-link-list > legend {
+  font-weight: 700;
+  padding: 0 0.25rem;
+}
+.gcpe-link-list > p {
+  margin: 0;
+}
+.gcpe-link-list__row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+  align-self: stretch;
+  align-items: start;
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+}
+.gcpe-link-list__row > legend {
+  font-weight: 700;
+  padding: 0 0.25rem;
+}
+.gcpe-link-list__row > .bcds-react-aria-TextField {
+  align-self: stretch;
+  max-width: none;
+  min-width: 0;
+}
+.gcpe-link-list__row > .bcds-react-aria-TextField:nth-child(4),
+.gcpe-link-list__error,
+.gcpe-link-list__actions {
+  grid-column: 1 / -1;
+}
+.gcpe-link-list__error {
+  margin: 0;
+  color: var(--support-border-color-danger, #a12622);
+}
+.gcpe-link-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+@media (max-width: 40rem) {
+  .gcpe-link-list__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The Organizations form puts its link lists inside the "Ministry page links" fieldset, which
+ * the stacked-form cap would otherwise squeeze to 36rem. */
+.gcpe-stack > fieldset.gcpe-link-set {
+  max-width: 56rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  min-width: 0;
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+  padding: 0.75rem 1rem 1rem;
+  margin: 0;
+}
+.gcpe-link-set > legend {
+  font-weight: 700;
+  padding: 0 0.25rem;
+}
+.gcpe-stack.gcpe-link-set > fieldset.gcpe-link-list {
+  max-width: none;
+}
+.gcpe-field--abbr > p {
+  margin: 0;
+}
+.gcpe-field--abbr > input {
+  max-width: 12rem;
+}
+
+/* Publish bar: one distinct block at the foot of the editor. */
+.gcpe-settings-publish {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #d8d8d8;
+  border-top: 3px solid var(--surface-color-primary-default, #013366);
+  border-radius: 4px;
+  background: var(--surface-color-background-light-gray, #faf9f8);
+}
+.gcpe-settings-publish > p {
+  margin: 0;
+}
+.gcpe-settings-publish > .bcds-react-aria-TextField {
+  align-self: stretch;
+  max-width: 36rem;
+}
+.gcpe-settings-publish__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.gcpe-settings-publish__status {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid var(--surface-color-primary-default, #013366);
+  background: #fff;
+  align-self: stretch;
+}
+
+/* Reset to defaults: apart from the field above it. */
+.gcpe-settings-reset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+}
+.gcpe-settings-reset > p {
+  margin: 0;
+}
+
+/* Conflict and other-section problems: a boxed notice above the publish bar. */
+.gcpe-settings-conflict,
+.gcpe-settings-other-errors {
+  padding: 0.75rem 1rem;
+  border: 1px solid #d8d8d8;
+  border-left: 4px solid var(--support-border-color-danger, #a12622);
+  border-radius: 4px;
+}
+.gcpe-settings-conflict > h2 {
+  margin: 0 0 0.5rem;
+}
+.gcpe-settings-conflict > p,
+.gcpe-settings-other-errors > p,
+.gcpe-settings-other-errors > ul {
+  margin: 0 0 0.5rem;
+}
+.gcpe-settings-conflict__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+/* Theme: label, swatch, hex (fixed width), badges on one row. The design-system field's label
+ * and input box become grid cells of the row (the field wrapper itself drops out). */
+.gcpe-site-theme__color {
+  display: grid;
+  grid-template-columns: minmax(10rem, 15rem) 2.5rem 8rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  align-self: stretch;
+}
+.gcpe-site-theme__color > .bcds-react-aria-TextField {
+  display: contents;
+}
+.gcpe-site-theme__color .bcds-react-aria-TextField--Label {
+  grid-column: 1;
+  grid-row: 1;
+}
+.gcpe-site-theme__color .bcds-react-aria-TextField--container {
+  grid-column: 3;
+  grid-row: 1;
+  width: 8rem;
+}
+.gcpe-site-theme__color .bcds-react-aria-TextField--Error,
+.gcpe-site-theme__color .bcds-react-aria-TextField--Description {
+  grid-column: 3 / -1;
+  grid-row: 2;
+}
+.gcpe-site-theme__color > input[type="color"] {
+  grid-column: 2;
+  grid-row: 1;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--surface-color-border-medium, #898785);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-forms-default, #fff);
+  cursor: pointer;
+}
+.gcpe-site-theme__color > input[type="color"]:disabled {
+  cursor: default;
+}
+.gcpe-site-theme__badges {
+  grid-column: 4;
+  grid-row: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+}
+.gcpe-site-theme__badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: var(--typography-regular-small-body);
+}
+.gcpe-site-theme__badge--ok {
+  background: #e6f4ea;
+  border-color: #b7dcc1;
+  color: #1b4d2b;
+}
+.gcpe-site-theme__badge--faint {
+  background: #fbe9e7;
+  border-color: #efbab3;
+  color: #8a1f17;
+}
+.gcpe-site-theme__preview {
+  margin-top: 0.5rem;
+}
+@media (max-width: 40rem) {
+  .gcpe-site-theme__color {
+    grid-template-columns: 2.5rem 8rem minmax(0, 1fr);
+  }
+  .gcpe-site-theme__color .bcds-react-aria-TextField--Label {
+    grid-column: 1 / -1;
+  }
+  .gcpe-site-theme__color > input[type="color"] {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .gcpe-site-theme__color .bcds-react-aria-TextField--container {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .gcpe-site-theme__badges {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .gcpe-site-theme__color .bcds-react-aria-TextField--Error,
+  .gcpe-site-theme__color .bcds-react-aria-TextField--Description {
+    grid-row: 4;
+    grid-column: 1 / -1;
+  }
+}
