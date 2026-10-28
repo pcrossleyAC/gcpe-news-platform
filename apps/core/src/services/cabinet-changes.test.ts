@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import type { SubscriberConfig } from "@gcpe/events";
+import { MAX_EVENT_BYTES, type SubscriberConfig } from "@gcpe/events";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { cabinetChanges, organizations, userOrganizations, users } from "../db/schema";
 import {
@@ -102,7 +102,7 @@ describe("cabinet changes (new-government spec §5)", () => {
     await clearOutbox();
 
     const result = await publishCabinetChange(tdb.db, change.id, subs);
-    expect(result).toEqual({ result: "invalid", problems: [{ op: 1, message: "The abbreviation BETA is already used by Beta." }] });
+    expect(result).toEqual({ result: "invalid", problems: [{ op: 1, message: "Beta and Xray would both use the abbreviation BETA." }] });
     expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha");
     expect(await orgKeys()).toEqual(["a", "b"]);
     expect(await outbox()).toEqual([]);
@@ -118,6 +118,78 @@ describe("cabinet changes (new-government spec §5)", () => {
     ]);
     expect(await publishCabinetChange(tdb.db, change.id, subs)).toEqual({ result: "published" });
     expect(await getOrganization(tdb.db, "b")).toMatchObject({ abbreviation: "ALPH", displayName: "Beta and Alpha", isActive: true });
+  });
+
+  describe("abbreviations are checked on the resulting active set (NG-R13)", () => {
+    it("two ministries can swap abbreviations", async () => {
+      await org("a", "Alpha", "ALPH");
+      await org("b", "Beta", "BETA");
+      const change = await draft([
+        { op: "update", key: "a", expectedUpdatedAt: await stamp("a"), patch: { abbreviation: "BETA" } },
+        { op: "update", key: "b", expectedUpdatedAt: await stamp("b"), patch: { abbreviation: "ALPH" } },
+      ]);
+      expect((await previewCabinetChange(tdb.db, change.id)).problems).toEqual([]);
+      expect(await publishCabinetChange(tdb.db, change.id, subs)).toEqual({ result: "published" });
+      expect((await getOrganization(tdb.db, "a"))!.abbreviation).toBe("BETA");
+      expect((await getOrganization(tdb.db, "b"))!.abbreviation).toBe("ALPH");
+    });
+
+    it("create C with A's abbreviation and merge A+B into C", async () => {
+      await org("a", "Alpha", "ALPH");
+      await org("b", "Beta", "BETA");
+      const change = await draft([
+        { op: "create", ref: "new-c", displayName: "C", abbreviation: "ALPH" },
+        { op: "succeed", key: "a", expectedUpdatedAt: await stamp("a"), successors: [{ ref: "new-c" }], moves: { ...moves, takeAbbreviation: false } },
+        { op: "succeed", key: "b", expectedUpdatedAt: await stamp("b"), successors: [{ ref: "new-c" }], moves: { ...moves, takeAbbreviation: false } },
+      ]);
+      expect(await publishCabinetChange(tdb.db, change.id, subs)).toEqual({ result: "published" });
+      expect(await getOrganization(tdb.db, "c")).toMatchObject({ abbreviation: "ALPH", isActive: true });
+      expect(await getOrganization(tdb.db, "a")).toMatchObject({ isActive: false, successorKeys: ["c"] });
+    });
+
+    it("a hand-over can name a ministry the same change reactivates", async () => {
+      await org("a", "Alpha", "ALPH");
+      await org("old", "Old Ministry", "OLDM");
+      await deactivateOrganization(tdb.db, "old", subs);
+      const change = await draft([
+        { op: "succeed", key: "a", expectedUpdatedAt: await stamp("a"), successors: [{ key: "old" }], moves },
+        { op: "update", key: "old", expectedUpdatedAt: await stamp("old"), patch: { isActive: true, displayName: "Revived Ministry" } },
+      ]);
+      expect(await publishCabinetChange(tdb.db, change.id, subs)).toEqual({ result: "published" });
+      expect(await getOrganization(tdb.db, "old")).toMatchObject({ isActive: true, displayName: "Revived Ministry", abbreviation: "ALPH" });
+      expect(await getOrganization(tdb.db, "a")).toMatchObject({ isActive: false, successorKeys: ["old"] });
+    });
+
+    it("a real end-state clash is refused naming both ministries, and writes nothing", async () => {
+      await org("a", "Alpha", "ALPH");
+      await org("b", "Beta", "BETA");
+      const change = await draft([
+        { op: "update", key: "a", expectedUpdatedAt: await stamp("a"), patch: { displayName: "Alpha Two" } },
+        { op: "update", key: "b", expectedUpdatedAt: await stamp("b"), patch: { abbreviation: "ALPH" } },
+      ]);
+      await clearOutbox();
+      const problem = { op: 1, message: "Alpha Two and Beta would both use the abbreviation ALPH." };
+      expect((await previewCabinetChange(tdb.db, change.id)).problems).toEqual([problem]);
+      expect(await publishCabinetChange(tdb.db, change.id, subs)).toEqual({ result: "invalid", problems: [problem] });
+      expect(await getOrganization(tdb.db, "b")).toMatchObject({ abbreviation: "BETA" });
+      expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha");
+      expect(await outbox()).toEqual([]);
+    });
+
+    it("a clash already in the data that the change doesn't touch is not its problem", async () => {
+      await org("a", "Alpha", "DUP");
+      await org("b", "Beta", "DUP");
+      const change = await draft([{ op: "update", key: "a", expectedUpdatedAt: await stamp("a"), patch: { displayName: "Alpha Two" } }]);
+      expect(await publishCabinetChange(tdb.db, change.id, subs)).toEqual({ result: "published" });
+    });
+
+    it("the deferral ends with the transaction: a one-at-a-time edit still refuses a taken abbreviation", async () => {
+      await org("a", "Alpha", "ALPH");
+      await org("b", "Beta", "BETA");
+      const change = await draft([{ op: "update", key: "a", expectedUpdatedAt: await stamp("a"), patch: { displayName: "Alpha Two" } }]);
+      await publishCabinetChange(tdb.db, change.id, subs);
+      await expect(patchOrganizationProfile(tdb.db, "b", { abbreviation: "ALPH" }, subs)).rejects.toThrow("abbreviation taken");
+    });
   });
 
   it("stale expectedUpdatedAt refuses the whole change and names the ministry", async () => {
@@ -240,6 +312,64 @@ describe("cabinet changes (new-government spec §5)", () => {
     expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha Renamed");
     const [row] = await tdb.db.select().from(cabinetChanges).where(eq(cabinetChanges.id, change.id));
     expect(row).toMatchObject({ status: "published", publishedAt: after() });
+    // One clock for every stamp in the publish.
+    expect((await getOrganization(tdb.db, "a"))!.updatedAt).toBe(after().toISOString());
+    expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
+  });
+
+  describe("the worker re-checks under the lock that the change is still due", () => {
+    async function race(pullBack: string): Promise<void> {
+      await org("a", "Alpha", "ALPH");
+      const at = new Date("2028-11-20T08:00:00Z");
+      const change = await draft([{ op: "update", key: "a", expectedUpdatedAt: await stamp("a"), patch: { displayName: "Alpha Renamed" } }]);
+      await scheduleCabinetChange(tdb.db, change.id, at, () => new Date(at.getTime() - 60_000));
+      const holder = await tdb.pool.connect();
+      try {
+        await holder.query("BEGIN");
+        await holder.query("SELECT pg_advisory_xact_lock(hashtext('cabinet-change'))");
+        const run = publishDueCabinetChanges(tdb.db, subs, () => new Date(at.getTime() + 1_000));
+        // Wait until the worker has seen the change as due and is queued on the lock.
+        for (let i = 0; ; i++) {
+          const { rows } = await tdb.pool.query("SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database())");
+          if (rows.length) break;
+          if (i > 200) throw new Error("the worker never waited on the lock");
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        await holder.query(pullBack, [change.id]);
+        await holder.query("COMMIT");
+        expect(await run).toEqual({ published: 0, failed: 0 });
+      } finally {
+        holder.release();
+      }
+      expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha");
+    }
+
+    it("an edit back to draft meanwhile: nothing is published", async () => {
+      await race("UPDATE cabinet_changes SET status = 'draft', scheduled_for = NULL WHERE id = $1");
+      expect((await getOpenCabinetChange(tdb.db))!.status).toBe("draft");
+    });
+
+    it("a reschedule to later meanwhile: nothing is published, and the new time stands", async () => {
+      await race("UPDATE cabinet_changes SET scheduled_for = '2028-11-21T08:00:00Z' WHERE id = $1");
+      expect(await getOpenCabinetChange(tdb.db)).toMatchObject({ status: "scheduled", scheduledFor: "2028-11-21T08:00:00.000Z" });
+    });
+  });
+
+  it("an unexpected error in a scheduled publish returns it to draft with a generic message", async () => {
+    await org("a", "Alpha", "ALPH");
+    const at = new Date("2028-11-20T08:00:00Z");
+    // A name too large for org.upserted's envelope: the outbox refuses it (EventTooLargeError), which no problem check foresees.
+    const change = await draft([{ op: "update", key: "a", expectedUpdatedAt: await stamp("a"), patch: { displayName: "x".repeat(MAX_EVENT_BYTES) } }]);
+    await scheduleCabinetChange(tdb.db, change.id, at, () => new Date(at.getTime() - 60_000)).catch(() => undefined);
+    await tdb.db.update(cabinetChanges).set({ status: "scheduled", scheduledFor: at }).where(eq(cabinetChanges.id, change.id));
+    const after = () => new Date(at.getTime() + 1_000);
+    expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 1 });
+    expect(await getOpenCabinetChange(tdb.db)).toMatchObject({
+      status: "draft",
+      scheduledFor: null,
+      error: "Not published at the scheduled time: something went wrong while publishing. Review the change and schedule it again.",
+    });
+    expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha");
     expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
   });
 

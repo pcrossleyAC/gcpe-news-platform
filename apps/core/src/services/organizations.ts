@@ -79,6 +79,8 @@ export async function upsertOrganization(
     isPublicOnCreate?: boolean;
     /** Stamp staffEditedAt: the write comes from a staff edit in the Hub, not the seed or importer. */
     staffEdit?: boolean;
+    /** The clock for updatedAt and staffEditedAt (a cabinet change stamps one instant on everything it publishes). */
+    now?: TestClock;
     /** Leave a staff-edited organization untouched (no write at all, legacyId backfill included) and report skippedStaffEdit. For the seed and importer; staff edits never pass it. */
     respectStaffEdits?: boolean;
   } = {},
@@ -114,8 +116,8 @@ export async function upsertOrganization(
     const values = {
       ...data,
       legacyId: opts.legacyId ?? existing?.legacyId ?? null,
-      updatedAt: new Date(),
-      ...(opts.staffEdit ? { staffEditedAt: new Date() } : {}),
+      updatedAt: opts.now ? opts.now() : new Date(),
+      ...(opts.staffEdit ? { staffEditedAt: opts.now ? opts.now() : new Date() } : {}),
       ...(clearSuccessors ? { successorKeys: [] } : {}),
     };
     const [row] = await tx
@@ -180,6 +182,7 @@ export class AbbreviationTakenError extends Error {
  */
 async function assertAbbreviationFree(tx: Tx, abbreviation: string, key: string): Promise<void> {
   await lockAggregate(tx, ABBREVIATIONS_LOCK);
+  if (await abbreviationCheckDeferred(tx)) return;
   const [other] = await tx
     .select({ displayName: organizations.displayName })
     .from(organizations)
@@ -187,6 +190,24 @@ async function assertAbbreviationFree(tx: Tx, abbreviation: string, key: string)
     .orderBy(asc(organizations.sortOrder), asc(organizations.key))
     .limit(1);
   if (other) throw new AbbreviationTakenError(other.displayName);
+}
+
+const DEFER_ABBREVIATION_CHECK = "gcpe.defer_abbreviation_check";
+
+/**
+ * Defers the abbreviation check for the rest of `tx` (savepoints included), like a deferred
+ * constraint: a cabinet change validates abbreviations against the resulting active set once,
+ * before commit (spec §5, NG-R13), so a swap or a merge may clash for a moment in between. The
+ * caller must hold ABBREVIATIONS_LOCK until commit and run that end-state check itself.
+ */
+export async function deferAbbreviationCheck(tx: Tx): Promise<void> {
+  await lockAggregate(tx, ABBREVIATIONS_LOCK);
+  await tx.execute(sql`select set_config(${DEFER_ABBREVIATION_CHECK}, 'on', true)`);
+}
+
+async function abbreviationCheckDeferred(tx: Tx): Promise<boolean> {
+  const { rows } = await tx.execute<{ v: string | null }>(sql`select current_setting(${DEFER_ABBREVIATION_CHECK}, true) as v`);
+  return rows[0]?.v === "on";
 }
 
 /** What the Hub's organization form may change. Everything else on the record survives a save untouched. */
@@ -240,6 +261,7 @@ export async function patchOrganizationProfile(
   patch: OrgProfilePatch,
   subscribers: SubscriberConfig[],
   tx?: Tx,
+  now?: TestClock,
 ): Promise<OrgRecord | null> {
   const parsed = orgProfilePatchSchema.parse(patch);
   const run = async (tx: Tx): Promise<OrgRecord | null> => {
@@ -257,7 +279,7 @@ export async function patchOrganizationProfile(
     }
     const merged: OrgInput = { ...current, ...rest, minister: { ...current.minister, ...minister }, social: { ...current.social, ...social } };
     // tx is a Db-compatible handle; upsertOrganization opens a nested transaction (savepoint) on it and re-takes the same lock.
-    return (await upsertOrganization(tx as unknown as Db, merged, subscribers, { staffEdit: true })).record;
+    return (await upsertOrganization(tx as unknown as Db, merged, subscribers, { staffEdit: true, now })).record;
   };
   return tx ? run(tx) : db.transaction(run);
 }
@@ -284,6 +306,7 @@ export async function createOrganization(
   input: { displayName: string; sortOrder?: number; parentKey?: string | null; minister?: Partial<OrgRecord["minister"]>; abbreviation?: string },
   subscribers: SubscriberConfig[],
   tx?: Tx,
+  clock?: TestClock,
 ): Promise<{ record: OrgRecord } | { conflict: string }> {
   const displayName = input.displayName.trim();
   const key = orgKeyFromName(displayName);
@@ -293,7 +316,7 @@ export async function createOrganization(
     await lockAggregate(tx, orgAggregateId(key));
     if (abbreviation !== null) await assertAbbreviationFree(tx, abbreviation, key);
     const sortOrder = input.sortOrder ?? ((await tx.select({ m: max(organizations.sortOrder) }).from(organizations))[0]?.m ?? 0) + 10;
-    const now = new Date();
+    const now = clock ? clock() : new Date();
     const [row] = await tx
       .insert(organizations)
       .values({
@@ -357,13 +380,14 @@ export async function setOrganizationPublic(db: Db, key: string, isPublic: boole
 }
 
 /** Plain deactivation (no successor). Uses the caller's transaction when `tx` is given (a cabinet change's abolish). */
-export async function deactivateOrganization(db: Db, key: string, subscribers: SubscriberConfig[], tx?: Tx): Promise<boolean> {
+export async function deactivateOrganization(db: Db, key: string, subscribers: SubscriberConfig[], tx?: Tx, clock?: TestClock): Promise<boolean> {
   const run = async (tx: Tx): Promise<boolean> => {
     await lockAggregate(tx, orgAggregateId(key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
     if (!existing) return false;
     if (!existing.isActive) return true;
-    await tx.update(organizations).set({ isActive: false, updatedAt: new Date(), staffEditedAt: new Date() }).where(eq(organizations.key, key));
+    const now = clock ? clock() : new Date();
+    await tx.update(organizations).set({ isActive: false, updatedAt: now, staffEditedAt: now }).where(eq(organizations.key, key));
     await enqueueEvent(tx, { type: "org.deactivated", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: { key } }, subscribers);
     return true;
   };

@@ -2,14 +2,14 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
 import { orgKeyFromName, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import { cabinetChanges, organizations, userOrganizations } from "../db/schema";
 import { lockAggregate, orgAggregateId, userAggregateId } from "./aggregate";
 import {
-  ABBREVIATIONS_LOCK,
-  AbbreviationTakenError,
   SuccessionError,
   createOrganization,
   deactivateOrganization,
+  deferAbbreviationCheck,
   listOrganizations,
   orgCreateSchema,
   orgProfilePatchSchema,
@@ -196,14 +196,21 @@ function successorKeys(op: Extract<CabinetOperation, { op: "succeed" }>, created
  * Runs the operations in `tx`. Locks first, all of them before any organization row is read or
  * written, in the order the one-at-a-time functions use, so this never deadlocks with them: every
  * organization this change names (sorted by key), then the users a hand-over may move (sorted by id),
- * then the abbreviation lock. The service functions re-take these (advisory locks are re-entrant).
+ * then the abbreviation lock, held to the end. The service functions re-take these (advisory locks
+ * are re-entrant).
+ *
+ * Abbreviations are checked against the resulting active set, like a deferred constraint (spec §5,
+ * NG-R13): the per-write check is deferred for this transaction, so a swap or "create C with A's
+ * abbreviation, then hand A over to C" may clash for a moment in between, and checkEndState runs
+ * once on the final rows. Nothing is visible to anyone else until commit, and the abbreviation lock
+ * keeps every other abbreviation write out until then.
  *
  * Then it checks each operation on its own (a missing ministry, a stale expectedUpdatedAt, a double
  * hand-over, an abolish without "No successor", an unknown ref), and runs the rest, each in its own
- * savepoint, so a refused operation (an abbreviation clash, a loop, an inactive successor, a name that
- * already exists) becomes a problem and the others still run and report. Run order: hand-overs to
- * existing ministries and abolishes first (they free abbreviations), then updates, then creates, then
- * hand-overs to created ministries; draft order within each. With `stopAtStale`, nothing runs once an
+ * savepoint, so a refused operation (a loop, an inactive successor, a name that already exists)
+ * becomes a problem and the others still run and report. Run order: updates (renames and
+ * reactivations, so a hand-over can name a ministry the change reactivates), then creates, then
+ * hand-overs and abolishes; draft order within each. With `stopAtStale`, nothing runs once an
  * operation is stale.
  */
 async function applyOperations(
@@ -236,7 +243,7 @@ async function applyOperations(
       .orderBy(asc(userOrganizations.userId));
     for (const { userId } of staff) await lockAggregate(tx, userAggregateId(userId));
   }
-  await lockAggregate(tx, ABBREVIATIONS_LOCK);
+  await deferAbbreviationCheck(tx);
 
   const before = await listOrganizations(tx as unknown as Db);
   const byKey = new Map(before.map((o) => [o.key, o]));
@@ -251,6 +258,8 @@ async function applyOperations(
   const succeeded = new Set(ops.flatMap((op) => (op.op === "succeed" ? [op.key] : [])));
   const handedOver = new Set<string>();
   const refsSeen = new Set<string>();
+  /** The first operation that gave each ministry its abbreviation or made it active, for the end-state check. */
+  const claimedBy = new Map<string, number>();
 
   ops.forEach((op, i) => {
     if (op.op === "create") {
@@ -277,7 +286,7 @@ async function applyOperations(
   });
 
   if (!(opts.stopAtStale && stale.length)) {
-    const phase = (op: CabinetOperation) => (op.op === "succeed" ? (op.successors.some((s) => s.ref !== undefined) ? 3 : 0) : op.op === "update" ? 1 : 2);
+    const phase = (op: CabinetOperation) => (op.op === "update" ? 0 : op.op === "create" ? 1 : 2);
     const order = ops
       .map((op, i) => ({ op, i }))
       .filter(({ i }) => !blocked.has(i))
@@ -287,41 +296,68 @@ async function applyOperations(
       try {
         await tx.transaction(async (sp) => {
           if (op.op === "update") {
-            await patchOrganizationProfile(db, op.key, op.patch, subscribers, sp);
+            await patchOrganizationProfile(db, op.key, op.patch, subscribers, sp, opts.now);
+            claimedBy.set(op.key, claimedBy.get(op.key) ?? i);
           } else if (op.op === "create") {
             const { ref: r, op: _op, ...input } = op;
-            const result = await createOrganization(db, input, subscribers, sp);
-            if ("conflict" in result) problem(i, `${op.displayName} already exists.`);
-            else created.set(r, result.record.key);
+            const result = await createOrganization(db, input, subscribers, sp, opts.now);
+            if ("conflict" in result) return problem(i, `${op.displayName} already exists.`);
+            created.set(r, result.record.key);
+            claimedBy.set(result.record.key, claimedBy.get(result.record.key) ?? i);
           } else if (op.noSuccessor) {
-            await deactivateOrganization(db, op.key, subscribers, sp);
+            await deactivateOrganization(db, op.key, subscribers, sp, opts.now);
           } else {
             const keys = successorKeys(op, created);
             if (!keys) return problem(i, `A new ministry ${byKey.get(op.key)!.displayName} hands over to wasn't created.`);
             await succeedOrganization(db, op.key, { successorKeys: keys, ...op.moves }, subscribers, sp, opts.now);
+            if (op.moves.takeAbbreviation) claimedBy.set(keys[0]!, claimedBy.get(keys[0]!) ?? i);
           }
         });
       } catch (e) {
         if (e instanceof SuccessionError) problem(i, e.message);
-        else if (e instanceof AbbreviationTakenError) {
-          const abbreviation = abbreviationOf(op, byKey);
-          problem(i, `The abbreviation ${abbreviation ? `${abbreviation} ` : ""}is already used by ${e.takenBy}.`);
-        }
         else throw e;
       }
     }
   }
 
   const after = await listOrganizations(tx as unknown as Db);
+  for (const p of endStateProblems(before, after, claimedBy)) problems.push(p);
   problems.sort((a, b) => a.op - b.op);
   return { problems, stale, before, after };
 }
 
-/** The abbreviation an operation claims, for the clash message. */
-function abbreviationOf(op: CabinetOperation, byKey: Map<string, OrgRecord>): string | null {
-  if (op.op === "create") return op.abbreviation ?? null;
-  if (op.op === "update") return op.patch.abbreviation ?? byKey.get(op.key)?.abbreviation?.trim().toUpperCase() ?? null;
-  return byKey.get(op.key)?.abbreviation?.trim().toUpperCase() ?? null;
+const abbreviationKey = (o: OrgRecord) => o.abbreviation?.trim().toUpperCase() || null;
+
+function names(list: string[]): string {
+  return list.length <= 2 ? list.join(" and ") : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+/**
+ * The resulting-set rule (spec §5): no two active ministries may share an abbreviation. Only clashes
+ * this change creates count: a ministry it creates, gives an abbreviation or reactivates. Clashes
+ * already in the data (legacy imports repeat some) are left alone, as the one-at-a-time edits do.
+ * Each problem goes on the first operation that made one of the ministries claim it.
+ */
+function endStateProblems(before: OrgRecord[], after: OrgRecord[], claimedBy: Map<string, number>): CabinetProblem[] {
+  const old = new Map(before.map((o) => [o.key, o]));
+  const holders = new Map<string, OrgRecord[]>();
+  for (const o of after) {
+    const abbreviation = abbreviationKey(o);
+    if (!o.isActive || !abbreviation) continue;
+    holders.set(abbreviation, [...(holders.get(abbreviation) ?? []), o]);
+  }
+  const problems: CabinetProblem[] = [];
+  for (const [abbreviation, orgs] of holders) {
+    if (orgs.length < 2) continue;
+    const claimed = orgs.filter((o) => {
+      const b = old.get(o.key);
+      return !b || !b.isActive || abbreviationKey(b) !== abbreviation;
+    });
+    if (!claimed.length) continue;
+    const op = Math.min(...claimed.map((o) => claimedBy.get(o.key) ?? 0));
+    problems.push({ op, message: `${names(orgs.map((o) => o.displayName))} would ${orgs.length > 2 ? "all" : "both"} use the abbreviation ${abbreviation}.` });
+  }
+  return problems;
 }
 
 const CREATED_FIELDS = ["displayName", "abbreviation", "sortOrder", "isActive", "minister"] as const;
@@ -405,11 +441,13 @@ async function publish(db: Db, id: string, subscribers: SubscriberConfig[], opts
       }
       const read = operationsOf(row);
       if ("problems" in read) return { result: "invalid", problems: read.problems };
-      const applied = await applyOperations(db, tx, read.ops, subscribers, { now: opts.now, stopAtStale: true });
+      // One instant for every stamp this publish writes: each ministry's updatedAt and staffEditedAt,
+      // org.succeeded's `at`, and publishedAt.
+      const at = opts.now ? opts.now() : new Date();
+      const applied = await applyOperations(db, tx, read.ops, subscribers, { now: () => at, stopAtStale: true });
       const first = applied.stale[0];
       if (first) throw new Rollback({ result: "stale", key: first.key, displayName: first.displayName });
       if (applied.problems.length) throw new Rollback({ result: "invalid", problems: applied.problems });
-      const at = opts.now ? opts.now() : new Date();
       await tx.update(cabinetChanges).set({ status: "published", publishedAt: at, error: null, updatedAt: at }).where(eq(cabinetChanges.id, id));
       return { result: "published" };
     }),
@@ -457,37 +495,49 @@ export async function scheduleCabinetChange(db: Db, id: string, at: Date, now?: 
   });
 }
 
+const GENERIC_SCHEDULED_ERROR = "Not published at the scheduled time: something went wrong while publishing. Review the change and schedule it again.";
+
 /**
  * The scheduler's step (Core's loop and the stack's core.cabinet-changes tick): publishes each
  * scheduled change whose time has come (by the database clock, or the test clock). One that can't be
  * published goes back to draft, unscheduled, with the reason in `error`, so it is not retried every
- * tick and the Hub shows why.
+ * tick and the Hub shows why. That includes an unexpected error (logged, with a generic message in
+ * `error`). The write-back matches the scheduled time the worker saw, so a reschedule made meanwhile
+ * survives.
  */
 export async function publishDueCabinetChanges(db: Db, subscribers: SubscriberConfig[], now?: TestClock): Promise<{ published: number; failed: number }> {
   const due = await db
-    .select({ id: cabinetChanges.id })
+    .select({ id: cabinetChanges.id, scheduledFor: cabinetChanges.scheduledFor })
     .from(cabinetChanges)
     .where(and(eq(cabinetChanges.status, "scheduled"), sql`${cabinetChanges.scheduledFor} <= ${sqlNow(now)}`))
     .orderBy(asc(cabinetChanges.scheduledFor));
   let published = 0;
   let failed = 0;
-  for (const { id } of due) {
-    const result = await publish(db, id, subscribers, { now, onlyIfDue: true });
-    if (result.result === "published") published++;
-    if (result.result !== "stale" && result.result !== "invalid") continue;
-    const reason = result.result === "stale" ? staleMessage(result.displayName) : result.problems.map((p) => p.message).join(" ");
-    const error = `Not published at the scheduled time: ${reason}`;
+  for (const { id, scheduledFor } of due) {
+    let error: string;
+    let reason: string;
+    try {
+      const result = await publish(db, id, subscribers, { now, onlyIfDue: true });
+      if (result.result === "published") published++;
+      if (result.result !== "stale" && result.result !== "invalid") continue;
+      reason = result.result;
+      error = `Not published at the scheduled time: ${result.result === "stale" ? staleMessage(result.displayName) : result.problems.map((p) => p.message).join(" ")}`;
+    } catch (e) {
+      console.error("[core] scheduled cabinet change failed", { id }, safeErrorLabel(e));
+      reason = "error";
+      error = GENERIC_SCHEDULED_ERROR;
+    }
     const rows = await db.transaction(async (tx) => {
       await lockAggregate(tx, CABINET_CHANGE_LOCK);
       return tx
         .update(cabinetChanges)
         .set({ status: "draft", scheduledFor: null, error, updatedAt: new Date() })
-        .where(and(eq(cabinetChanges.id, id), eq(cabinetChanges.status, "scheduled")))
+        .where(and(eq(cabinetChanges.id, id), eq(cabinetChanges.status, "scheduled"), eq(cabinetChanges.scheduledFor, scheduledFor!)))
         .returning({ id: cabinetChanges.id });
     });
     if (rows.length) {
       failed++;
-      console.warn("[core] scheduled cabinet change not published", { id, result: result.result });
+      console.warn("[core] scheduled cabinet change not published", { id, reason });
     }
   }
   return { published, failed };

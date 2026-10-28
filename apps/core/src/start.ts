@@ -89,10 +89,18 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
-      cabinetLoop = setInterval(
-        () => void publishDueCabinetChanges(db, subscribers).catch((e) => console.error("[core] scheduled cabinet change failed", safeErrorLabel(e))),
-        30_000,
-      );
+      // Skips a beat while the previous run is still going, so a long publish never stacks up runs
+      // that hold pool connections waiting on its lock.
+      let busy = false;
+      cabinetLoop = setInterval(() => {
+        if (busy) return;
+        busy = true;
+        void publishDueCabinetChanges(db, subscribers)
+          .catch((e) => console.error("[core] scheduled cabinet change failed", safeErrorLabel(e)))
+          .finally(() => {
+            busy = false;
+          });
+      }, 30_000);
       cabinetLoop.unref();
     },
     closeBeforeServer: [],
