@@ -12,6 +12,7 @@ import {
   isHqAbbreviation,
   isNonPublicAbbreviation,
   listOrganizations,
+  MAX_BIO_CHARS,
   orgProfilePatchSchema,
   patchOrganizationProfile,
   setOrganizationHq,
@@ -250,6 +251,104 @@ describe("organizations service", () => {
       const many = Array.from({ length: 21 }, (_, i) => ({ text: `L${i}`, url: `/p${i}` }));
       expect(orgProfilePatchSchema.safeParse({ topicLinks: many }).success).toBe(false);
       expect(orgProfilePatchSchema.safeParse({ topicLinks: many.slice(0, 20) }).success).toBe(true);
+    });
+  });
+
+  describe("biography, Meet the Team links and media contacts (T1, T2)", () => {
+    const orgEvents = async (key: string) =>
+      (await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, `org:${key}`))).map((e) => e.envelope as { type: string; data: OrgRecord });
+    const patch = (body: unknown) => patchOrganizationProfile(tdb.db, "health", orgProfilePatchSchema.parse(body), subs);
+    const issues = (body: unknown) => orgProfilePatchSchema.safeParse(body).error?.issues.map((i) => ({ path: i.path, message: i.message }));
+
+    it("PATCH minister.detailsHtml stores the sanitised HTML and emits one org.upserted", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      const record = await patch({ minister: { detailsHtml: ' <p onclick="x()">Pat <b>Doe</b></p><script>alert(1)</script><p></p> ' } });
+      expect(record!.minister.detailsHtml).toBe("<p>Pat <strong>Doe</strong></p>");
+      expect(record!.minister.name).toBe(healthOrg.minister.name);
+      expect((await getOrganization(tdb.db, "health"))!.minister.detailsHtml).toBe("<p>Pat <strong>Doe</strong></p>");
+      const events = await orgEvents("health");
+      expect(events).toHaveLength(2);
+      expect(events[1]!.data.minister.detailsHtml).toBe("<p>Pat <strong>Doe</strong></p>");
+    });
+
+    it("PATCH detailsHtml '<p></p>' or '<p> </p>' stores null", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      expect((await patch({ minister: { detailsHtml: "<p></p>" } }))!.minister.detailsHtml).toBeNull();
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      expect((await patch({ minister: { detailsHtml: "<p> </p>" } }))!.minister.detailsHtml).toBeNull();
+      for (const blank of ["<div> <br> </div>", "<script>x</script>", "   "]) {
+        expect(orgProfilePatchSchema.parse({ minister: { detailsHtml: blank } })).toEqual({ minister: { detailsHtml: null } });
+      }
+    });
+
+    it("a sanitised biography over 20,000 characters is refused on minister.detailsHtml", () => {
+      const para = (n: number) => `<p>${"a".repeat(n - 7)}</p>`;
+      expect(orgProfilePatchSchema.parse({ minister: { detailsHtml: para(MAX_BIO_CHARS) } }).minister!.detailsHtml).toHaveLength(MAX_BIO_CHARS);
+      expect(issues({ minister: { detailsHtml: para(MAX_BIO_CHARS + 1) } })).toEqual([{ path: ["minister", "detailsHtml"], message: "Keep the biography to 20,000 characters or fewer." }]);
+      // Measured after sanitising: markup that sanitising removes does not count.
+      const padded = para(MAX_BIO_CHARS) + `<span style="${"x".repeat(5_000)}"></span>`;
+      expect(orgProfilePatchSchema.parse({ minister: { detailsHtml: padded } }).minister!.detailsHtml).toHaveLength(MAX_BIO_CHARS);
+      // The raw input is capped before sanitising.
+      expect(orgProfilePatchSchema.safeParse({ minister: { detailsHtml: " ".repeat(100_001) } }).success).toBe(false);
+    });
+
+    it("PATCH teamLinks replaces the list; an unsafe url is refused on teamLinks[0].url", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      expect((await getOrganization(tdb.db, "health"))!.teamLinks).toEqual([]);
+      const first = [
+        { text: " Premier ", url: " /office-of-the-premier/biography " },
+        { text: "Cabinet", url: "https://www2.gov.bc.ca/cabinet" },
+      ];
+      expect((await patch({ teamLinks: first }))!.teamLinks).toEqual([
+        { text: "Premier", url: "/office-of-the-premier/biography" },
+        { text: "Cabinet", url: "https://www2.gov.bc.ca/cabinet" },
+      ]);
+      const record = await patch({ teamLinks: [{ text: "Only", url: "/only" }] });
+      expect(record!.teamLinks).toEqual([{ text: "Only", url: "/only" }]);
+      expect((await orgEvents("health")).at(-1)!.data.teamLinks).toEqual([{ text: "Only", url: "/only" }]);
+      expect(issues({ teamLinks: [{ text: "x", url: "javascript:alert(1)" }] })).toEqual([{ path: ["teamLinks", 0, "url"], message: "Must start with https:// or / (a page on this site)." }]);
+      expect(issues({ teamLinks: [{ text: " ", url: "/a" }] })).toEqual([{ path: ["teamLinks", 0, "text"], message: "Enter the link text." }]);
+      const many = Array.from({ length: 21 }, (_, i) => ({ text: `L${i}`, url: `/p${i}` }));
+      expect(issues({ teamLinks: many })).toEqual([{ path: ["teamLinks"], message: "Use 20 links or fewer." }]);
+    });
+
+    it("PATCH contact sets all four fields; a contact of four blanks stores null; a bad email is refused on contact.emailAddress", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      const contact = { fullName: " Jo Media ", phoneNumber: " 250 555-0199 ", mobileNumber: "", emailAddress: " jo.media@gov.bc.ca " };
+      const record = await patch({ contact, secondContact: { ...contact, fullName: "Second" } });
+      expect(record!.contact).toEqual({ fullName: "Jo Media", phoneNumber: "250 555-0199", mobileNumber: null, emailAddress: "jo.media@gov.bc.ca" });
+      expect(record!.secondContact).toEqual({ fullName: "Second", phoneNumber: "250 555-0199", mobileNumber: null, emailAddress: "jo.media@gov.bc.ca" });
+      // Replaced whole, not merged field by field.
+      const replaced = await patch({ contact: { fullName: "New", phoneNumber: null, mobileNumber: null, emailAddress: null } });
+      expect(replaced!.contact).toEqual({ fullName: "New", phoneNumber: null, mobileNumber: null, emailAddress: null });
+      expect(replaced!.secondContact!.fullName).toBe("Second");
+      const cleared = await patch({ contact: { fullName: " ", phoneNumber: "", mobileNumber: null, emailAddress: "  " }, secondContact: null });
+      expect(cleared!.contact).toBeNull();
+      expect(cleared!.secondContact).toBeNull();
+      expect(issues({ contact: { ...contact, emailAddress: "not-an-email" } })).toEqual([{ path: ["contact", "emailAddress"], message: "Enter an email address like name@gov.bc.ca." }]);
+      expect(issues({ secondContact: { ...contact, mobileNumber: "1".repeat(51) } })).toEqual([{ path: ["secondContact", "mobileNumber"], message: "Keep phone numbers to 50 characters or fewer." }]);
+      expect(orgProfilePatchSchema.safeParse({ contact: { ...contact, title: "Director" } }).success).toBe(false);
+      expect(orgProfilePatchSchema.safeParse({ contact: { fullName: "Only a name" } }).success).toBe(false);
+    });
+
+    it("PATCH weekendContactNumber trims and stores; '' stores null", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      expect((await patch({ weekendContactNumber: " 250 555-0100 " }))!.weekendContactNumber).toBe("250 555-0100");
+      expect((await patch({ weekendContactNumber: "" }))!.weekendContactNumber).toBeNull();
+      expect(issues({ weekendContactNumber: "1".repeat(51) })).toEqual([{ path: ["weekendContactNumber"], message: "Keep phone numbers to 50 characters or fewer." }]);
+    });
+
+    it("an importer upsert that omits teamLinks on a row whose team_links is [] is not a change (no event)", async () => {
+      expect("teamLinks" in healthOrg).toBe(false);
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      const { rows } = await tdb.pool.query("SELECT team_links FROM organizations WHERE key = 'health'");
+      expect(rows[0].team_links).toEqual([]);
+      const again = await upsertOrganization(tdb.db, healthOrg, subs);
+      expect(again.changed).toBe(false);
+      expect(await orgEvents("health")).toHaveLength(1);
+      // An explicit [] is the same content too; a non-empty list is a change.
+      expect((await upsertOrganization(tdb.db, { ...healthOrg, teamLinks: [] }, subs)).changed).toBe(false);
+      expect((await upsertOrganization(tdb.db, { ...healthOrg, teamLinks: [{ text: "a", url: "/a" }] }, subs)).changed).toBe(true);
     });
   });
 

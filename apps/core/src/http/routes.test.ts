@@ -414,13 +414,38 @@ describe("Core HTTP API", () => {
       expect(res.body.minister.detailsHtml).toBeNull();
     });
 
-    it("clears a stored biography and rejects any string detailsHtml", async () => {
+    it("clears a stored biography with null or an empty paragraph", async () => {
       await seed("forests-bio2");
       expect((await get("forests-bio2")).minister.detailsHtml).toBeTruthy();
-      expect((await patch(siteEditor, { minister: { detailsHtml: "<p>x</p>" } }, "forests-bio2")).status).toBe(400);
-      expect((await get("forests-bio2")).minister.detailsHtml).toBeTruthy();
+      await patch(siteEditor, { minister: { detailsHtml: "<p></p>" } }, "forests-bio2").expect(200);
+      expect((await get("forests-bio2")).minister.detailsHtml).toBeNull();
+      await patch(siteEditor, { minister: { detailsHtml: "<p>x</p>" } }, "forests-bio2").expect(200);
       await patch(siteEditor, { minister: { detailsHtml: null } }, "forests-bio2").expect(200);
       expect((await get("forests-bio2")).minister.detailsHtml).toBeNull();
+    });
+
+    it("NRMS.SiteEditor may PATCH detailsHtml, teamLinks and both contacts; Core.Admin-only fields stay refused for it", async () => {
+      await seed("forests-t1t2");
+      const contact = { fullName: "Jo Media", phoneNumber: "250 555-0199", mobileNumber: null, emailAddress: "jo.media@gov.bc.ca" };
+      const body = {
+        minister: { detailsHtml: '<p>Bio <img src="https://x/y.jpg"><script>alert(1)</script></p>' },
+        teamLinks: [{ text: "Premier", url: "/office-of-the-premier/biography" }],
+        contact,
+        secondContact: { ...contact, fullName: "Second" },
+        weekendContactNumber: "250 555-0100",
+      };
+      const res = await patch(siteEditor, body, "forests-t1t2");
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ ...body, minister: { detailsHtml: "<p>Bio </p>", name: healthOrg.minister.name } });
+      expect(await get("forests-t1t2")).toMatchObject({ teamLinks: body.teamLinks, contact, weekendContactNumber: "250 555-0100" });
+      const bad = await patch(siteEditor, { teamLinks: [{ text: "x", url: "javascript:alert(1)" }] }, "forests-t1t2");
+      expect(bad.status).toBe(400);
+      expect(bad.body.issues[0]).toMatchObject({ path: ["teamLinks", 0, "url"] });
+      const before = await get("forests-t1t2");
+      for (const extra of [{ isActive: false }, { parentKey: null }, { abbreviation: "FRST" }, { isHq: true }, { isPublic: false }]) {
+        expect((await patch(siteEditor, { teamLinks: [], ...extra }, "forests-t1t2")).status).toBe(403);
+      }
+      expect(await get("forests-t1t2")).toEqual(before);
     });
 
     it("a SiteEditor sets the side-column links; topicLinks replace the list in order", async () => {
