@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import { asc } from "drizzle-orm";
 import { getDocumentProxy } from "unpdf";
 import { CALENDAR_LEVELS } from "@gcpe/auth";
-import { bcDateSchema, listQuerySchema, type ReportKind } from "@gcpe/calendar-contract";
+import { bcDateSchema, listQuerySchema, type CalendarRules, type ReportKind } from "@gcpe/calendar-contract";
 import { loadTenantConfig } from "@gcpe/config";
 import { createTestDatabase, type Db } from "@gcpe/db-kit";
 import { outboxEvents, type EventEnvelope } from "@gcpe/events";
@@ -105,13 +105,13 @@ export async function pdfCreatedAt(path: string): Promise<Date | null> {
 }
 
 /** Core's organisations, terms and users into the Calendar's projections, through the real events, in process. */
-export async function projectCoreIntoCalendar(coreDb: Db, calDb: Db): Promise<number> {
+export async function projectCoreIntoCalendar(coreDb: Db, calDb: Db, rules: CalendarRules): Promise<number> {
   await republishAll(coreDb, []);
   const rows = await coreDb.select({ envelope: outboxEvents.envelope }).from(outboxEvents).orderBy(asc(outboxEvents.aggregateId), asc(outboxEvents.sequence));
   let applied = 0;
   for (const { envelope } of rows) {
     const e = envelope as EventEnvelope;
-    const handle = projectionHandler(e);
+    const handle = projectionHandler(e, { rules, subscribers: [] });
     if (!handle) continue;
     await calDb.transaction((tx) => handle(tx, e));
     applied++;
@@ -150,7 +150,7 @@ async function runParityUnmasked(o: ParityOptions): Promise<ParityResult> {
     const inserted = report.toJSON().tables.activities?.inserted ?? 0;
     log(`Imported ${inserted} of ${snapshot.activities.length} activities (${report.balanced() ? "balanced" : "NOT BALANCED"}).`);
     if (!report.balanced() || inserted !== snapshot.activities.length) throw new Error("the import didn't take every activity: see import-report.txt");
-    log(`Projected ${await projectCoreIntoCalendar(core.db, cal.db)} Core events into the Calendar.`);
+    log(`Projected ${await projectCoreIntoCalendar(core.db, cal.db, rules)} Core events into the Calendar.`);
 
     const actor: CalendarActor = { userId: randomUUID(), displayName: "Parity runner", role: "Calendar.SysAdmin", level: CALENDAR_LEVELS["Calendar.SysAdmin"], ministryKeys: [hqKey], isHq: true };
     useBcSans(reportAssets().fontsDir);

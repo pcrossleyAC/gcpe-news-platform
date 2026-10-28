@@ -54,6 +54,7 @@ const HEALTH: OrgRecord = {
   sectorKeys: [],
   isHq: false,
   isPublic: true,
+  successorKeys: [],
   updatedAt: "2026-10-02T16:46:05.527-07:00",
 } as OrgRecord;
 const FINANCE = {

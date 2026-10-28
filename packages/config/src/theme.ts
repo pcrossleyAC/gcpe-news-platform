@@ -63,6 +63,9 @@ export const siteThemeSchema = z
         .refine((v) => isSafeUrl(v, { schemes: ["https:"] }), "font.stylesheetUrl must be https: or a single-slash site-relative path")
         .optional(),
     }),
+    /** @deprecated Not read since parity plan 1: the header and footer always render the four
+     * vendored BC logo SVGs (Q76). Kept so existing tenant files still parse; remove with the
+     * tenant files' `logo` entries. */
     logo: z.object({
       path: z.string().regex(ASSET_PATH, "logo.path must be a relative path under the site's assets"),
       alt: z.string().min(1),

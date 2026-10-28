@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
 import { publishProblems, type ReleaseView } from "@gcpe/nrms-contract";
-import { newsReleases, releasePublications } from "./db/schema";
+import { governmentTerms, newsReleases, releasePublications } from "./db/schema";
 import { DeferPublish } from "./media/flickr-jobs";
 import { ReleaseRuleError } from "./releases/errors";
 import { emitLinkChange, linkStateOf } from "./releases/link-events";
@@ -52,6 +52,7 @@ type Outcome = { kind: keyof PublishResult; key: string } | null;
 
 async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: string, live: boolean): Promise<Outcome> {
   const now = sqlNow(opts.now);
+  const timeZone = opts.timeZone ?? "UTC";
   const view = (await loadView(tx, id))!;
   const key = view.key ?? id;
   const before = await linkStateOf(tx, id);
@@ -91,6 +92,16 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
       status: "published",
       live: true,
       releasedAt: first ? sql`${newsReleases.publishAt}` : sql`${newsReleases.releasedAt}`,
+      // The term is fixed at first publish, by the BC calendar day of publishAt (spec N13): the
+      // term with the latest start on or before that day. Corrections and re-publishes keep it.
+      // An imported release keeps the term its legacy collection gave it: one imported without a
+      // ReleaseDateTime has no releasedAt, so its first correction counts as `first` here.
+      ...(first
+        ? {
+            termId: sql`CASE WHEN ${newsReleases.legacyId} IS NOT NULL AND ${newsReleases.termId} IS NOT NULL THEN ${newsReleases.termId}
+              ELSE (SELECT id FROM ${governmentTerms} WHERE start_date <= (${newsReleases.publishAt} AT TIME ZONE ${timeZone})::date ORDER BY start_date DESC LIMIT 1) END`,
+          }
+        : {}),
       atomId: sql`coalesce(${newsReleases.atomId}, ${`uuid:${id}`})`,
       lastError: null,
       version: view.version + 1,
@@ -98,7 +109,7 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
     })
     .where(eq(newsReleases.id, id))
     .returning({ releasedAt: newsReleases.releasedAt, atomId: newsReleases.atomId, updatedAt: newsReleases.updatedAt });
-  const rendition = { timeZone: opts.timeZone ?? "UTC", nowMs: opts.now ? opts.now().getTime() : Date.now() };
+  const rendition = { timeZone, nowMs: opts.now ? opts.now().getTime() : Date.now() };
   const record = toReleaseRecord(
     { ...view, assetUrl, atomId: row!.atomId },
     { publishDate: row!.releasedAt!.toISOString(), timestamp: row!.updatedAt.toISOString() },

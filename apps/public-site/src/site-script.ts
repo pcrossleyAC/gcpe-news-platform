@@ -21,6 +21,9 @@
  * 6. The 404 prefill: a form with `data-prefill-from-path` (static-pages.ts's 404 page, served for any
  *    unknown path) gets its empty `#not-found-q` set to `pathWords(location.pathname, base)` — the
  *    missing URL's words — with `.value` only. No script, no prefill: the box is just empty.
+ * 7. The search page's phone search control (`a[data-page-search]`, header.ts: a link to the page's
+ *    own box) scrolls that box to the middle of the view and focuses it, instead of a jump that
+ *    would leave it under the header unfocused. A missing target is left to the browser.
  *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
@@ -174,6 +177,17 @@ export const SITE_SCRIPT = String.raw`(() => {
         syncBanner();
       }),
     );
+  }
+
+  const pageSearch = doc.querySelector("a[data-page-search]");
+  if (pageSearch) {
+    pageSearch.addEventListener("click", (ev) => {
+      const box = doc.getElementById((pageSearch.getAttribute("href") || "").slice(1));
+      if (!box) return;
+      ev.preventDefault();
+      if (box.scrollIntoView) box.scrollIntoView({ block: "center" });
+      box.focus({ preventScroll: true });
+    });
   }
 
   const prefill = doc.querySelector("form[data-prefill-from-path] #not-found-q");

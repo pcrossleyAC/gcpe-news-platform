@@ -21,8 +21,10 @@ export const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa",
  * own CSS (Bootstrap 5 plus the legacy site CSS, about 345 KB raw), vendored unmodified (P3).
  * After gzip in the fixture server, one bundled stylesheet, print.css off the critical path and
  * a preloaded BC Sans with font-display: swap, the score measured 85–87 on every page over
- * three runs (it was 100 with our own 1 KB theme.css); the gate sits at 80 so CI runner noise
- * doesn't fail a build that measures 85 locally. The rest is the CSS weight itself; PurgeCSS
+ * three runs at Task 4 and 84–86 at the end of plan 1 (three runs, 2026-10-28; it was 100 with our
+ * own 1 KB theme.css). The gate sits at 80, about 4 points below the lowest measurement, so CI
+ * runner noise doesn't fail a build that measures 84 locally; a page that drops below 84 locally
+ * is a regression to look at, not noise. The rest is the CSS weight itself; PurgeCSS
  * is planned once the look is approved (look-and-feel chunk 10), and the threshold goes back to
  * 90 then.
  */

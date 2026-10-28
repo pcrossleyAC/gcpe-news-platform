@@ -47,8 +47,22 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1793169690168,
-      "tag": "0006_org_team_links",
+      "when": 1793163181965,
+      "tag": "0006_org_successors",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793164052014,
+      "tag": "0007_cabinet_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793166485384,
+      "tag": "0008_cabinet_change_transient_failures",
       "breakpoints": true
     }
   ]

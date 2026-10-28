@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import express, { type Router } from "express";
 import { sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import type { Db, TestClock } from "@gcpe/db-kit";
 import { requireBearer, type BearerOptions } from "@gcpe/auth";
 import { createEventReceiver, MAX_EVENT_BYTES, type SubscriberConfig } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
@@ -12,12 +12,14 @@ import type { FlickrClient } from "./media/flickr-client";
 import type { EmbedDeps } from "./media/embeds";
 import { mediaRoutes } from "./http/media-routes";
 import { apiRoutes } from "./http/routes";
+import { governmentTermRoutes } from "./http/government-term-routes";
 import { siteRoutes } from "./http/site-routes";
 import { calendarHandler } from "./calendar/projection";
 import type { WorkflowDeps } from "./releases/workflow";
 import type { SimilarDeps } from "./releases/similar";
 import type { SlideImageFiles } from "./website/slide-images";
 import { taxonomyHandler } from "./taxonomy";
+import { successionHandler } from "./succession";
 
 export function createApp(deps: {
   db: Db;
@@ -54,6 +56,8 @@ export function createApp(deps: {
   blueBridgeNotify?: (subject: string, text: string) => Promise<void>;
   /** "Similar published releases" (addendum §7): the News API client and NRMS's own staffAi flag; unset → the route answers 503 and the panel hides. */
   similar?: SimilarDeps;
+  /** Test seam: the clock the government-term routes read "today" from; production leaves it unset (database clock). */
+  clock?: TestClock;
 }): express.Express {
   const slideFiles: SlideImageFiles = deps.slideFiles ?? { store: deps.store ?? localStore(tmpdir(), "/files/"), filesBase: deps.workflow.filesBase ?? "" };
 
@@ -65,7 +69,7 @@ export function createApp(deps: {
   // Mounted before any body parser: signatures cover the raw bytes (see
   // packages/events/src/receiver.ts), so an upstream express.json()/raw() that already
   // consumed the body would make every event fail verification.
-  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: (e) => taxonomyHandler(e) ?? calendarHandler(e) }));
+  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: (e) => taxonomyHandler(e) ?? successionHandler(e) ?? calendarHandler(e) }));
 
   if (deps.loginRouter) app.use(deps.loginRouter);
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.
@@ -87,6 +91,7 @@ export function createApp(deps: {
       siteUrl: deps.siteUrl ?? "",
       notify: deps.blueBridgeNotify ?? (async (subject) => void console.log(`[nrms] blue bridge: ${subject}`)),
     }),
+    governmentTermRoutes({ db: deps.db, subscribers: deps.subscribers ?? [], timeZone: deps.workflow.timeZone, now: deps.clock }),
     express.json({ limit: MAX_EVENT_BYTES }),
     apiRoutes({
       db: deps.db,

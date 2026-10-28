@@ -86,3 +86,82 @@ describe("producer → consumer round trip", () => {
     expect(inbox.rows).toEqual([{ outcome: "applied" }]);
   });
 });
+
+describe("same-aggregate events written in one transaction", () => {
+  let producer: TestDatabase;
+  let consumer: TestDatabase;
+  let server: Server;
+  const arrivals: { subscriber: string; sequence: number; outcome: unknown }[] = [];
+
+  beforeAll(async () => {
+    producer = await createTestDatabase({ migrationsFolder });
+    consumer = await createTestDatabase({ migrationsFolder });
+    await consumer.pool.query("CREATE TABLE applied (seq integer PRIMARY KEY)");
+    const app = express();
+    app.use(
+      createEventReceiver({
+        db: consumer.db,
+        secrets: { core: "shared" },
+        handlers: {
+          "org.deactivated": async (tx, e) => void (await tx.execute(sql`INSERT INTO applied (seq) VALUES (${e.sequence})`)),
+        },
+      }),
+    );
+    server = await new Promise<Server>((r) => {
+      const s = app.listen(0, () => r(s));
+    });
+  });
+  afterAll(async () => {
+    await new Promise((r) => server.close(r));
+    await producer.drop();
+    await consumer.drop();
+  });
+
+  it("reach every subscriber in sequence order, so the real receiver applies all of them", async () => {
+    const port = (server.address() as AddressInfo).port;
+    const real = `http://127.0.0.1:${port}/events`;
+    // One real receiver plus recording-only subscribers: the claim must order each subscriber's rows.
+    const subs: SubscriberConfig[] = ["consumer", "other-a", "other-b"].map((name) => ({
+      name,
+      url: name === "consumer" ? real : `http://recorder.invalid/${name}`,
+      secret: "shared",
+      types: ["*"],
+    }));
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input);
+      const sub = subs.find((s) => s.url === url)!;
+      const sequence = (JSON.parse(String(init!.body)) as { sequence: number }).sequence;
+      if (url !== real) {
+        arrivals.push({ subscriber: sub.name, sequence, outcome: "recorded" });
+        return new Response(null, { status: 200 });
+      }
+      const res = await fetch(input, init);
+      arrivals.push({ subscriber: sub.name, sequence, outcome: res.ok ? ((await res.clone().json()) as { outcome: string }).outcome : res.status });
+      return res;
+    };
+
+    // Delivered history makes the planner pick a hash semi-join for the claim, whose output
+    // order is unrelated to write order (the reviewer's C1 probe).
+    await producer.pool.query(`
+      INSERT INTO outbox_events (id, type, aggregate_id, sequence, envelope)
+        SELECT gen_random_uuid(), 'org.upserted', 'org:old-' || g, 1, '{}'::jsonb FROM generate_series(1, 5000) g;
+      INSERT INTO outbox_deliveries (event_id, subscriber, status)
+        SELECT id, 'consumer', 'delivered' FROM outbox_events;
+      ANALYZE outbox_events; ANALYZE outbox_deliveries;`);
+
+    await producer.db.transaction(async (tx) => {
+      await enqueueEvent(tx, { type: "org.deactivated", source: "core", aggregateId: "org:a", data: { key: "a" } }, subs);
+      await enqueueEvent(tx, { type: "org.deactivated", source: "core", aggregateId: "org:a", data: { key: "a" } }, subs);
+      await enqueueEvent(tx, { type: "org.deactivated", source: "core", aggregateId: "org:a", data: { key: "a" } }, subs);
+    });
+
+    const result = await dispatchOnce({ db: producer.db, subscribers: subs, fetchImpl });
+    expect(result.delivered).toBe(9);
+    for (const name of ["consumer", "other-a", "other-b"]) {
+      expect(arrivals.filter((a) => a.subscriber === name).map((a) => a.sequence)).toEqual([1, 2, 3]);
+    }
+    expect(arrivals.filter((a) => a.subscriber === "consumer").map((a) => a.outcome)).toEqual(["applied", "applied", "applied"]);
+    const { rows } = await consumer.pool.query("SELECT seq FROM applied ORDER BY seq");
+    expect(rows).toEqual([{ seq: 1 }, { seq: 2 }, { seq: 3 }]);
+  });
+});

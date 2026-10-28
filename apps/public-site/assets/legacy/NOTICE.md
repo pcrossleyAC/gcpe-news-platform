@@ -1,7 +1,20 @@
 # Vendored legacy assets
 
-These files are copied byte-for-byte from the BC Gov News web app (Apache-2.0, see `LICENSE`).
-Do not edit them; our own changes belong in `assets/site/overrides.css`.
+These files are copied byte-for-byte from the BC Gov News web app (Apache-2.0, see `LICENSE`),
+from the `admin-screens` branch at commit `3fdf3e6` (below), **not from what news.gov.bc.ca serves
+today**. Do not edit them; our own changes belong in `assets/site/overrides.css`.
+
+How they compare with live news.gov.bc.ca (checked 2026-10-28, final review of parity plan 1):
+- `lib/bootstrap5/css/bootstrap.min.css` is byte-identical to live.
+- `Content/site.css` and `Content/custom.css` differ from live only by the admin-screens branch's
+  `var(--theme-*, <literal>)` wrappers around colours, plus one `var(--primary-blue, #013366)` in
+  site.css's `.granville-bridge-color-off` (live has the bare literals). Each fallback literal is
+  live's value (compared case-insensitively with the wrappers stripped), so with no theme
+  variable set they render the same.
+- Live `custom.css` still has the `--dark: #@d2D2D` typo; the admin-screens copy has it fixed.
+
+So a later diff against live that lands on a colour declaration in these two files is this
+source difference, not a vendoring error.
 
 - Source repository: gcpe-news-webapp (BC Gov GCPE News web app; the News-Hub checkout)
 - Branch: `admin-screens`

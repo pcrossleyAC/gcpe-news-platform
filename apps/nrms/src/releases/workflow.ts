@@ -3,7 +3,7 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { indexKeysFor, type SubscriberConfig } from "@gcpe/events";
 import { wallClockToInstant } from "@gcpe/config";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
-import { flickrJobs, governmentTerms, newsReleases } from "../db/schema";
+import { flickrJobs, newsReleases, organizations } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
 import { ReleaseRuleError, ReleaseStateError } from "./errors";
 import { emitLinkChange, linkStateOf } from "./link-events";
@@ -82,7 +82,10 @@ export async function approve(db: Db, id: string, version: number, actor: Actor,
       const before = await linkStateOf(tx, id);
       const view = (await loadView(tx, id))!;
       const lead = row.leadMinistryKey ?? (view.ministries.length === 1 ? view.ministries[0]! : null);
-      const problems = approveProblems({ ...view, leadMinistryKey: lead });
+      // Lower-cased like ministryAbbreviation, so the guard and the numbering read the same row.
+      const [leadOrg] = lead ? await tx.select({ isActive: organizations.isActive }).from(organizations).where(eq(organizations.key, lead.toLowerCase())) : [];
+      // A succeeded ministry keeps its abbreviation locally, so it must not be allowed to number new releases.
+      const problems = approveProblems({ ...view, leadMinistryKey: lead }, leadOrg && !leadOrg.isActive ? [lead!] : []);
       if (problems.length) throw new ReleaseRuleError(problems);
 
       const reference = `NEWS-${pad(await nextCounter(tx, "news", 0, ""), 5)}`;
@@ -91,15 +94,15 @@ export async function approve(db: Db, id: string, version: number, actor: Actor,
         const year = bcYear((await dbClock(tx)).now, deps.timeZone);
         const abbr = lead ? await ministryAbbreviation(tx, lead) : null;
         if (lead && !abbr) throw new ReleaseRuleError(["The lead ministry has no abbreviation in Core; add one before approving."]);
-        const n = await nextCounter(tx, "ministry", year, lead ?? "");
+        // Counted per printed abbreviation, so two ministries sharing one over time can never issue the same number.
+        const n = await nextCounter(tx, "ministry", year, (abbr ?? "").toUpperCase());
         const m = await nextCounter(tx, "year", year, "");
         numbering = { key: `${year}${(abbr ?? "ADVIS").toUpperCase()}${pad(n, 4)}-${pad(m, 6)}`, year, yearRelease: m, ministryRelease: n };
       }
-      const [term] = await tx.select({ id: governmentTerms.id }).from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
       try {
         await tx
           .update(newsReleases)
-          .set({ status: "approved", reference, leadMinistryKey: lead, termId: term?.id ?? null, ...(numbering ?? {}) })
+          .set({ status: "approved", reference, leadMinistryKey: lead, ...(numbering ?? {}) })
           .where(eq(newsReleases.id, id));
       } catch (e) {
         if (isNumberCollision(e)) throw new ReleaseStateError("That number is already in use — try again.");

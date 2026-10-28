@@ -1,11 +1,41 @@
 import express, { type Request, type Response } from "express";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
+import { CORE_ADMIN_DIRECTORY_ROLE, actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { EventTooLargeError, orgKeyFromName, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
-import { ADMIN_ONLY_PROFILE_FIELDS, AbbreviationTakenError, createOrganization, deactivateOrganization, orgCreateSchema, getOrganization, listOrganizations, orgInputSchema, orgProfilePatchSchema, patchOrganizationProfile, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
+import {
+  ADMIN_ONLY_PROFILE_FIELDS,
+  AbbreviationTakenError,
+  createOrganization,
+  deactivateOrganization,
+  orgCreateSchema,
+  getOrganization,
+  listOrganizations,
+  orgInputSchema,
+  orgProfilePatchSchema,
+  patchOrganizationProfile,
+  setOrganizationHq,
+  setOrganizationPublic,
+  SuccessionError,
+  succeedOrganization,
+  successionInputSchema,
+  successionPreview,
+  upsertOrganization,
+} from "../services/organizations";
 import { republishAll } from "../services/republish";
+import {
+  DEFAULT_TIME_ZONE,
+  cancelCabinetChange,
+  instantToLocal,
+  localToInstant,
+  getOpenCabinetChange,
+  previewCabinetChange,
+  publishCabinetChange,
+  saveCabinetChangeDraft,
+  scheduleCabinetChange,
+  type CabinetChangeRecord,
+} from "../services/cabinet-changes";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
 import { CALENDAR_ACCESS_ROLES, calendarAccessRouter } from "./calendar-access";
@@ -23,6 +53,7 @@ function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | nu
 function handleError(res: Response, e: unknown) {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
   if (e instanceof AbbreviationTakenError) return void res.status(409).json({ error: "abbreviation-taken", takenBy: e.takenBy });
+  if (e instanceof SuccessionError) return void res.status(422).json({ error: e.message });
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: "record too large to publish" });
   // Only the label: a failed query's message carries its bound parameters, which can be an email.
   console.error("[core] request failed", safeErrorLabel(e));
@@ -35,7 +66,8 @@ function safe<P>(fn: (req: Request<P>, res: Response) => Promise<void>) {
   return (req: Request<P>, res: Response) => fn(req, res).catch((e: unknown) => handleError(res, e));
 }
 
-export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Router {
+export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZone?: string } = {}): express.Router {
+  const timeZone = opts.timeZone ?? DEFAULT_TIME_ZONE;
   const r = express.Router();
   const admin = requireRole("Core.Admin");
 
@@ -66,7 +98,8 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe<{ key: string }>(async (req, res) => {
       const input = orgInputSchema.parse(req.body);
       if (input.key !== req.params.key) return void res.status(400).json({ error: "body key must match path" });
-      const result = await upsertOrganization(db, input, subscribers, { respectStaffEdits: req.query.overwriteStaffEdits !== "true" });
+      // Refuses a second active holder of an abbreviation, reactivation included (N11): 409 abbreviation-taken.
+      const result = await upsertOrganization(db, input, subscribers, { respectStaffEdits: req.query.overwriteStaffEdits !== "true", checkAbbreviation: true });
       if (result.skippedStaffEdit) return void res.status(409).json({ error: "staff-edited" });
       res.json(result.record);
     }),
@@ -109,6 +142,102 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     admin,
     safe<{ key: string }>(async (req, res) => {
       (await deactivateOrganization(db, req.params.key, subscribers)) ? res.status(204).end() : res.status(404).json({ error: "not found" });
+    }),
+  );
+  // New-government spec §4: hand a ministry over to its successors. The preview is Core's part of
+  // the Hub's counts; NoD, the Calendar and NRMS each answer for their own.
+  r.get(
+    "/organizations/:key/succession-preview",
+    admin,
+    safe<{ key: string }>(async (req, res) => {
+      if (!(await getOrganization(db, req.params.key))) return void res.status(404).json({ error: "not found" });
+      res.json(await successionPreview(db, req.params.key));
+    }),
+  );
+  r.post(
+    "/organizations/:key/succeed",
+    admin,
+    safe<{ key: string }>(async (req, res) => {
+      const record = await succeedOrganization(db, req.params.key, successionInputSchema.parse(req.body), subscribers);
+      record ? res.json(record) : res.status(404).json({ error: "not found" });
+    }),
+  );
+
+  // New-government spec §5: the staged cabinet change. One change is open (draft or scheduled) at a
+  // time, so these routes address "the" open change rather than an id.
+  const noOpenChange = (res: Response) => void res.status(404).json({ error: "no open cabinet change" });
+  // The scheduled time as the tenant's clock shows it, by this server's tzdata (NG-R15), so the Hub
+  // shows the same BC time Core will publish at, whatever the browser's own tzdata says.
+  const view = (c: CabinetChangeRecord) => ({ ...c, scheduledForLocal: c.scheduledFor ? instantToLocal(c.scheduledFor, timeZone) : null });
+  r.get(
+    "/cabinet-change",
+    admin,
+    safe(async (_req, res) => {
+      const change = await getOpenCabinetChange(db);
+      change ? res.json(view(change)) : noOpenChange(res);
+    }),
+  );
+  const draftSchema = z.object({ operations: z.array(z.unknown()) }).strict();
+  r.put(
+    "/cabinet-change",
+    admin,
+    safe(async (req, res) => {
+      const { operations } = draftSchema.parse(req.body);
+      res.json(view(await saveCabinetChangeDraft(db, operations, actorOf(req).name)));
+    }),
+  );
+  r.post(
+    "/cabinet-change/preview",
+    admin,
+    safe(async (_req, res) => {
+      const change = await getOpenCabinetChange(db);
+      if (!change) return noOpenChange(res);
+      res.json(await previewCabinetChange(db, change.id));
+    }),
+  );
+  r.post(
+    "/cabinet-change/publish",
+    admin,
+    safe(async (_req, res) => {
+      const change = await getOpenCabinetChange(db);
+      if (!change) return noOpenChange(res);
+      const result = await publishCabinetChange(db, change.id, subscribers);
+      const status = { published: 200, stale: 409, invalid: 422, "not-open": 404 }[result.result];
+      res.status(status).json(result);
+    }),
+  );
+  // NG-R15: the Hub sends the BC wall-clock time ("YYYY-MM-DDTHH:mm") and Core converts it with the
+  // tenant zone; an explicit instant (`at`) is still accepted.
+  const scheduleSchema = z.union([
+    z
+      .object({
+        scheduledForLocal: z.string().refine((v) => localToInstant(v, timeZone) !== null, "Enter a real date and time."),
+      })
+      .strict(),
+    z.object({ at: z.string().datetime({ offset: true }) }).strict(),
+  ]);
+  r.post(
+    "/cabinet-change/schedule",
+    admin,
+    safe(async (req, res) => {
+      const body = scheduleSchema.parse(req.body);
+      const at = "at" in body ? new Date(body.at) : localToInstant(body.scheduledForLocal, timeZone)!;
+      const change = await getOpenCabinetChange(db);
+      if (!change) return noOpenChange(res);
+      const result = await scheduleCabinetChange(db, change.id, at);
+      if (result.result === "scheduled") return void res.json(view(result.change));
+      if (result.result === "not-open") return noOpenChange(res);
+      if (result.result === "past") return void res.status(422).json({ result: "past", error: "Choose a time in the future." });
+      res.status(422).json(result);
+    }),
+  );
+  r.post(
+    "/cabinet-change/cancel",
+    admin,
+    safe(async (_req, res) => {
+      const change = await getOpenCabinetChange(db);
+      if (!change || !(await cancelCabinetChange(db, change.id))) return noOpenChange(res);
+      res.status(204).end();
     }),
   );
 

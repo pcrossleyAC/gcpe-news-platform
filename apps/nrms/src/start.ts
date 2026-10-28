@@ -16,6 +16,7 @@ import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
 import { publishDue, startPublisher } from "./publisher";
 import { startSiteLoop, switchCarousels } from "./website/carousel";
+import { syncGovernmentTerms } from "./government-terms";
 import { ensureSlideImageFiles } from "./website/slide-images";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
@@ -366,6 +367,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     workers: {
       flickr: () => processFlickrJobs(flickrJobsOpts),
       site: () => switchCarousels(db, subscribers, slideFiles),
+      governmentTerms: () => db.transaction((tx) => syncGovernmentTerms(tx, { timeZone: tenant.timeZone, subscribers })),
       publish: () => publishDue({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone }),
       dispatch: () => dispatchOnce({ db, subscribers }),
       needsCalendarViewers: () => needsCalendarViewers(db),
@@ -373,7 +375,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });
-      stopSite = startSiteLoop({ db, subscribers, files: slideFiles, intervalMs: parsed.PUBLISH_INTERVAL_MS });
+      stopSite = startSiteLoop({ db, subscribers, files: slideFiles, timeZone: tenant.timeZone, intervalMs: parsed.PUBLISH_INTERVAL_MS });
       stopPublisher = startPublisher({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone, intervalMs: parsed.PUBLISH_INTERVAL_MS });
     },
     closeBeforeServer: [],

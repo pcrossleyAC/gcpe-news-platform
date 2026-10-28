@@ -33,6 +33,12 @@ reference for what every setting means.
   single SQL Server.
 - **Dev:** the app and PostgreSQL on one server. **Test and Production:** PostgreSQL on its own
   server, owned and backed up like legacy's SQL Server.
+- **The stack compresses its own text responses** (HTML, CSS, JS, JSON, SVG, XML: brotli, else
+  gzip, from 1 KB up; `apps/stack/src/compress.ts`). IIS forwards them through ARR as they are, so
+  the install needs no IIS dynamic compression (`Web-Dyn-Compression` is not installed, and must
+  not be turned on for this site: it would only add CPU). Fonts and images are sent as they are.
+  Check with `curl.exe -sI -H "Accept-Encoding: br" https://<host>/assets/legacy/Content/legacy.bundle.css`:
+  expect one `content-encoding: br` and `vary: Accept-Encoding`.
 - Run **one** app server per environment. Uploaded files, the generated public site and Calendar
   attachments live on its disk (`C:\gcpe\data`), and the background work (publishing, sending
   mail) runs inside the process; a second app server would need shared storage and has not been
@@ -180,6 +186,21 @@ in `/site`. It keeps working — the site answers at both `/site/…` and `/…`
 them. To move to the root, set both to the origin (`https://<host>`, no `/site`) in `gcpe.env`
 and restart the `gcpe-stack` service. The site-state marker records the base URL, so the
 change queues one rebuild-all, which the next ticks drain; `/site/…` then 301s to `/…`.
+
+**Upgrading to a release that changes the page chrome** (`RENDER_CHROME_VERSION` in
+`apps/public-site/src/rebuild.ts`, such as parity plan 1's new header and footer): the first start
+queues one rebuild-all, and `theme.css` and the shared assets change at once. Until the ticks
+have rewritten a page, that page still has the old markup under the new stylesheets, so its
+header and footer can look unstyled. On a site with the full legacy import (tens of thousands of
+releases) the drain takes much longer than on a test site: deploy outside busy hours, and watch
+the queue drain in `/hub/error-log` and on a few old release pages.
+
+**The public site stops publishing when the ministry list can't be read.** Each sync turn reads
+the News API's ministries for the header's menu; if that call fails, the whole turn is retried
+on the next tick and no page is published until it succeeds (this keeps a page from going out
+with an empty News menu). If releases stop appearing on the site, check `/hub/error-log` for a
+failed site sync step (`[stack] tick step failed` naming the public site's sync, with the News
+API's ministries call or "returned no ministries" as the cause) before anything else.
 
 ## Step 4 — Import the legacy data
 

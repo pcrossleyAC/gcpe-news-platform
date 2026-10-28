@@ -117,11 +117,26 @@ describe("renderHeader", () => {
     expect(a.getAttribute("href")).toBe("/site/ministries/a%2Fb%3Fc%23d%26%22e/");
   });
 
-  it("hideHeaderSearch leaves off both search forms and the drawer toggle together", () => {
-    const doc = header({ ministryMenu: MENU, hideHeaderSearch: true });
-    expect(doc.querySelector("form, #smd-search-container, #search-md-button, .search-toggle-container")).toBeNull();
+  it("pageSearchInput (the search page) leaves off both search forms and the drawer, and the phone toggle becomes a link to the page's own box", () => {
+    const doc = header({ ministryMenu: MENU, pageSearchInput: "q" });
+    expect(doc.querySelector("form, #smd-search-container")).toBeNull();
+    // Legacy's /search phone header still shows the toggle (R12): same id, classes, icon and slot.
+    const link = doc.querySelector("div.search-toggle-container.d-lg-none.page-search > a#search-md-button.input-group-text.btn-primary-outline.search-md.menu-icon")!;
+    expect(link).not.toBeNull();
+    expect(link.getAttribute("href")).toBe("#q");
+    expect(link.getAttribute("aria-label")).toBe("Search");
+    expect(link.hasAttribute("data-page-search")).toBe(true);
+    expect(link.querySelector("use")?.getAttribute("href")).toBe("/site/assets/site/icons.svg#i-search");
+    // Not a toggle: nothing for it to expand.
+    expect(link.hasAttribute("aria-controls") || link.hasAttribute("aria-expanded")).toBe(false);
+    expect(link.parentElement!.previousElementSibling?.id).toBe("nav-menu-sm");
     expect([...doc.querySelectorAll("[aria-controls]:not([data-banner-toggle])")].map((t) => t.id)).toEqual(["nav-menu-sm"]);
     expect(doc.querySelector("#news-dropdown")?.getAttribute("href")).toBe("/site/ministries/");
+  });
+
+  it("pageSearchInput is escaped into the link's fragment", () => {
+    const doc = header({ pageSearchInput: 'a"b<c' });
+    expect(doc.getElementById("search-md-button")!.getAttribute("href")).toBe('#a"b<c');
   });
 
   it("no role=menu or menuitem anywhere; every id in the header is unique", () => {

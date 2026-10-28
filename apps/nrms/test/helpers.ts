@@ -10,6 +10,23 @@ import { approve, schedule } from "../src/releases/workflow";
 export const nrmsMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 export const createNrmsTestDb = (): Promise<TestDatabase> => createTestDatabase({ migrationsFolder: nrmsMigrations });
 
+/**
+ * BC moved to permanent UTC-7 on 2026-11-01 (tzdata 2026b). Tests that hard-code post-2026 BC
+ * instants (06:59Z is 23:59 BC) only hold when both Postgres and Node carry that rule, so call this
+ * first: on older tzdata it fails with a message naming the stale runtime instead of a wrong date.
+ * Probe: 2026-11-02T08:30Z is 01:30 BC under 2026b and 00:30 under the old PST rule.
+ */
+export async function requireBcTzdata2026b(pool: TestDatabase["pool"]): Promise<void> {
+  const expected = "01:30";
+  const probe = "2026-11-02T08:30:00Z";
+  const pg = ((await pool.query(`SELECT to_char($1::timestamptz AT TIME ZONE 'America/Vancouver', 'HH24:MI') AS t`, [probe])).rows[0] as { t: string }).t;
+  const node = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(probe));
+  const stale = [pg !== expected && `Postgres (got ${pg})`, node !== expected && `Node Intl, tz ${process.versions.tz ?? "unknown"} (got ${node})`].filter(Boolean);
+  if (stale.length > 0) {
+    throw new Error(`tzdata predates 2026b (BC permanent UTC-7): ${stale.join("; ")} for ${probe}, expected ${expected} BC. Upgrade tzdata to run this test.`);
+  }
+}
+
 export const editor: Actor = { id: "00000000-0000-4000-8000-0000000000e1", name: "Test Editor" };
 
 export async function seedTaxonomy(db: Db): Promise<void> {

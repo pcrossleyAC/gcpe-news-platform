@@ -9,6 +9,15 @@ export function orgAggregateId(key: string): string {
   return `org:${key}`;
 }
 
+/**
+ * org.succeeded's own aggregate (NG-R16). A hand-over also writes org.upserted/org.deactivated on
+ * `org:<key>` in the same transaction; on one aggregate a receiver that got the hand-over first
+ * would drop A's state events as stale (sequence <= last applied), leaving A active there.
+ */
+export function orgSuccessionAggregateId(key: string): string {
+  return `org-succession:${key}`;
+}
+
 export function userAggregateId(id: string): string {
   return `user:${id}`;
 }

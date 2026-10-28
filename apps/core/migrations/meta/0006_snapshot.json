@@ -1,5 +1,5 @@
 {
-  "id": "f3194943-4c4c-457c-8c2b-94b58072b905",
+  "id": "e25ec33a-730e-475c-a2bd-fe972ebc7744",
   "prevId": "fbbf70cb-d590-48f7-8dba-0c6c3882336b",
   "version": "7",
   "dialect": "postgresql",
@@ -109,13 +109,6 @@
           "notNull": true,
           "default": "'[]'::jsonb"
         },
-        "team_links": {
-          "name": "team_links",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
         "sector_keys": {
           "name": "sector_keys",
           "type": "text[]",
@@ -136,6 +129,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "successor_keys": {
+          "name": "successor_keys",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
         },
         "legacy_id": {
           "name": "legacy_id",

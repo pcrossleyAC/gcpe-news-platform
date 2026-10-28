@@ -161,6 +161,20 @@ and restart the Node.js app. The site-state marker records the base URL, so the 
 one rebuild-all, which the next ticks drain; `/site/…` then 301s to `/…`. Check with
 `curl -sI https://<domain>/site/ministries/` (expect `301`, `location: /ministries/`).
 
+**Compression.** The stack compresses its own text responses (brotli, else gzip;
+`apps/stack/src/compress.ts`). SiteGround's nginx passes an already-encoded response through
+without encoding it again, so nothing changes for visitors; check with
+`curl -sI -H 'Accept-Encoding: br' https://<domain>/assets/legacy/Content/legacy.bundle.css`
+(expect a single `content-encoding: br` and `vary: Accept-Encoding`).
+
+**A release that changes the page chrome** (`RENDER_CHROME_VERSION`) queues one rebuild-all on
+its first start. Until the ticks rewrite a page, it keeps its old markup under the new
+`theme.css`, so its header and footer can look unstyled for a few minutes on boxs.ca (about 73
+pages). **If pages stop publishing**, check `/hub/error-log` for a failed site sync step
+(`[stack] tick step failed`, caused by the News API's ministries call): each
+sync turn reads the ministries for the header's menu, and a failure retries the whole turn on the
+next tick rather than publish a page with an empty News menu.
+
 For a non-interactive/scripted run (CI, or re-generating without re-typing everything), see
 `npm run siteground:env -- --non-interactive` and the `SITEGROUND_*` env vars it reads
 (`scripts/siteground-env.ts`'s module doc comment has the full list) — intended for tests, not

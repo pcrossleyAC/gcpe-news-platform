@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 COPY packages ./packages
 COPY apps/core ./apps/core
 COPY scripts ./scripts
+COPY config ./config
 RUN npm ci --workspace @gcpe/core --include-workspace-root
 RUN node scripts/build-app.mjs apps/core
 
@@ -20,8 +21,10 @@ COPY --from=build /repo/packages ./packages
 RUN npm ci --omit=dev --workspace @gcpe/core && find packages -name '*.test.ts' -delete
 COPY --from=build /repo/apps/core/dist ./apps/core/dist
 COPY --from=build /repo/apps/core/migrations ./apps/core/migrations
+COPY --from=build /repo/config ./config
 USER 1001
-ENV MIGRATIONS_FOLDER=/app/apps/core/migrations
+# TENANT_CONFIG: the tenant time zone a cabinet change's BC schedule time is converted with (checked at start).
+ENV MIGRATIONS_FOLDER=/app/apps/core/migrations TENANT_CONFIG=/app/config/tenants/bc.json
 EXPOSE 3001
 # Shell form so PORT (main.ts default 3001) is read when the check runs.
 HEALTHCHECK CMD wget -qO- "http://localhost:${PORT:-3001}/health/live" || exit 1

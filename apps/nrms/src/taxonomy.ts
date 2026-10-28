@@ -60,10 +60,13 @@ export async function listCategories(db: DbOrTx): Promise<Categories> {
   return { ministries: orgs.map((o) => ({ key: o.key, name: o.displayName, abbreviation: o.abbreviation })), sectors: of("sectors"), themes: of("themes"), tags: of("tags") };
 }
 
-/** Includes inactive ministries, so an old release can still be numbered/rendered. */
+/**
+ * Includes inactive ministries, so an old release can still be numbered/rendered. Trimmed (blank → null),
+ * the same normalisation as the counter seeders (migration 0018, the importer): legacy Core imports can carry spaces.
+ */
 export async function ministryAbbreviation(db: DbOrTx, key: string): Promise<string | null> {
   const [row] = await db.select({ a: organizations.abbreviation }).from(organizations).where(sql`${organizations.key} = ${key.toLowerCase()}`);
-  return row?.a ?? null;
+  return row?.a?.trim() || null;
 }
 
 export async function ministryName(db: DbOrTx, key: string): Promise<string | null> {

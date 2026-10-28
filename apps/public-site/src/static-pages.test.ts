@@ -35,6 +35,11 @@ describe("static pages", () => {
     const form = body.querySelector("form")!;
     expect(form.className).toBe("search-panel-bar");
     expect(form.getAttribute("role")).toBe("search");
+    // Named, so it is distinguishable from the header's two "Site search" landmarks.
+    expect(form.getAttribute("aria-label")).toBe("Search for the page");
+    const names = [...doc.querySelectorAll('[role="search"]')].map((f) => f.getAttribute("aria-label"));
+    expect(names.every(Boolean)).toBe(true);
+    expect(new Set(names).size).toBeGreaterThan(1);
     expect(form.getAttribute("action")).toBe("/site/search/");
     expect(form.getAttribute("method")).toBe("get");
     expect(form.hasAttribute("data-prefill-from-path")).toBe(true);
