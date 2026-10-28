@@ -281,7 +281,8 @@ describe("organizations service", () => {
       expect((await patch({ minister: { detailsHtml: "<p></p>" } }))!.minister.detailsHtml).toBeNull();
       await upsertOrganization(tdb.db, healthOrg, subs);
       expect((await patch({ minister: { detailsHtml: "<p> </p>" } }))!.minister.detailsHtml).toBeNull();
-      for (const blank of ["<div> <br> </div>", "<script>x</script>", "   "]) {
+      // &nbsp; decodes to U+00A0, which isBlankHtml's \s counts as blank (the Hub's bioToPatch agrees).
+      for (const blank of ["<div> <br> </div>", "<script>x</script>", "   ", "<div>&nbsp;</div>", "<ul><li>&nbsp;</li></ul>", "<p>\u00a0</p>"]) {
         expect(orgProfilePatchSchema.parse({ minister: { detailsHtml: blank } })).toEqual({ minister: { detailsHtml: null } });
       }
     });

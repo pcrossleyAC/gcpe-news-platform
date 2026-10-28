@@ -13,7 +13,6 @@
  */
 import { BODY_ATTRIBUTES, BODY_SCHEMES, BODY_TAGS } from "@gcpe/nrms-contract";
 
-const ALLOWED_TAGS = new Set<string>(BODY_TAGS);
 const ALLOWED_ATTRIBUTES: Record<string, readonly string[]> = BODY_ATTRIBUTES;
 const ALLOWED_SCHEMES = new Set<string>(BODY_SCHEMES);
 /** Matches the server sanitiser's `transformTags: { b: "strong" }` (apps/nrms/src/text/sanitize.ts). */
@@ -27,11 +26,11 @@ function isAllowedHref(href: string | null): boolean {
   return !!match && ALLOWED_SCHEMES.has(match[1]!.toLowerCase());
 }
 
-function appendChildren(source: Node, target: Node): void {
-  for (const child of Array.from(source.childNodes)) appendFiltered(child, target);
+function appendChildren(source: Node, target: Node, allowed: ReadonlySet<string>): void {
+  for (const child of Array.from(source.childNodes)) appendFiltered(child, target, allowed);
 }
 
-function appendFiltered(node: Node, target: Node): void {
+function appendFiltered(node: Node, target: Node, allowed: ReadonlySet<string>): void {
   if (node.nodeType === Node.TEXT_NODE) {
     target.appendChild(node.cloneNode(true));
     return;
@@ -42,10 +41,10 @@ function appendFiltered(node: Node, target: Node): void {
 
   if (SKIP_CONTENT_TAGS.has(tag)) return;
 
-  if (!ALLOWED_TAGS.has(tag)) {
+  if (!allowed.has(tag)) {
     // Not in the allow-list: drop the wrapper, keep its children (same as the server's
     // sanitiser — "drops disallowed tags but keeps their text").
-    appendChildren(el, target);
+    appendChildren(el, target, allowed);
     return;
   }
 
@@ -56,14 +55,17 @@ function appendFiltered(node: Node, target: Node): void {
     if (tag === "a" && attrName === "href" && !isAllowedHref(value)) continue;
     copy.setAttribute(attrName, value);
   }
-  appendChildren(el, copy);
+  appendChildren(el, copy, allowed);
   target.appendChild(copy);
 }
 
-/** Runs `html` through the allow-list and returns the cleaned markup. */
-export function reduceToAllowedHtml(html: string): string {
+/** Runs `html` through the allow-list and returns the cleaned markup. `tags` narrows the tag list
+ * (the minister biography passes BIO_TAGS, which has no `asset`); attributes and schemes stay the
+ * shared body ones. */
+export function reduceToAllowedHtml(html: string, tags: readonly string[] = BODY_TAGS): string {
+  const allowed = new Set<string>(tags);
   const parsed = new DOMParser().parseFromString(html, "text/html");
   const container = document.createElement("div");
-  appendChildren(parsed.body, container);
+  appendChildren(parsed.body, container, allowed);
   return container.innerHTML;
 }
