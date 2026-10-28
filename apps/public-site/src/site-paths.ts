@@ -166,7 +166,8 @@ export function pageFiles(p: PageId): string[] {
     case "search": return ["search/index.html"];
     case "sitemap": return ["sitemap.xml"];
     case "sitemap-month": return [`sitemaps/${p.month}.xml`];
-    case "sitemap-pages": return ["sitemaps/pages.xml"];
+    // The XML urlset and the HTML sitemap (L2) come from the same entries, so they are one page.
+    case "sitemap-pages": return ["sitemaps/pages.xml", "sitemap/index.html"];
     case "static": return ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"];
     case "connect": return ["connect/index.html"];
     case "contacts": return ["contacts/index.html"];
@@ -221,6 +222,8 @@ export function atomUrl(site: Pick<SiteInfo, "baseUrl">, p: { type: "home" } | {
 export const kindFeedUrl = (site: Pick<SiteInfo, "baseUrl">, kind: FeedPostKind, format: "rss" | "atom"): string => `${basePath(site)}/${kindFeedFile(kind, format)}`;
 
 /** A ministry's minister biography page (the third file of its category page). */
+/** The HTML sitemap page (`sitemap/index.html`, written with `sitemaps/pages.xml`). */
+export const sitemapHtmlUrl = (site: Pick<SiteInfo, "baseUrl">): string => `${basePath(site)}/sitemap/`;
 export const biographyUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/biography/`;
 
 /** A ministry's factsheets page (H5), site-relative without the base path: what a side-column

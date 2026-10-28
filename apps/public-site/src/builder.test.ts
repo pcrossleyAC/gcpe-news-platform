@@ -520,6 +520,55 @@ describe("site builder", () => {
     for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) expect(storage.files.has(f), f).toBe(false);
   });
 
+  it("sitemap/index.html: one h1, the groups in order, base-path links; XML lists the same paths", async () => {
+    const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1", publishDate: "2026-10-05T10:00:00-07:00" })], ["K0", post({ key: "K0", publishDate: "2026-08-05T10:00:00-07:00" })]]));
+    api.sectors = [category({ key: "economy", name: "Economy <&>" })];
+    api.tags = [category({ key: "covid-19", name: "COVID-19" })];
+    api.minister = async (key) => (key.toLowerCase() === "health" ? { headline: "Hon. A", summary: "s", details: "<p>Bio.</p>", photo: null } : null);
+    await builder.buildAll({});
+    const doc = new JSDOM(html(storage, "sitemap/index.html")).window.document;
+    expect(doc.querySelectorAll("h1").length).toBe(1);
+    expect(doc.querySelector("#main-content-release.home-body > h1")!.textContent).toBe("Site map");
+    const main = doc.querySelector("#main-content-release")!;
+    expect([...main.querySelectorAll(":scope > h2")].map((h) => h.textContent)).toEqual(["Pages", "Ministries", "Sectors", "Topics", "Archive"]);
+    const links = (heading: string) => {
+      const h2 = [...main.querySelectorAll(":scope > h2")].find((h) => h.textContent === heading)!;
+      return [...h2.nextElementSibling!.querySelectorAll("li > a")].map((a) => [a.textContent, a.getAttribute("href")]);
+    };
+    expect(links("Pages").map((l) => l[0])).toEqual(["Home", "Ministries", "Sectors", "Themes", "Topics", "Releases", "Stories", "Factsheets & Opinion Editorials", "Updates", "Media contacts", "Live Webcast", "Connect", "Subscribe", "Search", "Privacy", "Archive"]);
+    expect(links("Ministries")).toEqual(expect.arrayContaining([["Health", "/ministries/health/"], ["Health: Biography", "/ministries/health/biography/"], ["Health: Factsheets", "/ministries/health/factsheets/"], ["Finance: Factsheets", "/ministries/finance/factsheets/"]]));
+    expect(links("Ministries").map((l) => l[1])).not.toContain("/ministries/finance/biography/");
+    expect(links("Sectors")).toEqual([["Economy <&>", "/sectors/economy/"]]);
+    expect(links("Archive").slice(0, 3)).toEqual([["Archive by government term", "/archive/terms/"], ["October 2026", "/archive/2026/10/"], ["August 2026", "/archive/2026/08/"]]);
+    expect(html(storage, "sitemap/index.html")).toContain("Economy &lt;&amp;&gt;");
+    // The XML lists every HTML path except the robots-blocked Search and Subscribe, and adds /sitemap/ itself.
+    const xmlPaths = [...html(storage, "sitemaps/pages.xml").matchAll(/<loc>https:\/\/news\.example(\/[^<]*)<\/loc>/g)].map((m) => m[1]!);
+    const htmlPaths = [...doc.querySelectorAll("#main-content-release li > a")].map((a) => a.getAttribute("href")!);
+    expect([...xmlPaths].sort()).toEqual([...htmlPaths.filter((x) => x !== "/search/" && x !== "/subscribe/"), "/sitemap/"].sort());
+  });
+
+  it("sitemap/index.html honours the base path", async () => {
+    const storage = memoryStorage();
+    const builder = createSiteBuilder({ newsApi: fakeNewsApi(new Map()), storage, index: postIndex(tdb.db), site: { ...site, baseUrl: "https://news.example/hub" }, assetsDir: null });
+    await builder.rebuild(["sitemap:pages"], {});
+    const hrefs = [...new JSDOM(html(storage, "sitemap/index.html")).window.document.querySelectorAll("#main-content-release li > a")].map((a) => a.getAttribute("href")!);
+    expect(hrefs.length).toBeGreaterThan(10);
+    expect(hrefs.filter((h) => !h.startsWith("/hub/"))).toEqual([]);
+  });
+
+  it("a bio page appearing re-queues sitemap:pages and both files change", async () => {
+    const { storage, api, builder } = setup(new Map());
+    await builder.renderPage("sitemap:pages", {});
+    const [xml0, html0] = [html(storage, "sitemaps/pages.xml"), html(storage, "sitemap/index.html")];
+    expect(html0).not.toContain("Health: Biography");
+    api.minister = async () => ({ headline: "Hon. A", summary: "s", details: "<p>Bio.</p>", photo: null });
+    expect(await builder.renderPage("category:ministries:health", {})).toEqual(["sitemap:pages"]);
+    await builder.renderPage("sitemap:pages", {});
+    expect(html(storage, "sitemaps/pages.xml")).not.toBe(xml0);
+    expect(html(storage, "sitemap/index.html")).not.toBe(html0);
+    expect(html(storage, "sitemap/index.html")).toContain('href="/ministries/health/biography/"');
+  });
+
   it("a ministry's factsheets page: its factsheets (and a factsheet top post) newest first, an empty message when none, vanished ministry removes it, sitemap lists every ministry's", async () => {
     const { storage, api, builder } = setup(new Map([
       ["F1", post({ key: "F1", kind: "factsheets", ministryKeys: ["Health"], publishDate: "2026-10-01T10:00:00-07:00" })],

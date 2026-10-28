@@ -86,7 +86,7 @@ describe("settings sections: contactsPage", () => {
   afterAll(async () => { await tdb.drop(); });
   beforeEach(async () => { await tdb.pool.query("TRUNCATE site_posts"); await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY"); });
 
-  it("a contactsPage edit queues exactly contacts", async () => {
+  it("a contactsPage edit queues exactly contacts and the sitemap pages", async () => {
     const storage = memoryStorage();
     const newsApi = fakeNewsApi(new Map([["K1", post({ key: "K1" })]]));
     const index = postIndex(tdb.db);
@@ -102,7 +102,8 @@ describe("settings sections: contactsPage", () => {
     try {
       await syncSite(deps);
       expect(enqueue).toHaveBeenCalledTimes(1);
-      expect(enqueue.mock.calls[0]![1]).toEqual([{ pageId: "contacts", priority: PRIORITY.liveAggregate }]);
+      // The HTML sitemap names the page by its heading, so it is re-rendered with it.
+      expect(enqueue.mock.calls[0]![1]).toEqual([{ pageId: "contacts", priority: PRIORITY.liveAggregate }, { pageId: "sitemap:pages", priority: PRIORITY.liveAggregate }]);
       expect(storage.files.get("contacts/index.html")).toContain("Media list");
     } finally {
       enqueue.mockRestore();
