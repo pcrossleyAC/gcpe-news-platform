@@ -161,6 +161,17 @@ describe("createFilesApiClient", () => {
     expect(client.requests).toBe(1);
   });
 
+  it("a 200 that isn't JSON is a failure, not a crash", async () => {
+    const raw = createServer((_q, res) => res.writeHead(200, { "content-type": "text/html" }).end("<html>maintenance</html>"));
+    await new Promise<void>((r) => raw.listen(0, "127.0.0.1", r));
+    try {
+      const client = fastClient(`http://127.0.0.1:${(raw.address() as AddressInfo).port}`);
+      expect(await client.getPost("K1", 0)).toEqual({ status: "failed", httpStatus: 200 });
+    } finally {
+      await new Promise<void>((r) => raw.close(() => r()));
+    }
+  });
+
   it("--max-requests caps what it sends", async () => {
     const client = fastClient(stub.base, { maxRequests: 2 });
     await client.getPost("K1", 0);
@@ -308,9 +319,12 @@ describe("runFilesImport", () => {
     expect((await run({ dryRun: true, all: true })).sample).toEqual(["2026AA0004-000004", "2026AA0003-000003"]);
     // --keys: exactly those (flag or not), still never an NRMS-owned or unpublished one.
     expect((await run({ dryRun: true, keys: ["2026aa0003-000003", "2026AA0005-000005", "2026AA0006-000006"] })).sample).toEqual(["2026AA0003-000003"]);
-    // A post the source lists no files for is reported, and still not filled (both stay null).
-    const r = await run({ keys: ["2026AA0003-000003"] });
-    expect(r).toMatchObject({ withoutFiles: 1, filled: 0, unchanged: 1 });
+    // A post the source lists no files for is recorded as checked (two empty lists), so a plain
+    // re-run doesn't ask again; --refresh does.
+    expect(await run({ keys: ["2026AA0003-000003"] })).toMatchObject({ withoutFiles: 1, filled: 1 });
+    expect(await fileCols(tdb, "2026AA0003-000003")).toMatchObject({ translations: [], assets: [] });
+    expect(await run({ keys: ["2026AA0003-000003"] })).toMatchObject({ candidates: 0 });
+    expect(await run({ keys: ["2026AA0003-000003"], refresh: true })).toMatchObject({ candidates: 1, withoutFiles: 1, unchanged: 1 });
   });
 
   it("a 429 stops the run with what was done kept and how to resume", async () => {

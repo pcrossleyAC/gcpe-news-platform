@@ -144,7 +144,12 @@ export function createFilesApiClient(opts: FilesApiClientOptions): FilesApiClien
       if (res.status === 404) return { status: "not-found", httpStatus: 404 };
       if (!res.ok) return { status: "failed", httpStatus: res.status };
       const text = await res.text();
-      const body: unknown = text.trim() === "" ? null : JSON.parse(text);
+      let body: unknown = null;
+      try {
+        body = text.trim() === "" ? null : JSON.parse(text);
+      } catch {
+        return { status: "failed", httpStatus: res.status }; // not JSON (an error page): counted, the run goes on
+      }
       if (!body || typeof body !== "object" || typeof (body as Record<string, unknown>).key !== "string") return { status: "not-found", httpStatus: res.status };
       if (((body as Record<string, unknown>).key as string).toLowerCase() !== key.toLowerCase()) return { status: "failed", httpStatus: res.status };
       return { status: "found", dto: body as Record<string, unknown> };
@@ -268,7 +273,7 @@ export interface FilesImportReport {
   filled: number;
   /** Fetched, and the database already held exactly that. */
   unchanged: number;
-  /** Fetched, with no translation or asset list (the source answered null for both): written only if the flags changed. */
+  /** Fetched, with no translation or asset list (the source answered null for both): stored as two empty lists, so a plain re-run skips it. */
   withoutFiles: number;
   /** 404 (or an empty answer) from the source: the post is gone or unpublished there. */
   notFound: string[];
@@ -323,7 +328,12 @@ export async function runFilesImport(
       report.invalid.push({ key, issue: e instanceof Error ? e.message : String(e) });
       return;
     }
-    if (files.translations === null && files.assets === null) report.withoutFiles++;
+    if (files.translations === null && files.assets === null) {
+      // Checked, nothing listed: store empty lists, so a plain re-run doesn't ask again
+      // (`--refresh` still does). Both views treat [] as no list.
+      report.withoutFiles++;
+      files = { ...files, translations: [], assets: [] };
+    }
     const outcome = await applyPostFiles(deps.db, key, files);
     if (outcome === "filled") report.filled++;
     else if (outcome === "unchanged") report.unchanged++;

@@ -71,13 +71,21 @@ describe("importLegacyNews", () => {
   });
 
   it("carries legacy's HasTranslations flag, and a re-run keeps the file lists import:files filled", async () => {
-    const flagged = createFakeSource({ ...tables, "releases:2026": tables["releases:2026"]!.map((r) => ({ ...r, HasTranslations: true })) });
+    const flagged = createFakeSource({ ...tables, "releases:2026": tables["releases:2026"]!.map((r) => ({ ...r, HasTranslations: true, HasMediaAssets: true })) });
     await importLegacyNews(tdb.db, flagged);
     const files = [{ key: "https://files.example/translations/releases/2026TT0103-001121/a.pdf", label: "a.pdf", length: 1 }];
     await tdb.pool.query("UPDATE posts SET translations = $1::jsonb, assets = '[]'::jsonb WHERE key = '2026TT0103-001121'", [JSON.stringify(files)]);
     await importLegacyNews(tdb.db, flagged);
     const { rows } = await tdb.pool.query("SELECT has_translations, translations, assets FROM posts WHERE key = '2026TT0103-001121'");
     expect(rows[0]).toEqual({ has_translations: true, translations: files, assets: [] });
+    // Legacy clears HasTranslations only: the translations go, the assets stay.
+    const translationsCleared = createFakeSource({ ...tables, "releases:2026": tables["releases:2026"]!.map((r) => ({ ...r, HasTranslations: false, HasMediaAssets: true })) });
+    await importLegacyNews(tdb.db, translationsCleared);
+    const after = await tdb.pool.query("SELECT has_translations, translations, assets FROM posts WHERE key = '2026TT0103-001121'");
+    expect(after.rows[0]).toEqual({ has_translations: false, translations: null, assets: [] });
+    // And HasMediaAssets cleared: the assets go too.
+    await importLegacyNews(tdb.db, source);
+    expect((await tdb.pool.query("SELECT assets FROM posts WHERE key = '2026TT0103-001121'")).rows[0]).toEqual({ assets: null });
   });
 });
 

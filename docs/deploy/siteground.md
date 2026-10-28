@@ -853,8 +853,9 @@ first, and only those legacy flags as having translations (`NewsRelease.HasTrans
 media assets (`HasMediaAssets`): news.gov shows a post's translations only when the first is set
 and its media assets only when the second is, and the API lists them only then. In legacy's
 `NewsRelease` table (the 2026 survey, all rows) 3,549 rows have `HasTranslations` and 990
-`HasMediaAssets`, so a full run is at most about 4,500 requests: about 1.3 hours at
-`--concurrency 1`, 20 minutes at 4. `import:legacy` carries `HasTranslations` since this tool was
+`HasMediaAssets`, so a full run is at most 4,539 requests (an upper bound: those counts include
+unpublished rows and count a post with both flags twice; `--dry-run` gives the real number and
+hours): at most about 1.3 hours at `--concurrency 1`, 20 minutes at 4. `import:legacy` carries `HasTranslations` since this tool was
 added; on a database imported before that, `import:files` refuses to run until `import:legacy`
 has been run again (or pass `--all` to ask for every legacy post, about 35,000 requests: 10 hours
 at 1, 2.5 at 4). A post NRMS has published (origin `event`) is never touched.
@@ -872,7 +873,17 @@ only the four file columns change, and a `post.upserted` change row is recorded,
 site rebuilds that release page on its next `site.sync`. Nothing else is written: no
 `outbox_events` row (nothing reaches NRMS, NoD or distribution), no PostUpdate NOTIFY (pinned by
 `apps/news-api/src/import/files.test.ts`). A post whose stored lists already match is not
-written. A re-run of `import:legacy` keeps the lists `import:files` filled.
+written. A post the source lists no files for is stored with two empty lists (checked, nothing
+there), so a plain re-run doesn't ask again. A re-run of `import:legacy` keeps the lists
+`import:files` filled while legacy still sets the matching flag; a flag legacy clears clears its
+list. The site shows a card's Translations / Media Assets link only when the flag is set and the
+list has a file.
+
+**Re-runs.** A plain run (no `--refresh`) asks only for flagged posts whose lists are still empty:
+it never revisits a post it already filled, so a translation legacy adds later to such a post is
+not picked up. For that, `--refresh --since <date>` asks again for every flagged post published
+since `<date>`. At cutover: a plain run, then `--refresh --since <full-run date minus 30 days>`,
+both before `api.news.gov.bc.ca` is repointed (the URL cutover runbook, section 3).
 
 Run it on the server from the deployed artifact, which carries it as
 `tools/news-api-import-files.mjs`:
@@ -883,7 +894,8 @@ TOOL=~/www/boxs.ca/public_html/.nodeapp/latest/app_source/tools/news-api-import-
 read -rs -p 'NEWSAPI_DATABASE_URL: ' DATABASE_URL && export DATABASE_URL && echo
 /usr/local/bin/node-24 "$TOOL" --dry-run                  # how many posts, how long; sends nothing
 /usr/local/bin/node-24 "$TOOL" --concurrency 2            # the whole archive
-/usr/local/bin/node-24 "$TOOL" --since 2026-11-01         # only posts published since then
+/usr/local/bin/node-24 "$TOOL"                            # catch-up: flagged posts not filled yet
+/usr/local/bin/node-24 "$TOOL" --refresh --since 2026-10-01   # ask again for recent posts
 ```
 
 Options: `--concurrency <1..4>`, `--since <YYYY-MM-DD>` (publish date, Pacific), `--keys k1,k2,...`

@@ -237,14 +237,17 @@ NRMS / NoD / Calendar data".
 their translation PDFs and media assets in Azure, which stays up. `import:files` fills in each
 legacy post's links from the public legacy API (`api.news.gov.bc.ca`); this server needs
 outbound HTTPS to it. It is not part of `Import-GcpeLegacy.ps1`: run it by hand after the News
-API step, days before cutover, then once more with `--since` after the last legacy import (the
-URL cutover runbook, section 3). From the live release:
+API step, days before cutover; then, after the last legacy import and before
+`api.news.gov.bc.ca` is repointed, a plain run (picks up flagged posts not filled yet; it never
+revisits filled ones) and a `--refresh --since <full-run date minus 30 days>` run (asks again for
+recent posts). See the URL cutover runbook, section 3. From the live release:
 
 ```powershell
 $env:DATABASE_URL = ((Get-Content C:\gcpe\config\gcpe.env | Where-Object { $_ -like 'NEWSAPI_DATABASE_URL=*' }) -split '=', 2)[1]
-node.exe C:\gcpe\current\tools\news-api-import-files.mjs --dry-run         # posts and hours; sends nothing
+node.exe C:\gcpe\current\tools\news-api-import-files.mjs --dry-run         # real count and hours; sends nothing
 node.exe C:\gcpe\current\tools\news-api-import-files.mjs --concurrency 2
-node.exe C:\gcpe\current\tools\news-api-import-files.mjs --since 2026-11-01
+node.exe C:\gcpe\current\tools\news-api-import-files.mjs                                 # catch-up
+node.exe C:\gcpe\current\tools\news-api-import-files.mjs --refresh --since 2026-10-01
 Remove-Item Env:DATABASE_URL
 ```
 
