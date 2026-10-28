@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { SiteSettings } from "@gcpe/site-settings";
-import type { CategoryDto, MinistryDto, PostDto, ResourceLinkDto, SlideDto } from "../src/dto";
+import type { CategoryDto, MinistryContactDto, MinistryDto, PostDto, ResourceLinkDto, SlideDto } from "../src/dto";
 import type { SiteInfo } from "../src/render";
 import { DEFAULT_THEME } from "../src/theme-css";
 
@@ -34,6 +34,11 @@ export function post(over: Partial<PostDto> = {}): PostDto {
     azureTranslations: [{ key: "https://files.example/files/fr.pdf", label: "Français", length: 999 }],
     ...over,
   };
+}
+
+/** A media contact as the News API's v1 Ministries endpoints carry it (Core's contact record). */
+export function contact(over: Partial<MinistryContactDto> = {}): MinistryContactDto {
+  return { fullName: null, phoneNumber: null, mobileNumber: null, emailAddress: null, ...over };
 }
 
 export function ministry(over: Partial<MinistryDto> = {}): MinistryDto {
