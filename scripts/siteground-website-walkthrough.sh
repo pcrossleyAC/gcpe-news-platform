@@ -14,7 +14,7 @@
 #
 # This turns Project Blue Bridge ON, which (on a test site) shows a "TEST -- " mourning banner
 # on every public page until it's turned off again -- never run this against a real production
-# deployment. The script refuses to run at all unless `BASE/site/` already carries
+# deployment. The script refuses to run at all unless `BASE/` already carries
 # `<meta name="robots" content="noindex, nofollow">` (constraints.md's test-site rule), checked
 # before anything else is touched. Its cleanup trap -- on success *and* on failure, so a
 # half-finished run never leaves residue behind -- turns Project Blue Bridge back OFF, unpins
@@ -39,12 +39,12 @@ BASE="${BASE%/}"
 # Refuses to run at all against anything that doesn't already look like a test site -- checked
 # first, before the password prompt or any other call, since this script turns on a banner that
 # must never be mistaken for a real announcement.
-SITE_HOME="$(curl -sS -f "$BASE/site/")" || { echo "FAILED: couldn't fetch $BASE/site/ -- check the URL"; exit 1; }
+SITE_HOME="$(curl -sS -f "$BASE/")" || { echo "FAILED: couldn't fetch $BASE/ -- check the URL"; exit 1; }
 case "$SITE_HOME" in
   *noindex*) : ;;
-  *) echo "FAILED: $BASE/site/ has no noindex meta -- refusing to run against what looks like a real production site. This script turns Project Blue Bridge ON, which shows a public mourning banner."; exit 1 ;;
+  *) echo "FAILED: $BASE/ has no noindex meta -- refusing to run against what looks like a real production site. This script turns Project Blue Bridge ON, which shows a public mourning banner."; exit 1 ;;
 esac
-echo "PASS: $BASE/site/ is a test site (noindex present)"
+echo "PASS: $BASE/ is a test site (noindex present)"
 
 umask 077
 JAR=""
@@ -301,16 +301,16 @@ done
 echo "PASS: carousel switched, primary pin sorts first, Live Feed URLs present, granville set"
 
 echo "checking the public site shows the TEST banner and stays noindex..."
-SITE_HOME2="$(curl -sS -f "$BASE/site/")" || { echo "FAILED: couldn't re-fetch $BASE/site/"; exit 1; }
+SITE_HOME2="$(curl -sS -f "$BASE/")" || { echo "FAILED: couldn't re-fetch $BASE/"; exit 1; }
 case "$SITE_HOME2" in
   *"TEST — ALERT:"*) : ;;
-  *) echo "FAILED: $BASE/site/ doesn't show the TEST Blue Bridge banner"; exit 1 ;;
+  *) echo "FAILED: $BASE/ doesn't show the TEST Blue Bridge banner"; exit 1 ;;
 esac
 case "$SITE_HOME2" in
   *noindex*) : ;;
-  *) echo "FAILED: $BASE/site/ lost its noindex meta"; exit 1 ;;
+  *) echo "FAILED: $BASE/ lost its noindex meta"; exit 1 ;;
 esac
-echo "PASS: $BASE/site/ shows the TEST Blue Bridge banner and stays noindex"
+echo "PASS: $BASE/ shows the TEST Blue Bridge banner and stays noindex"
 
 echo "fetching the uploaded file back..."
 FILE_RES="$(curl -sS -f "$BASE/files/$FILE_NAME")" || { echo "FAILED: couldn't fetch $BASE/files/$FILE_NAME"; exit 1; }
@@ -320,5 +320,5 @@ case "$FILE_RES" in
 esac
 echo "PASS: fetched $BASE/files/$FILE_NAME"
 
-echo "Public site: $BASE/site/"
+echo "Public site: $BASE/"
 echo "PASS: website walkthrough complete -- Project Blue Bridge, the pin, the Live Feed and the resource links will be restored on exit. The carousel switch-over is left in place."

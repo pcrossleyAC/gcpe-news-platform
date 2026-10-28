@@ -342,7 +342,7 @@ Write-GcpeStep 'Deploying the release in this package'
 Write-Host ''
 Write-Host 'Installed.' -ForegroundColor Green
 Write-Host "  Staff app (Hub):   https://$HostName/hub/   (sign in as '$AdminUsername')"
-Write-Host "  Public site:       https://$HostName/site/"
+Write-Host "  Public site:       https://$HostName/"
 Write-Host "  Health:            https://$HostName/stack/health"
 Write-Host "  Settings:          $($paths.EnvFile)"
 Write-Host "  Stack logs:        $($paths.ServiceLogs)"

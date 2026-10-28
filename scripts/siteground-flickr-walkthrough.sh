@@ -128,5 +128,5 @@ else
   wait_for "publish" is_published_with_public_photo "$MAX_POLLS" || { echo "FAILED: never published with the photo public"; exit 1; }
 fi
 
-echo "Public page: $BASE/site/releases/$KEY/"
+echo "Public page: $BASE/releases/$KEY/"
 curl_api -o /dev/null -X POST "$BASE/core/auth/logout" || true

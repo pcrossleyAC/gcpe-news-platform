@@ -147,6 +147,20 @@ host (confirmed with a single `HEAD` request on 2026-10-07) — configure
 `NOD_EMERGENCY_FEED_URL` as `https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true`
 instead, or every check fails with `error: "redirect"`.
 
+**The public site is served at the root** (`https://<domain>/`), so news.gov.bc.ca's
+root-relative URLs (`/releases/<key>`, `/ministries/…`) work unchanged. The generated
+`SITE_PUBLIC_SITE_URL` and `NOD_PUBLIC_SITE_URL` are the bare origin (`https://<domain>`, no
+`/site`). With that setting, any `/site/<rest>?<query>` URL (an old bookmark, or a link in an
+email already sent) answers `301` to `/<rest>?<query>`, with the query unchanged.
+
+**Upgrading an existing install** (boxs.ca, or any env generated before the root mount): the
+old `…/site` values keep working — the site answers at both `/site/…` and `/…`, with no
+redirect — until you change them. To move to the root, set `SITE_PUBLIC_SITE_URL` and
+`NOD_PUBLIC_SITE_URL` to the origin (`https://boxs.ca`) in Site Tools → Environment Variables
+and restart the Node.js app. The site-state marker records the base URL, so the change queues
+one rebuild-all, which the next ticks drain; `/site/…` then 301s to `/…`. Check with
+`curl -sI https://<domain>/site/ministries/` (expect `301`, `location: /ministries/`).
+
 For a non-interactive/scripted run (CI, or re-generating without re-typing everything), see
 `npm run siteground:env -- --non-interactive` and the `SITEGROUND_*` env vars it reads
 (`scripts/siteground-env.ts`'s module doc comment has the full list) — intended for tests, not
@@ -404,7 +418,7 @@ curl -fsS -X POST -H "Authorization: Bearer <TICK_TOKEN>" https://<domain>/stack
 curl -fsS -X POST -H "Authorization: Bearer <TICK_TOKEN>" https://<domain>/stack/tick
 
 # 6. View the published page.
-curl -s https://<domain>/site/releases/<key>/
+curl -s https://<domain>/releases/<key>/
 
 # 7. Check the redirected mailbox (DIST_MAIL_REDIRECT_TO) for the notification email.
 ```
@@ -431,11 +445,11 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
 
 - [ ] **Item 1** — sign in as the test editor (`scripts/siteground-seed-users.sh` creates/resets the five test users); confirm a viewer can read a release but has no write controls, and a site editor reaches the Website section but never sees Approve.
 - [ ] **Item 2** — create one of each type (Release, Story, Factsheet, Advisory) through `/hub/releases/new`; confirm the form's required/allowed fields match the type (e.g. an Advisory offers no Sectors/Themes/Tags).
-- [ ] **Item 5** — approve and publish a release now; confirm it reaches the public site (`https://boxs.ca/site/releases/<key>/`) and a subscriber actually receives the NoD email, within one scheduled `/stack/tick` run (see "Background work scheduler" above).
+- [ ] **Item 5** — approve and publish a release now; confirm it reaches the public site (`https://boxs.ca/releases/<key>/`) and a subscriber actually receives the NoD email, within one scheduled `/stack/tick` run (see "Background work scheduler" above).
 - [ ] **Item 7** — edit a field on an already-published release; confirm it shows "Republishing…" and comes back as "Published" with a new entry in its History ("Show all") and an extra frozen copy.
 - [ ] **Item 9** — with a real `NRMS_FLICKR_API_KEY` configured, run `scripts/siteground-flickr-walkthrough.sh https://boxs.ca --outage` (see "Flickr" below) and confirm the release goes out on time without the photo, the alert shows, and the photo appears once recovered.
 - [ ] **Item 12** — schedule a carousel go-live a minute or two out and confirm it switches over on its own; confirm an emergency pin survives an unrelated carousel change; confirm Project Blue Bridge needs the Core.Admin phrase and (off production) shows "TEST —" on the public banner.
-- [ ] **Phase 4 item 1** — on `https://boxs.ca/site/subscribe/`, subscribe an address you control (it arrives at the redirect addresses with a `[to: …]` prefix); open the link, change a preference, save; unsubscribe from the manage page. The footer manage link and one-click unsubscribe now work against the new manage page (fixed in 4b — see Phase 4 item 3 below).
+- [ ] **Phase 4 item 1** — on `https://boxs.ca/subscribe/`, subscribe an address you control (it arrives at the redirect addresses with a `[to: …]` prefix); open the link, change a preference, save; unsubscribe from the manage page. The footer manage link and one-click unsubscribe now work against the new manage page (fixed in 4b — see Phase 4 item 3 below).
 - [ ] **Phase 4 item 3** — publish a release that reaches your test address; confirm the As-It-Happens email arrives exactly once, and that both its footer manage link and its one-click unsubscribe (`List-Unsubscribe`) work.
 - [ ] **Phase 4 item 4** — after a publish, check the following evening that the 17:00 BC-time digest arrives and includes the item. Note: releases published before the 4b deploy have no NoD item, so the first digest after deploy only includes releases published after it.
 - [ ] **Phase 4 item 10** — pause NoD sending; confirm nothing goes out while paused; resume; confirm sends release again. Also pause **Distribution** itself (same NoD admin control); confirm a verification/manage-link email still goes out while Distribution is paused, that a release's As-It-Happens/digest mail is held, and that it sends once Distribution is resumed.
@@ -1251,7 +1265,7 @@ JSON error means it hasn't been raised.
 1. As cal-editor: Hub → Calendar, filter a week with activities, click Look Ahead. The PDF downloads: Letter, BC Sans (the viewer's document properties list BCSans fonts), the cover, then "Inside Government". Each CC ID# opens the activity.
 2. Click 30/60/90 (Letter) and Planning (Legal landscape).
 3. As cal-hq-editor the toolbar has no Exec Look Ahead. As cal-hq-admin it does, and its rows end "Last updated …", said once.
-4. As cal-hq-admin, run a Look Ahead with no To date (60 days). Note whether it arrived without a "Preparing…" pause, and how many seconds it took; record both here. While it renders, load `/site/` in another tab: it answers at once.
+4. As cal-hq-admin, run a Look Ahead with no To date (60 days). Note whether it arrived without a "Preparing…" pause, and how many seconds it took; record both here. While it renders, load `/` in another tab: it answers at once.
 5. `/stack/errors` holds no "[calendar] a report failed" line. If it does, its label says which limit was hit: `ERR_WORKER_OUT_OF_MEMORY` (raise `CALENDAR_REPORT_HEAP_MB`) or `ERR_REPORT_TIMEOUT`.
 
 ### NRMS link and Forecast (Phase 5h)
@@ -1331,7 +1345,7 @@ It is safe to re-run: it fills only posts with no search text. `-- --all --confi
 - The app itself never logs the query string. But this is not a promise that search terms are never logged anywhere: SiteGround's own proxy (and OpenShift's router, where its access logging is on) records the full request line in its access logs, so `?q=…` and its values land there outside the app's control, the same way `/stack/tick`'s `?token=` form does (above).
 
 **Hand checks on boxs.ca after the backfill:**
-1. `curl -s 'https://boxs.ca/api/v2/search?q=highway'` lists releases mentioning highways, with `"mode":"text"` and links under `https://boxs.ca/site/releases/`.
+1. `curl -s 'https://boxs.ca/api/v2/search?q=highway'` lists releases mentioning highways, with `"mode":"text"` and links under `https://boxs.ca/releases/`.
 2. `curl -si 'https://boxs.ca/api/v2/search?q=highway&page=99'` is a 400 whose body names `page`, with `cache-control: no-store`.
 3. `curl -si 'https://boxs.ca/api/Home'` is still the 400 `ApiVersionUnspecified`: v1 is unchanged.
 
@@ -1570,7 +1584,8 @@ Both run on a developer machine (or in CI), never against boxs.ca. `npm run site
 - **Every dynamic response is `Cache-Control: no-store`** (the stack sets this by default,
   overriding anything an app sets itself) specifically because SiteGround's nginx caches any
   GET response that lacks cache headers *and ignores the query string* when deciding what
-  counts as the "same" cached response. Only the static `/site/*` mount gets a real
+  counts as the "same" cached response. Only the static site mount (`/`, plus `/site/*` while
+  `SITE_PUBLIC_SITE_URL` still ends in `/site`) gets a real
   `Cache-Control: public, max-age=60` — on purpose, since it's genuinely static output.
 - **The process is cold-started on the first request (or tick) after 30–60s idle.** Measured
   locally: a full cold start (all six apps, migrations already applied) completes in well

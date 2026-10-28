@@ -107,6 +107,11 @@ describe("buildWindowsEnvLines", () => {
     expect(env.CORE_PUBLIC_BASE_URL).toBe("https://news-dev.example.gov.bc.ca");
     for (const p of ["CORE", "NRMS", "NEWSAPI", "SITE", "NOD", "DIST", "CALENDAR"]) expect(env[`${p}_AUTH_AUDIENCE`]).toBe(entra.audience);
   });
+
+  it("serves the public site at the bare origin for both SITE and NOD", () => {
+    const env = readWithNode(buildWindowsEnvLines(input(), HASH, generateSecrets()), ["SITE_PUBLIC_SITE_URL", "NOD_PUBLIC_SITE_URL"]);
+    expect(env).toEqual({ SITE_PUBLIC_SITE_URL: "https://news-dev.example.gov.bc.ca", NOD_PUBLIC_SITE_URL: "https://news-dev.example.gov.bc.ca" });
+  });
 });
 
 describe("windowsEnvInputSchema", () => {

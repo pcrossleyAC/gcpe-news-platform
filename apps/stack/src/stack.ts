@@ -27,12 +27,12 @@ import { nrmsEnvSchema, startNrms, type AppHandle as NrmsHandle } from "../../nr
 import { publicSiteEnvSchema } from "../../public-site/src/env";
 import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../public-site/src/start";
 
-import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
+import { noStoreByDefault } from "./cache-control";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { checkCalendarDbTimeZone, pgOffsetOf, type DbTimeZoneStatus } from "./db-time-zone";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture, type ErrorEntry } from "./errors";
-import { siteNotFound } from "./site-not-found";
+import { mountSite, rootSiteNotFound, siteBasePath } from "./site-mount";
 import {
   assertPrivateDir,
   calendarConfigured,
@@ -66,9 +66,6 @@ export interface StackHandle {
   closers: Closer[];
 }
 
-/** The static site's own cache lifetime (brief: "the static /site files get Cache-Control:
- * public, max-age=60"). express.static's `maxAge` option wants milliseconds. */
-const SITE_MAX_AGE_MS = 60_000;
 /** Uploaded release files under /files (same one-minute public lifetime). */
 const FILES_MAX_AGE_MS = 60_000;
 
@@ -126,9 +123,34 @@ function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir: stri
   return resolveSelfUrls(envFor(env, prefix, dataDir));
 }
 
+/**
+ * Every path prefix some part of the stack answers itself, rather than the public site:
+ * rootSiteNotFound lets these fall through to their own app's 404 (News API's JSON one for
+ * /api, /health, /events and /updates). A new top-level mount belongs here too.
+ */
+export const STACK_OWNED_PREFIXES: readonly string[] = [
+  "/api",
+  "/health",
+  "/events",
+  "/updates",
+  "/core",
+  "/nrms",
+  "/nod",
+  "/calendar",
+  "/distribution",
+  "/site-builder",
+  "/stack",
+  "/hub",
+  "/files",
+  FAKE_FLICKR_PATH,
+  FAKE_MEDIA_HUB_PATH,
+  FAKE_EMERGENCY_FEED_PATH,
+  FAKE_ENTRA_PATH,
+];
+
 /** Every folder the stack serves to anyone, named by the setting that moves it. */
 function publicDirs(nrmsStorage: string | undefined, siteOutput: string | undefined, staffWeb: string | undefined): Record<string, string | undefined> {
-  return { "NRMS_STORAGE_DIR (served at /files)": nrmsStorage, "SITE_OUTPUT_DIR (served at /site)": siteOutput, "STAFF_WEB_DIR (served at /hub)": staffWeb };
+  return { "NRMS_STORAGE_DIR (served at /files)": nrmsStorage, "SITE_OUTPUT_DIR (served at / and /site)": siteOutput, "STAFF_WEB_DIR (served at /hub)": staffWeb };
 }
 
 /**
@@ -335,22 +357,14 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // Cache-Control (public, max-age=60) is never overridden by it — a request this static
   // mount actually serves never reaches noStoreByDefault at all. noStoreOnRedirect (M4) sits
   // in front of express.static itself so its *redirect* (a directory request missing its
-  // trailing slash) gets no-store too, instead of the bare, cacheable-by-default 301
-  // express.static would otherwise send. dotfiles: "deny" (plan 3d task 4 fix round 1) is set
-  // explicitly for the public site's own `.site-state.json` render-state marker
-  // (apps/public-site/src/rebuild.ts) and anything else dot-prefixed under OUTPUT_DIR — "ignore"
-  // (serve-static's default) already keeps a dotfile unservable too, so this changes no
-  // observable behaviour (both fall through, with the default fallthrough: true, to the
-  // same eventual 404), but says explicitly that a dotfile is refused on purpose, not by
-  // accident of the default.
-  // siteNotFound: anything under /site the static mount didn't serve (GET/HEAD) is the site's own
-  // 404.html with a 404 status, not News API's root JSON catch-all further down.
-  app.use(
-    "/site",
-    noStoreOnRedirect,
-    express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny" }),
-    siteNotFound(outputDir),
-  );
+  // trailing slash) gets no-store too. dotfiles: "deny" (plan 3d task 4 fix round 1) keeps the
+  // public site's own `.site-state.json` render-state marker (apps/public-site/src/rebuild.ts)
+  // and anything else dot-prefixed under OUTPUT_DIR unservable.
+  // Parity P2: news.gov URLs are root-relative, so the site is always served at "/". While
+  // PUBLIC_SITE_URL still has a path (boxs.ca's https://boxs.ca/site until the operator flips
+  // it), the site is served under that prefix too, with siteNotFound for its unknown pages;
+  // once it is the bare origin, /site/<rest>?<query> 301s to /<rest>?<query> (site-mount.ts).
+  mountSite(app, { outputDir, basePath: siteBasePath(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl) });
 
   // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
   // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
@@ -572,6 +586,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   );
   app.use("/distribution", distribution.app);
   app.use("/site-builder", siteBuilder.app);
+  // Any other GET/HEAD nothing above served is a public-site page that doesn't exist: the
+  // site's own 404.html, not News API's JSON catch-all — except under the stack's own prefixes
+  // (News API's /api, /health, /events, /updates among them), which keep their own 404s.
+  app.use(rootSiteNotFound(outputDir, STACK_OWNED_PREFIXES));
   app.use(newsApi.app);
   stackApp = app;
 

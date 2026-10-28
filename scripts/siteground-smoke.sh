@@ -79,7 +79,7 @@ else
   echo "== waiting for the cron job to tick (up to 4 minutes)"
   for i in $(seq 1 24); do
     STATUS="$(curl -sS "$BASE/api/Posts/$KEY?api-version=1.0" -o /dev/null -w '%{size_download}')"
-    PAGE="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/site/releases/$KEY/")"
+    PAGE="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/releases/$KEY/")"
     echo "  $(date +%H:%M:%S) news-api bytes=$STATUS page=$PAGE"
     [ "$PAGE" = "200" ] && break
     sleep 10
@@ -92,7 +92,7 @@ curl -sS "$BASE/nrms/api/releases/$ID" -H "Authorization: Bearer $TOKEN" | pytho
 echo "== News API post"
 curl -sS -o /dev/null -w "%{http_code} %{size_download} bytes\n" "$BASE/api/Posts/$KEY?api-version=1.0"
 echo "== static page"
-curl -sS -o /dev/null -w "%{http_code}\n" "$BASE/site/releases/$KEY/"
+curl -sS -o /dev/null -w "%{http_code}\n" "$BASE/releases/$KEY/"
 echo "== recent errors"
 curl -sS "$BASE/stack/errors" -H "Authorization: Bearer $TOKEN" | python3 -m json.tool | head -40
 unset TOKEN

@@ -172,7 +172,14 @@ refuses to run without `-PostgresAdminUrl` when the databases are on another ser
 |---|---|
 | `https://<host>/stack/health` | `{"status":"ok", "apps": {… all true}}` |
 | `https://<host>/hub/` | The staff app. Sign in as `admin`. |
-| `https://<host>/site/` | The public news site (nearly empty until step 4). |
+| `https://<host>/` | The public news site (nearly empty until step 4). `/site/…` URLs 301 here. |
+
+**Upgrading an existing install.** A re-run keeps `gcpe.env`, so an install made before the
+public site moved to the root still has `SITE_PUBLIC_SITE_URL` and `NOD_PUBLIC_SITE_URL` ending
+in `/site`. It keeps working — the site answers at both `/site/…` and `/…` — until you change
+them. To move to the root, set both to the origin (`https://<host>`, no `/site`) in `gcpe.env`
+and restart the `gcpe-stack` service. The site-state marker records the base URL, so the
+change queues one rebuild-all, which the next ticks drain; `/site/…` then 301s to `/…`.
 
 ## Step 4 — Import the legacy data
 
