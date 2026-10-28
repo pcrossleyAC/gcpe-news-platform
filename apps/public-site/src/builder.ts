@@ -3,7 +3,7 @@ import { safeErrorLabel } from "@gcpe/http-kit";
 import type { GovernmentTermDto, MinistryDto, PostDto } from "./dto";
 import { renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
-import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, type TermsView } from "./government-terms";
+import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
 import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex } from "./pages/archive";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
 import { renderConnectPage } from "./pages/connect";
@@ -25,11 +25,13 @@ export const POST_KINDS = ["releases", "stories", "factsheets", "updates", "advi
 /** Per-run memo, so a run rendering many pages fetches the ministry list once. */
 export interface RunCache {
   ministries?: Promise<MinistryDto[]>;
-  /** The government-terms snapshot, once fetched in this run. A failed fetch is never kept
-   * (NG-R18): the next caller in the run tries again. */
+  /** The government-terms snapshot, once fetched in this run. */
   governmentTerms?: TermsView;
-  /** A fetch in this run recovered from an outage: the next render's dependents add every term page. */
-  termsRecovered?: boolean;
+  /** NG-R18: a terms fetch failed in this run (one drain), so the rest of the run uses the
+   * degraded view without fetching again. Never kept across runs: the next drain retries. */
+  termsOutage?: TermsView;
+  /** This run already compared the fetched snapshot with site_state's applied hash. */
+  termsHashChecked?: boolean;
 }
 
 export interface SiteBuilder {
@@ -63,9 +65,10 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   /** Never rejects (NG-R18): a terms outage degrades to the last applied snapshot, else none. */
   const governmentTerms = async (run: RunCache): Promise<TermsView> => {
     if (run.governmentTerms) return run.governmentTerms;
+    if (run.termsOutage) return run.termsOutage;
     const view = await currentTerms(newsApi, storage);
     if (view.fresh) run.governmentTerms = view;
-    if (view.recovered) run.termsRecovered = true;
+    else run.termsOutage = view;
     return view;
   };
   /** Term pages (and the term-only pages that render nothing useful without a snapshot) refuse to
@@ -75,11 +78,27 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     if (!view.fresh && !view.dto) throw new Error("government terms unavailable and none applied yet");
     return view;
   };
-  /** After an outage: every term page, once (the dependents of whichever render noticed). */
-  const recoveryPages = async (run: RunCache): Promise<string[]> => {
-    if (!run.termsRecovered) return [];
-    run.termsRecovered = false;
-    return [...(await builder.termPageIds()), "sitemap:pages"];
+  /**
+   * NG-R18, durable: a fetched snapshot whose hash differs from site_state's applied hash (a
+   * terms change, a first deploy, or an outage that rendered without terms) adds every term page
+   * and the pages sitemap to this render's dependents, and records the hash through `idx`, i.e.
+   * in the same transaction that enqueues those dependents. A rolled-back drain item leaves the
+   * old hash, so the next run notices again. Checked once per run.
+   */
+  const termsChangePages = async (run: RunCache, idx: PostIndex): Promise<string[]> => {
+    const view = run.governmentTerms;
+    if (!view?.fresh || run.termsHashChecked) return [];
+    run.termsHashChecked = true;
+    const hash = termsHash(view.dto);
+    if ((await idx.appliedTermsHash()) === hash) return [];
+    await idx.setAppliedTermsHash(hash);
+    return [...termIdsFor(view, await storage.listDirs("archive/terms")), "sitemap:pages"];
+  };
+  /** The index, the alias, every term in the view and every term directory on disk. */
+  const termIdsFor = (view: TermsView, dirs: string[]): string[] => {
+    const slugs = new Set((view.dto?.terms ?? []).map((t) => t.slug));
+    for (const dir of dirs) if (TERM_SLUG.test(dir) && dir !== "current") slugs.add(dir);
+    return ["archive-terms", "archive-term:current", ...[...slugs].map((slug) => formatPageId({ type: "archive-term", slug }))];
   };
   /** Each public term (newest first) with its post count on this site. */
   const termRows = async (view: TermsView) => {
@@ -106,6 +125,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     const post = await newsApi.getPost(key);
     const terms = await governmentTerms(run);
     const termOf = termOfDay(terms.dto);
+    // Rendered without any terms: whatever snapshot comes next must re-queue every term page.
+    if (!terms.fresh && !terms.dto) await writeIndex.setAppliedTermsHash(null);
     /** Spec §3's post row, plus (NG-R18) the alias when no terms are known during an outage, the
      * pages sitemap when a legacy term gains its first post or loses its last (F4), and every
      * term page after an outage. */
@@ -122,7 +143,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           if (n === (gained ? 1 : 0)) ids.add("sitemap:pages");
         }
       }
-      for (const id of await recoveryPages(run)) ids.add(id);
+      for (const id of await termsChangePages(run, writeIndex)) ids.add(id);
       return [...ids].sort();
     };
     if (!post) {
@@ -217,7 +238,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         case "archive-terms":
           await storage.write(pageFiles(p)[0]!, renderTermsIndex(await termRows(await requireTerms(run)), site, opts));
-          return recoveryPages(run);
+          return termsChangePages(run, tx ? postIndex(tx) : index);
         case "archive-term": {
           // `current` is a static duplicate of the current term's page, canonical to the slug page (N6).
           const view = await requireTerms(run);
@@ -227,10 +248,10 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           if (!term || isLegacyOnly(term, await index.countInDayRange(term.startDate, end))) {
             // Only on a fetched snapshot: a stale one must not delete a page the live one still has.
             if (view.fresh) await removeAll(p);
-            return recoveryPages(run);
+            return termsChangePages(run, tx ? postIndex(tx) : index);
           }
           await storage.write(pageFiles(p)[0]!, renderTermPage(term, await index.inDayRange(term.startDate, end), site, { ...opts, canonicalSlug: term.slug }));
-          return recoveryPages(run);
+          return termsChangePages(run, tx ? postIndex(tx) : index);
         }
         case "search":
           await storage.write(pageFiles(p)[0]!, renderSearchPage(await ministries(run), site, opts, deps.searchApiBase ?? ""));
@@ -319,10 +340,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       // Never rejects (NG-R18): during an outage, the last applied terms, else just the index and
       // the alias. Term directories already on disk are listed too, so a term that has left the
       // payload is rendered once more, which removes it (F5).
-      const view = await currentTerms(newsApi, storage);
-      const slugs = new Set((view.dto?.terms ?? []).map((t) => t.slug));
-      for (const dir of await storage.listDirs("archive/terms")) if (TERM_SLUG.test(dir) && dir !== "current") slugs.add(dir);
-      return ["archive-terms", "archive-term:current", ...[...slugs].map((slug) => formatPageId({ type: "archive-term", slug }))];
+      return termIdsFor(await currentTerms(newsApi, storage), await storage.listDirs("archive/terms"));
     },
 
     async buildAll(opts) {

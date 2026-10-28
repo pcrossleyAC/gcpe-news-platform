@@ -30,6 +30,9 @@ function parseTable(text: string): Table {
   return table;
 }
 
+/** The stat error last logged per output folder, so a persistent one logs once. */
+const unreadable = new Map<string, string>();
+
 /** The table at `outputDir`, re-read whenever the file's mtime or size changes. A missing or
  * unreadable file is an empty table: the site then serves whatever page is on disk. */
 async function loadTable(outputDir: string): Promise<Table> {
@@ -39,10 +42,15 @@ async function loadTable(outputDir: string): Promise<Table> {
     const s = await stat(path);
     stamp = `${s.mtimeMs}:${s.size}`;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") console.warn(`[stack] ministry successors unreadable: ${(err as NodeJS.ErrnoException).code ?? "error"}`);
+    const code = (err as NodeJS.ErrnoException).code ?? "error";
+    // Logged once per folder and error code (EACCES/EBUSY while Windows replaces the file), not per request.
+    if (code !== "ENOENT" && unreadable.get(outputDir) !== code) console.warn(`[stack] ministry successors unreadable: ${code}`);
+    if (code === "ENOENT") unreadable.delete(outputDir);
+    else unreadable.set(outputDir, code);
     cache.delete(outputDir);
     return EMPTY;
   }
+  unreadable.delete(outputDir);
   const hit = cache.get(outputDir);
   if (hit?.stamp === stamp) return hit.table;
   let table = EMPTY;

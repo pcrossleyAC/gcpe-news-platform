@@ -102,6 +102,15 @@ describe("GET /api/v2/ministry-successors", () => {
     expect((await request(app).get("/api/v2/ministry-successors")).body).toEqual({ successors: {} });
   });
 
+  it("a non-public inactive ministry is never a source, but still a hop in a public one's chain", async () => {
+    await apply(
+      ministry("c"),
+      ministry("secret", { isActive: false, isPublic: false, successorKeys: ["c"] }),
+      ministry("a", { isActive: false, successorKeys: ["secret"] }),
+    );
+    expect((await request(app).get("/api/v2/ministry-successors")).body).toEqual({ successors: { a: "c" } });
+  });
+
   it("a row stored before successorKeys existed reads as no successors; deactivation alone adds none", async () => {
     await apply(ministry("b"), ministry("a"));
     await tdb.pool.query("UPDATE categories SET ministry = ministry - 'successorKeys'");

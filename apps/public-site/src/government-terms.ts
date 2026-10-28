@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isSafeUrl, safeErrorLabel } from "@gcpe/http-kit";
 import type { GovernmentTermDto, GovernmentTermsDto } from "./dto";
 import type { NewsApiClient } from "./news-api-client";
@@ -38,9 +39,9 @@ export function termOfDay(dto: GovernmentTermsDto | null): TermOf {
 }
 
 /**
- * NG-R18: the last applied terms snapshot, beside `.site-settings.json` and, like it, not served
- * (a leading dot) and kept across restarts. `degraded` records that the last fetch failed, so
- * the first good fetch after an outage can queue every term page again.
+ * NG-R18: the last fetched terms snapshot, beside `.site-settings.json` and, like it, not served
+ * (a leading dot) and kept across restarts: what a terms outage renders with. `degraded` records
+ * that the last fetch failed, so an outage is logged once.
  */
 export const GOVERNMENT_TERMS_PATH = ".government-terms.json";
 
@@ -82,18 +83,19 @@ async function writePersisted(storage: SiteStorage, state: PersistedTerms): Prom
 }
 
 export interface TermsView {
-  /** The snapshot to use: fetched, else the last applied one, else null. */
+  /** The snapshot to use: fetched, else the last fetched one, else null. */
   dto: GovernmentTermsDto | null;
   /** True when fetched this time (a 404, "nothing published yet", included). */
   fresh: boolean;
-  /** Fetched after a failed fetch had been recorded: every term page needs rebuilding. */
-  recovered: boolean;
 }
+
+/** The snapshot's identity, for "have the term pages been queued for this one?" (site_state). */
+export const termsHash = (dto: GovernmentTermsDto | null): string => createHash("sha256").update(JSON.stringify(dto)).digest("hex");
 
 /**
  * NG-R18, the same degrade as site settings (settings.ts currentSettings). Never rejects:
- * - fetched (or a 404): used and persisted as the last applied;
- * - failed (an error, a timeout, a malformed snapshot): the last applied snapshot, else none,
+ * - fetched (or a 404): used and persisted;
+ * - failed (an error, a timeout, a malformed snapshot): the last fetched snapshot, else none,
  *   with `fresh: false`. Logged once per outage, not once per caller.
  */
 export async function currentTerms(newsApi: Pick<NewsApiClient, "governmentTerms">, storage: SiteStorage): Promise<TermsView> {
@@ -106,10 +108,9 @@ export async function currentTerms(newsApi: Pick<NewsApiClient, "governmentTerms
       console.error(`[public-site] government terms unavailable; ${kept?.dto ? "keeping the last applied terms" : "none applied yet, rendering without them"} ${safeErrorLabel(err)}`);
     }
     await writePersisted(storage, { dto: kept?.dto ?? null, degraded: true });
-    return { dto: kept?.dto ?? null, fresh: false, recovered: false };
+    return { dto: kept?.dto ?? null, fresh: false };
   }
-  const recovered = (await readPersisted(storage))?.degraded === true;
-  if (recovered) console.log("[public-site] government terms available again; rebuilding the term pages");
+  if ((await readPersisted(storage))?.degraded) console.log("[public-site] government terms available again");
   await writePersisted(storage, { dto, degraded: false });
-  return { dto, fresh: true, recovered };
+  return { dto, fresh: true };
 }

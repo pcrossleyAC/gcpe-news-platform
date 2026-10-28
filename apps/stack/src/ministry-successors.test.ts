@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import { ministrySuccessorRedirects, resolveMinistrySuccessor } from "./ministry-successors";
@@ -86,8 +86,22 @@ describe("ministrySuccessorRedirects", () => {
       });
       expect(res).toEqual({ status: 301, location: "/ministries/c/x?q=1" });
     } finally {
-      server.close();
+      await new Promise<void>((r) => server.close(() => r()));
     }
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("an unreadable file passes through and is logged once, not per request", async () => {
+    await writeTable({ a: "c" });
+    await chmod(join(outputDir, "legacy"), 0o000);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      for (let i = 0; i < 3; i++) expect((await get(appFor(), "/ministries/a/")).status).toBe(404);
+      expect(warn.mock.calls.filter(([m]) => String(m).includes("unreadable"))).toEqual([["[stack] ministry successors unreadable: EACCES"]]);
+    } finally {
+      warn.mockRestore();
+      await chmod(join(outputDir, "legacy"), 0o755);
+    }
+    expect((await get(appFor(), "/ministries/a/")).status).toBe(301);
   });
 
   it("a table entry that isn't two lowercased category keys is ignored", async () => {

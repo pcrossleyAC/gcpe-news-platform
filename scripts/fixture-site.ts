@@ -51,6 +51,7 @@ export const FIXTURE_PAGES = [
 
 function memoryIndex(): PostIndex {
   const rows = new Map<string, IndexedPost>();
+  let termsHash: string | null = null;
   const newest = (a: IndexedPost, b: IndexedPost) => b.publishDate.localeCompare(a.publishDate) || (a.key < b.key ? 1 : -1);
   return {
     get: async (k) => rows.get(k) ?? null,
@@ -67,6 +68,8 @@ function memoryIndex(): PostIndex {
     inCategory: async (token) => [...rows.values()].filter((p) => p.categories.includes(token)).map((p) => p.key).sort(),
     inDayRange: async (start, end) => [...rows.values()].filter((p) => inDays(p, start, end)).sort(newest),
     countInDayRange: async (start, end) => [...rows.values()].filter((p) => inDays(p, start, end)).length,
+    appliedTermsHash: async () => termsHash,
+    setAppliedTermsHash: async (h) => void (termsHash = h),
   };
 }
 

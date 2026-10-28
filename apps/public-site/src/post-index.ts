@@ -1,6 +1,6 @@
 import { arrayContains, asc, desc, eq, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
-import { sitePosts } from "./db/schema";
+import { sitePosts, siteState } from "./db/schema";
 import type { PostDto } from "./dto";
 import { membershipOf, type Membership } from "./rebuild-set";
 
@@ -44,6 +44,9 @@ export interface PostIndex {
    * first; a null end is open. The government-term rule (new-government spec N1). */
   inDayRange(start: string, endExclusive: string | null): Promise<IndexedPost[]>;
   countInDayRange(start: string, endExclusive: string | null): Promise<number>;
+  /** NG-R18: the hash of the terms snapshot the term pages were last queued for (site_state). */
+  appliedTermsHash(): Promise<string | null>;
+  setAppliedTermsHash(hash: string | null): Promise<void>;
 }
 
 const columns = {
@@ -98,6 +101,13 @@ export function postIndex(db: DbOrTx): PostIndex {
     async countInDayRange(start, endExclusive) {
       const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(sitePosts).where(inDays(start, endExclusive));
       return row?.n ?? 0;
+    },
+    async appliedTermsHash() {
+      const [row] = await db.select({ h: siteState.termsHash }).from(siteState).where(eq(siteState.id, 1));
+      return row?.h ?? null;
+    },
+    async setAppliedTermsHash(hash) {
+      await db.insert(siteState).values({ id: 1, termsHash: hash }).onConflictDoUpdate({ target: siteState.id, set: { termsHash: hash, updatedAt: sql`now()` } });
     },
     async inCategory(token) {
       return (await db.select({ key: sitePosts.key }).from(sitePosts).where(arrayContains(sitePosts.categories, [token])).orderBy(asc(sitePosts.key))).map((r) => r.key);

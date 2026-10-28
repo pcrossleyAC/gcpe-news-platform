@@ -99,7 +99,8 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
       return { revision, document };
     },
     governmentTerms: async () => {
-      const res = await fetchImpl(new URL("api/v2/government-terms", base), { signal: AbortSignal.timeout(10_000) });
+      // Short: a release render waits on this, and an outage falls back to the last snapshot (NG-R18).
+      const res = await fetchImpl(new URL("api/v2/government-terms", base), { signal: AbortSignal.timeout(3_000) });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`News API ${res.status} for api/v2/government-terms`);
       const body = governmentTermsBodySchema.parse(JSON.parse(await res.text()));

@@ -15,7 +15,7 @@ describe("site builder", () => {
   let tdb: TestDatabase;
   beforeAll(async () => { tdb = await createPublicSiteTestDb(); });
   afterAll(async () => { await tdb.drop(); });
-  beforeEach(async () => { await tdb.pool.query("TRUNCATE site_posts"); });
+  beforeEach(async () => { await tdb.pool.query("TRUNCATE site_posts, site_state"); });
 
   const setup = (posts: Map<string, PostDto>) => {
     const storage = memoryStorage();
@@ -305,15 +305,45 @@ describe("site builder", () => {
         expect(await builder.renderPage("post:K1", {})).toEqual(expect.arrayContaining(["archive-terms", "archive-term:current"]));
       });
 
-      it("a failed fetch is not kept for the run; the recovery queues every term page", async () => {
-        const { api, builder } = setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })]]));
+      it("20 posts in a drain with terms failing: one fetch attempt, all 20 pages written; the next drain retries", async () => {
+        const posts = new Map(Array.from({ length: 20 }, (_, i) => [`K${i}`, post({ key: `K${i}` })] as const));
+        const { storage, api, builder } = setup(posts);
+        let fetches = 0;
+        api.governmentTerms = async () => { fetches++; throw new Error("News API 503 for api/v2/government-terms"); };
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        try {
+          await enqueuePages(tdb.db, [...posts.keys()].map((k) => ({ pageId: `post:${k}`, priority: 0 })));
+          await drainQueue({ db: tdb.db, builder }, { budget: 20, pageOpts: {} });
+          expect(fetches).toBe(1);
+          for (const k of posts.keys()) expect(storage.files.has(`releases/${k}/index.html`), k).toBe(true);
+          await enqueuePages(tdb.db, [{ pageId: "post:K0", priority: 0 }]);
+          await drainQueue({ db: tdb.db, builder }, { budget: 1, pageOpts: {} });
+          expect(fetches).toBe(2);
+        } finally {
+          vi.mocked(console.error).mockRestore();
+        }
+      });
+
+      it("after an outage that rendered without terms, the next snapshot queues every term page, durably", async () => {
+        const { builder: warm, api } = setup(new Map([["K1", post({ key: "K1" })]]));
         api.terms = terms;
-        failing(api, 1);
+        expect(await warm.renderPage("post:K1", {})).toContain("archive-term:2020-2024"); // first sight of the snapshot
+        expect(await warm.renderPage("post:K1", {})).not.toContain("archive-term:2020-2024"); // applied
+        // An outage on a site with nothing persisted (a fresh folder): rendered without terms.
+        const { builder: cold, api: coldApi } = setup(new Map([["K1", post({ key: "K1" })]]));
+        coldApi.governmentTerms = async () => { throw new Error("News API 503"); };
         vi.spyOn(console, "error").mockImplementationOnce(() => {});
-        const run = {};
-        expect(await builder.renderPage("post:K1", {}, run)).not.toContain("archive-term:2024-2028");
-        const after = await builder.renderPage("post:K2", {}, run);
-        expect(after).toEqual(expect.arrayContaining(["archive-terms", "archive-term:current", "archive-term:2024-2028", "archive-term:2020-2024", "sitemap:pages"]));
+        expect(await cold.renderPage("post:K1", {})).toEqual(expect.arrayContaining(["archive-terms", "archive-term:current"]));
+        coldApi.governmentTerms = async () => terms;
+        const all = ["archive-terms", "archive-term:current", "archive-term:2024-2028", "archive-term:2020-2024", "sitemap:pages"];
+        // The item that notices rolls back (its transaction fails after the render)...
+        await expect(tdb.db.transaction(async (tx) => {
+          expect(await cold.renderPage("post:K1", {}, {}, tx)).toEqual(expect.arrayContaining(all));
+          throw new Error("drain item failed");
+        })).rejects.toThrow("drain item failed");
+        // ...so the next run notices again; once committed, it's quiet.
+        expect(await cold.renderPage("post:K1", {})).toEqual(expect.arrayContaining(all));
+        expect(await cold.renderPage("post:K1", {})).not.toContain("archive-term:2020-2024");
       });
 
       it("keeps the last applied terms: term pages render from them and aren't deleted", async () => {

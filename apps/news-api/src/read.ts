@@ -95,16 +95,22 @@ export async function ministrySuccessors(db: Db): Promise<Record<string, string>
     .where(eq(categories.kind, "ministries"));
   const raw: Record<string, string[]> = {};
   const active = new Set<string>();
+  const hidden = new Set<string>();
   for (const r of rows) {
     const key = r.key.toLowerCase();
     if (r.isActive) {
       if (r.isPublic) active.add(key);
       continue;
     }
+    if (!r.isPublic) hidden.add(key);
     const successors = (r.ministry?.successorKeys ?? []).map((k) => k.toLowerCase());
     if (successors.length) raw[key] = successors;
   }
-  return resolveSuccessors(raw, active);
+  // A non-public ministry's key never appears in this public answer (it has no public page to
+  // redirect from), but it still carries a chain through it.
+  const resolved = resolveSuccessors(raw, active);
+  for (const key of hidden) delete resolved[key];
+  return resolved;
 }
 
 export async function getMinister(db: Db, key: string, tz: string) {
