@@ -172,7 +172,10 @@ describe("plan-4 parts (contactsPage, pageText, navigation, connect.linkedin/pol
     expect(raw.pageText.privacy.bodyHtml.startsWith("<p><strong>Introduction</strong></p>")).toBe(true);
     expect(raw.pageText.privacy.bodyHtml).toContain("telephone (250) 356-1851.");
     expect(raw.pageText.privacy.bodyHtml).not.toMatch(/Reset Preferences|media-asset-preferences/);
-    expect(raw.pageText.collectionNotice.bodyHtml).toContain('<a href="tel:2503871337">250 387-1337</a>');
+    // Legacy linked the number with tel:, which the shared rich-HTML allow-list (http, https,
+    // mailto) refuses: plain text here, so the default is already clean (P4-R4 save-time cleaning).
+    expect(raw.pageText.collectionNotice.bodyHtml).toContain("<br />\n250 387-1337</p>");
+    expect(raw.pageText.collectionNotice.bodyHtml).not.toContain("tel:");
     expect(raw.pageText.assetLicence).toEqual({
       text: "These assets are subject to the terms of the",
       linkText: "News Footage License - British Columbia",
