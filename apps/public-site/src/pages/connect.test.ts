@@ -40,6 +40,16 @@ describe("Connect page", () => {
     expect(doc.querySelector("#threads")).toBeNull();
   });
 
+  it("an unsafe policy link URL leaves its text, with no href", () => {
+    const s = { ...settings, connect: { ...settings.connect, policyLink: { text: "Our policy", url: "javascript:alert(1)" } } };
+    const html = renderConnectPage(sub, { settings: s }, feeds, []);
+    expect(html).not.toContain("javascript:");
+    const doc = expectAccessibleStructure(html);
+    const p = doc.querySelector(".home-body > h1 + p")!;
+    expect(p.textContent).toBe("Our policy");
+    expect(p.querySelector("a")).toBeNull();
+  });
+
   it("x uses class twitter; headings are the legacy ones; no target=_blank; no .article-fade", () => {
     const html = renderConnectPage(sub, { settings }, feeds, []);
     const doc = expectAccessibleStructure(html);

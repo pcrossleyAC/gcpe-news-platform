@@ -504,6 +504,16 @@ describe("site builder", () => {
     expect(doc.querySelector(".home-features a")?.getAttribute("href")).toBe("/contacts/");
   });
 
+  it("connect: an uppercase ministry key gives a lowercased feed URL under a sub-path base URL", async () => {
+    const storage = memoryStorage();
+    const api = fakeNewsApi(new Map());
+    api.ministries = async () => [ministry({ key: "HEALTH", name: "Health" })];
+    const builder = createSiteBuilder({ newsApi: api, storage, index: postIndex(tdb.db), site: { ...site, baseUrl: "https://x.example/site" }, assetsDir: null });
+    await builder.renderPage("connect", {});
+    const doc = new JSDOM(String(storage.files.get("connect/index.html"))).window.document;
+    expect([...doc.querySelectorAll("details#rss li a")].map((a) => a.getAttribute("href"))).toEqual(["/site/feed.xml", "/site/ministries/health/feed.xml"]);
+  });
+
   it("every generated HTML page passes the structure check", async () => {
     const { storage, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     await builder.buildAll({ test: true });
