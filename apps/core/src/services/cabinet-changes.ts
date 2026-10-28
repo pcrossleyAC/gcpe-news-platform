@@ -530,8 +530,13 @@ export function instantToLocal(iso: string, timeZone: string): string {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
 }
 
-/** Deadlock and serialization failure: a clash with another writer, worth one more try. */
-const TRANSIENT_SQLSTATES = new Set(["40P01", "40001"]);
+/**
+ * Worth one more try: a deadlock or serialization failure (a clash with another writer), too many
+ * clients (53300), an admin shutdown (57P01), or any connection exception (class 08), all of which
+ * shared Postgres hosting (SiteGround) produces in passing.
+ */
+const TRANSIENT_SQLSTATES = new Set(["40P01", "40001", "53300", "57P01"]);
+const isTransient = (state: string) => TRANSIENT_SQLSTATES.has(state) || state.startsWith("08");
 
 function sqlStateOf(e: unknown): string | undefined {
   let c: unknown = e;
@@ -574,7 +579,7 @@ export async function publishDueCabinetChanges(db: Db, subscribers: SubscriberCo
       error = `Not published at the scheduled time: ${result.result === "stale" ? staleMessage(result.displayName) : result.problems.map((p) => p.message).join(" ")}`;
     } catch (e) {
       const state = sqlStateOf(e);
-      if (state && TRANSIENT_SQLSTATES.has(state) && transientFailures === 0) {
+      if (state && isTransient(state) && transientFailures === 0) {
         // Nothing was written (one transaction): leave it scheduled, note the failure on the row,
         // and try once more next tick. The note is stored so the bound holds across processes.
         const noted = await db.transaction(async (tx) => {

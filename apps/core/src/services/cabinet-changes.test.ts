@@ -361,7 +361,7 @@ describe("cabinet changes (new-government spec §5)", () => {
     expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
   });
 
-  describe("a deadlock or serialization failure while publishing a scheduled change", () => {
+  describe("a transient database error while publishing a scheduled change", () => {
     const at = new Date("2028-11-20T08:00:00Z");
     const after = () => new Date(at.getTime() + 1_000);
     const failWith = (code: string) =>
@@ -390,6 +390,17 @@ describe("cabinet changes (new-government spec §5)", () => {
       await stopFailing();
       expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 1, failed: 0 });
       expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha Renamed");
+    });
+
+    // Shared Postgres (SiteGround): too many clients, an admin shutdown, a dropped connection.
+    it.each(["53300", "57P01", "08006", "08003"])("treats %s as transient too: retried once", async (code) => {
+      await scheduled();
+      await failWith(code);
+      expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
+      expect(await getOpenCabinetChange(tdb.db)).toMatchObject({ status: "scheduled", error: null });
+      expect(await failures()).toBe(1);
+      await stopFailing();
+      expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 1, failed: 0 });
     });
 
     it("goes back to draft when the retry fails too", async () => {
