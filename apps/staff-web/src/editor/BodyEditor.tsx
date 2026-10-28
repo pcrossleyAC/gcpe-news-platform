@@ -25,6 +25,10 @@ export interface BodyEditorProps {
    * true; the minister biography turns it off, so a stored or pasted `<asset>` shows as its URL
    * text, which is what Core stores. Read once, when the editor is created. */
   allowAssets?: boolean;
+  /** Italic: the toolbar toggle, the mark, and `em` in the paste allow-list. Default false: only the
+   * settings editors turn it on, because their server allow-list keeps `<em>`; the release body and
+   * the biography drop it. Read once, when the editor is created. */
+  allowItalic?: boolean;
   /** Space-separated ids of the hint, note or error that describe the editing area. */
   describedBy?: string;
 }
@@ -36,7 +40,7 @@ export interface BodyEditorProps {
  * client-side (pasteFilter.ts) before ProseMirror ever parses it, matching what the server
  * sanitiser would keep.
  */
-export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets = true, describedBy }: BodyEditorProps): React.JSX.Element {
+export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets = true, allowItalic = false, describedBy }: BodyEditorProps): React.JSX.Element {
   const attributes = (): Record<string, string> => ({
     id,
     role: "textbox",
@@ -49,12 +53,12 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
   // server error) reaches the editing area's attributes without an effect of its own.
   const editor = useEditor(
     {
-      extensions: bodyExtensions(allowAssets ? AssetWithView : null),
+      extensions: bodyExtensions(allowAssets ? AssetWithView : null, { italic: allowItalic }),
       content: value,
       editable: !readOnly,
       editorProps: {
         attributes: attributes(),
-        transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, allowAssets ? BODY_TAGS : BIO_TAGS),
+        transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, [...(allowAssets ? BODY_TAGS : BIO_TAGS), ...(allowItalic ? ["em"] : [])]),
       },
       onUpdate: ({ editor: e }) => onChange(e.getHTML()),
     },
@@ -105,6 +109,11 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
           <ToggleButton isSelected={editor.isActive("bold")} onChange={() => editor.chain().focus().toggleBold().run()}>
             Bold
           </ToggleButton>
+          {allowItalic && (
+            <ToggleButton isSelected={editor.isActive("italic")} onChange={() => editor.chain().focus().toggleItalic().run()}>
+              Italic
+            </ToggleButton>
+          )}
           <ToggleButton isSelected={editor.isActive("bulletList")} onChange={() => editor.chain().focus().toggleBulletList().run()}>
             Bulleted list
           </ToggleButton>

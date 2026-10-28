@@ -133,6 +133,44 @@ describe("BodyEditor", () => {
     expect(last).toContain("Heading");
   });
 
+  it("with allowItalic, the toolbar has an Italic toggle and toggling it wraps the selection in <em>", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={onChange} readOnly={false} allowItalic />);
+    const field = await screen.findByLabelText("Body");
+    const user = userEvent.setup();
+    const italic = screen.getByRole("button", { name: "Italic" });
+    expect(italic).toHaveAttribute("aria-pressed", "false");
+    await user.click(italic);
+    await user.click(field);
+    await user.type(field, "hi");
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)![0]).toContain("<em>hi</em>");
+  });
+
+  it("with allowItalic, stored '<p>under the <i>FOIPP Act</i></p>' loads italic and an edit elsewhere keeps '<em>FOIPP Act</em>'", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p>under the <i>FOIPP Act</i></p>" onChange={onChange} readOnly={false} allowItalic />);
+    const field = await screen.findByLabelText("Body");
+    expect(field.querySelector("em")?.textContent).toBe("FOIPP Act");
+    const user = userEvent.setup();
+    await user.click(field);
+    (field as unknown as { editor: { commands: { focus(p: string): void } } }).editor.commands.focus("start");
+    await user.type(field, "x", { skipClick: true });
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)![0]).toBe("<p>xunder the <em>FOIPP Act</em></p>");
+  });
+
+  it("without allowItalic there is no Italic button and the release schema has no italic mark", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p>a <em>b</em></p>" onChange={onChange} readOnly={false} />);
+    const field = await screen.findByLabelText("Body");
+    expect(screen.queryByRole("button", { name: "Italic" })).not.toBeInTheDocument();
+    expect(field.querySelector("em")).toBeNull();
+    const { bodyExtensions } = await import("./schema");
+    expect(bodyExtensions().some((e) => e.name === "italic")).toBe(false);
+    expect(bodyExtensions(null, { italic: true }).some((e) => e.name === "italic")).toBe(true);
+  });
+
   it("allowAssets default: a pasted <asset> stays an asset embed", async () => {
     const onChange = vi.fn();
     render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={onChange} readOnly={false} />);

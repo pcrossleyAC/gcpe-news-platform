@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BIO_TAGS } from "@gcpe/nrms-contract";
 import { reduceToAllowedHtml } from "./pasteFilter";
 
 describe("reduceToAllowedHtml (task-4-brief.md Step 1: paste is reduced to the allow-list)", () => {
@@ -37,5 +38,10 @@ describe("reduceToAllowedHtml (task-4-brief.md Step 1: paste is reduced to the a
 
   it("keeps an <asset> embed's URL text content", () => {
     expect(reduceToAllowedHtml("<asset>https://youtu.be/abc</asset>")).toBe("<asset>https://youtu.be/abc</asset>");
+  });
+
+  it("keeps <i> and <em> as <em> when em is allowed; with BIO_TAGS both become text", () => {
+    expect(reduceToAllowedHtml("<p><i>a</i><em>b</em></p>", [...BIO_TAGS, "em"])).toBe("<p><em>a</em><em>b</em></p>");
+    expect(reduceToAllowedHtml("<p><i>a</i><em>b</em></p>", BIO_TAGS)).toBe("<p>ab</p>");
   });
 });

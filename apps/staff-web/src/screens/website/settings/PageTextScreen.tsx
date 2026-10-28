@@ -64,7 +64,7 @@ function RichField({ label, value, onChange, hint, error, readOnly }: RichFieldP
   const describedBy = [hint ? hintId : null, error !== undefined ? errorId : null].filter(Boolean).join(" ");
   return (
     <div className="gcpe-field gcpe-field--wide">
-      <BodyEditor id={`${id}-editor`} label={label} value={value} onChange={onChange} readOnly={readOnly} allowAssets={false} describedBy={describedBy || undefined} />
+      <BodyEditor id={`${id}-editor`} label={label} value={value} onChange={onChange} readOnly={readOnly} allowAssets={false} allowItalic describedBy={describedBy || undefined} />
       {hint && <p id={hintId}>{hint}</p>}
       {error !== undefined && (
         <p id={errorId} role="alert" className="gcpe-link-list__error">
