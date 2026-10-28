@@ -36,7 +36,7 @@ Sources read:
 |---|---|---|---|---|---|
 | Site name in `<title>`, wordmark, feed titles ("BC Gov News") | Hardcoded `_Layout.cshtml:38` `<title>BC Gov News</title>`; `PostView.cshtml:51` og:site_name [V] | Developer | `config/tenants/bc.json` `siteName`, overridable by env `SITE_NAME` (`apps/public-site/src/env.ts:59`) [V] | None | config (see §2) |
 | Logo | Static SVGs `~/Content/Images/Gov/BCID_*.svg`, with a Blue Bridge variant (`_Layout.cshtml:174-178`) [V] | Developer | The four legacy SVGs, committed under `apps/public-site/assets/legacy/Content/Images/Gov/` and always rendered in the header and footer; the `logoFor` gate is gone (Q76 answered 2026-10-28; parity plan 1 cf0827e, d39a395) [V] | None | committed asset (see §2) |
-| Header nav items (Live Webcast, News mega-menu, Office of the Premier, News Archive, Subscribe, search box) | Hardcoded `_Layout.cshtml:207-300`; archive link from appsetting `ArchiveHostUri` [V] | Developer (archive URL: operator) | Hardcoded `render.ts:98-101`: Home, Ministries, Archive, Search [V] | None | **hardcoded** (M13) |
+| Header nav items (Live Webcast, News mega-menu, Office of the Premier, News Archive, Subscribe, search box) | Hardcoded `_Layout.cshtml:207-300`; archive link from appsetting `ArchiveHostUri` [V] | Developer (archive URL: operator) | Site settings `navigation` (header links, news-menu label, webcast button label, every page label); `render.ts` builds the header from it, golden-tested against the BC defaults (7426dd5) [V] | `/website/navigation` (81364e0, 6ac5383) | **editable** (M13 closed). The Live Webcast button still appears only while the stream is on. |
 | Theme colours | admin-screens: `SiteSettings.Theme.Colors` (Primary, Text, Link, BannerInfo, BannerEmergency, FooterBackground); develop: CSS [V] | Developer (prod) | Site settings `theme.colors`, 10 keys (`packages/site-settings/src/model.ts`) [V] | `/website/theme` (ThemeScreen) | **editable** |
 | Font | CSS; admin-screens `Theme.FontFamily` [V] | Developer | `bc.json` `site.theme.font` [V] | None | config (see §2) |
 | Blue Bridge logo/theme switch (`BridgeLogo` auto/on/off) | admin-screens `ThemeSettings.BridgeLogo`; `granville-bridge-theme.css` [V] | Developer | Follows the Blue Bridge switch: while it is on, pages load `granville-bridge-theme.css` and the `_bridge` logos (parity plan 1 cf0827e, d39a395). No separate auto/on/off setting [V] | None | missing (low): the auto/on/off override |
@@ -55,11 +55,11 @@ Sources read:
 |---|---|---|---|---|---|
 | Top story, Feature story | `ApplicationSetting` `HomeTopReleaseId`/`HomeFeatureReleaseId` [V: `Carousel.aspx.cs` keys]; set from the release page | Legacy release page (Top/Feature) | NRMS features → News API `home.top/feature_post_key` [V schema] | Release editor → Top/Feature switches (`screens/release/sections/FeatureSwitches.tsx`) | **editable** |
 | Carousel slides (headline, summary, action URL, Facebook post URL, justify, image, go-live time) | `dbo.Carousel`/`CarouselSlide`/`Slide` (`02-hub-reference.sql` 2.9) [V] | `News/Carousel.aspx` [V] | NRMS carousel → News API `slides` [V] | `/website/carousel` | **editable** |
-| Slide action **label** ("Learn more") | Legacy view prints `item.ActionLabel` (`HomeCarousel.cshtml:25`). Legacy `Slide` has no such column (2.9 SELECT) [V]. [I] the closed News API supplies it. | Unknown / developer | NRMS emits `actionLabel: null` (`apps/nrms/src/website/events.ts:61`); public falls back to hardcoded "Learn more" (`pages/home.ts`) [V] | None | **hardcoded** |
+| Slide action **label** ("Learn more") | Legacy view prints `item.ActionLabel` (`HomeCarousel.cshtml:25`). Legacy `Slide` has no such column (2.9 SELECT) [V]. [I] the closed News API supplies it. | Unknown / developer | NRMS stores `actionLabel` per slide and per pin (migration 0019, 76dd84b); public falls back to the `slideActionLabel` Navigation label, then "Learn more" [V] | `/website/carousel`, `/website/pins`; fallback label on `/website/navigation` | **editable** |
 | Emergency pins (2 slots: headline, summary, URL, image, pinned) | `ApplicationSetting` `PinnedSlideId`/`IsPinnedSlide`…; `News/EmergencySlideManagement.aspx` [V] | Legacy Hub page | NRMS pins → slides with `emergency: true` [V] | `/website/pins` | **editable** |
 | Resources box (home) | `dbo.ResourceLink`, with no screen (C22, Q3) [V] | Database only | NRMS links → News API `resource_links` [V] | `/website/links` | **editable** |
-| Section headings ("Latest news", "Top story", "Featured", "Highlights", "Emergency information", "More news", "Resources") | Hardcoded views [V] | Developer | Hardcoded `pages/home.ts` [V] | None | hardcoded (low–med) |
-| Live Webcast button (shown when M3U set) | `home.LiveWebcastM3uPlaylist` (`BaseController.cs:68`) [V] | Legacy `LiveFeedManagement.aspx` switch only (Q1) [V] | NRMS live-feed → News API `home.live_webcast_*` [V] | `/website/live-feed` (URLs + switch) | **data, no page** (H4) |
+| Section headings ("Latest news", "Top story", "Featured", "Highlights", "Emergency information", "More news", "Resources") | Hardcoded views [V] | Developer | Navigation `labels` (Latest news, Highlights, Emergency information, Resources, News by Sector, Load More News, Search News, Browse more news, Connect With Us, View all social media) [V `packages/site-settings/src/model.ts`]; "Top story", "Featured" and "More news" are not among them | `/website/navigation` | **editable** for the labels listed; the rest hardcoded (low) |
+| Live Webcast button (shown when M3U set) | `home.LiveWebcastM3uPlaylist` (`BaseController.cs:68`) [V] | Legacy `LiveFeedManagement.aspx` switch only (Q1) [V] | NRMS live-feed → News API `home.live_webcast_*` → `assets/live.json`, polled by `site.js` every 60 s; button label from Navigation settings; page `/live/` (7426dd5, 59526ac) [V] | `/website/live-feed` (URLs + switch); label on `/website/navigation` | **editable** (H4, M13 closed) |
 | Google/Bing site verification meta | appsettings `GoogleSiteVerification`/`BingSiteVerification` (`HomeView.cshtml:8-9`) [V] | Operator | Not implemented [I: no `google-site-verification` in `apps/public-site/src`] | None | config (see §2) |
 
 ### 1.3 Posts (release pages, listings)
@@ -68,8 +68,8 @@ Sources read:
 |---|---|---|---|---|---|
 | Headline, body, summary, location, contacts, assets, translations, categories | NRMS release tables | Legacy release editor | NRMS → News API posts | Release editor | **editable** |
 | Post-kind label ("News Release", "Information Bulletin", "Factsheet") | `dbo.NewsReleaseType.PageTitle` per language (2.6) [V]. No screen [I: only release-editor code references `NewsReleaseType`] | Database only | NRMS `page_types` table; `GET /page-types` only, no write route [V] | None (picked per release, list not editable) | **data, no screen**. Not rendered yet (M4). |
-| Per-kind listing titles ("Factsheets & Opinion Editorials", "Speeches") | Hardcoded `MenuContent.cshtml`, `Sector.cshtml:46-50` [V] | Developer | Pages missing (H5) | None | missing |
-| Media-assets licence notice and link | appsetting `MediaAssetsLicenseUri` (`AssetsController.cs:49`) + hardcoded text `PostView.cshtml` [V] | Operator | Not rendered (L3) [V] | None | missing |
+| Per-kind listing titles ("Factsheets & Opinion Editorials", "Speeches") | Hardcoded `MenuContent.cshtml`, `Sector.cshtml:46-50` [V] | Developer | Navigation `listingTitles` (releases, stories, factsheets, updates); the pages exist (78c2e57) [V] | `/website/navigation` | **editable** (H5 closed). The per-language release kind labels (NRMS write route, T9) stay in plan 5. |
+| Media-assets licence notice and link | appsetting `MediaAssetsLicenseUri` (`AssetsController.cs:49`) + hardcoded text `PostView.cshtml` [V] | Operator | Page text `assetLicence` (text, link text, link), rendered under the media assets on release pages (5598052) [V] | `/website/page-text` (6300244) | **editable** (L3 closed) |
 | Share buttons and og/twitter meta (`og:site_name`, `twitter:site @BCGovNews`) | Hardcoded `PostView.cshtml:51,64` [V]; `FacebookOwnershipId` appsetting [V] | Developer / operator | None (M5) | None | missing |
 | Release-page section headings ("Backgrounders", "Quotes", "Learn More", "Related Articles", "Connect with the Ministry") | Hardcoded `PostView.cshtml` [V] | Developer | Partly hardcoded `pages/release.ts` ("Contacts", "Media assets", "Translations", "Related news") [V] | None | hardcoded (low) |
 | Translation language display names (简体中文 …) | `dbo.Language` [V 2.3] | Database only | Raw label printed (L3) | None | missing (low) |
@@ -85,11 +85,11 @@ Sources read:
 | Minister "large photo" link | Hardcoded URL pattern on www2 built from the name (`Minister.cshtml`) [V] | Developer | Not implemented | None | missing (low) |
 | Ministry website, Flickr, YouTube links ("More from this Ministry") | `Ministry.MinistryUrl` (editable), `FlickrUrl`/`YoutubeUrl` (hidden) [V] | Calendar Admin / database [V] | Core `url`, `social.flickrUrl/youtubeUrl` [V] | `/organizations` edit form [V] | **editable** |
 | Featured Topics / Featured Services links | `dbo.MinistryTopic` / `dbo.MinistryService` [V 2.3]; no screen [V grep: only entity classes reference them] | **Database only** | Core `topicLinks`/`serviceLinks` [V] | `/organizations` edit form [V] | **editable** |
-| Ministry Newsletters links | `dbo.MinistryNewsletter` → `NewsLetterLinks.cshtml` "Newsletters" box [V] | Database only | Not carried (no field in OrgRecord) [V] | None | missing. [I] probably drop: legacy `/newsletters` is retired. |
+| Ministry Newsletters links | `dbo.MinistryNewsletter` → `NewsLetterLinks.cshtml` "Newsletters" box [V] | Database only | Not carried (no field in OrgRecord) [V] | None | missing by decision: dropped (changes-from-legacy C289) |
 | Side-column labels ("More from this Ministry", "Featured Topics", "Media Contacts", …) | Hardcoded `MoreFromThis.cshtml`, `PopularTopics.cshtml` [V] | Developer | Site settings `ministryPages` (7 labels) [V] | `/website/ministry-pages` | **editable** |
 | **Media contacts (primary, alternate: name, phone, cell, email)** | `Ministry.ContactUserId/SecondContactUserId` → Hub `User` (phone/mobile in `Calendar/Admin/User.aspx:55-64`) [V] | Media Requests app "Ministry Contacts" (`Gcpe.Hub.WebApp/Views/MediaRequests/_EditMinistryContacts.cshtml`, `MinistriesApiController.cs:120-156`) [V] | Core `contact`/`secondContact` JSON snapshot `{fullName, phoneNumber, mobileNumber, emailAddress}` written only by the legacy import (`import/map.ts:96-97`) [V]. Core users have no phone fields (`db/schema.ts` users) [V] | `/organizations` "Media contacts" fieldset: free-text name, phone, cell, email for primary and alternate (be63b8f; core c40f181; no title, C245) | **editable** (plan 2). Renders on the ministry page (efa17ea; M1). |
 | After-hours (weekend) contact number | `Ministry.WeekendContactNumber` [V] | Media Requests "Ministry Contacts" and Calendar Admin [V] | Core `weekendContactNumber`; in DTO, not rendered [V] | None | **editable** (plan 2: `/organizations` after-hours field, be63b8f; rendered by efa17ea) |
-| Additional display name (e.g. "(Child Care)") | `Ministry.DisplayAdditionalName` [V] | Calendar Admin [V] | Core `displayAdditionalName` [V] | None | **data, no screen** |
+| Additional display name (e.g. "(Child Care)") | `Ministry.DisplayAdditionalName` [V] | Calendar Admin [V] | Core `displayAdditionalName` [V] | `/organizations` edit form (142bf8e); shown in italics on `/contacts/` and the ministries listing | **editable** |
 | Ad-hoc extra contacts (e.g. commented "Child Care Media Contacts") | Hardcoded `Ministry.cshtml:97-111` [V] | Developer | None | None | missing. Covered by the proposal in §3. |
 | Office of the Premier "Meet the Team" links; "More from the Premier" heading | Hardcoded `MoreFromThis.cshtml` (3 www2 links) [V] | Developer | None (M15) | None | **editable** (plan 2): `/organizations` "Meet the Team" links (c40f181, be63b8f), rendered by efa17ea |
 | Ministers of state card ("Meet the Team") | Derived from `ParentId` [V] | Calendar Admin | Core `parentKey` (unused by site, M15) [V] | `/organizations` (Core.Admin) | data exists; page missing |
@@ -101,16 +101,16 @@ Sources read:
 |---|---|---|---|---|---|
 | Name, sort order, active | `dbo.Sector/Theme/Tag` [V] | Calendar Admin Dynamic Data [V] | Core `terms` (`displayName`, `sortOrder`, `isActive`) [V]; API `PUT /terms/:kind/:key` and `/deactivate` (Core.Admin) [V] | **None.** No `terms` call in `apps/staff-web/src` [V grep] | **data, no screen** (queued per memory) |
 | Category Top/Feature story | `Sector.TopReleaseId` etc. [V] | Legacy release page | NRMS features [V] | Release editor Top/Feature switches | **editable** |
-| Category index pages (`/sectors`, `/themes`, Topics) | Generated | n/a | Missing (M16) | n/a | missing (no editable values) |
+| Category index pages (`/sectors`, `/themes`, Topics) | Generated | n/a | `/ministries/`, `/sectors/`, `/themes/`, `/tags/` (d0008cb); one batch call, `GET /api/v2/categories/{kind}/latest` (837f7a7) [V] | n/a | built (M16 closed); no editable values of their own |
 
 ### 1.6 Subscribe and notices
 
 | Value / block | Legacy source | Legacy edit today | Platform source | Hub edit today | Status |
 |---|---|---|---|---|---|
-| Subscribe page heading ("Subscribe to BC Gov News On Demand") | Hardcoded `Subscribe/Index.cshtml` [V] | Developer | Hardcoded `subscribe-pages.ts:164`. The BC brand name is in shared code [V] | None | **hardcoded** |
+| Subscribe page heading ("Subscribe to BC Gov News On Demand") | Hardcoded `Subscribe/Index.cshtml` [V] | Developer | Built from `site.name` in shared code (bb0ea79) [V] | None | config (follows `siteName`) |
 | Which lists and topics are offered | NoD lists | NoD admin (`EditList.aspx`, C92) | NoD lists, names from Core/NRMS | `/subscribers/lists` ("Lists and categories") [V] | **editable** |
 | Category group legends ("Ministries", "Sectors", "Themes", "Tags", "Emergency Info BC") | Hardcoded | Developer | Hardcoded `subscribe-pages.ts:9-13` [V] | None | hardcoded (low; "Emergency Info BC" is a BC brand) |
-| **Notice of Collection** (FOIPPA s.26(c), Executive Director, 250 387-1337) | Hardcoded `Subscribe/Index.cshtml` [V] | Developer | Not rendered (M14) [V] | None | **missing**. [I] compliance text. |
+| **Notice of Collection** (FOIPPA s.26(c), Executive Director, 250 387-1337) | Hardcoded `Subscribe/Index.cshtml` [V] | Developer | Page text `subscribeNotice`, rendered on `/subscribe/` and `/subscribe/manage/` (bb0ea79) [V] | `/website/page-text` | **editable** (M14 closed). The phone number is plain text, not tap-to-call (P4-R7). |
 | Status and confirmation messages ("Check your email…") | Hardcoded | Developer | Hardcoded `subscribe-pages.ts` script [V] | None | hardcoded. **OK to keep** (see §2). |
 
 ### 1.7 Live webcast
@@ -118,35 +118,35 @@ Sources read:
 | Value / block | Legacy source | Legacy edit today | Platform source | Hub edit today | Status |
 |---|---|---|---|---|---|
 | Stream URLs (manifest, M3U) | News API home record; unknown setter (Q1) [V] | Switch only (`live_webcast_enabled`) [V] | NRMS live-feed; env defaults `LIVE_WEBCAST_*_URL_DEFAULT` [V] | `/website/live-feed` | **editable** (data) |
-| Live page heading, player, privacy-consent text ("content from wowza.com … Privacy statement") | Hardcoded `LiveView.cshtml`, `LiveVideoPlayer.cshtml` [V] | Developer | Page missing (H4) | None | **missing** |
+| Live page heading, player, privacy-consent text ("content from wowza.com … Privacy statement") | Hardcoded `LiveView.cshtml`, `LiveVideoPlayer.cshtml` [V] | Developer | Page text `live` (heading, consent and fallback text with `{host}`), rendered at `/live/` (59526ac) [V] | `/website/page-text` | **editable** (H4 closed) |
 
 ### 1.8 Media Contacts directory (`/contacts`)
 
 | Value / block | Legacy source | Legacy edit today | Platform source | Hub edit today | Status |
 |---|---|---|---|---|---|
-| Header "Government Communications and Public Engagement", 24-hour line **250-883-2951**, intro text, non-media links (ministries page, Service BC) | Hardcoded `Default/CommContacts.cshtml` [V] | **Developer** | Page missing (H3); home links out to news.gov.bc.ca/contacts | None | **missing** |
-| Multicultural media contacts (Chinese Media, South Asian Media: named staff, cell, email) | **Hardcoded** names, phones and emails, `CommContacts.cshtml` [V] | **Developer** | None | None | **missing** |
-| Per-ministry rows (name, additional name, minister, primary, alternate, after hours) | `Ministry` + contact users [V] | Media Requests "Ministry Contacts" | Core org fields (see 1.4) | None | data, no screen |
-| Special case "hide minister for Intergovernmental Relations Secretariat" | Hardcoded name check `CommContacts.cshtml` [V] | Developer | None | None | missing. A per-org flag is proposed in §3 T2. |
+| Header "Government Communications and Public Engagement", 24-hour line **250-883-2951**, intro text, non-media links (ministries page, Service BC) | Hardcoded `Default/CommContacts.cshtml` [V] | **Developer** | Site settings `contactsPage`: heading, rich-text intro (24-hour line and links), rows with placement; BC defaults role-level only (bff716e, 226ddf6) [V] | `/website/media-contacts` (811e3c5) | **editable** (H3 closed) |
+| Multicultural media contacts (Chinese Media, South Asian Media: named staff, cell, email) | **Hardcoded** names, phones and emails, `CommContacts.cshtml` [V] | **Developer** | `contactsPage` rows (name, phone, cell, email, group heading, sub-group, group link, placement). Not committed to the BC defaults (P4-R2): staff enter named contacts in the Hub [V] | `/website/media-contacts` | **editable**. Named staff still to be entered (owner question 3). |
+| Per-ministry rows (name, additional name, minister, primary, alternate, after hours) | `Ministry` + contact users [V] | Media Requests "Ministry Contacts" | Core org fields (see 1.4), rendered by `pages/contacts.ts` (3966eaf) [V] | `/organizations` (contacts, after-hours, additional name) | **editable** |
+| Special case "hide minister for Intergovernmental Relations Secretariat" | Hardcoded name check `CommContacts.cshtml` [V] | Developer | Not ported: a blank minister name shows none (changes-from-legacy C277); the IGRS name is unchecked against Core data [V 3966eaf] | None | **no flag**. A per-organisation flag stays proposed in §3 T2 if Core ever holds a name. |
 
 ### 1.9 Connect page
 
 | Value / block | Legacy source | Legacy edit today | Platform source | Hub edit today | Status |
 |---|---|---|---|---|---|
 | Social accounts for Facebook, X, Instagram, Threads, Bluesky, Flickr, YouTube, Blogs | admin-screens settings `Connect`; develop: controller code [V] | Developer (prod) | Site settings `connect` (8 networks) [V] | `/website/social` | **editable** |
-| **LinkedIn** accounts | Hardcoded in `DefaultController.cs:368-373`, even on admin-screens [V] | Developer | `NETWORKS` has no `linkedin` [V] | None | **missing** (M12) |
+| **LinkedIn** accounts | Hardcoded in `DefaultController.cs:368-373`, even on admin-screens [V] | Developer | Connect network `linkedin` in site settings, optional part filled by `fillMissingFields`; `schemaVersion` stays 1 (3fe99ee, 0237725) [V] | `/website/social` (6febcda) | **editable** (M12 closed) |
 | Network headings ("Find us on Facebook" …) | Hardcoded `ConnectView.cshtml` [V] | Developer | `NETWORKS[].name` constant [V] | None | hardcoded (low) |
-| Social Media policy, collection notice and hours link | Hardcoded `ConnectView.cshtml:22` [V] | Developer | None [V] | None | **missing** |
+| Social Media policy, collection notice and hours link | Hardcoded `ConnectView.cshtml:22` [V] | Developer | Connect `policyLink` and introduction in site settings (3fe99ee) [V] | `/website/social` | **editable** |
 | RSS feed list (~45) | Generated from categories (`DefaultController.cs:355-366`) [V] | Automatic | Not built (non-goal) | n/a | derived, nothing to edit |
 
 ### 1.10 Privacy, 404, search, archive
 
 | Value / block | Legacy source | Legacy edit today | Platform source | Hub edit today | Status |
 |---|---|---|---|---|---|
-| `/privacy` statement (123-line page) + "Reset Preferences" | Hardcoded `PrivacyView.cshtml` [V] | Developer | Missing (L1); footer links the www2 privacy page | Footer link: `/website/footer` | missing. The link is editable. |
-| 404 page text | `SearchView.cshtml` "That web page doesn't exist…" [V] | Developer | Hardcoded `static-pages.ts:10-15` [V] (and not served, H1) | None | **hardcoded** |
+| `/privacy` statement (123-line page) + "Reset Preferences" | Hardcoded `PrivacyView.cshtml` [V] | Developer | Page text `privacy` (label, title, rich-text body), rendered at `/privacy/`; no Reset Preferences (5598052) [V] | `/website/page-text` | **editable** (L1 closed) |
+| 404 page text | `SearchView.cshtml` "That web page doesn't exist…" [V] | Developer | Page text `notFound` (heading and text), the 404 page (5598052) [V] | `/website/page-text` | **editable** |
 | Error page | Hardcoded `ErrorView.cshtml` [V] | Developer | n/a (static) | — | n/a |
-| Search UI text and old-archive links (archive.news.gov.bc.ca 1994–2011) | Hardcoded `SearchView.cshtml` [V] | Developer | Hardcoded `pages/search.ts` [V]; no archive links | None | hardcoded. Archive links missing. |
+| Search UI text and old-archive links (archive.news.gov.bc.ca 1994–2011) | Hardcoded `SearchView.cshtml` [V] | Developer | Page text `searchArchiveLinks` on `/search/`; the UI text is hardcoded (455354e) [V] | `/website/page-text` | **editable** for the older-archive links; the UI text is hardcoded (**OK to keep**, §2) |
 | Archive page text ("Nothing has been published yet.") | n/a | — | Hardcoded `pages/archive.ts` | None | hardcoded. **OK to keep** (see §2). |
 
 ### 1.11 Feeds, sitemaps, analytics

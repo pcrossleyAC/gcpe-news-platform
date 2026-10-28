@@ -84,16 +84,16 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 - Mitigation: our ministry page renders `minister.details` inline when it exists (`categories.ts`) [V-src]. On boxs.ca the details are `null` (data) [V-live: `/api/Ministries/citizens-services/Minister`].
 - This also covers `/office-of-the-premier/biography` and ministers of state (see M15).
 
-**H3. The Media Contacts directory is missing.** Code (page) plus data, M.
+**H3. The Media Contacts directory is missing.** Code (page) plus data, M. **Status: addressed by plan 4** (3966eaf; settings model bff716e, 226ddf6; Hub screen 811e3c5): `/contacts/` is built from the Media contacts settings and the ministries' contacts (C276, C277). The home Resources link points in-site. Named contacts are entered in the Hub (P4-R2).
 - Legacy: `https://news.gov.bc.ca/contacts` [V-live] is linked from the Resources box on every listing page. It shows the 24-hour media line (250-883-2951), Chinese and South Asian media contacts, and every ministry's primary and alternate contact with phone, cell and email.
 - Ours: no page. The home "Resources" link goes **out to `https://news.gov.bc.ca/contacts`** [V-live]. That link breaks if news.gov.bc.ca is retired.
 
-**H4. Live webcast page and nav item are missing.** Code, M.
+**H4. Live webcast page and nav item are missing.** Code, M. **Status: addressed by plan 4** (7426dd5 button and `live.json`, 59526ac page, 93ca627, 77a8a77, be9a534 phone icon): `/live/` with consent-first playback and vendored hls.js (C278, C218). The production stream's https and CORS are owner question 1; playback in a real browser is untested.
 - Legacy: `https://news.gov.bc.ca/live` [V-live] holds the webcast player and privacy-consent text. "Live Webcast" is in the global nav on every page.
 - Ours: `/site/live/` returns 404 [V-live] and there is no nav item.
 - Q1 covers where NRMS stores the URLs. Nothing renders them on the public site [V-src].
 
-**H5. Per-kind listing pages are missing: Factsheets, Stories, Updates, Releases, and per-ministry factsheets.** Code, M.
+**H5. Per-kind listing pages are missing: Factsheets, Stories, Updates, Releases, and per-ministry factsheets.** Code, M. **Status: addressed by plan 4** (78c2e57 kind listings, e7c10d2 sector/theme/tag pages, ed1f2c3 per-ministry factsheets): only the ministry factsheets list is built; other `/<cat>/<key>/<kind>` paths go to the category page (C283, C284).
 - Legacy [V-live]:
   - `https://news.gov.bc.ca/factsheets` ("Factsheets & Opinion Editorials").
   - `https://news.gov.bc.ca/stories`, `https://news.gov.bc.ca/updates`, `https://news.gov.bc.ca/releases`.
@@ -163,12 +163,12 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
   - a Subscribe link prefilled with the release's ministry and sectors.
 - Ours: the article plus "Related news" from v2 similarity. That is empty on boxs.ca for 2026HLTH0005-000008: `/api/v2/posts/…/related` returns `{"mode":"text","results":[]}` [V-live]. The branch's side column is on ministry pages only [V-src].
 
-**M8. Listings lack thumbnails, translation badges and times, and `/ministries` is just a name list.** Code, M. **Status: partly closed by plan 2** (fd04cfd, d6591b1, efa17ea): PostCards with thumbnails, badges and times on home and ministry pages; the `/ministries` index is unchanged.
+**M8. Listings lack thumbnails, translation badges and times, and `/ministries` is just a name list.** Code, M. **Status: partly closed by plan 2** (fd04cfd, d6591b1, efa17ea): PostCards with thumbnails, badges and times on home and ministry pages; the `/ministries` index was unchanged. **Index closed by plan 4** (d0008cb, 837f7a7): `/ministries/`, `/sectors/`, `/themes/` and `/tags/` show each category's latest posts, from one batch call (C292).
 - Legacy cards on the home, ministry and sector pages [V-live] have a Flickr thumbnail, a "Translations" badge, "Read More", and a date with time.
 - Legacy `/ministries` shows each ministry's latest 3 posts with "Browse More News" and "Search News" [V-live].
 - Ours: headline, date and summary; `/ministries` is names plus minister [V-live].
 
-**M9. Search is far narrower.** Code (API and UI), M.
+**M9. Search is far narrower.** Code (API and UI), M. **Status: addressed by plan 4** (a88a53b API pageSize and facets, 455354e page, 5a8a559 review fixes): 10 per page, legacy query strings, Ministry/Sector/Content/Date facets in text mode, older-archive links. Language and City are not built (C285, owner question 5); results come before the filters in the DOM (C286).
 - Legacy `https://news.gov.bc.ca/search?q=vaccine` [V-live] has facets for:
   - language (13 languages);
   - date ranges, including links to archive.news.gov.bc.ca for 1994–2011;
@@ -194,16 +194,16 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 - Every legacy page's footer says "The B.C. Public Service acknowledges the territories of First Nations around B.C. …" [V-live].
 - The live footer (`https://boxs.ca/site/`, deployed today) has the help text, two link columns and the copyright, but no acknowledgement [V-live]. No settings field holds one [V-src].
 
-**M12. Connect page is missing LinkedIn, the RSS list and the policy link.** Code, S–M.
+**M12. Connect page is missing LinkedIn, the RSS list and the policy link.** Code, S–M. **Status: addressed by plan 4** (6febcda Hub fields, 3fe99ee page, 1a0d963 collapse and `sectionBar` token, 0237725 `collapseAfter`, c386cc6, 0e6bdb0): LinkedIn, the RSS list and the policy link (C273, C287).
 - Legacy `https://news.gov.bc.ca/connect` [V-live] has sections for Facebook, X, Instagram, Threads, Bluesky, **LinkedIn**, Flickr, YouTube, Blogs and **RSS Feeds** (about 45 feeds), plus the "Social Media policy, collection notice and hours" link.
 - Ours `https://boxs.ca/site/connect/` has Facebook, X, Instagram, Threads, Bluesky, Flickr, YouTube and Blogs [V-live]. `NETWORKS` has no `linkedin`, so legacy's `/connect#linkedin` and `#rss` anchors have no target.
 - The RSS list is a stated non-goal of the site-settings spec (no C-number).
 
-**M13. Global navigation.** Code, S.
+**M13. Global navigation.** Code, S. **Status: addressed by plan 4** (81364e0 Hub screen, 7426dd5 header, 76dd84b slide labels): header links, labels and the Live Webcast button are Navigation settings.
 - Legacy header [V-live]: Live Webcast, "News" mega-menu (ministries with their top posts), Office of the Premier, Subscribe, and a search box.
 - Ours: Home, Ministries, Archive, Search [V-live]. Subscribe and Connect are reachable only from the footer, and there is no header search box.
 
-**M14. Subscribe page.** Code, S.
+**M14. Subscribe page.** Code, S. **Status: addressed by plan 4** (bb0ea79, cbe5040): subscribe and manage pages with the Notice of Collection, manage link and prefill (C288-C290).
 - Legacy `https://news.gov.bc.ca/subscribe` [V-live] shows:
   - a **Notice of Collection** (FOIPPA s.26(c), with the Executive Director's contact details);
   - a "manage your account or unsubscribe" link;
@@ -220,7 +220,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 - Legacy `https://news.gov.bc.ca/office-of-the-premier` [V-live] has "Premier David Eby", "More from the Premier", and **"Meet the Team"**: the Minister of State for Local Governments and Rural Communities, with its own Read Bio link (`/ministries/local-governments-and-rural-communities/biography`).
 - Ours `/site/ministries/office-of-the-premier/` [V-live]: "Minister" heading, no ministers of state. `childMinistryKey` and `parentMinistryKey` are unused [V-src].
 
-**M16. Category index pages are missing.** Code, S.
+**M16. Category index pages are missing.** Code, S. **Status: addressed by plan 4** (d0008cb, 837f7a7): the four category index pages exist (C292).
 - Legacy [V-live]: `https://news.gov.bc.ca/sectors`, `https://news.gov.bc.ca/themes`, and `https://news.gov.bc.ca/news-subscribe` ("Topics"; `/tags` redirects there). Each lists categories with their latest posts and "Browse More News".
 - Ours: `/site/sectors/` returns 404 [V-live].
 - The rubric's "page missing" would make this High. I placed it in Medium because legacy itself doesn't link these pages from nav, the home page or release pages [V-live grep].
@@ -232,11 +232,11 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 
 ### Low
 
-**L1. `/privacy` is missing.** Code, S. Legacy `https://news.gov.bc.ca/privacy` is the "B.C. Government Website Privacy Statement" plus a "Reset Preferences" control for embedded-media consent [V-live]. Our footer links the www2 privacy page, as legacy's footer does.
+**L1. `/privacy` is missing.** Code, S. Legacy `https://news.gov.bc.ca/privacy` is the "B.C. Government Website Privacy Statement" plus a "Reset Preferences" control for embedded-media consent [V-live]. Our footer links the www2 privacy page, as legacy's footer does. **Status: addressed by plan 4** (5598052): `/privacy/` from Page text settings, without Reset Preferences (C279, C280).
 
-**L2. No HTML sitemap.** Code, S. Legacy `/sitemap/html` is a 4 MB list of every post [V-live]. Ours has an XML sitemap index, which legacy lacks: legacy `/sitemap.xml` returns 404 [V-live].
+**L2. No HTML sitemap.** Code, S. Legacy `/sitemap/html` is a 4 MB list of every post [V-live]. Ours has an XML sitemap index, which legacy lacks: legacy `/sitemap.xml` returns 404 [V-live]. **Status: addressed by plan 4** (91629ee, 62a9ebe): `/sitemap/` lists pages, categories and months, not every post (C275).
 
-**L3. Media assets and translation details.** Code, S. **Status: partly closed by plan 2** (1868215): asset and translation rows; the licence line waits for plan 4 T4 (C243). [I]: there was no asset or translation data on boxs.ca to compare.
+**L3. Media assets and translation details.** Code, S. **Status: partly closed by plan 2** (1868215): asset and translation rows. **Licence line closed by plan 4** (5598052): text and link are Page text settings (C281; C243 superseded). [I]: there was no asset or translation data on boxs.ca to compare.
 - Legacy shows the asset date, "Download (size)", a "Mirror" link, and "These assets are subject to the News Footage License" (`/assets/license` redirects to a PDF) [V-src; V-live redirect].
 - Legacy maps translation labels to language names (e.g. 简体中文) [V-live `legacy/rel1.html`].
 - Ours prints the raw label and size, with no licence notice [V-src].
@@ -245,7 +245,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 
 **L5. No web analytics.** Code, S. Legacy loads `/Scripts/webanalytics.js` on every page [V-live]. Ours loads none. The footer keeps legacy's footer link ids (`footerHome` etc.) but nothing reads them. Readers don't see this; the owner loses statistics.
 
-**L6. No "Connect With Us" icon strip, and Resources only on the home page.** Code, S. **Status: partly closed by plan 2** (d6591b1, efa17ea): strip and Resources on home and ministry pages; LinkedIn and RSS after plan 4 T7 (C240). Legacy listing pages show social icons, "View all Social Media", and the Resources box [V-live]. Ours has Resources on the home page only, and no icons.
+**L6. No "Connect With Us" icon strip, and Resources only on the home page.** Code, S. **Status: partly closed by plan 2** (d6591b1, efa17ea): strip and Resources on home and ministry pages; LinkedIn and RSS closed by plan 4 (3fe99ee; C240 superseded, C287). Legacy listing pages show social icons, "View all Social Media", and the Resources box [V-live]. Ours has Resources on the home page only, and no icons.
 
 **L7. Related posts depend on similarity.** **Status: closed by plan 2** (6269b24): same-ministry fallback (C251). [I] On a full dataset, text-mode related posts may return results. Legacy always shows 3 posts from the same ministry; ours hides the section when nothing matches (boxs.ca: empty) [V-live].
 
