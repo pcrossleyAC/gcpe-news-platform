@@ -31,12 +31,17 @@ function linkId(raw: unknown): string | null {
  * not ended, so the links in recently sent emails keep working. Each lands as a `send` link under
  * the hash `legacyTokenHash` computes, which NoD's link lookup also accepts for the legacy token
  * shapes. Reports by SubscriberGuid: a live link id is a credential, so no link id (and no
- * address) reaches the report.
+ * address) reaches the report. A link under a duplicate record that lost its address's pick
+ * follows the winner (`ctx.winnerOf`), the one NoD holds.
  */
-export async function importManageLinks(db: Db, source: LegacySource, ctx: { report: NodImportReport; timeZone: string; runAt: Date }): Promise<void> {
+export async function importManageLinks(db: Db, source: LegacySource, ctx: { report: NodImportReport; timeZone: string; runAt: Date; winnerOf?: Map<string, string> }): Promise<void> {
   const { report } = ctx;
   const rows = await source.query<LegacyLinkRow>(Q_LIVE_MANAGE_LINKS);
-  const wanted = [...new Set(rows.map((r) => guidKey(String(r.SubscriberGuid))))];
+  const owner = (raw: unknown) => {
+    const g = guidKey(String(raw));
+    return ctx.winnerOf?.get(g) ?? g;
+  };
+  const wanted = [...new Set(rows.map((r) => owner(r.SubscriberGuid)))];
   const known = new Map<string, { email: string; status: string }>();
   for (let i = 0; i < wanted.length; i += CHUNK) {
     const found = await db.select({ id: subscribers.id, email: subscribers.email, status: subscribers.status }).from(subscribers).where(inArray(subscribers.id, wanted.slice(i, i + CHUNK).filter((g) => LINK_GUID.test(g))));
@@ -44,20 +49,26 @@ export async function importManageLinks(db: Db, source: LegacySource, ctx: { rep
   }
   for (const r of rows) {
     report.count(TABLE, "legacy");
-    const subscriberId = guidKey(String(r.SubscriberGuid));
+    const legacyId = guidKey(String(r.SubscriberGuid));
+    const subscriberId = owner(r.SubscriberGuid);
     const id = linkId(r.LinkGuid);
     const subscriber = known.get(subscriberId);
-    if (!id) report.skip(TABLE, "malformed link id", subscriberId);
-    else if (!subscriber) report.skip(TABLE, "subscriber not in NoD", subscriberId);
-    else if (subscriber.status === "deleted") report.skip(TABLE, "subscriber ended", subscriberId);
+    if (!id) report.skip(TABLE, "malformed link id", legacyId);
+    else if (!subscriber) report.skip(TABLE, "subscriber not in NoD", legacyId);
+    else if (subscriber.status === "deleted") report.skip(TABLE, "subscriber ended", legacyId);
     else {
       const expiresAt = wallClockToInstant(r.ExpiryDate, ctx.timeZone);
       if (expiresAt <= ctx.runAt) {
-        report.skip(TABLE, "expired", subscriberId);
+        report.skip(TABLE, "expired", legacyId);
         continue;
       }
-      await db.insert(subscriberLinks).values({ tokenHash: legacyTokenHash(id), purpose: "manage", origin: "send", email: subscriber.email, subscriberId, expiresAt }).onConflictDoNothing({ target: subscriberLinks.tokenHash });
-      report.count(TABLE, "imported");
+      const inserted = await db
+        .insert(subscriberLinks)
+        .values({ tokenHash: legacyTokenHash(id), purpose: "manage", origin: "send", email: subscriber.email, subscriberId, expiresAt })
+        .onConflictDoNothing({ target: subscriberLinks.tokenHash })
+        .returning({ tokenHash: subscriberLinks.tokenHash });
+      if (inserted.length > 0) report.count(TABLE, "imported");
+      else report.skip(TABLE, "already present", legacyId);
     }
   }
 }

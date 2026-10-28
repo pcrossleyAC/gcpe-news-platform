@@ -179,7 +179,21 @@ describe("nod:import on the synthetic legacy database", () => {
       const again = (await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS)).toJSON();
       expect(await linkRows()).toEqual(before);
       expect(again.balanced).toBe(true);
-      expect(tableOf(again)).toEqual({ legacy: 4, imported: 1, skipped: 3 });
+      expect(tableOf(again)).toEqual({ legacy: 4, imported: 0, skipped: 4 });
+      expect(again.skipped.find((s) => s.table === "SubscriberLink" && s.reason === "already present")).toMatchObject({ count: 1, sample: [G.subActive.toLowerCase()] });
+    });
+
+    it("a link under a duplicate record that lost the address pick imports for the winning subscriber", async () => {
+      const tables = legacyNodTables();
+      const far = new Date("2099-01-01T09:00:00Z");
+      const loserLink = "00112233-4455-6677-8899-aabbccddee10";
+      tables.liveManageLinks = [{ LinkGuid: loserLink, SubscriberGuid: G.subDuplicate, ExpiryDate: far }];
+      const json = (await runNodImport(nod.db, nrms.db, legacyNodSource(tables), OPTS)).toJSON();
+      expect(json.balanced).toBe(true);
+      expect(tableOf(json)).toEqual({ legacy: 1, imported: 1, skipped: 0 });
+      const rows = await linkRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ token_hash: legacyTokenHash(loserLink), subscriber_id: G.subActive.toLowerCase(), email: "active@example.test" });
     });
   });
 
@@ -217,7 +231,7 @@ describe("nod:import on the synthetic legacy database", () => {
     const text = await readFile(reportPath.replace(/\.json$/, ".txt"), "utf8");
     for (const out of [json, text, lines.join("\n")]) expect(out).not.toContain("@");
     expect(json).toContain("SubscriberLink");
-    // Neither a token nor a legacy token hash reaches the output; the link ids sampled are legacy GUIDs only.
+    // Neither a token nor a legacy token hash reaches the output; the ids sampled are SubscriberGuids (legacy GUIDs), never link ids.
     for (const out of [json, text, lines.join("\n")]) expect(out).not.toContain(legacyTokenHash(LINK_GUIDS.active));
   });
 

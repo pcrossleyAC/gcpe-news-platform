@@ -28,4 +28,9 @@ describe("legacy NoD queries", () => {
     expect(Q_LIVE_MANAGE_LINKS.split("\n")[0]).toBe("-- name: liveManageLinks");
     expect(Q_LIVE_MANAGE_LINKS).toContain("SELECT LinkGuid, SubscriberGuid, ExpiryDate FROM dbo.SubscriberLink");
   });
+
+  it("the live links query only coarsely pre-filters expiry (a day of slack); the exact cut is the importer's, in the tenant zone", () => {
+    expect(Q_LIVE_MANAGE_LINKS).toContain("ExpiryDate > DATEADD(day, -1, GETDATE())");
+    expect(Q_LIVE_MANAGE_LINKS).not.toMatch(/ExpiryDate > GETDATE\(\)/);
+  });
 });

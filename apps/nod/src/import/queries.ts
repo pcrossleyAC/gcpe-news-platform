@@ -45,12 +45,13 @@ SELECT s.EntityGuid AS SubscriberGuid, s.EventGuid AS ListGuid, MAX(s.EventDate)
 /** Signups still waiting for their verification link: counted only, never imported. */
 export const Q_UNCONFIRMED_SIGNUPS = `-- name: unconfirmedSignups
 SELECT COUNT(*) AS Signups FROM dbo.SubscriberLink
- WHERE SubscriberGuid IS NULL AND SubscribeDate IS NULL AND ExpiryDate > GETDATE()`;
+ WHERE SubscriberGuid IS NULL AND SubscribeDate IS NULL AND ExpiryDate > DATEADD(day, -1, GETDATE())`;
 
-/** Manage links of confirmed subscribers that have not expired. Never reads SubscriberInfo. */
+/** Manage links of subscribers that have not expired. The day of slack is deliberate: legacy's
+ * server clock need not match the tenant zone, so the exact cut is the importer's. Never reads SubscriberInfo. */
 export const Q_LIVE_MANAGE_LINKS = `-- name: liveManageLinks
 SELECT LinkGuid, SubscriberGuid, ExpiryDate FROM dbo.SubscriberLink
- WHERE SubscriberGuid IS NOT NULL AND ExpiryDate > GETDATE()`;
+ WHERE SubscriberGuid IS NOT NULL AND ExpiryDate > DATEADD(day, -1, GETDATE())`;
 
 export const Q_DIGEST_END = `-- name: digestEnd
 SELECT ConfigValue FROM dbo.SysConfig WHERE ConfigKey = 'DailyDigestEndDateTimeUtc'`;
