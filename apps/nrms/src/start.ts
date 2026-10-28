@@ -7,6 +7,7 @@ import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
+import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { coreClient, distributionClient, newsApiSimilarClient, nodClient, type CoreClient, type DistributionClient } from "./clients";
 import { createApp } from "./app";
 import { needsCalendarViewers } from "./calendar/projection";
@@ -278,6 +279,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, filesBase };
   const store = localStore(parsed.STORAGE_DIR, "/files/");
   const slideFiles = { store, filesBase };
+  const siteSettingsDefaults = loadSiteSettingsDefaults(parsed.TENANT_CONFIG, tenant.site.theme);
   const liveFeedDefaults = { manifestUrl: parsed.LIVE_WEBCAST_MANIFEST_URL_DEFAULT ?? "", m3uUrl: parsed.LIVE_WEBCAST_M3U_URL_DEFAULT ?? "" };
   const distribution = parsed.DISTRIBUTION_URL
     ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local)) })
@@ -325,6 +327,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     embeds,
     subscribers,
     liveFeedDefaults,
+    siteSettingsDefaults,
     siteUrl: tenant.publicSiteBaseUrl,
     forecastCategoryPrefix: tenant.calendar?.forecastCategoryPrefix ?? null,
     isTestSite: isTestSite(env),

@@ -9,6 +9,7 @@ import { localStore, type ObjectStore } from "@gcpe/storage";
 import { categoryFeatures } from "../db/schema";
 import { createNrmsTestDb, createScheduledRelease } from "../../test/helpers";
 import { createApp } from "../app";
+import { bcSettings } from "../../../../packages/site-settings/src/fixtures";
 
 const SECRET = "z".repeat(40) + "-nrms-site-session-test";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0]);
@@ -361,5 +362,175 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
     expect(res.body).toEqual([
       { kind: "home", key: "default", label: "Home", top: { id: top.id, key: top.key, headline: "Featured headline" }, feature: null },
     ]);
+  });
+});
+
+describe("NRMS site settings HTTP API", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let siteEditor: string;
+  let admin: string;
+  let editorOnly: string;
+  let viewer: string;
+  const defaults = bcSettings();
+  const S = "/api/site/settings";
+
+  const cookieFor = async (roles: string[]) =>
+    `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000c", name: "Sam SiteEditor", email: "sam@example.invalid", roles })).token}`;
+  const w = (method: "put" | "post" | "delete", path: string, cookie: string, body?: unknown) =>
+    request(app)[method](path).set("cookie", cookie).set("x-gcpe-request", "1").send(body as object);
+  const publish = (cookie: string, body: object) => w("post", `${S}/publish`, cookie, body);
+  const banner = (message: string) => ({ ...defaults.banner, message });
+
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+    app = createApp({
+      db: tdb.db,
+      auth: { session: { secret: SECRET } },
+      eventSecrets: {},
+      workflow: { timeZone: "America/Vancouver" },
+      subscribers: [],
+      siteSettingsDefaults: defaults,
+    });
+    siteEditor = await cookieFor(["NRMS.SiteEditor"]);
+    admin = await cookieFor(["Core.Admin"]);
+    editorOnly = await cookieFor(["NRMS.Editor"]);
+    viewer = await cookieFor(["NRMS.Viewer"]);
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE site_settings_revisions, site_settings_drafts, site_log, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
+  });
+
+  it("GET / returns the defaults before anything is published; NRMS.Editor, Viewer and anonymous are refused", async () => {
+    const res = await request(app).get(`${S}/`).set("cookie", siteEditor);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ live: null, draft: null, baseRevision: null, document: defaults });
+    expect((await request(app).get(`${S}/`).set("cookie", admin)).status).toBe(200);
+    for (const c of [editorOnly, viewer]) expect((await request(app).get(`${S}/`).set("cookie", c)).status).toBe(403);
+    expect((await request(app).get(`${S}/`)).status).toBe(401);
+  });
+
+  it("NRMS.Editor gets 403 on every write; Core.Admin reads but gets 403 on publish and every other write", async () => {
+    const body = { baseRevision: null, section: "banner", value: banner("x") };
+    for (const c of [editorOnly, admin]) {
+      expect((await w("put", `${S}/draft`, c, body)).status).toBe(403);
+      expect((await publish(c, body)).status).toBe(403);
+      expect((await w("delete", `${S}/draft`, c)).status).toBe(403);
+      expect((await w("post", `${S}/rebase`, c, { section: "banner", value: banner("x") })).status).toBe(403);
+      expect((await w("post", `${S}/restore`, c, { revision: 1, baseRevision: null })).status).toBe(403);
+    }
+    for (const path of ["/history", "/history/1"]) {
+      expect((await request(app).get(`${S}${path}`).set("cookie", admin)).status).not.toBe(403);
+      expect((await request(app).get(`${S}${path}`).set("cookie", editorOnly)).status).toBe(403);
+    }
+  });
+
+  it("PUT /draft saves, GET shows the draft; DELETE /draft discards it (204)", async () => {
+    const saved = await w("put", `${S}/draft`, siteEditor, { baseRevision: null, section: "banner", value: banner("Draft text") });
+    expect(saved.status).toBe(200);
+    expect(saved.body.document.banner.message).toBe("Draft text");
+    expect(saved.body.draft).toMatchObject({ baseRevision: null });
+    expect((await w("delete", `${S}/draft`, siteEditor)).status).toBe(204);
+    expect((await request(app).get(`${S}/`).set("cookie", siteEditor)).body.draft).toBeNull();
+  });
+
+  it("a structurally invalid value is a 400", async () => {
+    const res = await w("put", `${S}/draft`, siteEditor, { baseRevision: null, section: "banner", value: { enabled: "yes" } });
+    expect(res.status).toBe(400);
+    expect((await w("put", `${S}/draft`, siteEditor, { baseRevision: null, section: "nope", value: {} })).status).toBe(400);
+  });
+
+  it("POST /publish publishes (200 with revision and state) and logs under area settings", async () => {
+    const res = await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("Hello"), note: "first" });
+    expect(res.status).toBe(200);
+    expect(res.body.revision).toBe(1);
+    expect(res.body.state).toMatchObject({ live: { revision: 1, note: "first" }, draft: null, baseRevision: 1 });
+    const log = await request(app).get("/api/site/log?area=settings").set("cookie", siteEditor);
+    expect(log.status).toBe(200);
+    expect(log.body).toEqual([expect.objectContaining({ area: "settings", text: "Published revision 1: first" })]);
+  });
+
+  it("an http link is a 422 with errors and fieldErrors, and nothing is published", async () => {
+    const value = { ...defaults.banner, enabled: true, message: "Hi", links: [{ text: "Bad", url: "http://example.com" }] };
+    const res = await publish(siteEditor, { baseRevision: null, section: "banner", value });
+    expect(res.status).toBe(422);
+    expect(res.body.fieldErrors.length).toBeGreaterThan(0);
+    expect(res.body.errors).toHaveLength(res.body.fieldErrors.length);
+    expect(res.body.errors[0]).toBe(`${res.body.fieldErrors[0].field}: ${res.body.fieldErrors[0].message}`);
+    expect((await request(app).get(`${S}/history`).set("cookie", siteEditor)).body.live).toBeNull();
+  });
+
+  it("a stale base revision is a 409 with the live info and the differing sections", async () => {
+    await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("One") });
+    const res = await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("Two") });
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ error: "published", code: "published", live: { revision: 1 }, differing: ["banner"] });
+  });
+
+  it("a non-null base revision with nothing live is a 409 (live null, no differing sections), not a 500", async () => {
+    const pub = await publish(siteEditor, { baseRevision: 3, section: "banner", value: banner("Two") });
+    expect(pub.status).toBe(409);
+    expect(pub.body).toEqual({ error: "published", code: "published", live: null, differing: [] });
+    // Restore can't reach the nothing-live conflict (a revision to restore means something is live): it is a plain 404.
+    const restore = await w("post", `${S}/restore`, siteEditor, { revision: 1, baseRevision: 3 });
+    expect(restore.status).toBe(404);
+  });
+
+  it("banner startsAtLocal/endsAtLocal are converted with the workflow time zone", async () => {
+    const value = { ...defaults.banner, startsAtLocal: "2026-03-01T09:00", endsAtLocal: "2026-11-02T09:00" };
+    delete (value as Record<string, unknown>).startsAt;
+    delete (value as Record<string, unknown>).endsAt;
+    const res = await publish(siteEditor, { baseRevision: null, section: "banner", value });
+    expect(res.status).toBe(200);
+    expect(res.body.state.document.banner).toMatchObject({ startsAt: "2026-03-01T17:00:00.000Z", endsAt: "2026-11-02T16:00:00.000Z" });
+    const bad = await w("put", `${S}/draft`, siteEditor, { baseRevision: 1, section: "banner", value: { ...value, startsAtLocal: "2026-02-30T10:00" } });
+    expect(bad.status).toBe(400);
+    const cleared = await w("put", `${S}/draft`, siteEditor, { baseRevision: 1, section: "banner", value: { ...value, startsAtLocal: null, endsAtLocal: null } });
+    expect(cleared.body.document.banner).toMatchObject({ startsAt: null, endsAt: null });
+  });
+
+  it("POST /rebase puts my section on top of live and reports what it set aside", async () => {
+    await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("One") });
+    const res = await w("post", `${S}/rebase`, siteEditor, { section: "banner", value: banner("Mine") });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ baseRevision: 1, setAside: [] });
+    expect(res.body.document.banner.message).toBe("Mine");
+  });
+
+  it("history lists revisions, shows one with its differences, and 404s an unknown or malformed revision", async () => {
+    await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("One") });
+    await publish(siteEditor, { baseRevision: 1, section: "banner", value: banner("Two") });
+    const list = await request(app).get(`${S}/history`).set("cookie", siteEditor);
+    expect(list.body.live).toBe(2);
+    expect(list.body.revisions.map((r: { revision: number }) => r.revision)).toEqual([2, 1]);
+    const one = await request(app).get(`${S}/history/1`).set("cookie", siteEditor);
+    expect(one.status).toBe(200);
+    expect(one.body).toMatchObject({ info: { revision: 1 }, differing: ["banner"] });
+    expect(one.body.document.banner.message).toBe("One");
+    expect((await request(app).get(`${S}/history/99`).set("cookie", siteEditor)).status).toBe(404);
+    expect((await request(app).get(`${S}/history/abc`).set("cookie", siteEditor)).status).toBe(404);
+  });
+
+  it("POST /restore republishes an old revision; a stale base is a 409; an unknown revision is a 404", async () => {
+    await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("One") });
+    await publish(siteEditor, { baseRevision: 1, section: "banner", value: banner("Two") });
+    const stale = await w("post", `${S}/restore`, siteEditor, { revision: 1, baseRevision: 1 });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ code: "published", live: { revision: 2 } });
+    expect((await w("post", `${S}/restore`, siteEditor, { revision: 99, baseRevision: 2 })).status).toBe(404);
+    const ok = await w("post", `${S}/restore`, siteEditor, { revision: 1, baseRevision: 2 });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual({ revision: 3 });
+    const live = await request(app).get(`${S}/`).set("cookie", siteEditor);
+    expect(live.body.document.banner.message).toBe("One");
+    expect(live.body.live.note).toBe("Restored revision 1");
+  });
+
+  it("answers 503 when the site settings defaults aren't configured", async () => {
+    const bare = createApp({ db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" }, subscribers: [] });
+    expect((await request(bare).get(`${S}/`).set("cookie", siteEditor)).status).toBe(503);
   });
 });

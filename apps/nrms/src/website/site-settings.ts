@@ -42,7 +42,8 @@ export interface SettingsState {
 export type PublishResult =
   | { result: "published"; revision: number }
   | { result: "invalid"; errors: FieldError[] }
-  | { result: "conflict"; live: LiveInfo; differing: SectionKey[] };
+  /** `live` is null when the caller named a base revision but nothing is live (differing is then empty). */
+  | { result: "conflict"; live: LiveInfo | null; differing: SectionKey[] };
 
 export interface SectionInput {
   section: SectionKey;
@@ -133,7 +134,7 @@ async function publishDocument(
   const live = await readLive(tx);
   const liveRevision = live?.info.revision ?? null;
   if (live && liveRevision !== baseRevision) return { result: "conflict", live: live.info, differing: differingSections(document, live.document) };
-  if (!live && baseRevision !== null) throw new Error(`site settings: base revision ${baseRevision} but nothing is live`);
+  if (!live && baseRevision !== null) return { result: "conflict", live: null, differing: [] };
 
   const revision = (liveRevision ?? 0) + 1;
   const [row] = await tx

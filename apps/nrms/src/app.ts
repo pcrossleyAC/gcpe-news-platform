@@ -7,6 +7,7 @@ import { createEventReceiver, MAX_EVENT_BYTES, type SubscriberConfig } from "@gc
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import type { DistributionClient } from "./clients";
 import { localStore, type ObjectStore } from "@gcpe/storage";
+import type { SiteSettings } from "@gcpe/site-settings";
 import type { FlickrClient } from "./media/flickr-client";
 import type { EmbedDeps } from "./media/embeds";
 import { mediaRoutes } from "./http/media-routes";
@@ -39,6 +40,8 @@ export function createApp(deps: {
   subscribers?: SubscriberConfig[];
   /** Live Feed URLs to show when none is configured (Task 3, env `LIVE_WEBCAST_*_URL_DEFAULT`); unset → no default. */
   liveFeedDefaults?: { manifestUrl: string; m3uUrl: string };
+  /** What site settings show before anything is published (`loadSiteSettingsDefaults`); unset → the /site/settings routes answer 503. */
+  siteSettingsDefaults?: SiteSettings;
   /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject; unset → "".
    * Task 1 (staff-web): also GET /config's siteUrl and publicSiteUrl (the two names the staff UI uses). */
   siteUrl?: string;
@@ -78,6 +81,7 @@ export function createApp(deps: {
       subscribers: deps.subscribers ?? [],
       timeZone: deps.workflow.timeZone,
       liveFeedDefaults: deps.liveFeedDefaults ?? { manifestUrl: "", m3uUrl: "" },
+      siteSettingsDefaults: deps.siteSettingsDefaults,
       store: deps.store,
       slideFiles,
       siteUrl: deps.siteUrl ?? "",

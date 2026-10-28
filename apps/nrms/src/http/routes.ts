@@ -70,7 +70,7 @@ export interface RouteDeps {
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
-export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string; activityId: string };
+export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string; activityId: string; revision: string };
 export type Handler = (req: Request<Params>, res: Response) => Promise<void>;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
