@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { bcSettings } from "./fixtures";
 import { bannerVisibleAt, contrastRatio, defaultSiteSettings, isSafeUrl, validateSiteSettings } from "./index";
 import type { SiteSettings } from "./index";
@@ -62,6 +62,7 @@ describe("validateSiteSettings", () => {
       expect(msg("Hello {name}.")).toEqual([PLACEHOLDER]);
       expect(msg("Aged {AGE}.")).toEqual([PLACEHOLDER]);
       expect(msg("Aged {age} or {age}.")).toEqual([]);
+      expect(msg("Aged {age")).toEqual([PLACEHOLDER]);
       expect(msg("No placeholder, no date.")).toEqual([]);
     });
 
@@ -83,6 +84,28 @@ describe("validateSiteSettings", () => {
       expect(date(t)).toEqual(DATE_ERR);
       expect(date("1948-11-14")).toEqual([]);
       expect(date("", "No placeholder.")).toEqual([]);
+    });
+
+    it("a non-empty birthDate must be valid even without {age}", () => {
+      expect(date("garbage", "No placeholder.")).toEqual(DATE_ERR);
+      expect(date("1948-11-14", "No placeholder.")).toEqual([]);
+    });
+
+    it("compares the birth date with today in Pacific time", () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime("2026-10-29T03:00:00Z"); // 20:00 on 28 October in Vancouver, already 29 October UTC
+        expect(date("2026-10-29")).toEqual(DATE_ERR);
+        expect(date("2026-10-28")).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("refuses control characters in the identity text", () => {
+      const PLAIN = (field: string) => [{ field, message: "Use plain text." }];
+      expect(errorsFor((d) => { d.siteIdentity.description = "line one\nline two"; })).toEqual(PLAIN("siteIdentity.description"));
+      expect(msg("Aged {age}.\t")).toEqual(PLAIN("siteIdentity.blueBridge.message"));
     });
 
     const x = (v: string) => errorsFor((d) => { d.siteIdentity.twitterSite = v; });

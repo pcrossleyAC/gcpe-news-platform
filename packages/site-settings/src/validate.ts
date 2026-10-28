@@ -227,26 +227,36 @@ function validateNavigation(n: SiteSettings["navigation"], errors: FieldError[])
   validateLinks("navigation.headerLinks", n.headerLinks, errors);
 }
 
-/** A real calendar date `YYYY-MM-DD` that is not after today (UTC). */
+/** A real calendar date `YYYY-MM-DD` that is not after today's date in Pacific time. */
 function isPastIsoDate(v: string): boolean {
   if (!ISO_DATE.test(v)) return false;
   const t = Date.parse(`${v}T00:00:00Z`);
-  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v && v <= new Date().toISOString().slice(0, 10);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v && v <= new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver" }).format(new Date());
+}
+
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+
+/** Identity text lands in meta tags and attributes: plain text, no markup and no control characters (newlines, tabs). */
+function checkIdentityText(field: string, value: string, rules: { max: number; required?: boolean }, errors: FieldError[]): void {
+  if (rules.required && value.trim() === "") errors.push({ field, message: "Enter text for this field." });
+  else if (CONTROL_CHARS.test(value)) errors.push({ field, message: "Use plain text." });
+  else checkText(field, value, rules, errors);
 }
 
 /** The text lands in meta tags and attributes, so it is plain text (no `<` or `>`). */
 function validateSiteIdentity(s: SiteSettings["siteIdentity"], errors: FieldError[]): void {
-  checkText("siteIdentity.description", s.description, { max: IDENTITY_TEXT_MAX }, errors);
+  checkIdentityText("siteIdentity.description", s.description, { max: IDENTITY_TEXT_MAX }, errors);
   if (s.twitterSite !== "" && !X_HANDLE.test(s.twitterSite)) {
     errors.push({ field: "siteIdentity.twitterSite", message: "Enter an X account like @BCGovNews." });
   }
   const bb = s.blueBridge;
   const before = errors.length;
-  checkText("siteIdentity.blueBridge.message", bb.message, { max: IDENTITY_TEXT_MAX, required: true }, errors);
+  checkIdentityText("siteIdentity.blueBridge.message", bb.message, { max: IDENTITY_TEXT_MAX, required: true }, errors);
   if (errors.length === before && bb.message.match(/\{[^}]*\}?/g)?.some((p) => p !== BLUE_BRIDGE_AGE_TOKEN)) {
     errors.push({ field: "siteIdentity.blueBridge.message", message: "The only placeholder is {age}." });
   }
-  if (bb.message.includes(BLUE_BRIDGE_AGE_TOKEN) && !isPastIsoDate(bb.birthDate)) {
+  // Required only when the message uses {age}; a date that is given must always be a valid past date.
+  if ((bb.message.includes(BLUE_BRIDGE_AGE_TOKEN) || bb.birthDate !== "") && !isPastIsoDate(bb.birthDate)) {
     errors.push({ field: "siteIdentity.blueBridge.birthDate", message: "Enter a date like 1948-11-14." });
   }
 }
