@@ -14,20 +14,22 @@ import { CATEGORY_CHANGE, ChangeFeedError, changesClient, pagesForChange, syncCh
 
 describe("pagesForChange", () => {
   it.each([
+    // /connect/'s RSS Feeds list names every active ministry, sector and tag, not themes.
+    [{ id: 13, kind: "theme", key: "housing" }, [{ pageId: "category:themes:housing", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 1, kind: "post.upserted", key: "K1" }, [{ pageId: "post:K1", priority: 0 }]],
     [{ id: 2, kind: "post.unpublished", key: "K1" }, [{ pageId: "post:K1", priority: 0 }]],
     [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "live", priority: 1 }]],
     [{ id: 4, kind: "slides", key: null }, [{ pageId: "home", priority: 1 }]],
-    [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }]],
+    [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }]],
     // A ministry change can start or stop a successor redirect, so it also queues legacy-redirects,
     // one priority lower, so a new successor's page is written before anything 301s to it.
-    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "contacts", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "sitemap:pages", priority: 1 }]],
-    [{ id: 7, kind: "tag", key: "covid-19" }, [{ pageId: "category:tags:covid-19", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "contacts", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 7, kind: "tag", key: "covid-19" }, [{ pageId: "category:tags:covid-19", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 8, kind: "post.upserted", key: "../x" }, []],
     [{ id: 9, kind: "ministry", key: null }, []],
     [{ id: 10, kind: "sector", key: "a b" }, []],
     // The home page's News by Sector box lists each sector's latest post.
-    [{ id: 12, kind: "sector", key: "economy" }, [{ pageId: "category:sectors:economy", priority: 1 }, { pageId: "home", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 12, kind: "sector", key: "economy" }, [{ pageId: "category:sectors:economy", priority: 1 }, { pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     // The next sync turn fetches the settings and decides what each changed section needs.
     [{ id: 11, kind: "site_settings", key: null }, []],
     // Every term page is added by syncChanges, from the builder's terms.

@@ -1,10 +1,14 @@
-import { DEFAULT_NAVIGATION, type ConnectSettings, type NavigationSettings, type NetworkKey } from "@gcpe/site-settings";
+import { DEFAULT_NAVIGATION, type NavigationSettings } from "@gcpe/site-settings";
 import type { PostDto, ResourceLinkDto, SlideDto } from "../dto";
 import { icon } from "../icons";
 import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
-import { settingsHref, themeDefaults } from "../settings";
+import { themeDefaults } from "../settings";
 import { feedUrl, pageUrl } from "../site-paths";
+import { connectStrip } from "./connect-strip";
 import { latestCards, postCard } from "./post-card";
+import { resourceHref, resourcesBox } from "./resources";
+
+export { resourceHref };
 
 export interface HomeView {
   top: PostDto | null;
@@ -19,21 +23,6 @@ export interface HomeView {
 
 const ENGLISH = 4105;
 const headlineOf = (p: PostDto) => (p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0])?.headline || p.key;
-
-/** Legacy ConnectSocialMedia.cshtml's two rows, less LinkedIn and RSS (no Connect page anchor yet). */
-const CONNECT_ROWS: { key: NetworkKey; name: string; file: string }[][] = [
-  [
-    { key: "facebook", name: "Facebook", file: "facebook-svg-logo.svg" },
-    { key: "x", name: "X", file: "twitter-X-svg-logo.svg" },
-    { key: "instagram", name: "Instagram", file: "Instagram_logo_2016.svg" },
-    { key: "threads", name: "Threads", file: "threads_logo.svg" },
-    { key: "bluesky", name: "Bluesky", file: "bluesky-logo.svg" },
-  ],
-  [
-    { key: "flickr", name: "Flickr", file: "flickr-svg-logo.svg" },
-    { key: "youtube", name: "YouTube", file: "youtube.svg" },
-  ],
-];
 
 /** An action link's purpose, visually hidden (as PostCard's "Read More" carries its headline):
  * "Learn more" alone doesn't say where it goes (WCAG 2.4.4; Lighthouse link-text). With no
@@ -92,34 +81,8 @@ function emergencyCard(s: SlideDto, base: string, i: number, n: number, fallback
 </div>`;
 }
 
-function connectBox(connect: ConnectSettings, base: string, labels: NavigationSettings["labels"]): string {
-  const lists = CONNECT_ROWS.map((row) => row.filter((n) => connect[n.key].accounts.length > 0))
-    .filter((row) => row.length > 0)
-    .map(
-      (row) =>
-        `<ul>\n${row
-          .map((n) => `<li><a href="${e(base)}/connect/#${n.key}"><img src="${e(base)}/assets/legacy/Content/Images/SocialMedia/${n.file}" alt="${e(n.name)}" width="22" height="22"></a></li>`)
-          .join("\n")}\n</ul>`,
-    );
-  return `<div class="resource-links connect">
-<h2>${e(labels.connectWithUs)}</h2>
-${lists.join("\n")}${lists.length ? "\n" : ""}<a href="${e(base)}/connect/" class="read-more">${e(labels.viewAllSocialMedia)}</a>
-</div>`;
-}
-
-/** A home Resources link's href: a "/…" path is a page on this site and gets the base path (the
- * settingsHref rule, so "/contacts/" reaches our Media Contacts page wherever the site is mounted);
- * anything else goes through safeHref. Null when unsafe. */
-export function resourceHref(uri: string, site: Pick<SiteInfo, "baseUrl">): string | null {
-  return typeof uri === "string" && uri.startsWith("/") ? settingsHref(uri, site) : safeHref(uri);
-}
-
 function resourceBoxes(view: HomeView, site: SiteInfo, labels: NavigationSettings["labels"]): string {
-  const item = (l: ResourceLinkDto) => {
-    const href = resourceHref(l.uri, site);
-    return href ? `<li><a href="${e(href)}">${e(l.key)}</a></li>` : `<li>${e(l.key)}</li>`;
-  };
-  const resources = view.links.length ? `<div class="resource-links">\n<h2>${e(labels.resources)}</h2>\n<ul>\n${view.links.map(item).join("\n")}\n</ul>\n</div>` : "";
+  const resources = resourcesBox(site, labels.resources, view.links);
   const sectors = view.sectors.filter((s): s is typeof s & { latest: PostDto } => !!s.latest);
   const bySector = sectors.length
     ? `<div class="resource-links">\n<h2>${e(labels.newsBySector)}</h2>\n<div>\n${sectors
@@ -162,7 +125,7 @@ ${loadMore}<a href="${e(base)}/search/" class="read-more">${e(labels.searchNews)
 </div>
 </div>
 <section class="home-features" aria-label="Connect and resources">
-${connectBox(settings.connect, base, labels)}
+${connectStrip(settings, base)}
 ${resourceBoxes(view, site, labels)}
 </section>
 </div>`;

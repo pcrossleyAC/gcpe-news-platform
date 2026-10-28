@@ -1,3 +1,4 @@
+import { JSDOM } from "jsdom";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
@@ -482,6 +483,25 @@ describe("site builder", () => {
     settings.connect.blogs.featured = [{ text: "The Newest Blog", url: "https://news.example/blog" }];
     await builder.renderPage("connect", { settings });
     expect(html(storage, "connect/index.html")).toContain("The Newest Blog");
+  });
+
+  it("connect: RSS Feeds is the site feed, then active ministries, sectors and tags (no themes) by name, with the base path; Resources from the News API", async () => {
+    const { storage, api, builder } = setup(new Map());
+    const cat = (kind: string, key: string, name: string, isActive = true) => ({ key, kind, name, isActive, topPostKey: null, featurePostKey: null });
+    api.sectors = [cat("sectors", "economy", "Economy"), cat("sectors", "old", "Retired", false)];
+    const base = api.categories;
+    api.categories = async (kind) => (kind === "tags" ? [cat("tags", "covid-19", "COVID-19")] : kind === "themes" ? [cat("themes", "housing", "Housing")] : base(kind));
+    api.resourceLinks = async () => [{ uri: "/contacts/", key: "Media Contacts" }];
+    await builder.renderPage("connect", {});
+    const doc = new JSDOM(html(storage, "connect/index.html")).window.document;
+    expect([...doc.querySelectorAll("details#rss li a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["BC Gov News", "/feed.xml"],
+      ["COVID-19", "/tags/covid-19/feed.xml"],
+      ["Economy", "/sectors/economy/feed.xml"],
+      ["Finance", "/ministries/finance/feed.xml"],
+      ["Health", "/ministries/health/feed.xml"],
+    ]);
+    expect(doc.querySelector(".home-features a")?.getAttribute("href")).toBe("/contacts/");
   });
 
   it("every generated HTML page passes the structure check", async () => {

@@ -348,3 +348,16 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 .wowza-wrapper video:not([hidden]){display:block;width:100%}
 .wowza-wrapper #live-status{margin:.5rem 0 0;min-height:1.4em}
 .wowza-wrapper .live-stream-link,.wowza-wrapper .off-air-text{margin:.5rem 0 0;font-size:16px;line-height:1.4}
+
+/* The Connect page's sections (pages/connect.ts): legacy styled .expandable-section h3 as a blue bar;
+ * ours is a native <details> whose <summary> holds an h2 with the same look. */
+.expandable-section>summary{list-style:none;cursor:pointer;margin-top:15px}
+.expandable-section>summary::-webkit-details-marker{display:none}
+.expandable-section>summary h2{display:flex;justify-content:space-between;align-items:center;background-color:var(--color-primary);color:var(--color-primary-text);font-size:24px;line-height:1.2;margin:0;padding:8px 10px;border-radius:6px}
+.expandable-section>summary:focus-visible{outline:3px solid var(--color-primary);outline-offset:2px}
+.expandable-section .connect-icon{background:var(--color-background);border-radius:4px;padding:2px;flex:none}
+.connect .connect-intro{font-size:16px}
+/* Connect With Us (pages/connect-strip.ts): one list of up to nine icons; legacy's inline-block items wrap, so give the rows room. */
+.resource-links.connect ul li{padding-bottom:8px}
+/* Legacy's #connect-content is a flex row of two columns; ours holds one .home-layout. */
+#connect-content>.home-layout{flex:1 1 auto;min-width:0}

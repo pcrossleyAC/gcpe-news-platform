@@ -306,6 +306,19 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return [];
   }
 
+  /** /connect/'s RSS Feeds: the site feed, then every active ministry, sector and tag (not themes) by name. */
+  async function connectFeeds(run: RunCache): Promise<{ title: string; href: string }[]> {
+    const cats: { title: string; href: string }[] = [];
+    // A key that isn't a safe page key has no page, so no feed either.
+    const add = (kind: CategoryKind, name: string, key: string) => {
+      if (categoryPageId(kind, key)) cats.push({ title: name, href: feedUrl(site, { type: "category", kind, key: key.toLowerCase() }) });
+    };
+    for (const m of await ministries(run)) if (m.isActive) add("ministries", m.name, m.key);
+    for (const kind of ["sectors", "tags"] as const) for (const c of await newsApi.categories(kind)) if (c.isActive) add(kind, c.name, c.key);
+    cats.sort((a, b) => a.title.localeCompare(b.title, "en"));
+    return [{ title: site.name, href: feedUrl(site, { type: "home" }) }, ...cats];
+  }
+
   async function categoryIds(run: RunCache): Promise<string[]> {
     const ids = new Set<string>();
     for (const m of await ministries(run)) {
@@ -428,7 +441,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           await writeStaticPages(storage, site, opts, deps.assetsDir);
           return [];
         case "connect":
-          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts));
+          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run), await newsApi.resourceLinks()));
           return [];
         case "contacts":
           await storage.write(pageFiles(p)[0]!, renderContactsPage(await ministries(run), (opts.settings ?? themeDefaults(site.theme)).contactsPage, site, opts));
