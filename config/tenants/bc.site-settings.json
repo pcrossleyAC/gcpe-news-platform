@@ -394,6 +394,32 @@
         }
       ]
     },
+    "linkedin": {
+      "featured": [
+        {
+          "text": "Government of BC",
+          "url": "https://www.linkedin.com/company/bcgov/"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "BC Public Service",
+          "url": "https://www.linkedin.com/company/bc-public-service/"
+        },
+        {
+          "text": "British Columbia Geological Survey",
+          "url": "https://www.linkedin.com/company/british-columbia-geological-survey/"
+        },
+        {
+          "text": "Trade & Invest BC",
+          "url": "https://www.linkedin.com/company/trade-invest-british-columbia/"
+        },
+        {
+          "text": "WorkBC",
+          "url": "https://www.linkedin.com/company/official-workbc/"
+        }
+      ]
+    },
     "flickr": {
       "featured": [
         {
@@ -489,7 +515,12 @@
           "url": "https://engage.gov.bc.ca/bcparksblog"
         }
       ]
-    }
+    },
+    "policyLink": {
+      "text": "BC Government News Social Media policy, collection notice and hours of operation",
+      "url": "https://news.gov.bc.ca/stories/bc-government-news-social-media-moderation-policy-hours-of-operation-and-collection-notice"
+    },
+    "intro": ""
   },
   "ministryPages": {
     "moreFromMinistry": "More from this Ministry",
@@ -499,5 +530,109 @@
     "featuredTopics": "Featured Topics",
     "featuredServices": "Featured Services",
     "mediaContacts": "Media Contacts"
+  },
+  "contactsPage": {
+    "heading": "Government Communications and Public Engagement",
+    "lineHeading": "24 hours Media Relations Contact Line",
+    "introHtml": "<p>Please contact the appropriate ministry below. If you are unable to reach a ministry contact, call media relations at 250-883-2951.</p><p>For non-media requests, please visit each <a href=\"https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/ministries\">ministry&rsquo;s</a> contact page. For general inquiries, please reach out to <a href=\"https://www2.gov.bc.ca/gov/content/home/get-help-with-government-services\">Service BC</a>.</p>",
+    "listHeading": "Contact List for Media",
+    "contacts": [
+      {
+        "group": "Media Relations",
+        "groupUrl": "",
+        "subgroup": "",
+        "name": "Government Communications 24-hour media line",
+        "phone": "250-883-2951",
+        "cell": "",
+        "email": "",
+        "placement": "top"
+      },
+      {
+        "group": "Office of the Premier",
+        "groupUrl": "/ministries/office-of-the-premier/",
+        "subgroup": "Premier David Eby",
+        "name": "Media Line",
+        "phone": "",
+        "cell": "",
+        "email": "Premier.Media@gov.bc.ca",
+        "placement": "bottom"
+      }
+    ]
+  },
+  "pageText": {
+    "notFound": {
+      "heading": "That web page doesn't exist.",
+      "text": "The URL may be misspelled or the page you're looking for is no longer available. Search for it below."
+    },
+    "privacy": {
+      "label": "Privacy",
+      "title": "B.C. Government Website Privacy Statement",
+      "bodyHtml": "<p><strong>Introduction</strong></p>\n<p>The British Columbia (B.C.) government is committed to protecting your privacy. The B.C. Government collects, uses and discloses your personal information in accordance with the <em><a href=\"http://www.bclaws.ca/Recon/document/ID/freeside/96165_00\">Freedom of Information and Protection of Privacy Act</a>&nbsp;(FOIPPA)</em> and other applicable legislation. &lsquo;Personal information&rsquo; is defined broadly in the <em>Freedom of Information and Protection of Privacy Act</em> as recorded information about an identifiable individual, other than contact information, which is the information used to contact a person at a place of business. The purpose of this privacy statement is to inform you of the personal information that may be collected from you when visiting a B.C. government website and how that information may be used.</p>\n<p><strong>Scope</strong></p>\n<p>This privacy statement relates only to the information automatically collected from you as a result of your visit to the website. It does not include information a website requests from you. Any additional collections of personal information by a website will be addressed in a collection notice on that website.</p>\n<p><strong>How&nbsp;is my personal information collected?</strong></p>\n<p>B.C. government websites collect information about your visit, including personal information, through the use of audit logs and cookies. A cookie is a small file stored on your computer by your web browser when using some websites.</p>\n<p><strong>What personal information is being collected?</strong></p>\n<p>The information collected is:</p>\n<ul>\n<li>The web browser and operating system you are using (e.g. Vista, XP, Safari).</li>\n<li>The date and time of the visit.</li>\n<li>The pages or services accessed.</li>\n<li>If you were on another website before visiting the B.C. government website, the URL (web address) of that previous website if it referred you to the B.C. government website.</li>\n<li>The URL (web address) of the first website you visit immediately upon leaving the B.C. government website if you were referred to that website by the B.C. government website.</li>\n<li>The Internet Protocol (IP) network domain name (e.g. shaw.ca) and address (e.g. 192.10.100.20) of the computer you are using.&nbsp;IP address and domain are identifiers that may be used to distinguish between users and identify your internet service provider or your computer itself.</li>\n</ul>\n<p>\nThe B.C. government, via its websites, will notify you if cookies will be collecting additional information from you. A cookie may remain on your computer after the Internet session finishes (until the cookie expires or is deleted by you).<br />\n<br />\nThe B.C. government collects personal information under the authority of section 26(c) of <em>FOIPPA</em> for the purposes stated below in the next section.\n</p>\n<p><strong>What is the purpose for collecting my personal information and how will it be used?</strong></p>\n<p>The B.C. government collects personal information through cookies to better understand general user trends at an aggregate level and improve web performance, web services, and website maintenance. Personal information will only be used by authorized staff to fulfill the purpose for which it was originally collected or for a use consistent with that purpose, unless you expressly consent otherwise. The B.C. government collects personal information through security audits to protect against threats from hackers, and for other enforcement and security purposes. The B.C. government does not use this data to determine your identity unless required to do so as part of an internal investigation or for another enforcement-related purpose, and then, only in compliance with <em>FOIPPA</em>.</p>\n<p><strong>Can I opt out of the collection of my personal information?</strong></p>\n<p>Your browser may permit you to disable cookies, but you cannot opt out of the information collected for audit purposes. Also, your decision to disable cookies may impair your ability to browse, read, and download information contained on B.C. government websites, and government may be unable to personalize your web experience. However, you may still be able to access B.C. government services by other methods such as personal contact, fax or mail.</p>\n<p><strong>What safeguards are in place to protect my personal information?</strong></p>\n<p>The Government of B.C. is obligated to protect your personal information by making reasonable security arrangements against such risks as unauthorized access, collection, use, disclosure or disposal. Specifically, access to systems, applications and the collected data is restricted to authorized personnel only. Furthermore, any personal information collected and used for identifying user trends (e.g. IP address) is aggregated and made anonymous during report generation.</p>\n<p><strong>How long is information retained?</strong></p>\n<p>Some cookies will remain on your computer for only as long as your browser remains open, or until you delete them off your computer. Other cookies will remain on your computer so that you may be recognized when you return to the website. These cookies will expire no later than 18 months from when they are first placed on your computer. Information collected as a part of a cookie or a security audit log is retained for 2 years. Information collected or created by the Government of B.C. is maintained in accordance with <a href=\"http://www.gov.bc.ca/citz/iao/records_mgmt/\">government&#39;s records retention schedules</a> and other legislative requirements.</p>\n<p><strong>How can I access and correct information I submit to a web site?</strong></p>\n<p>You can review any personal information collected about you by requesting access to it by the ministry holding the information, or by submitting a Freedom of Information request. You may request changes or annotate your personal information if you believe it to be inaccurate by submitting a written request describing the error. Please contact the ministry or other government body holding your personal information. The Legislation, Privacy and Policy Branch may be contacted for general information.</p>\n<p><strong>What about links to external websites from B.C. government websites?</strong></p>\n<p>B.C. government websites may include links to external websites. Once you leave a B.C. government website, this privacy statement does not apply. The B.C. government is not responsible for the privacy practices or content of external websites.</p>\n<p><strong>Who can I contact for more information about this privacy statement?</strong></p>\n<p>Questions regarding this privacy statement, including the collection of personal information, can be directed to a Senior Legislative and Policy Advisor at <a href=\"http://www.cio.gov.bc.ca/cio/priv_leg/lpp.page?\">Privacy and Legislation Branch</a> in the Ministry of Technology, Innovation and Citizens&rsquo; Services, PO Box 9493 Stn Prov Govt, Victoria, BC., V8W 9N7, telephone (250) 356-1851. <a href=\"mailto:Privacy.Helpline@gov.bc.ca\">Privacy.Helpline@gov.bc.ca</a>.</p>"
+    },
+    "live": {
+      "heading": "Live",
+      "consentHtml": "<p>Press play to view content from <strong>{host}</strong>. For more information, please read our <a href=\"/privacy/\">Privacy</a> statement.</p>",
+      "offAirHtml": "<p>There is no live webcast right now.</p>"
+    },
+    "collectionNotice": {
+      "heading": "Notice of Collection",
+      "bodyHtml": "<p>This information is collected by Government Communications and Public Engagement under Section 26(c) of the <i>Freedom of Information and Protection of Privacy Act</i> and will be used to provide you with email updates from the Government of B.C. Should you have any questions about the collection of your personal information, please contact:</p>\n<p>Executive Director<br />\nDigital Communications<br />\nPO Box 9409, Stn Prov Govt, Victoria,  BC  V8W 9V1<br />\n<a href=\"tel:2503871337\">250 387-1337</a></p>"
+    },
+    "subscribeHelpHtml": "<p>If you have difficulties subscribing, please <a href=\"https://forms.gov.bc.ca/\">contact us</a>.</p>",
+    "assetLicence": {
+      "text": "These assets are subject to the terms of the",
+      "linkText": "News Footage License - British Columbia",
+      "url": "https://news.gov.bc.ca/files/News_Footage_License_British_Columbia.pdf"
+    },
+    "searchArchiveLinks": [
+      {
+        "text": "June 11, 2009 to March 11, 2011",
+        "url": "https://archive.news.gov.bc.ca/Default.aspx?archive=2009-2013"
+      },
+      {
+        "text": "May 18, 2005 to June 9, 2009",
+        "url": "https://archive.news.gov.bc.ca/archive/2005-2009/"
+      },
+      {
+        "text": "June 5, 2001 to May 10, 2005",
+        "url": "https://archive.news.gov.bc.ca/archive/2001-2005/"
+      },
+      {
+        "text": "April 29, 1994 to June 5, 2001",
+        "url": "https://archive.news.gov.bc.ca/archive/pre2001/default.htm"
+      }
+    ]
+  },
+  "navigation": {
+    "newsLabel": "News",
+    "liveLabel": "Live Webcast",
+    "headerLinks": [
+      {
+        "text": "Subscribe",
+        "url": "/subscribe/"
+      }
+    ],
+    "showHeaderSearch": true,
+    "footerConnectHeading": "Connect with Us",
+    "footerMoreInfoHeading": "More Info",
+    "labels": {
+      "connectWithUs": "Connect With Us",
+      "viewAllSocialMedia": "View all Social Media",
+      "resources": "Resources",
+      "newsBySector": "News by Sector",
+      "emergencyInformation": "Emergency information",
+      "highlights": "Highlights",
+      "latestNews": "Latest news",
+      "loadMoreNews": "Load More News",
+      "searchNews": "Search News",
+      "browseMoreNews": "Browse More News",
+      "slideActionLabel": "Learn more"
+    },
+    "listingTitles": {
+      "releases": "Releases",
+      "stories": "Stories",
+      "factsheets": "Factsheets & Opinion Editorials",
+      "updates": "Updates"
+    }
   }
 }

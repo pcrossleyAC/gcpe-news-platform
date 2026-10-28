@@ -18,7 +18,7 @@ import {
 import type { CalendarRole } from "@gcpe/auth";
 import type { ReleaseRecord } from "@gcpe/events";
 import type { Layout, ReleaseStatus, ReleaseType } from "@gcpe/nrms-contract";
-import type { SiteSettings } from "@gcpe/site-settings";
+import type { StoredSiteSettings } from "@gcpe/site-settings";
 
 export * from "@gcpe/events/tables";
 
@@ -503,7 +503,8 @@ export const siteLog = pgTable(
  */
 export const siteSettingsRevisions = pgTable("site_settings_revisions", {
   revision: integer("revision").primaryKey(),
-  document: jsonb("document").$type<SiteSettings>().notNull(),
+  /** As published: a revision from before a later part existed lacks it (`fillMissingFields`). */
+  document: jsonb("document").$type<StoredSiteSettings>().notNull(),
   publishedAt: tz("published_at").notNull().defaultNow(),
   publishedById: text("published_by_id").notNull(),
   publishedByName: text("published_by_name").notNull(),
@@ -513,7 +514,8 @@ export const siteSettingsRevisions = pgTable("site_settings_revisions", {
 /** One unpublished site-settings draft per editor (Core user id), with the revision it started from. */
 export const siteSettingsDrafts = pgTable("site_settings_drafts", {
   editorId: text("editor_id").primaryKey(),
-  document: jsonb("document").$type<SiteSettings>().notNull(),
+  /** Live (or the defaults) with the editor's sections laid over: may lack a later part, as live may. */
+  document: jsonb("document").$type<StoredSiteSettings>().notNull(),
   /** Null = nothing was live when the draft was started. */
   baseRevision: integer("base_revision"),
   updatedAt: tz("updated_at").notNull().defaultNow(),

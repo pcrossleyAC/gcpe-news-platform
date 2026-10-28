@@ -44,6 +44,21 @@ describe("loadSiteSettingsDefaults", () => {
     expect(() => loadSiteSettingsDefaults(join(dir, "acme.json"), theme)).toThrow();
   });
 
+  it("a settings file written before plan 4 (no contactsPage/pageText/navigation, no connect.linkedin/policyLink/intro) loads, filled from the theme-derived defaults", () => {
+    const doc: Record<string, unknown> & { connect: Record<string, unknown> } = JSON.parse(JSON.stringify(bcSettings()));
+    for (const k of ["contactsPage", "pageText", "navigation"]) delete doc[k];
+    for (const k of ["linkedin", "policyLink", "intro"]) delete doc.connect[k];
+    writeFileSync(join(dir, "acme.json"), JSON.stringify({ tenantId: "acme" }));
+    writeFileSync(join(dir, "acme.site-settings.json"), JSON.stringify(doc));
+    const loaded = loadSiteSettingsDefaults(join(dir, "acme.json"), theme);
+    const neutral = defaultSiteSettings(theme);
+    expect(loaded.navigation).toEqual(neutral.navigation);
+    expect(loaded.pageText).toEqual(neutral.pageText);
+    expect(loaded.contactsPage).toEqual(neutral.contactsPage);
+    expect(loaded.connect.linkedin).toEqual({ featured: [], accounts: [] });
+    expect(loaded.connect.facebook).toEqual(bcSettings().connect.facebook);
+  });
+
   it("loads the real bc tenant file", () => {
     const bc = fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url));
     expect(loadSiteSettingsDefaults(bc, theme)).toEqual(bcSettings());

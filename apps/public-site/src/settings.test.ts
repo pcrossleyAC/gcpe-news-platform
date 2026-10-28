@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { bcSettings } from "../../../packages/site-settings/src/fixtures";
+import { bcSettings, prePlan4Settings } from "../../../packages/site-settings/src/fixtures";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
 import { currentSettings, settingsHashes, SITE_SETTINGS_PATH } from "./settings";
@@ -62,5 +62,31 @@ describe("currentSettings with a document published before the land acknowledgem
     const now = new Date("2026-11-02T12:00:00Z");
     expect(settingsHashes(fallback.settings, "America/Vancouver", now)).toEqual(settingsHashes(first.settings, "America/Vancouver", now));
     expect(writes).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("currentSettings with a document published before plan 4", () => {
+  const defaults = bcSettings();
+
+  it("a published document without the plan-4 parts parses and currentSettings returns it filled", async () => {
+    const newsApi = fakeNewsApi();
+    newsApi.settings = { revision: 7, document: prePlan4Settings() };
+    const storage = memoryStorage();
+    const { settings, fallbackDefaults } = await currentSettings({ newsApi, storage, defaults });
+    expect(fallbackDefaults).toBe(false);
+    expect(settings).toEqual(defaults);
+    expect(JSON.parse(storage.files.get(SITE_SETTINGS_PATH) as string)).toEqual(defaults);
+  });
+
+  it("a persisted .site-settings.json from before plan 4 is read and filled when the fetch fails", async () => {
+    const storage = memoryStorage();
+    await storage.write(SITE_SETTINGS_PATH, JSON.stringify(prePlan4Settings()));
+    const newsApi = fakeNewsApi();
+    newsApi.siteSettings = async () => { throw new Error("down"); };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { settings, fallbackDefaults } = await currentSettings({ newsApi, storage, defaults });
+    err.mockRestore();
+    expect(fallbackDefaults).toBe(false);
+    expect(settings).toEqual(defaults);
   });
 });

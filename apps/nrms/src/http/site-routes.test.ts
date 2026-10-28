@@ -9,7 +9,7 @@ import { localStore, type ObjectStore } from "@gcpe/storage";
 import { categoryFeatures } from "../db/schema";
 import { createNrmsTestDb, createScheduledRelease } from "../../test/helpers";
 import { createApp } from "../app";
-import { bcSettings } from "../../../../packages/site-settings/src/fixtures";
+import { bcSettings, prePlan4Settings } from "../../../../packages/site-settings/src/fixtures";
 
 const SECRET = "z".repeat(40) + "-nrms-site-session-test";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0]);
@@ -422,6 +422,21 @@ describe("NRMS site settings HTTP API", () => {
     }
     for (const c of [editorOnly, viewer]) expect((await request(app).get(`${S}/defaults`).set("cookie", c)).status).toBe(403);
     expect((await request(app).get(`${S}/defaults`)).status).toBe(401);
+  });
+
+  it("PUT /draft with section 'pageText' saves a draft over a pre-plan-4 live revision, which reads back filled; an incomplete section is a 400", async () => {
+    await tdb.pool.query("INSERT INTO site_settings_revisions (revision, document, published_by_id, published_by_name) VALUES (1, $1, 'u', 'Jane')", [
+      JSON.stringify(prePlan4Settings()),
+    ]);
+    const pageText = { ...defaults.pageText, notFound: { heading: "Not here.", text: "" } };
+    const res = await w("put", `${S}/draft`, siteEditor, { baseRevision: 1, section: "pageText", value: pageText });
+    expect(res.status).toBe(200);
+    expect(res.body.document).toEqual({ ...defaults, pageText });
+    expect(res.body.errors).toEqual([]);
+    expect((await w("put", `${S}/draft`, siteEditor, { baseRevision: 1, section: "navigation", value: { newsLabel: "News" } })).status).toBe(400);
+    const history = await request(app).get(`${S}/history/1`).set("cookie", siteEditor);
+    expect(history.body.document).toEqual(defaults);
+    expect(history.body.differing).toEqual([]);
   });
 
   it("NRMS.Editor gets 403 on every write; Core.Admin reads but gets 403 on publish and every other write", async () => {

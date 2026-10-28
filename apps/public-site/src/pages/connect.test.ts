@@ -15,6 +15,7 @@ describe("Connect page", () => {
       ["instagram", "Instagram"],
       ["threads", "Threads"],
       ["bluesky", "Bluesky"],
+      ["linkedin", "LinkedIn"],
       ["flickr", "Flickr"],
       ["youtube", "YouTube"],
       ["blogs", "Blogs"],

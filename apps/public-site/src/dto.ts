@@ -1,5 +1,5 @@
 import type { OrgRecord } from "@gcpe/events";
-import type { SiteSettings } from "@gcpe/site-settings";
+import type { StoredSiteSettings } from "@gcpe/site-settings";
 
 export interface PostDocument {
   languageId: number;
@@ -121,10 +121,11 @@ export interface RelatedPost {
   publishDate: string;
 }
 
-/** `GET /api/v2/site-settings` (the News API's newest published revision), less `publishedAt`. */
+/** `GET /api/v2/site-settings` (the News API's newest published revision), less `publishedAt`.
+ * The document as published, possibly before a later part existed (`fillMissingFields` completes it). */
 export interface SiteSettingsDto {
   revision: number;
-  document: SiteSettings;
+  document: StoredSiteSettings;
 }
 
 /** One public government term (`GET /api/v2/government-terms`). Newest first in the payload; the newest has no end date. */

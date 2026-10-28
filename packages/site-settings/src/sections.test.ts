@@ -1,10 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { bcSettings } from "./fixtures";
-import { SECTION_LABEL, connectDisplayOrder, differingSections, withSection } from "./index";
+import { NETWORKS, SECTION_KEYS, SECTION_LABEL, connectDisplayOrder, differingSections, withSection } from "./index";
 
 describe("sections", () => {
   it("labels", () => {
-    expect(SECTION_LABEL).toEqual({ banner: "Banner", theme: "Theme", footer: "Footer", connect: "Social links", ministryPages: "Ministry pages" });
+    expect(SECTION_LABEL).toEqual({
+      banner: "Banner", theme: "Theme", footer: "Footer", connect: "Social links", ministryPages: "Ministry pages",
+      contactsPage: "Media contacts page", pageText: "Page text", navigation: "Navigation and labels",
+    });
+    expect(SECTION_KEYS.slice(-3)).toEqual(["contactsPage", "pageText", "navigation"]);
+  });
+  it("NETWORKS puts linkedin after bluesky; policyLink and intro are not networks", () => {
+    expect(NETWORKS.map((n) => n.key)).toEqual(["facebook", "x", "instagram", "threads", "bluesky", "linkedin", "flickr", "youtube", "blogs"]);
+    expect(NETWORKS.find((n) => n.key === "linkedin")?.name).toBe("LinkedIn");
+    expect(NETWORKS.map((n) => n.key as string)).not.toContain("policyLink");
+    expect(NETWORKS.map((n) => n.key as string)).not.toContain("intro");
+  });
+  it("differingSections reports contactsPage/pageText/navigation edits", () => {
+    const a = bcSettings();
+    const b = structuredClone(a);
+    b.contactsPage.contacts[0]!.phone = "250-000-0000";
+    b.pageText.notFound.text = "Gone.";
+    b.navigation.labels.resources = "More resources";
+    expect(differingSections(a, b)).toEqual(["contactsPage", "pageText", "navigation"]);
+    const c = structuredClone(a);
+    c.connect.intro = "Hi.";
+    expect(differingSections(a, c)).toEqual(["connect"]);
   });
   it("differingSections reports exactly the changed sections", () => {
     const a = bcSettings();

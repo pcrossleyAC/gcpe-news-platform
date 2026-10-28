@@ -6,10 +6,10 @@ import {
   fillMissingFields,
   siteSettingsSchema,
   validateSiteSettings,
-  withSection,
   type FieldError,
   type SectionKey,
   type SiteSettings,
+  type StoredSiteSettings,
 } from "@gcpe/site-settings";
 import { siteSettingsDrafts, siteSettingsRevisions } from "../db/schema";
 import type { Actor } from "../releases/store";
@@ -20,6 +20,11 @@ import { writeSiteLog } from "./events";
  * publishing — NRMS"). Published revisions are numbered 1, 2, …; the newest is live. Each editor
  * has at most one draft, remembering the revision it started from — that base revision is the
  * publish concurrency token (it replaces the legacy blob ETag).
+ *
+ * Revisions and drafts are stored documents (`StoredSiteSettings`): one published before a later
+ * part existed (parity plan 4's contactsPage, pageText, navigation, connect.linkedin/policyLink/
+ * intro; plan 1's landAcknowledgement) lacks it. Everything that reads one fills it from the
+ * tenant defaults (`fillMissingFields`) before showing, validating, comparing or publishing it.
  */
 
 /** Two-int advisory key in the "gcpe" space (see db-kit's MIGRATION_LOCK); 7 is site-settings publishing. */
@@ -65,7 +70,7 @@ const toInfo = (r: { revision: number; publishedAt: Date; publishedBy: string; n
   note: r.note,
 });
 
-async function readLive(db: DbOrTx): Promise<{ info: LiveInfo; document: SiteSettings } | null> {
+async function readLive(db: DbOrTx): Promise<{ info: LiveInfo; document: StoredSiteSettings } | null> {
   const [row] = await db.select({ ...infoColumns, document: siteSettingsRevisions.document }).from(siteSettingsRevisions).orderBy(desc(siteSettingsRevisions.revision)).limit(1);
   return row ? { info: toInfo(row), document: row.document } : null;
 }
@@ -75,13 +80,14 @@ async function readDraft(db: DbOrTx, actor: Actor) {
   return row ?? null;
 }
 
-/** Parses one section's value with its structural schema (a ZodError ⇒ 400) and overlays it on `doc`. */
-function overlay(doc: SiteSettings, input: SectionInput): SiteSettings {
+/** Parses one section's value with its structural schema — always the complete section (a
+ * ZodError ⇒ 400) — and overlays it on `doc`; the other parts stay as stored. */
+function overlay(doc: StoredSiteSettings, input: SectionInput): StoredSiteSettings {
   const value = siteSettingsSchema.shape[input.section].parse(input.value) as SiteSettings[SectionKey];
-  return withSection(doc, input.section, value);
+  return { ...doc, [input.section]: value };
 }
 
-async function upsertDraft(db: DbOrTx, actor: Actor, document: SiteSettings, baseRevision: number | null): Promise<void> {
+async function upsertDraft(db: DbOrTx, actor: Actor, document: StoredSiteSettings, baseRevision: number | null): Promise<void> {
   await db
     .insert(siteSettingsDrafts)
     .values({ editorId: actor.id, document, baseRevision })
@@ -90,10 +96,10 @@ async function upsertDraft(db: DbOrTx, actor: Actor, document: SiteSettings, bas
 
 /**
  * The sections where `a` and `b` differ as the site shows them: both filled from the tenant
- * defaults first, so a revision stored before a field existed (no landAcknowledgement) doesn't
- * report its section as changed against one that carries the default.
+ * defaults first, so a revision stored before a part existed (no landAcknowledgement, no
+ * navigation, …) doesn't report its section as changed against one that carries the default.
  */
-const differing = (a: SiteSettings, b: SiteSettings, defaults: SiteSettings): SectionKey[] =>
+const differing = (a: StoredSiteSettings, b: StoredSiteSettings, defaults: SiteSettings): SectionKey[] =>
   differingSections(fillMissingFields(a, defaults), fillMissingFields(b, defaults));
 
 /** What the editor sees: their draft, else live, else the tenant defaults — and its problems. */
@@ -211,23 +217,29 @@ export async function listHistory(db: DbOrTx): Promise<LiveInfo[]> {
   return rows.map(toInfo);
 }
 
-/** One revision with the sections where it differs from live (compared filled from `defaults`
- * when given); null when there's no such revision. */
+/** One revision with the sections where it differs from live; null when there's no such
+ * revision. With `defaults`, the document is filled from them and compared filled; without, both
+ * are as stored. */
 export async function getRevision(
   db: DbOrTx,
   n: number,
   defaults?: SiteSettings,
-): Promise<{ info: LiveInfo; document: SiteSettings; differing: SectionKey[] } | null> {
+): Promise<{ info: LiveInfo; document: StoredSiteSettings; differing: SectionKey[] } | null> {
   const [row] = await db.select({ ...infoColumns, document: siteSettingsRevisions.document }).from(siteSettingsRevisions).where(eq(siteSettingsRevisions.revision, n));
   if (!row) return null;
   const live = await readLive(db);
-  return { info: toInfo(row), document: row.document, differing: !live ? [] : defaults ? differing(row.document, live.document, defaults) : differingSections(row.document, live.document) };
+  return {
+    info: toInfo(row),
+    document: defaults ? fillMissingFields(row.document, defaults) : row.document,
+    differing: !live ? [] : defaults ? differing(row.document, live.document, defaults) : differingSections(row.document, live.document),
+  };
 }
 
 /**
  * Publishes revision N's document again as a new revision, noted `Restored revision N` and
  * guarded by the base revision the history screen showed; also deletes the restorer's draft.
- * `defaults` is unused today and kept so every write here takes the same arguments.
+ * A revision from before a later part existed is published filled from `defaults`, so what goes
+ * out is complete and validates.
  */
 export async function restoreRevision(
   db: Db,
@@ -239,6 +251,6 @@ export async function restoreRevision(
   return db.transaction(async (tx) => {
     const [row] = await tx.select({ document: siteSettingsRevisions.document }).from(siteSettingsRevisions).where(eq(siteSettingsRevisions.revision, input.revision));
     if (!row) return { result: "not-found" as const };
-    return publishDocument(tx, actor, defaults, subs, row.document, input.baseRevision, `Restored revision ${input.revision}`);
+    return publishDocument(tx, actor, defaults, subs, fillMissingFields(row.document, defaults), input.baseRevision, `Restored revision ${input.revision}`);
   });
 }
