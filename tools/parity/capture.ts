@@ -2,6 +2,9 @@
  * Parity harness: screenshots legacy (news.gov.bc.ca) and our site per page x viewport, diffs the
  * chrome regions, and runs axe on ours only. Local/on-demand; never run in CI.
  *   npm run parity -- --target <base URL> [--legacy <origin>] [--pages a,b] [--regions a,b] [--out dir]
+ *                      [--ours name=path,name=path]
+ * --ours overrides a page's path on our site for this run (e.g. release=/releases/<boxs key>/), since
+ * boxs.ca holds different posts than legacy. Structure rows: a selector legacy has and ours lacks fails.
  * Needs Playwright's Chromium (`npx playwright install chromium`). Requests to news.gov.bc.ca are
  * spaced >= 1 s apart (page navigations; the page's own subresources are not throttled).
  */
@@ -13,8 +16,9 @@ import { chromium, type Browser, type Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { AXE_TAGS } from "../../scripts/site-quality";
 import { bestRowOffsetMismatch, regionMismatch } from "./diff";
-import { PARITY_PAGES, VIEWPORTS } from "./pages";
+import { PARITY_PAGES, VIEWPORTS, parseOursOverrides } from "./pages";
 import { REGIONS, STRICT_MAX, type RegionName } from "./regions";
+import { STRUCTURE, structureReport, type StructureRow } from "./structure";
 
 export type RowStatus = "ok" | "mismatch" | "missing" | "skipped";
 export interface Row {
@@ -31,6 +35,11 @@ export interface Load {
   width: number;
   legacyStatus: number | null;
   oursStatus: number | null;
+}
+export interface StructureResult {
+  page: string;
+  width: number;
+  rows: StructureRow[];
 }
 export interface AxeFailure {
   page: string;
@@ -64,6 +73,7 @@ function parseArgs(argv: string[]) {
     legacy: get("legacy") ?? "https://news.gov.bc.ca",
     pages: list("pages"),
     regions: list("regions"),
+    ours: get("ours"),
     out: get("out") ?? join("parity-out", new Date().toISOString().replace(/[:.]/g, "-")),
   };
 }
@@ -111,11 +121,20 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
     return 1;
   }
 
+  let overrides: Record<string, string> = {};
+  try {
+    overrides = args.ours ? parseOursOverrides(args.ours) : {};
+  } catch (e) {
+    log(`parity: ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  }
+
   await mkdir(args.out, { recursive: true });
   const rows: Row[] = [];
   const axeFailures: AxeFailure[] = [];
   const loadErrors: string[] = [];
   const loads: Load[] = [];
+  const structures: StructureResult[] = [];
   let browser: Browser | undefined;
   try {
     browser = await chromium.launch();
@@ -128,7 +147,7 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
         const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
         try {
           const legacyUrl = join1(args.legacy, pg.path);
-          const oursUrl = join1(args.target, pg.oursPath ?? pg.path);
+          const oursUrl = join1(args.target, overrides[pg.name] ?? pg.oursPath ?? pg.path);
           const legacyStatus = await load(legacyPage, legacyUrl);
           const oursStatus = await load(oursPage, oursUrl);
           loads.push({ page: pg.name, width: vp.width, legacyStatus, oursStatus });
@@ -168,6 +187,12 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
             const fail = strict && (status === "missing" || status === "mismatch");
             rows.push({ page: pg.name, width: vp.width, region: name, status, ratio, strict, fail });
           }
+          const selectors = STRUCTURE[pg.name];
+          if (selectors) {
+            const probe = (p: Page) =>
+              p.evaluate((sels) => Object.fromEntries(sels.map((s) => [s, !!document.querySelector(s)])), selectors);
+            structures.push({ page: pg.name, width: vp.width, rows: structureReport(await probe(legacyPage), await probe(oursPage)) });
+          }
           // Full-page shots, named per the harness contract.
           await legacyPage.screenshot({ path: join(args.out, `${tag}-legacy.png`), fullPage: true });
           await oursPage.screenshot({ path: join(args.out, `${tag}-ours.png`), fullPage: true });
@@ -197,13 +222,24 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
         (r.strict ? "" : " (not strict)"),
     );
   }
+  for (const s of structures) {
+    const count = (st: StructureRow["status"]) => s.rows.filter((r) => r.status === st).length;
+    const missing = s.rows.filter((r) => r.status === "missing").map((r) => r.selector);
+    const absent = s.rows.filter((r) => r.status === "legacy-absent").map((r) => r.selector);
+    log(
+      `${missing.length ? "FAIL" : "ok  "} structure ${s.page.padEnd(10)} ${String(s.width).padStart(4)} ok=${count("ok")} missing=${missing.length}` +
+        ` legacy-absent=${absent.length}` +
+        (missing.length ? ` missing: ${missing.join(" | ")}` : "") +
+        (absent.length ? ` (legacy-absent: ${absent.join(" | ")})` : ""),
+    );
+  }
   for (const a of axeFailures) log(`FAIL axe ${a.page} ${a.width} ${a.impact} ${a.id} (${a.nodes} nodes)`);
   for (const e of loadErrors) log(`FAIL load ${e}`);
 
-  const failed = rows.some((r) => r.fail) || axeFailures.length > 0 || loadErrors.length > 0;
+  const failed = rows.some((r) => r.fail) || structures.some((s) => s.rows.some((r) => r.status === "missing")) || axeFailures.length > 0 || loadErrors.length > 0;
   await writeFile(
     join(args.out, "report.json"),
-    JSON.stringify({ target: args.target, legacy: args.legacy, strictMax: STRICT_MAX, loads, rows, axeFailures, loadErrors, failed }, null, 2),
+    JSON.stringify({ target: args.target, legacy: args.legacy, strictMax: STRICT_MAX, loads, rows, structures, axeFailures, loadErrors, failed }, null, 2),
   );
   log(`parity: ${failed ? "FAILED" : "passed"}; report at ${join(args.out, "report.json")}`);
   return failed ? 1 : 0;
