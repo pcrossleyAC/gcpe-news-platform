@@ -37,6 +37,8 @@ export function GovernmentTermsScreen(): React.JSX.Element {
   useDocumentTitle("Government terms");
   const admin = isCoreAdmin(session);
   const [terms, setTerms] = useState<GovernmentTermView[] | null>(null);
+  const [today, setToday] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
@@ -58,11 +60,12 @@ export function GovernmentTermsScreen(): React.JSX.Element {
       (l) => {
         if (call === latest.current) {
           setTerms(l.terms);
+          setToday(l.today);
           setLoadError(null);
         }
       },
       () => {
-        if (call === latest.current) setLoadError("Couldn't load government terms.");
+        if (call === latest.current) setLoadError("Couldn't load government terms. Try again, or ask a Hub administrator if this keeps happening.");
       },
     );
   }, []);
@@ -86,7 +89,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
       el.focus();
       focusNext.current = null;
     }
-  }, [terms, starting, editingId, deletingId]);
+  }, [terms, starting, editingId, deletingId, deleteError]);
 
   if (!admin) {
     return (
@@ -101,6 +104,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
     if (busy) return;
     setBusy(true);
     setMessages([]);
+    setDeleteError([]);
     setStatus(null);
     try {
       await apiFetch(`/nrms/api/government-terms/${encodeURIComponent(t.id)}`, { method: "DELETE" });
@@ -109,7 +113,8 @@ export function GovernmentTermsScreen(): React.JSX.Element {
       setStatus(`The term starting ${t.startDate ? formatLongDate(t.startDate) : "on no date"} is deleted.`);
       reload();
     } catch (caught) {
-      setMessages(messagesOf(caught));
+      focusNext.current = { kind: "confirm", id: t.id };
+      setDeleteError(messagesOf(caught));
     } finally {
       setBusy(false);
     }
@@ -124,7 +129,16 @@ export function GovernmentTermsScreen(): React.JSX.Element {
         The public archive groups releases by government term. Each term&rsquo;s dates are worked out from its start date:
         a term runs until the day before the next one starts.
       </p>
-      {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
+      {loadError && (
+        <>
+          <InlineAlert variant="danger" role="alert" description={loadError} />
+          <p>
+            <button type="button" onClick={reload}>
+              Try again
+            </button>
+          </p>
+        </>
+      )}
       {messages.map((m) => (
         <p role="alert" key={m}>
           {m}
@@ -151,6 +165,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
       )}
       {terms && starting && (
         <StartTermForm
+          scheduledStart={terms.find((t) => t.status === "scheduled")?.startDate ?? null}
           onCancel={() => {
             focusNext.current = "start";
             setStarting(false);
@@ -159,8 +174,11 @@ export function GovernmentTermsScreen(): React.JSX.Element {
             focusNext.current = "start";
             setStarting(false);
             setMessages([]);
-            const when = created.startDate ? formatLongDate(created.startDate) : "the chosen date";
-            setStatus(`Saved. The archive switches to the new term on ${when}.`);
+            setStatus(
+              created.startDate && (today === null || created.startDate > today)
+                ? `Saved. The archive switches to the new term on ${formatLongDate(created.startDate)}.`
+                : "Saved. The new term is now the current term.",
+            );
             reload();
           }}
         />
@@ -219,7 +237,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
                   >
                     Edit
                   </button>
-                  {t.status === "scheduled" && deletingId !== t.id && (
+                  {t.status === "scheduled" && t.releaseCount === 0 && deletingId !== t.id && (
                     <>
                       {" "}
                       <button
@@ -233,6 +251,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
                         onClick={() => {
                           setStatus(null);
                           setMessages([]);
+                          setDeleteError([]);
                           focusNext.current = { kind: "confirm", id: t.id };
                           setDeletingId(t.id);
                         }}
@@ -256,6 +275,11 @@ export function GovernmentTermsScreen(): React.JSX.Element {
                         Delete the term starting {t.startDate ? formatLongDate(t.startDate) : "on no date"}? Nothing is
                         listed under it yet, and the current term stays as it is.
                       </p>
+                      {deleteError.map((m) => (
+                        <p role="alert" key={m}>
+                          {m}
+                        </p>
+                      ))}
                       <button type="button" disabled={busy} onClick={() => void remove(t)}>
                         Confirm
                       </button>{" "}
@@ -263,6 +287,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
                         type="button"
                         onClick={() => {
                           focusNext.current = { kind: "delete", id: t.id };
+                          setDeleteError([]);
                           setDeletingId(null);
                         }}
                       >
@@ -295,12 +320,19 @@ function TermEditForm({
   const [label, setLabel] = useState(term.label ?? "");
   const [startDate, setStartDate] = useState(term.startDate ?? "");
   const [url, setUrl] = useState(term.legacyArchiveUrl ?? "");
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+  const [confirmingMove, setConfirmingMove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
+  const started = term.status === "current" || term.status === "past";
 
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
+  useEffect(() => {
+    if (confirmingMove) confirmRef.current?.focus();
+  }, [confirmingMove]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,6 +345,12 @@ function TermEditForm({
     if (newUrl !== term.legacyArchiveUrl) body.legacyArchiveUrl = newUrl;
     if (Object.keys(body).length === 0) {
       setMessages(["No changes to save."]);
+      return;
+    }
+    // Moving a started term's date moves releases between terms, so ask first.
+    if (started && body.startDate !== undefined && !confirmingMove) {
+      setMessages([]);
+      setConfirmingMove(true);
       return;
     }
     setBusy(true);
@@ -332,24 +370,26 @@ function TermEditForm({
       <h2 ref={headingRef} tabIndex={-1}>
         Edit {nameOf(term)}
       </h2>
-      {messages.map((m) => (
-        <p role="alert" key={m}>
-          {m}
-        </p>
-      ))}
+      {!confirmingMove &&
+        messages.map((m) => (
+          <p role="alert" key={m}>
+            {m}
+          </p>
+        ))}
       <div>
         <label htmlFor={`${uid}-label`}>Name</label>
-        <input id={`${uid}-label`} type="text" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input id={`${uid}-label`} type="text" maxLength={255} disabled={confirmingMove} value={label} onChange={(e) => setLabel(e.target.value)} />
       </div>
       <div>
         <label htmlFor={`${uid}-date`}>Start date</label>
-        <input id={`${uid}-date`} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        <input id={`${uid}-date`} type="date" disabled={confirmingMove} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
       </div>
       <div>
         <label htmlFor={`${uid}-url`}>Old archive web address</label>
         <input
           id={`${uid}-url`}
           type="url"
+          disabled={confirmingMove}
           value={url}
           aria-describedby={`${uid}-url-hint`}
           onChange={(e) => setUrl(e.target.value)}
@@ -357,13 +397,39 @@ function TermEditForm({
         <p id={`${uid}-url-hint`}>Optional. Must start with https://. Leave empty for none.</p>
       </div>
       <div>
-        <button type="submit" disabled={busy}>
+        <button type="submit" ref={saveRef} disabled={busy || confirmingMove}>
           Save
         </button>{" "}
         <button type="button" onClick={onCancel}>
           Cancel
         </button>
       </div>
+      {confirmingMove && (
+        <div role="group" tabIndex={-1} ref={confirmRef} aria-label="Confirm the new start date" aria-describedby={`${uid}-move`}>
+          <p id={`${uid}-move`}>
+            {`Change the start date to ${formatLongDate(startDate)}? Releases published from that day will be listed under this term, and the term before it will end the day before.`}
+          </p>
+          {messages.map((m) => (
+            <p role="alert" key={m}>
+              {m}
+            </p>
+          ))}
+          <button type="submit" disabled={busy}>
+            Confirm
+          </button>{" "}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setConfirmingMove(false);
+              setMessages([]);
+              setTimeout(() => saveRef.current?.focus(), 0);
+            }}
+          >
+            Go back
+          </button>
+        </div>
+      )}
     </form>
   );
 }

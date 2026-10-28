@@ -6,6 +6,7 @@ import {
   type CategoryKind,
   type EventEnvelope,
   type EventHandler,
+  type GovernmentTermsPayload,
   type OrgRecord,
   type ReleaseRecord,
   type SiteContentChanged,
@@ -15,7 +16,7 @@ import {
   type TermRecord,
 } from "@gcpe/events";
 import { CATEGORY_CHANGE_KIND, recordChanges } from "./changes";
-import { categories, categoryFeatures, home, posts, resourceLinks, siteSettings, slides } from "./db/schema";
+import { categories, categoryFeatures, governmentTerms, home, posts, resourceLinks, siteSettings, slides } from "./db/schema";
 import { deleteSemanticRows } from "./embeddings/rows";
 import { embeddingTextHash } from "./embeddings/source-text";
 import { searchTextFor } from "./search/search-text";
@@ -290,6 +291,21 @@ export async function applySiteSettings(tx: Tx, p: SiteSettingsPublished): Promi
   console.warn(`[news-api] ignored site settings revision ${p.revision}: revision ${current?.revision ?? "?"} is already stored (a reset NRMS database would look like this)`);
 }
 
+/**
+ * Stores a published government-terms snapshot. Only a snapshot strictly newer than the stored one
+ * applies (events can arrive late or twice); the change row is recorded once per applied snapshot.
+ */
+export async function applyGovernmentTerms(tx: Tx, p: GovernmentTermsPayload): Promise<void> {
+  const publishedAt = parseOffsetDateTime(p.publishedAt);
+  const values = { id: 1, publishedAt, document: p };
+  const applied = await tx
+    .insert(governmentTerms)
+    .values(values)
+    .onConflictDoUpdate({ target: governmentTerms.id, set: values, setWhere: sql`${governmentTerms.publishedAt} < ${publishedAt.toISOString()}::timestamptz` })
+    .returning({ id: governmentTerms.id });
+  if (applied.length > 0) await recordChanges(tx, [{ kind: "government_terms", key: null }]);
+}
+
 export async function applySiteContent(tx: Tx, c: SiteContentChanged, slideImages?: SlideImageFetcher): Promise<void> {
   switch (c.entity) {
     case "home": {
@@ -446,6 +462,9 @@ export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<s
     },
     "site.settings.published": async (tx, e) => {
       await applySiteSettings(tx, e.data as SiteSettingsPublished);
+    },
+    "government_terms.published": async (tx, e) => {
+      await applyGovernmentTerms(tx, e.data as GovernmentTermsPayload);
     },
   };
 }

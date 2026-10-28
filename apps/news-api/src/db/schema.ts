@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { OrgRecord, ReleaseRecord } from "@gcpe/events";
+import type { GovernmentTermsPayload } from "@gcpe/events";
 import type { SiteSettings } from "@gcpe/site-settings";
 
 export * from "@gcpe/events/tables";
@@ -113,7 +114,7 @@ export const postEmbeddingFailures = pgTable("post_embedding_failures", {
   failedAt: timestamp("failed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const CHANGE_KINDS = ["post.upserted", "post.unpublished", "home", "slides", "resource_links", "ministry", "sector", "theme", "tag", "site_settings"] as const;
+export const CHANGE_KINDS = ["post.upserted", "post.unpublished", "home", "slides", "resource_links", "ministry", "sector", "theme", "tag", "site_settings", "government_terms"] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 
 /**
@@ -131,7 +132,7 @@ export const changes = pgTable(
   },
   (t) => [
     index("changes_at_idx").on(t.at),
-    check("changes_kind_check", sql`${t.kind} IN ('post.upserted', 'post.unpublished', 'home', 'slides', 'resource_links', 'ministry', 'sector', 'theme', 'tag', 'site_settings')`),
+    check("changes_kind_check", sql`${t.kind} IN ('post.upserted', 'post.unpublished', 'home', 'slides', 'resource_links', 'ministry', 'sector', 'theme', 'tag', 'site_settings', 'government_terms')`),
   ],
 );
 
@@ -219,6 +220,17 @@ export const siteSettings = pgTable(
     document: jsonb("document").$type<SiteSettings>().notNull(),
   },
   (t) => [check("site_settings_single_row", sql`${t.id} = 1`)],
+);
+
+/** The live government-terms snapshot: one row (`id` 1), the newest `publishedAt` seen. */
+export const governmentTerms = pgTable(
+  "government_terms",
+  {
+    id: integer("id").primaryKey().default(1),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
+    document: jsonb("document").$type<GovernmentTermsPayload>().notNull(),
+  },
+  (t) => [check("government_terms_single_row", sql`${t.id} = 1`)],
 );
 
 export const resourceLinks = pgTable("resource_links", {

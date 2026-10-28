@@ -231,6 +231,69 @@ describe("GovernmentTermsScreen", () => {
     stub(["Core.Admin"], [], []);
     failures["GET /nrms/api/government-terms"] = () => jsonResponse(500, { error: "boom" });
     renderScreen();
-    await screen.findByText("Couldn't load government terms.");
+    await screen.findByText("Couldn't load government terms. Try again, or ask a Hub administrator if this keeps happening.");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+  it("does not offer Delete on a scheduled term that has releases", async () => {
+    stub(["Core.Admin"], [], [CURRENT, { ...SCHEDULED, releaseCount: 2 }]);
+    renderScreen();
+    await screen.findByText("Scheduled: starts November 20, 2028");
+    expect(screen.queryByRole("button", { name: /^Delete/ })).toBeNull();
+  });
+
+  it("shows a delete refusal inside the confirm box and moves focus there", async () => {
+    stub(["Core.Admin"], [], [CURRENT, SCHEDULED]);
+    failures[`DELETE /nrms/api/government-terms/${SCHEDULED.id}`] = () => jsonResponse(409, { error: "A term with releases can't be deleted." });
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete 2028-onward" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    const group = screen.getByRole("group", { name: "Delete 2028-onward" });
+    expect((await within(group).findByRole("alert")).textContent).toBe("A term with releases can't be deleted.");
+    await waitFor(() => expect(document.activeElement).toBe(group));
+  });
+
+  it("starting a term while one is scheduled says which term ends", async () => {
+    stub(["Core.Admin"], [], [CURRENT, SCHEDULED]);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Start new government term" }));
+    await user.type(screen.getByLabelText(/Start date/), "2029-03-01");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(
+      screen.getByText(
+        "Start a new government term on March 1, 2029? The term already scheduled to start November 20, 2028 will end February 28, 2029. Releases published from that day are listed under the new term.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says the new term is now current when it starts today or earlier", async () => {
+    stub(["Core.Admin"], [], [CURRENT]);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Start new government term" }));
+    await user.type(screen.getByLabelText(/Start date/), "2026-10-27");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    expect((await screen.findByRole("status")).textContent).toBe("Saved. The new term is now the current term.");
+  });
+
+  it("asks before changing a started term's start date, and shows the server's refusal", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(["Core.Admin"], calls, [PAST, CURRENT]);
+    failures[`PATCH /nrms/api/government-terms/${CURRENT.id}`] = () => jsonResponse(409, { error: "A term that has started can't be moved to a date after today." });
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit 2024-onward" }));
+    const form = screen.getByRole("form", { name: "Edit 2024-onward" });
+    const date = within(form).getByLabelText(/Start date/);
+    await user.clear(date);
+    await user.type(date, "2030-01-01");
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    const group = within(form).getByRole("group", { name: "Confirm the new start date" });
+    expect(group.textContent).toMatch(/Change the start date to January 1, 2030\? Releases published from that day will be listed under this term/);
+    expect(calls.some((c) => c.init?.method === "PATCH")).toBe(false);
+    await user.click(within(group).getByRole("button", { name: "Confirm" }));
+    expect((await within(group).findByRole("alert")).textContent).toBe("A term that has started can't be moved to a date after today.");
   });
 });

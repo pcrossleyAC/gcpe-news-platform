@@ -5,7 +5,7 @@ import type { Db } from "@gcpe/db-kit";
 import { clientIpKey } from "../client-ip";
 import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
-import { getSiteSettings, listSlidesV2 } from "../../read";
+import { getGovernmentTerms, getSiteSettings, listSlidesV2 } from "../../read";
 import { RELATED_MAX_KEY_CHARS, type RelatedService } from "../../search/related";
 import { similarRequestSchema, type SimilarService } from "../../search/similar";
 import type { SearchService } from "../../search/service";
@@ -38,6 +38,12 @@ export function v2Routes(deps: {
     // The live site settings (public; 404 until NRMS has published a revision).
     r.get("/site-settings", async (_req, res) => {
       const stored = await getSiteSettings(db);
+      if (!stored) return void res.status(404).json({ error: "not found" });
+      res.json(stored);
+    });
+    // The government-terms snapshot (public; 404 until NRMS has published one).
+    r.get("/government-terms", async (_req, res) => {
+      const stored = await getGovernmentTerms(db);
       if (!stored) return void res.status(404).json({ error: "not found" });
       res.json(stored);
     });

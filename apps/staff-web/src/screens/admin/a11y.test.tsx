@@ -172,4 +172,33 @@ describe("accessibility — Users, Media list names and error log", () => {
     await screen.findByRole("group", { name: "Confirm the new term" });
     expect(await seriousViolations(container)).toEqual([]);
   });
+
+  it("GovernmentTermsScreen, with the edit form and the delete confirm open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/government-terms")
+          return jsonResponse(200, {
+            today: "2026-10-27",
+            terms: [
+              { id: "t1", slug: "2024-onward", label: null, startDate: "2024-11-18", endDate: null, status: "current", legacyArchiveUrl: null, legacyId: null, releaseCount: 3 },
+              { id: "t2", slug: "2028-onward", label: null, startDate: "2028-11-20", endDate: null, status: "scheduled", legacyArchiveUrl: null, legacyId: null, releaseCount: 0 },
+            ],
+          });
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<GovernmentTermsScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete 2028-onward" }));
+    await user.click(screen.getByRole("button", { name: "Edit 2024-onward" }));
+    const date = await screen.findByLabelText("Start date");
+    await user.clear(date);
+    await user.type(date, "2024-11-19");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("group", { name: "Confirm the new start date" });
+    await screen.findByRole("group", { name: "Delete 2028-onward" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
 });

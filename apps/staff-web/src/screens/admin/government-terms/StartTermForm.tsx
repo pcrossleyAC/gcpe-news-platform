@@ -10,6 +10,8 @@ export function dayBefore(iso: string): string {
 }
 
 export interface StartTermFormProps {
+  /** Start date of a term already scheduled (not begun), if any; the new term follows it. */
+  scheduledStart?: string | null;
   onStarted: (term: GovernmentTermView) => void;
   onCancel: () => void;
 }
@@ -20,7 +22,7 @@ export interface StartTermFormProps {
  * server's refusals (a date that isn't after the latest term, a date already taken) are shown
  * on the confirm step in its own words.
  */
-export function StartTermForm({ onStarted, onCancel }: StartTermFormProps): React.JSX.Element {
+export function StartTermForm({ scheduledStart = null, onStarted, onCancel }: StartTermFormProps): React.JSX.Element {
   const uid = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
@@ -86,7 +88,7 @@ export function StartTermForm({ onStarted, onCancel }: StartTermFormProps): Reac
       </div>
       <div>
         <label htmlFor={`${uid}-label`}>Name (optional)</label>
-        <input id={`${uid}-label`} type="text" value={label} disabled={confirming} onChange={(e) => setLabel(e.target.value)} />
+        <input id={`${uid}-label`} type="text" maxLength={255} value={label} disabled={confirming} onChange={(e) => setLabel(e.target.value)} />
       </div>
       {!confirming && (
         <div>
@@ -101,7 +103,9 @@ export function StartTermForm({ onStarted, onCancel }: StartTermFormProps): Reac
       {confirming && (
         <div role="group" tabIndex={-1} ref={confirmRef} aria-label="Confirm the new term" aria-describedby={`${uid}-confirm`}>
           <p id={`${uid}-confirm`}>
-            {`Start a new government term on ${formatLongDate(startDate)}? The current term will end ${formatLongDate(dayBefore(startDate))}. Releases published from that day are listed under the new term.`}
+            {scheduledStart
+              ? `Start a new government term on ${formatLongDate(startDate)}? The term already scheduled to start ${formatLongDate(scheduledStart)} will end ${formatLongDate(dayBefore(startDate))}. Releases published from that day are listed under the new term.`
+              : `Start a new government term on ${formatLongDate(startDate)}? The current term will end ${formatLongDate(dayBefore(startDate))}. Releases published from that day are listed under the new term.`}
           </p>
           {messages.map((m) => (
             <p role="alert" key={m}>
