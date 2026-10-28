@@ -65,13 +65,31 @@ function stub(
       if (
         url === "/core/api/organizations/health/deactivate" &&
         init?.method === "POST"
-      )
+      ) {
+        orgs = (orgs as typeof ORGS).map((o) =>
+          o.key === "health" ? { ...o, isActive: false } : o,
+        );
         return new Response(null, { status: 204 });
+      }
       if (
         url === "/core/api/organizations/old/profile" &&
         init?.method === "PATCH"
-      )
+      ) {
+        orgs = (orgs as typeof ORGS).map((o) =>
+          o.key === "old" ? { ...o, isActive: true } : o,
+        );
         return jsonResponse(200, { ...ORGS[0], key: "old", isActive: true });
+      }
+      if (
+        url === "/core/api/organizations/health/profile" &&
+        init?.method === "PATCH"
+      ) {
+        const body = JSON.parse(init.body as string) as { isActive?: boolean };
+        orgs = (orgs as typeof ORGS).map((o) =>
+          o.key === "health" ? { ...o, ...body } : o,
+        );
+        return jsonResponse(200, { ...ORGS[0], ...body });
+      }
       if (url === "/core/api/organizations/health/hq" && init?.method === "PUT")
         return jsonResponse(200, { ...ORGS[0], isHq: true });
       if (
@@ -83,6 +101,13 @@ function stub(
     }),
   );
 }
+
+const showInactive = async () =>
+  userEvent.setup().click(
+    await screen.findByRole("checkbox", {
+      name: /Show inactive organizations/,
+    }),
+  );
 
 const renderScreen = () =>
   render(
@@ -283,6 +308,7 @@ describe("OrganizationsScreen", () => {
       { ...ORGS[0], key: "old", displayName: "Old Ministry", isActive: false },
     ]);
     renderScreen();
+    await showInactive();
     const user = userEvent.setup();
     expect(
       screen.queryByRole("button", { name: "Deactivate Old Ministry" }),
@@ -336,6 +362,7 @@ describe("OrganizationsScreen", () => {
       ],
     );
     renderScreen();
+    await showInactive();
     const user = userEvent.setup();
     await user.click(
       await screen.findByRole("button", { name: "Edit Old Ministry" }),
@@ -387,6 +414,8 @@ describe("OrganizationsScreen", () => {
     );
     renderScreen();
     await screen.findByRole("button", { name: "Edit Health" });
+    await showInactive();
+    await screen.findByRole("button", { name: "Edit Old Ministry" });
     expect(screen.queryByRole("button", { name: "Add ministry" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Deactivate/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Reactivate/ })).toBeNull();
@@ -408,16 +437,116 @@ describe("OrganizationsScreen", () => {
     ).toHaveFocus();
   });
 
-  it("returns focus to the row's Edit button after Deactivate succeeds", async () => {
-    stub(["Core.Admin"], []);
+  it("with inactive shown, returns focus to the row's Edit button after Deactivate succeeds", async () => {
+    stub(
+      ["Core.Admin"],
+      [],
+      [
+        ...ORGS,
+        {
+          ...ORGS[0],
+          key: "old",
+          displayName: "Old Ministry",
+          isActive: false,
+        },
+      ],
+    );
     renderScreen();
+    await showInactive();
     const user = userEvent.setup();
     await user.click(
       await screen.findByRole("button", { name: "Deactivate Health" }),
     );
     await user.click(screen.getByRole("button", { name: "Confirm" }));
-    await screen.findByText("Health is deactivated.");
-    expect(screen.getByRole("button", { name: "Edit Health" })).toHaveFocus();
+    await screen.findByText(/Health is deactivated\./);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Edit Health" })).toHaveFocus(),
+    );
+  });
+
+  describe("inactive organizations", () => {
+    const WITH_INACTIVE = [
+      { ...ORGS[0], key: "old", displayName: "Old Ministry", isActive: false },
+      ...ORGS,
+    ];
+    const rowNames = () =>
+      screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((r) => within(r).getAllByRole("cell")[0]!.textContent);
+
+    it("are hidden by default, with a count on the toggle", async () => {
+      stub(["Core.Admin"], [], WITH_INACTIVE);
+      renderScreen();
+      await screen.findByRole("button", { name: "Edit Health" });
+      expect(rowNames()).toEqual(["Health", "GCPE Media Relations"]);
+      expect(
+        screen.getByRole("checkbox", {
+          name: "Show inactive organizations (1)",
+        }),
+      ).not.toBeChecked();
+    });
+
+    it("are listed after every active one when shown, and hidden again when unticked", async () => {
+      stub(["NRMS.SiteEditor"], [], WITH_INACTIVE);
+      renderScreen();
+      await showInactive();
+      expect(rowNames()).toEqual([
+        "Health",
+        "GCPE Media Relations",
+        "Old Ministry",
+      ]);
+      await showInactive();
+      expect(rowNames()).toEqual(["Health", "GCPE Media Relations"]);
+    });
+
+    it("has no toggle when every organization is active", async () => {
+      stub(["Core.Admin"], []);
+      renderScreen();
+      await screen.findByRole("button", { name: "Edit Health" });
+      expect(
+        screen.queryByRole("checkbox", { name: /Show inactive organizations/ }),
+      ).toBeNull();
+    });
+
+    it("a row deactivated while inactive ones are hidden leaves the list, and focus goes to the toggle", async () => {
+      stub(["Core.Admin"], []);
+      renderScreen();
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole("button", { name: "Deactivate Health" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Confirm" }));
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "Health is deactivated. Inactive organizations are hidden: tick Show inactive organizations to see it.",
+      );
+      const toggle = await screen.findByRole("checkbox", {
+        name: "Show inactive organizations (1)",
+      });
+      await waitFor(() => expect(toggle).toHaveFocus());
+      expect(screen.queryByRole("button", { name: "Edit Health" })).toBeNull();
+    });
+
+    it("a row saved as inactive from the edit form leaves the list, and focus goes to the toggle", async () => {
+      // The edit form needs a whole record (a sortOrder, or Save stays disabled).
+      stub(
+        ["Core.Admin"],
+        [],
+        [{ ...ORGS[0], sortOrder: 1, parentKey: null }, ORGS[1]],
+      );
+      renderScreen();
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole("button", { name: "Edit Health" }),
+      );
+      await user.click(screen.getByRole("checkbox", { name: "Active" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const toggle = await screen.findByRole("checkbox", {
+        name: "Show inactive organizations (1)",
+      });
+      await waitFor(() => expect(toggle).toHaveFocus());
+      expect(screen.queryByRole("button", { name: "Edit Health" })).toBeNull();
+    });
   });
 
   it("returns focus to the row's Edit button after Reactivate succeeds", async () => {
@@ -434,6 +563,7 @@ describe("OrganizationsScreen", () => {
       ],
     );
     renderScreen();
+    await showInactive();
     await userEvent
       .setup()
       .click(
@@ -478,6 +608,7 @@ describe("OrganizationsScreen", () => {
       ],
     );
     renderScreen();
+    await showInactive();
     await userEvent
       .setup()
       .click(

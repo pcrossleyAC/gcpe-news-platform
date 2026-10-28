@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
@@ -18,6 +18,8 @@ import { canEditOrgProfile, isCoreAdmin } from "./access";
  * minister and can open its public-facing profile for editing; only Core.Admin also sees and
  * sets the HQ and public switches (spec addendum §4, C124; Q54), each through its own
  * dedicated route. The HQ and Public columns are hidden, not disabled, for SiteEditors.
+ * Inactive organizations are hidden until "Show inactive organizations" is ticked, and then
+ * listed after every active one, so the list leads with the ministries staff actually edit.
  */
 export function OrganizationsScreen(): React.JSX.Element {
   const session = useSession();
@@ -28,10 +30,14 @@ export function OrganizationsScreen(): React.JSX.Element {
   const editButtons = useRef(new Map<string, HTMLButtonElement>());
   const refocusKey = useRef<string | null>(null);
   // Where focus goes after a row action re-renders the row (Deactivate/Reactivate/confirm).
+  // "toggle": the row left the list (deactivated while inactive ones are hidden).
   const rowFocus = useRef<{
     key: string;
-    target: "edit" | "deactivate" | "group";
+    target: "edit" | "deactivate" | "group" | "toggle";
   } | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const toggle = useRef<HTMLInputElement>(null);
+  const toggleId = useId();
   const deactivateButtons = useRef(new Map<string, HTMLButtonElement>());
   const confirmGroups = useRef(new Map<string, HTMLDivElement>());
   const [rowError, setRowError] = useState<{
@@ -81,7 +87,9 @@ export function OrganizationsScreen(): React.JSX.Element {
         ? editButtons.current.get(f.key)
         : f.target === "deactivate"
           ? deactivateButtons.current.get(f.key)
-          : confirmGroups.current.get(f.key);
+          : f.target === "toggle"
+            ? toggle.current
+            : confirmGroups.current.get(f.key);
     if (el) {
       el.focus();
       rowFocus.current = null;
@@ -141,10 +149,17 @@ export function OrganizationsScreen(): React.JSX.Element {
         `/core/api/organizations/${encodeURIComponent(o.key)}/deactivate`,
         { method: "POST" },
       );
-      rowFocus.current = { key: o.key, target: "edit" };
+      rowFocus.current = {
+        key: o.key,
+        target: showInactive ? "edit" : "toggle",
+      };
       closeFormFor(o.key);
       setConfirmingKey(null);
-      setStatus(`${o.displayName} is deactivated.`);
+      setStatus(
+        showInactive
+          ? `${o.displayName} is deactivated.`
+          : `${o.displayName} is deactivated. Inactive organizations are hidden: tick Show inactive organizations to see it.`,
+      );
       reload();
     } catch (caught) {
       setRowError({ key: o.key, messages: messagesOf(caught) });
@@ -174,6 +189,15 @@ export function OrganizationsScreen(): React.JSX.Element {
       setBusy(false);
     }
   };
+
+  const inactiveCount = orgs?.filter((o) => !o.isActive).length ?? 0;
+  // Active first, in the server's order; inactive after them, and only when asked for.
+  const rows = orgs
+    ? [
+        ...orgs.filter((o) => o.isActive),
+        ...(showInactive ? orgs.filter((o) => !o.isActive) : []),
+      ]
+    : [];
 
   return (
     <div className="gcpe-organizations">
@@ -244,14 +268,31 @@ export function OrganizationsScreen(): React.JSX.Element {
             refocusKey.current = editingKey;
             setEditingKey(null);
           }}
-          onSaved={() => {
-            refocusKey.current = editingKey;
+          onSaved={(saved) => {
+            // Saved as inactive while inactive ones are hidden, the row leaves the list.
+            if (!saved.isActive && !showInactive)
+              rowFocus.current = { key: saved.key, target: "toggle" };
+            else refocusKey.current = editingKey;
             setEditingKey(null);
             setMessages([]);
             setStatus(SAVED_MESSAGE);
             reload();
           }}
         />
+      )}
+      {orgs && (inactiveCount > 0 || showInactive) && (
+        <p>
+          <input
+            id={toggleId}
+            ref={toggle}
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+          />{" "}
+          <label htmlFor={toggleId}>
+            Show inactive organizations ({inactiveCount})
+          </label>
+        </p>
       )}
       {orgs && (
         <table className="gcpe-table">
@@ -268,7 +309,7 @@ export function OrganizationsScreen(): React.JSX.Element {
             </tr>
           </thead>
           <tbody>
-            {orgs.map((o) => (
+            {rows.map((o) => (
               <tr key={o.key}>
                 <td>{o.displayName}</td>
                 <td>{o.abbreviation ?? ""}</td>
