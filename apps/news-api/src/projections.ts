@@ -9,12 +9,13 @@ import {
   type OrgRecord,
   type ReleaseRecord,
   type SiteContentChanged,
+  type SiteSettingsPublished,
   type SubscriberConfig,
   type TermKind,
   type TermRecord,
 } from "@gcpe/events";
 import { CATEGORY_CHANGE_KIND, recordChanges } from "./changes";
-import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
+import { categories, categoryFeatures, home, posts, resourceLinks, siteSettings, slides } from "./db/schema";
 import { deleteSemanticRows } from "./embeddings/rows";
 import { embeddingTextHash } from "./embeddings/source-text";
 import { searchTextFor } from "./search/search-text";
@@ -268,6 +269,20 @@ export async function deactivateCategory(tx: Tx, kind: CategoryKind, key: string
   await recordChanges(tx, keys.map((k) => ({ kind: CATEGORY_CHANGE_KIND[kind], key: k })));
 }
 
+/**
+ * Stores a published site-settings revision. Only a revision higher than the stored one applies
+ * (events can arrive late or twice); the change row is recorded once per applied revision.
+ */
+export async function applySiteSettings(tx: Tx, p: SiteSettingsPublished): Promise<void> {
+  const values = { id: 1, revision: p.revision, publishedAt: parseOffsetDateTime(p.publishedAt), document: p.document };
+  const applied = await tx
+    .insert(siteSettings)
+    .values(values)
+    .onConflictDoUpdate({ target: siteSettings.id, set: values, setWhere: sql`${siteSettings.revision} < ${p.revision}` })
+    .returning({ revision: siteSettings.revision });
+  if (applied.length > 0) await recordChanges(tx, [{ kind: "site_settings", key: null }]);
+}
+
 export async function applySiteContent(tx: Tx, c: SiteContentChanged, slideImages?: SlideImageFetcher): Promise<void> {
   switch (c.entity) {
     case "home": {
@@ -421,6 +436,9 @@ export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<s
       const c = e.data as SiteContentChanged;
       await applySiteContent(tx, c, slideImages);
       if (c.entity === "home") await requestHomeRebuild(tx, e.correlationId, subscribers);
+    },
+    "site.settings.published": async (tx, e) => {
+      await applySiteSettings(tx, e.data as SiteSettingsPublished);
     },
   };
 }

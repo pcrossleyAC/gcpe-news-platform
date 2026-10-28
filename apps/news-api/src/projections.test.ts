@@ -4,8 +4,9 @@ import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { EventEnvelope, OrgRecord, ReleaseRecord, TermRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
+import { bcSettings } from "../../../packages/site-settings/src/fixtures";
 import { createNewsTestDb, TZ, waitUntilBlockedOnLock } from "../test/helpers";
-import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
+import { categories, categoryFeatures, changes, home, posts, resourceLinks, siteSettings, slides } from "./db/schema";
 import { embeddingTextHash } from "./embeddings/source-text";
 import { applyOrg, applyRelease, applySiteContent, applyTerm, createProjectionHandlers, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
 import { listSlides } from "./read";
@@ -30,7 +31,7 @@ describe("projections", () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE posts, categories, category_features, home, slides, resource_links CASCADE");
+    await tdb.pool.query("TRUNCATE posts, categories, category_features, home, slides, resource_links, site_settings, changes CASCADE");
   });
 
   it("builds lowercased index keys", () => {
@@ -457,5 +458,39 @@ describe("projections", () => {
     await tdb.db.transaction((tx) => applyRelease(tx, r));
     const [row] = await tdb.db.select({ h: posts.embeddingTextHash }).from(posts).where(eq(posts.key, "R-HASH"));
     expect(row?.h).toBe(embeddingTextHash(searchTextFor(r)));
+  });
+  describe("site.settings.published", () => {
+    const published = (revision: number, message = `rev ${revision}`) => {
+      const document = bcSettings();
+      document.banner.message = message;
+      return {
+        data: { revision, publishedAt: `2026-10-27T1${revision}:00:00.000Z`, document },
+        correlationId: `c${revision}`,
+      } as unknown as EventEnvelope;
+    };
+    const apply = (e: EventEnvelope) => tdb.db.transaction((tx) => createProjectionHandlers()["site.settings.published"]!(tx, e));
+    const stored = () => tdb.db.select().from(siteSettings);
+    const settingsChanges = async () => (await tdb.db.select().from(changes)).filter((c) => c.kind === "site_settings");
+
+    it("stores the document, then a late older revision leaves the newer one stored", async () => {
+      await apply(published(2));
+      await apply(published(1));
+      const rows = await stored();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.revision).toBe(2);
+      expect(rows[0]!.document.banner.message).toBe("rev 2");
+      expect(rows[0]!.publishedAt.toISOString()).toBe("2026-10-27T12:00:00.000Z");
+    });
+
+    it("records one site_settings change (null key) per applied revision, none for a stale or repeated one", async () => {
+      await apply(published(1));
+      expect(await settingsChanges()).toEqual([expect.objectContaining({ kind: "site_settings", key: null })]);
+      await apply(published(2));
+      expect(await settingsChanges()).toHaveLength(2);
+      await apply(published(1));
+      await apply(published(2));
+      expect(await settingsChanges()).toHaveLength(2);
+      expect((await stored())[0]!.revision).toBe(2);
+    });
   });
 });

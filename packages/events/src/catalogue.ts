@@ -300,6 +300,7 @@ export const siteSettingsPublishedSchema = z.object({
   publishedAt: offsetDateTime,
   document: siteSettingsSchema,
 });
+export type SiteSettingsPublished = z.infer<typeof siteSettingsPublishedSchema>;
 
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
