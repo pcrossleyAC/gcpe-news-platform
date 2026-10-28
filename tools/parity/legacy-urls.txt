@@ -8,3 +8,13 @@
 /archive
 /site/
 /site/ministries/
+# section: fixed rules
+/more-news
+/releases/archive
+/archive/2026
+/sitemap/html
+/contact
+/newsletters
+/subscribe/save
+/Content/Images/Gov/default-og-image-new.jpg
+/search?q=housing&resultspagenum=2

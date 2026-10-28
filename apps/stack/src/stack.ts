@@ -368,7 +368,8 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // PUBLIC_SITE_URL still has a path (boxs.ca's https://boxs.ca/site until the operator flips
   // it), the site is served under that prefix too, with siteNotFound for its unknown pages;
   // once it is the bare origin, /site/<rest>?<query> 301s to /<rest>?<query> (site-mount.ts).
-  mountSite(app, { outputDir, basePath: siteBasePath(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl) });
+  // Old news.gov.bc.ca URLs (parity plan 3) are answered inside it, never under a stack-owned prefix.
+  mountSite(app, { outputDir, basePath: siteBasePath(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl), passThrough: STACK_OWNED_PREFIXES });
 
   // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
   // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
