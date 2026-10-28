@@ -140,6 +140,28 @@ async function runBuild() {
   console.log("[build-siteground] bundling the report worker and copying BC Sans …");
   await buildReportWorker(outDir);
 
+  // `import:public` (apps/news-api/src/import/public-cli.ts) as one self-contained file, so it can
+  // be run over SSH against the News API's localhost-only database without a checkout
+  // (docs/deploy/siteground.md, "Seeding boxs.ca with public news.gov posts"). It finds its
+  // migrations at ../migrations/news-api, which the step below lays down.
+  console.log("[build-siteground] bundling tools/news-api-import-public.mjs …");
+  await build({
+    entryPoints: [join(root, "apps/news-api/src/import/public-cli.ts")],
+    outfile: join(outDir, "tools/news-api-import-public.mjs"),
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node24",
+    external: EXTERNAL,
+    banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" },
+    minifyWhitespace: true,
+    minifySyntax: true,
+    minifyIdentifiers: false,
+    keepNames: true,
+    legalComments: "none",
+    logLevel: "warning",
+  });
+
   console.log("[build-siteground] copying migrations …");
   for (const app of APPS) {
     const src = join(root, "apps", app, "migrations");

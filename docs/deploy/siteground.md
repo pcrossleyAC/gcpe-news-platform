@@ -772,6 +772,62 @@ newest published revision, or 404 when nothing has been published. It is public 
   role. Deactivating or reactivating never changes the Public flag, so after reactivating a
   non-public ministry the status says "It isn't public: tick Public to list it on the public site."
 
+## Seeding boxs.ca with public news.gov posts
+
+For parity checks on a test host, `import:public` copies a slice of **public** posts from the
+legacy News API (`https://api.news.gov.bc.ca`, read-only, no credentials) into the News API's
+database: by default the latest 20 releases, stories, factsheets and updates, plus the latest 3
+posts of every ministry, sector, theme and tag the legacy API lists (74 requests on 2026-10-28,
+about 185 posts), plus any `--keys`. It is polite by construction: one request at a time, at least
+1 s apart, User-Agent `gcpe-boxs-test-import (contact Paul@mtheory.ca)`, one retry on a 5xx, and it
+stops on a 429 before writing anything. It prints the request plan before the bulk of the
+requests; `--max-requests <n>` (default 300) caps it by leaving categories out.
+
+Posts are written through the legacy importer's own write path (`applyRelease`, `origin
+'legacy'`, no PostUpdate NOTIFY), so they look exactly like legacy-imported posts, and each one
+records a `post.upserted` row in the change feed: the public site rebuilds the post, home, archive
+and category pages on its next `site.sync` poll (every `SYNC_INTERVAL_MS`, 30 s). It writes **no**
+`outbox_events` row, so nothing reaches NRMS, NoD or distribution — no notification or email can
+come of it (pinned by `apps/news-api/src/import/public.test.ts`). A key that already exists and
+wasn't created by this tool (NRMS-published or legacy-imported) is skipped and counted, never
+overwritten. Categories are never created: a post keeps the ministry/sector/theme/tag keys it has,
+and the report lists those the database doesn't know (the site leaves them out). The keys it
+created are listed in `public_import_posts` (migration `0011`), which `--remove` uses.
+
+The News API database only accepts `localhost` connections, so run it on the server from the
+deployed artifact, which carries the tool as `tools/news-api-import-public.mjs` (with its
+migrations beside it). Paste the value of `NEWSAPI_DATABASE_URL` from Site Tools at the prompt
+(it is read hidden, never put on a command line):
+
+```sh
+ssh boxs
+APP="$(ls -dt ~/www/boxs.ca/public_html/.nodeapp/*/ | head -1)"   # the newest deploy
+read -rs -p 'NEWSAPI_DATABASE_URL: ' DATABASE_URL && export DATABASE_URL && echo
+/usr/local/bin/node-24 "$APP/tools/news-api-import-public.mjs" --dry-run   # fetch, compare with the database, write nothing
+/usr/local/bin/node-24 "$APP/tools/news-api-import-public.mjs"             # import the slice
+```
+
+Options: `--per-kind <n>` (default 20), `--per-category <n>` (default 3; `0` skips categories),
+`--keys k1,k2,...`, `--from <base>`, `--max-requests <n>`, `--dry-run`. A re-run refreshes only
+posts the source has changed since (by `timestamp`); the rest are reported `unchanged`. The
+report is JSON on stdout; exit code `1` on any failure, including a 429.
+
+**Removing the slice:**
+
+```sh
+/usr/local/bin/node-24 "$APP/tools/news-api-import-public.mjs" --remove --dry-run   # list what would go
+/usr/local/bin/node-24 "$APP/tools/news-api-import-public.mjs" --remove
+```
+
+This deletes every post the tool created, in one transaction with a `post.unpublished` change row
+for each, so the site removes those pages and rebuilds the lists they were on. A key NRMS has
+published since (origin `event`) is kept. Caveat: a later full `import:legacy` run rewrites
+legacy-owned posts it also has, and those stay listed in `public_import_posts` — `--remove` would
+then delete them too.
+
+From a checkout (for a database you can reach directly), the same command is
+`DATABASE_URL=... npm run news-api:import-public -- --dry-run`.
+
 ## Importing legacy NRMS data (Phase 3e)
 
 `npm run nrms:import` reads legacy's SQL Server through `@gcpe/legacy-import` and writes NRMS's
