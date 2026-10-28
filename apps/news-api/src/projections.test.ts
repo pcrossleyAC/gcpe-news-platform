@@ -9,7 +9,7 @@ import { createNewsTestDb, TZ, waitUntilBlockedOnLock } from "../test/helpers";
 import { categories, categoryFeatures, changes, home, posts, resourceLinks, siteSettings, slides } from "./db/schema";
 import { embeddingTextHash } from "./embeddings/source-text";
 import { applyOrg, applyRelease, applySiteContent, applyTerm, createProjectionHandlers, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
-import { listSlides } from "./read";
+import { getMinistry, listSlides } from "./read";
 import { SEARCH_TEXT_MAX_CHARS, searchTextFor } from "./search/search-text";
 import { SlideImageError, type SlideImageFetcher } from "./slide-images";
 import { listenForUpdates, notifyUpdate, type UpdateTarget } from "./updates/notify";
@@ -423,6 +423,21 @@ describe("projections", () => {
         { kind: "slides", key: null },
         { kind: "resource_links", key: null },
       ]);
+    });
+
+    it("an org.upserted with changed topic/service links records a ministry change and the ministry DTO carries the new links", async () => {
+      await tdb.db.transaction((tx) => applyOrg(tx, org));
+      await tdb.pool.query("TRUNCATE changes");
+      const links = { topicLinks: [{ text: "Wait times", url: "https://gov.example/wait" }], serviceLinks: [{ text: "Find a doctor", url: "https://gov.example/doctor" }] };
+      await tdb.db.transaction((tx) => applyOrg(tx, { ...org, ...links, social: { ...org.social, flickrUrl: "https://flickr.com/h", youtubeUrl: "https://youtube.com/h" } }));
+      expect(await changeRows()).toEqual([{ kind: "ministry", key: "health" }]);
+      const dto = await getMinistry(tdb.db, "health", TZ);
+      expect(dto).toMatchObject({
+        topicLinks: [{ key: "Wait times", uri: "https://gov.example/wait" }],
+        serviceLinks: [{ key: "Find a doctor", uri: "https://gov.example/doctor" }],
+        flickrUri: "https://flickr.com/h",
+        youtubeUri: "https://youtube.com/h",
+      });
     });
 
     it("writes nothing when the transaction rolls back", async () => {

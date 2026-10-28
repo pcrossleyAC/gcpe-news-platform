@@ -86,6 +86,11 @@ main:focus { outline: none; }
 .connect-list { list-style: none; padding: 0; }
 .connect-list li { border-bottom: 1px solid var(--color-border); padding: 0.5rem 0; }
 .connect-list p { margin: 0.25rem 0 0; color: var(--color-muted-text); }
+.ministry-layout { display: grid; gap: 1rem; }
+.ministry-layout aside h2 { font-size: 1.125rem; }
+@media (min-width: 48rem) {
+  .ministry-layout { grid-template-columns: 18rem minmax(0, 1fr); gap: 2rem; align-items: start; }
+}
 figure { margin: 1rem 0; }
 img { max-width: 100%; height: auto; }
 `;

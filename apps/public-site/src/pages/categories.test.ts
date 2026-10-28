@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure, withoutBannerScript } from "../../test/structure";
-import { category, ministry, post, site } from "../../test/fixtures";
+import { bcSettings, category, ministry, post, site } from "../../test/fixtures";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./categories";
 
 const emptyPosts = { top: null, feature: null, latest: [] };
@@ -82,7 +82,8 @@ describe("renderMinistryPage", () => {
     expect(html).not.toContain('href="javascript:');
     expect(html).not.toContain('src="javascript:');
     expect(html).not.toContain("<img");
-    expect(html).not.toContain("Ministry website");
+    expect(html).not.toContain("Ministry Website");
+    expect(html).not.toContain("<aside");
   });
 
   it("links the feed alternate at /ministries/<key>/feed.xml", () => {
@@ -98,14 +99,86 @@ describe("renderMinistryPage", () => {
       site,
       {},
     );
-    expect(withContacts).toContain("Media contacts");
+    expect(withContacts).toContain("Media Contacts");
     expect(withContacts).toContain("Alex &lt;Example&gt;");
     expect(withContacts).toContain("Comms");
     expect(withContacts).toContain("250-555-0100");
     expect(withContacts).toContain("alex@example.test");
 
     const without = renderMinistryPage(ministry({ contactUser: null, secondContactUser: null }), null, emptyPosts, site, {});
-    expect(without).not.toContain("Media contacts");
+    expect(without).not.toContain("Media Contacts");
+  });
+});
+
+describe("renderMinistryPage side column", () => {
+  const settings = bcSettings();
+  const full = () =>
+    ministry({
+      ministryUrl: "https://gov.example/health",
+      flickrUri: "https://flickr.com/health",
+      youtubeUri: "https://youtube.com/health",
+      contactUser: { name: "Alex Example", title: "Comms", phone: "250-555-0100", email: "alex@example.test" },
+      topicLinks: [{ key: "Wait times", uri: "https://gov.example/wait" }],
+      serviceLinks: [{ key: "Find a doctor", uri: "https://gov.example/doctor" }],
+    });
+  const render = (m: ReturnType<typeof ministry>, s = settings) => expectAccessibleStructure(renderMinistryPage(m, null, emptyPosts, site, { settings: s }));
+
+  it("puts Media Contacts, More from this Ministry, Featured Topics, Featured Services in an aside, in order", () => {
+    const doc = render(full());
+    const aside = doc.querySelector("aside");
+    expect(aside).not.toBeNull();
+    expect(aside?.getAttribute("aria-label") || aside?.getAttribute("aria-labelledby")).toBeTruthy();
+    expect([...aside!.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(["Media Contacts", "More from this Ministry", "Featured Topics", "Featured Services"]);
+    expect([...aside!.querySelectorAll("section:nth-of-type(2) a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Ministry Website", "https://gov.example/health"],
+      ["Ministry Photos", "https://flickr.com/health"],
+      ["Ministry Videos", "https://youtube.com/health"],
+    ]);
+    expect(aside!.querySelector('a[href="https://gov.example/wait"]')?.textContent).toBe("Wait times");
+    expect(aside!.querySelector('a[href="https://gov.example/doctor"]')?.textContent).toBe("Find a doctor");
+    expect(doc.querySelector("main > a[href='https://gov.example/health']")).toBeNull();
+    expect(doc.querySelectorAll("main > h1, main h1")).toHaveLength(1);
+  });
+
+  it("uses the settings' headings and link labels", () => {
+    const renamed = { ...settings, ministryPages: { ...settings.ministryPages, mediaContacts: "Press <Office>", moreFromMinistry: "Around Health", ministryWebsite: "Home site", featuredTopics: "Topics", featuredServices: "Services" } };
+    const doc = render(full(), renamed);
+    expect([...doc.querySelectorAll("aside h2")].map((h) => h.textContent)).toEqual(["Press <Office>", "Around Health", "Topics", "Services"]);
+    expect(doc.querySelector('aside a[href="https://gov.example/health"]')?.textContent).toBe("Home site");
+  });
+
+  it("omits empty groups, and each unset More link", () => {
+    const doc = render(ministry({ ministryUrl: null, flickrUri: "https://flickr.com/health", topicLinks: [{ key: "T", uri: "https://gov.example/t" }] }));
+    expect([...doc.querySelectorAll("aside h2")].map((h) => h.textContent)).toEqual(["More from this Ministry", "Featured Topics"]);
+    expect([...doc.querySelectorAll("aside a")].map((a) => a.textContent)).toEqual(["Ministry Photos", "T"]);
+  });
+
+  it("has no aside when every group is empty", () => {
+    const doc = render(ministry({ ministryUrl: null }));
+    expect(doc.querySelector("aside")).toBeNull();
+  });
+
+  it("drops javascript: and http: links and escapes link text", () => {
+    const html = renderMinistryPage(
+      ministry({
+        ministryUrl: "http://gov.example/insecure",
+        flickrUri: "javascript:alert(1)",
+        youtubeUri: "https://youtube.com/ok",
+        topicLinks: [{ key: "<b>Bad</b>", uri: "javascript:alert(2)" }, { key: "A & <B>", uri: "https://gov.example/ok" }],
+        serviceLinks: [{ key: "Insecure", uri: "http://gov.example/x" }],
+      }),
+      null,
+      emptyPosts,
+      site,
+      { settings },
+    );
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("http://gov.example");
+    expect(html).not.toContain("<b>Bad");
+    expect(html).not.toContain("Featured Services");
+    expect(html).not.toContain("Ministry Photos");
+    expect(html).toContain("A &amp; &lt;B&gt;");
+    expect(html).toContain('href="https://youtube.com/ok"');
   });
 });
 

@@ -45,6 +45,11 @@ export interface MinistryDto {
   contactUser: unknown;
   secondContactUser: unknown;
   weekendContactNumber: string | null;
+  /** Featured links; the News API's ResourceLink is `{ key: text, uri: url, timestamp }`. */
+  topicLinks: ResourceLinkDto[];
+  serviceLinks: ResourceLinkDto[];
+  flickrUri: string | null;
+  youtubeUri: string | null;
   topPostKey: string | null;
   featurePostKey: string | null;
 }
