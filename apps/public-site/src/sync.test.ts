@@ -74,15 +74,15 @@ describe("syncSite", () => {
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
 
     await syncSite(deps); // no marker yet: a full build, Blue Bridge off
-    expect(storage.files.get("index.html")).not.toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("index.html")).not.toContain('id="bridge-banner"');
 
     deps.newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
     await syncSite(deps);
 
     const releasePages = [...storage.files.entries()].filter(([path]) => /^releases\/.+\/index\.html$/.test(path));
     expect(releasePages.length).toBeGreaterThan(0);
-    for (const [, content] of releasePages) expect(content as string).toContain('class="blue-bridge-banner"');
-    expect(storage.files.get("index.html")).toContain('class="blue-bridge-banner"');
+    for (const [, content] of releasePages) expect(content as string).toContain('id="bridge-banner"');
+    expect(storage.files.get("index.html")).toContain('id="bridge-banner"');
   });
 
   it("calls deps.feed, if given, before draining (events become a doorbell)", async () => {
@@ -159,8 +159,8 @@ describe("syncSite", () => {
 
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
     expect(order).toEqual(["start-home-1(ON, gated)", "end-home-1(ON)"]);
-    expect(storage.files.get("releases/K1/index.html")).not.toContain('class="blue-bridge-banner"');
-    expect(storage.files.get("index.html")).not.toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("releases/K1/index.html")).not.toContain('id="bridge-banner"');
+    expect(storage.files.get("index.html")).not.toContain('id="bridge-banner"');
     expect(JSON.parse(storage.files.get(".site-state.json") as string)).toMatchObject({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
   });
 
@@ -457,7 +457,7 @@ describe("syncSite", () => {
       expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"]));
       expect(r.after.granvilleOn).toBe(true);
       expect(r.settingsHashes(r.after)).toEqual(r.settingsHashes(r.before));
-      expect(r.page).toContain('class="blue-bridge-banner"');
+      expect(r.page).toContain('id="bridge-banner"');
       expect(r.page).toContain("Published Holder");
     });
 
@@ -468,7 +468,7 @@ describe("syncSite", () => {
       const defaults = settingsHashes(withHolder("Tenant Default Holder"), "America/Vancouver", new Date());
       expect(r.settingsHashes(r.after)).toEqual(defaults);
       expect(r.settingsHashes(r.after)).not.toEqual(r.settingsHashes(r.before));
-      expect(r.page).toContain('class="blue-bridge-banner"');
+      expect(r.page).toContain('id="bridge-banner"');
       expect(r.page).toContain("Tenant Default Holder"); // nothing else exists to render with
     });
 

@@ -251,7 +251,7 @@ describe("selfHeal", () => {
     const after = JSON.parse(storage.files.get(".site-state.json") as string);
     expect(after.granvilleOn).toBe(true);
     for (const k of ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash"]) expect(after[k]).toBe(before[k]);
-    expect(storage.files.get("releases/K1/index.html")).toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("releases/K1/index.html")).toContain('id="bridge-banner"');
     expect(storage.files.get("releases/K1/index.html")).toContain("Published Holder");
   });
 });

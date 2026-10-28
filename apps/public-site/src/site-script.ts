@@ -10,8 +10,14 @@
  *    drawer keeps the drawer open, and closing the drawer closes the menu too.
  * 3. `body.menu-open` while `#menu` is open (overrides.css locks the page's scroll).
  * 4. Escape, with focus on an open panel's button or inside the panel, closes it and returns focus
- *    to its button.
- * 5. The banner toggle and the 404 prefill are left for Tasks 9 and 10.
+ *    to its button. So does Escape with focus on nothing (the body): Safari and macOS Firefox don't
+ *    focus a clicked button, so a mouse-opened panel would otherwise ignore Escape.
+ * 5. The banner toggles (`button[data-banner-toggle]`, header.ts; kept out of 2–4): hidden until a
+ *    banner has shown — Blue Bridge's `#bridge-banner` at load, or the site banner's
+ *    `site-banner-shown` event (banner-script.ts) — then shown with `aria-expanded` tracking whether
+ *    `#banner` is visible. `#btnCloseBanner`/`#btnCloseBannerBridge` hide `#banner` (and collapse
+ *    the toggles); a toggle hides or re-shows it. The dismissal isn't remembered, as on news.gov.
+ * 6. The 404 prefill is left for Task 10.
  *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
@@ -44,7 +50,7 @@ export const SITE_SCRIPT = String.raw`(() => {
     news.replaceWith(btn);
   }
 
-  const toggles = Array.prototype.slice.call(doc.querySelectorAll("button[aria-controls][aria-expanded]"));
+  const toggles = Array.prototype.slice.call(doc.querySelectorAll("button[aria-controls][aria-expanded]:not([data-banner-toggle])"));
   const targetOf = (btn) => doc.getElementById(btn.getAttribute("aria-controls"));
   const isOpen = (btn) => btn.getAttribute("aria-expanded") === "true";
 
@@ -90,16 +96,47 @@ export const SITE_SCRIPT = String.raw`(() => {
     });
   });
 
-  // Escape acts only when focus is on an open panel's button or inside the panel, and then closes
-  // the innermost such panel (the one holding no other candidate's button), so a keypress elsewhere
-  // on the page never moves focus.
+  // Escape acts only when focus is on an open panel's button or inside the panel — or on nothing at
+  // all (the body: a mouse click in Safari or macOS Firefox leaves focus there) — and then closes the
+  // innermost such panel (the one holding no other candidate's button), so a keypress on some other
+  // control never moves focus.
   doc.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
     const at = doc.activeElement;
-    const open = toggles.filter((b) => isOpen(b) && at && (b === at || (targetOf(b) && targetOf(b).contains(at))));
+    const nowhere = !at || at === doc.body || at === doc.documentElement;
+    const open = toggles.filter((b) => isOpen(b) && targetOf(b) && (nowhere || b === at || targetOf(b).contains(at)));
     const btn = open.find((b) => !open.some((o) => o !== b && targetOf(b).contains(o)));
     if (!btn) return;
     close(btn);
     btn.focus();
   });
+
+  const banner = doc.getElementById("banner");
+  const bannerToggles = Array.prototype.slice.call(doc.querySelectorAll("button[data-banner-toggle]"));
+  const syncBanner = () => {
+    bannerToggles.forEach((b) => {
+      b.parentElement.hidden = false;
+      b.setAttribute("aria-expanded", banner.hidden ? "false" : "true");
+    });
+  };
+  if (banner) {
+    // A banner already showing at start: Blue Bridge's, or a site banner whose fetch beat this script.
+    const siteBanner = doc.getElementById("site-banner");
+    if (!banner.hidden && (doc.getElementById("bridge-banner") || (siteBanner && !siteBanner.hidden))) syncBanner();
+    doc.addEventListener("site-banner-shown", syncBanner);
+    // Delegated: the site banner's close button is built after this script may have run.
+    doc.addEventListener("click", (ev) => {
+      const t = ev.target;
+      const close = t && t.closest ? t.closest("#btnCloseBanner, #btnCloseBannerBridge") : null;
+      if (!close) return;
+      banner.hidden = true;
+      syncBanner();
+    });
+    bannerToggles.forEach((b) =>
+      b.addEventListener("click", () => {
+        banner.hidden = !banner.hidden;
+        syncBanner();
+      }),
+    );
+  }
 })();`;

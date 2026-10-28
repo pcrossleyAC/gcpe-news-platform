@@ -8,6 +8,7 @@ import { DEFAULT_TIME_ZONE, settingsHref, themeDefaults, yearIn } from "./settin
 import { DEFAULT_THEME } from "./theme-css";
 import type { MenuMinistry } from "./ministry-menu";
 import { renderHeader } from "./header";
+import { icon } from "./icons";
 
 export type { PostDocument, PostDto } from "./dto";
 
@@ -90,7 +91,6 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const feed = opts.feed ? `\n<link rel="alternate" type="application/rss+xml" title="${e(opts.feed.title)}" href="${e(opts.feed.href)}">` : "";
   // Legacy loads the Granville Bridge theme only while Project Blue Bridge is on.
   const bridgeCss = opts.banner ? `\n<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/granville-bridge-theme.css">` : "";
-  const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
   const settings = opts.settings ?? themeDefaults(theme);
   return `<!doctype html>
 <html lang="en">
@@ -108,9 +108,8 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <link rel="stylesheet" href="${e(base)}/assets/theme.css">${font}${feed}
 </head>
 <body${bodyAttr}>
-<a class="skip-link" href="#main">Skip to main content</a>${banner}
-<div id="site-banner" hidden data-base="${e(base)}"></div>
-<script>${SITE_BANNER_SCRIPT}</script>
+<a class="skip-link" href="#main">Skip to main content</a>
+${renderBanner(base, opts.banner)}
 ${renderHeader(site, opts)}
 <div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
 ${body}
@@ -120,6 +119,24 @@ ${renderFooter(settings, site, opts)}
 </body>
 </html>
 `;
+}
+
+/**
+ * `section#banner` (look-and-feel §1.3–1.4): the Project Blue Bridge banner when it is on, in legacy
+ * `_BlueBridgeBanner.cshtml`'s skeleton with a real close button and `role="alert"`; then the site
+ * banner's placeholder and its inline script (banner-script.ts), which stands down while Blue Bridge
+ * shows. With no Blue Bridge banner the section starts hidden, so no empty "Site notices" region is
+ * announced; the script un-hides it when it shows the site banner.
+ */
+function renderBanner(base: string, blueBridge: string | null | undefined): string {
+  const bridge = blueBridge
+    ? `<div id="bridge-banner" class="info-black-banner container-fluid sm-g-0" role="alert"><div class="content container-xl sm-g-0"><div>${icon("circle-info", e(base))}</div><div>${e(blueBridge)}</div><div><button type="button" id="btnCloseBannerBridge" aria-label="Close banner">${icon("xmark", e(base))}</button></div></div></div>
+`
+    : "";
+  return `<section id="banner" aria-label="Site notices"${bridge ? "" : " hidden"}>
+${bridge}<div id="site-banner" hidden data-base="${e(base)}" data-icons="${e(base)}/assets/site/icons.svg"></div>
+<script>${SITE_BANNER_SCRIPT}</script>
+</section>`;
 }
 
 /** A settings link: an anchor (with its analytics id) when the URL is safe, else its text. */

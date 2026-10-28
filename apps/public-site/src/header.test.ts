@@ -79,12 +79,36 @@ describe("renderHeader", () => {
     expect(doc.querySelector("#menu")).toBeNull();
   });
 
-  it("the nav list is News then Subscribe; no banner toggle (or empty item for it) until Task 9", () => {
+  it("the nav list is News, Subscribe, then the banner toggle item, hidden until a banner shows (site.js)", () => {
     const doc = header({ ministryMenu: MENU });
     const items = [...doc.querySelectorAll("#sm-nav-ul > li")];
-    expect(items.map((li) => li.textContent?.trim())).toEqual(["News", "Subscribe"]);
+    expect(items.map((li) => li.textContent?.trim())).toEqual(["News", "Subscribe", ""]);
     expect(items[1]!.querySelector("a.nav-link")?.getAttribute("href")).toBe("/site/subscribe/");
-    expect(doc.querySelector("#bannerToggleLink, .nav-item-link")).toBeNull();
+    expect(items[2]!.className).toBe("nav-item-link d-none d-md-block");
+    expect(items[2]!.hasAttribute("hidden")).toBe(true);
+  });
+
+  it("banner toggles: desktop #bannerToggleLink and the phone (i) button, both real buttons controlling #banner, collapsed and hidden", () => {
+    for (const opts of [{ ministryMenu: MENU }, { banner: "Blue Bridge" }]) {
+      const doc = header(opts);
+      const toggles = [...doc.querySelectorAll("button[data-banner-toggle]")];
+      expect(toggles.map((b) => b.id)).toEqual(["banner-toggle-sm", "bannerToggleLink"]);
+      for (const b of toggles) {
+        expect(b.getAttribute("type")).toBe("button");
+        expect(b.getAttribute("aria-controls")).toBe("banner");
+        expect(b.getAttribute("aria-expanded")).toBe("false");
+        expect(b.getAttribute("aria-label")).toBe("Site notices");
+        const img = b.querySelector("img")!;
+        expect([img.getAttribute("src"), img.getAttribute("alt")]).toEqual(["/site/assets/legacy/Content/Images/banner-toggle.svg", ""]);
+        expect(b.parentElement!.hasAttribute("hidden")).toBe(true);
+      }
+      const sm = doc.querySelector("#banner-toggle-sm")!;
+      expect(sm.className).toBe("btn btn-link banner-toggle-btn");
+      expect(sm.parentElement!.className).toBe("d-md-none banner-toggle-container");
+      // Legacy order: the (i) comes before the hamburger.
+      expect(sm.parentElement!.nextElementSibling?.id).toBe("nav-menu-sm");
+      expect(doc.querySelector("#bannerToggleLink")!.className).toBe("nav-link");
+    }
   });
 
   it("a ministry key is URL-encoded in its link, then HTML-escaped", () => {
@@ -96,7 +120,7 @@ describe("renderHeader", () => {
   it("hideHeaderSearch leaves off both search forms and the drawer toggle together", () => {
     const doc = header({ ministryMenu: MENU, hideHeaderSearch: true });
     expect(doc.querySelector("form, #smd-search-container, #search-md-button, .search-toggle-container")).toBeNull();
-    expect([...doc.querySelectorAll("[aria-controls]")].map((t) => t.id)).toEqual(["nav-menu-sm"]);
+    expect([...doc.querySelectorAll("[aria-controls]:not([data-banner-toggle])")].map((t) => t.id)).toEqual(["nav-menu-sm"]);
     expect(doc.querySelector("#news-dropdown")?.getAttribute("href")).toBe("/site/ministries/");
   });
 
@@ -138,7 +162,9 @@ describe("renderHeader", () => {
 
   it("every toggle is a <button type=button> with aria-controls pointing at an element that exists", () => {
     const doc = header({ ministryMenu: MENU });
-    const toggles = [...doc.querySelectorAll("[aria-controls]")];
+    // The banner toggles control render.ts's #banner, outside the header (their own test above;
+    // expectAccessibleStructure checks their target on every rendered page).
+    const toggles = [...doc.querySelectorAll("[aria-controls]:not([data-banner-toggle])")];
     expect(toggles.map((t) => t.id)).toEqual(["nav-menu-sm", "search-md-button"]);
     for (const t of toggles) {
       expect(t.tagName).toBe("BUTTON");

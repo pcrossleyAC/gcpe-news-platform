@@ -11,8 +11,9 @@ const MENU: MenuMinistry[] = [
 const site = { name: "BC Gov News", baseUrl: "https://boxs.example/site" };
 
 /** A renderPage() document with SITE_SCRIPT run against it (the page's inline scripts are not run). */
-function page(opts: PageOptions = { ministryMenu: MENU }) {
+function page(opts: PageOptions = { ministryMenu: MENU }, before?: (doc: Document) => void) {
   const dom = new JSDOM(renderPage("T", site, "/site/", "<h1>H</h1>", opts), { url: "https://boxs.example/site/", runScripts: "outside-only" });
+  before?.(dom.window.document);
   dom.window.eval(SITE_SCRIPT);
   const doc = dom.window.document;
   const key = (k: string, target: Element = doc.activeElement ?? doc.body) =>
@@ -156,5 +157,119 @@ describe("site.js", () => {
     expect(doc.getElementById("search-md-button")).toBeNull();
     doc.getElementById("news-dropdown")!.click();
     expect(doc.getElementById("menu")!.classList.contains("show")).toBe(true);
+  });
+
+  it("Escape closes a mouse-opened panel when focus stayed on the page (Safari, macOS Firefox: a click doesn't focus a button)", () => {
+    const { doc, key } = page();
+    const news = doc.getElementById("news-dropdown")!;
+    news.click();
+    (doc.activeElement as HTMLElement | null)?.blur();
+    expect(doc.activeElement).toBe(doc.body);
+    key("Escape", doc.body);
+    expect(doc.getElementById("menu")!.classList.contains("show")).toBe(false);
+    expect(news.getAttribute("aria-expanded")).toBe("false");
+    expect(doc.activeElement).toBe(news);
+    // The phone drawer with News open in it: the innermost (the menu) first, then the drawer.
+    const burger = doc.getElementById("nav-menu-sm")!;
+    burger.click();
+    news.click();
+    (doc.activeElement as HTMLElement | null)?.blur();
+    key("Escape", doc.body);
+    expect([doc.getElementById("navbarSupportedContent")!.classList.contains("show"), doc.getElementById("menu")!.classList.contains("show")]).toEqual([true, false]);
+    (doc.activeElement as HTMLElement | null)?.blur();
+    key("Escape", doc.body);
+    expect(doc.getElementById("navbarSupportedContent")!.classList.contains("show")).toBe(false);
+    expect(doc.activeElement).toBe(burger);
+  });
+
+  describe("banner toggle", () => {
+    const toggles = (doc: Document) => [doc.getElementById("bannerToggleLink")!, doc.getElementById("banner-toggle-sm")!];
+    const state = (doc: Document) =>
+      toggles(doc).map((b) => [b.parentElement!.hidden, b.getAttribute("aria-expanded")]);
+    /** The site banner as banner-script.ts shows it: #banner and the placeholder unhidden, a close button, the event. */
+    const showSiteBanner = (doc: Document) => {
+      doc.getElementById("banner")!.hidden = false;
+      const el = doc.getElementById("site-banner")!;
+      el.hidden = false;
+      const close = doc.createElement("button");
+      close.id = "btnCloseBanner";
+      close.type = "button";
+      el.appendChild(close);
+      doc.dispatchEvent(new doc.defaultView!.Event("site-banner-shown"));
+      return close;
+    };
+
+    it("the toggle stays hidden when no banner was ever shown", () => {
+      const { doc } = page();
+      expect(state(doc)).toEqual([
+        [true, "false"],
+        [true, "false"],
+      ]);
+      expect(doc.getElementById("banner")!.hidden).toBe(true);
+    });
+
+    it("closing a banner reveals the header toggle; the toggle re-shows it and flips aria-expanded", () => {
+      const { doc } = page();
+      const banner = doc.getElementById("banner")!;
+      const close = showSiteBanner(doc);
+      // While a banner shows, the (i) shows too, expanded (news.gov always shows it).
+      expect(state(doc)).toEqual([
+        [false, "true"],
+        [false, "true"],
+      ]);
+      close.click();
+      expect(banner.hidden).toBe(true);
+      expect(state(doc)).toEqual([
+        [false, "false"],
+        [false, "false"],
+      ]);
+      const [desktop, phone] = toggles(doc);
+      desktop!.click();
+      expect(banner.hidden).toBe(false);
+      expect(doc.getElementById("site-banner")!.hidden).toBe(false);
+      expect(state(doc).map(([, x]) => x)).toEqual(["true", "true"]);
+      phone!.click();
+      expect(banner.hidden).toBe(true);
+      expect(state(doc).map(([, x]) => x)).toEqual(["false", "false"]);
+      // The generic panel logic leaves #banner alone: no .show, and opening News doesn't hide it.
+      phone!.click();
+      doc.getElementById("news-dropdown")!.click();
+      expect(banner.hidden).toBe(false);
+      expect(banner.classList.contains("show")).toBe(false);
+    });
+
+    it("a banner shown before site.js ran (the fetch won the race) is picked up at start", () => {
+      const { doc } = page({ ministryMenu: MENU }, (d) => {
+        d.getElementById("banner")!.hidden = false;
+        d.getElementById("site-banner")!.hidden = false;
+      });
+      expect(state(doc)).toEqual([
+        [false, "true"],
+        [false, "true"],
+      ]);
+    });
+
+    it("Blue Bridge: the toggle shows at once; its close button hides #banner; the toggle brings it back", () => {
+      const { doc } = page({ ministryMenu: MENU, banner: "Blue Bridge" });
+      const banner = doc.getElementById("banner")!;
+      expect(state(doc)).toEqual([
+        [false, "true"],
+        [false, "true"],
+      ]);
+      doc.getElementById("btnCloseBannerBridge")!.click();
+      expect(banner.hidden).toBe(true);
+      expect(state(doc).map(([, x]) => x)).toEqual(["false", "false"]);
+      toggles(doc)[0]!.click();
+      expect(banner.hidden).toBe(false);
+      expect(doc.getElementById("bridge-banner")).not.toBeNull();
+    });
+
+    it("dismissal is not persisted", () => {
+      const first = page({ ministryMenu: MENU, banner: "Blue Bridge" });
+      first.doc.getElementById("btnCloseBannerBridge")!.click();
+      const again = page({ ministryMenu: MENU, banner: "Blue Bridge" });
+      expect(again.doc.getElementById("banner")!.hidden).toBe(false);
+      expect(SITE_SCRIPT).not.toMatch(/localStorage|sessionStorage|document\.cookie/);
+    });
   });
 });

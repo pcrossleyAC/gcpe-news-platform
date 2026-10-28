@@ -356,16 +356,50 @@ describe("renderPage footer skeleton and land acknowledgement band", () => {
 describe("renderPage site banner placeholder", () => {
   const site = { name: "BC Gov News", baseUrl: "https://boxs.example/site", theme: DEFAULT_THEME };
 
-  it("every page has the hidden placeholder with the base path, and the inline script after it", () => {
+  it("every page has #banner (hidden while empty) right after the skip link, with the placeholder and the inline script inside", () => {
     const html = renderPage("T", site, "/site/", "<h1>H</h1>", { settings: bcSettings() });
-    expect(html).toContain('<div id="site-banner" hidden data-base="/site"></div>');
-    expect(html).toContain(`<script>${SITE_BANNER_SCRIPT}</script>`);
-    expect(html.indexOf('id="site-banner"')).toBeLessThan(html.indexOf(SITE_BANNER_SCRIPT));
-    expectAccessibleStructure(html);
+    const placeholder = '<div id="site-banner" hidden data-base="/site" data-icons="/site/assets/site/icons.svg"></div>';
+    expect(html).toContain(`<a class="skip-link" href="#main">Skip to main content</a>\n<section id="banner" aria-label="Site notices" hidden>\n${placeholder}\n<script>${SITE_BANNER_SCRIPT}</script>\n</section>`);
+    const doc = expectAccessibleStructure(html);
+    expect(doc.querySelector("#banner")?.tagName).toBe("SECTION");
+    expect(doc.querySelector("#banner + header#main-nav")).not.toBeNull();
+    expect(doc.querySelector('[role="alert"]')).toBeNull();
   });
 
-  it("the placeholder follows the Blue Bridge banner, so the script can see it", () => {
-    const html = renderPage("T", site, "/site/", "<h1>H</h1>", { banner: "Blue Bridge" });
-    expect(html.indexOf("blue-bridge-banner")).toBeLessThan(html.indexOf('id="site-banner"'));
+  it("Blue Bridge: #banner > #bridge-banner.info-black-banner[role=alert] with a close button; granville CSS linked; bridge logos", () => {
+    const html = renderPage("T", site, "/site/", "<h1>H</h1>", { banner: 'ALERT: <b>"x"</b>' });
+    const doc = expectAccessibleStructure(html);
+    const section = doc.querySelector("section#banner")!;
+    expect(section.hasAttribute("hidden")).toBe(false);
+    expect(section.getAttribute("aria-label")).toBe("Site notices");
+    const bridge = section.firstElementChild!;
+    expect(bridge.id).toBe("bridge-banner");
+    expect(bridge.className).toBe("info-black-banner container-fluid sm-g-0");
+    expect(bridge.getAttribute("role")).toBe("alert");
+    expect(doc.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    const content = bridge.querySelector(":scope > div.content.container-xl.sm-g-0")!;
+    const [iconDiv, textDiv, closeDiv] = [...content.children];
+    expect(content.childElementCount).toBe(3);
+    expect(iconDiv!.querySelector("use")?.getAttribute("href")).toBe("/site/assets/site/icons.svg#i-circle-info");
+    expect(textDiv!.textContent).toBe('ALERT: <b>"x"</b>');
+    expect(textDiv!.querySelector("b")).toBeNull();
+    const close = closeDiv!.querySelector(":scope > button")!;
+    expect([close.id, close.getAttribute("type"), close.getAttribute("aria-label")]).toEqual(["btnCloseBannerBridge", "button", "Close banner"]);
+    expect(close.querySelector("use")?.getAttribute("href")).toBe("/site/assets/site/icons.svg#i-xmark");
+    // The site banner placeholder and script follow it, so the script sees it and stands down.
+    expect(bridge.nextElementSibling?.id).toBe("site-banner");
+    expect(doc.querySelector('link[href="/site/assets/legacy/Content/granville-bridge-theme.css"]')).not.toBeNull();
+    expect([...doc.querySelectorAll("#BCGov-logo, #sm-BCGov-logo, #BCGov-logo-footer")].map((i) => i.getAttribute("src")!.replace(/^.*\//, ""))).toEqual([
+      "BCID_H_rgb_pos_LH_crop_bridge.svg",
+      "BC_Mark_bridge.svg",
+      "BCID_H_rgb_pos_LH_crop_bridge.svg",
+    ]);
+  });
+
+  it("no Blue Bridge: no #bridge-banner, no granville CSS, the standard logos", () => {
+    const doc = expectAccessibleStructure(renderPage("T", site, "/site/", "<h1>H</h1>", { banner: null }));
+    expect(doc.querySelector("#bridge-banner, .blue-bridge-banner")).toBeNull();
+    expect(doc.querySelector('link[href*="granville"]')).toBeNull();
+    expect(doc.querySelector("#BCGov-logo")?.getAttribute("src")).toMatch(/BCID_H_rgb_pos_LH_crop\.svg$/);
   });
 });

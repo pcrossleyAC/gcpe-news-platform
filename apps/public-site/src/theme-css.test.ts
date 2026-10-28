@@ -34,7 +34,7 @@ describe("themeCss", () => {
   });
   it("keeps only the token blocks and the focus rule; every other rule lives in overrides.css", () => {
     const css = themeCss(DEFAULT_THEME);
-    for (const sel of ["#landAcknowledgement", "#footer h2", ".card", ".post-list", ".ministry-layout", ".connect-list", ".site-banner", ".skip-link"]) {
+    for (const sel of ["#landAcknowledgement", "#footer h2", ".card", ".post-list", ".ministry-layout", ".connect-list", ".site-banner-info", ".skip-link"]) {
       expect(css).not.toContain(sel);
       expect(overrides).toContain(sel);
     }
@@ -59,8 +59,10 @@ describe("themeCss", () => {
     expect(css).not.toContain(`--color-primary: ${DEFAULT_THEME.colors.primary};`);
     expect(css).toContain("--color-banner-info: #123456;");
     expect(css).toContain("--color-banner-emergency: #A12B2B;");
-    expect(overrides).toMatch(/\.site-banner\s*\{[^}]*background: var\(--color-banner-info\)/);
-    expect(overrides).toMatch(/\.site-banner-emergency\s*\{[^}]*background: var\(--color-banner-emergency\)/);
+    expect(overrides).toMatch(/\.site-banner-info\s*\{[^}]*background:\s*var\(--color-banner-info\)/);
+    expect(overrides).toMatch(/\.site-banner-emergency\s*\{[^}]*background:\s*var\(--color-banner-emergency\)/);
+    // The old placeholder-era rules are gone.
+    expect(overrides).not.toMatch(/\.site-banner\s*[{ ]|\.blue-bridge-banner/);
   });
   it("without settings colours, the banner variables use the default banner colours", () => {
     const css = themeCss(DEFAULT_THEME);

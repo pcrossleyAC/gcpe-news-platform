@@ -22,14 +22,6 @@ body { margin: 0; }
 a { color: var(--color-primary); }
 .skip-link { position: absolute; left: -9999px; top: 0; background: var(--color-primary); color: var(--color-primary-text); padding: 0.5rem 1rem; z-index: 10; }
 .skip-link:focus { left: 0.5rem; }
-.blue-bridge-banner { background: var(--color-text); color: var(--color-background); padding: 0.75rem 1rem; font-weight: 700; }
-.site-banner { background: var(--color-banner-info); color: var(--bs-white); padding: 0.75rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
-.site-banner-emergency { background: var(--color-banner-emergency); }
-.site-banner p, .site-banner ul { margin: 0; }
-.site-banner ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1rem; }
-.site-banner a { color: inherit; font-weight: 700; }
-.site-banner button { margin-left: auto; background: transparent; color: inherit; border: 2px solid currentColor; padding: 0.25rem 0.75rem; font: inherit; cursor: pointer; }
-.site-banner :focus-visible { outline-color: var(--bs-white); }
 main { max-width: 70rem; margin: 0 auto; padding: 1rem; }
 main:focus { outline: none; }
 .muted, time { color: var(--color-muted-text); }
@@ -74,8 +66,8 @@ main p a, main li a { text-decoration: underline; }
 #main-nav .navbar { padding-right: 8px; }
 @media (max-width: 767px) {
   #main-nav .navbar { padding-left: 0 !important; }
-  /* Legacy's phone banner-toggle pushed the toggles right; it is not rendered (Task 9). */
-  #nav-menu-sm { margin-left: auto; }
+  /* Legacy's phone (i) toggle pushes the toggles right; while it is hidden the hamburger does. */
+  .banner-toggle-container[hidden] + #nav-menu-sm { margin-left: auto; }
 }
 /* "News" becomes a button (site.js): the link rules, for a button too. */
 #navbarSupportedContent .navbar-nav li > button.nav-link { color: var(--color-text); background: none; border: 0; }
@@ -119,3 +111,25 @@ html:not(.js) #nav-menu-sm, html:not(.js) .search-toggle-container { display: no
 /* The link columns sit in one labelled nav that takes no box, so .footer-bc and the two columns
  * stay flex items of legacy's #footer .top row. */
 #footer .top > nav{display:contents}
+
+/* The banners (render.ts's #banner, banner-script.ts): legacy custom.css styles .info-blue-banner and
+ * granville-bridge-theme.css (linked only while Blue Bridge is on) .info-black-banner; these rules
+ * cover where our markup differs. The site banner's colour comes from its class, not the JSON. */
+.site-banner-info{background:var(--color-banner-info);color:var(--bs-white)}
+.site-banner-emergency{background:var(--color-banner-emergency);color:var(--bs-white)}
+/* Legacy set align-content:center inline on the icon and close cells. */
+#banner .content > div:has(> .icon), #banner .content > div:has(> button){align-content:center}
+#banner .content .icon{width:1.25em;height:1.25em}
+/* Message then links on one run of text, as legacy's bare text and inline <a>s were. */
+#banner .content p, #banner .content ul, #banner .content li{display:inline;margin:0;padding:0}
+#banner .content li{margin-left:.25em}
+#banner .content a{color:inherit;font-weight:700}
+#btnCloseBanner, #btnCloseBannerBridge{background:none;border:0;padding:0;line-height:1;cursor:pointer}
+#banner :focus-visible{outline-color:var(--bs-white)}
+/* Without site.js nothing could close Blue Bridge's banner (the site banner's script closes its own). */
+html:not(.js) #btnCloseBannerBridge{display:none}
+/* The (i) toggles (header.ts) stay hidden until site.js shows them; Bootstrap's display utilities
+ * would otherwise override [hidden]. */
+.banner-toggle-container[hidden], #sm-nav-ul > li[hidden]{display:none !important}
+#bannerToggleLink{width:40px}
+#bannerToggleLink img{width:24px;height:24px}
