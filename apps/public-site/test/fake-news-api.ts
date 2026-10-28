@@ -1,4 +1,4 @@
-import type { SiteSettings } from "@gcpe/site-settings";
+import type { StoredSiteSettings } from "@gcpe/site-settings";
 import type { CategoryDto, GovernmentTermsDto, PostDto, SlideDto } from "../src/dto";
 import type { NewsApiClient } from "../src/news-api-client";
 import { ministry } from "./fixtures";
@@ -13,7 +13,7 @@ import { ministry } from "./fixtures";
 export type FakeNewsApi = NewsApiClient & {
   posts: Map<string, PostDto>;
   calls: string[];
-  settings: { revision: number; document: SiteSettings } | null;
+  settings: { revision: number; document: StoredSiteSettings } | null;
   /** What `categories("sectors")` answers (home's News by Sector); other kinds answer []. */
   sectors: CategoryDto[];
   /** What `slides()` answers (home's carousel band). */

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SiteTheme } from "@gcpe/config";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import { defaultSiteSettings, fillMissingFields, isSafeUrl, siteSettingsSchema, type SiteSettings } from "@gcpe/site-settings";
+import { defaultSiteSettings, fillMissingFields, isSafeUrl, storedSiteSettingsSchema, type SiteSettings, type StoredSiteSettings } from "@gcpe/site-settings";
 import type { NewsApiClient } from "./news-api-client";
 import { basePath, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
@@ -81,11 +81,13 @@ export const SITE_SETTINGS_PATH = ".site-settings.json";
  * document isn't rewritten every turn. */
 const persisted = new WeakMap<SiteStorage, string>();
 
-async function readPersisted(storage: SiteStorage): Promise<SiteSettings | null> {
+/** The persisted document as stored: one written before a later part existed still parses (the
+ * caller fills it). */
+async function readPersisted(storage: SiteStorage): Promise<StoredSiteSettings | null> {
   const raw = await storage.read(SITE_SETTINGS_PATH);
   if (raw === null) return null;
   try {
-    return siteSettingsSchema.parse(JSON.parse(raw));
+    return storedSiteSettingsSchema.parse(JSON.parse(raw));
   } catch {
     return null; // malformed/foreign content: treated as nothing persisted
   }

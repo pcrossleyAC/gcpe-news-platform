@@ -271,6 +271,8 @@ async function abbreviationCheckDeferred(tx: Tx): Promise<boolean> {
 export const orgProfilePatchSchema = z
   .object({
     displayName: z.string().trim().min(1),
+    /** Shown in brackets under the ministry on the Media Contacts page, e.g. (Child Care). */
+    displayAdditionalName: trimmedOrNull.pipe(z.string().max(100, "Keep it to 100 characters or fewer.").nullable()),
     sortOrder: z.number().int(),
     minister: z
       .object({

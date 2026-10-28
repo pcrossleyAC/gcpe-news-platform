@@ -1,6 +1,6 @@
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
-import type { SiteSettings } from "@gcpe/site-settings";
+import { NETWORKS, type NetworkKey, type SiteSettings } from "@gcpe/site-settings";
 import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { bcSettings, link, post, site, slide } from "../../test/fixtures";
 import { renderNotFoundPage } from "../static-pages";
@@ -13,9 +13,9 @@ const latest = (n: number) => Array.from({ length: n }, (_, i) => post({ key: `L
 const parse = (html: string) => new JSDOM(html).window.document;
 
 /** BC's settings with only the given networks holding an account. */
-function withAccounts(...keys: (keyof SiteSettings["connect"])[]): SiteSettings {
+function withAccounts(...keys: NetworkKey[]): SiteSettings {
   const s = bcSettings();
-  for (const k of Object.keys(s.connect) as (keyof SiteSettings["connect"])[]) s.connect[k] = { featured: [], accounts: [] };
+  for (const { key: k } of NETWORKS) s.connect[k] = { featured: [], accounts: [] };
   for (const k of keys) s.connect[k] = { featured: [], accounts: [{ text: `@${k}`, url: `https://${k}.example/bc` }] };
   return s;
 }

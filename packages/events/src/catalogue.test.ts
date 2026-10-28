@@ -1,4 +1,4 @@
-import { bcSettings } from "../../site-settings/src/fixtures";
+import { bcSettings, prePlan4Settings } from "../../site-settings/src/fixtures";
 import { describe, expect, it } from "vitest";
 import { orgRecordSchema, parseEvent, termEventType, type MediaListRecord, type OrgRecord, type OrgSucceeded } from "./index";
 
@@ -157,6 +157,13 @@ describe("site.settings.published", () => {
   });
   it("rejects revision 0", () => {
     expect(() => parseEvent(envelope("site.settings.published", { ...data, revision: 0 }))).toThrow();
+  });
+  it("a site.settings.published event recorded before plan 4 still parses", () => {
+    const old = { ...data, document: prePlan4Settings() };
+    expect(parseEvent(envelope("site.settings.published", JSON.parse(JSON.stringify(old)))).data).toEqual(old);
+  });
+  it("keeps every plan-4 part of a current document", () => {
+    expect(parseEvent(envelope("site.settings.published", JSON.parse(JSON.stringify(data)))).data).toEqual(data);
   });
 });
 

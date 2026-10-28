@@ -165,3 +165,140 @@ describe("bannerVisibleAt", () => {
     expect(bannerVisibleAt(banner({ enabled: false }), new Date())).toBe(false);
   });
 });
+
+describe("validateSiteSettings — plan-4 parts", () => {
+  it("refuses markup in navigation.labels.resources with 'Use plain text.' on that path", () => {
+    expect(errorsFor((d) => { d.navigation.labels.resources = "<b>Resources</b>"; })).toEqual([
+      { field: "navigation.labels.resources", message: "Use plain text." },
+    ]);
+  });
+
+  it("plain text everywhere text is expected", () => {
+    const cases: [string, (d: SiteSettings) => void][] = [
+      ["navigation.newsLabel", (d) => { d.navigation.newsLabel = "a<b"; }],
+      ["navigation.footerConnectHeading", (d) => { d.navigation.footerConnectHeading = "x>"; }],
+      ["navigation.listingTitles.stories", (d) => { d.navigation.listingTitles.stories = "<i>S</i>"; }],
+      ["contactsPage.heading", (d) => { d.contactsPage.heading = "<h1>x</h1>"; }],
+      ["contactsPage.lineHeading", (d) => { d.contactsPage.lineHeading = "<x"; }],
+      ["contactsPage.listHeading", (d) => { d.contactsPage.listHeading = "<x"; }],
+      ["pageText.notFound.heading", (d) => { d.pageText.notFound.heading = "<x"; }],
+      ["pageText.notFound.text", (d) => { d.pageText.notFound.text = "<x"; }],
+      ["pageText.privacy.label", (d) => { d.pageText.privacy.label = "<x"; }],
+      ["pageText.privacy.title", (d) => { d.pageText.privacy.title = "<x"; }],
+      ["pageText.live.heading", (d) => { d.pageText.live.heading = "<x"; }],
+      ["pageText.collectionNotice.heading", (d) => { d.pageText.collectionNotice.heading = "<x"; }],
+      ["pageText.assetLicence.text", (d) => { d.pageText.assetLicence.text = "<x"; }],
+      ["pageText.assetLicence.linkText", (d) => { d.pageText.assetLicence.linkText = "<x"; }],
+      ["connect.intro", (d) => { d.connect.intro = "<script>"; }],
+      ["contactsPage.contacts[0].group", (d) => { d.contactsPage.contacts[0]!.group = "<x"; }],
+      ["contactsPage.contacts[0].subgroup", (d) => { d.contactsPage.contacts[0]!.subgroup = "<x"; }],
+      ["contactsPage.contacts[0].name", (d) => { d.contactsPage.contacts[0]!.name = "<x"; }],
+      ["contactsPage.contacts[0].phone", (d) => { d.contactsPage.contacts[0]!.phone = "<x"; }],
+      ["contactsPage.contacts[0].cell", (d) => { d.contactsPage.contacts[0]!.cell = "<x"; }],
+    ];
+    for (const [field, mutate] of cases) expect(errorsFor(mutate), field).toEqual([{ field, message: "Use plain text." }]);
+  });
+
+  it("HTML fields take markup; only their length is checked", () => {
+    expect(errorsFor((d) => { d.pageText.privacy.bodyHtml = "<p><strong>x</strong></p>"; })).toEqual([]);
+    expect(errorsFor((d) => { d.contactsPage.introHtml = `<p>${"a".repeat(50_000)}</p>`; })).toEqual([
+      { field: "contactsPage.introHtml", message: "Keep it to 50000 characters or fewer." },
+    ]);
+    expect(errorsFor((d) => { d.pageText.subscribeHelpHtml = "a".repeat(50_000); })).toEqual([]);
+  });
+
+  it("requires the labels, listing titles, 404 heading, privacy title and directory heading", () => {
+    const required = ["navigation.newsLabel", "navigation.liveLabel", "navigation.labels.slideActionLabel", "navigation.listingTitles.updates", "pageText.notFound.heading", "pageText.privacy.title", "contactsPage.heading"];
+    const errors = errorsFor((d) => {
+      d.navigation.newsLabel = "";
+      d.navigation.liveLabel = " ";
+      d.navigation.labels.slideActionLabel = "";
+      d.navigation.listingTitles.updates = "";
+      d.pageText.notFound.heading = "";
+      d.pageText.privacy.title = "";
+      d.contactsPage.heading = "";
+    });
+    expect(errors).toEqual(expect.arrayContaining(required.map((field) => ({ field, message: "Enter text for this field." }))));
+    expect(errors).toHaveLength(required.length);
+    // Optional ones may be empty.
+    expect(errorsFor((d) => { d.navigation.footerConnectHeading = ""; d.contactsPage.lineHeading = ""; d.pageText.notFound.text = ""; })).toEqual([]);
+  });
+
+  it("caps lengths", () => {
+    expect(errorsFor((d) => { d.navigation.labels.highlights = "a".repeat(61); })).toEqual([{ field: "navigation.labels.highlights", message: "Keep it to 60 characters or fewer." }]);
+    expect(errorsFor((d) => { d.navigation.labels.highlights = "a".repeat(60); })).toEqual([]);
+    expect(errorsFor((d) => { d.navigation.liveLabel = "a".repeat(41); })).toEqual([{ field: "navigation.liveLabel", message: "Keep it to 40 characters or fewer." }]);
+    expect(errorsFor((d) => { d.pageText.notFound.text = "a".repeat(301); })).toEqual([{ field: "pageText.notFound.text", message: "Keep it to 300 characters or fewer." }]);
+    expect(errorsFor((d) => { d.connect.intro = "a".repeat(301); })).toEqual([{ field: "connect.intro", message: "Keep it to 300 characters or fewer." }]);
+    expect(errorsFor((d) => { d.pageText.assetLicence.text = "a".repeat(201); })).toEqual([{ field: "pageText.assetLicence.text", message: "Keep it to 200 characters or fewer." }]);
+    expect(errorsFor((d) => { d.pageText.assetLicence.linkText = "a".repeat(101); })).toEqual([{ field: "pageText.assetLicence.linkText", message: "Keep it to 100 characters or fewer." }]);
+    expect(errorsFor((d) => { d.contactsPage.contacts[0]!.name = "a".repeat(101); })).toEqual([{ field: "contactsPage.contacts[0].name", message: "Keep it to 100 characters or fewer." }]);
+    expect(errorsFor((d) => { d.contactsPage.contacts[0]!.phone = "1".repeat(51); })).toEqual([{ field: "contactsPage.contacts[0].phone", message: "Keep it to 50 characters or fewer." }]);
+  });
+
+  it("refuses a 5th headerLink, a 31st directory contact, an 11th archive link", () => {
+    const link = { text: "Go", url: "/go/" };
+    const contact = { group: "G", groupUrl: "", subgroup: "", name: "N", phone: "", cell: "", email: "", placement: "top" as const };
+    expect(errorsFor((d) => { d.navigation.headerLinks = Array(4).fill(link); })).toEqual([]);
+    expect(errorsFor((d) => { d.navigation.headerLinks = Array(5).fill(link); })).toEqual([{ field: "navigation.headerLinks", message: "Keep the list to 4 or fewer." }]);
+    expect(errorsFor((d) => { d.contactsPage.contacts = Array(30).fill(contact); })).toEqual([]);
+    expect(errorsFor((d) => { d.contactsPage.contacts = Array(31).fill(contact); })).toEqual([{ field: "contactsPage.contacts", message: "Keep the list to 30 or fewer." }]);
+    expect(errorsFor((d) => { d.pageText.searchArchiveLinks = Array(10).fill(link); })).toEqual([]);
+    expect(errorsFor((d) => { d.pageText.searchArchiveLinks = Array(11).fill(link); })).toEqual([{ field: "pageText.searchArchiveLinks", message: "Keep the list to 10 or fewer." }]);
+  });
+
+  it("validates the header, archive and LinkedIn links as links", () => {
+    expect(errorsFor((d) => { d.navigation.headerLinks[0]!.url = "javascript:alert(1)"; })).toEqual([
+      { field: "navigation.headerLinks[0].url", message: "Must start with https:// or / (a page on this site)." },
+    ]);
+    expect(errorsFor((d) => { d.pageText.searchArchiveLinks[0]!.url = "http://archive.news.gov.bc.ca/"; })).toEqual([
+      { field: "pageText.searchArchiveLinks[0].url", message: "Must start with https:// or / (a page on this site)." },
+    ]);
+    expect(errorsFor((d) => { d.connect.linkedin.accounts[0]!.text = ""; })).toEqual([{ field: "connect.linkedin.accounts[0].text", message: "Enter the link text." }]);
+  });
+
+  it("link text is plain text, 200 characters or fewer, in every link list", () => {
+    expect(errorsFor((d) => { d.navigation.headerLinks[0]!.text = "<b>Subscribe</b>"; })).toEqual([{ field: "navigation.headerLinks[0].text", message: "Use plain text." }]);
+    expect(errorsFor((d) => { d.pageText.searchArchiveLinks[0]!.text = "a>b"; })).toEqual([{ field: "pageText.searchArchiveLinks[0].text", message: "Use plain text." }]);
+    expect(errorsFor((d) => { d.connect.linkedin.featured[0]!.text = "a".repeat(201); })).toEqual([{ field: "connect.linkedin.featured[0].text", message: "Keep it to 200 characters or fewer." }]);
+    expect(errorsFor((d) => { d.footer.helpLinks[0]!.text = "a".repeat(200); })).toEqual([]);
+  });
+
+  it("refuses contactsPage.contacts[0].email 'x@' and groupUrl 'javascript:alert(1)'; accepts '' for both", () => {
+    expect(errorsFor((d) => { d.contactsPage.contacts[0]!.email = "x@"; d.contactsPage.contacts[0]!.groupUrl = "javascript:alert(1)"; })).toEqual([
+      { field: "contactsPage.contacts[0].groupUrl", message: "Must start with https:// or / (a page on this site)." },
+      { field: "contactsPage.contacts[0].email", message: "Enter an email address like name@gov.bc.ca." },
+    ]);
+    expect(errorsFor((d) => { d.contactsPage.contacts[0]!.email = "<a@b.ca>"; })).toEqual([
+      { field: "contactsPage.contacts[0].email", message: "Enter an email address like name@gov.bc.ca." },
+    ]);
+    expect(errorsFor((d) => { d.contactsPage.contacts[0]!.email = ""; d.contactsPage.contacts[0]!.groupUrl = ""; })).toEqual([]);
+    expect(errorsFor((d) => { d.contactsPage.contacts[0]!.email = "name@gov.bc.ca"; d.contactsPage.contacts[0]!.groupUrl = "https://gov.bc.ca/x"; })).toEqual([]);
+  });
+
+  it("requires a directory contact's group and name", () => {
+    expect(errorsFor((d) => { d.contactsPage.contacts[0]!.group = ""; d.contactsPage.contacts[0]!.name = " "; })).toEqual([
+      { field: "contactsPage.contacts[0].group", message: "Enter text for this field." },
+      { field: "contactsPage.contacts[0].name", message: "Enter text for this field." },
+    ]);
+  });
+
+  it("assetLicence: url without text is refused; all three empty is accepted", () => {
+    expect(errorsFor((d) => { d.pageText.assetLicence = { text: "", linkText: "", url: "https://x.ca/l.pdf" }; })).toEqual([
+      { field: "pageText.assetLicence.linkText", message: "Enter the link text." },
+    ]);
+    expect(errorsFor((d) => { d.pageText.assetLicence = { text: "Terms", linkText: "", url: "" }; })).toEqual([
+      { field: "pageText.assetLicence.linkText", message: "Enter the link text." },
+      { field: "pageText.assetLicence.url", message: "Must start with https:// or / (a page on this site)." },
+    ]);
+    expect(errorsFor((d) => { d.pageText.assetLicence = { text: "", linkText: "", url: "" }; })).toEqual([]);
+  });
+
+  it("connect.policyLink with an http:// url is refused; both empty is accepted", () => {
+    expect(errorsFor((d) => { d.connect.policyLink.url = "http://news.gov.bc.ca/x"; })).toEqual([
+      { field: "connect.policyLink.url", message: "Must start with https:// or / (a page on this site)." },
+    ]);
+    expect(errorsFor((d) => { d.connect.policyLink = { text: "", url: "/policy/" }; })).toEqual([{ field: "connect.policyLink.text", message: "Enter the link text." }]);
+    expect(errorsFor((d) => { d.connect.policyLink = { text: "", url: "" }; })).toEqual([]);
+  });
+});

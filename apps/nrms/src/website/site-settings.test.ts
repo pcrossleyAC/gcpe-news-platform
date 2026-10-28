@@ -3,7 +3,7 @@ import { ZodError } from "zod";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import type { SiteSettings } from "@gcpe/site-settings";
-import { bcSettings } from "../../../../packages/site-settings/src/fixtures";
+import { bcSettings, prePlan4Settings } from "../../../../packages/site-settings/src/fixtures";
 import type { Actor } from "../releases/store";
 import { createNrmsTestDb, editor } from "../../test/helpers";
 import {
@@ -100,6 +100,64 @@ describe("website/site-settings", () => {
     const footer = { ...defaults.footer, landAcknowledgement: "Ours." };
     expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 3, section: "footer", value: footer })).toMatchObject({ revision: 4 });
     expect((await getRevision(tdb.db, 1, defaults))!.differing).toEqual(["banner", "footer"]);
+  });
+
+  /** Stores a revision as published before plan 4 (no contactsPage/pageText/navigation, no connect.linkedin/policyLink/intro). */
+  const storePrePlan4 = async (revision: number) =>
+    tdb.pool.query("INSERT INTO site_settings_revisions (revision, document, published_by_id, published_by_name) VALUES ($1, $2, 'u', 'Jane')", [
+      revision,
+      JSON.stringify(prePlan4Settings()),
+    ]);
+
+  it("PUT section 'pageText' saves a draft; a stored revision without pageText reads back filled", async () => {
+    await storePrePlan4(1);
+    const before = await getSettingsState(tdb.db, jane, defaults);
+    expect(before.document).toEqual(defaults);
+    expect(before.errors).toEqual([]);
+
+    const pageText = { ...defaults.pageText, notFound: { heading: "Not here.", text: "Try search." } };
+    const state = await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "pageText", value: pageText });
+    expect(state.draft).toMatchObject({ baseRevision: 1 });
+    expect(state.document.pageText.notFound).toEqual({ heading: "Not here.", text: "Try search." });
+    // The parts the editor didn't touch read back filled from the tenant defaults.
+    expect(state.document.navigation).toEqual(defaults.navigation);
+    expect(state.document.connect.linkedin).toEqual(defaults.connect.linkedin);
+    expect(state.errors).toEqual([]);
+
+    // A section edit must be a complete section (siteSettingsSchema.shape[section]).
+    await expect(saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "navigation", value: { newsLabel: "News" } })).rejects.toBeInstanceOf(ZodError);
+
+    expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "pageText", value: pageText })).toEqual({ result: "published", revision: 2 });
+    const [event] = await publishedEvents();
+    // What goes out is complete: the plan-4 parts are in the event.
+    expect(event!.data.document.pageText.notFound.heading).toBe("Not here.");
+    expect(event!.data.document.navigation).toEqual(defaults.navigation);
+    expect(event!.data.document.connect.policyLink).toEqual(defaults.connect.policyLink);
+  });
+
+  it("conflict, rebase and history on a pre-plan-4 live document report only the sections really edited", async () => {
+    await storePrePlan4(1);
+    await saveDraft(tdb.db, sam, defaults, { baseRevision: 1, section: "banner", value: banner("Sam's banner") });
+    expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Jane's banner") })).toEqual({
+      result: "published",
+      revision: 2,
+    });
+    // Revision 2 carries the filled parts; revision 1 lacks them: filled, they are the same.
+    expect((await getRevision(tdb.db, 1, defaults))!.differing).toEqual(["banner"]);
+    expect((await getRevision(tdb.db, 1, defaults))!.document).toEqual(defaults);
+    const stale = await publishSettings(tdb.db, sam, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Sam's banner") });
+    expect(stale).toMatchObject({ result: "conflict", differing: ["banner"] });
+    const rebased = await rebaseDraft(tdb.db, sam, defaults, { section: "banner", value: banner("Sam's banner") });
+    expect(rebased.setAside).toEqual([]);
+    expect(rebased.document.navigation).toEqual(defaults.navigation);
+  });
+
+  it("restoring a pre-plan-4 revision publishes it filled from the tenant defaults", async () => {
+    await storePrePlan4(1);
+    await publishBanner(sam, "Later");
+    expect(await restoreRevision(tdb.db, jane, defaults, subs, { revision: 1, baseRevision: 2 })).toEqual({ result: "published", revision: 3 });
+    const events = await publishedEvents();
+    expect(events.at(-1)!.data.document).toEqual(defaults);
   });
 
   it("with nothing stored, the state is the defaults with no live revision, draft or errors", async () => {

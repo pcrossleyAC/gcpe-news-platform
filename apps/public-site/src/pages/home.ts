@@ -1,4 +1,4 @@
-import type { ConnectSettings } from "@gcpe/site-settings";
+import type { ConnectSettings, NetworkKey } from "@gcpe/site-settings";
 import type { PostDto, ResourceLinkDto, SlideDto } from "../dto";
 import { icon } from "../icons";
 import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
@@ -21,7 +21,7 @@ const ENGLISH = 4105;
 const headlineOf = (p: PostDto) => (p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0])?.headline || p.key;
 
 /** Legacy ConnectSocialMedia.cshtml's two rows, less LinkedIn and RSS (no Connect page anchor yet). */
-const CONNECT_ROWS: { key: keyof ConnectSettings; name: string; file: string }[][] = [
+const CONNECT_ROWS: { key: NetworkKey; name: string; file: string }[][] = [
   [
     { key: "facebook", name: "Facebook", file: "facebook-svg-logo.svg" },
     { key: "x", name: "X", file: "twitter-X-svg-logo.svg" },

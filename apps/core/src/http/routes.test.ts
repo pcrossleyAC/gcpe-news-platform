@@ -480,6 +480,20 @@ describe("Core HTTP API", () => {
       expect(await get("forests-t1t2")).toEqual(before);
     });
 
+    it("NRMS.SiteEditor may PATCH displayAdditionalName; '' clears it; 101 characters is 400", async () => {
+      await seed("forests-addname");
+      const set = await patch(siteEditor, { displayAdditionalName: " (Child Care) " }, "forests-addname");
+      expect(set.status).toBe(200);
+      expect(set.body.displayAdditionalName).toBe("(Child Care)");
+      expect((await get("forests-addname")).displayAdditionalName).toBe("(Child Care)");
+      const long = await patch(siteEditor, { displayAdditionalName: "x".repeat(101) }, "forests-addname");
+      expect(long.status).toBe(400);
+      expect(long.body.issues[0]).toMatchObject({ path: ["displayAdditionalName"], message: "Keep it to 100 characters or fewer." });
+      const cleared = await patch(siteEditor, { displayAdditionalName: "" }, "forests-addname");
+      expect(cleared.status).toBe(200);
+      expect(cleared.body.displayAdditionalName).toBeNull();
+    });
+
     it("a SiteEditor sets the side-column links; topicLinks replace the list in order", async () => {
       await seed("forests-links");
       const topicLinks = [

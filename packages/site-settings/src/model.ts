@@ -6,6 +6,7 @@ export const NETWORKS = [
   { key: "instagram", name: "Instagram" },
   { key: "threads", name: "Threads" },
   { key: "bluesky", name: "Bluesky" },
+  { key: "linkedin", name: "LinkedIn" },
   { key: "flickr", name: "Flickr" },
   { key: "youtube", name: "YouTube" },
   { key: "blogs", name: "Blogs" },
@@ -13,7 +14,7 @@ export const NETWORKS = [
 
 export type NetworkKey = (typeof NETWORKS)[number]["key"];
 
-export const SECTION_KEYS = ["banner", "theme", "footer", "connect", "ministryPages"] as const;
+export const SECTION_KEYS = ["banner", "theme", "footer", "connect", "ministryPages", "contactsPage", "pageText", "navigation"] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export const SECTION_LABEL: Record<SectionKey, string> = {
@@ -22,6 +23,9 @@ export const SECTION_LABEL: Record<SectionKey, string> = {
   footer: "Footer",
   connect: "Social links",
   ministryPages: "Ministry pages",
+  contactsPage: "Media contacts page",
+  pageText: "Page text",
+  navigation: "Navigation and labels",
 };
 
 /** Structural shapes only; the rules (and their messages) live in `validateSiteSettings`. */
@@ -56,7 +60,89 @@ export const MINISTRY_PAGE_LABEL_KEYS = [
   "moreFromMinistry", "ministryWebsite", "ministryPhotos", "ministryVideos", "featuredTopics", "featuredServices", "mediaContacts",
 ] as const;
 
-export const siteSettingsSchema = z.object({
+/** Navigation label keys (`navigation.labels`): the header, home and listing labels staff can edit. */
+export const LABEL_KEYS = [
+  "connectWithUs", "viewAllSocialMedia", "resources", "newsBySector", "emergencyInformation", "highlights", "latestNews", "loadMoreNews",
+  "searchNews", "browseMoreNews", "slideActionLabel",
+] as const;
+
+/** The per-kind listings (`/releases/`, …) whose titles `navigation.listingTitles` holds. */
+export const LISTING_KINDS = ["releases", "stories", "factsheets", "updates"] as const;
+
+const stringFields = <K extends string>(keys: readonly K[]) =>
+  z.object(Object.fromEntries(keys.map((k) => [k, z.string()])) as Record<K, z.ZodString>);
+
+const directoryContactSchema = z.object({
+  group: z.string(),
+  groupUrl: z.string(),
+  subgroup: z.string(),
+  name: z.string(),
+  phone: z.string(),
+  cell: z.string(),
+  email: z.string(),
+  placement: z.enum(["top", "bottom"]),
+});
+
+const contactsPageSchema = z.object({
+  heading: z.string(),
+  lineHeading: z.string(),
+  introHtml: z.string(),
+  listHeading: z.string(),
+  contacts: z.array(directoryContactSchema),
+});
+
+const pageTextSchema = z.object({
+  notFound: z.object({ heading: z.string(), text: z.string() }),
+  privacy: z.object({ label: z.string(), title: z.string(), bodyHtml: z.string() }),
+  live: z.object({ heading: z.string(), consentHtml: z.string(), offAirHtml: z.string() }),
+  collectionNotice: z.object({ heading: z.string(), bodyHtml: z.string() }),
+  subscribeHelpHtml: z.string(),
+  assetLicence: z.object({ text: z.string(), linkText: z.string(), url: z.string() }),
+  searchArchiveLinks: z.array(linkSchema),
+});
+
+const navigationSchema = z.object({
+  newsLabel: z.string(),
+  liveLabel: z.string(),
+  headerLinks: z.array(linkSchema),
+  showHeaderSearch: z.boolean(),
+  footerConnectHeading: z.string(),
+  footerMoreInfoHeading: z.string(),
+  labels: stringFields(LABEL_KEYS),
+  listingTitles: stringFields(LISTING_KINDS),
+});
+
+const policyLinkSchema = z.object({ text: z.string(), url: z.string() });
+
+/** One network list per `NETWORKS` key, in `NETWORKS` order; `linkedin` (added later) is optional
+ * in a stored document. Key order matters: zod outputs it, and the public site hashes JSON. */
+const connectShape = <L extends z.ZodTypeAny, P extends z.ZodTypeAny, I extends z.ZodTypeAny>(linkedin: L, policyLink: P, intro: I) =>
+  z.object({
+    facebook: networkSchema,
+    x: networkSchema,
+    instagram: networkSchema,
+    threads: networkSchema,
+    bluesky: networkSchema,
+    linkedin,
+    flickr: networkSchema,
+    youtube: networkSchema,
+    blogs: networkSchema,
+    policyLink,
+    intro,
+  });
+
+const ministryPagesSchema = z.object({
+  moreFromMinistry: z.string(),
+  ministryWebsite: z.string(),
+  ministryPhotos: z.string(),
+  ministryVideos: z.string(),
+  featuredTopics: z.string(),
+  featuredServices: z.string(),
+  mediaContacts: z.string(),
+});
+
+/** The first sections, in document order (`connect` and `ministryPages` follow). */
+const commonSections = {
   schemaVersion: z.literal(1),
   banner: z.object({
     enabled: z.boolean(),
@@ -77,34 +163,50 @@ export const siteSettingsSchema = z.object({
     /** Optional so every document and event published before it existed still parses; `fillMissingFields` supplies the tenant default. */
     landAcknowledgement: z.string().optional(),
   }),
-  connect: z.object({
-    facebook: networkSchema,
-    x: networkSchema,
-    instagram: networkSchema,
-    threads: networkSchema,
-    bluesky: networkSchema,
-    flickr: networkSchema,
-    youtube: networkSchema,
-    blogs: networkSchema,
-  }),
-  ministryPages: z.object({
-    moreFromMinistry: z.string(),
-    ministryWebsite: z.string(),
-    ministryPhotos: z.string(),
-    ministryVideos: z.string(),
-    featuredTopics: z.string(),
-    featuredServices: z.string(),
-    mediaContacts: z.string(),
-  }),
+};
+
+/**
+ * A complete settings document: what every consumer works with, what a publish validates, and
+ * (per section, `.shape[section]`) what a Hub section edit must parse as.
+ */
+export const siteSettingsSchema = z.object({
+  ...commonSections,
+  connect: connectShape(networkSchema, policyLinkSchema, z.string()),
+  ministryPages: ministryPagesSchema,
+  contactsPage: contactsPageSchema,
+  pageText: pageTextSchema,
+  navigation: navigationSchema,
+});
+
+/**
+ * A document as stored or sent (NRMS revisions and drafts, `site.settings.published` events, the
+ * News API's copy, the public site's persisted copy): the parts added in parity plan 4 are
+ * optional, because a document published before them lacks them. `schemaVersion` stays 1. Parse
+ * with this, then `fillMissingFields(doc, tenantDefaults)` to get a complete `SiteSettings`.
+ */
+export const storedSiteSettingsSchema = z.object({
+  ...commonSections,
+  connect: connectShape(networkSchema.optional(), policyLinkSchema.optional(), z.string().optional()),
+  ministryPages: ministryPagesSchema,
+  contactsPage: contactsPageSchema.optional(),
+  pageText: pageTextSchema.optional(),
+  navigation: navigationSchema.optional(),
 });
 
 export type SiteSettings = z.infer<typeof siteSettingsSchema>;
+export type StoredSiteSettings = z.infer<typeof storedSiteSettingsSchema>;
 export type BannerSettings = SiteSettings["banner"];
 export type ThemeColors = SiteSettings["theme"]["colors"];
 export type FooterSettings = SiteSettings["footer"];
 export type ConnectSettings = SiteSettings["connect"];
 export type MinistryPageLabels = SiteSettings["ministryPages"];
 export type LinkSetting = z.infer<typeof linkSchema>;
+export type DirectoryContact = z.infer<typeof directoryContactSchema>;
+export type ContactsPageSettings = SiteSettings["contactsPage"];
+export type PageTextSettings = SiteSettings["pageText"];
+export type NavigationSettings = SiteSettings["navigation"];
+export type LabelKey = (typeof LABEL_KEYS)[number];
+export type ListingKind = (typeof LISTING_KINDS)[number];
 
 export interface FieldError {
   field: string;
