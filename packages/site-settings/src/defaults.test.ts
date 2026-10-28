@@ -19,6 +19,7 @@ describe("derived defaults", () => {
     expect(doc.banner.enabled).toBe(false);
     expect(doc.theme.colors.bannerInfo).toBe("#013366");
     expect(doc.theme.colors.bannerEmergency).toBe("#D8292F");
+    expect(doc.theme.colors.sectionBar).toBe("#2B5580");
     expect(doc.footer.moreInfoLinks.map((l) => l.text)).toEqual(bc.site.theme.footerLinks.map((l) => l.label));
     expect(doc.footer.helpLinks).toEqual([]);
     expect(doc.footer.landAcknowledgement).toBe("");
@@ -134,6 +135,16 @@ describe("plan-4 parts (contactsPage, pageText, navigation, connect.linkedin/pol
     expect(kept.pageText.subscribeHelpHtml).toBe("");
     expect(kept.contactsPage.contacts).toEqual([]);
     expect(kept.pageText.notFound).toEqual(raw.pageText.notFound);
+  });
+
+  it("fillMissingFields fills theme.colors.sectionBar for an older document and keeps a stored one", () => {
+    const old = prePlan4();
+    expect(old.theme.colors.sectionBar).toBeUndefined();
+    expect(fillMissingFields(old, raw).theme.colors.sectionBar).toBe("#2B5580");
+    const own = prePlan4();
+    own.theme.colors.sectionBar = "#123456";
+    expect(fillMissingFields(own, raw).theme.colors.sectionBar).toBe("#123456");
+    expect(siteSettingsSchema.safeParse(JSON.parse(JSON.stringify(old))).success).toBe(false);
   });
 
   it("fillMissingFields leaves its input alone", () => {

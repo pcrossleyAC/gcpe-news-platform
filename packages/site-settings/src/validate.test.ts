@@ -82,6 +82,12 @@ describe("validateSiteSettings", () => {
     expect(errors[0]!.message).toBe("Too faint to read behind white text (2.6:1, needs 4.5:1). Pick a darker shade.");
   });
 
+  it("sectionBar must be a hex colour and readable behind white text", () => {
+    expect(errorsFor((d) => { d.theme.colors.sectionBar = "blue"; }).map((e) => e.field)).toEqual(["theme.colors.sectionBar"]);
+    const low = errorsFor((d) => { d.theme.colors.sectionBar = "#F08080"; });
+    expect(low).toEqual([{ field: "theme.colors.sectionBar", message: expect.stringContaining("behind white text") }]);
+  });
+
   it("uses the where-wording for each contrast pair", () => {
     expect(errorsFor((d) => { d.theme.colors.text = "#999999"; }).map((e) => e.message.split(" (")[0])).toEqual([
       "Too faint to read on the page background",

@@ -55,7 +55,7 @@ function neutralDefaults(tenantTheme: Parameters<typeof defaultSiteSettings>[0])
   return {
     schemaVersion: 1,
     banner: { enabled: false, style: "info", message: "", links: [], dismissible: true, startsAt: null, endsAt: null },
-    theme: { colors: { ...tenantTheme.colors, bannerInfo: "#013366", bannerEmergency: "#D8292F" } },
+    theme: { colors: { ...tenantTheme.colors, bannerInfo: "#013366", bannerEmergency: "#D8292F", sectionBar: "#2B5580" } },
     footer: {
       helpText: "",
       helpLinks: [],
@@ -89,7 +89,7 @@ function neutralDefaults(tenantTheme: Parameters<typeof defaultSiteSettings>[0])
  * then validated; throws if it isn't a valid document), else defaults derived from its theme. */
 export function defaultSiteSettings(
   tenantTheme: {
-    colors: Omit<ThemeColors, "bannerInfo" | "bannerEmergency">;
+    colors: Omit<ThemeColors, "bannerInfo" | "bannerEmergency" | "sectionBar">;
     footerLinks: { label: string; url: string }[];
   },
   tenantDefaults?: unknown,
@@ -117,6 +117,7 @@ export function fillMissingFields(doc: StoredSiteSettings, defaults: SiteSetting
   const { connect } = doc;
   return {
     ...doc,
+    theme: { colors: { ...doc.theme.colors, sectionBar: fill(doc.theme.colors.sectionBar, defaults.theme.colors.sectionBar) } },
     footer: { ...doc.footer, landAcknowledgement: fill(doc.footer.landAcknowledgement, defaults.footer.landAcknowledgement) },
     // Spelled out in schema (NETWORKS) order, so a filled document serialises like a parsed one
     // (the public site hashes each section's JSON).

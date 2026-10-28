@@ -352,13 +352,29 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 .wowza-wrapper #live-status{margin:.5rem 0 0;min-height:1.4em}
 .wowza-wrapper .live-stream-link,.wowza-wrapper .off-air-text{margin:.5rem 0 0;font-size:16px;line-height:1.4}
 
-/* The Connect page's sections (pages/connect.ts): legacy styled .expandable-section h3 as a blue bar;
- * ours is a native <details> whose <summary> holds an h2 with the same look. */
-.expandable-section>summary{list-style:none;cursor:pointer;margin-top:15px}
-.expandable-section>summary::-webkit-details-marker{display:none}
-.expandable-section>summary h2{display:flex;justify-content:space-between;align-items:center;background-color:var(--color-primary);color:var(--color-primary-text);font-size:24px;line-height:1.2;margin:0;padding:8px 10px;border-radius:6px}
-.expandable-section>summary:focus-visible{outline:3px solid var(--color-primary);outline-offset:2px}
-.expandable-section .connect-icon{background:var(--color-background);border-radius:4px;padding:2px;flex:none}
+/* The Connect page's sections (pages/connect.ts). Legacy's .expandable-section h3 is a bar in the
+ * section-bar colour (the Hub's Theme "Section bar colour", --color-section-bar); ours is an h2 with
+ * the same look and the icon (a Font Awesome glyph, as news.gov uses) inline after the text in the heading colour.
+ * The selectors carry .home-body so they beat legacy's ".connect .home-body h2" (36px, underlined rule). */
+.connect .home-body .expandable-section>h2{display:block;box-sizing:border-box;width:100%;background-color:var(--color-section-bar);color:var(--color-background);font-size:24px;font-weight:500;line-height:1.2;margin:15px 0 0;padding:8px 10px;border:0;border-radius:6px}
+.connect .home-body .expandable-section:first-of-type>h2{margin-top:15px}
+.expandable-section .connect-icon{margin-left:4px;width:.9em;height:.9em;vertical-align:-1px}
+.expandable-section-content{padding:0 30px}
+.connect .expandable-section ul.external-links{margin-bottom:0;padding-top:12px}
+.connect .expandable-section ul.external-links li{margin:0}
+/* Legacy shows no underline on these links; hover and keyboard focus add one, with a focus ring. */
+.connect .expandable-section ul.external-links li a,.connect .home-body#main-content-release>p>a{text-decoration:none;display:inline-block}
+.connect .expandable-section ul.external-links li a:hover,.connect .expandable-section ul.external-links li a:focus-visible,.connect .home-body#main-content-release>p>a:hover,.connect .home-body#main-content-release>p>a:focus-visible{text-decoration:underline}
+.connect .home-body#main-content-release>p>a{font-size:16px}
+.connect .home-body#main-content-release h1.connect-title{font-size:36px;font-weight:600;line-height:1.2;border-bottom:1px solid var(--color-border);margin:15px 0 10px;padding-bottom:10px}
+.expandable-section [hidden]{display:none!important}
+/* The second visible entry fades toward the page background while the list is collapsed (legacy's article-fade). */
+.expandable-section.collapsed li.faded{position:relative}
+.expandable-section.collapsed li.faded::after{content:"";position:absolute;inset:0;pointer-events:none;background:color-mix(in srgb,var(--color-background) 55%,transparent)}
+.expandable-section .expand-toggle{display:inline-block;margin:20px 0 10px;padding:3px 10px;font-size:14px;font-weight:600;text-transform:uppercase;color:var(--color-primary);background:var(--color-background);border:1px solid var(--color-border);border-radius:4px;cursor:pointer}
+.expandable-section .expand-toggle:hover{background:var(--color-surface)}
+.expandable-section.collapsed .expand-toggle::before,.expandable-section.expanded .expand-toggle::before{content:"";display:inline-block;margin-right:6px;vertical-align:2px;border:4px solid transparent;border-top-color:currentColor;border-bottom-width:0}
+.expandable-section.expanded .expand-toggle::before{border-top-width:0;border-bottom:4px solid currentColor}
 .connect .connect-intro{font-size:16px}
 /* Connect With Us (pages/connect-strip.ts): one list of up to nine icons; legacy's inline-block items wrap, so give the rows room. */
 .resource-links.connect ul li{padding-bottom:8px}

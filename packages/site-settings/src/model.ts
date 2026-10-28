@@ -40,7 +40,7 @@ const networkSchema = z.object({ featured: z.array(linkSchema), accounts: z.arra
 const instant = z.string().datetime({ offset: true }).nullable();
 
 export const THEME_COLOR_KEYS = [
-  "primary", "primaryText", "accent", "text", "mutedText", "surface", "background", "border", "bannerInfo", "bannerEmergency",
+  "primary", "primaryText", "accent", "text", "mutedText", "surface", "background", "border", "bannerInfo", "bannerEmergency", "sectionBar",
 ] as const;
 
 const colorsSchema = z.object({
@@ -54,6 +54,8 @@ const colorsSchema = z.object({
   border: z.string(),
   bannerInfo: z.string(),
   bannerEmergency: z.string(),
+  /** The Connect page's section bars (news.gov's #2b5580). */
+  sectionBar: z.string(),
 });
 
 export const MINISTRY_PAGE_LABEL_KEYS = [
@@ -186,6 +188,8 @@ export const siteSettingsSchema = z.object({
  */
 export const storedSiteSettingsSchema = z.object({
   ...commonSections,
+  /** `sectionBar` is optional: a document published before it existed lacks it (`fillMissingFields`). */
+  theme: z.object({ colors: colorsSchema.extend({ sectionBar: z.string().optional() }) }),
   connect: connectShape(networkSchema.optional(), policyLinkSchema.optional(), z.string().optional()),
   ministryPages: ministryPagesSchema,
   contactsPage: contactsPageSchema.optional(),

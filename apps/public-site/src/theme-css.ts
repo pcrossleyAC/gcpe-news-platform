@@ -31,7 +31,7 @@ const cssString = (s: string) => `"${s.replace(/["\\;:{}<>\n\r]/g, "")}"`;
 const cssStack = (s: string) => s.replace(/[^A-Za-z0-9 ,-]/g, "");
 
 /** The site settings' default banner colours (spec "Defaults"). */
-const DEFAULT_BANNER_COLORS = { bannerInfo: "#013366", bannerEmergency: "#D8292F" };
+const DEFAULT_BANNER_COLORS = { bannerInfo: "#013366", bannerEmergency: "#D8292F", sectionBar: "#2B5580" };
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
 /** P7: the legacy stylesheets' variables, pointed at our tokens, so an admin colour edit only changes theme.css. */
@@ -42,7 +42,7 @@ const LEGACY_ALIASES =
  * spec §6.3: theme.css from site.theme, as CSS variables, plus the legacy variable aliases. Every
  * other rule lives in assets/site/overrides.css, which loads before this file; the :focus-visible
  * rule stays last so it wins over all legacy CSS (P6). The site settings' `theme.colors` (when
- * given) replace the tenant's colours and add the two banner colours. A colour that isn't
+ * given) replace the tenant's colours and add the banner and section-bar colours. A colour that isn't
  * `#RRGGBB` (a document that bypassed validation) never reaches the stylesheet: the tenant's (or
  * default banner) colour stands in for it.
  */

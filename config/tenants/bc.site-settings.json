@@ -20,7 +20,8 @@
       "background": "#FFFFFF",
       "border": "#D8D8D8",
       "bannerInfo": "#013366",
-      "bannerEmergency": "#D8292F"
+      "bannerEmergency": "#D8292F",
+      "sectionBar": "#2B5580"
     }
   },
   "footer": {

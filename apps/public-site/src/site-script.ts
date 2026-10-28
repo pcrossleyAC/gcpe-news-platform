@@ -31,6 +31,11 @@
  * 9. "Load More News" (`button.load-more[aria-controls]`): reveals every `.hidden-article` in its
  *    target, removes itself and moves focus to the first revealed card's headline link.
  *
+ * 10a. The Connect page's long lists (`.expandable-section[data-collapsible]`, pages/connect.ts) collapse as news.gov's do: the
+ *     first two entries show (the second faded), the rest get `hidden`, and a real `button` (`aria-expanded`,
+ *     `aria-controls` the list) after the body reads "Expand {name} list" / "Collapse {name} list". A section whose id is the
+ *     URL hash starts expanded. Without script every entry shows and there is no button.
+ *
  * 10. The release page's Print button (`button.print-document`, pages/release.ts) calls `window.print()`.
  * 11. The release page's language buttons (`button[data-story-lang]`): "secondary" adds
  *     `body.lang-secondary` (overrides.css shows the French `.story-lang.secondary` and hides the
@@ -245,6 +250,33 @@ export const SITE_SCRIPT = String.raw`(() => {
       const link = shown.length ? shown[0].querySelector("h2 a") : null;
       if (link) link.focus();
     });
+  });
+
+  Array.prototype.slice.call(doc.querySelectorAll(".expandable-section[data-collapsible]")).forEach((sec) => {
+    const list = sec.querySelector("ul.external-links");
+    const body = sec.querySelector(".expander-body");
+    if (!list || !body || !list.id) return;
+    const keep = parseInt(sec.getAttribute("data-collapsible"), 10) || 2;
+    const items = Array.prototype.slice.call(list.children);
+    if (items.length <= keep) return;
+    const name = sec.getAttribute("data-list-name") || "";
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.className = "link-button expand-toggle";
+    btn.setAttribute("aria-controls", list.id);
+    const set = (collapsed) => {
+      sec.classList.toggle("collapsed", collapsed);
+      sec.classList.toggle("expanded", !collapsed);
+      items.forEach((li, i) => {
+        li.hidden = collapsed && i >= keep;
+        li.classList.toggle("faded", collapsed && i === keep - 1);
+      });
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      btn.textContent = (collapsed ? "Expand " : "Collapse ") + name + " list";
+    };
+    btn.addEventListener("click", () => set(!sec.classList.contains("collapsed")));
+    body.parentNode.appendChild(btn);
+    set(!(doc.location && doc.location.hash === "#" + sec.id));
   });
 
   Array.prototype.slice.call(doc.querySelectorAll("button.print-document")).forEach((btn) => {

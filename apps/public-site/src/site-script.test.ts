@@ -8,6 +8,7 @@ import { pathWords, SITE_SCRIPT } from "./site-script";
 import { renderHomePage } from "./pages/home";
 import { renderReleasePage } from "./pages/release";
 import { renderLivePage } from "./pages/live";
+import { renderConnectPage } from "./pages/connect";
 import { bcSettings, post, slide } from "../test/fixtures";
 
 const MENU: MenuMinistry[] = [
@@ -697,5 +698,69 @@ describe("site.js live webcast player (/live/)", () => {
   it("a page with no .play-button (off air, any other page) is untouched", () => {
     const dom = new JSDOM(renderLivePage(null, bcSettings().pageText.live, site, {}), { url: "https://boxs.example/site/live/", runScripts: "outside-only" });
     expect(() => dom.window.eval(SITE_SCRIPT)).not.toThrow();
+  });
+
+  describe("Connect sections (collapse like news.gov)", () => {
+    const connect = () => {
+      const many = Array.from({ length: 5 }, (_, i) => ({ title: `Feed ${i}`, href: `/site/f${i}.xml` }));
+      const dom = new JSDOM(renderConnectPage(site, { settings: bcSettings() }, many, []), { url: "https://boxs.example/site/connect/", runScripts: "outside-only" });
+      dom.window.eval(SITE_SCRIPT);
+      return dom.window.document;
+    };
+
+    it("shows two entries, fades the second, hides the rest with [hidden] and adds a button wired by aria-expanded/aria-controls", () => {
+      const doc = connect();
+      const fb = doc.getElementById("facebook")!;
+      expect(fb.classList.contains("collapsed")).toBe(true);
+      expect(fb.classList.contains("expanded")).toBe(false);
+      const lis = [...fb.querySelectorAll("li")];
+      expect(lis.length).toBeGreaterThan(2);
+      expect(lis.map((li) => li.hasAttribute("hidden"))).toEqual(lis.map((_, i) => i >= 2));
+      expect(lis[1]!.classList.contains("faded")).toBe(true);
+      expect(lis[0]!.classList.contains("faded")).toBe(false);
+      const btn = fb.querySelector<HTMLButtonElement>("button.link-button")!;
+      expect(btn.type).toBe("button");
+      expect(btn.textContent).toBe("Expand Facebook list");
+      expect(btn.getAttribute("aria-expanded")).toBe("false");
+      expect(btn.getAttribute("aria-controls")).toBe("facebook-list");
+      expect(doc.getElementById("facebook-list")).toBe(fb.querySelector("ul"));
+      // Sections that are not marked (<= 2, or Blogs) get no button and keep everything visible.
+      for (const id of ["threads", "bluesky", "flickr", "blogs"]) {
+        expect(doc.querySelector(`#${id} button`)).toBeNull();
+        expect(doc.querySelector(`#${id} [hidden]`)).toBeNull();
+      }
+      expect(doc.querySelector("#x button")!.textContent).toBe("Expand X list");
+      expect(doc.querySelector("#rss button")!.textContent).toBe("Expand RSS list");
+    });
+
+    it("the button expands (every entry visible, no fade, aria-expanded true) and collapses again, keeping focus", () => {
+      const doc = connect();
+      const fb = doc.getElementById("facebook")!;
+      const btn = fb.querySelector<HTMLButtonElement>("button")!;
+      btn.focus();
+      btn.click();
+      expect(fb.classList.contains("expanded")).toBe(true);
+      expect(fb.classList.contains("collapsed")).toBe(false);
+      expect(fb.querySelector("[hidden]")).toBeNull();
+      expect(fb.querySelector(".faded")).toBeNull();
+      expect(btn.getAttribute("aria-expanded")).toBe("true");
+      expect(btn.textContent).toBe("Collapse Facebook list");
+      expect(doc.activeElement).toBe(btn);
+      btn.click();
+      expect(fb.classList.contains("collapsed")).toBe(true);
+      expect(fb.querySelectorAll("li[hidden]").length).toBe(fb.querySelectorAll("li").length - 2);
+      expect(fb.querySelectorAll("li.faded")).toHaveLength(1);
+      expect(btn.getAttribute("aria-expanded")).toBe("false");
+      expect(btn.textContent).toBe("Expand Facebook list");
+    });
+
+    it("a link to /connect/#x lands on a section that is expanded", () => {
+      const dom = new JSDOM(renderConnectPage(site, { settings: bcSettings() }, [], []), { url: "https://boxs.example/site/connect/#x", runScripts: "outside-only" });
+      dom.window.eval(SITE_SCRIPT);
+      const x = dom.window.document.getElementById("x")!;
+      expect(x.classList.contains("expanded")).toBe(true);
+      expect(x.querySelector("[hidden]")).toBeNull();
+      expect(dom.window.document.getElementById("facebook")!.classList.contains("collapsed")).toBe(true);
+    });
   });
 });

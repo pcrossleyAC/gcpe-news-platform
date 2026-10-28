@@ -16,5 +16,6 @@ export function prePlan4Settings(): StoredSiteSettings {
   delete d.connect.linkedin;
   delete d.connect.policyLink;
   delete d.connect.intro;
+  delete d.theme.colors.sectionBar;
   return d;
 }

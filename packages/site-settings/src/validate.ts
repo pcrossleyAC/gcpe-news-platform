@@ -117,6 +117,7 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
     checkContrast("theme.colors.primary", "#FFFFFF", c.primary, "behind white text", errors);
     checkContrast("theme.colors.bannerInfo", "#FFFFFF", c.bannerInfo, "behind white text", errors);
     checkContrast("theme.colors.bannerEmergency", "#FFFFFF", c.bannerEmergency, "behind white text", errors);
+    checkContrast("theme.colors.sectionBar", "#FFFFFF", c.sectionBar, "behind white text", errors);
   }
 
   const f = doc.footer;
