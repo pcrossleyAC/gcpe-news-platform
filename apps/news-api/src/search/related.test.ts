@@ -67,6 +67,8 @@ describe("related posts (spec §5.4)", () => {
       leadMinistryKey: "health",
       hasTranslations: false,
       hasMediaAssets: false,
+      hasTranslationList: false,
+      hasMediaAssetList: false,
       url: "https://site.example.test/releases/P1",
     });
   });

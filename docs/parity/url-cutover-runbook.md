@@ -77,6 +77,24 @@ fsutil 8dot3name strip /s C:\gcpe\data
 
 The `/t` run only lists what would change. Why both this and the code: the site rejects any address segment containing `~` or `:`, or ending in `.` or a space (C268), so `/SITE-S~1.JSO` or `/index.html::$DATA` is a 404 before the site's file server sees it. That check covers only the public site. `/files` (NRMS uploads, whose keys carry a random part, and whose `.meta` folder is refused as a dotfile) and `/hub` are served by their own file servers. On a volume with short names, `/files/<first six characters>~1.PDF` could open an upload without its random part, and `/files/META~1/` could reach `.meta`. Setting the volume flag removes that for every file server. `8dot3name set` affects the whole volume, so check with the server's owner that nothing else on it depends on short names. Not tested on Windows from here.
 
+**Before the day (translation and media-asset links).** Legacy keeps each release's translation PDFs and media assets in Azure blob storage, which stays up after cutover; legacy SQL has no list of them, so the News API's legacy import leaves them out. `import:files` fills them in from the public legacy API, one request per release that legacy flags as having translations or media assets, newest first. The legacy survey puts that at no more than 4,539 (an upper bound: it counts unpublished rows and posts with both flags twice); `--dry-run` gives the real count and hours. Run it over the whole archive a few days before, after a News API legacy import (`Import-GcpeLegacy.ps1 -Only NewsApi`, or `npm --workspace @gcpe/news-api run import:legacy` from a checkout) that carries legacy's `HasTranslations` flag:
+
+```
+npm run news-api:import-files -- --dry-run          # count and hours; sends nothing
+npm run news-api:import-files -- --concurrency 2    # at most about 40 minutes
+```
+
+On the servers, run the bundled `tools/news-api-import-files.mjs` instead (siteground.md and windows.md, "Legacy translations and media assets"). A later legacy import keeps what it filled, as long as legacy still sets the post's flag (a cleared flag clears that list). Check the report: `remaining` 0 and `stopped` null. If it stopped on a 429, wait an hour and run the same command again; it skips the posts already filled. A few `notFound` keys are posts legacy has unpublished since. Spot-check one release with translations (for example `/releases/2026HLTH0085-001117`): its PDFs link to `https://bcgovnews-etg7c8etapa6btfr.z03.azurefd.net/translations/…` and download.
+
+Then, **after the last legacy import of News API posts** (the final `Import-GcpeLegacy.ps1 -Only NewsApi` before legacy stops publishing) and **before DNS moves** (step 6; it reads `api.news.gov.bc.ca`, which must still be legacy's), catch up in two runs:
+
+```
+npm run news-api:import-files                                   # flagged posts not filled yet: the new ones (cheap)
+npm run news-api:import-files -- --refresh --since <full-run date minus 30 days>   # recent posts again
+```
+
+A plain run (no `--since`, no `--refresh`) asks only for flagged posts whose lists are still empty, so it picks up every post published or newly flagged since the full run, but it never revisits a post it already filled. The `--refresh --since` run asks again for the recent posts, which is where legacy staff still add or remove translations; a changed list is rewritten, an unchanged one is not. Older posts are not revisited by either run: if legacy staff are known to have changed files on an older release, or to be safe once, run `--refresh` with a wider `--since` (or `--all`) before DNS moves; it is idempotent.
+
 1. **Freeze legacy subscription writes.** Put the legacy subscribe and manage pages, and the NoD admin's subscriber screens, into maintenance or read-only. From here on legacy takes no new subscribes, preference changes or unsubscribes; anyone who tries is told to come back shortly, and after DNS moves they reach the Hub.
 2. **Stop legacy NoD sending**, so no new manage links are made on the old system.
 3. **Run the final import:** `npm run nod:import`. It copies the manage links still unexpired, so the last day's emails keep working (C266). Links older than the production timeout are not revived; they land on "request a new link". Read the report: if it lists "changed while importing: run the import again", run it again.

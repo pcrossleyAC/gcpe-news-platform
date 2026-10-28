@@ -19,8 +19,12 @@ export interface SearchResult {
   summary: string | null;
   publishDate: string;
   leadMinistryKey: string | null;
+  /** Legacy's raw flags. */
   hasTranslations: boolean;
   hasMediaAssets: boolean;
+  /** Whether the release page has a translation list / media-asset list to link to: what a result card shows its links by. */
+  hasTranslationList: boolean;
+  hasMediaAssetList: boolean;
   url: string;
 }
 
@@ -71,6 +75,8 @@ export function searchResultMapper(publicSiteUrl: string, timeZone: string): (r:
     leadMinistryKey: r.leadMinistryKey,
     hasTranslations: r.hasTranslations,
     hasMediaAssets: r.hasMediaAssets,
+    hasTranslationList: r.hasTranslationList,
+    hasMediaAssetList: r.hasMediaAssetList,
     url: `${base}/releases/${encodeURIComponent(r.key)}`,
   });
 }

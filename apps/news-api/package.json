@@ -10,6 +10,7 @@
     "seed:fixtures": "tsx scripts/seed-from-fixtures.ts",
     "import:legacy": "tsx src/import/cli.ts",
     "import:public": "tsx src/import/public-cli.ts",
+    "import:files": "tsx src/import/files-cli.ts",
     "search-backfill": "tsx src/cli/search-backfill.ts",
     "build": "node ../../scripts/build-app.mjs apps/news-api"
   },

@@ -10,11 +10,11 @@ import { createNewsTestDb, EVENT_SECRETS, TZ } from "../../test/helpers";
 import { importLegacyNews, normalizeGranville } from "./run";
 
 const RID = "9af8cc16-0ae5-4ec6-ad58-fdb081d44e37";
-const source = createFakeSource({
+const tables: Record<string, Record<string, unknown>[]> = {
   releaseYears: [{ Year: 2026 }],
   "releases:2026": [{
     Id: RID.toUpperCase(), Key: "2026TT0103-001121", ReleaseType: 1, Reference: "NEWS-34336", AtomId: "", PublishDateTime: new Date("2026-10-01T22:10:00Z"),
-    LeadMinistryKey: "transportation-and-transit", Keywords: "", AssetUrl: "", RedirectUrl: "", HasMediaAssets: false, PublishOptions: 2,
+    LeadMinistryKey: "transportation-and-transit", Keywords: "", AssetUrl: "", RedirectUrl: "", HasMediaAssets: false, HasTranslations: false, PublishOptions: 2,
     Timestamp: new Date("2026-10-01T22:10:28Z"), Location: "Abbotsford", Summary: "s", SocialMediaHeadline: null, SocialMediaSummary: null,
   }],
   "documents:2026": [{ ReleaseId: RID, DocumentId: "D1", SortIndex: 0, LanguageId: 4105, PageTitle: "News Release", Headline: "H", Subheadline: "", Byline: "", BodyHtml: "<p>b</p>" }],
@@ -25,7 +25,8 @@ const source = createFakeSource({
   categoryFeatures: [{ Kind: "ministries", Key: "transportation-and-transit", TopReleaseId: RID.toUpperCase(), FeatureReleaseId: null }],
   currentSlides: [{ Id: "F9ADFDC2-5933-4C38-A390-A18077ACB213", SortIndex: 0, Headline: "Get vaccinated", Summary: "s", ActionUrl: "https://x", Image: Buffer.from("89504e470d0a1a0a", "hex"), FacebookPostUrl: null, Justify: 1, Timestamp: new Date("2026-09-09T23:31:07Z") }],
   resourceLinks: [{ SortIndex: 0, LinkText: "Factsheets", LinkUrl: "/factsheets" }],
-});
+};
+const source = createFakeSource(tables);
 
 // Fix round 1 (IMPORTANT 2): legacy stores "true"/"false"; only exactly "true" (trimmed,
 // case-insensitive) survives the import as "true" — everything else, including a legacy
@@ -67,6 +68,24 @@ describe("importLegacyNews", () => {
     expect((await request(app).get(`/api/Slides?${V}`)).body[0]).toMatchObject({ justify: "right", imageType: "image/png", key: "f9adfdc2-5933-4c38-a390-a18077acb213" });
     const { rows } = await tdb.pool.query("SELECT count(*)::int AS n FROM posts");
     expect(rows[0].n).toBe(1);
+  });
+
+  it("carries legacy's HasTranslations flag, and a re-run keeps the file lists import:files filled", async () => {
+    const flagged = createFakeSource({ ...tables, "releases:2026": tables["releases:2026"]!.map((r) => ({ ...r, HasTranslations: true, HasMediaAssets: true })) });
+    await importLegacyNews(tdb.db, flagged);
+    const files = [{ key: "https://files.example/translations/releases/2026TT0103-001121/a.pdf", label: "a.pdf", length: 1 }];
+    await tdb.pool.query("UPDATE posts SET translations = $1::jsonb, assets = '[]'::jsonb WHERE key = '2026TT0103-001121'", [JSON.stringify(files)]);
+    await importLegacyNews(tdb.db, flagged);
+    const { rows } = await tdb.pool.query("SELECT has_translations, translations, assets FROM posts WHERE key = '2026TT0103-001121'");
+    expect(rows[0]).toEqual({ has_translations: true, translations: files, assets: [] });
+    // Legacy clears HasTranslations only: the translations go, the assets stay.
+    const translationsCleared = createFakeSource({ ...tables, "releases:2026": tables["releases:2026"]!.map((r) => ({ ...r, HasTranslations: false, HasMediaAssets: true })) });
+    await importLegacyNews(tdb.db, translationsCleared);
+    const after = await tdb.pool.query("SELECT has_translations, translations, assets FROM posts WHERE key = '2026TT0103-001121'");
+    expect(after.rows[0]).toEqual({ has_translations: false, translations: null, assets: [] });
+    // And HasMediaAssets cleared: the assets go too.
+    await importLegacyNews(tdb.db, source);
+    expect((await tdb.pool.query("SELECT assets FROM posts WHERE key = '2026TT0103-001121'")).rows[0]).toEqual({ assets: null });
   });
 });
 

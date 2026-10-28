@@ -207,8 +207,8 @@ export const SEARCH_SCRIPT = `(() => {
           h2.appendChild(link(href, headline));
           card.appendChild(h2);
           const media = (cls, hash, id, text) => { const d = el("div", "item-medialink " + cls); const a = link(href + hash); a.appendChild(icon(id)); a.appendChild(document.createTextNode(" " + text)); d.appendChild(a); card.appendChild(d); };
-          if (r.hasTranslations === true) media("translations", "#translations", "language", "Translations");
-          if (r.hasMediaAssets === true) media("media-assets", "#assets", "download", "Media Assets");
+          if (r.hasTranslationList === true) media("translations", "#translations", "language", "Translations");
+          if (r.hasMediaAssetList === true) media("media-assets", "#assets", "download", "Media Assets");
           card.appendChild(el("div", "item-date", longDate(r.publishDate)));
           const content = el("div", "item-content");
           const text = el("div", "item-text");

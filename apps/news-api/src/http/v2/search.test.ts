@@ -207,6 +207,8 @@ describe("GET /api/v2/search with filters and no q (real Postgres)", () => {
       leadMinistryKey: "citizens-services",
       hasTranslations: false,
       hasMediaAssets: false,
+      hasTranslationList: false,
+      hasMediaAssetList: false,
       url: "https://news.example.test/releases/CS-22",
     });
     const p2 = await request(app).get("/api/v2/search?ministry=citizens-services&page=2");
