@@ -3,8 +3,8 @@ import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
-import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
+import { EventTooLargeError, orgKeyFromName, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
+import { ADMIN_ONLY_PROFILE_FIELDS, createOrganization, deactivateOrganization, orgCreateSchema, getOrganization, listOrganizations, orgInputSchema, orgProfilePatchSchema, patchOrganizationProfile, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
@@ -21,7 +21,7 @@ function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | nu
 }
 
 function handleError(res: Response, e: unknown) {
-  if (e instanceof ZodError) return void res.status(400).json({ error: e.issues });
+  if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: "record too large to publish" });
   // Only the label: a failed query's message carries its bound parameters, which can be an email.
   console.error("[core] request failed", safeErrorLabel(e));
@@ -42,6 +42,16 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     "/organizations",
     safe(async (_req, res) => void res.json(await listOrganizations(db))),
   );
+  r.post(
+    "/organizations",
+    admin,
+    safe(async (req, res) => {
+      const input = orgCreateSchema.parse(req.body);
+      if (!orgKeyFromName(input.displayName)) return void res.status(400).json({ error: "name must contain a letter or digit" });
+      const result = await createOrganization(db, input, subscribers);
+      "conflict" in result ? res.status(409).json({ error: "exists", key: result.conflict }) : res.status(201).json(result.record);
+    }),
+  );
   r.get(
     "/organizations/:key",
     safe<{ key: string }>(async (req, res) => {
@@ -55,7 +65,9 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe<{ key: string }>(async (req, res) => {
       const input = orgInputSchema.parse(req.body);
       if (input.key !== req.params.key) return void res.status(400).json({ error: "body key must match path" });
-      res.json((await upsertOrganization(db, input, subscribers)).record);
+      const result = await upsertOrganization(db, input, subscribers, { respectStaffEdits: req.query.overwriteStaffEdits !== "true" });
+      if (result.skippedStaffEdit) return void res.status(409).json({ error: "staff-edited" });
+      res.json(result.record);
     }),
   );
   const hqSchema = z.object({ isHq: z.boolean() });
@@ -75,6 +87,19 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe<{ key: string }>(async (req, res) => {
       const { isPublic } = publicSchema.parse(req.body);
       const record = await setOrganizationPublic(db, req.params.key, isPublic, subscribers);
+      record ? res.json(record) : res.status(404).json({ error: "not found" });
+    }),
+  );
+  r.patch(
+    "/organizations/:key/profile",
+    requireAnyRole("Core.Admin", "NRMS.SiteEditor"),
+    safe<{ key: string }>(async (req, res) => {
+      const body: unknown = req.body;
+      const isAdmin = req.auth?.roles.includes("Core.Admin") ?? false;
+      if (!isAdmin && body && typeof body === "object" && [...ADMIN_ONLY_PROFILE_FIELDS, "isHq", "isPublic"].some((f) => f in body)) {
+        return void res.status(403).json({ error: "forbidden" });
+      }
+      const record = await patchOrganizationProfile(db, req.params.key, orgProfilePatchSchema.parse(body), subscribers);
       record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );

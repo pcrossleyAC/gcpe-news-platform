@@ -15,7 +15,7 @@ function groupBy<T, K>(rows: T[], key: (r: T) => K): Map<K, T[]> {
 const norm = (id: string) => id.toLowerCase();
 
 export async function importLegacyReference(db: Db, source: LegacySource, subscribers: SubscriberConfig[]) {
-  const result = { organizations: { total: 0, changed: 0 }, terms: { total: 0, changed: 0 }, missingTables: [] as string[] };
+  const result = { organizations: { total: 0, changed: 0, skippedStaffEdited: 0 }, terms: { total: 0, changed: 0 }, missingTables: [] as string[] };
 
   const termQueries: [TermKind, string][] = [
     ["sector", Q_SECTORS],
@@ -46,13 +46,16 @@ export async function importLegacyReference(db: Db, source: LegacySource, subscr
     });
     // GCPEHQ, GCPEMEDIA and PREM are created HQ (Q49), and GCPEHQ and GCPEMEDIA non-public (Q54);
     // an existing organization keeps Core.Admin's flags (C124).
-    const { changed } = await upsertOrganization(db, org, subscribers, {
+    // A staff-edited organization is left alone (respectStaffEdits).
+    const { changed, skippedStaffEdit } = await upsertOrganization(db, org, subscribers, {
+      respectStaffEdits: true,
       legacyId: id,
       isHqOnCreate: isHqAbbreviation(row.Abbreviation),
       isPublicOnCreate: !isNonPublicAbbreviation(row.Abbreviation),
     });
     result.organizations.total++;
     if (changed) result.organizations.changed++;
+    if (skippedStaffEdit) result.organizations.skippedStaffEdited++;
   }
   return result;
 }

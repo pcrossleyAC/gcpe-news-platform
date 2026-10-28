@@ -50,6 +50,8 @@ interface KindSummary {
   upserted: number;
   failed: number;
   failures: Failure[];
+  /** Keys the target refused to overwrite because staff edited them in the Hub (409 staff-edited). Not failures. */
+  skipped: string[];
   /** Ministries (lowercased key) whose recent releases yielded no abbreviation. Only populated
    * for the "ministries" summary. */
   noAbbreviation: string[];
@@ -102,10 +104,19 @@ function recordFailure(summary: KindSummary, key: string, status: number): void 
   summary.failures.push({ key, status });
 }
 
+async function isStaffEdited(res: Response): Promise<boolean> {
+  try {
+    return ((await res.json()) as { error?: unknown } | null)?.error === "staff-edited";
+  } catch {
+    return false;
+  }
+}
+
 /** PUTs one body and records the outcome in the summary. */
 async function putAndTrack(target: TargetOptions, summary: KindSummary, path: string, key: string, body: unknown): Promise<void> {
   const res = await putJson(target.targetBaseUrl, path, target.token, body, target.fetchImpl);
   if (res.ok) summary.upserted++;
+  else if (res.status === 409 && (await isStaffEdited(res))) summary.skipped.push(key);
   else recordFailure(summary, key, res.status);
 }
 
@@ -134,7 +145,7 @@ async function seedMinistries(
   opts: Required<Pick<RunOptions, "targetBaseUrl" | "token" | "publicApiBase" | "delayMs" | "fetchImpl" | "abbreviationSampleSize">>,
 ): Promise<KindSummary> {
   const { targetBaseUrl, token, publicApiBase, delayMs, fetchImpl, abbreviationSampleSize } = opts;
-  const summary: KindSummary = { kind: "ministries", upserted: 0, failed: 0, failures: [], noAbbreviation: [] };
+  const summary: KindSummary = { kind: "ministries", upserted: 0, failed: 0, failures: [], skipped: [], noAbbreviation: [] };
   const ministries = await fetchMinistries(publicApiBase, fetchImpl);
   for (const ministry of ministries) {
     await sleep(delayMs);
@@ -151,7 +162,7 @@ async function seedMinistries(
 }
 
 async function seedHqOrganizations(opts: Required<Pick<RunOptions, "targetBaseUrl" | "token" | "delayMs" | "fetchImpl">>): Promise<KindSummary> {
-  const summary: KindSummary = { kind: "hq-organizations", upserted: 0, failed: 0, failures: [], noAbbreviation: [] };
+  const summary: KindSummary = { kind: "hq-organizations", upserted: 0, failed: 0, failures: [], skipped: [], noAbbreviation: [] };
   for (const org of HQ_SEED_ORGANIZATIONS) {
     const input = orgInputSchema.parse(org);
     await sleep(opts.delayMs);
@@ -166,7 +177,7 @@ async function seedTermKind(
   opts: Required<Pick<RunOptions, "targetBaseUrl" | "token" | "publicApiBase" | "delayMs" | "fetchImpl">>,
 ): Promise<KindSummary> {
   const { targetBaseUrl, token, publicApiBase, delayMs, fetchImpl } = opts;
-  const summary: KindSummary = { kind, upserted: 0, failed: 0, failures: [], noAbbreviation: [] };
+  const summary: KindSummary = { kind, upserted: 0, failed: 0, failures: [], skipped: [], noAbbreviation: [] };
   const categories = await fetcher(publicApiBase, fetchImpl);
   for (const category of categories) {
     const input = termInputSchema.parse(toTermInput(kind, category));
@@ -196,7 +207,8 @@ export async function run(opts: RunOptions): Promise<RunResult> {
   summaries.push(await seedTermKind("tag", fetchTags, common));
 
   for (const s of summaries) {
-    log(`${s.kind}: upserted=${s.upserted} failed=${s.failed}`);
+    log(`${s.kind}: upserted=${s.upserted} skipped=${s.skipped.length} failed=${s.failed}`);
+    if (s.skipped.length > 0) log(`  skipped (staff-edited): ${s.skipped.join(", ")}`);
     for (const f of s.failures) log(`  FAILED ${s.kind} key=${f.key} status=${f.status}`);
     if (s.noAbbreviation.length > 0) log(`  no abbreviation found for: ${s.noAbbreviation.join(", ")}`);
   }

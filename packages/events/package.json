@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./tables": "./src/tables.ts", "./testing": "./src/testing.ts" },
+  "exports": { ".": "./src/index.ts", "./catalogue": "./src/catalogue.ts", "./org-key": "./src/org-key.ts", "./tables": "./src/tables.ts", "./testing": "./src/testing.ts" },
   "dependencies": {
     "@gcpe/db-kit": "0.0.0",
     "@gcpe/http-kit": "0.0.0",

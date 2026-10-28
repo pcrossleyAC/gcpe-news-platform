@@ -1,5 +1,6 @@
 export * from "./envelope";
 export * from "./catalogue";
+export * from "./org-key";
 export * from "./signing";
 export * from "./subscribers";
 export * from "./publisher";

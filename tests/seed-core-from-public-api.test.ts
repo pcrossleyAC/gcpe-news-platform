@@ -208,6 +208,8 @@ function makeFetchMock(routes: {
   publicThemes?: PublicCategory[];
   publicTags?: PublicCategory[];
   putStatus?: number;
+  /** Organization keys whose PUT answers 409 {"error":"staff-edited"}. */
+  staffEditedKeys?: string[];
   republishStatus?: number;
   /** Organization keys Core already holds: GET /core/api/organizations/:key answers 200 for these, 404 otherwise. */
   existingOrgKeys?: string[];
@@ -243,7 +245,11 @@ function makeFetchMock(routes: {
     if ((init?.method ?? "GET") === "GET" && lookup) {
       return okResponse(routes.lookupStatus ?? ((routes.existingOrgKeys ?? []).includes(decodeURIComponent(lookup[1]!)) ? 200 : 404));
     }
-    if (init?.method === "PUT") return okResponse(routes.putStatus ?? 200);
+    if (init?.method === "PUT") {
+      const orgPut = /^\/core\/api\/organizations\/([^/]+)$/.exec(url.pathname);
+      if (orgPut && (routes.staffEditedKeys ?? []).includes(decodeURIComponent(orgPut[1]!))) return jsonResponse({ error: "staff-edited" }, 409);
+      return okResponse(routes.putStatus ?? 200);
+    }
     if (init?.method === "POST" && url.pathname === "/core/api/admin/republish") return okResponse(routes.republishStatus ?? 202);
     throw new Error(`unexpected target call: ${init?.method} ${url.pathname}`);
   });
@@ -283,6 +289,18 @@ describe("run() — CLI orchestration against a mocked fetch", () => {
     const existing = flagsOnlyOnCreate(HQ_SEED_ORGANIZATIONS[0]!, true);
     expect("isHq" in existing || "isPublic" in existing).toBe(false);
     expect(flagsOnlyOnCreate(HQ_SEED_ORGANIZATIONS[0]!, false)).toMatchObject({ isHq: true, isPublic: false });
+  });
+
+  it("a 409 staff-edited response is reported as skipped, not failed", async () => {
+    const { fetchImpl } = makeFetchMock({ publicMinistries: [SAMPLE_PREMIER], publicMinister: SAMPLE_MINISTER, publicSectors: [], publicThemes: [], publicTags: [], staffEditedKeys: ["office-of-the-premier"] });
+    const lines: string[] = [];
+    const result = await run({ targetBaseUrl: "https://boxs.ca", token: "t", fetchImpl, delayMs: 0, log: (l) => lines.push(l) });
+    const ministries = result.summaries.find((s) => s.kind === "ministries")!;
+    expect(ministries.skipped).toContain("office-of-the-premier");
+    expect(ministries.failed).toBe(0);
+    expect(result.summaries.every((s) => s.failed === 0)).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(lines.join("\n")).toContain("skipped (staff-edited): office-of-the-premier");
   });
 
   it("marks the Office of the Premier HQ even when its releases yield no abbreviation", async () => {
