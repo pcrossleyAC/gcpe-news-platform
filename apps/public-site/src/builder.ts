@@ -15,7 +15,7 @@ import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
-import { atomUrl, biographyUrl, categoryFiles, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
+import { atomUrl, biographyUrl, categoryFiles, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
 import type { SiteStorage } from "./storage";
@@ -230,10 +230,11 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       }
       ministryLatest = await fetch;
     }
-    await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { related, leadMinistry, leadMinistrySuccessor, ministryLatest }));
-    // A long key's directory name is a hash: record the key beside the page so allPostKeys can list it.
-    const keyFile = pageFiles(p)[1];
+    // A long key's directory name is a hash: record the key beside the page so allPostKeys can list
+    // it. The sidecar goes first so a failed page write never leaves a page allPostKeys can't see.
+    const keyFile = postKeyFile(key);
     if (keyFile) await storage.write(keyFile, `${key}\n`);
+    await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { related, leadMinistry, leadMinistrySuccessor, ministryLatest }));
     const entry = indexEntryOf(key, post);
     if (entry) await writeIndex.put(entry);
     else await writeIndex.remove(key);

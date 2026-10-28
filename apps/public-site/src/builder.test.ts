@@ -177,6 +177,16 @@ describe("site builder", () => {
     expect(await bare.allPostKeys()).toEqual(["K2"]);
   });
 
+  it("allPostKeys ignores a forged sidecar: wrong hash dir, or a key of 100 characters or fewer", async () => {
+    const { storage, builder } = setup(new Map());
+    const long = "x".repeat(101);
+    await storage.write("releases/_long/00000000000000000000000000000000/.key", `${long}\n`);
+    await storage.write("releases/_long/11111111111111111111111111111111/.key", "K1\n");
+    const names = [...storage.files.keys()].filter((f) => f.startsWith("releases/_long/"));
+    expect(names).toHaveLength(2);
+    expect(await builder.allPostKeys()).toEqual([]);
+  });
+
   it("a category the News API no longer has loses its page and feed", async () => {
     const { storage, builder } = setup(new Map());
     await storage.write("tags/gone/index.html", "x");

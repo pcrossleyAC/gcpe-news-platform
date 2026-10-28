@@ -93,12 +93,16 @@ export function categoryPageId(kind: CategoryKind, key: string): string | null {
 export const MINISTRY_SUCCESSORS_FILE = "legacy/ministry-successors.json";
 
 /** A post's directory: `releases/<key>`, or for a key over 100 characters
- * `releases/_long/<first 32 hex of sha256(lowercased key)>` (lowercased, so any request case finds it). */
+ * `releases/_long/<first 32 hex of sha256(lowercased key)>` (lowercased, so any request case finds it).
+ * So two long keys differing only in case share one directory (as they do on a case-insensitive
+ * filesystem such as Windows for short keys). */
 export function postDir(key: string): string {
   if (key.length <= SHORT_POST_KEY_MAX) return `releases/${key}`;
   return `${LONG_POST_DIR}/${createHash("sha256").update(key.toLowerCase()).digest("hex").slice(0, 32)}`;
 }
 export const postPath = (key: string) => `${postDir(key)}/index.html`;
+/** The sidecar naming a long key inside its hashed directory; null for a short key (no sidecar). */
+export const postKeyFile = (key: string): string | null => (key.length > SHORT_POST_KEY_MAX ? `${postDir(key)}/${LONG_POST_KEY_FILE}` : null);
 
 /** The post kinds that get their own feed (news.gov's per-kind feeds). */
 export const FEED_POST_KINDS = ["releases", "stories", "factsheets", "updates"] as const;
@@ -116,7 +120,7 @@ export function pageFiles(p: PageId): string[] {
   switch (p.type) {
     case "home": return ["index.html", "feed.xml", "atom.xml"];
     // A long key's directory also holds the sidecar naming the key; it goes with the page.
-    case "post": return p.key.length > SHORT_POST_KEY_MAX ? [postPath(p.key), `${postDir(p.key)}/${LONG_POST_KEY_FILE}`] : [postPath(p.key)];
+    case "post": return [postPath(p.key), postKeyFile(p.key)].filter((f): f is string => f !== null);
     case "ministries": return ["ministries/index.html"];
     // A ministry's third file is its minister's biography page (H2): written only while the
     // minister has a bio, and removed with the rest when the ministry goes.
