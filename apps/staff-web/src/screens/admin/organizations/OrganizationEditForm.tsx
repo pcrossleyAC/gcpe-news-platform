@@ -87,7 +87,7 @@ const LISTS: { field: ListField; legend: string }[] = [
 ];
 /** Fields whose server messages are shown beside them rather than at the top of the form. */
 const INLINE_FIELD =
-  /^(abbreviation|url|social\.(flickrUrl|youtubeUrl)|minister\.detailsHtml|(contact|secondContact)\.\w+|weekendContactNumber|(topicLinks|serviceLinks|teamLinks)\[\d+\]\.\w+)$/;
+  /^(abbreviation|displayAdditionalName|url|social\.(flickrUrl|youtubeUrl)|minister\.detailsHtml|(contact|secondContact)\.\w+|weekendContactNumber|(topicLinks|serviceLinks|teamLinks)\[\d+\]\.\w+)$/;
 const LIST_ROW = /^(topicLinks|serviceLinks|teamLinks)\[(\d+)\](.*)$/;
 
 const plainLinks = (links: { text: string; url: string }[]) =>
@@ -114,6 +114,9 @@ export function OrganizationEditForm({
   const { announce } = useAnnouncer();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [displayName, setDisplayName] = useState(org.displayName);
+  const [additionalName, setAdditionalName] = useState(
+    org.displayAdditionalName ?? "",
+  );
   const [sortOrder, setSortOrder] = useState(String(org.sortOrder));
   const [minister, setMinister] = useState<Record<MinisterField, string>>({
     name: org.minister.name ?? "",
@@ -214,6 +217,8 @@ export function OrganizationEditForm({
     const body: Record<string, unknown> = {};
     if (displayName.trim() !== org.displayName)
       body.displayName = displayName.trim();
+    if (additionalName.trim() !== (org.displayAdditionalName ?? ""))
+      body.displayAdditionalName = additionalName.trim();
     if (Number(sortTrimmed) !== org.sortOrder)
       body.sortOrder = Number(sortTrimmed);
     const m: Record<string, string | null> = {};
@@ -326,6 +331,7 @@ export function OrganizationEditForm({
     .filter(Boolean)
     .join(" ");
   const weekendError = errorFor("weekendContactNumber");
+  const additionalNameError = errorFor("displayAdditionalName");
 
   return (
     <form
@@ -355,6 +361,29 @@ export function OrganizationEditForm({
           aria-describedby={nameBlank ? id("name-err") : undefined}
         />
         {nameBlank && <p id={id("name-err")}>Enter a ministry name.</p>}
+      </div>
+
+      <div>
+        <label htmlFor={id("addname")}>Additional display name</label>
+        <p id={id("addname-hint")}>
+          Shown in brackets under the ministry on the Media Contacts page, for
+          example (Child Care).
+        </p>
+        <input
+          id={id("addname")}
+          type="text"
+          value={additionalName}
+          onChange={(e) => setAdditionalName(e.target.value)}
+          aria-invalid={additionalNameError !== undefined}
+          aria-describedby={
+            additionalNameError !== undefined
+              ? `${id("addname-hint")} ${id("addname-err")}`
+              : id("addname-hint")
+          }
+        />
+        {additionalNameError !== undefined && (
+          <p id={id("addname-err")}>{additionalNameError}</p>
+        )}
       </div>
 
       <div>

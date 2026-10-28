@@ -569,6 +569,23 @@ describe("OrganizationEditForm", () => {
       });
     });
 
+    it("form: editing Additional display name sends displayAdditionalName; untouched is not sent", async () => {
+      const first = setup(false);
+      expect(screen.getByText(/Shown in brackets under the ministry on the Media Contacts page, for example \(Child Care\)\./)).toBeTruthy();
+      await first.user.type(screen.getByLabelText("Additional display name"), " (Child Care) ");
+      await first.user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(first.calls).toHaveLength(1));
+      expect(sentBody(first.calls)).toEqual({ displayAdditionalName: "(Child Care)" });
+    });
+
+    it("a blank Additional display name sends an empty string; nothing is sent when untouched", async () => {
+      const filled = setup(false, undefined, { ...HEALTH, displayAdditionalName: "(Child Care)" });
+      await filled.user.clear(screen.getByLabelText("Additional display name"));
+      await filled.user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(filled.calls).toHaveLength(1));
+      expect(sentBody(filled.calls)).toEqual({ displayAdditionalName: "" });
+    });
+
     it("sends weekendContactNumber when the after-hours phone changes", async () => {
       const { calls, user } = setup(false);
       await user.type(
