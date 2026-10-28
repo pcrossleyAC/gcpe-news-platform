@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
 import { publishProblems, type ReleaseView } from "@gcpe/nrms-contract";
-import { newsReleases, releasePublications } from "./db/schema";
+import { governmentTerms, newsReleases, releasePublications } from "./db/schema";
 import { DeferPublish } from "./media/flickr-jobs";
 import { ReleaseRuleError } from "./releases/errors";
 import { emitLinkChange, linkStateOf } from "./releases/link-events";
@@ -91,6 +91,11 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
       status: "published",
       live: true,
       releasedAt: first ? sql`${newsReleases.publishAt}` : sql`${newsReleases.releasedAt}`,
+      // The term is fixed at first publish, by the BC calendar day of publishAt (spec N13): the
+      // term with the latest start on or before that day. Corrections and re-publishes keep it.
+      ...(first
+        ? { termId: sql`(SELECT id FROM ${governmentTerms} WHERE start_date <= (${newsReleases.publishAt} AT TIME ZONE ${opts.timeZone ?? "UTC"})::date ORDER BY start_date DESC LIMIT 1)` }
+        : {}),
       atomId: sql`coalesce(${newsReleases.atomId}, ${`uuid:${id}`})`,
       lastError: null,
       version: view.version + 1,

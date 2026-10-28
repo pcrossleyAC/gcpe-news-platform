@@ -5,6 +5,7 @@ import { wallClockToInstant } from "@gcpe/config";
 import { EventTooLargeError, type SubscriberConfig } from "@gcpe/events";
 import { sniff } from "@gcpe/storage";
 import { carousels, emergencyPins, websiteSlides } from "../db/schema";
+import { syncGovernmentTerms } from "../government-terms";
 import type { Actor } from "../releases/store";
 import { SYSTEM_ACTOR } from "../releases/store";
 import { formatBcDateTime, parseLocalDateTime } from "../releases/workflow";
@@ -361,20 +362,27 @@ export async function switchCarousels(db: Db, subs: SubscriberConfig[], files: S
 }
 
 /**
- * Runs {@link switchCarousels} every `intervalMs` (default 60 s) for a standalone NRMS (outside
- * the stack's own tick runner, which instead drives this through the `nrms.site` worker).
+ * Runs {@link switchCarousels} and then {@link syncGovernmentTerms} (each in its own transaction)
+ * every `intervalMs` (default 60 s) for a standalone NRMS (outside the stack's own tick runner,
+ * which instead drives these through the `nrms.site` and `nrms.governmentTerms` workers).
  * Same shape as `startFlickrJobs`/`startPublisher`: unref'd timer, overlap-guarded, errors
- * logged rather than thrown, returns an async stopper.
+ * logged rather than thrown (a failing step never stops the other), returns an async stopper.
  */
-export function startSiteLoop(opts: { db: Db; subscribers: SubscriberConfig[]; files: SlideImageFiles; intervalMs?: number }): () => Promise<void> {
+export function startSiteLoop(opts: { db: Db; subscribers: SubscriberConfig[]; files: SlideImageFiles; timeZone: string; intervalMs?: number }): () => Promise<void> {
   let running: Promise<unknown> | null = null;
+  const tick = async () => {
+    await switchCarousels(opts.db, opts.subscribers, opts.files).catch((e) =>
+      console.error(`[nrms] carousel switch-over failed: ${e instanceof Error ? e.message : String(e)}`),
+    );
+    await opts.db
+      .transaction((tx) => syncGovernmentTerms(tx, { timeZone: opts.timeZone, subscribers: opts.subscribers }))
+      .catch((e) => console.error(`[nrms] government terms rollover failed: ${e instanceof Error ? e.message : String(e)}`));
+  };
   const timer = setInterval(() => {
     if (running) return;
-    running = switchCarousels(opts.db, opts.subscribers, opts.files)
-      .catch((e) => console.error(`[nrms] carousel switch-over failed: ${e instanceof Error ? e.message : String(e)}`))
-      .finally(() => {
-        running = null;
-      });
+    running = tick().finally(() => {
+      running = null;
+    });
   }, opts.intervalMs ?? 60_000);
   timer.unref();
   return async () => {

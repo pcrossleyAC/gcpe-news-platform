@@ -302,6 +302,28 @@ export const siteSettingsPublishedSchema = z.object({
 });
 export type SiteSettingsPublished = z.infer<typeof siteSettingsPublishedSchema>;
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * NRMS's government-terms snapshot (new-government spec §2): only past and current terms, newest
+ * first; the newest has no end date. Emitted by the rollover whenever the snapshot's hash changes.
+ * Named apart from the `term.*`-style sector/theme/tag family on purpose.
+ */
+export const governmentTermsPublishedSchema = z.object({
+  publishedAt: offsetDateTime,
+  currentSlug: z.string().nullable(),
+  terms: z.array(
+    z.object({
+      slug: z.string().min(1),
+      label: z.string().nullable(),
+      startDate: isoDate,
+      endDate: isoDate.nullable(),
+      legacyArchiveUrl: z.string().nullable(),
+    }),
+  ),
+});
+export type GovernmentTermsPayload = z.infer<typeof governmentTermsPublishedSchema>;
+
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
   "org.deactivated": z.object({ key: z.string().min(1) }),
@@ -323,6 +345,7 @@ export const eventDataSchemas = {
   "site.content.changed": siteContentChangedSchema,
   "site.rebuild_requested": siteRebuildRequestedSchema,
   "site.settings.published": siteSettingsPublishedSchema,
+  "government_terms.published": governmentTermsPublishedSchema,
   "delivery.bounced": deliveryBouncedSchema,
   "activity.created": activityEventSchema,
   "activity.updated": activityEventSchema,

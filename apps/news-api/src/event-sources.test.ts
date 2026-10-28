@@ -36,4 +36,11 @@ describe("SOURCE_EVENT_TYPES", () => {
       if (source !== "nrms") expect(allows("site.settings.published"), source).toBe(false);
     }
   });
+
+  it("government_terms.published is owned by nrms alone", () => {
+    expect(SOURCE_EVENT_TYPES.nrms!("government_terms.published")).toBe(true);
+    for (const [source, allows] of Object.entries(SOURCE_EVENT_TYPES)) {
+      if (source !== "nrms") expect(allows("government_terms.published"), source).toBe(false);
+    }
+  });
 });

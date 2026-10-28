@@ -512,6 +512,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         // Carousel switch-over before publish: a next carousel that just went live should be
         // what the same tick's publish step (and anything it triggers) sees as current.
         { name: "nrms.site", run: worker(nrms, "site") },
+        // Government-term rollover: a term dated weeks ahead goes current at the first tick after
+        // 00:00 BC on its date, and publishes the government_terms.published snapshot.
+        { name: "nrms.government-terms", run: worker(nrms, "governmentTerms") },
         { name: "nrms.publish", run: worker(nrms, "publish") },
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
         { name: "core.dispatch", run: worker(core, "dispatch") },

@@ -149,3 +149,23 @@ describe("site.settings.published", () => {
     expect(() => parseEvent(envelope("site.settings.published", { ...data, revision: 0 }))).toThrow();
   });
 });
+
+describe("government_terms.published", () => {
+  const data = {
+    publishedAt: "2028-11-20T08:00:00.000Z",
+    currentSlug: "2028-11-20",
+    terms: [
+      { slug: "2028-11-20", label: null, startDate: "2028-11-20", endDate: null, legacyArchiveUrl: null },
+      { slug: "2024-2028", label: "41st Parliament", startDate: "2024-11-18", endDate: "2028-11-19", legacyArchiveUrl: "https://archive.news.gov.bc.ca/index_current.htm" },
+    ],
+  };
+  it("round-trips a sample payload", () => {
+    expect(parseEvent(envelope("government_terms.published", data)).data).toEqual(data);
+  });
+  it("accepts no current term", () => {
+    expect(parseEvent(envelope("government_terms.published", { ...data, currentSlug: null, terms: [] })).data).toMatchObject({ currentSlug: null });
+  });
+  it("rejects a startDate that is not a bare ISO date", () => {
+    expect(() => parseEvent(envelope("government_terms.published", { ...data, terms: [{ ...data.terms[0]!, startDate: "2028-11-20T00:00" }] }))).toThrow();
+  });
+});

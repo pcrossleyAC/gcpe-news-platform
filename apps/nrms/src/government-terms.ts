@@ -1,4 +1,11 @@
-import type { governmentTerms } from "./db/schema";
+import { createHash } from "node:crypto";
+import { and, eq, ne, sql } from "drizzle-orm";
+import { sqlNow, type TestClock, type Tx } from "@gcpe/db-kit";
+import { enqueueEvent, type GovernmentTermsPayload, type SubscriberConfig } from "@gcpe/events";
+import { governmentTerms, governmentTermsPublished } from "./db/schema";
+
+/** Serialises rollovers and term writes (`pg_advisory_xact_lock`). */
+export const GOVERNMENT_TERMS_LOCK = [0x67637065, 8] as const;
 
 export type TermStatus = "past" | "current" | "scheduled" | "undated";
 
@@ -11,15 +18,6 @@ export interface TermSpan {
   status: TermStatus;
   legacyArchiveUrl: string | null;
   legacyId: string | null;
-}
-
-/** The public shape of one term (the `government_terms.published` payload's `terms` entries; Task 2 adds the zod schema). */
-export interface PublicTerm {
-  slug: string;
-  label: string | null;
-  startDate: string;
-  endDate: string | null;
-  legacyArchiveUrl: string | null;
 }
 
 /** UTC date arithmetic on `YYYY-MM-DD`. */
@@ -62,7 +60,7 @@ export function termSpans(rows: (typeof governmentTerms.$inferSelect)[], today: 
 }
 
 /** Only past and current terms, newest first; the newest has no end date (scheduled terms must not close it). */
-export function publicTerms(spans: TermSpan[]): PublicTerm[] {
+export function publicTerms(spans: TermSpan[]): GovernmentTermsPayload["terms"] {
   return spans
     .filter((s) => s.status === "past" || s.status === "current")
     .reverse()
@@ -73,4 +71,49 @@ export function publicTerms(spans: TermSpan[]): PublicTerm[] {
       endDate: i === 0 ? null : s.endDate,
       legacyArchiveUrl: s.legacyArchiveUrl,
     }));
+}
+
+/**
+ * The rollover (spec §2). Under {@link GOVERNMENT_TERMS_LOCK}: derives the current term from the
+ * BC date of the database clock, makes `is_current` say exactly that (clearing any other flag
+ * first, which also corrects a stale importer-era flag), and, when the public snapshot's hash
+ * differs from the last one published, records the hash and enqueues `government_terms.published`
+ * in the caller's transaction. Runs on every site-loop tick, so a term entered weeks ahead goes
+ * live at the first tick after 00:00 Pacific on its date.
+ */
+export async function syncGovernmentTerms(
+  tx: Tx,
+  opts: { timeZone: string; subscribers: SubscriberConfig[]; now?: TestClock },
+): Promise<{ emitted: boolean }> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${GOVERNMENT_TERMS_LOCK[0]}, ${GOVERNMENT_TERMS_LOCK[1]})`);
+  const now = sqlNow(opts.now);
+  // Raw execute returns timestamptz as session-timezone text, so format the instant in SQL.
+  const clock = await tx.execute<{ today: string; published_at: string }>(sql`
+    SELECT ((${now}) AT TIME ZONE ${opts.timeZone})::date::text AS today,
+           to_char((${now}) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS published_at`);
+  const { today, published_at: publishedAt } = clock.rows[0]!;
+
+  const rows = await tx.select().from(governmentTerms);
+  const spans = termSpans(rows, today);
+  const current = spans.find((s) => s.status === "current") ?? null;
+
+  // Clear first: the partial unique index allows only one flagged row at a time.
+  await tx
+    .update(governmentTerms)
+    .set({ isCurrent: false })
+    .where(current ? and(eq(governmentTerms.isCurrent, true), ne(governmentTerms.id, current.id)) : eq(governmentTerms.isCurrent, true));
+  if (current) await tx.update(governmentTerms).set({ isCurrent: true }).where(and(eq(governmentTerms.id, current.id), eq(governmentTerms.isCurrent, false)));
+
+  const snapshot = { currentSlug: current?.slug ?? null, terms: publicTerms(spans) };
+  const hash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+  const [stored] = await tx.select({ hash: governmentTermsPublished.hash }).from(governmentTermsPublished).where(eq(governmentTermsPublished.id, 1));
+  if (stored?.hash === hash) return { emitted: false };
+
+  await tx
+    .insert(governmentTermsPublished)
+    .values({ id: 1, hash, publishedAt: new Date(publishedAt) })
+    .onConflictDoUpdate({ target: governmentTermsPublished.id, set: { hash, publishedAt: new Date(publishedAt) } });
+  const data: GovernmentTermsPayload = { publishedAt, ...snapshot };
+  await enqueueEvent(tx, { type: "government_terms.published", source: "nrms", aggregateId: "government-terms", data }, opts.subscribers);
+  return { emitted: true };
 }

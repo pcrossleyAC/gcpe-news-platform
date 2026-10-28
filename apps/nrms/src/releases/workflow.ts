@@ -3,7 +3,7 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { indexKeysFor, type SubscriberConfig } from "@gcpe/events";
 import { wallClockToInstant } from "@gcpe/config";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
-import { flickrJobs, governmentTerms, newsReleases } from "../db/schema";
+import { flickrJobs, newsReleases } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
 import { ReleaseRuleError, ReleaseStateError } from "./errors";
 import { emitLinkChange, linkStateOf } from "./link-events";
@@ -95,11 +95,10 @@ export async function approve(db: Db, id: string, version: number, actor: Actor,
         const m = await nextCounter(tx, "year", year, "");
         numbering = { key: `${year}${(abbr ?? "ADVIS").toUpperCase()}${pad(n, 4)}-${pad(m, 6)}`, year, yearRelease: m, ministryRelease: n };
       }
-      const [term] = await tx.select({ id: governmentTerms.id }).from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
       try {
         await tx
           .update(newsReleases)
-          .set({ status: "approved", reference, leadMinistryKey: lead, termId: term?.id ?? null, ...(numbering ?? {}) })
+          .set({ status: "approved", reference, leadMinistryKey: lead, ...(numbering ?? {}) })
           .where(eq(newsReleases.id, id));
       } catch (e) {
         if (isNumberCollision(e)) throw new ReleaseStateError("That number is already in use — try again.");
