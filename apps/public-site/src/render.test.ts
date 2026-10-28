@@ -429,3 +429,68 @@ describe("renderPage site banner placeholder", () => {
     expect(doc.querySelector("#BCGov-logo")?.getAttribute("src")).toMatch(/BCID_H_rgb_pos_LH_crop\.svg$/);
   });
 });
+
+describe("renderPage Open Graph and Twitter card meta", () => {
+  const at = { name: "BC Gov News", baseUrl: "https://boxs.example/site", theme: DEFAULT_THEME };
+  const meta = (doc: Document, attr: "property" | "name", key: string) => doc.querySelector(`meta[${attr}="${key}"]`)?.getAttribute("content") ?? null;
+
+  it("every page has og:site_name/url/type/title and absolute og:image (default image with the base path) and twitter:card summary_large_image", () => {
+    const html = renderPage('Fish & "Chips"', at, "/site/x/", "<h1>H</h1>", { description: "About <fish>" });
+    const doc = expectAccessibleStructure(html);
+    const defaultImage = "https://boxs.example/site/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
+    expect(meta(doc, "property", "og:site_name")).toBe("BC Gov News");
+    expect(meta(doc, "property", "og:url")).toBe("https://boxs.example/site/x/");
+    expect(meta(doc, "property", "og:url")).toBe(doc.querySelector('link[rel="canonical"]')?.getAttribute("href"));
+    expect(meta(doc, "property", "og:type")).toBe("website");
+    expect(meta(doc, "property", "og:title")).toBe('Fish & "Chips"');
+    expect(meta(doc, "property", "og:description")).toBe("About <fish>");
+    expect(meta(doc, "property", "og:image")).toBe(defaultImage);
+    expect(meta(doc, "name", "twitter:card")).toBe("summary_large_image");
+    expect(meta(doc, "name", "twitter:title")).toBe('Fish & "Chips"');
+    expect(meta(doc, "name", "twitter:description")).toBe("About <fish>");
+    expect(meta(doc, "name", "twitter:image")).toBe(defaultImage);
+    // The tenant's handle is plan 5 T10's; nothing is guessed here.
+    expect(doc.querySelector('meta[name="twitter:site"]')).toBeNull();
+    // Escaped in the source: no raw quote or angle bracket inside a content attribute.
+    expect(html).toContain('<meta property="og:title" content="Fish &amp; &quot;Chips&quot;">');
+    expect(html).toContain('<meta property="og:description" content="About &lt;fish&gt;">');
+    // Right after the description meta, before the favicon.
+    expect(html.indexOf('<meta name="description"')).toBeLessThan(html.indexOf('property="og:site_name"'));
+    expect(html.indexOf('name="twitter:image"')).toBeLessThan(html.indexOf('rel="icon"'));
+    // At a root base, no base path in the default image.
+    const root = expectAccessibleStructure(renderPage("T", { ...at, baseUrl: "https://news.example" }, "/", "<h1>H</h1>"));
+    expect(meta(root, "property", "og:image")).toBe("https://news.example/assets/legacy/Content/Images/Gov/default-og-image-new.jpg");
+  });
+
+  it("og:image:alt and twitter:image:alt only with a given image and imageAlt (never on the default image); the description is trimmed", () => {
+    const social = (o: Parameters<typeof renderPage>[4]) => expectAccessibleStructure(renderPage("T", at, "/site/x/", "<h1>H</h1>", o));
+    const withAlt = social({ social: { image: "https://live.staticflickr.com/1/2_ab.jpg", imageAlt: " Tom & Jerry " } });
+    expect(meta(withAlt, "property", "og:image:alt")).toBe("Tom & Jerry");
+    expect(meta(withAlt, "name", "twitter:image:alt")).toBe("Tom & Jerry");
+    expect(meta(social({ social: { imageAlt: "Alt" } }), "property", "og:image:alt")).toBeNull();
+    expect(meta(social({ social: { image: "javascript:x", imageAlt: "Alt" } }), "property", "og:image:alt")).toBeNull();
+    expect(meta(social({ social: { image: "https://live.staticflickr.com/1/2_ab.jpg", imageAlt: " " } }), "property", "og:image:alt")).toBeNull();
+    const trimmed = social({ description: "  About fish \n" });
+    expect(meta(trimmed, "property", "og:description")).toBe("About fish");
+    expect(meta(trimmed, "name", "twitter:description")).toBe("About fish");
+  });
+
+  it("social overrides title, description, image and type; a non-http social.image falls back to the default; empty description omits og:description", () => {
+    const social = (s: Parameters<typeof renderPage>[4]) => expectAccessibleStructure(renderPage("Page", at, "/site/x/", "<h1>H</h1>", s));
+    const over = social({ description: "page", social: { title: "Social", description: "Summary", image: "https://live.staticflickr.com/1/2_ab.jpg", type: "article" } });
+    expect(meta(over, "property", "og:title")).toBe("Social");
+    expect(meta(over, "property", "og:description")).toBe("Summary");
+    expect(meta(over, "property", "og:type")).toBe("article");
+    expect(meta(over, "property", "og:image")).toBe("https://live.staticflickr.com/1/2_ab.jpg");
+    expect(meta(over, "name", "twitter:image")).toBe("https://live.staticflickr.com/1/2_ab.jpg");
+    const defaultImage = "https://boxs.example/site/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
+    for (const image of ["javascript:alert(1)", "/relative.jpg", "//evil.example/x.jpg", "data:image/png;base64,AA", "mailto:a@b.example", ""]) {
+      expect(meta(social({ social: { image } }), "property", "og:image"), image).toBe(defaultImage);
+    }
+    for (const description of [null, "", "   "]) {
+      const d = social({ description, social: { description: null } });
+      expect(d.querySelector('meta[property="og:description"], meta[name="twitter:description"]')).toBeNull();
+    }
+    expect(meta(social({ social: { title: null } }), "property", "og:title")).toBe("Page");
+  });
+});

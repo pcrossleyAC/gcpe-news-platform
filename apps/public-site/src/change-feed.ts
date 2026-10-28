@@ -181,6 +181,11 @@ export async function syncChanges(
         const kind = CATEGORY_CHANGE[c.kind as keyof typeof CATEGORY_CHANGE];
         const id = categoryPageId(kind, c.key);
         if (id) for (const key of await deps.index.inCategory(id.slice("category:".length))) changeItems.push({ pageId: `post:${key}`, priority: PRIORITY.bulkPost });
+        // A release page bakes in its lead ministry (name, active state, website, Flickr, YouTube,
+        // topic and service links, successor link), and a lead is not always one of the post's
+        // ministries (90 of 34,895 legacy releases), so those pages are found by the indexed
+        // lead_ministry column too. enqueuePages de-duplicates the overlap.
+        if (id && c.kind === "ministry") for (const key of await deps.index.withLeadMinistry(c.key)) changeItems.push({ pageId: `post:${key}`, priority: PRIORITY.bulkPost });
       }
       // Rare (an election, a corrected date or label): every term page, at live priority, so the
       // old current term closes and the new one appears together.

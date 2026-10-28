@@ -4,6 +4,7 @@ import { Button, ToggleButton } from "@bcgov/design-system-react-components";
 import { Asset, bodyExtensions } from "./schema";
 import { AssetChip } from "./AssetChip";
 import { reduceToAllowedHtml } from "./pasteFilter";
+import { BIO_TAGS, BODY_TAGS } from "@gcpe/nrms-contract";
 
 /** The browser-only variant of the `<asset>` node — same schema as {@link Asset}, plus the
  * interactive chip node view (AssetChip.tsx), which schema.ts itself can't depend on (no React
@@ -20,7 +21,9 @@ export interface BodyEditorProps {
   value: string;
   onChange(html: string): void;
   readOnly: boolean;
-  /** Show "Insert asset" (an `<asset>` embed). Default true; the minister biography turns it off. */
+  /** Allow `<asset>` embeds: the Insert asset button, the asset node and pasted `<asset>`s. Default
+   * true; the minister biography turns it off, so a stored or pasted `<asset>` shows as its URL
+   * text, which is what Core stores. Read once, when the editor is created. */
   allowAssets?: boolean;
   /** Space-separated ids of the hint, note or error that describe the editing area. */
   describedBy?: string;
@@ -41,14 +44,17 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
     "aria-labelledby": `${id}-label`,
     ...(describedBy ? { "aria-describedby": describedBy } : {}),
   });
+  // useEditor(…, []) creates the editor once but re-applies these options after every render
+  // (@tiptap/react's setOptions on render), so a description that comes and goes (a note, a
+  // server error) reaches the editing area's attributes without an effect of its own.
   const editor = useEditor(
     {
-      extensions: bodyExtensions(AssetWithView),
+      extensions: bodyExtensions(allowAssets ? AssetWithView : null),
       content: value,
       editable: !readOnly,
       editorProps: {
         attributes: attributes(),
-        transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted),
+        transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, allowAssets ? BODY_TAGS : BIO_TAGS),
       },
       onUpdate: ({ editor: e }) => onChange(e.getHTML()),
     },
@@ -60,14 +66,6 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
   useEffect(() => {
     editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
-
-  // The editor is created once, so a description that comes and goes (a note, a server error)
-  // is pushed into its attributes here.
-  useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
-    editor.setOptions({ editorProps: { ...editor.options.editorProps, attributes: attributes() } });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, describedBy]);
 
   // Resyncs when `value` changes from outside (a reload after a 409, or the session-expiry
   // restore) — never while the user is actively focused in the editor, so an external replace

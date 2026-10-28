@@ -585,3 +585,46 @@ Not run yet. The local runs above stand in until then.
 - Before running, make sure the `release` page's key (`2026HLTH0085-001117`, `tools/parity/pages.ts`) exists on boxs.ca.
 - Also confirm compression went out once: `curl -sI -H 'Accept-Encoding: br' https://boxs.ca/assets/legacy/Content/legacy.bundle.css` should show a single `content-encoding: br` and `vary: Accept-Encoding`.
 - Record the result here as "Plan 1 result (boxs.ca)".
+
+## Plan 2 result (2026-10-28, parity plan 2 Task 11)
+
+**Verdict: every strict chrome region passes at both widths (header ≤ 0.0173, landAck 0, footer ≤ 0.0164, all under the 0.03 limit); structure rows are all `ok` (release has one `legacy-absent`: `.backgrounder`, because the live release compared lacks it [I: not opened to confirm]); axe found 0 serious or critical issues on all five pages at both widths.** `main` is reported, not strict. This ran against a local build, not boxs.ca: the branch isn't deployed yet (see "Pending" below).
+
+### How it was run
+- **Our side.** The fixture site (`scripts/fixture-site.ts`: BC tenant settings, built by the real builder at HEAD e9991e4) served by a temporary static server on `http://127.0.0.1:4321` (not committed). The banner is not set, so the banner region is `skipped`.
+- **Legacy side.** Live https://news.gov.bc.ca, 2026-10-28, one navigation a second.
+- **Command.** `npm run parity -- --target http://127.0.0.1:4321 --pages home,release,ministry,premier,biography --ours release=/releases/2026HLTH0001-000001/,biography=/ministries/health/biography/`. The overrides point at the fixture's own release and the one fixture ministry with a biography. The legacy side is `citizens-services` for the biography page, so the biography `main` figure compares different ministers and means little.
+- `report.json`: `failed: false`, `axeFailures: []`, `loadErrors: []`.
+
+### Mismatch ratios (strict limit 0.03; `main` is reported only)
+
+| page | width | header | landAck | footer | main (report only) |
+|---|---|---|---|---|---|
+| home | 1280 | 0.0095 | 0.0000 | 0.0114 | 0.2142 |
+| home | 390 | 0.0173 | 0.0000 | 0.0043 | 0.1369 |
+| ministry | 1280 | 0.0095 | 0.0000 | 0.0063 | 0.1960 |
+| ministry | 390 | 0.0173 | 0.0000 | 0.0164 | 0.2811 |
+| premier | 1280 | 0.0095 | 0.0000 | 0.0036 | 0.5857 |
+| premier | 390 | 0.0173 | 0.0000 | 0.0062 | 0.7086 |
+| biography | 1280 | 0.0095 | 0.0000 | 0.0036 | 0.2794 |
+| biography | 390 | 0.0173 | 0.0000 | 0.0043 | 0.2175 |
+| release | 1280 | 0.0095 | 0.0000 | 0.0037 | 0.3187 |
+| release | 390 | 0.0173 | 0.0000 | 0.0161 | 0.5667 |
+
+Structure rows: home 7/7, ministry 4/4, premier 4/4, biography 4/4 `ok` at both widths; release 6 `ok` + 1 `legacy-absent` at both.
+
+The premier `main` ratio (0.59 and 0.71) is the largest. The cause was not investigated [assumed: fixture content differs from live's longer news and team]. `main` is report-only, and the chrome and structure rows are what the gate checks; bounding `main` would need a data-matched fixture.
+
+### Other gates (all at HEAD e9991e4)
+- `npm run site:quality`: PASS, every fixture page passed axe and Lighthouse (accessibility 100 and best-practices 100 everywhere; performance 81 on the release page, 83-87 elsewhere, gate 80; seo 100 on the release and biography pages, 92 on the others, cause not investigated, no gate on it).
+- `npm run check`: exit 0.
+- `npx vitest run --project node`: 437 files passed, 5049 tests passed (10 skipped).
+- `npx vitest run --project staff-web`: 121 files, 1103 tests passed.
+- `npm run parity:urls -- --base http://127.0.0.1:4321`: 6/9; the three failures are expected on a local fixture (`/subscribe` isn't in the fixture; `/site/` and `/site/ministries/` need the stack's `/site` mount). The real gate is the boxs.ca run below.
+
+### Pending after the batch C deploy (boxs.ca)
+- `npm run parity -- --target https://boxs.ca/site --pages home,release,ministry,premier,biography --ours release=/releases/2026HLTH0006-000009/`
+- `npm run parity:urls -- --base https://boxs.ca/site`
+- `npm run site:quality` needs no change (fixture-based).
+- Record the result here as "Plan 2 result (boxs.ca)". Any strict region over 0.03 or `missing` structure selector becomes a named fix task before plan 3; the threshold is not raised without the owner.
+- Plan 3 inherits the url-compat rows for `/office-of-the-premier/biography` and `/ministries/{parent}/{key}/biography`.

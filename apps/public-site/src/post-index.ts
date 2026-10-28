@@ -14,6 +14,14 @@ export interface IndexedPost {
   publishDate: string;
   month: string;
   categories: string[];
+  /** leadMinistryOf(post); absent reads as null (no lead). */
+  leadMinistry?: string | null;
+}
+
+/** The lead ministry key the release page shows, lower-cased: `leadMinistryKey ?? ministryKeys[0]`
+ * (the builder matches it against the ministries case-insensitively). */
+export function leadMinistryOf(post: Pick<PostDto, "leadMinistryKey" | "ministryKeys">): string | null {
+  return (post.leadMinistryKey ?? post.ministryKeys[0])?.toLowerCase() || null;
 }
 
 /** The English headline (or the first document's, or the key), as the release page shows it. */
@@ -26,7 +34,7 @@ export function headlineOf(post: PostDto): string {
 export function indexEntryOf(key: string, post: PostDto): IndexedPost | null {
   const m = membershipOf(post);
   if (!m) return null;
-  return { key, kind: post.kind, headline: headlineOf(post), summary: post.summary, publishDate: post.publishDate, month: m.month, categories: m.categories };
+  return { key, kind: post.kind, headline: headlineOf(post), summary: post.summary, publishDate: post.publishDate, month: m.month, categories: m.categories, leadMinistry: leadMinistryOf(post) };
 }
 
 export const membershipOfEntry = (p: IndexedPost): Membership => ({ month: p.month, day: p.publishDate.slice(0, 10), categories: p.categories });
@@ -40,6 +48,8 @@ export interface PostIndex {
   keys(): Promise<string[]>;
   categories(): Promise<string[]>;
   inCategory(token: string): Promise<string[]>;
+  /** Keys of the posts whose lead ministry (leadMinistryOf) is `key`, any case. Indexed. */
+  withLeadMinistry(key: string): Promise<string[]>;
   /** Posts whose BC calendar day (the publish date as written) is in [start, endExclusive), newest
    * first; a null end is open. The government-term rule (new-government spec N1). */
   inDayRange(start: string, endExclusive: string | null): Promise<IndexedPost[]>;
@@ -57,6 +67,7 @@ const columns = {
   publishDate: sitePosts.publishDate,
   month: sitePosts.month,
   categories: sitePosts.categories,
+  leadMinistry: sitePosts.leadMinistry,
 };
 
 /** The BC day is the publish date's own calendar date (no time-zone maths), like `month`. */
@@ -72,7 +83,7 @@ export function postIndex(db: DbOrTx): PostIndex {
       return row ?? null;
     },
     async put(p) {
-      const values = { ...p, publishedAt: new Date(p.publishDate), indexedAt: sql`now()` };
+      const values = { ...p, leadMinistry: p.leadMinistry ?? null, publishedAt: new Date(p.publishDate), indexedAt: sql`now()` };
       await db.insert(sitePosts).values(values).onConflictDoUpdate({ target: sitePosts.key, set: values });
     },
     async remove(key) {
@@ -111,6 +122,9 @@ export function postIndex(db: DbOrTx): PostIndex {
     },
     async inCategory(token) {
       return (await db.select({ key: sitePosts.key }).from(sitePosts).where(arrayContains(sitePosts.categories, [token])).orderBy(asc(sitePosts.key))).map((r) => r.key);
+    },
+    async withLeadMinistry(key) {
+      return (await db.select({ key: sitePosts.key }).from(sitePosts).where(eq(sitePosts.leadMinistry, key.toLowerCase())).orderBy(asc(sitePosts.key))).map((r) => r.key);
     },
   };
 }

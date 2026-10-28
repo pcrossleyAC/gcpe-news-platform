@@ -3,6 +3,13 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BodyEditor } from "./BodyEditor";
 
+/** Pastes through ProseMirror's own paste path (transformPastedHTML included). jsdom has no
+ * ClipboardEvent, which view.pasteHTML constructs, so a plain Event stands in. */
+function pasteHtml(field: HTMLElement, html: string): void {
+  if (typeof globalThis.ClipboardEvent === "undefined") vi.stubGlobal("ClipboardEvent", class extends Event {});
+  (field as unknown as { editor: { view: { pasteHTML(html: string): boolean } } }).editor.view.pasteHTML(html);
+}
+
 describe("BodyEditor", () => {
   afterEach(() => {
     cleanup();
@@ -109,4 +116,29 @@ describe("BodyEditor", () => {
     const { reduceToAllowedHtml } = await import("./pasteFilter");
     expect(reduceToAllowedHtml('<h1>Title</h1><script>alert(1)</script><a href="javascript:x">x</a>')).toBe("Title<a>x</a>");
   });
+
+  it("allowAssets={false}: no asset node — a stored or pasted <asset> becomes its URL as text (what Core stores), paste reduced to BIO_TAGS", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="bio" label="Biography" value="<p>a</p><asset>https://youtu.be/stored00001</asset>" onChange={onChange} readOnly={false} allowAssets={false} />);
+    const field = await screen.findByRole("textbox", { name: "Biography" });
+    expect(field.querySelector(".gcpe-body-editor__asset-chip")).toBeNull();
+    expect(field.textContent).toContain("https://youtu.be/stored00001");
+    pasteHtml(field, "<asset>https://youtu.be/pasted00001</asset><h2>Heading</h2>");
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const last = onChange.mock.calls.at(-1)![0] as string;
+    expect(last).not.toContain("<asset");
+    expect(last).not.toContain("<h2");
+    expect(last).toContain("https://youtu.be/pasted00001");
+    expect(last).toContain("Heading");
+  });
+
+  it("allowAssets default: a pasted <asset> stays an asset embed", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={onChange} readOnly={false} />);
+    const field = await screen.findByRole("textbox", { name: "Body" });
+    pasteHtml(field, "<asset>https://youtu.be/pasted00002</asset>");
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)![0]).toContain("<asset>https://youtu.be/pasted00002</asset>");
+  });
 });
+

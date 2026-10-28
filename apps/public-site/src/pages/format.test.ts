@@ -16,6 +16,20 @@ describe("displayDateTime", () => {
     expect(displayDateTime("2024-02-29T16:00:00Z")).toBe("Thursday, February 29, 2024 4:00 PM");
   });
 
+  it("the 2026-11-01 boundary (BC on UTC−7 all year from then): the same wall clock either side reads as written, with the right weekday", () => {
+    expect(displayDateTime("2026-10-31T10:15:00-07:00")).toBe("Saturday, October 31, 2026 10:15 AM");
+    expect(displayDateTime("2026-11-01T01:30:00-07:00")).toBe("Sunday, November 1, 2026 1:30 AM");
+    expect(displayDateTime("2026-11-01T02:30:00-07:00")).toBe("Sunday, November 1, 2026 2:30 AM");
+    expect(displayDateTime("2026-11-02T10:15:00-07:00")).toBe("Monday, November 2, 2026 10:15 AM");
+  });
+
+  it("returns an impossible calendar date or clock as is (no rolled-over weekday)", () => {
+    for (const bad of ["2026-02-29T10:00:00-08:00", "2026-02-31T10:00:00-08:00", "2026-04-31T10:00:00-07:00", "2026-13-01T10:00:00-07:00", "2026-00-10T10:00:00-07:00", "2026-09-00T10:00:00-07:00", "2026-09-22T24:00:00-07:00", "2026-09-22T11:60:00-07:00", "2026-09-22T11:99:00-07:00"]) {
+      expect(displayDateTime(bad), bad).toBe(bad);
+    }
+    expect(displayDateTime("2028-02-29T10:00:00-07:00")).toBe("Tuesday, February 29, 2028 10:00 AM");
+  });
+
   it("returns an unparseable string as is", () => {
     expect(displayDateTime("not a date")).toBe("not a date");
     expect(displayDateTime("2026-09-22")).toBe("2026-09-22");

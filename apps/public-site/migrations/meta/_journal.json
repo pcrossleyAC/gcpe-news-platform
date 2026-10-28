@@ -29,6 +29,13 @@
       "when": 1793175789976,
       "tag": "0003_terms_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793187011580,
+      "tag": "0004_site_posts_lead_ministry",
+      "breakpoints": true
     }
   ]
 }

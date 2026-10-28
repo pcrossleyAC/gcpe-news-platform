@@ -45,6 +45,10 @@ const governmentTermsBodySchema = z.object({
   terms: z.array(z.object({ slug: z.string(), label: z.string().nullable(), startDate: isoDay, endDate: isoDay.nullable(), legacyArchiveUrl: z.string().nullable() })),
 });
 
+const ministryProfilesBodySchema = z.object({
+  ministries: z.array(z.object({ key: z.string(), ministerEmail: z.string().nullable(), teamLinks: z.array(z.object({ text: z.string(), url: z.string() })), childKeys: z.array(z.string()) })),
+});
+
 const ministrySuccessorsBodySchema = z.object({ successors: z.record(z.string(), z.string()) });
 
 export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch): NewsApiClient {
@@ -82,7 +86,14 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
     postsByKeys: async (keys) => (keys.length ? (((await get(`api/Posts?${v1}&postKeys=${enc(keys.join(","))}`)) as PostDto[] | null) ?? []) : []),
     ministries: async () => ((await get(`api/Ministries?${v1}`)) as MinistryDto[] | null) ?? [],
     ministry: async (key) => (await get(`api/Ministries/${enc(key)}?${v1}`)) as MinistryDto | null,
-    ministryProfiles: async () => (((await getOr404("api/v2/ministries")) as { ministries: MinistryProfileDto[] } | null)?.ministries ?? []),
+    ministryProfiles: async () => {
+      // A 404 (an older News API without the v2 route) is none; an empty or malformed 200 is a
+      // failure, so the caller logs it rather than silently dropping every minister email.
+      const res = await fetchImpl(new URL("api/v2/ministries", base), { signal: AbortSignal.timeout(10_000) });
+      if (res.status === 404) return [];
+      if (!res.ok) throw new Error(`News API ${res.status} for api/v2/ministries`);
+      return ministryProfilesBodySchema.parse(JSON.parse(await res.text())).ministries satisfies MinistryProfileDto[];
+    },
     minister: async (key) => (await get(`api/Ministries/${enc(key)}/Minister?${v1}`)) as MinisterDto | null,
     categories: async (kind) => ((await get(`api/${LIST_PATH[kind]}?${v1}`)) as CategoryDto[] | null) ?? [],
     category: async (kind, key) => (await get(`api/${LIST_PATH[kind]}/${enc(key)}?${v1}`)) as CategoryDto | null,

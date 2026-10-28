@@ -10,6 +10,9 @@ export function memoryStorage(): SiteStorage & { files: Map<string, string | Uin
     async remove(relPath) {
       files.delete(relPath);
     },
+    async removeEmptyDir() {
+      // Directories exist here only through the files under them.
+    },
     async exists(relPath) {
       return files.has(relPath);
     },

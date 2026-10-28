@@ -1,10 +1,13 @@
-import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 export interface SiteStorage {
   write(relPath: string, content: string | Uint8Array): Promise<void>;
   remove(relPath: string): Promise<void>;
+  /** Removes the directory `relPath` only if it is empty; a missing, non-empty or non-directory
+   * path (a symlink included) is left alone. Same path-safety checks as `remove`. */
+  removeEmptyDir(relPath: string): Promise<void>;
   /** Whether `relPath` exists under root. Same path-safety checks as `write`/`remove` — a
    * symlink planted inside root that would redirect `relPath` outside it is treated as "no",
    * not followed. Used by self-heal.ts to decide whether the public site survived a redeploy. */
@@ -108,6 +111,19 @@ export function fsStorage(root: string): SiteStorage {
       if (realDir === undefined) return; // the parent doesn't exist, so neither does the file
       assertInsideRoot(await realpath(base), realDir, relPath);
       await rm(full, { force: true });
+    },
+    async removeEmptyDir(relPath) {
+      const full = target(relPath);
+      const realDir = await tryRealpath(dirname(full));
+      if (realDir === undefined) return;
+      assertInsideRoot(await realpath(base), realDir, relPath);
+      try {
+        await rmdir(full); // never recursive: fails on a non-empty directory
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ENOENT" || code === "ENOTEMPTY" || code === "EEXIST" || code === "ENOTDIR") return;
+        throw err;
+      }
     },
     async exists(relPath) {
       const full = target(relPath);

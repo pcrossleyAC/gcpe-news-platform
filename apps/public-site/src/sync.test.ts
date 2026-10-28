@@ -14,7 +14,8 @@ import { createSiteBuilder, type SiteBuilder } from "./builder";
 import { fsStorage } from "./storage";
 import { DEFAULT_TIME_ZONE, settingsHashes } from "./settings";
 import { postIndex } from "./post-index";
-import { queueDepth } from "./queue";
+import * as queue from "./queue";
+import { PRIORITY, queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
 import { degradedSubscribe, syncSite, type SyncDeps } from "./sync";
 import * as subscribePages from "./subscribe-pages";
@@ -468,7 +469,7 @@ describe("syncSite", () => {
         error.mockRestore();
       }
       const after = JSON.parse(await readFile(join(dir, ".site-state.json"), "utf8"));
-      const settingsHashes = (m: Record<string, unknown>) => ({ footerHash: m.footerHash, themeHash: m.themeHash, bannerHash: m.bannerHash, connectHash: m.connectHash, ministryPagesHash: m.ministryPagesHash });
+      const settingsHashes = (m: Record<string, unknown>) => ({ footerHash: m.footerHash, themeHash: m.themeHash, bannerHash: m.bannerHash, connectHash: m.connectHash, ministryPagesHash: m.ministryPagesHash, releaseShareHash: m.releaseShareHash });
       return { dir, before, after, settingsHashes, rendered: restarted.rendered, page: await readFile(join(dir, "releases/K1/index.html"), "utf8") };
     };
 
@@ -595,7 +596,7 @@ describe("syncSite", () => {
       expect(JSON.parse(html(deps, "assets/site-banner.json"))).toMatchObject({ visible: true, message: "Offices closed" });
     });
 
-    it("a connect-only change rebuilds only the Connect page and home (its Connect With Us icons)", async () => {
+    it("a connect change to other networks rebuilds only the Connect page and home (its Connect With Us icons), no release page", async () => {
       const deps = setup(new Map([["K1", post({ key: "K1" })]]));
       api(deps).settings = published(bcSettings());
       await syncSite(deps);
@@ -611,16 +612,60 @@ describe("syncSite", () => {
       expect(html(deps, "index.html")).not.toContain("threads_logo.svg");
     });
 
-    it("a ministryPages-only change rebuilds only the ministry pages", async () => {
-      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    it("a ministryPages-only change rebuilds the ministry pages and every release page (its labels), posts at bulk priority", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })]]));
       api(deps).settings = published(bcSettings());
       await syncSite(deps);
       const doc = bcSettings();
-      doc.ministryPages.featuredTopics = "Topics";
+      doc.ministryPages.mediaContacts = "Press Desk";
       api(deps).settings = published(doc, 2);
+      const chrome = vi.spyOn(rebuildAll, "enqueueChromeChanges");
+      const enqueue = vi.spyOn(queue, "enqueuePages");
+      try {
+        const r = recording(deps);
+        await syncSite(r.deps);
+        // What the settings change itself queued (a re-rendered post then queues its own
+        // dependents — home, archives, sitemaps — as any post render does).
+        expect(enqueue.mock.calls[0]![1]).toEqual([
+          { pageId: "category:ministries:finance", priority: PRIORITY.liveAggregate },
+          { pageId: "category:ministries:health", priority: PRIORITY.liveAggregate },
+          { pageId: "post:K1", priority: PRIORITY.bulkPost },
+          { pageId: "post:K2", priority: PRIORITY.bulkPost },
+        ]);
+        expect(r.rendered).toEqual(expect.arrayContaining(["category:ministries:finance", "category:ministries:health", "post:K1", "post:K2"]));
+        expect(r.rendered).not.toContain("connect");
+        expect(html(deps, "releases/K1/index.html")).toContain("Press Desk");
+        expect(chrome.mock.calls.filter(([, , c]) => c.all)).toHaveLength(0); // the sections path, not a rebuild-all
+      } finally {
+        chrome.mockRestore();
+        enqueue.mockRestore();
+      }
+    });
+
+    it("a change to the Share list's Instagram account rebuilds the Connect page, home and every release page", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      expect(html(deps, "releases/K1/index.html")).toContain("governmentofbc");
+      const doc = bcSettings();
+      doc.connect.instagram = { featured: [{ text: "NewBCAccount", url: "https://www.instagram.com/newbcaccount/" }], accounts: [] };
+      api(deps).settings = published(doc, 2);
+      const enqueue = vi.spyOn(queue, "enqueuePages");
       const r = recording(deps);
-      await syncSite(r.deps);
-      expect(r.rendered.sort()).toEqual(["category:ministries:finance", "category:ministries:health"]);
+      try {
+        await syncSite(r.deps);
+        expect(enqueue.mock.calls[0]![1]).toEqual([
+          { pageId: "connect", priority: PRIORITY.liveAggregate },
+          { pageId: "home", priority: PRIORITY.liveAggregate },
+          { pageId: "post:K1", priority: PRIORITY.bulkPost },
+          { pageId: "post:K2", priority: PRIORITY.bulkPost },
+        ]);
+      } finally {
+        enqueue.mockRestore();
+      }
+      expect(r.rendered).toEqual(expect.arrayContaining(["connect", "home", "post:K1", "post:K2"]));
+      expect(html(deps, "releases/K2/index.html")).toContain("https://www.instagram.com/newbcaccount/");
+      expect(html(deps, "releases/K2/index.html")).not.toContain("governmentofbc");
     });
 
     describe("land acknowledgement (chrome v7)", () => {

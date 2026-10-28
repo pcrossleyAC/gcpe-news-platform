@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BIO_TAGS, BODY_TAGS } from "@gcpe/nrms-contract";
 import { sanitizeBioHtml } from "./bio-html";
+import { sanitizeBodyHtml } from "../../../public-site/src/sanitize-body";
 
 describe("sanitizeBioHtml", () => {
   it("BIO_TAGS is BODY_TAGS without asset", () => {
@@ -28,7 +29,7 @@ describe("sanitizeBioHtml", () => {
       '<p><a href="javascript:alert(1)">bad</a> <a href="//evil.example/x">proto</a> <a href="/\\evil.example">slash</a></p>',
     ].join("");
     const out = sanitizeBioHtml(html);
-    expect(out).toBe("<p>Hello</p>Big title" + "https://www.youtube.com/watch?v=abc" + "<p><a>bad</a> <a>proto</a> <a>slash</a></p>");
+    expect(out).toBe("<p>Hello</p>Big title" + "https://www.youtube.com/watch?v=abc" + "<p>bad proto slash</p>");
     for (const gone of ["script", "alert(1)", "iframe", "frame text", "obj text", "onclick", "style", "class", "<img", "<h1", "<asset", "javascript:", "//evil"]) {
       expect(out).not.toContain(gone);
     }
@@ -38,5 +39,11 @@ describe("sanitizeBioHtml", () => {
     expect(sanitizeBioHtml("  <p></p><p>Text</p><p> </p><p>&nbsp;</p><p><strong></strong></p>\n ")).toBe("<p>Text</p>");
     expect(sanitizeBioHtml("<p></p>")).toBe("");
     expect(sanitizeBioHtml("   ")).toBe("");
+  });
+
+  it("unwraps an <a> left without an href to its text (no hrefless link survives), like the public sanitiser", () => {
+    const html = '<p><a name="top">anchor</a> <a href="">empty</a> <a href="#frag">frag</a> <a href="javascript:x()"><strong>bold</strong></a> <a href="/ok">ok</a></p>';
+    expect(sanitizeBioHtml(html)).toBe('<p>anchor empty frag <strong>bold</strong> <a href="/ok">ok</a></p>');
+    expect(sanitizeBodyHtml(html)).toBe(sanitizeBioHtml(html));
   });
 });
