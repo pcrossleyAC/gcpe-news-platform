@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 import { loadTenantConfig } from "@gcpe/config";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { createSiteBuilder } from "../apps/public-site/src/builder";
-import type { CategoryDto, PostDto, SlideDto } from "../apps/public-site/src/dto";
+import type { CategoryDto, GovernmentTermsDto, PostDto, SlideDto } from "../apps/public-site/src/dto";
+import { addDays } from "../apps/public-site/src/government-terms";
 import type { NewsApiClient } from "../apps/public-site/src/news-api-client";
 import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index";
 import type { SiteInfo } from "../apps/public-site/src/render";
@@ -43,12 +44,15 @@ export const FIXTURE_PAGES = [
   "/tags/covid-19/",
   "/archive/",
   "/archive/2026/10/",
+  "/archive/terms/",
+  "/archive/terms/2024-2028/",
   "/search/",
   "/404.html",
 ];
 
 function memoryIndex(): PostIndex {
   const rows = new Map<string, IndexedPost>();
+  let termsHash: string | null = null;
   const newest = (a: IndexedPost, b: IndexedPost) => b.publishDate.localeCompare(a.publishDate) || (a.key < b.key ? 1 : -1);
   return {
     get: async (k) => rows.get(k) ?? null,
@@ -63,6 +67,25 @@ function memoryIndex(): PostIndex {
     keys: async () => [...rows.keys()],
     categories: async () => [...new Set([...rows.values()].flatMap((p) => p.categories))].sort(),
     inCategory: async (token) => [...rows.values()].filter((p) => p.categories.includes(token)).map((p) => p.key).sort(),
+    inDayRange: async (start, end) => [...rows.values()].filter((p) => inDays(p, start, end)).sort(newest),
+    countInDayRange: async (start, end) => [...rows.values()].filter((p) => inDays(p, start, end)).length,
+    appliedTermsHash: async () => termsHash,
+    setAppliedTermsHash: async (h) => void (termsHash = h),
+  };
+}
+
+const inDays = (p: IndexedPost, start: string, end: string | null) => {
+  const day = p.publishDate.slice(0, 10);
+  return day >= start && (end === null || day < end);
+};
+
+/** BC's configured terms as NRMS publishes them (newest first; each ends the day before the next starts). */
+function termsSnapshot(terms: NonNullable<ReturnType<typeof loadTenantConfig>["governmentTerms"]>): GovernmentTermsDto {
+  const newest = [...terms].reverse();
+  return {
+    publishedAt: "2026-10-28T07:00:00.000Z",
+    currentSlug: newest[0]?.slug ?? null,
+    terms: newest.map((t, i) => ({ slug: t.slug, label: t.label, startDate: t.startDate, endDate: i === 0 ? null : addDays(newest[i - 1]!.startDate, -1), legacyArchiveUrl: t.legacyArchiveUrl })),
   };
 }
 
@@ -100,6 +123,7 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     slide({ key: "slide-1", headline: "Clinics opening across the province", actionUri: `${o.baseUrl}/releases/${FIRST_KEY}/`, actionLabel: "Read the release", imageUrl: image, sortIndex: 0 }),
     slide({ key: "slide-2", headline: "Have your say on housing", summary: "Share your views before the end of the month.", actionUri: `${o.baseUrl}/themes/housing/`, actionLabel: null, imageUrl: image, sortIndex: 1, justify: "right" }),
   ];
+  const tenant = loadTenantConfig(BC_TENANT);
   const newsApi: NewsApiClient = {
     ...fakeNewsApi(posts),
     // A top and a feature post, as news.gov's home always has.
@@ -108,8 +132,8 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     resourceLinks: async () => [link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
+    governmentTerms: async () => termsSnapshot(tenant.governmentTerms ?? []),
   };
-  const tenant = loadTenantConfig(BC_TENANT);
   const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme, timeZone: tenant.timeZone };
   // BC's tenant settings, as the live site shows them before anything is published: the footer
   // links and the land acknowledgement band, so axe and Lighthouse check them too.

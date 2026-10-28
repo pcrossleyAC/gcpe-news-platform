@@ -24,6 +24,17 @@
     }
   },
   "timeZoneCheck": { "at": "2027-01-15T19:00:00Z", "expectedOffset": "-07:00" },
+  "governmentTerms": [
+    { "slug": "pre2001", "startDate": "1994-01-01", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_pre2001.htm" },
+    { "slug": "2001-2005", "startDate": "2001-06-05", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_2001-2005.htm" },
+    { "slug": "2005-2009", "startDate": "2005-05-18", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_2005-2009.htm" },
+    { "slug": "2009-2013", "startDate": "2009-06-11", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_2009-2013.htm" },
+    { "slug": "2013-2017", "startDate": "2013-06-10", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_2013-2017.htm" },
+    { "slug": "2017-2017", "startDate": "2017-06-12", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_2017-2017.htm" },
+    { "slug": "2017-2021", "startDate": "2017-07-18", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_2017-2021.htm" },
+    { "slug": "2020-2024", "startDate": "2020-11-26", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_2020-2024.htm" },
+    { "slug": "2024-2028", "startDate": "2024-11-18", "legacyArchiveUrl": "https://archive.news.gov.bc.ca/releases/index_current.htm" }
+  ],
   "calendar": {
     "freeze": { "start": "16:00", "end": "17:00" },
     "releaseCategoryIds": [12, 58],

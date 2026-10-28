@@ -213,4 +213,47 @@ describe("newsApiClient", () => {
       await expect(newsApiClient("http://host", malformed as unknown as typeof fetch).siteSettings()).rejects.toThrow();
     });
   });
+
+  describe("governmentTerms", () => {
+    const term = (slug: string, startDate: string, endDate: string | null) => ({ slug, label: null, startDate, endDate, legacyArchiveUrl: null });
+    const body = { publishedAt: "2026-10-28T07:00:00.000Z", currentSlug: "2024-2028", terms: [term("2024-2028", "2024-11-18", null), term("2020-2024", "2020-11-26", "2024-11-17")] };
+
+    it("GETs api/v2/government-terms and returns the snapshot", async () => {
+      const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify(body) }));
+      expect(await newsApiClient("http://host/news", fetchImpl as unknown as typeof fetch).governmentTerms()).toEqual(body);
+      expect(String(fetchImpl.mock.calls[0]![0])).toBe("http://host/news/api/v2/government-terms");
+    });
+
+    it("a 404 (nothing published yet) is null; a 5xx or a malformed body rejects", async () => {
+      expect(await newsApiClient("http://host", stubFetch(fakeResponse({ ok: false, status: 404, body: "{}" })) as unknown as typeof fetch).governmentTerms()).toBeNull();
+      await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: false, status: 503, body: "" })) as unknown as typeof fetch).governmentTerms()).rejects.toThrow(/503/);
+      await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ terms: "x" }) })) as unknown as typeof fetch).governmentTerms()).rejects.toThrow();
+    });
+
+    it("drops a term whose slug isn't safe for a path, or is the reserved current", async () => {
+      const bad = { ...body, terms: [...body.terms, term("../x", "2017-07-18", "2020-11-25"), term("current", "2013-06-10", "2017-07-17")] };
+      const got = await newsApiClient("http://host", stubFetch(fakeResponse({ ok: true, body: JSON.stringify(bad) })) as unknown as typeof fetch).governmentTerms();
+      expect(got!.terms.map((t) => t.slug)).toEqual(["2024-2028", "2020-2024"]);
+    });
+  });
+
+  describe("ministrySuccessors", () => {
+    it("GETs api/v2/ministry-successors and returns the map", async () => {
+      const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ successors: { a: "c", b: "c" } }) }));
+      expect(await newsApiClient("http://host/news", fetchImpl as unknown as typeof fetch).ministrySuccessors()).toEqual({ a: "c", b: "c" });
+      expect(String(fetchImpl.mock.calls[0]![0])).toBe("http://host/news/api/v2/ministry-successors");
+    });
+
+    it("drops a pair whose key or target isn't a lowercased category key, or maps to itself", async () => {
+      const body = { successors: { a: "c", "../x": "c", d: "../e", F: "c", g: "G", h: "h", i: "" } };
+      const got = await newsApiClient("http://host", stubFetch(fakeResponse({ ok: true, body: JSON.stringify(body) })) as unknown as typeof fetch).ministrySuccessors();
+      expect(got).toEqual({ a: "c" });
+    });
+
+    it("any failure (a 404, a 5xx, a malformed body) rejects, so the last file written stands", async () => {
+      await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: false, status: 404, body: "{}" })) as unknown as typeof fetch).ministrySuccessors()).rejects.toThrow(/404/);
+      await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: false, status: 503, body: "" })) as unknown as typeof fetch).ministrySuccessors()).rejects.toThrow(/503/);
+      await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ successors: [] }) })) as unknown as typeof fetch).ministrySuccessors()).rejects.toThrow();
+    });
+  });
 });

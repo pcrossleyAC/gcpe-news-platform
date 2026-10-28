@@ -1,5 +1,5 @@
 import type { SiteSettings } from "@gcpe/site-settings";
-import type { CategoryDto, PostDto, SlideDto } from "../src/dto";
+import type { CategoryDto, GovernmentTermsDto, PostDto, SlideDto } from "../src/dto";
 import type { NewsApiClient } from "../src/news-api-client";
 import { ministry } from "./fixtures";
 
@@ -18,6 +18,8 @@ export type FakeNewsApi = NewsApiClient & {
   sectors: CategoryDto[];
   /** What `slides()` answers (home's carousel band). */
   slideList: SlideDto[];
+  terms: GovernmentTermsDto | null;
+  successors: Record<string, string>;
 };
 
 export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
@@ -31,6 +33,10 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     settings: null,
     sectors: [],
     slideList: [],
+    /** What `governmentTerms()` answers: null is the News API's 404. */
+    terms: null,
+    /** What `ministrySuccessors()` answers. */
+    successors: {},
     getPost: async (key) => { calls.push(`getPost:${key}`); return posts.get(key) ?? null; },
     latestHome: async (n) => published().slice(0, n),
     latest: async (kind, key, n) => inCat(({ ministries: "ministryKeys", sectors: "sectorKeys", themes: "themeKeys", tags: "tagKeys" } as const)[kind], key).slice(0, n),
@@ -47,6 +53,8 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     related: async () => [],
     postKeys: async (kind) => published().filter((p) => p.kind === kind).map((p) => p.key),
     siteSettings: async () => { calls.push("siteSettings"); return api.settings; },
+    governmentTerms: async () => { calls.push("governmentTerms"); return api.terms; },
+    ministrySuccessors: async () => { calls.push("ministrySuccessors"); return api.successors; },
   };
   return api;
 }

@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { noStoreOnRedirect } from "./cache-control";
+import { ministrySuccessorRedirects } from "./ministry-successors";
 import { siteNotFound } from "./site-not-found";
 
 /** The static site's own cache lifetime: every page and asset is `public, max-age=60`. */
@@ -51,9 +52,11 @@ export function mountSite(app: express.Express, opts: { outputDir: string; baseP
   const { outputDir, basePath } = opts;
   if (basePath !== "") {
     // Unchanged from before the root mount: an unknown page under the prefix is the site's 404.
-    app.use(basePath, ...staticSite(outputDir), siteNotFound(outputDir));
+    // Successor redirects first: an old ministry's page is still on disk (new-government §4).
+    app.use(basePath, ministrySuccessorRedirects(outputDir, basePath), ...staticSite(outputDir), siteNotFound(outputDir));
   } else {
-    app.use("/site", siteAliasRedirect);
+    // /site/ministries/<old>/… goes straight to the successor (one hop), the rest to the root.
+    app.use("/site", ministrySuccessorRedirects(outputDir, ""), siteAliasRedirect);
   }
   // This root mount runs on every request (ahead of /files, /hub and every app), so its
   // noStoreOnRedirect makes ANY 3xx in the stack no-store, not only the site's own. Harmless
@@ -64,7 +67,7 @@ export function mountSite(app: express.Express, opts: { outputDir: string; baseP
   // means one fs.stat per request that isn't a site file (/api, /hub, /stack/tick…) before it
   // falls through: negligible next to the apps' own work, so not worth a prefix skip-list here.
   const root = express.Router();
-  root.use(...staticSite(outputDir));
+  root.use(ministrySuccessorRedirects(outputDir, ""), ...staticSite(outputDir));
   app.use(root);
 }
 

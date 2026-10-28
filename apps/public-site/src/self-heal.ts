@@ -1,5 +1,7 @@
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { drainQueue } from "./drain";
+import { enqueuePages, PRIORITY } from "./queue";
+import { MINISTRY_SUCCESSORS_FILE } from "./site-paths";
 import { ministryMenu, NO_MINISTRIES, type MenuMinistry } from "./ministry-menu";
 import { enqueueSiteWrite, recordedNonEmptyMenu, tryHome } from "./rebuild";
 import { applyChromeChanges, degradedSubscribe, turnOptions, type SyncDeps } from "./sync";
@@ -54,6 +56,9 @@ export function selfHeal(deps: SyncDeps): Promise<{ rebuilt: number } | null> {
     if (!home || !menu) return null; // News API unreachable: nothing more can be rendered correctly now
 
     await applyChromeChanges(deps, turn, !(await storage.exists("index.html")));
+    // The successor-redirect table is data the stack reads, not a page anything links: a folder
+    // restored or first deployed without it would serve no redirects until the next ministry change.
+    if (!(await storage.exists(MINISTRY_SUCCESSORS_FILE))) await enqueuePages(deps.db, [{ pageId: "legacy-redirects", priority: PRIORITY.liveAggregate }]);
 
     const r = await drainQueue({ db: deps.db, builder: deps.builder }, { budget: deps.batch, pageOpts });
     return r.rendered > 0 ? { rebuilt: r.rendered } : null;

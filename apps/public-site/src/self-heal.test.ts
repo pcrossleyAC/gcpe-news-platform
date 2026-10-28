@@ -156,6 +156,16 @@ describe("selfHeal", () => {
     expect(JSON.parse(storage.files.get(".site-state.json") as string).chrome).toBe(RENDER_CHROME_VERSION);
   });
 
+  it("a missing successor-redirect table is regenerated on start, though every page is current", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    await selfHeal(deps);
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).successors = { a: "health" };
+    storage.files.delete("legacy/ministry-successors.json");
+    await selfHeal(deps);
+    expect(JSON.parse(storage.files.get("legacy/ministry-successors.json") as string)).toEqual({ successors: { a: "health" } });
+  });
+
   it("renders with the published site settings, the subscribe pages included", async () => {
     const deps = setup(new Map([["K1", post({ key: "K1" })]]));
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
