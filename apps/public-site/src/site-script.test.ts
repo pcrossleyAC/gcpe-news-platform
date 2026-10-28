@@ -499,7 +499,7 @@ describe("site.js live webcast button", () => {
     dom.window.setInterval = ((fn: () => void, ms: number) => timers.push({ fn, ms })) as unknown as typeof setInterval;
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     dom.window.eval(SITE_SCRIPT);
-    return { dom, doc: dom.window.document, fetchMock, timers, errors, button: dom.window.document.getElementById("live-button") };
+    return { dom, doc: dom.window.document, fetchMock, timers, errors, button: dom.window.document.getElementById("live-button"), buttons: [...dom.window.document.querySelectorAll("a.live_button")] };
   }
   const json = (body: unknown, status = 200) => async () => new Response(JSON.stringify(body), { status });
   const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -526,6 +526,27 @@ describe("site.js live webcast button", () => {
       expect(p.button!.classList.contains("live_button_show")).toBe(false);
       expect(p.errors).not.toHaveBeenCalled(); // errors are swallowed silently
     }
+  });
+
+  it("toggles every .live_button (phone and desktop); a network error or bad answer hides both again", async () => {
+    const p = livePage(json({ live: true }));
+    await settle();
+    expect(p.buttons).toHaveLength(2);
+    expect(p.buttons.map((b) => b.classList.contains("live_button_show"))).toEqual([true, true]);
+    expect(p.buttons.map((b) => b.classList.contains("live_button_hide"))).toEqual([false, false]);
+    p.fetchMock.mockImplementation(async () => { throw new Error("offline"); });
+    p.timers[0]!.fn();
+    await settle();
+    expect(p.buttons.map((b) => b.classList.contains("live_button_hide"))).toEqual([true, true]);
+    expect(p.buttons.map((b) => b.classList.contains("live_button_show"))).toEqual([false, false]);
+    p.fetchMock.mockImplementation(json({ live: true }));
+    p.timers[0]!.fn();
+    await settle();
+    p.fetchMock.mockImplementation(json({}, 500));
+    p.timers[0]!.fn();
+    await settle();
+    expect(p.buttons.map((b) => b.classList.contains("live_button_hide"))).toEqual([true, true]);
+    expect(p.fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("does not poll on a page without #live-button", async () => {

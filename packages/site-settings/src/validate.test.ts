@@ -132,6 +132,13 @@ describe("validateSiteSettings", () => {
     ]);
   });
 
+  it.each(["live-button", "news-dropdown", "menu", "sm-nav-ul", "footer", "live-status"])("refuses the header link id %j that the site itself uses", (id) => {
+    expect(errorsFor((d) => { d.navigation.headerLinks = [{ id, text: "Hi", url: "/x/" }]; })).toEqual([
+      { field: "navigation.headerLinks[0].id", message: `The id "${id}" is used by the site itself. Choose a different link id.` },
+    ]);
+    expect(errorsFor((d) => { d.navigation.headerLinks = [{ id: "my-link", text: "Hi", url: "/x/" }]; })).toEqual([]);
+  });
+
   it("checks footer text and link text", () => {
     expect(errorsFor((d) => { d.footer.copyrightHolder = " "; })).toEqual([{ field: "footer.copyrightHolder", message: "Enter who holds the copyright." }]);
     expect(errorsFor((d) => { d.footer.helpText = "a".repeat(201); })).toEqual([

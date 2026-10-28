@@ -39,10 +39,10 @@
  *     (P2-R3): the French content carries its own `lang="fr"`. The pressed button's own line is
  *     hidden by the switch, so focus moves to the button that switches back.
  *
- * 12. The Live Webcast button (`#live-button`, header.ts), present on every page but only polled
- *     when it exists: on load and every 60 s, `GET {base}/assets/live.json` (no-store; the base is the
- *     button's own `{base}/live/` href minus its tail). `{"live":true}` swaps `live_button_hide` for
- *     `live_button_show`; anything else, or any failure, leaves (or puts) it hidden. Errors are
+ * 12. The Live Webcast buttons (every `a.live_button`: the phone/tablet one and `#live-button`, header.ts),
+ *     present on every page but only polled when one exists: on load and every 60 s, `GET {base}/assets/live.json` (no-store; the base is the
+ *     first button's own `{base}/live/` href minus its tail). `{"live":true}` swaps `live_button_hide` for
+ *     `live_button_show`; anything else, or any failure (a bad response or a network error), leaves (or puts) them hidden. Errors are
  *     swallowed: a dead file must not spam every visitor's console.
  *
  * 13. The /live/ page's Play button (`.wowza-wrapper[data-stream] button.play-button`, pages/live.ts),
@@ -270,20 +270,20 @@ export const SITE_SCRIPT = String.raw`(() => {
     });
   });
 
-  const live = doc.getElementById("live-button");
-  if (live) {
+  const liveButtons = Array.prototype.slice.call(doc.querySelectorAll("a.live_button"));
+  if (liveButtons.length) {
     let liveUrl = "/assets/live.json";
-    try { liveUrl = new URL(live.href, location.href).pathname.replace(/\/live\/$/, "") + liveUrl; } catch (_) {}
+    try { liveUrl = new URL(liveButtons[0].href, location.href).pathname.replace(/\/live\/$/, "") + liveUrl; } catch (_) {}
+    const setLive = (on) => liveButtons.forEach((b) => {
+      b.classList.toggle("live_button_show", on);
+      b.classList.toggle("live_button_hide", !on);
+    });
     const poll = () => {
       try {
         fetch(liveUrl, { cache: "no-store" })
           .then((r) => (r.ok ? r.json() : null))
-          .then((j) => {
-            const on = !!j && j.live === true;
-            live.classList.toggle("live_button_show", on);
-            live.classList.toggle("live_button_hide", !on);
-          })
-          .catch(() => {});
+          .then((j) => setLive(!!j && j.live === true))
+          .catch(() => setLive(false));
       } catch (_) {}
     };
     poll();

@@ -29,7 +29,7 @@ describe("renderHeader", () => {
     expect(brand.getAttribute("href")).toBe("/site/");
     expect(brand.textContent).toBe("BC Gov News");
     expect(doc.querySelector("h1")).toBeNull();
-    expect(doc.querySelectorAll(".live_button")).toHaveLength(1);
+    expect(doc.querySelectorAll(".live_button")).toHaveLength(2);
   });
 
   it("logo pair links to gov.bc.ca with alt text; bridge variants when Blue Bridge is on", () => {
@@ -200,21 +200,22 @@ describe("renderHeader", () => {
 });
 
 describe("renderHeader from Navigation settings", () => {
-  const golden = JSON.parse(readFileSync(new URL("../test/golden/header-before-task10.json", import.meta.url), "utf8")) as Record<string, string>;
+  const golden = JSON.parse(readFileSync(new URL("../test/golden/header-bc-defaults.json", import.meta.url), "utf8")) as Record<string, string>;
+  const PHONE_LIVE = `<a href="/site/live/" class="btn btn-primary-blue live_button live_button_hide d-lg-none">Live Webcast</a>\n`;
   const LIVE = `<a id="live-button" href="/site/live/" class="btn btn-primary-blue live_button live_button_hide d-none d-lg-block">Live Webcast</a>`;
   const withNav = (patch: Record<string, unknown>) => {
     const s = bcSettings();
     return { ...s, navigation: { ...s.navigation, ...patch } };
   };
 
-  it("with the BC defaults the header is byte-identical to before, plus the Live button after #sm-nav-container's content", () => {
+  it("with the BC defaults the header is byte-identical to before, plus the two Live anchors", () => {
     const GOLDEN_MENU: MenuMinistry[] = [{ key: "health", name: "Health" }, { key: "finance", name: "Finance & <Co>" }]; // what the golden file was captured with
     const html = (opts: PageOptions) => renderHeader(site, { settings: bcSettings(), ...opts });
-    // The Live button is the one addition: it follows #sm-nav-container, inside the nav.
-    expect(html({ ministryMenu: GOLDEN_MENU }).replace(`\n${LIVE}`, "")).toBe(golden.menu);
-    expect(html({ ministryMenu: GOLDEN_MENU, banner: "x" }).replace(`\n${LIVE}`, "")).toBe(golden.bridge);
-    expect(html({}).replace(`\n${LIVE}`, "")).toBe(golden.nomenu);
-    expect(html({ ministryMenu: GOLDEN_MENU, pageSearchInput: "q" }).replace(`\n${LIVE}`, "")).toBe(golden.searchPage);
+    // The two Live anchors are the only additions: the phone one precedes #sm-nav-container, the desktop one follows it, both inside the nav.
+    expect(html({ ministryMenu: GOLDEN_MENU }).replace(`\n${LIVE}`, "").replace(PHONE_LIVE, "")).toBe(golden.menu);
+    expect(html({ ministryMenu: GOLDEN_MENU, banner: "x" }).replace(`\n${LIVE}`, "").replace(PHONE_LIVE, "")).toBe(golden.bridge);
+    expect(html({}).replace(`\n${LIVE}`, "").replace(PHONE_LIVE, "")).toBe(golden.nomenu);
+    expect(html({ ministryMenu: GOLDEN_MENU, pageSearchInput: "q" }).replace(`\n${LIVE}`, "").replace(PHONE_LIVE, "")).toBe(golden.searchPage);
   });
 
   it("News label, header links (base path, ids) and the Live button (hidden class, base path, settings label)", () => {
@@ -242,6 +243,12 @@ describe("renderHeader from Navigation settings", () => {
     expect(live.className).toBe("btn btn-primary-blue live_button live_button_hide d-none d-lg-block");
     expect(live.textContent).toBe('Watch "live"');
     expect(live.previousElementSibling?.id).toBe("sm-nav-container");
+    const phone = doc.querySelector("a.live_button.d-lg-none")!;
+    expect(phone.getAttribute("href")).toBe("/site/live/");
+    expect(phone.className).toBe("btn btn-primary-blue live_button live_button_hide d-lg-none");
+    expect(phone.textContent).toBe('Watch "live"');
+    expect(phone.id).toBe("");
+    expect(phone.nextElementSibling?.id).toBe("sm-nav-container");
   });
 
   it("showHeaderSearch false: no header search form, no phone toggle or drawer", () => {

@@ -11,6 +11,18 @@ const SUMMARY_MAX = 200;
 const HEADING_MAX = 60;
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 const LINK_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+/**
+ * Ids the public pages (header.ts, render.ts) and site.js (site-script.ts) own. A link id that
+ * repeats one would give the page a duplicate id and let site.js bind to the wrong element, so
+ * they are refused. Keep in step with those files when they gain a fixed id.
+ */
+const RESERVED_LINK_IDS: ReadonlySet<string> = new Set([
+  "live-button", "live-status", "news-dropdown", "menu", "ministry-dropdown", "search-md-button", "smd-search-container",
+  "mini-site-search-input", "site-search-input", "main-nav", "main-nav-container", "BCGov-logo", "sm-BCGov-logo",
+  "banner-toggle-sm", "nav-menu-sm", "sm-nav-container", "navbarSupportedContent", "sm-nav-ul", "bannerToggleLink",
+  "main", "main-content", "banner", "site-banner", "bridge-banner", "btnCloseBannerBridge", "landAcknowledgement",
+  "footer", "BCGov-logo-footer", "carousel-holder",
+]);
 const NAV_LABEL_MAX = 40;
 const SHORT_TEXT_MAX = 100;
 const LONG_HEADING_MAX = 200;
@@ -58,6 +70,8 @@ function validateLinks(field: string, links: LinkSetting[], errors: FieldError[]
     }
     if (link.id !== undefined && !LINK_ID.test(link.id)) {
       errors.push({ field: `${at}.id`, message: "Link id must start with a letter and use only letters, digits, - or _." });
+    } else if (link.id !== undefined && RESERVED_LINK_IDS.has(link.id)) {
+      errors.push({ field: `${at}.id`, message: `The id "${link.id}" is used by the site itself. Choose a different link id.` });
     }
   });
 }

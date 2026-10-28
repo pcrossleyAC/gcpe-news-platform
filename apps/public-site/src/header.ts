@@ -9,7 +9,7 @@ const LOGO_ALT = "Government of B.C.";
  * one News control and one ministry list for both widths (no `#sm-menu`), no `role=menu`, unique
  * ids, real buttons for every toggle and labelled search inputs. The News label, the header links
  * (after News), the search controls and the Live button's label come from `navigation` in the site
- * settings; a header link with an unsafe URL is plain text. The Live button is hidden until site.js
+ * settings; a header link with an unsafe URL is plain text. The Live button (a phone/tablet anchor before `#sm-nav-container`, as legacy has, and the desktop `#live-button`) is hidden until site.js
  * finds `assets/live.json` saying the webcast is on (`live_button_hide` → `live_button_show`).
  * Legacy's banner toggle — the (i) beside the hamburger on a phone, `#bannerToggleLink` in the nav
  * list from md up — is a pair of real buttons (`data-banner-toggle`, `aria-controls="banner"`)
@@ -91,7 +91,8 @@ ${searchForm("search", "site-search-input")}
 <a class="navbar-brand ps-3" href="${base}/">${e(site.name)}</a>
 <div class="d-md-none banner-toggle-container" hidden><button id="banner-toggle-sm" class="btn btn-link banner-toggle-btn" ${toggleAttrs}>${toggleImg}</button></div>
 <button type="button" id="nav-menu-sm" class="navbar-toggler collapse-menu-icon menu-icon" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Menu">${icon("bars", base)}</button>
-${searchToggle}<div id="sm-nav-container" class="container-fluid">
+${searchToggle}<a href="${base}/live/" class="btn btn-primary-blue live_button live_button_hide d-lg-none">${e(nav.liveLabel)}</a>
+<div id="sm-nav-container" class="container-fluid">
 <div id="navbarSupportedContent" class="collapse navbar-collapse">
 <ul id="sm-nav-ul" class="navbar-nav ms-auto mb-2 me-3 mb-lg-0 gap-2">
 <li id="ministry-dropdown" class="nav-item ministry-dropdown">${news}</li>${headerLinks}

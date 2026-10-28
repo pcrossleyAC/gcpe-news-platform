@@ -86,7 +86,7 @@ describe("renderPage chrome", () => {
 
   it("the header's links carry the base path", () => {
     const doc = expectAccessibleStructure(renderPage("T", themed, "/site/", "<h1>H</h1>"));
-    expect([...doc.querySelectorAll("header nav a")].map((a) => a.getAttribute("href"))).toEqual(["https://gov.bc.ca", "/site/", "/site/ministries/", "/site/subscribe/", "/site/live/"]);
+    expect([...doc.querySelectorAll("header nav a")].map((a) => a.getAttribute("href"))).toEqual(["https://gov.bc.ca", "/site/", "/site/live/", "/site/ministries/", "/site/subscribe/", "/site/live/"]);
   });
 
   it("one skip link, one main#main inside div#main-content.template.container-xl, no h1 in the chrome", () => {
