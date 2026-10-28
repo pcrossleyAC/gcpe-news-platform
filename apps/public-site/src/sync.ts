@@ -7,7 +7,7 @@ import { drainQueue } from "./drain";
 import type { NewsApiClient } from "./news-api-client";
 import type { PostIndex } from "./post-index";
 import { enqueuePages, PRIORITY } from "./queue";
-import { chromeChanges, enqueueSiteWrite, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
+import { chromeChanges, enqueueSiteWrite, keepSettingsHashes, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
 import { enqueueChromeChanges } from "./rebuild-all";
 import type { PageOptions, SiteInfo } from "./render";
 import { currentSettings, themeDefaults } from "./settings";
@@ -32,28 +32,29 @@ export interface SyncDeps {
 
 /**
  * This turn's render options and site-state: Blue Bridge from `home()` (a failure rejects), then
- * the site settings (settings.ts's currentSettings never rejects). `frozen`: the settings fetch
- * failed and the last applied document stands in — `applyChromeChanges` then leaves the marker
- * and the queue alone. Shared by `syncSite` and `selfHeal`.
+ * the site settings (settings.ts's currentSettings never rejects). `fallbackDefaults`: the
+ * settings fetch failed with nothing persisted, so the defaults stand in for this render only.
+ * Shared by `syncSite` and `selfHeal`.
  */
-export async function turnOptions(deps: SyncDeps, granville: string | null): Promise<{ state: SiteRenderState; pageOpts: PageOptions; frozen: boolean }> {
-  const { settings, frozen } = await currentSettings({ newsApi: deps.newsApi, storage: deps.storage, defaults: deps.defaultSettings ?? themeDefaults(deps.site.theme) });
+export async function turnOptions(deps: SyncDeps, granville: string | null): Promise<{ state: SiteRenderState; pageOpts: PageOptions; fallbackDefaults: boolean }> {
+  const { settings, fallbackDefaults } = await currentSettings({ newsApi: deps.newsApi, storage: deps.storage, defaults: deps.defaultSettings ?? themeDefaults(deps.site.theme) });
   const { state, banner } = stateAndBanner(granville, deps.test, new Date(), settings, deps.site);
-  return { state, pageOpts: { test: deps.test, banner, settings }, frozen };
+  return { state, pageOpts: { test: deps.test, banner, settings }, fallbackDefaults };
 }
 
 /**
- * Queues what the chrome or the settings changed since the marker, then moves the marker. Not
- * while the settings are frozen (a failed fetch): the marker records what was last applied, and
- * a turn that couldn't read the settings mustn't move it or rebuild from a stand-in — a Blue
- * Bridge or year change waits for the next turn whose fetch succeeds.
+ * Queues what the chrome or the settings changed since the marker, then moves the marker. A
+ * settings fetch failure never delays a site-wide change (Blue Bridge, test, chrome version, base
+ * URL): with a persisted document the turn proceeds normally; with only the stand-in defaults
+ * (`fallbackDefaults`), the marker's settings hashes are kept, so the defaults neither queue a
+ * settings rebuild nor get recorded as applied — everything else is compared and recorded.
  */
-export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRenderState; frozen: boolean }, force = false): Promise<void> {
-  if (turn.frozen) return;
-  const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, turn.state, deps.site);
+export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRenderState; fallbackDefaults: boolean }, force = false): Promise<void> {
+  const state = turn.fallbackDefaults ? await keepSettingsHashes(deps.storage, turn.state) : turn.state;
+  const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, state, deps.site);
   if (!changes.all && changes.sections.length === 0) return;
   await enqueueChromeChanges(deps.db, deps.builder, changes);
-  await writeSiteState(deps.storage, turn.state, deps.site);
+  await writeSiteState(deps.storage, state, deps.site);
 }
 
 export interface SyncResult {

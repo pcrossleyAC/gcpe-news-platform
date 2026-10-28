@@ -84,15 +84,17 @@ async function readPersisted(storage: SiteStorage): Promise<SiteSettings | null>
 /**
  * This turn's settings (spec "Delivery"):
  * - fetched: the published document, or the tenant defaults on a 404 (nothing published yet) —
- *   authoritative, and persisted as the last applied;
+ *   persisted as the last applied;
  * - the fetch failed (an error, a timeout, a malformed or empty answer): the last applied
- *   document from SITE_SETTINGS_PATH, logged, with `frozen: true` — the caller must then neither
- *   move the site-state marker nor queue rebuilds from it, so an outage across a restart never
- *   rebuilds the site with the defaults;
- * - failed with nothing ever applied in this output folder: the tenant defaults (logged), as
- *   authoritative — there is no published state on disk to protect.
+ *   document from SITE_SETTINGS_PATH (logged). Used exactly like a fetched one — the marker and
+ *   the rebuilds follow it, since rebuilding from the last published document is correct (and in
+ *   steady state its hashes equal the marker's), and the footer hash still takes this year;
+ * - failed with nothing persisted: the tenant defaults (logged) with `fallbackDefaults: true` —
+ *   the caller must keep the marker's settings hashes (rebuild.ts's keepSettingsHashes) so the
+ *   defaults never count as applied, while Blue Bridge, test, chrome and base URL changes still
+ *   rebuild the site.
  */
-export async function currentSettings(deps: { newsApi: NewsApiClient; storage: SiteStorage; defaults: SiteSettings }): Promise<{ settings: SiteSettings; frozen: boolean }> {
+export async function currentSettings(deps: { newsApi: NewsApiClient; storage: SiteStorage; defaults: SiteSettings }): Promise<{ settings: SiteSettings; fallbackDefaults: boolean }> {
   let settings: SiteSettings;
   try {
     settings = (await deps.newsApi.siteSettings())?.document ?? deps.defaults;
@@ -100,15 +102,15 @@ export async function currentSettings(deps: { newsApi: NewsApiClient; storage: S
     const kept = await readPersisted(deps.storage);
     if (kept) {
       console.error(`[public-site] site settings unavailable; keeping the last applied settings ${safeErrorLabel(err)}`);
-      return { settings: kept, frozen: true };
+      return { settings: kept, fallbackDefaults: false };
     }
     console.error(`[public-site] site settings unavailable and none applied yet; using the tenant defaults ${safeErrorLabel(err)}`);
-    return { settings: deps.defaults, frozen: false };
+    return { settings: deps.defaults, fallbackDefaults: true };
   }
   const json = JSON.stringify(settings);
   if (persisted.get(deps.storage) !== json) {
     await deps.storage.write(SITE_SETTINGS_PATH, json);
     persisted.set(deps.storage, json);
   }
-  return { settings, frozen: false };
+  return { settings, fallbackDefaults: false };
 }

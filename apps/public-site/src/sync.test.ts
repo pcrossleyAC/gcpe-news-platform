@@ -7,7 +7,7 @@ import { bcSettings, post, site } from "../test/fixtures";
 import type { FakeNewsApi } from "../test/fake-news-api";
 import type { SiteSettings } from "@gcpe/site-settings";
 import type { PostDto } from "./dto";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSiteBuilder, type SiteBuilder } from "./builder";
@@ -286,6 +286,58 @@ describe("syncSite", () => {
       const page = await readFile(join(dir, "releases/K1/index.html"), "utf8");
       expect(page).toContain("Published Holder");
       expect(page).not.toContain("Tenant Default Holder");
+    });
+
+    /** A first process builds the site under a published revision (Blue Bridge off) in a real
+     * folder; then a "restarted" process over the same folder whose home() reports Blue Bridge
+     * ON and whose settings fetch fails. */
+    const restartWithBlueBridge = async (opts: { deletePersisted: boolean }) => {
+      const dir = await mkdtemp(join(tmpdir(), "public-site-settings-bb-"));
+      const posts = new Map([["K1", post({ key: "K1" })]]);
+      const first = { ...setup(posts), storage: fsStorage(dir), defaultSettings: withHolder("Tenant Default Holder") };
+      first.builder = createSiteBuilder({ newsApi: first.newsApi, storage: first.storage, index: first.index, site, assetsDir: null });
+      api(first).settings = published(withHolder("Published Holder"));
+      await syncSite(first);
+      const before = JSON.parse(await readFile(join(dir, ".site-state.json"), "utf8"));
+      expect(before.granvilleOn).toBe(false);
+      if (opts.deletePersisted) await rm(join(dir, ".site-settings.json"));
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+
+      const storage = fsStorage(dir);
+      const newsApi = fakeNewsApi(posts);
+      newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
+      newsApi.siteSettings = async () => {
+        throw new Error("News API 503 for api/v2/site-settings");
+      };
+      const builder = createSiteBuilder({ newsApi, storage, index: first.index, site, assetsDir: null });
+      const restarted = recording({ ...first, storage, newsApi, builder });
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await syncSite(restarted.deps);
+      } finally {
+        error.mockRestore();
+      }
+      const after = JSON.parse(await readFile(join(dir, ".site-state.json"), "utf8"));
+      const settingsHashes = (m: Record<string, unknown>) => ({ footerHash: m.footerHash, themeHash: m.themeHash, bannerHash: m.bannerHash, connectHash: m.connectHash, ministryPagesHash: m.ministryPagesHash });
+      return { dir, before, after, settingsHashes, rendered: restarted.rendered, page: await readFile(join(dir, "releases/K1/index.html"), "utf8") };
+    };
+
+    it("a settings fetch failure doesn't delay Blue Bridge: with a persisted document, rebuild-all is queued and the marker records it, settings hashes unchanged", async () => {
+      const r = await restartWithBlueBridge({ deletePersisted: false });
+      expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"]));
+      expect(r.after.granvilleOn).toBe(true);
+      expect(r.settingsHashes(r.after)).toEqual(r.settingsHashes(r.before));
+      expect(r.page).toContain('class="blue-bridge-banner"');
+      expect(r.page).toContain("Published Holder");
+    });
+
+    it("with nothing persisted (but a marker), Blue Bridge still rebuilds every page; the defaults never move the marker's settings hashes", async () => {
+      const r = await restartWithBlueBridge({ deletePersisted: true });
+      expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"]));
+      expect(r.after.granvilleOn).toBe(true);
+      expect(r.settingsHashes(r.after)).toEqual(r.settingsHashes(r.before));
+      expect(r.page).toContain('class="blue-bridge-banner"');
+      expect(r.page).toContain("Tenant Default Holder"); // nothing else exists to render with
     });
 
     it("a fetch error before any successful fetch uses the tenant defaults (logged) rather than failing the turn", async () => {

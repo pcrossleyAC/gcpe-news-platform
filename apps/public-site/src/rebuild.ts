@@ -97,6 +97,19 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
   return { all: false, sections };
 }
 
+/**
+ * `state` with the previous marker's settings hashes, when there is a marker: for a turn whose
+ * settings fetch failed with nothing persisted, so its stand-in defaults never move them (and
+ * never queue a settings rebuild) while the rest of the chrome is still compared and recorded.
+ * No marker (a first-ever start): `state` as is.
+ */
+export async function keepSettingsHashes(storage: SiteStorage, state: SiteRenderState): Promise<SiteRenderState> {
+  const previous = await readSiteState(storage);
+  if (!previous) return state;
+  const kept = Object.fromEntries(HASHES.map((k) => [k, previous[k]])) as Pick<SiteRenderState, (typeof HASHES)[number]>;
+  return { ...state, ...kept };
+}
+
 export async function writeSiteState(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<void> {
   const marker: SiteStateMarker = { ...state, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl };
   await storage.write(SITE_STATE_PATH, JSON.stringify(marker));

@@ -143,4 +143,33 @@ describe("selfHeal", () => {
     }
     expect(storage.files.get(".site-state.json")).toBe(marker);
   });
+
+  it("a settings fetch failure after a restart doesn't delay Blue Bridge: rebuild-all with the persisted document, settings hashes unchanged", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    const document = bcSettings();
+    document.footer.copyrightHolder = "Published Holder";
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).settings = { revision: 1, document };
+    await selfHeal(deps);
+    const before = JSON.parse(storage.files.get(".site-state.json") as string);
+    expect(before.granvilleOn).toBe(false);
+
+    const restarted = { ...deps, storage: { ...storage } as typeof storage, newsApi: fakeNewsApi(new Map([["K1", post({ key: "K1" })]])) };
+    restarted.newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
+    restarted.newsApi.siteSettings = async () => {
+      throw new Error("News API 503 for api/v2/site-settings");
+    };
+    restarted.builder = createSiteBuilder({ newsApi: restarted.newsApi, storage: restarted.storage, index: deps.index, site, assetsDir: null });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await selfHeal(restarted)).not.toBeNull();
+    } finally {
+      errSpy.mockRestore();
+    }
+    const after = JSON.parse(storage.files.get(".site-state.json") as string);
+    expect(after.granvilleOn).toBe(true);
+    for (const k of ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash"]) expect(after[k]).toBe(before[k]);
+    expect(storage.files.get("releases/K1/index.html")).toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("releases/K1/index.html")).toContain("Published Holder");
+  });
 });
