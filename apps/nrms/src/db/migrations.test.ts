@@ -277,3 +277,31 @@ describe("0018 counters by abbreviation", () => {
     expect(await rows()).toEqual(expected);
   });
 });
+
+describe("0018 when an organization's key is another's abbreviation", () => {
+  let tdb: TestDatabase;
+  let partial: string;
+  beforeAll(async () => {
+    partial = await partialMigrations("0017_government_term_dates");
+    tdb = await createTestDatabase({ migrationsFolder: partial });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+    await rm(partial, { recursive: true, force: true });
+  });
+
+  it("keeps the merged abbreviation row instead of deleting it as a key-keyed leftover", async () => {
+    // Org '123' counts under XYZ; org 'other' prints '123', so after the merge the row '123' is
+    // other's abbreviation counter (GREATEST of both), and must survive the clean-up.
+    await tdb.pool.query(`INSERT INTO organizations (key, display_name, abbreviation, sort_order, is_active) VALUES
+      ('123', 'Numbered', 'XYZ', 1, true), ('other', 'Other', '123', 2, true)`);
+    await tdb.pool.query(`INSERT INTO number_counters (scope, year, ministry, last_value) VALUES
+      ('ministry', 2028, '123', 12), ('ministry', 2028, 'other', 4)`);
+    await runMigrations(tdb.db, nrmsMigrations);
+    const { rows } = await tdb.pool.query("SELECT ministry, last_value FROM number_counters WHERE scope = 'ministry' ORDER BY ministry");
+    expect(rows).toEqual([
+      { ministry: "123", last_value: 12 },
+      { ministry: "XYZ", last_value: 12 },
+    ]);
+  });
+});

@@ -26,4 +26,6 @@ ON CONFLICT (scope, year, ministry) DO UPDATE SET last_value = GREATEST(number_c
 DELETE FROM number_counters c
 USING organizations o
 WHERE c.scope = 'ministry' AND c.ministry <> '' AND o.key = c.ministry
-  AND coalesce(trim(o.abbreviation), '') <> '' AND c.ministry <> upper(trim(o.abbreviation));
+  AND coalesce(trim(o.abbreviation), '') <> '' AND c.ministry <> upper(trim(o.abbreviation))
+  -- A key that is also some organization's abbreviation is now that abbreviation's counter: keep it.
+  AND NOT EXISTS (SELECT 1 FROM organizations a WHERE upper(trim(a.abbreviation)) = c.ministry);
