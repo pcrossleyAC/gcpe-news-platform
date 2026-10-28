@@ -292,7 +292,7 @@ ${present(d.subheadline) ? `<p class="subheadline">${e(d.subheadline)}</p>\n` : 
 
   const assets = assetItems.length ? `<div id="assets" class="assets expanded">\n<h2>Media Assets</h2>\n<div class="media-assets-container">\n<ul>\n${assetItems.join("\n")}\n</ul>\n</div>${licenceLine(settings.pageText.assetLicence, site)}\n</div>` : "";
   const bodyTranslations = translationItems(post.azureTranslations ?? [], "");
-  const translations = bodyTranslations.length ? `<div id="translations" class="assets expanded">\n<h2>Translations</h2>\n<ul>\n${bodyTranslations.join("\n")}\n</ul>\n</div>` : "";
+  const translations = bodyTranslations.length ? `<div${assetItems.length ? "" : ' id="assets"'} class="assets expanded">\n<h2 id="translations">Translations</h2>\n<div class="media-assets-container">\n<ul>\n${bodyTranslations.join("\n")}\n</ul>\n</div>\n</div>` : "";
 
   const primaryAsset = lead ? `<div class="story-copy primary-asset">${renderMedia(lead, base, headline)}</div>` : "";
   const storyBody = [primaryAsset, ...bylines, ...selectors, ...copies, bodyContacts, backgroundersHeading, ...allBackgrounders, assets, translations].filter(Boolean).join("\n");
