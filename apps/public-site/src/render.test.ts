@@ -211,6 +211,22 @@ describe("renderPage chrome", () => {
     expect(html.match(/rel="preload"/g)).toHaveLength(2);
   });
 
+  it("preloads BC Sans Italic only on a page whose rendered HTML uses italics (P4-R6)", () => {
+    const italic = `<link rel="preload" href="/site/assets/legacy/fonts/BCSans-Italic.woff2" as="font" type="font/woff2" crossorigin>`;
+    for (const body of ["<p>The <em>Act</em></p>", "<div><i>(Health)</i></div>", "<cite>x</cite>", "<address>x</address>", '<p class="lead fst-italic">x</p>', '<div class="quote"><p>x</p></div>']) {
+      const html = renderPage("T", themed, "/site/", `<h1>H</h1>${body}`);
+      expect(html, body).toContain(italic);
+      expect(html.indexOf(italic)).toBeLessThan(html.indexOf('rel="stylesheet"'));
+      expect(html.match(/rel="preload"/g)).toHaveLength(3);
+    }
+    // Look-alikes that are not italic: <emph>, <img>, <input>, <iframe>, a class merely containing "quote".
+    for (const body of ["<p>Plain <strong>bold</strong></p>", "<emph>x</emph>", '<img src="/a.png" alt="">', "<input>", '<p class="blockquotes">x</p>', "<p>see <i-con></i-con></p>"]) {
+      expect(renderPage("T", themed, "/site/", `<h1>H</h1>${body}`), body).not.toContain("BCSans-Italic");
+    }
+    // The lead and trail are part of the page too.
+    expect(renderPage("T", themed, "/site/", "<h1>H</h1>", { lead: "<p><em>Lead</em></p>" })).toContain(italic);
+  });
+
   it("favicon and the html.js marker script are in the head, before any stylesheet", () => {
     const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
     const head = html.slice(0, html.indexOf("</head>"));
