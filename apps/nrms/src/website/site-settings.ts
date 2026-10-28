@@ -89,7 +89,8 @@ async function upsertDraft(db: DbOrTx, actor: Actor, document: SiteSettings, bas
 
 /** What the editor sees: their draft, else live, else the tenant defaults — and its problems. */
 export async function getSettingsState(db: DbOrTx, actor: Actor, defaults: SiteSettings): Promise<SettingsState> {
-  const [live, draft] = await Promise.all([readLive(db), readDraft(db, actor)]);
+  const live = await readLive(db);
+  const draft = await readDraft(db, actor);
   const document = draft?.document ?? live?.document ?? defaults;
   return {
     live: live?.info ?? null,
@@ -108,7 +109,9 @@ export async function saveDraft(
   input: SectionInput & { baseRevision: number | null },
 ): Promise<SettingsState> {
   await db.transaction(async (tx) => {
-    const [live, draft] = await Promise.all([readLive(tx), readDraft(tx, actor)]);
+    // Sequential: one transaction client runs one query at a time.
+    const live = await readLive(tx);
+    const draft = await readDraft(tx, actor);
     await upsertDraft(tx, actor, overlay(draft?.document ?? live?.document ?? defaults, input), input.baseRevision);
   });
   return getSettingsState(db, actor, defaults);
@@ -176,7 +179,9 @@ export async function discardDraft(db: DbOrTx, actor: Actor): Promise<void> {
  */
 export async function rebaseDraft(db: Db, actor: Actor, defaults: SiteSettings, input: SectionInput): Promise<SettingsState & { setAside: SectionKey[] }> {
   const setAside = await db.transaction(async (tx) => {
-    const [live, draft] = await Promise.all([readLive(tx), readDraft(tx, actor)]);
+    // Sequential: one transaction client runs one query at a time.
+    const live = await readLive(tx);
+    const draft = await readDraft(tx, actor);
     const document = overlay(live?.document ?? defaults, input);
     await upsertDraft(tx, actor, document, live?.info.revision ?? null);
     if (!draft) return [];
