@@ -137,6 +137,24 @@ describe("site builder", () => {
     expect(page).not.toContain("feature-article");
   });
 
+  it("home: a top post that is also the feature shows once, as the top; no feature slot and no empty box in its place", async () => {
+    const posts = new Map([["S1", post({ key: "S1", publishDate: "2026-10-02T10:00:00-07:00" })], ["L1", post({ key: "L1", publishDate: "2026-10-01T10:00:00-07:00" })]]);
+    const { storage, api, builder } = setup(posts);
+    api.home = async () => ({ granville: null, topPostKey: "S1", featurePostKey: "S1" });
+    // The real API's latest list leaves out the home top and feature posts.
+    const latestHome = api.latestHome;
+    api.latestHome = async (n) => (await latestHome(n)).filter((p) => p.key !== "S1");
+    await builder.rebuild(["home"], { settings: bcSettings() });
+    const doc = new JSDOM(html(storage, "index.html")).window.document;
+    expect(doc.querySelectorAll('.home-body a[href="/releases/S1/"]').length).toBeGreaterThan(0);
+    expect([...doc.querySelectorAll(".home-body .article")].filter((a) => a.querySelector('a[href="/releases/S1/"]'))).toHaveLength(1);
+    expect(doc.querySelector('.top-article a[href="/releases/S1/"]')).not.toBeNull();
+    expect(doc.querySelector(".feature-article")).toBeNull();
+    expect(doc.querySelector(".other-articles")!.firstElementChild!.id).toBe("regular-articles");
+    // (legacy clearfix divs aside)
+    expect([...doc.querySelectorAll(".home-body div:not(.clear)")].filter((d) => d.innerHTML.trim() === "").map((d) => d.outerHTML)).toEqual([]);
+  });
+
   it("a kind listing renders deterministically: twice writes the same bytes, one latestOfKind fetch per render", async () => {
     const { storage, api, builder } = setup(new Map([["S1", post({ key: "S1", kind: "stories" })]]));
     await builder.rebuild(["kind:stories"], { settings: bcSettings() });

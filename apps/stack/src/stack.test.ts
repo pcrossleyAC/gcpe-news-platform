@@ -1633,7 +1633,7 @@ describe("apps/stack: /hub hosting", () => {
     await unbuilt.close();
     await rm(hubRoot, { recursive: true, force: true });
     // unbuiltDir was already removed in beforeAll (it must not exist); nothing left to clean up.
-  });
+  }, 90_000); // closing two stacks can pass the default hook timeout on Windows CI
 
   it("GET /hub/ and a deep link both serve index.html with no-store", async () => {
     for (const path of ["/hub", "/hub/", "/hub/releases/abc"]) {

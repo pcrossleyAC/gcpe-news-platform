@@ -59,6 +59,25 @@ describe("SignalR updates hub", () => {
       await new Promise((r) => server.close(r));
     });
 
+  // The stack serves GET/HEAD /updates/... from the legacy rules (news.gov's /updates/ pages) and
+  // sends only POST /updates/negotiate to News API: the hub's router must answer nothing else.
+  it("registers only POST /updates/negotiate: every other method and path falls through", async () => {
+    const hub = createUpdatesHub({});
+    const app = express();
+    app.use(hub.router);
+    app.use((_req, res) => void res.status(418).send("fell through"));
+    const server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    track(hub, server);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const layers = (hub.router as unknown as { stack: { route?: { path: string; methods: Record<string, boolean> } }[] }).stack;
+    expect(layers.map((l) => [l.route?.path, Object.keys(l.route?.methods ?? {})])).toEqual([["/updates/negotiate", ["post"]]]);
+    for (const [method, path] of [["GET", "/updates"], ["GET", "/updates/"], ["GET", "/updates/negotiate"], ["HEAD", "/updates/negotiate"], ["GET", "/updates/archive"], ["PUT", "/updates/negotiate"], ["DELETE", "/updates/negotiate"], ["POST", "/updates"], ["POST", "/updates/other"]] as const) {
+      expect((await fetch(`${base}${path}`, { method })).status, `${method} ${path}`).toBe(418);
+    }
+    expect((await fetch(`${base}/updates/negotiate?negotiateVersion=1`, { method: "POST" })).status).toBe(200);
+  });
+
   it("delivers PostUpdate invocations with the key array", async () => {
     const { hub, server, port } = await start();
     const conn = client(port);

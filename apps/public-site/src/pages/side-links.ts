@@ -2,7 +2,7 @@ import type { MinistryPageLabels } from "@gcpe/site-settings";
 import type { MinistryDto } from "../dto";
 import { e, safeHref, type SiteInfo } from "../render";
 import { settingsHref } from "../settings";
-import { factsheetsUrl } from "../site-paths";
+import { factsheetsPath } from "../site-paths";
 
 export interface SideLink {
   text: string;
@@ -38,7 +38,8 @@ export function ministryLinkGroups(site: Pick<SiteInfo, "baseUrl">, m: MinistryD
     {
       heading: labels.moreFromMinistry,
       links: [
-        { text: "Factsheets", url: factsheetsUrl(site, m.key) },
+        // Site-relative: sideLinkItems adds the base path.
+        { text: "Factsheets", url: factsheetsPath(m.key) },
         { text: labels.ministryWebsite, url: m.ministryUrl },
         { text: labels.ministryPhotos, url: m.flickrUri },
         { text: labels.ministryVideos, url: m.youtubeUri },

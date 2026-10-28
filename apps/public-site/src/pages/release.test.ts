@@ -281,6 +281,12 @@ describe("release page", () => {
     expect(texts(unknown, "a")).not.toContain("Factsheets");
   });
 
+  it("on a /site base path the side column's Factsheets link carries the base", () => {
+    const d = expectAccessibleStructure(renderReleasePage(post({ key: "K" }), { ...site, baseUrl: "https://boxs.example/site" }, { settings: bcSettings() }, ctx));
+    const link = [...d.querySelectorAll(".story-features a")].find((a) => a.textContent === "Factsheets");
+    expect(link?.getAttribute("href")).toBe("/site/ministries/health/factsheets/");
+  });
+
   it("an inactive lead ministry with no successor (abolished) is named without a link", () => {
     for (const c of [{ ...ctx, leadMinistry: { ...health, isActive: false } }, { ...ctx, leadMinistry: { ...health, isActive: false }, leadMinistrySuccessor: null }]) {
       const d = dom({}, c);

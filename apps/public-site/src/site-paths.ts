@@ -221,8 +221,13 @@ export function atomUrl(site: Pick<SiteInfo, "baseUrl">, p: { type: "home" } | {
 export const kindFeedUrl = (site: Pick<SiteInfo, "baseUrl">, kind: FeedPostKind, format: "rss" | "atom"): string => `${basePath(site)}/${kindFeedFile(kind, format)}`;
 
 /** A ministry's minister biography page (the third file of its category page). */
-/** A ministry's factsheets page (H5). */
-export const factsheetsUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/factsheets/`;
 export const biographyUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/biography/`;
+
+/** A ministry's factsheets page (H5), site-relative without the base path: what a side-column
+ * link carries, since `sideLinkItems` resolves "/..." under the base path itself. */
+export const factsheetsPath = (key: string): string => `/ministries/${encodeURIComponent(key.toLowerCase())}/factsheets/`;
+
+/** A ministry's factsheets page (H5), under the base path. */
+export const factsheetsUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}${factsheetsPath(key)}`;
 
 export const absoluteUrl = (site: Pick<SiteInfo, "baseUrl">, path: string) => new URL(site.baseUrl).origin + path;
