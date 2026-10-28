@@ -109,10 +109,10 @@ describe("Core HTTP API", () => {
     const put = (key: string, body: unknown, token = () => admin) => request(staffApp).put(`/api/terms/tag/${key}`).set(auth(token())).send(body as object);
     // The shared DB is not truncated between tests, so leave no terms or events behind.
     afterEach(async () => {
-      await tdb.pool.query("DELETE FROM terms WHERE key IN ('new-tag','New-Tag','Legacy-Tag','legacy-tag','blank-tag','to-retire','nope')");
+      await tdb.pool.query("DELETE FROM terms WHERE key IN ('new-tag','New-Tag','Legacy-Tag','legacy-tag','blank-tag','raced-tag','to-retire','nope')");
       await tdb.pool.query("DELETE FROM outbox_events WHERE aggregate_id LIKE 'tag:%'");
     });
-    const eventsFor = async (key: string) => (await tdb.db.select().from(outboxEvents)).filter((e) => e.aggregateId.endsWith(key));
+    const eventsFor = async (key: string) => (await tdb.db.select().from(outboxEvents)).filter((e) => e.aggregateId === `tag:${key}`);
 
     it("PUT /api/terms/tag/new-tag with displayName '  New tag ' stores 'New tag' and enqueues tag.upserted", async () => {
       const res = await put("new-tag", term("new-tag", { displayName: "  New tag " }));
@@ -142,6 +142,26 @@ describe("Core HTTP API", () => {
       const events = await eventsFor("to-retire");
       expect(events.map((e) => e.type)).toEqual(["tag.upserted", "tag.upserted"]);
       expect(((events[1]!.envelope as { data: { isActive: boolean } }).data.isActive)).toBe(false);
+    });
+
+    it("PUT renames an existing legacy mixed-case key (200): the format rule only guards new keys", async () => {
+      await termsService.upsertTerm(tdb.db, { kind: "tag", key: "Legacy-Tag", displayName: null as unknown as string, sortOrder: 0, isActive: true, social }, []);
+      const res = await put("Legacy-Tag", term("Legacy-Tag", { displayName: " Legacy tag " }));
+      expect(res.status).toBe(200);
+      expect(res.body.displayName).toBe("Legacy tag");
+    });
+
+    it("PUT answers 409 key-taken when the write loses a create race (unique violation on terms_kind_key)", async () => {
+      const spy = vi
+        .spyOn(termsService, "upsertTerm")
+        .mockRejectedValueOnce(Object.assign(new Error("Failed query"), { cause: Object.assign(new Error("duplicate key"), { code: "23505", constraint: "terms_kind_key" }) }));
+      try {
+        const res = await put("raced-tag", term("raced-tag"));
+        expect(res.status).toBe(409);
+        expect(res.body).toEqual({ error: "key-taken" });
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it("PUT by a non-Core.Admin answers 403", async () => {

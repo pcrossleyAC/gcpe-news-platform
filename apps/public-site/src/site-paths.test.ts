@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { absoluteUrl, biographyUrl, categoryFiles, categoryPageId, factsheetsUrl, feedUrl, formatPageId, kindFeedFile, pageFiles, pageUrl, parsePageId, POST_KEY, postDir, postPath } from "./site-paths";
+import { CATEGORY_KEY, absoluteUrl, biographyUrl, categoryFiles, categoryPageId, factsheetsUrl, feedUrl, formatPageId, kindFeedFile, pageFiles, pageUrl, parsePageId, POST_KEY, postDir, postPath } from "./site-paths";
 
 const site = { name: "N", baseUrl: "https://boxs.example/site" };
 
@@ -194,5 +194,12 @@ describe("category indexes (M8, M16)", () => {
     expect(parsePageId("index:ministries")).toBeNull();
     expect(parsePageId("index:x")).toBeNull();
     expect(parsePageId("index:sectors:extra")).toBeNull();
+  });
+});
+
+describe("CATEGORY_KEY", () => {
+  // Mirrors NEW_TERM_KEY in apps/core/src/services/terms.ts: change both together.
+  it("matches Core's rule for new term keys", () => {
+    expect(CATEGORY_KEY.source).toBe("^[a-z0-9-]{1,100}$");
   });
 });
