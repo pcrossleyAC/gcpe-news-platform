@@ -378,8 +378,8 @@ describe("organizations service", () => {
       ]);
       expect(events[0]!.data).toMatchObject({ key: "a", isActive: false, successorKeys: ["b"] });
       expect(events[2]!.data).toMatchObject({ key: "b", abbreviation: "ALPH", successorKeys: [] });
-      expect(events[3]!.data).toEqual({ key: "a", successorKeys: ["b"], moveSubscribers: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true, at: expect.any(String) });
-      for (const e of events.slice(4)) expect(e.data.organizationKeys).toEqual(["b"]);
+      expect(events[5]!.data).toEqual({ key: "a", successorKeys: ["b"], moveSubscribers: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true, at: expect.any(String) });
+      for (const e of events.slice(3, 5)) expect(e.data.organizationKeys).toEqual(["b"]);
     });
 
     it("B keeps its own abbreviation without takeAbbreviation; no org.upserted for B", async () => {
