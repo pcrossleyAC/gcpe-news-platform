@@ -326,7 +326,7 @@ describe("RENDER_CHROME_VERSION", () => {
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
   // 19: card file links only when a list is non-empty (legacy file import).
-  it("RENDER_CHROME_VERSION is 19", () => expect(RENDER_CHROME_VERSION).toBe(19));
+  it("RENDER_CHROME_VERSION is 20", () => expect(RENDER_CHROME_VERSION).toBe(20));
 });
 
 describe("Search Console verification in the render-state marker", () => {

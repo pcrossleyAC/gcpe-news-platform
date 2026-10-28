@@ -81,7 +81,7 @@ export const SITE_STATE_PATH = ".site-state.json";
  * Translations / Media Assets links only when a file list is non-empty (legacy file import). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 19;
+export const RENDER_CHROME_VERSION = 20;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
