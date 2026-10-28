@@ -7,9 +7,11 @@
     "dev": "tsx watch src/main.ts",
     "db:generate": "drizzle-kit generate",
     "build": "node ../../scripts/build-app.mjs apps/public-site",
-    "site:rebuild-all": "tsx src/cli/rebuild-all.ts"
+    "site:rebuild-all": "tsx src/cli/rebuild-all.ts",
+    "icons:build": "tsx scripts/build-icons.ts"
   },
   "dependencies": {
+    "@bcgov/bc-sans": "2.1.2",
     "@gcpe/auth": "0.0.0",
     "@gcpe/config": "0.0.0",
     "@gcpe/db-kit": "0.0.0",
@@ -22,6 +24,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@fortawesome/fontawesome-free": "6.7.2",
     "@types/express": "^5.0.6",
     "@types/jsdom": "^30.0.0",
     "@types/sanitize-html": "^2.16.2",

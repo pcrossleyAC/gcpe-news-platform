@@ -6,6 +6,7 @@ import { isSafeUrl } from "./urls";
 const MIN_CONTRAST = 4.5;
 const BANNER_MAX = 300;
 const HELP_TEXT_MAX = 200;
+const LAND_ACK_MAX = 1000;
 const SUMMARY_MAX = 200;
 const HEADING_MAX = 60;
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -59,6 +60,11 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
     checkContrast("theme.colors.text", c.text, c.background, "on the page background", errors);
     checkContrast("theme.colors.surface", c.text, c.surface, "on panels", errors);
     checkContrast("theme.colors.primaryText", c.primaryText, c.primary, "on the header", errors);
+    // P7: --theme-link aliases --color-primary, so the primary colour is also every link's colour.
+    checkContrast("theme.colors.primary", c.primary, c.background, "as link text", errors);
+    // Legacy CSS also paints hard-coded white text on it (custom.css .btn-primary-blue, site.css
+    // .news-listing .home-body h3), whatever primaryText or the background are.
+    checkContrast("theme.colors.primary", "#FFFFFF", c.primary, "behind white text", errors);
     checkContrast("theme.colors.bannerInfo", "#FFFFFF", c.bannerInfo, "behind white text", errors);
     checkContrast("theme.colors.bannerEmergency", "#FFFFFF", c.bannerEmergency, "behind white text", errors);
   }
@@ -70,6 +76,11 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
   if (f.copyrightHolder.trim() === "") errors.push({ field: "footer.copyrightHolder", message: "Enter who holds the copyright." });
   if (f.helpText.length > HELP_TEXT_MAX) errors.push({ field: "footer.helpText", message: `Keep the help text to ${HELP_TEXT_MAX} characters or fewer.` });
   if (hasMarkup(f.helpText)) errors.push({ field: "footer.helpText", message: "Use plain text." });
+  // Trimmed, as the public site shows it: whitespace-only is empty (no band, render.ts) and
+  // surrounding whitespace doesn't count toward the limit.
+  const ack = (f.landAcknowledgement ?? "").trim();
+  if (ack.length > LAND_ACK_MAX) errors.push({ field: "footer.landAcknowledgement", message: `Keep the land acknowledgement to ${LAND_ACK_MAX} characters or fewer.` });
+  if (hasMarkup(ack)) errors.push({ field: "footer.landAcknowledgement", message: "Use plain text." });
 
   for (const { key } of NETWORKS) {
     validateLinks(`connect.${key}.featured`, doc.connect[key].featured, errors);

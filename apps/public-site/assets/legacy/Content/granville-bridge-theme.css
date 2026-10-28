@@ -1,0 +1,216 @@
+﻿body {
+}
+
+#header {
+    /*background-color: #036;*/
+    background-color: #333333;
+}
+
+#BCGov-logo.granville-bridge-on {
+    display: none !important;
+}
+
+.covid-banner {
+    background-color: #2d2d2d;
+}
+
+.info-black-banner {
+    background-color: #252423;
+    width: 100%;
+    font-size: 16px;
+    color: #fff;
+}
+
+#nav-container {
+    position: relative;
+    z-index: 10;
+    background-color: #616161;
+    -webkit-box-shadow: 0 3px 5px 0 rgba(0, 0, 0, 0.2);
+    -ms-box-shadow: 0 3px 5px 0 rgba(0, 0, 0, 0.2);
+    box-shadow: 0 3px 5px 0 rgba(0, 0, 0, 0.2);
+}
+
+.live_button_show {
+    color: #ffffff;
+    border: solid 1px #fab919 !important;
+    background: #000000;
+}
+
+ul.inline li + li {
+    border-left: 1px solid #616161;
+}
+
+.home-banner .home-banner-content .social-media-bar {
+    position: absolute;
+    bottom: -42px;
+    left: 0;
+    height: 42px;
+    background-color: #616161;
+    width: 100%;
+    z-index: 5;
+    font-weight: 600;
+    font-size: 16px;
+    color: #fff;
+    padding: 8px 20px;
+}
+
+
+.home-banner .home-banner-content .story {
+    width: 60%;
+    padding: 15px 15px 15px 15px;
+    position: absolute;
+    opacity: 0.83;
+    background-color: #333333;
+    z-index: 10;
+}
+
+.news-listing .home-body h4 {
+    background-color: #333333;
+    color: #fff;
+    font-size: 24px;
+    padding: 8px 10px;
+    margin-top: 10px;
+}
+
+
+.ministry-listing .home-body h4 {
+    background-color: #333333;
+    color: #fff;
+    font-size: 24px;
+    padding: 8px 10px;
+    margin-top: 10px;
+}
+
+.search-filters .search-filter h5 {
+    font-size: 18px;
+    background-color: #333333;
+    color: #fff;
+    padding: 10px;
+    margin: 0;
+    background-image: url(Images/chevron-down-search.png);
+    background-repeat: no-repeat;
+    background-position: center right 12px;
+}
+
+.story-navigator {
+    display: none;
+    position: fixed;
+    width: 100%;
+    background-color: #616161;
+    top: 0;
+    z-index: 100;
+    -webkit-box-shadow: 0 3px 5px 0 rgba(0, 0, 0, 0.5);
+    -ms-box-shadow: 0 3px 5px 0 rgba(0, 0, 0, 0.5);
+    box-shadow: 0 3px 5px 0 #000000;
+    box-shadow: 0 3px 5px 0 rgba(0, 0, 0, 0.5);
+}
+
+.story-navigator .segment.search.active {
+    position: relative;
+    border-bottom: 1px solid #616161;
+}
+
+.story-navigator .segment.search.active .border-hider {
+    display: block;
+    position: absolute;
+    width: 55px;
+    height: 1px;
+    left: 0;
+    border-bottom: 1px solid #616161;
+    bottom: -2px;
+}
+
+.story-body .social-media-bar {
+    min-height: 42px;
+    background-color: #616161;
+    width: 100%;
+    font-weight: 600;
+    font-size: 16px;
+    color: #fff;
+    padding: 8px 20px;
+}
+
+.expandable-section h4 {
+    width: 100%;
+    background-color: #333333;
+    background-repeat: no-repeat;
+    background-position: right 8px bottom 8px;
+    color: #fff;
+    height: 40px;
+    font-size: 24px;
+    margin: 0;
+    padding: 10px 10px 0 10px;
+}
+
+#footer hr {
+    border: 0;
+    height: 1px;
+    background: #616161;
+}
+
+#footer ul li + li {
+    border-color: #616161;
+}
+
+#end-cap {
+    position: relative;
+    z-index: 100;
+    display: none;
+    width: 100%;
+    background-color: #333333;
+    position: fixed;
+    height: 50px;
+    overflow: hidden;
+    bottom: -1px;
+    color: #fff;
+    padding: 15px 15px 10px;
+}
+
+.newsletters .home-body .header h4,
+.comm-contacts .header h4 {
+    background-color: #333333;
+}
+
+
+@media only screen and (max-width: 680px) {
+    
+    #mini-menu-container {
+        background-color: #333333;
+    }
+
+    .mini-menu-container-trigger {
+        background-color: #000000;
+       
+    }
+
+    .mini-search-container-trigger {
+        background-color: #616161;
+       
+    }
+
+    #mini-search-container .search {
+        margin-top: 0;
+        padding: 10px;
+        position: relative;
+        background-color: #616161;
+    }
+
+    #mini-menu-container ul li {
+        background-color: #333333;
+        border-bottom: 1px solid #616161;
+        clear: right;
+        position: relative;
+    }
+
+    #mini-menu-container ul li.first-link {
+        background-color: #000000;             
+        border-bottom: 1px solid var(--minimenu-border-color);
+    }
+
+    #mini-menu-container ul li ul {
+        border-top: 1px solid #616161;
+    }
+
+    
+}
+

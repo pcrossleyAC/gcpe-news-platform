@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectAccessibleStructure, withoutBannerScript } from "../../test/structure";
+import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { post, site } from "../../test/fixtures";
 import { renderReleasePage } from "./release";
 
@@ -36,13 +36,13 @@ describe("release page", () => {
     expect(doc.querySelector("figure figcaption")?.textContent).toBe("Clinic <photo>");
     expect(doc.querySelector('a[href="https://files.example/files/doc.pdf"]')?.textContent).toContain("PDF");
     expect(doc.querySelector('a[href="https://files.example/files/fr.pdf"]')?.textContent).toContain("Français");
-    expect([...doc.querySelectorAll("section h2")].map((h) => h.textContent)).toEqual(["Contacts", "Media assets", "Translations", "Related news"]);
+    expect([...doc.querySelectorAll("main section h2")].map((h) => h.textContent)).toEqual(["Contacts", "Media assets", "Translations", "Related news"]);
     expect(doc.querySelector('a[href="/releases/K2/"]')?.textContent).toBe("Other <news>");
   });
 
   it("leaves out empty sections and an unknown ministry", () => {
     const doc = expectAccessibleStructure(renderReleasePage(post({ ministryKeys: ["nope"], azureAssets: null, azureTranslations: null, documents: [{ languageId: 4105, headline: "H", subheadline: null, detailsHtml: null, contacts: [] }] }), site, {}, { ministryNames: new Map(), related: [] }));
-    expect(doc.querySelectorAll("section")).toHaveLength(0);
+    expect(doc.querySelectorAll("main section")).toHaveLength(0);
     expect(doc.querySelector('main a[href^="/ministries/"]')).toBeNull();
   });
 
@@ -84,8 +84,8 @@ describe("release page", () => {
       ctx,
     );
     expect(html).toContain("<p>Safe.</p>");
-    expect(withoutBannerScript(html)).not.toContain("<script");
-    expect(html).not.toContain("onerror");
+    expect(withoutChromeScripts(html)).not.toContain("<script");
+    expect(withoutChromeScripts(html)).not.toContain("onerror");
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("<iframe");
     expect(html).not.toContain("<style");

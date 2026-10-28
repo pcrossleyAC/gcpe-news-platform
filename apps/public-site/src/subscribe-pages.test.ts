@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectAccessibleStructure, withoutBannerScript } from "../test/structure";
+import { expectAccessibleStructure, withoutChromeScripts } from "../test/structure";
 import { SUBSCRIBE_PAGES, writeSubscribePages } from "./subscribe-pages";
 
 const site = { name: "BC Gov News", baseUrl: "https://boxs.ca/site" };
@@ -10,7 +10,7 @@ describe("subscribe test pages", () => {
     await writeSubscribePages({ write: async (p: string, c: string) => void files.set(p, c) } as never, site, { test: true });
     expect([...files.keys()].sort()).toEqual(["subscribe/index.html", "subscribe/manage/index.html", "subscribe/unsubscribe/index.html"]);
     for (const html of files.values()) {
-      expect(html).toContain('<a class="brand" href="/site/">');
+      expect(html).toContain('<a class="navbar-brand ps-3" href="/site/">');
       expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
       expect(html).toContain("/api/Subscribe/");
       expect(html).toContain("api-version=1.0");
@@ -35,7 +35,7 @@ describe("subscribe test pages", () => {
       const html = page.render(site, {});
       expect(html).toContain('<p id="message" role="status"></p>');
       expect(html).toContain('<p id="message-alert" role="alert"></p>');
-      expect(withoutBannerScript(html)).not.toContain("setAttribute(\"role\"");
+      expect(withoutChromeScripts(html)).not.toContain("setAttribute(\"role\"");
     }
   });
   it("the manage page shows the request box immediately and never queries Confirm when there is no token", () => {

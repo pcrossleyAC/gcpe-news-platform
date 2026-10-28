@@ -5,15 +5,18 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
 import type { AddressInfo } from "node:net";
 import { extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTenantConfig } from "@gcpe/config";
+import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { createSiteBuilder } from "../apps/public-site/src/builder";
 import type { CategoryDto, PostDto } from "../apps/public-site/src/dto";
 import type { NewsApiClient } from "../apps/public-site/src/news-api-client";
 import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index";
 import type { SiteInfo } from "../apps/public-site/src/render";
+import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
 import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
 import { post } from "../apps/public-site/test/fixtures";
@@ -80,9 +83,12 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
   };
   const tenant = loadTenantConfig(BC_TENANT);
-  const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme, logo: null };
+  const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme, timeZone: tenant.timeZone };
+  // BC's tenant settings, as the live site shows them before anything is published: the footer
+  // links and the land acknowledgement band, so axe and Lighthouse check them too.
+  const settings = loadSiteSettingsDefaults(BC_TENANT, tenant.site.theme);
   const builder = createSiteBuilder({ newsApi, storage: fsStorage(outDir), index: memoryIndex(), site, assetsDir: null });
-  const result = await builder.buildAll({ test: o.test });
+  const result = await builder.buildAll({ test: o.test, settings, ministryMenu: ministryMenu(await newsApi.ministries()) });
   if (result.failures > 0) throw new Error(`fixture site: ${result.failures} page(s) failed to build`);
 }
 
@@ -93,9 +99,17 @@ const TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".json": "application/json",
 };
 
-/** A static server for the built site: "/x/" serves "x/index.html", a missing file 404.html. */
+/** Gzipped when the client accepts it, as production (boxs.ca's nginx, brotli) compresses text. */
+const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml|rss\+xml)|image\/svg\+xml)/;
+
+/** A static server for the built site: "/x/" serves "x/index.html", a missing file 404.html.
+ * Text is gzipped when the client accepts it. */
 export async function serveStatic(dir: string): Promise<{ url: string; close(): Promise<void> }> {
   const root = resolve(dir);
   const server = createServer(async (req, res) => {
@@ -105,8 +119,15 @@ export async function serveStatic(dir: string): Promise<{ url: string; close(): 
       if (relative(root, file).startsWith("..")) throw new Error("outside");
       if ((await stat(file)).isDirectory()) file = join(file, "index.html");
       const body = await readFile(file);
-      res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" });
-      res.end(body);
+      const type = TYPES[extname(file)] ?? "application/octet-stream";
+      // Production (boxs.ca's nginx) compresses text; without this, Lighthouse scores an uncompressed site.
+      if (COMPRESSIBLE.test(type) && /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) {
+        res.writeHead(200, { "content-type": type, "content-encoding": "gzip", vary: "accept-encoding" });
+        res.end(gzipSync(body));
+      } else {
+        res.writeHead(200, { "content-type": type });
+        res.end(body);
+      }
     } catch {
       res.writeHead(404, { "content-type": TYPES[".html"]! });
       res.end(await readFile(join(root, "404.html")).catch(() => ""));

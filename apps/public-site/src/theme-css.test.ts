@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { siteThemeSchema } from "@gcpe/config";
+import { BC_SANS_FILES } from "./site-assets";
 import { DEFAULT_THEME, themeCss } from "./theme-css";
+
+const overrides = readFileSync(new URL("../assets/site/overrides.css", import.meta.url), "utf8");
 
 describe("themeCss", () => {
   it("emits every colour as a CSS variable and the font stack", () => {
@@ -18,7 +22,27 @@ describe("themeCss", () => {
   it("has a visible focus style and a skip link that appears on focus", () => {
     const css = themeCss(DEFAULT_THEME);
     expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--color-accent\)/);
-    expect(css).toMatch(/\.skip-link:focus\s*\{/);
+    expect(overrides).toMatch(/\.skip-link:focus\s*\{/);
+  });
+  it("aliases the five legacy variables to our tokens", () => {
+    expect(themeCss(DEFAULT_THEME)).toContain(
+      ":root{--primary-blue:var(--color-primary);--info-blue:var(--color-primary);--theme-text:var(--color-text);--theme-link:var(--color-primary);--theme-footer-background:var(--color-background)}",
+    );
+  });
+  it(":focus-visible is the last rule", () => {
+    expect(themeCss(DEFAULT_THEME).trimEnd().endsWith(":focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }")).toBe(true);
+  });
+  it("keeps only the token blocks and the focus rule; every other rule lives in overrides.css", () => {
+    const css = themeCss(DEFAULT_THEME);
+    for (const sel of ["#landAcknowledgement", "#footer h2", ".card", ".post-list", ".ministry-layout", ".connect-list", ".site-banner-info", ".skip-link"]) {
+      expect(css).not.toContain(sel);
+      expect(overrides).toContain(sel);
+    }
+  });
+  it("never puts display:contents on an element that carries a landmark (older Safari drops its role)", () => {
+    expect(overrides).not.toMatch(/display\s*:\s*contents/);
+    // The footer nav keeps a box and lays its two columns out as legacy's flat .top row did.
+    expect(overrides).toMatch(/#footer \.top > nav\{display:flex;flex-wrap:wrap;gap:inherit;flex:2 1 50px\}/);
   });
   it("refuses to quote a font family that could break out of the declaration", () => {
     const evil = { ...DEFAULT_THEME, font: { family: 'X"; } body { color: red', fallback: "serif" } };
@@ -40,8 +64,10 @@ describe("themeCss", () => {
     expect(css).not.toContain(`--color-primary: ${DEFAULT_THEME.colors.primary};`);
     expect(css).toContain("--color-banner-info: #123456;");
     expect(css).toContain("--color-banner-emergency: #A12B2B;");
-    expect(css).toMatch(/\.site-banner\s*\{[^}]*background: var\(--color-banner-info\)/);
-    expect(css).toMatch(/\.site-banner-emergency\s*\{[^}]*background: var\(--color-banner-emergency\)/);
+    expect(overrides).toMatch(/\.site-banner-info\s*\{[^}]*background:\s*var\(--color-banner-info\)/);
+    expect(overrides).toMatch(/\.site-banner-emergency\s*\{[^}]*background:\s*var\(--color-banner-emergency\)/);
+    // The old placeholder-era rules are gone.
+    expect(overrides).not.toMatch(/\.site-banner\s*[{ ]|\.blue-bridge-banner/);
   });
   it("without settings colours, the banner variables use the default banner colours", () => {
     const css = themeCss(DEFAULT_THEME);
@@ -55,5 +81,42 @@ describe("themeCss", () => {
   });
   it("the default theme passes the tenant schema's contrast check", () => {
     expect(siteThemeSchema.safeParse(DEFAULT_THEME).success).toBe(true);
+  });
+});
+
+describe("overrides.css", () => {
+  it("uses token colours only: no hex, rgb() or named colours", () => {
+    expect(overrides).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(overrides).not.toMatch(/\brgba?\(/);
+    expect(overrides).not.toMatch(/:\s*(white|black|red|gray|grey)\b/);
+  });
+  it("folds in components.css's nav-link hover, the icon sprite sizing and long-link wrapping", () => {
+    expect(overrides).toMatch(/\.nav-link:hover,\s*\.nav-link:focus\s*\{[^}]*background-color:\s*var\(--color-/);
+    expect(overrides).toContain(".icon{width:1em;height:1em;fill:currentColor;vertical-align:-0.125em}");
+    expect(overrides).toContain(".story-copy a, main a{overflow-wrap:anywhere}");
+  });
+  it("underlines links inside running text (legacy CSS removes it; axe link-in-text-block, WCAG 1.4.1)", () => {
+    expect(overrides).toMatch(/main p a, main li a\s*\{[^}]*text-decoration:\s*underline/);
+  });
+  it("re-declares the six BC Sans faces legacy declares, woff2 only, with font-display: swap", () => {
+    const faces = [...overrides.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]!);
+    const desc = faces.map((f) => ({
+      style: /font-style:\s*(\w+)/.exec(f)?.[1],
+      weight: /font-weight:\s*(\w+)/.exec(f)?.[1],
+      file: /url\("\.\.\/legacy\/fonts\/([^"]+)"\)/.exec(f)?.[1],
+      swap: /font-display:\s*swap/.test(f) && /font-family:\s*"BCSans"/.test(f),
+    }));
+    expect(desc).toEqual([
+      { style: "normal", weight: "normal", file: "BCSans-Regular.woff2", swap: true },
+      { style: "italic", weight: "normal", file: "BCSans-Italic.woff2", swap: true },
+      { style: "normal", weight: "700", file: "BCSans-Bold.woff2", swap: true },
+      { style: "italic", weight: "700", file: "BCSans-BoldItalic.woff2", swap: true },
+      { style: "normal", weight: "300", file: "BCSans-Light.woff2", swap: true },
+      { style: "italic", weight: "300", file: "BCSans-LightItalic.woff2", swap: true },
+    ]);
+    for (const d of desc) expect(BC_SANS_FILES).toContain(d.file);
+  });
+  it("has no :focus-visible outline rule of its own (theme.css's loads last)", () => {
+    expect(overrides).not.toMatch(/(^|[,}])\s*:focus-visible\s*\{/m);
   });
 });

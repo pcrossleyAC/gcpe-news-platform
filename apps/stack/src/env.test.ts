@@ -145,7 +145,7 @@ describe("envFor", () => {
 });
 
 describe("assertPrivateDir", () => {
-  const pub = { "NRMS_STORAGE_DIR (served at /files)": "/data/storage", "SITE_OUTPUT_DIR (served at /site)": "/data/site-output", "STAFF_WEB_DIR (served at /hub)": "/app/staff-web", unset: undefined };
+  const pub = { "NRMS_STORAGE_DIR (served at /files)": "/data/storage", "SITE_OUTPUT_DIR (served at / and /site)": "/data/site-output", "STAFF_WEB_DIR (served at /hub)": "/app/staff-web", unset: undefined };
   it("accepts a folder beside the public ones", () => {
     expect(() => assertPrivateDir("CALENDAR_STORAGE_DIR", "/data/calendar-files", pub)).not.toThrow();
   });

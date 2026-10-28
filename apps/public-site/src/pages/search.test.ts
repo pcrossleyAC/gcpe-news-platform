@@ -10,7 +10,12 @@ describe("search page", () => {
   it("is accessible: a labelled search form, one h1, live regions, a noscript fallback", () => {
     const doc = expectAccessibleStructure(page());
     expect(doc.querySelector("h1")?.textContent).toBe("Search news");
-    const form = doc.querySelector('form[role="search"]')!;
+    // The header's search forms are left off here, as legacy does: this page's form is the only one.
+    // The phone toggle stays (legacy shows it) as a link to this page's box (R12).
+    expect(doc.querySelectorAll("form")).toHaveLength(1);
+    expect(doc.querySelector("header form, #smd-search-container")).toBeNull();
+    expect(doc.querySelector("header a#search-md-button")?.getAttribute("href")).toBe("#q");
+    const form = doc.querySelector('main form[role="search"]')!;
     expect(form.getAttribute("action")).toBe("/site/search/");
     expect(form.querySelector('label[for="q"]')?.textContent).toBe("Search for");
     expect(form.querySelector("#q")?.getAttribute("maxlength")).toBe("200");

@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { buildReportWorker } from "./build-report-worker.mjs";
+import { copyPublicSiteAssets } from "./lib/public-site-assets.mjs";
 import { runBuild as runStaffWebBuild } from "./build-staff-web.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -152,6 +153,10 @@ async function runBuild() {
   console.log("[build-siteground] copying config …");
   cpSync(join(root, "config"), join(outDir, "config"), { recursive: true });
 
+  // The public site's vendored CSS, logos, BC Sans and icon sprite, beside stack.js (site-assets.ts reads them from there).
+  console.log("[build-siteground] copying public-site assets …");
+  copyPublicSiteAssets(outDir);
+
   // Task 1 (staff-web): the staff app, built fresh (never reusing a stale apps/staff-web/dist
   // from an earlier, unrelated build) and copied to dist/siteground/hub — the relative path
   // apps/stack/src/env.ts's STAFF_WEB_DIR default falls back to when it's sitting next to the
@@ -256,10 +261,10 @@ async function runBuild() {
         SITE_DATABASE_URL: "postgres://user:pass@127.0.0.1:1/site",
         SITE_NEWS_API_URL: "self:/",
         SITE_OUTPUT_DIR: "./site-output",
-        SITE_PUBLIC_SITE_URL: "https://news.example.invalid/site",
+        SITE_PUBLIC_SITE_URL: "https://news.example.invalid",
         NOD_DATABASE_URL: "postgres://user:pass@127.0.0.1:1/nod",
         NOD_DISTRIBUTION_URL: "self:/distribution",
-        NOD_PUBLIC_SITE_URL: "https://news.example.invalid/site",
+        NOD_PUBLIC_SITE_URL: "https://news.example.invalid",
         NOD_LINK_SECRET: "l".repeat(32),
         DIST_DATABASE_URL: "postgres://user:pass@127.0.0.1:1/distribution",
         DIST_SMTP_HOST: "127.0.0.1",

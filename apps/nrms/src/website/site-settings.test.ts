@@ -57,6 +57,51 @@ describe("website/site-settings", () => {
     return publishSettings(tdb.db, actor, defaults, subs, { baseRevision: live?.revision ?? null, section: "banner", value: banner(message), note });
   };
 
+  it("getSettingsState fills a live document's missing land acknowledgement from the tenant defaults", async () => {
+    const legacy = structuredClone(defaults);
+    delete legacy.footer.landAcknowledgement;
+    await tdb.pool.query(
+      "INSERT INTO site_settings_revisions (revision, document, published_by_id, published_by_name) VALUES (1, $1, 'u', 'Jane')",
+      [JSON.stringify(legacy)],
+    );
+    const state = await getSettingsState(tdb.db, jane, defaults);
+    expect(state.live?.revision).toBe(1);
+    expect(state.document.footer.landAcknowledgement).toBe(defaults.footer.landAcknowledgement);
+    expect(state.document.footer.landAcknowledgement).not.toBe("");
+    expect(state.errors).toEqual([]);
+  });
+
+  it("a non-footer publish, conflict and rebase on a pre-field live document never report the footer", async () => {
+    const legacy = structuredClone(defaults);
+    delete legacy.footer.landAcknowledgement;
+    await tdb.pool.query(
+      "INSERT INTO site_settings_revisions (revision, document, published_by_id, published_by_name) VALUES (1, $1, 'u', 'Jane')",
+      [JSON.stringify(legacy)],
+    );
+    // Sam starts a banner draft from the pre-field revision; Jane publishes a banner first.
+    await saveDraft(tdb.db, sam, defaults, { baseRevision: 1, section: "banner", value: banner("Sam's banner") });
+    expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Jane's banner") })).toEqual({
+      result: "published",
+      revision: 2,
+    });
+    // As the history route asks (with the tenant defaults): the pre-field revision's footer is the
+    // default text, the same as live's, so only the banner differs.
+    expect((await getRevision(tdb.db, 1, defaults))!.differing).toEqual(["banner"]);
+    const stale = await publishSettings(tdb.db, sam, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Sam's banner") });
+    expect(stale).toMatchObject({ result: "conflict", differing: ["banner"] });
+    const rebased = await rebaseDraft(tdb.db, sam, defaults, { section: "banner", value: banner("Sam's banner") });
+    expect(rebased.setAside).toEqual([]);
+    expect(rebased.document.footer.landAcknowledgement).toBe(defaults.footer.landAcknowledgement);
+    expect(await publishSettings(tdb.db, sam, defaults, subs, { baseRevision: 2, section: "banner", value: banner("Sam's banner") })).toEqual({
+      result: "published",
+      revision: 3,
+    });
+    // A real footer change still shows: a custom acknowledgement isn't the pre-field default.
+    const footer = { ...defaults.footer, landAcknowledgement: "Ours." };
+    expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 3, section: "footer", value: footer })).toMatchObject({ revision: 4 });
+    expect((await getRevision(tdb.db, 1, defaults))!.differing).toEqual(["banner", "footer"]);
+  });
+
   it("with nothing stored, the state is the defaults with no live revision, draft or errors", async () => {
     const state = await getSettingsState(tdb.db, jane, defaults);
     expect(state).toEqual({ live: null, document: defaults, draft: null, baseRevision: null, errors: [] });

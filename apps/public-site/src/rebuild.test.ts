@@ -9,7 +9,7 @@ import type { PostDto } from "./dto";
 import { createSiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
-import { enqueueSiteWrite } from "./rebuild";
+import { enqueueSiteWrite, RENDER_CHROME_VERSION } from "./rebuild";
 import { createRebuildHandler, kickBackgroundSync, type SyncDeps } from "./sync";
 
 function envelope(data: unknown): EventEnvelope {
@@ -171,4 +171,10 @@ describe("enqueueSiteWrite", () => {
     await Promise.all([p1, p2]);
     expect(order).toEqual(["start1", "end1", "start2", "end2"]);
   });
+});
+
+describe("RENDER_CHROME_VERSION", () => {
+  // 6: the legacy <head> (favicon, html.js marker, vendored legacy CSS, overrides.css, theme aliases).
+  // 7: the news.gov header (logo, News ministry menu, Subscribe, search, phone drawer) and site.js.
+  it("RENDER_CHROME_VERSION is 7", () => expect(RENDER_CHROME_VERSION).toBe(7));
 });

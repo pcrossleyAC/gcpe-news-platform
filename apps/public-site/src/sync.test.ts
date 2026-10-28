@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { bcSettings, post, site } from "../test/fixtures";
+import { bcSettings, ministry, post, site } from "../test/fixtures";
 import type { FakeNewsApi } from "../test/fake-news-api";
 import type { SiteSettings } from "@gcpe/site-settings";
 import type { PostDto } from "./dto";
@@ -12,11 +12,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSiteBuilder, type SiteBuilder } from "./builder";
 import { fsStorage } from "./storage";
-import { settingsHashes } from "./settings";
+import { DEFAULT_TIME_ZONE, settingsHashes } from "./settings";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
-import { syncSite, type SyncDeps } from "./sync";
+import { degradedSubscribe, syncSite, type SyncDeps } from "./sync";
+import * as subscribePages from "./subscribe-pages";
+import * as rebuildAll from "./rebuild-all";
 
 describe("syncSite", () => {
   let tdb: TestDatabase;
@@ -73,15 +75,15 @@ describe("syncSite", () => {
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
 
     await syncSite(deps); // no marker yet: a full build, Blue Bridge off
-    expect(storage.files.get("index.html")).not.toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("index.html")).not.toContain('id="bridge-banner"');
 
     deps.newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
     await syncSite(deps);
 
     const releasePages = [...storage.files.entries()].filter(([path]) => /^releases\/.+\/index\.html$/.test(path));
     expect(releasePages.length).toBeGreaterThan(0);
-    for (const [, content] of releasePages) expect(content as string).toContain('class="blue-bridge-banner"');
-    expect(storage.files.get("index.html")).toContain('class="blue-bridge-banner"');
+    for (const [, content] of releasePages) expect(content as string).toContain('id="bridge-banner"');
+    expect(storage.files.get("index.html")).toContain('id="bridge-banner"');
   });
 
   it("calls deps.feed, if given, before draining (events become a doorbell)", async () => {
@@ -158,8 +160,8 @@ describe("syncSite", () => {
 
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
     expect(order).toEqual(["start-home-1(ON, gated)", "end-home-1(ON)"]);
-    expect(storage.files.get("releases/K1/index.html")).not.toContain('class="blue-bridge-banner"');
-    expect(storage.files.get("index.html")).not.toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("releases/K1/index.html")).not.toContain('id="bridge-banner"');
+    expect(storage.files.get("index.html")).not.toContain('id="bridge-banner"');
     expect(JSON.parse(storage.files.get(".site-state.json") as string)).toMatchObject({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
   });
 
@@ -194,6 +196,153 @@ describe("syncSite", () => {
     deps.newsApi.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null });
     await expect(syncSite(deps, { pages: ["post:K1"] })).resolves.toBeDefined();
     expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
+  });
+
+  describe("ministries menu", () => {
+    const posts = () => new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })], ["K3", post({ key: "K3" })]]);
+    const marker = (deps: SyncDeps) => JSON.parse((deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json") as string);
+    const renameHealth = (deps: SyncDeps) => {
+      deps.newsApi.ministries = async () => [ministry({ key: "health", name: "Health and Wellness" }), ministry({ key: "finance", name: "Finance" })];
+    };
+
+    const queued = async () => new Set((await tdb.pool.query("SELECT page_id FROM rebuild_queue")).rows.map((r: { page_id: string }) => r.page_id));
+    /** A rebuild-all (with batch 1, the first page is drained) holds every post and aggregate page; a partial rebuild does not. */
+    const expectRebuildAll = async () => {
+      const q = await queued();
+      for (const id of ["post:K1", "post:K2", "post:K3", "archive", "sitemap"]) expect(q.has(id)).toBe(true);
+    };
+    const reset = () => tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+
+    it("a ministry renamed since the marker queues one rebuild-all; the next identical turn queues nothing", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps); // cold start: marker written
+      await reset();
+      renameHealth(deps);
+      await syncSite(deps);
+      await expectRebuildAll();
+      await reset();
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+    });
+
+    it("after a non-empty menu was recorded, an empty ministries() answer is unavailable: the turn rejects, and recovery queues exactly one rebuild-all", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps);
+      const before = (deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json");
+      await reset();
+      deps.newsApi.ministries = async () => [];
+      await expect(syncSite(deps)).rejects.toThrow(/no ministries/);
+      expect(await queueDepth(tdb.db)).toBe(0);
+      expect((deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json")).toBe(before);
+      renameHealth(deps); // back, with a renamed ministry
+      await syncSite(deps);
+      await expectRebuildAll();
+      await reset();
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+    });
+
+    it("with no non-empty menu ever recorded, an empty ministries() list is a valid empty menu", async () => {
+      const deps = setup(posts());
+      deps.newsApi.ministries = async () => [];
+      await syncSite(deps);
+      const m = marker(deps);
+      expect(m.ministryMenuHash).toMatch(/^[0-9a-f]{64}$/);
+      await reset();
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+      expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
+    });
+
+    it("an outage then recovery with the same menu queues nothing", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps);
+      await reset();
+      const good = deps.newsApi.ministries;
+      deps.newsApi.ministries = async () => [];
+      await expect(syncSite(deps)).rejects.toThrow();
+      deps.newsApi.ministries = good;
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+    });
+
+    it("a menu change on a fallback-defaults turn rebuilds every page", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps);
+      await reset();
+      renameHealth(deps);
+      deps.newsApi.siteSettings = async () => {
+        throw new Error("settings down");
+      };
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await syncSite(deps);
+      } finally {
+        error.mockRestore();
+      }
+      await expectRebuildAll();
+    });
+
+    it("subscribe pages selfHeal wrote without the menu are rewritten by the first good turn", async () => {
+      const deps = setup(posts());
+      await syncSite(deps);
+      const rewritten: unknown[] = [];
+      degradedSubscribe.add(deps.storage);
+      const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async (_s, _site, o) => void rewritten.push(o.ministryMenu));
+      try {
+        await syncSite(deps);
+        await syncSite(deps);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(rewritten).toHaveLength(1);
+      expect(rewritten[0]).toEqual(expect.arrayContaining([{ key: "health", name: "Health" }]));
+    });
+
+    it("a failed rewrite of the degraded subscribe pages keeps them marked, so the next good turn retries", async () => {
+      const deps = setup(posts());
+      await syncSite(deps);
+      degradedSubscribe.add(deps.storage);
+      let calls = 0;
+      const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async () => {
+        if (++calls === 1) throw new Error("disk full");
+      });
+      try {
+        await expect(syncSite(deps)).rejects.toThrow("disk full");
+        expect(degradedSubscribe.has(deps.storage)).toBe(true);
+        await syncSite(deps);
+        expect(calls).toBe(2);
+        expect(degradedSubscribe.has(deps.storage)).toBe(false);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("a ministries() failure rejects the turn and leaves the marker untouched", async () => {
+      const deps = setup(posts());
+      await syncSite(deps);
+      const before = (deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json");
+      deps.newsApi.ministries = async () => {
+        throw new Error("ministries down");
+      };
+      await expect(syncSite(deps, { pages: ["post:K1"] })).rejects.toThrow("ministries down");
+      expect((deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json")).toBe(before);
+    });
+
+    it("a marker written before ministryMenuHash existed does not queue a rebuild-all by itself", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps);
+      const old = marker(deps);
+      delete old.ministryMenuHash;
+      await (deps.storage as ReturnType<typeof memoryStorage>).write(".site-state.json", JSON.stringify(old));
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+      expect(marker(deps).ministryMenuHash).toMatch(/^[0-9a-f]{64}$/); // adopted, so a later change is seen
+      renameHealth(deps);
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBeGreaterThan(0);
+    });
   });
 
   describe("site settings", () => {
@@ -328,7 +477,7 @@ describe("syncSite", () => {
       expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"]));
       expect(r.after.granvilleOn).toBe(true);
       expect(r.settingsHashes(r.after)).toEqual(r.settingsHashes(r.before));
-      expect(r.page).toContain('class="blue-bridge-banner"');
+      expect(r.page).toContain('id="bridge-banner"');
       expect(r.page).toContain("Published Holder");
     });
 
@@ -339,7 +488,7 @@ describe("syncSite", () => {
       const defaults = settingsHashes(withHolder("Tenant Default Holder"), "America/Vancouver", new Date());
       expect(r.settingsHashes(r.after)).toEqual(defaults);
       expect(r.settingsHashes(r.after)).not.toEqual(r.settingsHashes(r.before));
-      expect(r.page).toContain('class="blue-bridge-banner"');
+      expect(r.page).toContain('id="bridge-banner"');
       expect(r.page).toContain("Tenant Default Holder"); // nothing else exists to render with
     });
 
@@ -469,6 +618,54 @@ describe("syncSite", () => {
       const r = recording(deps);
       await syncSite(r.deps);
       expect(r.rendered.sort()).toEqual(["category:ministries:finance", "category:ministries:health"]);
+    });
+
+    describe("land acknowledgement (chrome v7)", () => {
+      const preField = () => {
+        const d = bcSettings();
+        delete d.footer.landAcknowledgement;
+        return d;
+      };
+      const BC_ACK = bcSettings().footer.landAcknowledgement!;
+
+      it("a published document without the field shows the tenant default text", async () => {
+        const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: bcSettings() };
+        api(deps).settings = published(preField());
+        await syncSite(deps);
+        for (const p of ["index.html", "releases/K1/index.html", "subscribe/index.html"]) {
+          expect(html(deps, p)).toContain('<aside id="landAcknowledgement" class="container-fluid" aria-label="Land acknowledgement">');
+          expect(html(deps, p)).toContain(BC_ACK);
+        }
+      });
+
+      it("deploying v7 with a filled default queues exactly one rebuild-all; the next turn queues nothing", async () => {
+        const deps = { ...setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })], ["K3", post({ key: "K3" })]]), 1), defaultSettings: bcSettings() };
+        const storage = deps.storage as ReturnType<typeof memoryStorage>;
+        api(deps).settings = published(preField());
+        await syncSite(deps);
+        // The marker a v6 build left: chrome 6 and the footer hash of the unfilled document.
+        const v6 = { ...JSON.parse(storage.files.get(".site-state.json") as string), chrome: 6, footerHash: settingsHashes(preField(), DEFAULT_TIME_ZONE, new Date()).footerHash };
+        await storage.write(".site-state.json", JSON.stringify(v6));
+        await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+        // The queue de-duplicates by page id, so count the rebuild-all requests themselves.
+        const chrome = vi.spyOn(rebuildAll, "enqueueChromeChanges");
+        const rebuildAlls = () => chrome.mock.calls.filter(([, , c]) => c.all).length;
+        try {
+          await syncSite(deps);
+          expect(rebuildAlls()).toBe(1);
+          const q = new Set((await tdb.pool.query("SELECT page_id FROM rebuild_queue")).rows.map((r: { page_id: string }) => r.page_id));
+          for (const id of ["post:K1", "post:K2", "post:K3", "archive", "sitemap"]) expect(q.has(id)).toBe(true);
+          const marker = JSON.parse(storage.files.get(".site-state.json") as string);
+          expect(marker.chrome).toBe(RENDER_CHROME_VERSION);
+          expect(marker.footerHash).toBe(settingsHashes(bcSettings(), DEFAULT_TIME_ZONE, new Date()).footerHash);
+          await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+          await syncSite(deps);
+          expect(await queueDepth(tdb.db)).toBe(0);
+          expect(rebuildAlls()).toBe(1); // still the one: the next turn asked for none
+        } finally {
+          chrome.mockRestore();
+        }
+      });
     });
 
     it("unchanged settings queue nothing", async () => {

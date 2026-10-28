@@ -1,29 +1,30 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-import type { SiteTheme } from "@gcpe/config";
 import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "./render";
 import { bannerJson, themeDefaults } from "./settings";
+import { writeBuiltinAssets } from "./site-assets";
 import type { SiteStorage } from "./storage";
 import { DEFAULT_THEME, themeCss } from "./theme-css";
 
 export function renderNotFoundPage(site: SiteInfo, opts: PageOptions): string {
   const base = basePath(site);
-  return renderPage("Page not found", site, `${base}/404.html`, `<h1>Page not found</h1>
+  return renderPage("Page not found", site, `${base}/404.html`, `<div class="home-body not-found">
+<h1>Page not found</h1>
 <p>The page you asked for isn't here. It may have moved or been removed.</p>
-<p><a href="${e(base)}/">Go to the home page</a> or <a href="${e(base)}/archive/">browse the archive</a>.</p>`, opts);
+<form class="search-panel-bar" role="search" aria-label="Search for the page" action="${e(base)}/search/" method="get" data-prefill-from-path>
+<label for="not-found-q">Search for the page</label>
+<input id="not-found-q" name="q" type="search">
+<button type="submit">Search</button>
+</form>
+<p><a href="${e(base)}/">Go to the home page</a> or <a href="${e(base)}/archive/">browse the archive</a>.</p>
+</div>`, opts);
 }
 
 /** spec §6.1: test sites keep Disallow: / (constraints.md's test-site rule). */
 export function renderRobots(site: SiteInfo, test: boolean): string {
   if (test) return "User-agent: *\nDisallow: /\n";
   return `User-agent: *\nAllow: /\nSitemap: ${new URL(site.baseUrl).origin}${basePath(site)}/sitemap.xml\n`;
-}
-
-/** The logo is shown only once its file exists under SITE_ASSETS_DIR (Q76). */
-export function logoFor(theme: SiteTheme, assetsDir: string | null, site: Pick<SiteInfo, "baseUrl">): { src: string; alt: string } | null {
-  if (!assetsDir || !existsSync(join(assetsDir, theme.logo.path))) return null;
-  return { src: `${basePath(site)}/${theme.logo.path}`, alt: theme.logo.alt };
 }
 
 /** Every file under `<assetsDir>/assets`, as paths relative to assetsDir; any path segment
@@ -46,6 +47,7 @@ async function assetFiles(assetsDir: string): Promise<string[]> {
  * page's inline script), the tenant's asset files, 404.html and robots.txt — cheap, so written on
  * every build, and the only page a theme or banner change rebuilds. */
 export async function writeStaticPages(storage: SiteStorage, site: SiteInfo, opts: PageOptions, assetsDir: string | null): Promise<void> {
+  await writeBuiltinAssets(storage);
   if (assetsDir) {
     for (const rel of await assetFiles(assetsDir)) await storage.write(rel, new Uint8Array(await readFile(join(assetsDir, rel))));
   }

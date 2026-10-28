@@ -78,10 +78,10 @@ describe("buildEnvLines", () => {
     expect(map.get("CORE_DATABASE_URL")).not.toContain("db-pass-with-@-and-&-chars@"); // raw, unencoded @ would break the URL
   });
 
-  it("builds PUBLIC_SITE_URL from the domain for both SITE and NOD, as https://<domain>/site", () => {
+  it("builds PUBLIC_SITE_URL from the domain for both SITE and NOD, as the bare origin https://<domain>", () => {
     const map = parseEnvLines(buildEnvLines(sampleInput({ domain: "news.gov.bc.ca" }), generateSecrets()).join("\n"));
-    expect(map.get("SITE_PUBLIC_SITE_URL")).toBe("https://news.gov.bc.ca/site");
-    expect(map.get("NOD_PUBLIC_SITE_URL")).toBe("https://news.gov.bc.ca/site");
+    expect(map.get("SITE_PUBLIC_SITE_URL")).toBe("https://news.gov.bc.ca");
+    expect(map.get("NOD_PUBLIC_SITE_URL")).toBe("https://news.gov.bc.ca");
   });
 
   it("emits one STACK_EVENT_SECRET instead of per-app EVENT_* JSON (the stack derives the wiring)", () => {

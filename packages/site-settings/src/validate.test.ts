@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bcSettings } from "./fixtures";
-import { bannerVisibleAt, contrastRatio, isSafeUrl, validateSiteSettings } from "./index";
+import { bannerVisibleAt, contrastRatio, defaultSiteSettings, isSafeUrl, validateSiteSettings } from "./index";
 import type { SiteSettings } from "./index";
 
 const base = (): SiteSettings => structuredClone(bcSettings());
@@ -34,6 +35,23 @@ describe("validateSiteSettings", () => {
     expect(errorsFor((d) => { d.footer.moreInfoLinks[2]!.url = "http://www2.gov.bc.ca/privacy"; })).toEqual([
       { field: "footer.moreInfoLinks[2].url", message: "Must start with https:// or / (a page on this site)." },
     ]);
+  });
+
+  it("checks the land acknowledgement: 1000 characters at most, plain text, empty allowed", () => {
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = "a".repeat(1001); })).toEqual([
+      { field: "footer.landAcknowledgement", message: "Keep the land acknowledgement to 1000 characters or fewer." },
+    ]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = "a".repeat(1000); })).toEqual([]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = "<b>hi</b>"; })).toEqual([
+      { field: "footer.landAcknowledgement", message: "Use plain text." },
+    ]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = ""; })).toEqual([]);
+    expect(errorsFor((d) => { delete d.footer.landAcknowledgement; })).toEqual([]);
+    // Trimmed first: whitespace-only is empty (no band), and surrounding whitespace doesn't count
+    // toward the limit.
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = " \n\t "; })).toEqual([]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = `  ${"a".repeat(1000)}\n`; })).toEqual([]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = `  ${"a".repeat(1001)}  `; })).toHaveLength(1);
   });
 
   it("checks the banner", () => {
@@ -72,6 +90,33 @@ describe("validateSiteSettings", () => {
     expect(errorsFor((d) => { d.theme.colors.primaryText = "#555555"; })).toEqual([
       { field: "theme.colors.primaryText", message: expect.stringContaining("on the header") },
     ]);
+  });
+
+  it("a primary too pale to read as link text on the background is refused", () => {
+    expect(errorsFor((d) => { d.theme.colors.primary = "#8FB3E8"; d.theme.colors.primaryText = "#000000"; })).toEqual([
+      { field: "theme.colors.primary", message: "Too faint to read as link text (2.1:1, needs 4.5:1). Pick a darker shade." },
+      { field: "theme.colors.primary", message: "Too faint to read behind white text (2.1:1, needs 4.5:1). Pick a darker shade." },
+    ]);
+  });
+
+  // Legacy CSS paints hard-coded white text on the primary colour (custom.css .btn-primary-blue,
+  // site.css .news-listing .home-body h3), whatever primaryText and the background are.
+  it("a primary too pale behind white text is refused even when links on a dark background read", () => {
+    expect(
+      errorsFor((d) => {
+        Object.assign(d.theme.colors, { primary: "#A0C4FF", primaryText: "#000000", text: "#FFFFFF", background: "#000000", surface: "#000000" });
+      }),
+    ).toEqual([{ field: "theme.colors.primary", message: "Too faint to read behind white text (1.8:1, needs 4.5:1). Pick a darker shade." }]);
+  });
+
+  it("the bc and nb tenant defaults still validate", () => {
+    for (const t of ["bc", "nb"]) {
+      const tenant = JSON.parse(readFileSync(new URL(`../../../config/tenants/${t}.json`, import.meta.url), "utf8")) as {
+        site: { theme: Parameters<typeof defaultSiteSettings>[0] };
+      };
+      expect(validateSiteSettings(defaultSiteSettings(tenant.site.theme))).toEqual([]);
+    }
+    expect(validateSiteSettings(bcSettings())).toEqual([]);
   });
 
   it.each(["013366", "#013", "#01336G", "red"])("rejects the malformed colour %j and skips contrast", (c) => {

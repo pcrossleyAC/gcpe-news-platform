@@ -2,8 +2,13 @@ import type { SiteTheme } from "@gcpe/config";
 import { escapeHtml, isSafeUrl } from "@gcpe/http-kit";
 import type { LinkSetting, SiteSettings } from "@gcpe/site-settings";
 import { SITE_BANNER_SCRIPT } from "./banner-script";
+// bootstrap, site, custom, transforms and accessibility-styles, in legacy order, as one file.
+import { LEGACY_BUNDLE } from "./legacy-bundle";
 import { DEFAULT_TIME_ZONE, settingsHref, themeDefaults, yearIn } from "./settings";
 import { DEFAULT_THEME } from "./theme-css";
+import type { MenuMinistry } from "./ministry-menu";
+import { renderHeader } from "./header";
+import { icon } from "./icons";
 
 export type { PostDocument, PostDto } from "./dto";
 
@@ -12,8 +17,6 @@ export interface SiteInfo {
   baseUrl: string;
   /** Tenant `site.theme`; DEFAULT_THEME when absent. */
   theme?: SiteTheme;
-  /** Set by start.ts only when the logo file exists under SITE_ASSETS_DIR (static-pages.ts's logoFor). */
-  logo?: { src: string; alt: string } | null;
   /** The tenant's IANA time zone (the footer's copyright year); DEFAULT_TIME_ZONE when absent. */
   timeZone?: string;
 }
@@ -29,6 +32,11 @@ export interface PageOptions {
   /** The site settings this turn applies (settings.ts's currentSettings): footer, connect page,
    * theme colours, banner JSON, ministry page headings. Absent ⇒ derived from the site's theme. */
   settings?: SiteSettings;
+  /** The header's ministries menu (ministry-menu.ts). Null or absent: unavailable. */
+  ministryMenu?: MenuMinistry[] | null;
+  /** The id of the page's own search input (the search page). The header's search forms and phone
+   * drawer are left off, and its phone search control becomes a link to that input (R12). */
+  pageSearchInput?: string;
 }
 
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
@@ -61,6 +69,15 @@ export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
   return new URL(site.baseUrl).pathname.replace(/\/+$/, "");
 }
 
+/** The head's inline script: marks `<html>` as `.js` before any CSS applies, so stylesheets can
+ * keep no-JS fallbacks under `html:not(.js)` without a flash. A constant: nothing is interpolated. */
+export const HTML_JS_MARKER = 'document.documentElement.classList.add("js")';
+
+/** site.js's `onerror`: if the script can't load, the page drops the html.js marker so the
+ * `html:not(.js)` fallbacks in overrides.css apply (the phone nav and search drawer show, News
+ * stays a link). A constant: nothing is interpolated. */
+export const SITE_SCRIPT_ONERROR = 'document.documentElement.classList.remove("js")';
+
 /** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
 export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
   const base = basePath(site);
@@ -73,10 +90,8 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const fontHref = theme.font.stylesheetUrl && isSafeUrl(theme.font.stylesheetUrl, { schemes: ["https:"] }) ? theme.font.stylesheetUrl : null;
   const font = fontHref ? `\n<link rel="stylesheet" href="${e(fontHref)}">` : "";
   const feed = opts.feed ? `\n<link rel="alternate" type="application/rss+xml" title="${e(opts.feed.title)}" href="${e(opts.feed.href)}">` : "";
-  const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
-  const brand = site.logo
-    ? `<img class="logo" src="${e(site.logo.src)}" alt="${e(site.logo.alt)}"><span class="wordmark">${e(site.name)}</span>`
-    : `<span class="wordmark">${e(site.name)}</span>`;
+  // Legacy loads the Granville Bridge theme only while Project Blue Bridge is on.
+  const bridgeCss = opts.banner ? `\n<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/granville-bridge-theme.css">` : "";
   const settings = opts.settings ?? themeDefaults(theme);
   return `<!doctype html>
 <html lang="en">
@@ -85,30 +100,44 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
 <link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}${description}
+<link rel="icon" href="${e(base)}/favicon.ico">
+<script>${HTML_JS_MARKER}</script>
+<link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="${e(base)}/assets/${LEGACY_BUNDLE}">
+<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/print.css" media="print">${bridgeCss}
+<link rel="stylesheet" href="${e(base)}/assets/site/overrides.css">
 <link rel="stylesheet" href="${e(base)}/assets/theme.css">${font}${feed}
 </head>
 <body${bodyAttr}>
-<a class="skip-link" href="#main">Skip to main content</a>${banner}
-<div id="site-banner" hidden data-base="${e(base)}"></div>
-<script>${SITE_BANNER_SCRIPT}</script>
-<header class="site-header">
-<a class="brand" href="${e(base)}/">${brand}</a>
-<nav aria-label="Site">
-<ul>
-<li><a href="${e(base)}/">Home</a></li>
-<li><a href="${e(base)}/ministries/">Ministries</a></li>
-<li><a href="${e(base)}/archive/">Archive</a></li>
-<li><a href="${e(base)}/search/">Search</a></li>
-</ul>
-</nav>
-</header>
-<main id="main" tabindex="-1">
+<a class="skip-link" href="#main">Skip to main content</a>
+${renderBanner(base, opts.banner)}
+${renderHeader(site, opts)}
+<div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
 ${body}
-</main>
-${renderFooter(settings, site)}
+</main></div>
+${renderFooter(settings, site, opts)}
+<script src="${e(base)}/assets/site/site.js" defer onerror="${e(SITE_SCRIPT_ONERROR)}"></script>
 </body>
 </html>
 `;
+}
+
+/**
+ * `section#banner` (look-and-feel §1.3–1.4): the Project Blue Bridge banner when it is on, in legacy
+ * `_BlueBridgeBanner.cshtml`'s skeleton with a real close button and `role="alert"`; then the site
+ * banner's placeholder and its inline script (banner-script.ts), which stands down while Blue Bridge
+ * shows. With no Blue Bridge banner the section starts hidden, so no empty "Site notices" region is
+ * announced; the script un-hides it when it shows the site banner.
+ */
+function renderBanner(base: string, blueBridge: string | null | undefined): string {
+  const bridge = blueBridge
+    ? `<div id="bridge-banner" class="info-black-banner container-fluid sm-g-0" role="alert"><div class="content container-xl sm-g-0"><div>${icon("circle-info", e(base))}</div><div>${e(blueBridge)}</div><div><button type="button" id="btnCloseBannerBridge" aria-label="Close banner">${icon("xmark", e(base))}</button></div></div></div>
+`
+    : "";
+  return `<section id="banner" aria-label="Site notices"${bridge ? "" : " hidden"}>
+${bridge}<div id="site-banner" hidden data-base="${e(base)}" data-icons="${e(base)}/assets/site/icons.svg"></div>
+<script>${SITE_BANNER_SCRIPT}</script>
+</section>`;
 }
 
 /** A settings link: an anchor (with its analytics id) when the URL is safe, else its text. */
@@ -126,14 +155,34 @@ function helpSentence(links: LinkSetting[], site: SiteInfo): string {
 
 const linkList = (links: LinkSetting[], site: SiteInfo) => links.map((l) => `<li>${settingsLink(l, site)}</li>`).join("\n");
 
-/** Every page's footer, from the site settings (spec "Delivery": a change rebuilds every page). */
-function renderFooter(settings: SiteSettings, site: SiteInfo): string {
+/**
+ * Every page's land acknowledgement band and footer, from the site settings (spec "Delivery": a
+ * change rebuilds every page): legacy `_Layout`'s skeleton (look-and-feel §1) with the §5
+ * deviations — the band is an `aside` landmark with no inline style, the footer is `footer#footer`
+ * (no `role=navigation`), its headings are `h2` (overrides.css restates legacy's `#footer h4`),
+ * the link columns sit in one labelled `nav` (a flex box of its own that reproduces legacy's flat
+ * `.top` row; overrides.css) and
+ * the lists carry no `role=menu`. One logo, the bridge file while Blue Bridge is on, instead of
+ * legacy's two toggled by class. An empty or whitespace-only acknowledgement shows no band.
+ */
+function renderFooter(settings: SiteSettings, site: SiteInfo, opts: PageOptions): string {
   const f = settings.footer;
+  const ack = f.landAcknowledgement?.trim() ? `<aside id="landAcknowledgement" class="container-fluid" aria-label="Land acknowledgement"><div class="container-xl"><p>${e(f.landAcknowledgement)}</p></div></aside>\n` : "";
   const help = [f.helpText ? e(f.helpText) : "", helpSentence(f.helpLinks, site)].filter(Boolean).join(" ");
-  const column = (cls: string, heading: string, links: LinkSetting[]) => (links.length ? `<div class="${cls}">\n<h2>${heading}</h2>\n<ul>\n${linkList(links, site)}\n</ul>\n</div>` : "");
-  const columns = [column("footer-connect", "Connect with Us", f.connectLinks), column("footer-more-info", "More Info", f.moreInfoLinks)].filter(Boolean).join("\n");
+  const column = (cls: string, heading: string, links: LinkSetting[], ulClass = "") =>
+    links.length ? `<div class="${cls}">\n<h2>${heading}</h2>\n<ul${ulClass ? ` class="${ulClass}"` : ""}>\n${linkList(links, site)}\n</ul>\n</div>` : "";
+  const columns = [column("footer-connect", "Connect with Us", f.connectLinks), column("footer-more-info", "More Info", f.moreInfoLinks, "pull-left")].filter(Boolean).join("\n");
+  const logo = `${e(basePath(site))}/assets/legacy/Content/Images/Gov/BCID_H_rgb_pos_LH_crop${opts.banner ? "_bridge" : ""}.svg`;
   const year = yearIn(site.timeZone ?? DEFAULT_TIME_ZONE, new Date());
-  return `<footer class="site-footer">
-${help ? `<p class="footer-help">${help}</p>\n` : ""}${columns ? `<div class="footer-columns">\n${columns}\n</div>\n` : ""}<p class="copyright">© ${e(year)} ${e(f.copyrightHolder)}</p>
+  return `${ack}<footer id="footer" class="container-fluid">
+<div class="top container-xl">
+<div class="footer-bc">
+<img id="BCGov-logo-footer" src="${logo}" alt="Government of B.C.">
+${help ? `<p>${help}</p>\n` : ""}</div>
+${columns ? `<nav aria-label="Footer">\n${columns}\n</nav>\n` : ""}<hr>
+</div>
+<div class="container-xl bottom">
+<div class="copyright">© ${e(year)} ${e(f.copyrightHolder)}</div>
+</div>
 </footer>`;
 }

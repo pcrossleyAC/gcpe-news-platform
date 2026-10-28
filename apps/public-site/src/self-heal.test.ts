@@ -11,6 +11,8 @@ import { enqueuePages, PRIORITY, queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
 import { selfHeal } from "./self-heal";
 import type { SyncDeps } from "./sync";
+import type { PageOptions } from "./render";
+import * as subscribePages from "./subscribe-pages";
 
 const SUBSCRIBE_FILES = ["subscribe/index.html", "subscribe/manage/index.html", "subscribe/unsubscribe/index.html"];
 
@@ -60,6 +62,71 @@ describe("selfHeal", () => {
     }
   });
 
+  it("ministries() down: subscribe pages written with ministryMenu null, marker untouched, returns null", async () => {
+    const deps = setup();
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    deps.newsApi.ministries = async () => {
+      throw new Error("ministries down");
+    };
+    const opts: PageOptions[] = [];
+    const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async (_s, _site, o) => void opts.push(o as PageOptions));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await selfHeal(deps)).toBeNull();
+      expect(opts).toHaveLength(1);
+      expect(opts[0]?.ministryMenu).toBeNull();
+      expect(storage.files.has(".site-state.json")).toBe(false);
+      expect(storage.files.has("index.html")).toBe(false);
+      expect(errSpy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
+  it("an empty ministries() answer with no menu ever recorded is a valid empty menu: the site builds", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    deps.newsApi.ministries = async () => [];
+    expect(await selfHeal(deps)).not.toBeNull();
+    expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
+  });
+
+  it("an empty ministries() answer after a non-empty menu was recorded is treated as down: ministryMenu null, marker untouched, returns null", async () => {
+    const deps = setup();
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    await selfHeal(deps); // records the fake API's two ministries
+    const marker = storage.files.get(".site-state.json");
+    deps.newsApi.ministries = async () => [];
+    const opts: PageOptions[] = [];
+    const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async (_s, _site, o) => void opts.push(o as PageOptions));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await selfHeal(deps)).toBeNull();
+      expect(opts[0]?.ministryMenu).toBeNull();
+      expect(storage.files.get(".site-state.json")).toBe(marker);
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
+  it("writes the builtin assets even when the News API is down", async () => {
+    const deps = setup();
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    deps.newsApi.home = async () => {
+      throw new Error("News API down");
+    };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await selfHeal(deps);
+      expect(storage.files.has("favicon.ico")).toBe(true);
+      expect(storage.files.has("assets/legacy/Content/site.css")).toBe(true);
+      expect(storage.files.has("assets/legacy/fonts/BCSans-Regular.woff2")).toBe(true);
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
   it("the current marker and index.html present: drains whatever is queued, and returns null when nothing was rendered", async () => {
     const posts = new Map([["K1", post({ key: "K1" })]]);
     const deps = setup(posts);
@@ -98,6 +165,21 @@ describe("selfHeal", () => {
     await selfHeal(deps);
     expect(storage.files.get("index.html")).toContain("Published Holder");
     for (const f of SUBSCRIBE_FILES) expect(storage.files.get(f)).toContain("Published Holder");
+  });
+
+  it("a published document without the land acknowledgement shows the tenant default band, the subscribe pages included", async () => {
+    const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: bcSettings() };
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    const document = bcSettings();
+    delete document.footer.landAcknowledgement;
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).settings = { revision: 1, document };
+    await selfHeal(deps);
+    const ack = bcSettings().footer.landAcknowledgement!;
+    expect(ack).not.toBe("");
+    for (const f of ["index.html", ...SUBSCRIBE_FILES]) {
+      expect(storage.files.get(f)).toContain('<aside id="landAcknowledgement"');
+      expect(storage.files.get(f)).toContain(ack);
+    }
   });
 
   it("a settings section changed since the marker queues only its pages", async () => {
@@ -169,7 +251,7 @@ describe("selfHeal", () => {
     const after = JSON.parse(storage.files.get(".site-state.json") as string);
     expect(after.granvilleOn).toBe(true);
     for (const k of ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash"]) expect(after[k]).toBe(before[k]);
-    expect(storage.files.get("releases/K1/index.html")).toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("releases/K1/index.html")).toContain('id="bridge-banner"');
     expect(storage.files.get("releases/K1/index.html")).toContain("Published Holder");
   });
 });

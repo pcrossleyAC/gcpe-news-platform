@@ -390,6 +390,28 @@ describe("apps/stack", () => {
     expect(res.headers.get("cache-control")).toBe("public, max-age=60");
   });
 
+  // R13: the stack compresses text itself (the Windows/IIS package has no dynamic compression).
+  it("compresses the site's text (br, Vary: Accept-Encoding, its public cache kept); no Accept-Encoding gets identity", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    const css = "body { color: #013366; }\n".repeat(400);
+    await fsStorage(instance.outputDir).write("assets/probe-compress.css", css);
+    const res = await fetch(`${instance.stackUrl}/assets/probe-compress.css`, { headers: { "accept-encoding": "br" } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-encoding")).toBe("br");
+    expect(res.headers.get("vary")).toMatch(/accept-encoding/i);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(await res.text()).toBe(css); // fetch decodes it
+    const { request: httpRequest } = await import("node:http");
+    const plain = await new Promise<{ encoding: string | undefined; body: string }>((resolve, reject) => {
+      httpRequest(`${instance.stackUrl}/assets/probe-compress.css`, (r) => {
+        const chunks: Buffer[] = [];
+        r.on("data", (c: Buffer) => chunks.push(c));
+        r.on("end", () => resolve({ encoding: r.headers["content-encoding"], body: Buffer.concat(chunks).toString("utf8") }));
+      }).on("error", reject).end();
+    });
+    expect(plain).toEqual({ encoding: undefined, body: css });
+  });
+
   // Fix round 1, P2-R30 M4: express.static's own directory redirect (no trailing slash) must
   // not be cacheable by the SiteGround proxy either.
   it("/site/<dir without trailing slash> redirects 301 with Cache-Control: no-store", async () => {
@@ -423,9 +445,29 @@ describe("apps/stack", () => {
     const api = await fetch(`${instance.stackUrl}/api/v2/no-such-page-xyz`);
     expect(api.status).toBe(404);
     expect(await api.json()).toEqual({ error: "not found" });
+    // Parity Task 2: the site is also served at the root, so an unknown root page is the
+    // site's 404 too — only the stack-owned prefixes keep their own (JSON) 404s.
     const root = await fetch(`${instance.stackUrl}/no-such-page-xyz/`);
     expect(root.status).toBe(404);
-    expect(await root.json()).toEqual({ error: "not found" });
+    expect(root.headers.get("content-type")).toMatch(/^text\/html/);
+    expect(await root.text()).toBe("<h1>probe not found page</h1>");
+    const health = await fetch(`${instance.stackUrl}/health/no-such-page-xyz`);
+    expect(health.status).toBe(404);
+    expect(await health.json()).toEqual({ error: "not found" });
+  });
+
+  // Parity Task 2: news.gov URLs are root-relative, so the site is served at / as well as at
+  // PUBLIC_SITE_URL's own path (self:/site here) until the operator flips it to the origin.
+  it("GET / serves the home index.html written into OUTPUT_DIR, alongside /site/", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    await fsStorage(instance.outputDir).write("index.html", "<h1>probe home</h1>");
+    const res = await fetch(`${instance.stackUrl}/`, { redirect: "manual" });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<h1>probe home</h1>");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    const prefixed = await fetch(`${instance.stackUrl}/site/`, { redirect: "manual" });
+    expect(prefixed.status).toBe(200);
+    expect(await prefixed.text()).toBe("<h1>probe home</h1>");
   });
 
   it("/files/<key> serves an uploaded file from <DATA_DIR>/storage publicly; .meta, listings and missing keys are not served", async () => {

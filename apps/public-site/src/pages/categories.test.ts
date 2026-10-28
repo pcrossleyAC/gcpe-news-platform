@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectAccessibleStructure, withoutBannerScript } from "../../test/structure";
+import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { bcSettings, category, contact, ministry, post, site } from "../../test/fixtures";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./categories";
 
@@ -51,12 +51,12 @@ describe("renderMinistryPage", () => {
     expect(html).toContain("Alex &lt;leads&gt; the ministry.");
     expect(html).toContain("<p>Served since 2020.</p>");
     expect(doc.querySelectorAll("h1")).toHaveLength(1); // the demoted body h1 doesn't create a second one
-    expect(doc.querySelector("img")?.getAttribute("alt")).toBe("Minister Alex Example");
+    expect(doc.querySelector("main img")?.getAttribute("alt")).toBe("Minister Alex Example");
   });
 
   it("sanitises the minister's details (C209)", () => {
     const minister = { headline: "H", summary: null, details: '<p>Safe.</p><script>alert(1)</script><a href="javascript:alert(1)">Click</a>', photo: null };
-    const html = withoutBannerScript(renderMinistryPage(ministry({}), minister, emptyPosts, site, {}));
+    const html = withoutChromeScripts(renderMinistryPage(ministry({}), minister, emptyPosts, site, {}));
     expect(html).toContain("<p>Safe.</p>");
     expect(html).not.toContain("<script");
     expect(html).not.toContain("javascript:");
@@ -81,9 +81,10 @@ describe("renderMinistryPage", () => {
     const html = renderMinistryPage(ministry({ ministryUrl: "javascript:alert(1)" }), minister, emptyPosts, site, {});
     expect(html).not.toContain('href="javascript:');
     expect(html).not.toContain('src="javascript:');
-    expect(html).not.toContain("<img");
+    const main = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
+    expect(main).not.toContain("<img"); // the header's and footer's BC logos aside
     expect(html).not.toContain("Ministry Website");
-    expect(html).not.toContain("<aside");
+    expect(main).not.toContain("<aside"); // the footer's land acknowledgement band aside
   });
 
   it("links the feed alternate at /ministries/<key>/feed.xml", () => {
@@ -131,7 +132,7 @@ describe("renderMinistryPage", () => {
   });
 
   it("escapes every contact value, including inside the mailto link", () => {
-    const html = withoutBannerScript(
+    const html = withoutChromeScripts(
       renderMinistryPage(
         ministry({ contactUser: contact({ fullName: "A <b>", phoneNumber: "<i>1</i>", mobileNumber: null, emailAddress: 'x"><script>alert(1)</script>@example.test' }), weekendContactNumber: "<u>9</u>" }),
         null,
@@ -176,7 +177,7 @@ describe("renderMinistryPage side column", () => {
 
   it("puts Media Contacts, More from this Ministry, Featured Topics, Featured Services in an aside, in order", () => {
     const doc = render(full());
-    const aside = doc.querySelector("aside");
+    const aside = doc.querySelector("main aside");
     expect(aside).not.toBeNull();
     expect(aside?.getAttribute("aria-label") || aside?.getAttribute("aria-labelledby")).toBeTruthy();
     expect([...aside!.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(["Media Contacts", "More from this Ministry", "Featured Topics", "Featured Services"]);
@@ -206,7 +207,7 @@ describe("renderMinistryPage side column", () => {
 
   it("has no aside when every group is empty", () => {
     const doc = render(ministry({ ministryUrl: null }));
-    expect(doc.querySelector("aside")).toBeNull();
+    expect(doc.querySelector("main aside")).toBeNull();
   });
 
   it("keeps http: and https: links, resolves site-relative ones under the base path, drops javascript:/data: and escapes text", () => {

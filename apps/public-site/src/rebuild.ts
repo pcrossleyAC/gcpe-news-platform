@@ -1,5 +1,6 @@
 import type { SiteSettings } from "@gcpe/site-settings";
 import type { NewsApiClient } from "./news-api-client";
+import { ministryMenuHash, type MenuMinistry } from "./ministry-menu";
 import type { SiteInfo } from "./render";
 import { DEFAULT_TIME_ZONE, settingsHashes } from "./settings";
 import { blueBridgeBanner, isGranvilleOn } from "./site-env";
@@ -24,6 +25,9 @@ export interface SiteRenderState {
   bannerHash: string;
   connectHash: string;
   ministryPagesHash: string;
+  /** ministry-menu.ts's hash of the header menu every page bakes in. Not one of `HASHES`: it is
+   * not a settings section, and a marker written before it existed has none (see `readSiteState`). */
+  ministryMenuHash: string;
 }
 
 /** The pages a settings section reaches, other than through every page's footer. */
@@ -37,10 +41,12 @@ export const SITE_STATE_PATH = ".site-state.json";
  * Bump whenever every page's baked-in chrome changes (links, header, page types, ...), so the
  * next startup/event rebuilds every page already on disk. 3: the full site (theme, every page
  * type, archives, feeds, sitemaps; spec §6). 4: the site settings' footer and banner placeholder.
- * 5: ministry Media Contacts and filter-only search links (PR #46). Bump for body render changes
+ * 5: ministry Media Contacts and filter-only search links (PR #46). 6: the legacy <head> (favicon,
+ * html.js marker, vendored legacy CSS, overrides.css) and the theme's legacy variable aliases. 7: the
+ * news.gov header (BC logo, News ministry menu, Subscribe, search, phone drawer) and site.js. Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 5;
+export const RENDER_CHROME_VERSION = 7;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
@@ -52,7 +58,11 @@ interface SiteStateMarker extends SiteRenderState {
 
 const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash"] as const;
 
-async function readSiteState(storage: SiteStorage): Promise<SiteStateMarker | null> {
+/** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
+ * `chromeChanges` then treats it as matching. */
+type ReadMarker = Omit<SiteStateMarker, "ministryMenuHash"> & { ministryMenuHash: string | null };
+
+async function readSiteState(storage: SiteStorage): Promise<ReadMarker | null> {
   const raw = await storage.read(SITE_STATE_PATH);
   if (raw === null) return null;
   try {
@@ -64,6 +74,7 @@ async function readSiteState(storage: SiteStorage): Promise<SiteStateMarker | nu
         granvilleOn: parsed.granvilleOn,
         test: parsed.test,
         ...hashes,
+        ministryMenuHash: typeof parsed.ministryMenuHash === "string" ? parsed.ministryMenuHash : null,
         chrome: typeof parsed.chrome === "number" ? parsed.chrome : 1,
         baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : null,
       };
@@ -74,14 +85,22 @@ async function readSiteState(storage: SiteStorage): Promise<SiteStateMarker | nu
   return null;
 }
 
+/** True when the marker already recorded a non-empty ministries menu: an empty answer is then an
+ * outage, not a tenant with no ministries (ministry-menu.ts). No marker, an old marker or a
+ * recorded empty menu: false. */
+export async function recordedNonEmptyMenu(storage: SiteStorage): Promise<boolean> {
+  const h = (await readSiteState(storage))?.ministryMenuHash;
+  return typeof h === "string" && h !== "" && h !== ministryMenuHash([]);
+}
+
 /**
  * What differs from the marker the last build left. `all`: the chrome every page bakes in (Blue
- * Bridge, the test flag, the chrome version, the base URL, the footer) — every page. Otherwise
+ * Bridge, the test flag, the chrome version, the base URL, the footer, the ministries menu) — every page. Otherwise
  * `sections`: a theme or banner change reaches only the `static` page (theme.css,
  * site-banner.json), a connect change only the Connect page, a ministryPages change only the
  * ministry pages (spec "Delivery": the cheapest correct effect per section).
  */
-export async function chromeChanges(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<{ all: boolean; sections: SectionPages[] }> {
+export async function chromeChanges(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<{ all: boolean; sections: SectionPages[]; adoptMenuHash?: boolean }> {
   const previous = await readSiteState(storage);
   const all = !(
     previous &&
@@ -89,14 +108,17 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
     previous.test === state.test &&
     previous.chrome === RENDER_CHROME_VERSION &&
     previous.baseUrl === site.baseUrl &&
-    previous.footerHash === state.footerHash
+    previous.footerHash === state.footerHash &&
+    (previous.ministryMenuHash === null || previous.ministryMenuHash === state.ministryMenuHash)
   );
   if (all || !previous) return { all: true, sections: [] };
   const sections: SectionPages[] = [];
   if (previous.themeHash !== state.themeHash || previous.bannerHash !== state.bannerHash) sections.push("static");
   if (previous.connectHash !== state.connectHash) sections.push("connect");
   if (previous.ministryPagesHash !== state.ministryPagesHash) sections.push("ministryPages");
-  return { all: false, sections };
+  // A marker from before the menu hash: nothing to rebuild for it, but the hash must be recorded
+  // or a later menu change would still read as matching.
+  return { all: false, sections, adoptMenuHash: previous.ministryMenuHash === null };
 }
 
 /**
@@ -122,11 +144,11 @@ export async function writeSiteState(storage: SiteStorage, state: SiteRenderStat
   await storage.write(SITE_STATE_PATH, JSON.stringify(marker));
 }
 
-/** `granville`, `test` and the site settings together, as both the render state (for the
+/** `granville`, `test`, the site settings and the ministries menu together, as both the render state (for the
  * marker) and the banner text (for this render, with today's age). */
-export function stateAndBanner(granville: string | null, test: boolean, now: Date, settings: SiteSettings, site: Pick<SiteInfo, "timeZone">): { state: SiteRenderState; banner: string | null } {
+export function stateAndBanner(granville: string | null, test: boolean, now: Date, settings: SiteSettings, site: Pick<SiteInfo, "timeZone">, menu: MenuMinistry[] | null): { state: SiteRenderState; banner: string | null } {
   return {
-    state: { granvilleOn: isGranvilleOn(granville), test, ...settingsHashes(settings, site.timeZone ?? DEFAULT_TIME_ZONE, now) },
+    state: { granvilleOn: isGranvilleOn(granville), test, ...settingsHashes(settings, site.timeZone ?? DEFAULT_TIME_ZONE, now), ministryMenuHash: ministryMenuHash(menu) },
     banner: blueBridgeBanner(granville, now, test),
   };
 }

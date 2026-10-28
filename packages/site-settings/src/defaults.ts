@@ -37,6 +37,7 @@ export function defaultSiteSettings(
             connectLinks: [],
             moreInfoLinks: tenantTheme.footerLinks.map((l) => ({ text: l.label, url: l.url })),
             copyrightHolder: "Government of British Columbia",
+            landAcknowledgement: "",
           },
           connect: {
             facebook: emptyNetwork(),
@@ -55,4 +56,14 @@ export function defaultSiteSettings(
     throw new Error(`Default site settings are invalid: ${errors.map((e) => `${e.field}: ${e.message}`).join("; ")}`);
   }
   return doc;
+}
+
+/**
+ * `doc` with every optional field it lacks taken from `defaults` (a new document; neither input
+ * is changed). A document published before a field existed has no value for it; an explicit
+ * value, including "", is the editor's choice and is kept. The single place a later optional
+ * field gets its default.
+ */
+export function fillMissingFields(doc: SiteSettings, defaults: SiteSettings): SiteSettings {
+  return { ...doc, footer: { ...doc.footer, landAcknowledgement: doc.footer.landAcknowledgement ?? defaults.footer.landAcknowledgement } };
 }
