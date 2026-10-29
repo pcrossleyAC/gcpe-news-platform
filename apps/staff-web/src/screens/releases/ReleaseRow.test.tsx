@@ -83,26 +83,53 @@ describe("ReleaseRow", () => {
     expect(screen.queryByText(/Calendar/)).not.toBeInTheDocument();
   });
 
-  it("shows the Approved badge only on a draft/approved item with approved=true", () => {
-    renderRow({ ...BASE, status: "draft", approved: true });
-    expect(screen.getByText("Approved", { selector: ".gcpe-badge" })).toBeInTheDocument();
+  // The badge sits beside the status pill; when the status already reads "Approved" the badge
+  // would only repeat it, so "Approved" shows once.
+  it("shows the Approved badge only on a draft-folder item with approved=true, and never twice", () => {
+    renderRow({ ...BASE, status: "draft", statusText: "Draft", approved: true });
+    expect(screen.getByText("Approved", { selector: ".gcpe-release-row__approved" })).toBeInTheDocument();
 
     cleanup();
-    renderRow({ ...BASE, status: "draft", approved: false });
-    expect(screen.queryByText("Approved", { selector: ".gcpe-badge" })).not.toBeInTheDocument();
+    renderRow({ ...BASE, status: "draft", statusText: "Draft", approved: false });
+    expect(screen.queryByText("Approved")).not.toBeInTheDocument();
+
+    cleanup();
+    renderRow({ ...BASE, status: "approved", statusText: "Approved", approved: true });
+    expect(screen.getAllByText("Approved")).toHaveLength(1);
 
     cleanup();
     // Approved once scheduled: the field is still true, but the Approved *badge* is specific
     // to the Drafts folder per the brief ("'Approved' badge on drafts with a reference").
     renderRow({ ...BASE, status: "scheduled", statusText: "Scheduled", approved: true });
-    expect(screen.queryByText("Approved", { selector: ".gcpe-badge" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Approved")).not.toBeInTheDocument();
+  });
+
+  it("doesn't repeat the location when the summary already starts with it (any case or punctuation)", () => {
+    renderRow({ ...BASE, location: "KAMLOOPS", summary: "Kamloops - Starting in spring, a new express bus." });
+    expect(screen.getByText("Kamloops - Starting in spring, a new express bus.")).toBeInTheDocument();
+    expect(screen.queryByText(/KAMLOOPS –/)).not.toBeInTheDocument();
+
+    cleanup();
+    // Whole words only: "Victorians" doesn't start with the dateline "VICTORIA".
+    renderRow({ ...BASE, location: "VICTORIA", summary: "Victorians will see new buses." });
+    expect(screen.getByText("VICTORIA – Victorians will see new buses.")).toBeInTheDocument();
+  });
+
+  it("leaves out a page title that only restates the type", () => {
+    renderRow({ ...BASE, type: "release", pageTitle: "News Release" });
+    expect(screen.queryByText("News Release")).not.toBeInTheDocument();
+  });
+
+  it("the headline is a heading, so a screen-reader user can move release to release", () => {
+    renderRow(BASE);
+    expect(screen.getByRole("heading", { name: "Province funds new schools" })).toBeInTheDocument();
   });
 
   it("shows the Approved badge on a failed item too — failed releases are in the Drafts folder", () => {
     // Fix round 1, finding 1: legacy shows the badge whenever the reference is set, and
     // FOLDER_STATUSES.drafts (apps/nrms/src/releases/queries.ts) is ["draft","approved","failed"].
     renderRow({ ...BASE, status: "failed", statusText: "Failed", approved: true });
-    expect(screen.getByText("Approved", { selector: ".gcpe-badge" })).toBeInTheDocument();
+    expect(screen.getByText("Approved", { selector: ".gcpe-release-row__approved" })).toBeInTheDocument();
   });
 
   it("shows a Flickr alert badge with the alert text as its accessible description", () => {

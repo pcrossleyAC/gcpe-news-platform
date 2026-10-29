@@ -14,71 +14,98 @@ export interface ReleaseRowProps {
   timeZone: string;
 }
 
-/** One row of a Drafts/Scheduled/Published list or a search result (spec §5/§8): colour bar +
- * type label, lead organisation, page title, headline (linking to the release), `LOCATION –
- * summary`, status text + relative date, Calendar activity id, and the Approved/Flickr-alert
- * badges. Shared between the release lists and search so both stay visually identical. */
+/** Words only, lower case: "KAMLOOPS –" and "Kamloops -" compare equal. */
+const words = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/**
+ * `LOCATION – summary`, except when the summary already opens with the location (the summary is
+ * often generated from the body, whose first words are the dateline): then just the summary, so
+ * a row never reads "KAMLOOPS – KAMLOOPS - …". Compared by whole words, ignoring case and
+ * punctuation, so "VICTORIA" doesn't swallow a summary starting "Victorians".
+ */
+export function datelineText(location: string, summary: string): string {
+  const loc = words(location);
+  const sum = words(summary);
+  if (loc && sum && (sum === loc || sum.startsWith(`${loc} `))) return summary;
+  return [location, summary].filter((part) => part !== "").join(" – ");
+}
+
+/** The page title, unless it only restates the type ("News Release" on a Release). */
+function pageTitleShown(pageTitle: string, typeLabel: string): boolean {
+  if (!pageTitle) return false;
+  const t = words(pageTitle).replace(/ /g, "");
+  return !t.endsWith(words(typeLabel).replace(/ /g, ""));
+}
+
+/** One row of a Drafts/Scheduled/Published list or a search result (spec §5/§8): colour bar,
+ * one meta line (type label · page title · lead organisation · status · date · Calendar
+ * activity id, with the Approved/Flickr-alert badges), the headline linking to the release,
+ * and the `LOCATION – summary` dateline clamped to two lines. Shared between the release lists
+ * and search so both stay visually identical. */
 export function ReleaseRow({ item, now, timeZone }: ReleaseRowProps): React.JSX.Element {
   // Scheduled/Drafts show the planned publishAt; Published shows the actual releasedAt
   // (constraints.md / codemap §8).
   const dateIso = item.status === "published" ? item.releasedAt : item.publishAt;
   const when = dateIso ? formatWhen(dateIso, now, timeZone) : null;
 
-  const locationSummary = [item.location, item.summary].filter((part) => part !== "").join(" – ");
+  const dateline = datelineText(item.location, item.summary);
+  const typeLabel = TYPE_LABEL[item.type];
 
   // The Approved badge is specific to the Drafts folder (brief: "'Approved' badge on drafts
   // with a reference") — `approved` itself (reference !== null) stays true after the release
   // moves on to Scheduled/Published, where it's no longer shown. Legacy shows the badge
-  // whenever the reference is set, including on a failed release (fix round 1).
-  const showApprovedBadge = item.approved && DRAFT_FOLDER_STATUSES.includes(item.status);
+  // whenever the reference is set, including on a failed release (fix round 1). When the status
+  // itself already reads "Approved", the badge would only repeat it, so it's left off.
+  const showApprovedBadge = item.approved && DRAFT_FOLDER_STATUSES.includes(item.status) && item.statusText.toLowerCase() !== "approved";
   const flickrAlertId = item.flickrAlert ? `flickr-alert-${item.id}` : undefined;
+  const sep = " · ";
 
   return (
     <li className="gcpe-release-row">
       <span className={`gcpe-release-row__bar gcpe-release-row__bar--${item.type}`} aria-hidden="true" />
       <div className="gcpe-release-row__body">
         <p className="gcpe-release-row__meta">
-          <span className="gcpe-release-row__type">{TYPE_LABEL[item.type]}</span>
-          {item.leadOrganization && (
+          <span className="gcpe-release-row__type">{typeLabel}</span>
+          {pageTitleShown(item.pageTitle, typeLabel) && (
             <>
-              {" "}
-              &middot; <span>{item.leadOrganization}</span>
+              {sep}
+              <span className="gcpe-release-row__page-title">{item.pageTitle}</span>
             </>
           )}
-        </p>
-        {item.pageTitle && <p className="gcpe-release-row__page-title">{item.pageTitle}</p>}
-        <p className="gcpe-release-row__headline">
-          <Link to={`/releases/${item.id}`}>{item.headline || "(untitled)"}</Link>
-        </p>
-        {locationSummary && <p className="gcpe-release-row__summary">{locationSummary}</p>}
-        <p className="gcpe-release-row__status">
-          <span className="gcpe-release-row__status-text">{item.statusText}</span>
+          {item.leadOrganization && (
+            <>
+              {sep}
+              <span>{item.leadOrganization}</span>
+            </>
+          )}
+          {sep}
+          <span className="gcpe-badge gcpe-release-row__status-text">{item.statusText}</span>
+          {showApprovedBadge && <span className="gcpe-badge gcpe-release-row__approved">Approved</span>}
+          {item.flickrAlert && (
+            <span className="gcpe-badge gcpe-badge--alert" aria-describedby={flickrAlertId}>
+              Flickr alert
+              <span id={flickrAlertId} className="gcpe-visually-hidden">
+                {item.flickrAlert}
+              </span>
+            </span>
+          )}
           {when && (
             <>
-              {" "}
-              &middot; <span>{when}</span>
+              {sep}
+              <span>{when}</span>
             </>
           )}
           {item.activityId != null && (
             <>
-              {" "}
-              &middot; <span>Calendar activity {item.activityId}</span>
+              {sep}
+              <span>Calendar activity {item.activityId}</span>
             </>
           )}
         </p>
-        {(showApprovedBadge || item.flickrAlert) && (
-          <p className="gcpe-release-row__badges">
-            {showApprovedBadge && <span className="gcpe-badge">Approved</span>}
-            {item.flickrAlert && (
-              <span className="gcpe-badge gcpe-badge--alert" aria-describedby={flickrAlertId}>
-                Flickr alert
-                <span id={flickrAlertId} className="gcpe-visually-hidden">
-                  {item.flickrAlert}
-                </span>
-              </span>
-            )}
-          </p>
-        )}
+        <h2 className="gcpe-release-row__headline">
+          <Link to={`/releases/${item.id}`}>{item.headline || "(untitled)"}</Link>
+        </h2>
+        {dateline && <p className="gcpe-release-row__summary">{dateline}</p>}
       </div>
     </li>
   );

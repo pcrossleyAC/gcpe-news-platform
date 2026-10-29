@@ -86,9 +86,15 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
 
   return (
     <div className="gcpe-release-list">
+      <div className="gcpe-release-list__head">
+        <h1>Releases</h1>
+        {session.has("NRMS.Editor") && (
+          <Link to="/releases/new" className="gcpe-button-link gcpe-button-link--primary">
+            New release
+          </Link>
+        )}
+      </div>
       <ReleaseFolderTabs />
-
-      <h1>Releases</h1>
 
       <div className="gcpe-release-list__toolbar">
         <label htmlFor="release-type-filter">Type</label>
@@ -101,11 +107,6 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
           ))}
         </select>
 
-        {session.has("NRMS.Editor") && (
-          <Link to="/releases/new" className="gcpe-button-link">
-            New release
-          </Link>
-        )}
       </div>
 
       {error && <p role="alert">{error}</p>}
