@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { SessionProvider } from "../session/SessionContext";
 import { AppShell } from "./AppShell";
@@ -146,5 +146,34 @@ describe("AppShell — browser time-zone drift warning", () => {
     });
     await renderShell(["NRMS.Viewer"], { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
     expect(await screen.findByText(/time-zone information is out of date/i)).toBeInTheDocument();
+  });
+});
+
+describe("AppShell navigation structure", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+  });
+
+  it("groups the sections under Work and Administration, leaving out a group with nothing in it", async () => {
+    await renderShell(["NRMS.SiteEditor"]);
+    const work = screen.getByRole("list", { name: "Work" });
+    expect(within(work).getAllByRole("link").map((l) => l.textContent)).toEqual(["Releases", "Search", "Website"]);
+    const admin = screen.getByRole("list", { name: "Administration" });
+    expect(within(admin).getAllByRole("link").map((l) => l.textContent)).toEqual(["Organizations"]);
+    cleanup();
+    await renderShell(["NoD.Viewer"]);
+    expect(screen.queryByRole("list", { name: "Administration" })).toBeNull();
+  });
+
+  it("offers a skip link to the main content, and a Menu button that says whether the menu is open", async () => {
+    await renderShell(["NRMS.Viewer"]);
+    expect(screen.getByRole("link", { name: "Skip to main content" })).toHaveAttribute("href", "#main-content");
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
+    const menu = screen.getByRole("button", { name: "Menu" });
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(menu);
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById(menu.getAttribute("aria-controls")!)).toContainElement(screen.getByRole("link", { name: "Releases" }));
   });
 });

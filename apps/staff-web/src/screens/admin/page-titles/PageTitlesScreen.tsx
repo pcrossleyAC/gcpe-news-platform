@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { TableScroll } from "../../../shared/TableScroll";
 import { AlertDialog, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { LANG_EN, LANG_FR, LAYOUTS, RELEASE_TYPES, TYPE_LABEL, type Layout, type ReleaseType } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
@@ -157,35 +158,37 @@ function PageTitlesEditor(): React.JSX.Element {
               {mine.length === 0 ? (
                 <p>No page titles yet.</p>
               ) : (
-                <table aria-label={`${TYPE_LABEL[t]} page titles`} className="gcpe-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Page title</th>
-                      <th scope="col">Language</th>
-                      <th scope="col">Order</th>
-                      <th scope="col">Layout</th>
-                      <th scope="col">Page image</th>
-                      <th scope="col">Save</th>
-                      <th scope="col">Delete</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mine.map((r) => (
-                      <TitleRow
-                        key={rowKey(r)}
-                        record={r}
-                        images={images}
-                        focusNonce={focus.key === rowKey(r) ? focus.nonce : 0}
-                        onSaved={saved}
-                        onFailed={failed}
-                        onDeleted={(text) => {
-                          focusStatusAfterLoad.current = true;
-                          saved(text, null);
-                        }}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+                <TableScroll label={`${TYPE_LABEL[t]} page titles`}>
+                  <table aria-label={`${TYPE_LABEL[t]} page titles`} className="gcpe-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Page title</th>
+                        <th scope="col">Language</th>
+                        <th scope="col">Order</th>
+                        <th scope="col">Layout</th>
+                        <th scope="col">Page image</th>
+                        <th scope="col">Save</th>
+                        <th scope="col">Delete</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mine.map((r) => (
+                        <TitleRow
+                          key={rowKey(r)}
+                          record={r}
+                          images={images}
+                          focusNonce={focus.key === rowKey(r) ? focus.nonce : 0}
+                          onSaved={saved}
+                          onFailed={failed}
+                          onDeleted={(text) => {
+                            focusStatusAfterLoad.current = true;
+                            saved(text, null);
+                          }}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
               )}
             </section>
           );

@@ -1,4 +1,5 @@
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { useEffect, useId, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Button, Header, InlineAlert } from "@bcgov/design-system-react-components";
 import { useSession, type SessionValue } from "../session/SessionContext";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
@@ -16,6 +17,11 @@ interface NavItem {
   show(session: SessionValue): boolean;
 }
 
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
 const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has("NRMS.Editor") || s.has("NRMS.SiteEditor");
 
 /**
@@ -28,21 +34,34 @@ const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has("NRMS.
  * it, and vice versa. Calendar is visible to any Calendar role (hasCalendarRole). Calendar
  * access is visible to Core.Admin, Calendar.Administrator and Calendar.SysAdmin; Organizations
  * to Core.Admin and NRMS.SiteEditor (canEditOrgProfile); Government terms to Core.Admin.
+ *
+ * Two groups: the day-to-day work, then the administration screens. A group with nothing the
+ * user may see is left out altogether, heading and all.
  */
-const NAV_ITEMS: NavItem[] = [
-  { to: "/releases", label: "Releases", show: hasAnyReadRole },
-  { to: "/search", label: "Search", show: hasAnyReadRole },
-  { to: "/website", label: "Website", show: canReadWebsite },
-  { to: "/subscribers", label: "Subscribers", show: canReadSubscribers },
-  { to: "/calendar", label: "Calendar", show: hasCalendarRole },
-  { to: "/users", label: "Users", show: (s) => s.has("Core.Admin") },
-  { to: "/calendar-access", label: "Calendar access", show: canManageCalendarAccess },
-  { to: "/organizations", label: "Organizations", show: canEditOrgProfile },
-  { to: "/government-terms", label: "Government terms", show: isCoreAdmin },
-  { to: "/categories", label: "Sectors, themes and tags", show: isCoreAdmin },
-  { to: "/release-page-titles", label: "Release page titles", show: isCoreAdmin },
-  { to: "/media-list-names", label: "Media list names", show: (s) => s.has("Core.Admin") },
-  { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Work",
+    items: [
+      { to: "/releases", label: "Releases", show: hasAnyReadRole },
+      { to: "/search", label: "Search", show: hasAnyReadRole },
+      { to: "/website", label: "Website", show: canReadWebsite },
+      { to: "/subscribers", label: "Subscribers", show: canReadSubscribers },
+      { to: "/calendar", label: "Calendar", show: hasCalendarRole },
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      { to: "/users", label: "Users", show: (s) => s.has("Core.Admin") },
+      { to: "/calendar-access", label: "Calendar access", show: canManageCalendarAccess },
+      { to: "/organizations", label: "Organizations", show: canEditOrgProfile },
+      { to: "/government-terms", label: "Government terms", show: isCoreAdmin },
+      { to: "/categories", label: "Sectors, themes and tags", show: isCoreAdmin },
+      { to: "/release-page-titles", label: "Release page titles", show: isCoreAdmin },
+      { to: "/media-list-names", label: "Media list names", show: (s) => s.has("Core.Admin") },
+      { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
+    ],
+  },
 ];
 
 export function AppShell(): React.JSX.Element {
@@ -51,6 +70,13 @@ export function AppShell(): React.JSX.Element {
   const tzMismatch = useTimeZoneWarning();
   // I5 (WCAG 2.4.2): move focus to the new screen's h1 on every route change.
   const mainRef = useFocusH1OnRouteChange<HTMLElement>();
+  const uid = useId();
+  const { pathname } = useLocation();
+  // On narrow screens the section menu folds away behind a "Menu" button (the CSS hides the
+  // button, and shows the menu regardless, on wider ones). Choosing a section closes it again.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => setMenuOpen(false), [pathname]);
+  const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => item.show(session)) })).filter((g) => g.items.length > 0);
 
   const onSignOut = async () => {
     await session.signOut();
@@ -60,6 +86,9 @@ export function AppShell(): React.JSX.Element {
   return (
     <AnnouncerProvider>
       <div className="gcpe-shell">
+        <a className="gcpe-skip-link" href="#main-content">
+          Skip to main content
+        </a>
         <Header title="GCPE News — Staff">
           <div className="gcpe-shell__user">
             {session.user && <span>Signed in as {session.user.name}</span>}
@@ -69,15 +98,29 @@ export function AppShell(): React.JSX.Element {
           </div>
         </Header>
         <nav className="gcpe-shell__nav" aria-label="Sections">
-          <ul>
-            {NAV_ITEMS.filter((item) => item.show(session)).map((item) => (
-              <li key={item.to}>
-                <NavLink to={item.to}>{item.label}</NavLink>
-              </li>
+          <div className="gcpe-shell__menu-toggle">
+            <Button size="small" variant="secondary" aria-expanded={menuOpen} aria-controls={`${uid}-menu`} onPress={() => setMenuOpen((open) => !open)}>
+              Menu
+            </Button>
+          </div>
+          <div id={`${uid}-menu`} className="gcpe-shell__menu" data-open={menuOpen || undefined}>
+            {groups.map((group) => (
+              <div key={group.label} className="gcpe-shell__nav-group">
+                <p id={`${uid}-${group.label}`} className="gcpe-shell__nav-heading">
+                  {group.label}
+                </p>
+                <ul aria-labelledby={`${uid}-${group.label}`}>
+                  {group.items.map((item) => (
+                    <li key={item.to}>
+                      <NavLink to={item.to}>{item.label}</NavLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </nav>
-        <main className="gcpe-shell__main" ref={mainRef}>
+        <main id="main-content" tabIndex={-1} className="gcpe-shell__main" ref={mainRef}>
           {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
           {/* Fix round 1, finding 3: persistent — not closeable — since it stays true for the
            * whole session; the only real fix is updating the browser. */}
