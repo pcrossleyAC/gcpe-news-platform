@@ -664,10 +664,10 @@ export function OrganizationEditForm({
       )}
 
       <div className="gcpe-button-row">
-        <Button type="submit" isDisabled={busy || nameBlank || sortInvalid}>
+        <Button type="submit" isPending={busy} isDisabled={nameBlank || sortInvalid}>
           Save
         </Button>
-        <Button variant="secondary" onPress={onCancel} isDisabled={busy}>
+        <Button variant="secondary" onPress={onCancel} isPending={busy}>
           Cancel
         </Button>
       </div>

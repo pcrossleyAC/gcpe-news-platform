@@ -453,7 +453,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
         else addButtons.current.delete(kind);
       }}
       aria-expanded={adding === kind}
-      isDisabled={busy}
+      isPending={busy}
       onPress={() => {
         setStatus(null);
         setMessages([]);
@@ -539,12 +539,12 @@ export function CabinetChangeScreen(): React.JSX.Element {
                         <strong>Changed by someone else since you added this.</strong> Check{" "}
                         {nameOf((op as UpdateOp | SucceedOp).key)} on the Organizations page, then keep this change or remove
                         it.{" "}
-                        <Button size="small" variant="secondary" isDisabled={busy} aria-label={`Keep change ${i + 1}`} onPress={() => void keep(i)}>
+                        <Button size="small" variant="secondary" isPending={busy} aria-label={`Keep change ${i + 1}`} onPress={() => void keep(i)}>
                           Keep this change
                         </Button>
                       </p>
                     )}
-                    <Button size="small" variant="secondary" isDisabled={busy} aria-label={`Remove change ${i + 1}`} onPress={() => void remove(i)}>
+                    <Button size="small" variant="secondary" isPending={busy} aria-label={`Remove change ${i + 1}`} onPress={() => void remove(i)}>
                       Remove
                     </Button>
                   </li>
@@ -589,7 +589,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
               <h2 id={`${uid}-preview`}>Preview</h2>
               <p>Preview runs the whole change without saving it, so you can see the result before anyone else does.</p>
               <p>
-                <Button variant="secondary" isDisabled={busy} onPress={() => void runPreview()}>
+                <Button variant="secondary" isPending={busy} onPress={() => void runPreview()}>
                   {preview ? "Preview again" : "Preview"}
                 </Button>
               </p>
@@ -602,7 +602,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
               <h2 id={`${uid}-publish`}>Publish</h2>
               {scheduled && (
                 <p>
-                  <Button variant="secondary" isDisabled={busy} onPress={() => void unschedule()}>
+                  <Button variant="secondary" isPending={busy} onPress={() => void unschedule()}>
                     Don&rsquo;t publish at that time (keep it as a draft)
                   </Button>
                 </p>
@@ -623,7 +623,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                         undone in one step.
                       </p>
                       <div className="gcpe-button-row">
-                        <Button isDisabled={busy} onPress={() => void publish()}>
+                        <Button isPending={busy} onPress={() => void publish()}>
                           Yes, publish now
                         </Button>
                         <Button
@@ -641,7 +641,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                     <p className="gcpe-button-row">
                       <Button
                         ref={publishButton}
-                        isDisabled={busy}
+                        isPending={busy}
                         onPress={() => {
                           setScheduling(false);
                           setConfirm("publish");
@@ -651,7 +651,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                         Publish now…
                       </Button>
                       {!scheduling && (
-                        <Button variant="secondary" ref={scheduleButton} isDisabled={busy} onPress={openSchedule}>
+                        <Button variant="secondary" ref={scheduleButton} isPending={busy} onPress={openSchedule}>
                           Schedule…
                         </Button>
                       )}
@@ -671,7 +671,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                       <SchedulePicker timeZone={timeZone} legend="Publish at (BC time)" idPrefix={`${uid}-when`} onChange={setWhen} />
                       <p>Usually the swearing-in time. It publishes by itself then; nobody needs to be here.</p>
                       <div className="gcpe-button-row">
-                        <Button type="submit" isDisabled={busy}>
+                        <Button type="submit" isPending={busy}>
                           Schedule
                         </Button>
                         <Button variant="secondary" onPress={closeSchedule}>
@@ -692,7 +692,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                 <div role="group" aria-labelledby={`${uid}-confirm-discard`} ref={confirmGroup} tabIndex={-1}>
                   <p id={`${uid}-confirm-discard`}>Discard every change in this cabinet change? Nothing has been published.</p>
                   <div className="gcpe-button-row">
-                    <Button danger isDisabled={busy} onPress={() => void discard()}>
+                    <Button danger isPending={busy} onPress={() => void discard()}>
                       Yes, discard it
                     </Button>
                     <Button
@@ -712,7 +712,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                     variant="secondary"
                     danger
                     ref={discardButton}
-                    isDisabled={busy}
+                    isPending={busy}
                     onPress={() => {
                       setScheduling(false);
                       setConfirm("discard");
@@ -953,7 +953,7 @@ function AddForm({ title, busy, onCancel, onSubmit, children }: { title: string;
       </h4>
       {children}
       <div className="gcpe-button-row">
-        <Button type="submit" isDisabled={busy}>
+        <Button type="submit" isPending={busy}>
           Add this change
         </Button>
         <Button variant="secondary" onPress={onCancel}>

@@ -421,7 +421,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                               : `Set successor for ${o.displayName}`
                           }
                           aria-expanded={handOverKey === o.key}
-                          isDisabled={busy || panelBusy}
+                          isPending={busy} isDisabled={panelBusy}
                           onPress={() => {
                             setStatus(null);
                             setRowError(null);

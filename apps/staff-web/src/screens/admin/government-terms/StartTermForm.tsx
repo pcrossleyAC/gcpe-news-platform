@@ -114,12 +114,12 @@ export function StartTermForm({ scheduledStart = null, onStarted, onCancel }: St
             </p>
           ))}
           <div className="gcpe-button-row">
-            <Button isDisabled={busy} onPress={() => void confirm()}>
+            <Button isPending={busy} onPress={() => void confirm()}>
               Confirm
             </Button>
             <Button
               variant="secondary"
-              isDisabled={busy}
+              isPending={busy}
               onPress={() => {
                 setConfirming(false);
                 setMessages([]);

@@ -437,7 +437,7 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
         <button type="submit" className="gcpe-native-button gcpe-native-button--primary" aria-disabled={busy || undefined} aria-busy={busy || undefined}>
           {!deactivating ? "Set successor" : chosen.length ? "Deactivate and hand over" : "Deactivate"}
         </button>
-        <Button variant="secondary" isDisabled={busy} onPress={onCancel}>
+        <Button variant="secondary" isPending={busy} onPress={onCancel}>
           Cancel
         </Button>
       </div>
