@@ -230,13 +230,13 @@ describe("precompressed static files", () => {
     expect(redirect.headers["cache-control"]).toBe("no-store");
   });
 
-  it("the site 404 is served from its stored copy too, still no-store and still a 404", async () => {
+  it("the site 404 is always the whole page: 404, no-store, no validators (never the stored copy, never 206/304)", async () => {
     const r = await get(server, "/no/such/page/", { "accept-encoding": "br" });
     expect(r.status).toBe(404);
-    expect(r.headers["content-encoding"]).toBe("br");
     expect(r.headers["cache-control"]).toBe("no-store");
+    expect(r.headers.etag).toBeUndefined();
+    expect(r.headers["last-modified"]).toBeUndefined();
     expect(decode(r).toString()).toBe(BODY("site 404"));
-    expect(r.body.equals(await (await import("node:fs/promises")).readFile(join(dir, "404.html.br")))).toBe(true);
     const id = await get(server, "/no/such/page/");
     expect(id.status).toBe(404);
     expect(id.body.toString()).toBe(BODY("site 404"));
@@ -324,10 +324,10 @@ describe("a stored copy that cannot be read never mislabels the plain body", () 
     expect(hit.body.length).toBe(0);
     const noCache = await get(bare, "/", { "accept-encoding": "br", "if-modified-since": String(r.headers["last-modified"]), "cache-control": "no-cache" });
     expect(noCache.status).toBe(200);
-    const nf = await get(bare, "/no/such/page/", { "accept-encoding": "br" });
-    const nf2 = await get(bare, "/no/such/page/", { "accept-encoding": "br", "if-none-match": String(nf.headers.etag) });
-    expect(nf2.status).toBe(404);
-    expect(brotliDecompressSync(nf2.body).toString()).toBe(BODY("site 404"));
+    const nf = await get(bare, "/no/such/page/", { "accept-encoding": "br", "if-modified-since": String(r.headers["last-modified"]) });
+    expect(nf.status).toBe(404);
+    expect(nf.headers.etag).toBeUndefined();
+    expect(nf.body.toString()).toBe(BODY("site 404"));
   });
 
   it("a page rolled back to an older version (older mtime, as a restore keeps it) never gets the newer stored copy", async () => {

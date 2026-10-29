@@ -28,6 +28,7 @@ import { publicSiteEnvSchema } from "../../public-site/src/env";
 import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../public-site/src/start";
 
 import { noStoreByDefault } from "./cache-control";
+import { filesHandlers } from "./files-gate";
 import { textCompression } from "./compress";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { checkCalendarDbTimeZone, pgOffsetOf, type DbTimeZoneStatus } from "./db-time-zone";
@@ -66,9 +67,6 @@ export interface StackHandle {
   closeBeforeServer: Closer[];
   closers: Closer[];
 }
-
-/** Uploaded release files under /files (same one-minute public lifetime). */
-const FILES_MAX_AGE_MS = 60_000;
 
 /** /stack/errors's persisted ring: how many of the most recent console.error calls are kept,
  * in memory and in the DATA_DIR-backed file that survives a restart. */
@@ -382,29 +380,16 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // Old news.gov.bc.ca URLs (parity plan 3) are answered inside it, never under a SITE_PASS_THROUGH prefix.
   mountSite(app, { outputDir, basePath: siteBasePath(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl), passThrough: SITE_PASS_THROUGH, lookupReference: (r) => newsApi.postKeyByReference(r) });
 
-  // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
-  // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
-  // A file becomes downloadable as soon as it's uploaded — including on a draft, before
-  // approval or embargo lifts (addReleaseFile in apps/nrms/src/media/files.ts checks the
-  // file's type, not the release's status; see open question Q17 in
-  // docs/parity/open-questions.md, and C38 in docs/parity/changes-from-legacy.md) — but every
-  // key carries a 16-hex random part, so nothing is guessable or listable (no index, no
-  // directory redirects). The store's `.meta` folder is refused by dotfiles: "deny".
-  // Content-Type comes from the key's extension, which NRMS forces to match the sniffed bytes
-  // (PDF/PNG/JPEG only); nosniff stops a browser second-guessing it. Mounted before the
-  // no-store default so the 60 s public cache stands.
-  const storageDir = nrmsEnv.STORAGE_DIR!;
-  app.use(
-    "/files",
-    express.static(storageDir, {
-      index: false,
-      redirect: false,
-      dotfiles: "deny",
-      fallthrough: false,
-      maxAge: FILES_MAX_AGE_MS,
-      setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
-    }),
-  );
+  // Phase 3c: uploaded files from NRMS's STORAGE_DIR (<DATA_DIR>/storage, which survives a
+  // redeploy) at /files/<key>. Q17 (owner decision 2026-10-28, C38): a release's translation
+  // and media files are served only while the release is live — a draft's, an embargoed
+  // (scheduled, not yet gone live) release's, an unpublished or deleted release's file answers
+  // the same no-store 404 as an unknown key; staff open them through the Hub instead
+  // (GET /nrms/api/releases/:id/files/:fileId). Site files and carousel/pin images are served
+  // as before. Content-Type comes from the key's extension, which NRMS forces to match the
+  // sniffed bytes (PDF/PNG/JPEG only); nosniff stops a browser second-guessing it. Mounted
+  // before the no-store default so the 60 s public cache stands. See files-gate.ts.
+  app.use("/files", ...filesHandlers({ storageDir: nrmsEnv.STORAGE_DIR!, outputDir, isPublic: (key) => nrms.releaseFileIsPublic(key) }));
 
   // The staff app, hosted at /hub — mounted here (before the no-store
   // default) so /hub/assets' own long-lived Cache-Control isn't overridden by it, same

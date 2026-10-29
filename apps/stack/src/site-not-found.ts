@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { NextFunction, Request, Response } from "express";
-import { sendPrecompressed } from "./site-precompressed";
 
 /** Served only until the public site has written its own 404.html (a cold start). */
 const FALLBACK_404 = `<!doctype html>
@@ -19,25 +18,23 @@ const FALLBACK_404 = `<!doctype html>
  * published a moment later is never shadowed by a cached 404.
  */
 export function siteNotFound(outputDir: string) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    if (req.method !== "GET" && req.method !== "HEAD") return next();
+  // Written by hand rather than res.sendFile/res.send: those add Accept-Ranges, ETag and
+  // Last-Modified (Express wires its app-wide etag setting into sendFile), so a Range or
+  // conditional request could turn the 404 into a 206 slice or a 304. A 404 is always the whole
+  // page with status 404 and no validators — every miss, including a gated /files key, is
+  // byte-identical.
+  const answer = (res: Response, body: Buffer): void => {
     res.status(404);
     res.setHeader("Cache-Control", "no-store");
-    if (existsSync(join(outputDir, "404.html"))) {
-      // The stored 404.html.br / .gz when the client takes one (a crawler hammering missing URLs
-      // costs a file read, not a compression each); else the page as is, compressed per request.
-      const plain = (): void => {
-        // `root` keeps send's dotfile check to "404.html" itself (an OUTPUT_DIR under a dotted
-        // folder, e.g. SiteGround's ~/.nodeapp, would otherwise 404 the 404 page).
-        res.sendFile("404.html", { root: outputDir, headers: { "Cache-Control": "no-store" } }, (err) => {
-          if (err && !res.headersSent) res.type("html").send(FALLBACK_404);
-        });
-      };
-      sendPrecompressed(req, res, outputDir, "404.html", { headers: { "Cache-Control": "no-store" } }).then((sent) => {
-        if (!sent) plain();
-      }, plain);
-      return;
-    }
-    res.type("html").send(FALLBACK_404);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Length", String(body.length));
+    res.end(body);
+  };
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    readFile(join(outputDir, "404.html")).then(
+      (body) => answer(res, body),
+      () => answer(res, Buffer.from(FALLBACK_404)),
+    );
   };
 }

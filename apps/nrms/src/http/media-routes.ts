@@ -5,7 +5,7 @@ import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { statusText, versionOnlySchema, type ReleaseView } from "@gcpe/nrms-contract";
 import type { ObjectStore } from "@gcpe/storage";
 import { assetStatus } from "../media/asset-status";
-import { addReleaseFile, MAX_RELEASE_FILE_BYTES, removeReleaseFile } from "../media/files";
+import { addReleaseFile, MAX_RELEASE_FILE_BYTES, releaseFileForStaff, removeReleaseFile } from "../media/files";
 import type { FlickrClient } from "../media/flickr-client";
 import { addPageImage, MAX_PAGE_IMAGE_BYTES, pageImageBytes, updatePageImage } from "../media/page-images";
 import { loadView } from "../releases/store";
@@ -112,6 +112,30 @@ export function mediaRoutes(deps: MediaRouteDeps): Router {
     run(async (req, res) => {
       const { version } = versionOnlySchema.parse(req.body);
       res.json(withStatus(await removeReleaseFile(db, deps.store!, req.params.id, req.params.fileId, version, actorOf(req))));
+    }),
+  );
+
+  // Q17: staff open a release's translation or media file here, whatever the release's status —
+  // the public /files/<key> only serves it while the release is live (apps/stack/src/files-gate.ts).
+  // Anyone who can read the release (the same `read` roles as GET /releases/:id) can read its
+  // files. Inline, so a PDF or image opens in the browser tab; the file name is the key's own
+  // tail (already [a-z0-9._-] only, so safe to quote). Never cached anywhere.
+  r.get(
+    "/releases/:id/files/:fileId",
+    read,
+    needStore,
+    run(async (req: Request<Params>, res) => {
+      const file = await releaseFileForStaff(db, req.params.id, req.params.fileId);
+      const stored = file ? await deps.store!.get(file.storageKey) : null;
+      if (!file || !stored) {
+        if (file) console.error(`[nrms] a release file is missing from storage: ${req.params.id}/${req.params.fileId}`);
+        return notFound(res);
+      }
+      const name = file.storageKey.split("/").pop()!;
+      res
+        .type(file.contentType)
+        .set({ "cache-control": "private, no-store", "x-content-type-options": "nosniff", "content-disposition": `inline; filename="${name}"` })
+        .send(stored.bytes);
     }),
   );
 

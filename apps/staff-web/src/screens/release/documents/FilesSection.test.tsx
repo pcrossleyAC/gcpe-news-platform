@@ -27,6 +27,12 @@ describe("FilesSection", () => {
     expect(screen.getByRole("button", { name: "Remove photo.jpg" })).toBeInTheDocument();
   });
 
+  it("links each file through the staff API, never the public /files URL (Q17: that 404s until the release is live)", () => {
+    render(<FilesSection view={BASE} setView={() => {}} readOnly />);
+    expect(screen.getByRole("link", { name: "fr.pdf" })).toHaveAttribute("href", `/nrms/api/releases/${BASE.id}/files/f1`);
+    expect(screen.getByRole("link", { name: "photo.jpg" })).toHaveAttribute("href", `/nrms/api/releases/${BASE.id}/files/f2`);
+  });
+
   it("uploads a translation as a raw body; the file name goes in X-GCPE-File-Name, never the URL", async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     vi.stubGlobal(

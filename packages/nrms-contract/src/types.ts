@@ -55,7 +55,11 @@ export interface DocumentView {
   languages: DocumentLanguageView[];
 }
 
-/** An uploaded translation PDF or media asset file. `url` is the public path, `/files/<key>`. */
+/**
+ * An uploaded translation PDF or media asset file. `url` is the public path, `/files/<key>`, which
+ * the published record carries — it serves the file only while the release is live (Q17); staff
+ * open it at any status through `GET /nrms/api/releases/<release id>/files/<id>`.
+ */
 export interface ReleaseFileView {
   id: string;
   kind: "translation" | "asset";
