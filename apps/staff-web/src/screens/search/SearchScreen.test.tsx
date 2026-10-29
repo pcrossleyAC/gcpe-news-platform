@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { createMemoryRouter, MemoryRouter, RouterProvider, Route, Routes, useParams } from "react-router";
@@ -100,6 +100,16 @@ describe("SearchScreen", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     cleanup();
+  });
+
+  it("Ctrl+K (⌘K on a Mac) goes to the search box, which says so", async () => {
+    stubFetch();
+    renderSearch();
+    await screen.findByRole("heading", { level: 1 });
+    const box = screen.getByRole("textbox", { name: /^Search/ });
+    expect(box).toHaveAttribute("aria-keyshortcuts", "Control+K");
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    expect(box).toHaveFocus();
   });
 
   it("has exactly one h1", async () => {

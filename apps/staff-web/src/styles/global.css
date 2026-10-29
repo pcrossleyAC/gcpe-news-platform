@@ -3369,3 +3369,35 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 .gcpe-admin__save-row .gcpe-hint {
   margin: 0;
 }
+
+/* Keyboard shortcut hint inside a button ("⌘S" / "Ctrl+S", shared/shortcuts.tsx): quiet, in the
+ * button's own colour, and not on touch screens, where there's no keyboard to press it on. */
+.gcpe-shortcut-hint {
+  margin-inline-start: 0.5rem;
+  padding: 0 0.25rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .gcpe-shortcut-hint {
+    display: none;
+  }
+}
+
+/* Where each row or form has its own Save, the hint shows only on the one the keys would save:
+ * the one focus is in. */
+.gcpe-shortcut-scope:not(:focus-within) .gcpe-shortcut-hint {
+  display: none;
+}
+
+/* A wrapper that only groups its children for code (a shortcut's scope), with no box of its own. */
+.gcpe-contents {
+  display: contents;
+}

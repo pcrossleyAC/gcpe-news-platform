@@ -246,6 +246,19 @@ describe("ReleaseEditorPage", () => {
       expect(writes[1]!.body.version).toBe(1); // the failed save moved nothing
     });
 
+    it("Ctrl+S (⌘S on a Mac), even from inside a text field, is the same one Save; the button shows the keys", async () => {
+      const { writes, user } = renderWithHeldWrites();
+      await editCategoriesAndSettings(user);
+      const button = within(bar()).getByRole("button", { name: "Save changes" });
+      expect(button).toHaveAttribute("aria-keyshortcuts", "Control+S");
+      expect(button).toHaveTextContent("Ctrl+S");
+      await user.click(screen.getByLabelText("Location"));
+      const notCancelled = fireEvent.keyDown(screen.getByLabelText("Location"), { key: "s", ctrlKey: true });
+      expect(notCancelled).toBe(false); // the browser's Save page is kept away
+      await waitFor(() => expect(writes).toHaveLength(1));
+      expect(writes[0]!.url).toMatch(/\/categories$/);
+    });
+
     it("has no serious/critical axe violations while saving", async () => {
       const { writes, user } = renderWithHeldWrites();
       await editCategoriesAndSettings(user);
@@ -744,7 +757,8 @@ describe("ReleaseEditorPage", () => {
     await user.type(await screen.findByLabelText("Location"), "V");
     const bar = await screen.findByRole("region", { name: "Unsaved changes" });
     expect(bar).toHaveTextContent("You have unsaved changes in: English content (Document 1), page details");
-    expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Save changes"]);
+    expect(within(bar).getAllByRole("button")).toHaveLength(1);
+    expect(within(bar).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
   it("a read-only Viewer never sees the sticky save bar", async () => {

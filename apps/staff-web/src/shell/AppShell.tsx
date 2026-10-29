@@ -6,6 +6,7 @@ import { useSession, type SessionValue } from "../session/SessionContext";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
 import { AnnouncerProvider } from "../shared/Announcer";
 import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
+import { useEscapeClosesPanels } from "../shared/escapeClosesPanels";
 import { canReadWebsite } from "../screens/website/access";
 import { canReadSubscribers } from "../screens/subscribers/access";
 import { canManageCalendarAccess } from "../screens/admin/calendar-access/calendar-roles";
@@ -71,6 +72,8 @@ export function AppShell(): React.JSX.Element {
   const tzMismatch = useTimeZoneWarning();
   // I5 (WCAG 2.4.2): move focus to the new screen's h1 on every route change.
   const mainRef = useFocusH1OnRouteChange<HTMLElement>();
+  // Esc closes the panel or disclosure the user is in, on every screen (dialogs close themselves).
+  useEscapeClosesPanels();
   const uid = useId();
   const { pathname } = useLocation();
   // On narrow screens the section menu folds away behind a "Menu" button (the CSS hides the

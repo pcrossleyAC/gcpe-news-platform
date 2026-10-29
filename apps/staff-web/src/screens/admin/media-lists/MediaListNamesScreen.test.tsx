@@ -60,8 +60,10 @@ describe("MediaListNamesScreen", () => {
     stub(["Core.Admin"]);
     renderIt();
     const row = (await screen.findByRole("textbox", { name: "Name for 002-budget" })).closest("tr")!;
-    // Only the key and the button's "Save" show; the name, order and active labels don't.
-    expect([...row.cells].map((c) => visibleText(c))).toEqual(["002-budget", "", "", "", "Save"]);
+    // Only the key and the button's "Save" show; the name, order and active labels don't. (The
+    // Save's key hint is in the markup, shown by CSS only while focus is in the row.)
+    expect([...row.cells].map((c) => visibleText(c))).toEqual(["002-budget", "", "", "", "Save Ctrl+S"]);
+    expect(within(row).getByRole("button", { name: "Save 002-budget" })).toHaveAttribute("aria-keyshortcuts", "Control+S");
     expect(within(row).getByRole("checkbox", { name: "002-budget active" })).toBeInTheDocument();
     expect(within(row).getByRole("button", { name: "Save 002-budget" })).toBeInTheDocument();
   });

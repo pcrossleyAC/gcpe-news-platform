@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
+import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
@@ -36,6 +37,10 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
       });
   };
 
+  // ⌘/Ctrl+S saves the pin you're in (each pin has its own Save).
+  const sectionRef = useRef<HTMLElement>(null);
+  useShortcut("save", canEdit ? () => void (section.saving ? undefined : save()) : null, { within: sectionRef });
+
   const togglePinned = (next: boolean) => {
     void section.run(() => apiFetch<PinView>(`/nrms/api/site/pins/${pin.slot}/pinned`, { method: "POST", body: { version: pin.version, pinned: next } })).then((result) => {
       if (result) onSaved();
@@ -53,7 +58,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
   };
 
   return (
-    <section aria-label={`${SLOT_LABEL[pin.slot]} emergency pin`}>
+    <section ref={sectionRef} aria-label={`${SLOT_LABEL[pin.slot]} emergency pin`}>
       <h2>{SLOT_LABEL[pin.slot]}</h2>
 
       {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={onSaved}>Reload</Button>} />}
@@ -104,7 +109,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
       )}
 
       {canEdit && (
-        <Button onPress={save} isPending={section.saving} pendingLabel="Saving…">
+        <Button onPress={save} isPending={section.saving} pendingLabel="Saving…" shortcut="save">
           Save {SLOT_LABEL[pin.slot].toLowerCase()} pin
         </Button>
       )}

@@ -3,6 +3,7 @@ import { AlertDialog, Form, InlineAlert, Modal, TextField } from "@bcgov/design-
 import { apiFetch, ApiError } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
+import { useShortcut } from "../../../shared/shortcuts";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { TableScroll } from "../../../shared/TableScroll";
 
@@ -169,9 +170,14 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
     setConfirmRetire(false);
     setError(null);
   };
+  // ⌘/Ctrl+S saves the row you're in, as its Save does.
+  const rowEl = useRef<HTMLTableRowElement>(null);
+  useShortcut("save", () => {
+    if (!busy && !confirmRetire) onSave();
+  }, { within: rowEl });
 
   return (
-    <tr>
+    <tr ref={rowEl} className="gcpe-shortcut-scope">
       <td>{record.key}</td>
       <td>
         <TextField aria-label={`Name for ${record.key}`} value={name} onChange={setName} />
@@ -189,7 +195,7 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
         </label>
       </td>
       <td>
-        <Button variant="secondary" isPending={busy} onPress={onSave}>
+        <Button variant="secondary" isPending={busy} onPress={onSave} shortcut="save">
           <span>
             Save <span className="gcpe-visually-hidden">{record.key}</span>
           </span>

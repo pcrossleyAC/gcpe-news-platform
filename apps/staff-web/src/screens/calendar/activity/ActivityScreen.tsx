@@ -5,6 +5,7 @@ import { checkActivity, friendlySpan, inferLookAhead, type ActivityFields, type 
 import { ApiError, onUnauthorized } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { useShortcut } from "../../../shared/shortcuts";
 import type { CalendarMe } from "../access";
 import { useCalendarContext } from "../CalendarSection";
 import { listApi } from "../list/api";
@@ -307,6 +308,15 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   }, [gone, deletedMeanwhile]);
   const extra = (warnings: string[]) => (warnings.length ? ` ${warnings.join(" ")}` : "");
 
+  // ⌘/Ctrl+S saves from any field, as Save does; on a new activity ⌘/Ctrl+Enter creates it too.
+  // A press while a save is under way is ignored.
+  const formRef = useRef<HTMLFormElement>(null);
+  const submitForm = () => {
+    if (!saving) formRef.current?.requestSubmit();
+  };
+  useShortcut("save", readOnly ? null : submitForm);
+  useShortcut("submit", !readOnly && isNew ? submitForm : null);
+
   const save = async () => {
     setFailure(null);
     const problems = checkActivity(fields, {
@@ -409,6 +419,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
       )}
       {errors.length > 0 && <ErrorSummary ref={summary} errors={errors} />}
       <form
+        ref={formRef}
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
@@ -456,7 +467,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
         </fieldset>
         <div className="gcpe-actions">
           {!readOnly && (
-            <Button type="submit" isPending={saving} pendingLabel="Saving…">
+            <Button type="submit" isPending={saving} pendingLabel="Saving…" shortcut={isNew ? ["save", "submit"] : "save"}>
               Save
             </Button>
           )}

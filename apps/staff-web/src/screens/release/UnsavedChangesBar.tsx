@@ -67,7 +67,7 @@ export function UnsavedChangesBar({ sections, state, onSave, targetOf = () => nu
         )}
       </div>
       <div className="gcpe-save-bar__buttons">
-        <Button onPress={onSave} isPending={state.status === "saving"} pendingLabel="Saving…">
+        <Button onPress={onSave} isPending={state.status === "saving"} pendingLabel="Saving…" shortcut="save">
           Save changes
         </Button>
       </div>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
@@ -79,7 +79,9 @@ describe("LiveFeedScreen", () => {
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("M3U URL"), "https://example.invalid/feed.m3u8");
     await user.click(screen.getByRole("switch", { name: "Live Feed on" }));
-    await user.click(screen.getByRole("button", { name: "Save Live Feed" }));
+    // Ctrl+S (⌘S on a Mac) from a field does what Save Live Feed does.
+    expect(screen.getByRole("button", { name: "Save Live Feed" })).toHaveAttribute("aria-keyshortcuts", "Control+S");
+    fireEvent.keyDown(screen.getByLabelText("M3U URL"), { key: "s", ctrlKey: true });
 
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/live-feed" && c.init?.method === "PUT")).toBe(true));
     const call = calls.find((c) => c.url === "/nrms/api/site/live-feed" && c.init?.method === "PUT")!;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../../test/jsonResponse";
@@ -120,6 +120,17 @@ describe("CategoriesScreen", () => {
       ["/core/api/terms/sector/education", "Education", 9],
     ]);
     expect(await screen.findByRole("status")).toHaveTextContent("Saved 2 changes.");
+  });
+
+  it("Ctrl+S (⌘S on a Mac), from any field, is Save changes; the button shows the keys", async () => {
+    const calls = stub(["Core.Admin"]);
+    renderIt();
+    const name = await screen.findByRole("textbox", { name: "Name for education" });
+    await userEvent.setup().type(name, "!");
+    expect(screen.getByRole("button", { name: "Save changes" })).toHaveAttribute("aria-keyshortcuts", "Control+S");
+    fireEvent.keyDown(name, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(puts(calls)).toHaveLength(1));
+    expect(puts(calls)[0]!.url).toBe("/core/api/terms/sector/education");
   });
 
   it("an edit put back to what was loaded is no longer unsaved", async () => {

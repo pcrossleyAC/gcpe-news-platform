@@ -7,6 +7,7 @@ import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useAnnouncer } from "../../shared/Announcer";
+import { useShortcut } from "../../shared/shortcuts";
 import { DirtyKeysProvider, useUnsavedChangesGuard } from "./useUnsavedChanges";
 import { unsavedTarget } from "./unsavedTarget";
 import { UnsavedChangesBar } from "./UnsavedChangesBar";
@@ -82,6 +83,18 @@ export function ReleaseEditorPage(): React.JSX.Element {
   // though `view` didn't change.
   const [retry, setRetry] = useState(0);
   const lastStatus = useRef<string | null>(null);
+  // ⌘/Ctrl+S: the page's one Save, from anywhere on the page (text fields included) — for an
+  // editor; a viewer has nothing to save.
+  const canEdit = session.has("NRMS.Editor");
+  useShortcut(
+    "save",
+    view && canEdit
+      ? () => {
+          if (guard.dirtySections.length === 0) announce("No unsaved changes.");
+          else void guard.saveAll();
+        }
+      : null,
+  );
   // The happy-path title (the release's own headline) is HeaderSection's job, below — this
   // only owns it for the error state, whose h1 ("Release") HeaderSection never renders.
   useDocumentTitle(error ? "Release" : null);
@@ -158,7 +171,6 @@ export function ReleaseEditorPage(): React.JSX.Element {
   // constraints.md: a viewer (no NRMS.Editor) sees the page read-only — every section still
   // shows the release's data, just with no inputs enabled and no Actions at all (every action
   // is an Editor-only write).
-  const canEdit = session.has("NRMS.Editor");
   const settling = settlingDelay(view, Date.now()) === SETTLING_REFRESH_MS;
 
   return (

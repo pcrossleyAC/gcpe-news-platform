@@ -4,6 +4,7 @@ import { InlineAlert } from "@bcgov/design-system-react-components";
 import { ApiError, apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
+import { useFormShortcut } from "../../../shared/shortcuts";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 import { AccessEditor, actorFor, lockedMessage } from "../../admin/calendar-access/AccessEditor";
@@ -49,8 +50,10 @@ function ProfileForm({ userId, profile, onSaved }: { userId: string; profile: Pr
       setBusy(false);
     }
   };
+  // ⌘/Ctrl+S saves the contact details (the screen's Save) from anywhere on it.
+  const formRef = useFormShortcut("save", !busy);
   return (
-    <form aria-label="Contact details" onSubmit={save}>
+    <form ref={formRef} aria-label="Contact details" onSubmit={save}>
       <h2>Contact details</h2>
       <Alerts messages={messages} />
       {field("phone", "Phone", "Up to 20 characters")}
@@ -60,7 +63,7 @@ function ProfileForm({ userId, profile, onSaved }: { userId: string; profile: Pr
         <label htmlFor="profile-description">Description</label>
         <textarea id="profile-description" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} disabled={busy} />
       </div>
-      <Button type="submit" isPending={busy} pendingLabel="Saving…">
+      <Button type="submit" isPending={busy} pendingLabel="Saving…" shortcut="save">
         Save contact details
       </Button>
     </form>

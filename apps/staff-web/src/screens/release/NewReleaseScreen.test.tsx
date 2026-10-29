@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -164,6 +164,30 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     await user.click(screen.getByRole("button", { name: "Create release" }));
 
     await waitFor(() => expect(screen.getByText("Editor page")).toBeInTheDocument());
+  });
+
+  it("Ctrl+Enter (⌘Return on a Mac) creates the release from anywhere in the form, once; the button shows the keys", async () => {
+    const created = releaseView({ id: "99999999-9999-9999-9999-999999999999" });
+    let posts = 0;
+    stubFetch({
+      onPost: () => {
+        posts += 1;
+        return jsonResponse(201, created);
+      },
+    });
+    renderScreen();
+    await screen.findByText("Legislature");
+    const user = userEvent.setup();
+    expect(screen.getByRole("button", { name: "Create release" })).toHaveAttribute("aria-keyshortcuts", "Control+Enter");
+    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    const headline = screen.getByLabelText("Headline", { exact: false });
+    await user.type(headline, "Clinics open this weekend");
+    await user.click(screen.getByLabelText("Health"));
+    headline.focus();
+    fireEvent.keyDown(headline, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(headline, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(screen.getByText("Editor page")).toBeInTheDocument());
+    expect(posts).toBe(1);
   });
 
   it("a server 422 maps its problems onto the ministries field", async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_LIST_QUERY, type ListPage } from "@gcpe/calendar-contract";
 import { jsonResponse } from "../../../../test/jsonResponse";
@@ -52,6 +52,19 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     const table = screen.getAllByRole("table")[0]!;
     expect(actions.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("group", { name: "View" }).compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Ctrl+K (⌘K on a Mac) opens Filters and goes to Search for", async () => {
+    stubFetch([]);
+    renderList();
+    await screen.findByText("Sample listed");
+    const details = screen.getByRole("form", { name: "Filter activities" }).closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    });
+    expect(details).toHaveAttribute("open");
+    expect(screen.getByLabelText("Search for")).toHaveFocus();
   });
 
   it("starts Filters closed when the list is already filtered, naming the filter beside it; remembers opening it for the tab", async () => {

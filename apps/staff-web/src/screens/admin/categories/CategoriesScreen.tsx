@@ -6,6 +6,7 @@ import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { TableScroll } from "../../../shared/TableScroll";
+import { useShortcut } from "../../../shared/shortcuts";
 
 type Kind = "sector" | "theme" | "tag";
 const KINDS: { kind: Kind; plural: string; singular: string }[] = [
@@ -212,6 +213,9 @@ function CategoriesEditor(): React.JSX.Element {
     }
     void send(pending);
   };
+  // ⌘/Ctrl+S is the grid's Save changes, from anywhere on the screen (not while the retire dialog asks).
+  useShortcut("save", saveChanges);
+
   const confirmRetire = () => {
     setRetiring(null);
     void send(inTableOrder([...edits.values()]));
@@ -275,7 +279,7 @@ function CategoriesEditor(): React.JSX.Element {
         </TableScroll>
       )}
       <div className="gcpe-admin__save-row">
-        <Button onPress={saveChanges} isPending={saving} pendingLabel="Saving…">
+        <Button onPress={saveChanges} isPending={saving} pendingLabel="Saving…" shortcut="save">
           Save changes
         </Button>
         {unsavedText && <p className="gcpe-hint">{unsavedText}</p>}

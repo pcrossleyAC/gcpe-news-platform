@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
@@ -79,9 +79,11 @@ describe("PinsScreen", () => {
     const headlineField = await screen.findByLabelText("Primary headline");
     await user.clear(headlineField);
     await user.type(headlineField, "New headline");
-    await user.click(screen.getByRole("button", { name: "Save primary pin" }));
+    // Ctrl+S (⌘S on a Mac) saves the pin the focus is in — this one, not the other.
+    fireEvent.keyDown(headlineField, { key: "s", ctrlKey: true });
 
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/pins/primary" && c.init?.method === "PUT")).toBe(true));
+    expect(calls.some((c) => c.url === "/nrms/api/site/pins/secondary" && c.init?.method === "PUT")).toBe(false);
     const call = calls.find((c) => c.url === "/nrms/api/site/pins/primary" && c.init?.method === "PUT")!;
     expect(JSON.parse(call.init!.body as string)).toEqual({ version: 1, headline: "New headline", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left" });
   });

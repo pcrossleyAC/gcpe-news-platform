@@ -6,6 +6,7 @@ import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { formatWhen } from "../../format/dates";
 import { useAnnouncer } from "../../shared/Announcer";
 import { Button } from "../../shared/BusyButton";
+import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
@@ -107,6 +108,10 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
         if (next) onSaved();
       });
   };
+
+  // ⌘/Ctrl+S saves the next carousel you're in. Not the live one: saving it publishes, which
+  // keeps its own button and confirmation.
+  useShortcut("save", canEdit && !isLive ? () => void (section.saving ? undefined : save()) : null, { within: moveFocus.containerRef });
 
   const confirmRemove = () => {
     if (removeIndex === null) return;
@@ -255,7 +260,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
         </Button>
       )}
       {canEdit && !isLive && (
-        <Button onPress={save} isPending={section.saving}>
+        <Button onPress={save} isPending={section.saving} shortcut="save">
           Save carousel
         </Button>
       )}

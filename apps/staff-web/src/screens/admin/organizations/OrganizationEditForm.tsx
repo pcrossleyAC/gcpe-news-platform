@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Button } from "../../../shared/Button";
+import { Button } from "../../../shared/BusyButton";
+import { useFormShortcut } from "../../../shared/shortcuts";
 import { apiFetch } from "../../../api/client";
 import type { LinkSetting } from "@gcpe/site-settings";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
@@ -334,8 +335,11 @@ export function OrganizationEditForm({
   const weekendError = errorFor("weekendContactNumber");
   const additionalNameError = errorFor("displayAdditionalName");
 
+  // ⌘/Ctrl+S saves the organization being edited, as its Save does.
+  const formRef = useFormShortcut("save", true, true);
   return (
     <form
+      ref={formRef}
       onSubmit={save}
       aria-label={`Edit ${org.displayName}`}
       className="gcpe-stack gcpe-org-form"
@@ -664,7 +668,7 @@ export function OrganizationEditForm({
       )}
 
       <div className="gcpe-button-row">
-        <Button type="submit" isPending={busy} isDisabled={nameBlank || sortInvalid}>
+        <Button type="submit" isPending={busy} isDisabled={nameBlank || sortInvalid} shortcut="save">
           Save
         </Button>
         <Button variant="secondary" onPress={onCancel} isPending={busy}>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
@@ -118,6 +118,17 @@ describe("OperationsScreen", () => {
     await user.click(screen.getByRole("button", { name: "Save address" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/bounce-summary-address", method: "PUT", body: { address: "staff@example.test" } }));
     expect(await screen.findByRole("status")).toHaveTextContent("Bounce summary address saved.");
+  });
+
+  it("Ctrl+S (⌘S on a Mac) saves the form focus is in — the screen has two", async () => {
+    const calls = stub(["NoD.Admin"]);
+    renderIt();
+    await screen.findByText("Using the server default: server@example.test");
+    const field = screen.getByRole("textbox", { name: "Bounce summary email" });
+    await userEvent.setup().type(field, "staff@example.test");
+    fireEvent.keyDown(field, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/bounce-summary-address", method: "PUT", body: { address: "staff@example.test" } }));
+    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(1);
   });
 
   it("pressing Enter twice in the Bounce summary email field while saving sends only one request", async () => {
