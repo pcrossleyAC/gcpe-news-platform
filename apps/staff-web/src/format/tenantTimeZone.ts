@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
+import { useOptionalSession } from "../session/SessionContext";
 
 /** The BC tenant's own zone (packages/config/src/tenant.ts) — used only until `GET
  * /nrms/api/config` resolves, or if it fails, so {@link relativeDay}/{@link formatWhen} always
@@ -8,6 +9,20 @@ const FALLBACK_TIME_ZONE = "America/Vancouver";
 
 interface ConfigResponse {
   timeZone: string;
+}
+
+/** The roles `GET /nrms/api/config` accepts (apps/nrms/src/http/routes.ts's `anySignedIn`). */
+const NRMS_CONFIG_ROLES = ["NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor", "Core.Admin"];
+
+/**
+ * Where the zone comes from: `/nrms/api/config` for anyone it accepts (unchanged), and for staff
+ * with none of those roles (Subscribers-only, Calendar-only) `GET /core/api/time-zone-check`,
+ * which any signed-in user may read and which gives the same tenant zone — so their screens
+ * no longer ask NRMS for it and get a 403 on every visit.
+ */
+function timeZoneSource(session: ReturnType<typeof useOptionalSession>): string {
+  if (!session?.user || NRMS_CONFIG_ROLES.some((r) => session.has(r))) return "/nrms/api/config";
+  return "/core/api/time-zone-check";
 }
 
 /** Fetches `GET /nrms/api/config` (Task 1) once per mount and returns its `timeZone` — the
@@ -24,10 +39,11 @@ export function useTenantTimeZone(): string {
  */
 export function useTenantTimeZoneStatus(): { timeZone: string; resolved: boolean } {
   const [status, setStatus] = useState({ timeZone: FALLBACK_TIME_ZONE, resolved: false });
+  const source = timeZoneSource(useOptionalSession());
 
   useEffect(() => {
     let active = true;
-    apiFetch<ConfigResponse>("/nrms/api/config").then(
+    apiFetch<ConfigResponse>(source).then(
       (config) => {
         if (active) setStatus({ timeZone: config.timeZone, resolved: true });
       },
@@ -40,7 +56,7 @@ export function useTenantTimeZoneStatus(): { timeZone: string; resolved: boolean
     return () => {
       active = false;
     };
-  }, []);
+  }, [source]);
 
   return status;
 }
