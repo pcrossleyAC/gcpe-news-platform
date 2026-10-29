@@ -347,14 +347,18 @@ body {
   align-self: flex-end;
 }
 
-/* In a row beside design-system fields, native labels match their label size. */
+/* In a row beside design-system fields, native labels match their label: the same size, the same
+ * padding, and (as there) no gap between label and box, so every label in the row lines up. */
 .gcpe-field-row label.gcpe-field,
-.gcpe-field-row .gcpe-field > label {
+.gcpe-field-row .gcpe-field > label,
+.gcpe-search__row .gcpe-field > label {
   font: var(--typography-regular-small-body);
   color: var(--typography-color-primary, #2d2d2d);
 }
-.gcpe-field-row .gcpe-field > label {
+.gcpe-field-row .gcpe-field > label,
+.gcpe-search__row .gcpe-field > label {
   padding: var(--layout-padding-xsmall, 0.25rem) 0;
+  margin-bottom: -0.25rem;
 }
 
 /* A plain form's fields, one under another. */
