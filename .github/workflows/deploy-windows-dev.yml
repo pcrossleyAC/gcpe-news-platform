@@ -1,5 +1,5 @@
 name: deploy-windows-dev
-# Deploys to the Dev Windows Server on every push to `develop` (docs/deploy/windows.md, step 7):
+# Deploys to the Dev Windows Server on every push to `develop` (docs/deploy/windows.md, D5 and D6):
 # builds the package on GitHub's runners, then runs Deploy-GcpeRelease.ps1 on the self-hosted runner
 # installed on the Dev server (labels: self-hosted, windows, gcpe-dev). The deploy job waits for the
 # "dev" environment's protection rules, if any are set in Settings > Environments.

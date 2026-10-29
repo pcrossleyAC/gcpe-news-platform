@@ -28,6 +28,16 @@ export const newsApiEnvSchema = z
     SEARCH_SEMANTIC_THRESHOLD: z.coerce.number().min(0).max(2).default(0.6),
     /** Requests a minute per client IP on /api/v2/search (Q74), keyed like Subscribe. */
     SEARCH_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(60),
+    /** Public search results are kept in memory this long (0 turns the cache off). Matches the
+     * public site's max-age: a publish shows in search within this time. */
+    SEARCH_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
+    SEARCH_CACHE_MAX_ENTRIES: z.coerce.number().int().min(1).max(100_000).default(500),
+    SEARCH_CACHE_MAX_MB: z.coerce.number().int().min(1).max(1024).default(32),
+    /** Vector scans running at once. Unset: max(2, CPU cores - 1). */
+    SEARCH_SEMANTIC_MAX_CONCURRENT: z.coerce.number().int().min(1).max(256).optional(),
+    /** Semantic queries allowed to wait for a slot, and for how long, before falling back to text. */
+    SEARCH_SEMANTIC_QUEUE: z.coerce.number().int().min(0).max(1000).default(8),
+    SEARCH_SEMANTIC_QUEUE_WAIT_MS: z.coerce.number().int().min(0).max(5000).default(250),
     /** Where a slide event's imageKey is fetched from (addendum §6.4) — required: the fetch
      * never falls back to the event's own imageUrl (that has no host allow-list), so without
      * this the News API can't safely fetch slide images at all, and refuses to start. The

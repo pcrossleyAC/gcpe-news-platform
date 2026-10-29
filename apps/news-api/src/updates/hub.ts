@@ -112,7 +112,7 @@ export function createUpdatesHub(
       return;
     }
     // Same client-IP resolution as the subscribe proxy's rate limiter: req.ip, which honours
-    // the app's "trust proxy" setting (app.ts: one hop, the OpenShift router).
+    // the app's "trust proxy" setting (app.ts: TRUST_PROXY_HOPS, default one hop, the OpenShift router).
     const ip = req.ip ?? "";
     if (connectionsForIp(ip) >= maxConnectionsPerIp) {
       res.status(503).json({ error: "too many connections" });

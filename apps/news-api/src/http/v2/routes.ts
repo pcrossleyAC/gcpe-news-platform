@@ -106,7 +106,10 @@ export function v2Routes(deps: {
       };
       req.on("close", onClose);
       try {
-        res.json(await search.search(parsed.query, controller.signal));
+        const { fallback, ...body } = await search.search(parsed.query, controller.signal);
+        // Still no-store (set for every v2 response): a capacity fallback is per-request, never shared.
+        if (fallback) res.set("X-Search-Fallback", fallback);
+        res.json(body);
       } finally {
         req.off("close", onClose);
       }

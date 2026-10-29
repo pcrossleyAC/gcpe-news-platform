@@ -1,7 +1,7 @@
 import { z } from "zod";
 import express from "express";
 import { serviceTokenProvider } from "@gcpe/auth";
-import { assertTimeZoneRules, isTestSite, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, isTestSite, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
@@ -103,6 +103,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   // promise, or the response would wait on the whole drain again) only once that transaction
   // has committed.
   const app = createApp({
+    trustProxyHops: trustProxyHopsFrom(env),
     db,
     eventSecrets: parsed.EVENT_SECRETS,
     handler,

@@ -1,7 +1,7 @@
 import type { Server } from "node:http";
 import express from "express";
 import { authFromEnv, NOD_SUBSCRIBE_API_ROLE, serviceTokenProvider } from "@gcpe/auth";
-import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { CircuitBreaker, createEmbeddingProvider, createGuardedEmbedder } from "@gcpe/embeddings";
 import type { Closer } from "@gcpe/http-kit";
@@ -16,6 +16,7 @@ import { every } from "./loop";
 import { slideImageFetcher } from "./slide-images";
 import { assertSearchLanguage } from "./search/language";
 import { createRelatedService } from "./search/related";
+import { defaultSemanticConcurrency } from "./search/concurrency-gate";
 import { createSemanticSearch } from "./search/semantic";
 import { createSimilarService } from "./search/similar";
 import { createSearchService, type SearchMode } from "./search/service";
@@ -157,6 +158,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
 
   const serviceBearer = changesBearerFromEnv(env);
   const app = createApp({
+    trustProxyHops: trustProxyHopsFrom(env),
     db,
     timeZone: tenant.timeZone,
     eventSecrets: parsed.EVENT_SECRETS,
@@ -169,6 +171,12 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
       defaultLanguageId: tenant.defaultLanguageId,
       publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
       semantic,
+      cache: parsed.SEARCH_CACHE_TTL_SECONDS > 0 ? { ttlMs: parsed.SEARCH_CACHE_TTL_SECONDS * 1000, maxEntries: parsed.SEARCH_CACHE_MAX_ENTRIES, maxBytes: parsed.SEARCH_CACHE_MAX_MB * 1024 * 1024 } : undefined,
+      semanticGate: {
+        maxActive: parsed.SEARCH_SEMANTIC_MAX_CONCURRENT ?? defaultSemanticConcurrency(),
+        maxQueue: parsed.SEARCH_SEMANTIC_QUEUE,
+        queueWaitMs: parsed.SEARCH_SEMANTIC_QUEUE_WAIT_MS,
+      },
     }),
     searchRateLimit: { perMinute: parsed.SEARCH_RATE_LIMIT_PER_MIN, clientIpHeader: parsed.SUBSCRIBE_CLIENT_IP_HEADER },
     changes: { db, timeZone: tenant.timeZone, bearer: serviceBearer },

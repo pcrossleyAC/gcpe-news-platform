@@ -14,8 +14,19 @@ PowerShell in this folder:
 # Let pushes to `develop` deploy here.
 .\Install-GcpeRunner.ps1 -RepositoryUrl https://github.com/bcgov-c/<repo> -Token <token> -Labels gcpe-dev
 
+# Nightly backup (databases where PostgreSQL runs here, files and settings where the app runs here).
+.\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>
+
 # Deploy a newer package by hand (rolls back by itself if it isn't healthy).
 .\Deploy-GcpeRelease.ps1 -Package C:\drops\gcpe-windows-<commit>.zip
+
+# Test/Prod: on the DMZ server, the public reverse proxy in front of the app server. Use the
+# separate gcpe-proxy-<commit>.zip there (Install-GcpeProxy.ps1, Get-GcpePrereqs.ps1, lib\ only),
+# never this package: the DMZ must not hold the app.
+# (the app server then needs Install-Gcpe.ps1 -ProxyHops 2 -AllowedClientRanges <DMZ server>/32, <staff ranges>).
+.\Install-GcpeProxy.ps1 -HostName news-test.example.gov.bc.ca -Upstream https://<app server name> `
+    -CertificateThumbprint <thumbprint> -UpstreamCertificateFile C:\install\app-server.cer `
+    -AllowedClientRanges <staff egress ranges>
 ```
 
 `Get-Help .\<script>.ps1 -Full` describes each script and every option. No internet on the

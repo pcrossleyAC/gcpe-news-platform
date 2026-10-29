@@ -353,6 +353,25 @@ describe("Core HTTP API", () => {
     expect((await attempt(ipB)).status).toBe(401);
   });
 
+  // TRUST_PROXY_HOPS: behind a DMZ proxy + IIS (two hops) the client is the second-from-right
+  // X-Forwarded-For entry; with the default of one hop it is the last (the DMZ server).
+  it("trustProxyHops picks which X-Forwarded-For entry is the client", async () => {
+    const secret = "w".repeat(40) + "-trust-proxy-hops";
+    const passwordHash = await hashPassword("trust-proxy-pass");
+    const build = (trustProxyHops?: number) =>
+      createApp({ db: tdb.db, subscribers: [], auth: { local: { secret } }, loginRouter: localLoginRouter({ username: "admin", passwordHash, secret }), trustProxyHops });
+    const attempt = (a: ReturnType<typeof build>, xff: string) => request(a).post("/auth/local/token").set("X-Forwarded-For", xff).send({ username: "admin", password: "wrong" });
+    // Two hops: the client (203.0.113.7) is keyed even though the DMZ hop (10.0.0.5) is shared.
+    const two = build(2);
+    for (let i = 0; i < 10; i++) expect((await attempt(two, "203.0.113.7, 10.0.0.5")).status).toBe(401);
+    expect((await attempt(two, "203.0.113.7, 10.0.0.5")).status).toBe(429);
+    expect((await attempt(two, "203.0.113.8, 10.0.0.5")).status).toBe(401); // another visitor, same DMZ hop
+    // One hop (default): the DMZ address is the "client", so a different visitor shares the exhausted budget.
+    const one = build();
+    for (let i = 0; i < 10; i++) await attempt(one, "203.0.113.7, 10.0.0.9");
+    expect((await attempt(one, "203.0.113.8, 10.0.0.9")).status).toBe(429);
+  });
+
   describe("POST /api/organizations", () => {
     const create = (token: string, body: unknown) => request(app).post("/api/organizations").set(auth(token)).send(body as object);
 

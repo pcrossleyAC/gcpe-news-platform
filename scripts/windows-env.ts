@@ -74,6 +74,8 @@ export const windowsEnvInputSchema = z
       user: envValue.optional(),
       pass: envValue.optional(),
     }),
+    // Reverse proxies in front of this server (TRUST_PROXY_HOPS): 1 normally, 2 behind a DMZ proxy.
+    proxyHops: z.number().int().min(1).max(5).optional(),
     mailFrom: z.string().email(),
     // A test site always redirects every message (docs/deploy/siteground.md, "Mailbox / SMTP").
     mailRedirectTo: z.array(z.string().email()).min(1, "a test site must redirect mail: give at least one mailRedirectTo address"),
@@ -114,6 +116,7 @@ export function buildWindowsEnvLines(input: WindowsEnvInput, adminPasswordHash: 
     "SITE_ENVIRONMENT=test",
     envLine("PORT", String(input.port)),
     envLine("DATA_DIR", input.dataDir),
+    envLine("TRUST_PROXY_HOPS", String(input.proxyHops ?? 1)),
     "STACK_LOOPS=true",
     "UPDATES_HUB_ENABLED=true",
     envLine("TICK_TOKEN", secrets.tickToken),

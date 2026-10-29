@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isRealProduction } from "@gcpe/config";
+import { isRealProduction, trustProxyHopsSchema } from "@gcpe/config";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { createProjectionHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
 import { z } from "zod";
@@ -69,6 +69,9 @@ export const stackEnvSchema = z.object({
   // Task 1 (staff-web): see defaultStaffWebDir above for why a static default suffices for
   // both dev and the SiteGround bundle.
   STAFF_WEB_DIR: z.string().default(defaultStaffWebDir),
+  // How many reverse proxies sit in front of the stack (1 = SiteGround nginx / local IIS; 2 = a
+  // DMZ proxy in front of IIS). Applied to the stack's own app and, via envFor, every mounted app.
+  TRUST_PROXY_HOPS: trustProxyHopsSchema,
 });
 export type StackEnv = z.infer<typeof stackEnvSchema>;
 
@@ -257,6 +260,7 @@ function isSharedKey(key: string): boolean {
     key === "SESSION_COOKIE_SECURE" ||
     key === "DATA_DIR" ||
     key === "SITE_ENVIRONMENT" ||
+    key === "TRUST_PROXY_HOPS" ||
     key.startsWith("LOCAL_ADMIN_")
   );
 }

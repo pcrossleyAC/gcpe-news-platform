@@ -151,6 +151,45 @@ function Set-GcpeSecretFileAcl {
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
+# The same lock-down as Set-GcpeSecretFileAcl, for a folder and everything that will be created in
+# it: inheritance from the parent off, FullControl for Administrators and SYSTEM only, passed down
+# to every file and subfolder (ContainerInherit, ObjectInherit). Call it on an empty folder,
+# before anything is written into it.
+# -FullControlAccounts adds others with FullControl (a backup share's writer, whose own
+# Administrators and SYSTEM are not this server's); -ModifyAccounts adds accounts that may change
+# the contents (the gcpe-stack service on C:\gcpe\data).
+function Set-GcpePrivateDirectoryAcl {
+    param([Parameter(Mandatory)][string]$Path, [string[]]$FullControlAccounts = @(), [string[]]$ModifyAccounts = @())
+    $acl = New-Object System.Security.AccessControl.DirectorySecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($who in @('BUILTIN\Administrators', 'NT AUTHORITY\SYSTEM') + @($FullControlAccounts | Where-Object { $_ })) {
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($who, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+    }
+    foreach ($who in @($ModifyAccounts | Where-Object { $_ })) {
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($who, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+    }
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+# This computer's domain account (DOMAIN\NAME$), as a file server sees this server (and SYSTEM on
+# it) over SMB; $null when the server isn't in a domain.
+function Get-GcpeComputerAccount {
+    if (-not (Get-CimInstance Win32_ComputerSystem).PartOfDomain) { return $null }
+    $name = "$env:USERDOMAIN\$($env:COMPUTERNAME)`$"
+    try { (New-Object Security.Principal.NTAccount($name)).Translate([Security.Principal.SecurityIdentifier]) | Out-Null; $name }
+    catch { $null }
+}
+
+# Enabled inbound Allow rules in force (ActiveStore: Group Policy's included) that open one of
+# $Ports, TCP or UDP, other than those named in $ExceptDisplayName.
+function Get-GcpeInboundAllowRules {
+    param([Parameter(Mandatory)][string[]]$Ports, [string[]]$ExceptDisplayName = @())
+    @(Get-NetFirewallPortFilter -PolicyStore ActiveStore -ErrorAction SilentlyContinue |
+        Where-Object { ($_.Protocol -eq 'TCP' -or $_.Protocol -eq 'UDP') -and @(@($_.LocalPort) | Where-Object { $Ports -contains $_ }).Count -gt 0 } |
+        Get-NetFirewallRule -ErrorAction SilentlyContinue |
+        Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' -and $ExceptDisplayName -notcontains $_.DisplayName })
+}
+
 # Creates the file empty, locks it down, then writes it: written first, it would inherit
 # BUILTIN\Users read access from C:\ for a moment.
 function Write-GcpeSecretFile {
@@ -247,10 +286,11 @@ function Set-GcpeJunction {
     New-Item -ItemType Junction -Path $Path -Target $Target | Out-Null
 }
 
-# The thumbprint bound to https on 0.0.0.0:443, or $null when there is no binding.
+# The thumbprint bound to https on 0.0.0.0:<Port> (443 unless given), or $null when there is no binding.
 function Get-GcpeSslBinding {
+    param([int]$Port = 443)
     $ErrorActionPreference = 'Continue'
-    $out = (& netsh.exe http show sslcert ipport=0.0.0.0:443 | Out-String)
+    $out = (& netsh.exe http show sslcert "ipport=0.0.0.0:$Port" | Out-String)
     if ($out -match 'Certificate Hash\s*:\s*([0-9a-fA-F]{40})') { return $Matches[1].ToUpperInvariant() }
     $null
 }
@@ -264,6 +304,82 @@ function Invoke-GcpeQuiet {
     $err = [IO.Path]::GetTempFileName()
     try { Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null }
     finally { Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue }
+}
+
+# Runs a native command and returns its exit code, stdout and stderr without letting stderr stop
+# the script (see Invoke-GcpeQuiet for why it goes through temporary files).
+function Invoke-GcpeCapture {
+    param([Parameter(Mandatory)][string]$FilePath, [Parameter(Mandatory)][string[]]$Arguments)
+    $out = [IO.Path]::GetTempFileName()
+    $err = [IO.Path]::GetTempFileName()
+    try {
+        $p = Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err
+        [pscustomobject]@{ ExitCode = $p.ExitCode; Out = ([IO.File]::ReadAllText($out)).Trim(); Err = ([IO.File]::ReadAllText($err)).Trim() }
+    } finally { Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue }
+}
+
+# "10.20.0.0/16" -> @{ Address = '10.20.0.0'; Mask = '255.255.0.0' } for IIS ipSecurity. IPv4 only:
+# throws on anything else, so a typo never becomes a wider (or empty) allow-list.
+function ConvertFrom-GcpeCidr {
+    param([Parameter(Mandatory)][string]$Cidr)
+    if ($Cidr -notmatch '^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})$') { throw "Not an IPv4 CIDR range: '$Cidr' (expected e.g. 142.34.0.0/16)" }
+    $octets = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3], [int]$Matches[4])
+    $bits = [int]$Matches[5]
+    if (@($octets | Where-Object { $_ -gt 255 }).Count -gt 0 -or $bits -gt 32) { throw "Not an IPv4 CIDR range: '$Cidr'" }
+    # Plain [long] arithmetic, no bitwise operators: Windows PowerShell 5.1's -band/-bnot on
+    # 32-bit unsigned values go through signed types.
+    [long]$value = 0
+    foreach ($o in $octets) { $value = $value * 256 + $o }
+    [long]$block = [long][math]::Pow(2, 32 - $bits)
+    [long]$mask = [long][math]::Pow(2, 32) - $block
+    if (($value % $block) -ne 0) { throw "'$Cidr' has host bits set; did you mean $(ConvertTo-GcpeDottedIp ($value - ($value % $block)))/$($bits)?" }
+    [pscustomobject]@{ Address = ConvertTo-GcpeDottedIp $value; Mask = ConvertTo-GcpeDottedIp $mask }
+}
+
+# Registers (or replaces) a daily scheduled task, run as SYSTEM, that runs $Command in Windows
+# PowerShell. The command goes in as -EncodedCommand, so no quoting survives into Task Scheduler.
+function Register-GcpeDailyTask {
+    param([Parameter(Mandatory)][string]$TaskName, [Parameter(Mandatory)][string]$Command, [Parameter(Mandatory)][string]$At, [string]$Description = '')
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded"
+    $trigger = New-ScheduledTaskTrigger -Daily -At $At
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+    Register-ScheduledTask -TaskName $TaskName -Description $Description -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+}
+
+# IIS logging for one site, on the app server and the DMZ proxy alike:
+#  - no log entry at all for requests under $PrivatePaths (the subscribe pages and API, whose URLs
+#    carry e-mail addresses and tokens): <location path="<site>/<path>"> httpLogging dontLog,
+#    in applicationHost.config (the section can't be set in a site's web.config);
+#  - no Referer field: a subscribe page's own requests for its CSS and scripts would carry the
+#    page's token-bearing URL in it;
+#  - logs in %SystemDrive%\inetpub\logs\LogFiles\W3SVC<site id>, and a daily task deleting the
+#    site's log files (and http.sys's HTTPERR logs) older than $RetentionDays.
+# Returns the site's log folder.
+function Set-GcpeIisLogging {
+    param([Parameter(Mandatory)][string]$SiteName, [Parameter(Mandatory)][string[]]$PrivatePaths, [Parameter(Mandatory)][ValidateRange(1, 3650)][int]$RetentionDays)
+    $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'
+    # IIS's default W3C fields without Referer.
+    $fields = 'Date,Time,ClientIP,UserName,ServerIP,Method,UriStem,UriQuery,HttpStatus,Win32Status,TimeTaken,ServerPort,UserAgent,HttpSubStatus'
+    & $appcmd set site $SiteName "/logFile.directory:%SystemDrive%\inetpub\logs\LogFiles" "/logFile.logExtFileFlags:$fields" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "could not set the log fields of the IIS site $SiteName" }
+    foreach ($p in $PrivatePaths) {
+        & $appcmd set config "$SiteName/$p" -section:system.webServer/httpLogging /dontLog:"True" /commit:apphost | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "could not turn off IIS logging for /$p on $SiteName" }
+    }
+    $id = (& $appcmd list site $SiteName /text:id | Out-String).Trim()
+    if ($id -notmatch '^\d+$') { throw "could not read the id of the IIS site $SiteName" }
+    $logDir = Join-Path $env:SystemDrive "inetpub\logs\LogFiles\W3SVC$id"
+    $httpErr = Join-Path $env:windir 'System32\LogFiles\HTTPERR'
+    $command = "`$cutoff = (Get-Date).AddDays(-$RetentionDays); Get-ChildItem -LiteralPath '$logDir', '$httpErr' -Filter *.log -File -ErrorAction SilentlyContinue | Where-Object { `$_.LastWriteTime -lt `$cutoff } | Remove-Item -Force"
+    Register-GcpeDailyTask -TaskName "GCPE IIS log cleanup ($SiteName)" -At '03:15' -Command $command -Description "Deletes $SiteName's IIS logs ($logDir) and HTTPERR logs older than $RetentionDays days (docs/deploy/windows.md)."
+    $logDir
+}
+
+function ConvertTo-GcpeDottedIp {
+    param([Parameter(Mandatory)][long]$Value)
+    (@(24, 16, 8, 0) | ForEach-Object { [long][math]::Floor($Value / [math]::Pow(2, $_)) % 256 }) -join '.'
 }
 
 Export-ModuleMember -Function *-Gcpe*

@@ -45,7 +45,8 @@ export function noStoreByDefault(_req: Request, res: Response, next: NextFunctio
 export function noStoreOnRedirect(_req: Request, res: Response, next: NextFunction): void {
   const originalWriteHead = res.writeHead.bind(res);
   res.writeHead = ((...args: Parameters<typeof originalWriteHead>) => {
-    if (res.statusCode >= 300 && res.statusCode < 400) {
+    // 304 revalidates the cached file rather than redirecting, so it keeps the file's own header.
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.statusCode !== 304) {
       res.setHeader("Cache-Control", "no-store");
     }
     return originalWriteHead(...args);

@@ -58,6 +58,9 @@ try {
   }
 } catch (e) {
   exitCode = 1;
-  console.error(`[import:public-slides] failed: ${e instanceof Error ? e.message : String(e)}`);
+  // drizzle's "Failed query" hides the database's own message (wrong database, missing table…)
+  // in `cause`; print it too.
+  const cause = e instanceof Error && e.cause instanceof Error ? ` (${e.cause.message})` : "";
+  console.error(`[import:public-slides] failed: ${e instanceof Error ? e.message : String(e)}${cause}`);
 }
 process.exitCode = exitCode;

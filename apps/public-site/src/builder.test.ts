@@ -1,3 +1,7 @@
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { JSDOM } from "jsdom";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
@@ -10,6 +14,7 @@ import { createSiteBuilder, SECTOR_FETCHES } from "./builder";
 import type { GovernmentTermDto, GovernmentTermsDto, PostDto } from "./dto";
 import { drainQueue } from "./drain";
 import { postIndex } from "./post-index";
+import { fsStorage } from "./storage";
 import { enqueuePages, PRIORITY } from "./queue";
 import { rebuildAllItems } from "./rebuild-all";
 
@@ -432,6 +437,42 @@ describe("site builder", () => {
     expect(html(storage, "index.html")).not.toContain("/releases/K1/");
     expect(html(storage, "ministries/health/index.html")).not.toContain("/releases/K1/");
     expect(html(storage, "sitemap.xml")).not.toContain("2026-10.xml");
+  });
+
+  it("on disk, every compressible page and feed the builder writes has .br and .gz companions that decompress to it; unpublishing removes them with the page", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "builder-companions-"));
+    try {
+      const posts = new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2", publishDate: "2026-09-01T10:00:00-07:00" })]]);
+      const builder = createSiteBuilder({ newsApi: fakeNewsApi(posts), storage: fsStorage(dir), index: postIndex(tdb.db), site, assetsDir: null });
+      await builder.rebuild(["home", "post:K1", "post:K2", "sitemap:pages", "static"], {});
+      const walk = async (d: string): Promise<string[]> => (await readdir(d, { withFileTypes: true })).flatMap((e) => (e.isDirectory() ? [] : [join(d, e.name)])).concat(...(await Promise.all((await readdir(d, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => walk(join(d, e.name))))));
+      const files = await walk(dir);
+      const stored = files.filter((f) => /\.(br|gz)$/.test(f));
+      const originals = files.filter((f) => !/\.(br|gz)$/.test(f));
+      let checked = 0;
+      for (const f of originals) {
+        const body = await readFile(f);
+        const compressible = /\.(html|xml|css|js|json|svg|txt|ico)$/.test(f) && !/\/\.[^/]*$/.test(f) && body.length >= 1024;
+        expect(files.includes(`${f}.br`), f).toBe(compressible);
+        expect(files.includes(`${f}.gz`), f).toBe(compressible);
+        if (compressible) {
+          checked++;
+          expect(brotliDecompressSync(await readFile(`${f}.br`)).equals(body), f).toBe(true);
+          expect(gunzipSync(await readFile(`${f}.gz`)).equals(body), f).toBe(true);
+        }
+      }
+      expect(checked).toBeGreaterThan(5);
+      expect(stored.length).toBe(checked * 2); // no orphans
+      for (const f of ["releases/K1/index.html", "feed.xml", "atom.xml", "sitemap.xml", "404.html", "robots.txt", "assets/theme.css"]) {
+        if (!(await stat(join(dir, f)).then(() => true, () => false))) continue;
+        if ((await stat(join(dir, f))).size >= 1024) expect(files.includes(join(dir, `${f}.br`)), f).toBe(true);
+      }
+      posts.delete("K1");
+      await builder.rebuild(["post:K1"], {});
+      expect(await readdir(join(dir, "releases", "K1")).catch(() => [])).toEqual([]); // the page and both companions are gone
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("renders a post with a 102-char key to the hashed dir, and allPostKeys still lists it", async () => {

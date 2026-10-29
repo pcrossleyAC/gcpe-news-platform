@@ -3,10 +3,10 @@ import { noStoreOnRedirect } from "./cache-control";
 import { legacyRewriteOf, legacyUrls, type LegacyUrlOptions } from "./legacy/middleware";
 import { parseRequestTarget } from "./legacy/safe-path";
 import { cacheMisses } from "./legacy/reference-cache";
+import { servePrecompressed, SITE_MAX_AGE_MS } from "./site-precompressed";
 import { siteNotFound } from "./site-not-found";
 
-/** The static site's own cache lifetime: every page and asset is `public, max-age=60`. */
-export const SITE_MAX_AGE_MS = 60_000;
+export { SITE_MAX_AGE_MS };
 
 /**
  * The path the public site's URL lives under, with trailing slashes stripped: "" for an origin
@@ -54,11 +54,28 @@ function hashedDirGuard(outputDir: string): RequestHandler {
   };
 }
 
+/**
+ * `<page>.br` and `<page>.gz` are storage, not pages: a request for one by its own URL (any case,
+ * since Windows and macOS folders ignore it) is the site 404, so a page has one URL and a client
+ * never receives brotli bytes labelled application/octet-stream. Nothing else the site serves
+ * ends in .br or .gz.
+ */
+function companionUrlGuard(outputDir: string): RequestHandler {
+  const notFound = siteNotFound(outputDir);
+  return (req, res, next) => {
+    const target = parseRequestTarget(req.url);
+    if (target && /\.(?:br|gz)$/i.test(target.path)) return notFound(req, res, next);
+    next();
+  };
+}
+
 function staticSite(outputDir: string) {
   // dotfiles: "deny" keeps the render-state marker (.site-state.json) and anything else
   // dot-prefixed unservable; noStoreOnRedirect gives express.static's own trailing-slash
   // 301 a no-store so the SiteGround proxy never caches it.
-  return [hashedDirGuard(outputDir), noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny", setHeaders: (res, filePath) => {
+  // companionUrlGuard 404s a request for a stored .br/.gz by its own URL; servePrecompressed answers
+  // a page from its stored copy, and falls through to express.static for everything else.
+  return [hashedDirGuard(outputDir), companionUrlGuard(outputDir), noStoreOnRedirect, servePrecompressed(outputDir, feedContentType), express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny", setHeaders: (res, filePath) => {
     const type = feedContentType(filePath);
     if (type !== null) res.setHeader("Content-Type", type);
   } })];

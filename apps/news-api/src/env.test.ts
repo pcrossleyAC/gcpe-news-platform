@@ -136,3 +136,26 @@ describe("newsApiEnvSchema embeddings", () => {
     ).toThrow(/EMBEDDINGS_PROVIDER: stand-in is refused on a production deployment/);
   });
 });
+
+describe("newsApiEnvSchema search cache and semantic cap", () => {
+  const parse = (extra: Record<string, string> = {}) => parseEnv(newsApiEnvSchema, { ...BASE, ...extra } as unknown as NodeJS.ProcessEnv);
+  it("defaults: 60 s, 500 entries, 32 MB, cap from CPU count (unset), queue 8, wait 250 ms", () => {
+    const env = parse();
+    expect([env.SEARCH_CACHE_TTL_SECONDS, env.SEARCH_CACHE_MAX_ENTRIES, env.SEARCH_CACHE_MAX_MB, env.SEARCH_SEMANTIC_MAX_CONCURRENT, env.SEARCH_SEMANTIC_QUEUE, env.SEARCH_SEMANTIC_QUEUE_WAIT_MS]).toEqual([60, 500, 32, undefined, 8, 250]);
+  });
+  it("accepts overrides, and 0 TTL to turn the cache off", () => {
+    expect(parse({ SEARCH_CACHE_TTL_SECONDS: "0", SEARCH_SEMANTIC_MAX_CONCURRENT: "1", SEARCH_SEMANTIC_QUEUE: "0" })).toMatchObject({ SEARCH_CACHE_TTL_SECONDS: 0, SEARCH_SEMANTIC_MAX_CONCURRENT: 1, SEARCH_SEMANTIC_QUEUE: 0 });
+  });
+  it.each([
+    ["SEARCH_CACHE_TTL_SECONDS", "-1"],
+    ["SEARCH_CACHE_TTL_SECONDS", "3601"],
+    ["SEARCH_CACHE_MAX_ENTRIES", "0"],
+    ["SEARCH_CACHE_MAX_MB", "0"],
+    ["SEARCH_SEMANTIC_MAX_CONCURRENT", "0"],
+    ["SEARCH_SEMANTIC_QUEUE", "-1"],
+    ["SEARCH_SEMANTIC_QUEUE_WAIT_MS", "5001"],
+    ["SEARCH_CACHE_TTL_SECONDS", "abc"],
+  ])("rejects %s=%s", (name, value) => {
+    expect(() => parse({ [name]: value })).toThrow(new RegExp(`^Invalid environment: .*${name}`));
+  });
+});

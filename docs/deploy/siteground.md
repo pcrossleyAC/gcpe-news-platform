@@ -161,6 +161,17 @@ and restart the Node.js app. The site-state marker records the base URL, so the 
 one rebuild-all, which the next ticks drain; `/site/…` then 301s to `/…`. Check with
 `curl -sI https://<domain>/site/ministries/` (expect `301`, `location: /ministries/`).
 
+**`TRUST_PROXY_HOPS`** (optional, a whole number 1 to 5, default `1`). How many reverse proxies sit
+in front of the stack and add to `X-Forwarded-For`. Every app, and the stack itself, uses it to
+find the visitor's address (`req.ip`), which the logs and the per-IP limits (login, subscribe,
+search, the live-updates connection cap) rely on. `1` is right for SiteGround's nginx, the
+OpenShift router and a single IIS in front of the stack, so leave it unset there. Set `2` on the
+Windows servers when a DMZ reverse proxy sits in front of the app server's IIS (see
+`docs/deploy/windows.md`; the installer's `-ProxyHops 2` writes it). A value that is not a whole
+number from 1 to 5 (empty means the default) stops the stack from starting. With `2`, the internal IIS must accept connections only from the DMZ proxy (firewall or IIS IP restriction); otherwise a client that reaches it directly picks its own address. Set too low, every visitor looks like the
+proxy; set too high, a visitor can choose their own address by sending `X-Forwarded-For`. An app
+run on its own (not under the stack) reads the same variable, unprefixed, and defaults to `1`.
+
 **Compression.** The stack compresses its own text responses (brotli, else gzip;
 `apps/stack/src/compress.ts`). SiteGround's nginx passes an already-encoded response through
 without encoding it again, so nothing changes for visitors; check with
@@ -1646,6 +1657,25 @@ In semantic mode, `GET /api/v2/search` embeds the query (each distinct query onc
 |---|---|
 | `NEWSAPI_SEARCH_SEMANTIC_THRESHOLD` | Cosine distance at or below which a post counts as a semantic match. Default `0.6`; 0–2. Lower is stricter. |
 | `NEWSAPI_SEARCH_RATE_LIMIT_PER_MIN` | Search requests a minute per client IP (Q74). Default `60`. A client over it gets `429 {"error":"too many requests"}`. Uses `NEWSAPI_SUBSCRIBE_CLIENT_IP_HEADER` to find the client's address, as Subscribe does. |
+
+#### Search result cache and semantic cap
+
+Two protections keep public search from being the platform's bottleneck (an exact vector scan costs about 200 ms of database CPU per query at 35,000 posts).
+
+- **Result cache.** `GET /api/v2/search` keeps each answer in the process's memory for `NEWSAPI_SEARCH_CACHE_TTL_SECONDS` (default 60, the public site's max-age). The key is the query text (whitespace collapsed, case kept), ministry, sector, type, from, to, page, page size and facets, so every distinct combination is its own entry. It is a least-recently-used cache bounded by entry count and by bytes. Identical queries arriving together share one database read. Errors, and degraded answers (see below), are never kept. The route is public and anonymous, so nothing staff-only is ever cached. The API still sends `Cache-Control: no-store`: this cache lives only inside the process, and the proxy must not cache `/api`.
+- **No invalidation on publish.** A publish or unpublish shows in search results within the TTL. That staleness is already accepted for pages, a purge hook would need cross-app wiring for no gain at 60 s, and per-process caches could not be purged consistently anyway. Set the TTL to `0` to turn the cache off.
+- **Semantic cap.** At most `NEWSAPI_SEARCH_SEMANTIC_MAX_CONCURRENT` vector queries run at once (default `max(2, CPU cores - 1)`). Up to `NEWSAPI_SEARCH_SEMANTIC_QUEUE` more (default 8) wait up to `NEWSAPI_SEARCH_SEMANTIC_QUEUE_WAIT_MS` (default 250) for a slot. Beyond that the request is answered in text mode (`"mode": "text"`) with the response header `X-Search-Fallback: capacity`, so visitors still get results and an overloaded database sheds the expensive work first. A degraded answer is not cached. Filter-only searches and text-only deployments never take a slot. Text search has no cap of its own: it uses the database index and is bounded by the connection pool.
+
+| Variable | Meaning |
+|---|---|
+| `NEWSAPI_SEARCH_CACHE_TTL_SECONDS` | Default `60`; 0–3600. `0` turns the cache off. |
+| `NEWSAPI_SEARCH_CACHE_MAX_ENTRIES` | Default `500`. |
+| `NEWSAPI_SEARCH_CACHE_MAX_MB` | Default `32`. Serialised size of what is cached, estimated. |
+| `NEWSAPI_SEARCH_SEMANTIC_MAX_CONCURRENT` | Vector queries at once. Default `max(2, CPU cores - 1)`. |
+| `NEWSAPI_SEARCH_SEMANTIC_QUEUE` | Semantic queries allowed to wait for a slot. Default `8`; `0` means none wait. |
+| `NEWSAPI_SEARCH_SEMANTIC_QUEUE_WAIT_MS` | Longest wait for a slot. Default `250`; 0–5000. |
+
+Each running process has its own cache and its own cap, so with N processes behind a farm the totals are N times these numbers.
 
 **Cost:** an uncached semantic query compares the query with every published post's vector that the filters allow: 120–170 ms at 20,000 posts on a laptop, growing in proportion (Q79).
 

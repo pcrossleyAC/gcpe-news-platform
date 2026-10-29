@@ -61,3 +61,8 @@ jobs:
           name: gcpe-windows
           path: dist/gcpe-windows-*.zip
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gcpe-proxy
+          path: dist/gcpe-proxy-*.zip
+          retention-days: 14

@@ -41,6 +41,17 @@ describe("GET /api/v2/search (HTTP)", () => {
     expect(calls).toEqual([{ q: "wildfire", ministry: "Health", page: 2, pageSize: 20 }]);
   });
 
+  it("marks a capacity fallback in a header, not the body, and stays no-store", async () => {
+    const degraded: SearchService = { timeZone: TZ, search: async (query) => ({ mode: "text", page: query.page, pageSize: query.pageSize, total: 0, results: [], facets: null, fallback: "capacity" }) };
+    const res = await request(stubApp(degraded)).get("/api/v2/search?q=wildfire");
+    expect(res.status).toBe(200);
+    expect(res.headers["x-search-fallback"]).toBe("capacity");
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body).not.toHaveProperty("fallback");
+    const normal = await request(stubApp(stub)).get("/api/v2/search?q=wildfire");
+    expect(normal.headers["x-search-fallback"]).toBeUndefined();
+  });
+
   it("with a filter and no q, passes an empty q through (filter-only search)", async () => {
     const res = await request(stubApp(stub)).get("/api/v2/search?ministry=citizens-services");
     expect(res.status).toBe(200);

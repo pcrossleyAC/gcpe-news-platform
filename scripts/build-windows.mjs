@@ -2,11 +2,13 @@
 // copies to the server and installs with deploy/windows/Install-Gcpe.ps1.
 //
 //   dist/windows/gcpe-windows/          the package
-//     *.ps1, lib/                       deploy/windows/ (installer, deploy, import, runner scripts)
+//     *.ps1, lib/                       deploy/windows/ (installer, DMZ proxy, deploy, import, runner scripts)
 //     app/                              one release: dist/siteground/ (stack.js, hub/, migrations/,
 //                                       config/, report worker) plus the command-line tools below
 //     prereqs/pgvector/                 only when --pgvector <dir> is given (CI builds it on Windows)
 //   dist/gcpe-windows-<sha>.zip         the same folder, zipped
+//   dist/gcpe-proxy-<sha>.zip           the DMZ proxy's package: Install-GcpeProxy.ps1, Get-GcpePrereqs.ps1
+//                                       and lib/ only (no app, nothing secret)
 //
 // The tools are each bundled to the same relative path as their source entry (apps/nrms/src/import/
 // cli.ts -> app/apps/nrms/src/import/cli.js) beside a copy of that app's migrations, so the paths
@@ -32,10 +34,14 @@ export const TOOLS = [
   "apps/nrms/src/cli/replay-to-news-api.ts",
   "apps/nrms/src/cli/release-holds.ts",
   "apps/public-site/src/cli/rebuild-all.ts",
+  "apps/public-site/src/cli/precompress.ts",
   "apps/news-api/src/cli/search-backfill.ts",
   "scripts/windows-env.ts",
   "scripts/windows-db-setup.ts",
 ];
+
+/** What the DMZ proxy's package holds (deploy/windows/), and nothing else. */
+export const PROXY_FILES = ["Install-GcpeProxy.ps1", "Get-GcpePrereqs.ps1", "lib"];
 
 /** Source files that run their own main() when they are the process entry point (see TOOLS). */
 const ENTRY_GUARD = /\.href === import\.meta\.url|import\.meta\.url === pathToFileURL/;
@@ -106,6 +112,24 @@ async function runBuild() {
   rmSync(zip, { force: true });
   execFileSync("zip", ["-qr", zip, "gcpe-windows"], { cwd: join(root, "dist/windows"), stdio: "inherit" });
   console.log(`[build-windows] OK — ${zip}`);
+
+  // The DMZ server gets only what Install-GcpeProxy.ps1 uses: never the app or its tools.
+  const proxyRoot = join(root, "dist/windows-proxy");
+  const proxyDir = join(proxyRoot, "gcpe-proxy");
+  rmSync(proxyRoot, { recursive: true, force: true });
+  mkdirSync(proxyDir, { recursive: true });
+  for (const f of PROXY_FILES) cpSync(join(root, "deploy/windows", f), join(proxyDir, f), { recursive: true });
+  writeFileSync(join(proxyDir, "VERSION.json"), JSON.stringify({ commit: sha, builtAt: new Date().toISOString() }, null, 2) + "\n");
+  writeFileSync(
+    join(proxyDir, "README.txt"),
+    "GCPE News Platform - DMZ reverse proxy package. Runbook: docs/deploy/windows.md, section 4 (T3).\r\n" +
+      "No internet on this server? On a machine that has it: .\\Get-GcpePrereqs.ps1 -Names UrlRewrite, Arr\r\n" +
+      "Then: .\\Install-GcpeProxy.ps1 (Get-Help .\\Install-GcpeProxy.ps1 -Full). Delete this folder after the install.\r\n",
+  );
+  const proxyZip = join(root, "dist", `gcpe-proxy-${sha.slice(0, 12)}.zip`);
+  rmSync(proxyZip, { force: true });
+  execFileSync("zip", ["-qr", proxyZip, "gcpe-proxy"], { cwd: proxyRoot, stdio: "inherit" });
+  console.log(`[build-windows] OK — ${proxyZip}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

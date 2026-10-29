@@ -41,7 +41,7 @@ $pgPrefix = Join-Path $env:ProgramFiles "PostgreSQL\$($pg.Item.Major)"
 
 Write-GcpeStep "PostgreSQL $($pg.Version)"
 if (Get-Service -Name $pgServiceName -ErrorAction SilentlyContinue) {
-    if (-not (Test-Path -LiteralPath $paths.PgSuperuser)) { throw "PostgreSQL ($pgServiceName) is already installed, but not by this script; set it up by hand (docs/deploy/windows.md, separate database server)." }
+    if (-not (Test-Path -LiteralPath $paths.PgSuperuser)) { throw "PostgreSQL ($pgServiceName) is already installed, but not by this script; set it up by hand (docs/deploy/windows.md, P1)." }
     Write-GcpeOk 'already installed'
 } else {
     $superPassword = New-GcpeSecret -Bytes 24
@@ -81,7 +81,12 @@ Restart-Service -Name $pgServiceName
 $ruleName = 'GCPE PostgreSQL from the app server'
 Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol TCP -LocalPort 5432 -RemoteAddress $AppServerAddress.ToString() -Action Allow | Out-Null
-Write-GcpeOk 'pg_hba.conf and Windows Firewall updated'
+# The EDB installer may add its own rule opening 5432 to every address: only ours may remain.
+foreach ($r in (Get-GcpeInboundAllowRules -Ports @('5432') -ExceptDisplayName @($ruleName))) {
+    try { Disable-NetFirewallRule -Name $r.Name -ErrorAction Stop; Write-GcpeOk "turned off '$($r.DisplayName)', which opened 5432 to everyone" }
+    catch { throw "The firewall rule '$($r.DisplayName)' ($($r.Name)) opens 5432 to other addresses and could not be turned off here (Group Policy?). Have it removed, then re-run." }
+}
+Write-GcpeOk 'pg_hba.conf and Windows Firewall updated: 5432 from the app server only'
 
 Write-Host ''
 Write-Host 'Database server ready.' -ForegroundColor Green

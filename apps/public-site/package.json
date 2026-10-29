@@ -8,6 +8,7 @@
     "db:generate": "drizzle-kit generate",
     "build": "node ../../scripts/build-app.mjs apps/public-site",
     "site:rebuild-all": "tsx src/cli/rebuild-all.ts",
+    "site:precompress": "tsx src/cli/precompress.ts",
     "icons:build": "tsx scripts/build-icons.ts"
   },
   "dependencies": {

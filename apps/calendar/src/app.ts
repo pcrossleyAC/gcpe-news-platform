@@ -13,6 +13,8 @@ import { successionRoutes } from "./http/succession-routes";
 import { projectionHandler } from "./projections";
 
 export interface AppDeps {
+  /** Reverse proxies in front of the app (TRUST_PROXY_HOPS); defaults to 1. */
+  trustProxyHops?: number;
   db: Db;
   auth: BearerOptions;
   eventSecrets: Record<string, string>;
@@ -26,7 +28,7 @@ export interface AppDeps {
 export function createApp(deps: AppDeps): express.Express {
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", 1); // one hop: OpenShift router / SiteGround nginx
+  app.set("trust proxy", deps.trustProxyHops ?? 1); // hops: 1 = OpenShift router / SiteGround nginx / local IIS; TRUST_PROXY_HOPS=2 behind a DMZ proxy
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`)]));
   // Before any body parser: signatures cover the raw bytes.
   const subscribers = deps.subscribers ?? [];

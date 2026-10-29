@@ -57,6 +57,18 @@ describe("noStoreOnRedirect", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
   });
 
+  it("leaves a 304's Cache-Control alone: it revalidates the cached file, it is not a redirect", async () => {
+    const app = express();
+    app.use(noStoreOnRedirect);
+    app.get("/x", (_req, res) => {
+      res.set("Cache-Control", "public, max-age=60");
+      res.status(304).end();
+    });
+    const res = await request(app).get("/x");
+    expect(res.status).toBe(304);
+    expect(res.headers["cache-control"]).toBe("public, max-age=60");
+  });
+
   it("leaves a 200 response's own Cache-Control alone", async () => {
     const app = express();
     app.use(noStoreOnRedirect);
