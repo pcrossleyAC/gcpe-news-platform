@@ -109,6 +109,8 @@ jobs:
           Check "staff app served (HTTP $hub)" ($hub -eq '200')
           $redirect = curl.exe -sS -o NUL -w '%{http_code} %{redirect_url}' http://localhost/hub/
           Check "http redirects to https ($redirect)" ($redirect -like '301 https://localhost/hub/*')
+          $headers = (curl.exe -k -sS -D - -o NUL https://localhost/hub/) -join "`n"
+          Check 'no Strict-Transport-Security on the self-signed certificate' ($headers -notmatch '(?im)^strict-transport-security:')
           $body = '{"username":"admin","password":"ci-admin-password-0001"}'
           $login = $body | curl.exe -k -sS -o NUL -w '%{http_code}' -c jar.txt -H 'x-gcpe-request: 1' -H 'content-type: application/json' --data-binary '@-' https://localhost/core/auth/login
           Check "admin signs in through IIS (HTTP $login)" ($login -eq '200')
@@ -429,6 +431,31 @@ jobs:
           Check 'the replaced rules were kept for a rollback' (@(Get-ChildItem C:\gcpe-proxy\logs\web.config.*.bak).Count -gt 0)
           C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -Environment Test
           Check '-Environment Test turns noindex back on' (Robots)
+      # HSTS is sent only with a real certificate. A stand-in issued by a throwaway CA (so it isn't
+      # self-signed) plays the real one, on the proxy and then on the app server.
+      - name: Strict-Transport-Security with a real certificate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          function Hsts([string[]]$curlArgs) { $m = [regex]::Match(((curl.exe -k -s @curlArgs -D - -o NUL) -join "`n"), '(?im)^strict-transport-security:\s*(.+?)\s*$'); if ($m.Success) { $m.Groups[1].Value } else { '' } }
+          $ca = New-SelfSignedCertificate -Subject 'CN=GCPE CI stand-in CA' -KeyUsage CertSign, CRLSign -TextExtension @('2.5.29.19={critical}{text}ca=true') -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddDays(2)
+          $h = 'gcpe-proxy-ci.example.test'
+          $res = @('--resolve', "$($h):8443:127.0.0.1")
+          $proxyCert = New-SelfSignedCertificate -DnsName $h -Signer $ca -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddDays(2)
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -CertificateThumbprint $proxyCert.Thumbprint
+          $v = Hsts ($res + "https://$($h):8443/"); Check "proxy sends HSTS for a year ($v)" ($v -eq 'max-age=31536000')
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HstsMaxAgeDays 0
+          $v = Hsts ($res + "https://$($h):8443/"); Check "-HstsMaxAgeDays 0 tells browsers to forget it ($v)" ($v -eq 'max-age=0')
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost
+          $v = Hsts ($res + "https://$($h):8443/"); Check "a re-run keeps -HstsMaxAgeDays ($v)" ($v -eq 'max-age=0')
+          $appCert = New-SelfSignedCertificate -DnsName gcpe-ci.example.test, localhost -Signer $ca -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddDays(2)
+          C:\pkg\gcpe-windows\Install-Gcpe.ps1 -HostName gcpe-ci.example.test -CertificateThumbprint $appCert.Thumbprint -HstsMaxAgeDays 30
+          $v = Hsts @('https://localhost/hub/'); Check "app server sends HSTS ($v)" ($v -eq 'max-age=2592000')
+          $v = Hsts @('https://localhost/stack/health'); Check "on proxied app responses too ($v)" ($v -eq 'max-age=2592000')
+          C:\pkg\gcpe-windows\Install-Gcpe.ps1 -HostName gcpe-ci.example.test
+          $v = Hsts @('https://localhost/hub/'); Check "an app re-run keeps -HstsMaxAgeDays ($v)" ($v -eq 'max-age=2592000')
+          $redirect = curl.exe -sS -o NUL -w '%{http_code} %{redirect_url}' http://localhost/hub/
+          Check "http still redirects to https ($redirect)" ($redirect -like '301 https://localhost/hub/*')
       - name: Logs
         if: always()
         run: |

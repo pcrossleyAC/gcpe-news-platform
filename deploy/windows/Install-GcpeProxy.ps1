@@ -24,7 +24,8 @@
          /api/v2/changes and /api/v2/internal/.
      Everything else answers 404 here and never reaches the app server: /hub, /core, /nrms,
      /nod, /calendar, /distribution, /site-builder, /stack, /events, /health and the test fakes.
-  5. -Environment Test adds "X-Robots-Tag: noindex, nofollow" to every response.
+  5. -Environment Test adds "X-Robots-Tag: noindex, nofollow" to every response. With a real
+     certificate, every response also carries Strict-Transport-Security (-HstsMaxAgeDays).
   6. IIS never logs the subscribe pages or /api/Subscribe (their URLs carry e-mail addresses and
      tokens), logs no Referer, and a nightly task deletes its logs older than -LogRetentionDays.
 
@@ -67,7 +68,7 @@ param(
     [string[]]$AllowedClientRanges,
     [switch]$AllowAllClients,
     # Test (the default on a first install) or Prod. -Environment, -CacheMaxSizeGB, -HttpsPort,
-    # -HttpPort and -LogRetentionDays are saved in <Root>\proxy-settings.json: a re-run without them
+    # -HttpPort, -LogRetentionDays and -HstsMaxAgeDays are saved in <Root>\proxy-settings.json: a re-run without them
     # keeps the values of the last run (so a Prod proxy never turns back into Test by itself).
     [ValidateSet('Test', 'Prod')][string]$Environment = 'Test',
     [ValidateRange(1, 1000)][int]$CacheMaxSizeGB = 5,
@@ -75,7 +76,10 @@ param(
     [ValidateRange(1, 65535)][int]$HttpPort = 80,
     [string]$Root = 'C:\gcpe-proxy',
     # IIS log files (and http.sys's HTTPERR logs) older than this many days are deleted every night.
-    [ValidateRange(1, 3650)][int]$LogRetentionDays = 30
+    [ValidateRange(1, 3650)][int]$LogRetentionDays = 30,
+    # How long browsers remember to use only https for this host (HSTS). Sent only with a real (not
+    # self-signed) certificate. 0 sends max-age=0, telling browsers to forget it.
+    [ValidateRange(0, 730)][int]$HstsMaxAgeDays = 365
 )
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
@@ -101,7 +105,7 @@ if (-not (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue)) { t
 if ($AllowedClientRanges -and $AllowAllClients) { throw 'Pass -AllowedClientRanges or -AllowAllClients, not both.' }
 # The settings of the last run, unless passed again.
 $stateFile = Join-Path $Root 'proxy-settings.json'
-$savedNames = @('Environment', 'CacheMaxSizeGB', 'HttpsPort', 'HttpPort', 'LogRetentionDays')
+$savedNames = @('Environment', 'CacheMaxSizeGB', 'HttpsPort', 'HttpPort', 'LogRetentionDays', 'HstsMaxAgeDays')
 $kept = @()
 if (Test-Path -LiteralPath $stateFile) {
     $saved = Get-Content -Raw -LiteralPath $stateFile | ConvertFrom-Json
@@ -346,6 +350,7 @@ $neverCache = $forwardVariables -f '1,no-store'
 $originDecides = $forwardVariables -f '0,no-cache'
 $robots = ''
 if ($Environment -eq 'Test') { $robots = '        <add name="X-Robots-Tag" value="noindex, nofollow" />' }
+$hsts = Get-GcpeHstsHeaderLine -Certificate $cert -MaxAgeDays $HstsMaxAgeDays
 $target = "$upstreamBase{UNENCODED_URL}"
 
 $webConfig = @"
@@ -422,6 +427,7 @@ $originDecides
     <httpProtocol>
       <customHeaders>
 $robots
+$hsts
       </customHeaders>
     </httpProtocol>
     <httpErrors existingResponse="PassThrough" />
@@ -434,10 +440,11 @@ if (Test-Path -LiteralPath $webConfigPath) {
     Copy-Item -LiteralPath $webConfigPath -Destination (Join-Path $logDir ('web.config.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak')) -Force
 }
 [IO.File]::WriteAllText($webConfigPath, $webConfig, (New-Object Text.UTF8Encoding($false)))
-$state = [ordered]@{ Environment = $Environment; CacheMaxSizeGB = $CacheMaxSizeGB; HttpsPort = $HttpsPort; HttpPort = $HttpPort; LogRetentionDays = $LogRetentionDays }
+$state = [ordered]@{ Environment = $Environment; CacheMaxSizeGB = $CacheMaxSizeGB; HttpsPort = $HttpsPort; HttpPort = $HttpPort; LogRetentionDays = $LogRetentionDays; HstsMaxAgeDays = $HstsMaxAgeDays }
 [IO.File]::WriteAllText($stateFile, ($state | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 Invoke-GcpeQuiet -FilePath $appcmd -Arguments @('start', 'site', $siteName)
 Write-GcpeOk "https://$httpsAuthority/ forwards the public paths to $upstreamBase"
+if ($hsts) { Write-GcpeOk "Strict-Transport-Security: max-age=$($HstsMaxAgeDays * 86400) ($HstsMaxAgeDays days)" } else { Write-GcpeNote 'no Strict-Transport-Security on a self-signed certificate' }
 
 Write-GcpeStep "IIS logs: subscribe URLs never logged, $LogRetentionDays days kept"
 $iisLogDir = Set-GcpeIisLogging -SiteName $siteName -RetentionDays $LogRetentionDays -PrivatePaths (@('api/Subscribe') + $NeverCachedPaths)

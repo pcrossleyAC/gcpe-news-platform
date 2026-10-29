@@ -14,6 +14,8 @@
   4. Installs the gcpe-stack Windows service (WinSW running node.exe as NT SERVICE\gcpe-stack).
   5. Creates the IIS site "GCPE": https on 443 (and http on 80 redirecting to it), forwarding
      everything to the stack on 127.0.0.1:<Port> (X-Forwarded-For without the client's port).
+     With a real certificate it also sends Strict-Transport-Security (-HstsMaxAgeDays), so a
+     browser that has been here once goes straight to https.
      With -AllowedClientRanges, Windows Firewall lets only those ranges reach 443 and 80.
      IIS never logs the subscribe pages or /api/Subscribe (their URLs carry e-mail addresses and
      tokens), logs no Referer, and a nightly task deletes its logs older than -LogRetentionDays.
@@ -67,7 +69,11 @@ param(
     [string[]]$AllowedClientRanges,
     [switch]$AllowAllClients,
     # IIS log files (and http.sys's HTTPERR logs) older than this many days are deleted every night.
-    [ValidateRange(1, 3650)][int]$LogRetentionDays = 30
+    [ValidateRange(1, 3650)][int]$LogRetentionDays = 30,
+    # How long browsers remember to use only https for this host (HSTS). Sent only with a real
+    # (not self-signed) certificate. 0 sends max-age=0, telling browsers to forget it. A re-run
+    # keeps the value of the last run unless you pass it.
+    [ValidateRange(0, 730)][int]$HstsMaxAgeDays = 365
 )
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
@@ -393,6 +399,9 @@ if ($boundThumbprint -ne $cert.Thumbprint.ToUpperInvariant()) {
 # nothing here; but when a DMZ proxy shares the server (CI), the cache is shared too, so an
 # unencoded response is never stored here either (it goes out as Cache-Control: no-store).
 $encodedPattern = '(?:^|[\s,])(?:br|gzip)\s*(?:[,;]|$)'
+$webConfigPath = Join-Path $paths.Site 'web.config'
+if (-not $PSBoundParameters.ContainsKey('HstsMaxAgeDays')) { $HstsMaxAgeDays = Get-GcpeHstsMaxAgeDays -WebConfigPath $webConfigPath -Default $HstsMaxAgeDays }
+$hsts = Get-GcpeHstsHeaderLine -Certificate $cert -MaxAgeDays $HstsMaxAgeDays
 $webConfig = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Written by Install-Gcpe.ps1. IIS only terminates TLS and forwards to the stack on 127.0.0.1:$Port. -->
@@ -431,13 +440,19 @@ $webConfig = @"
         <requestLimits maxAllowedContentLength="545259520" />
       </requestFiltering>
     </security>
+    <httpProtocol>
+      <customHeaders>
+$hsts
+      </customHeaders>
+    </httpProtocol>
     <httpErrors existingResponse="PassThrough" />
   </system.webServer>
 </configuration>
 "@
-[IO.File]::WriteAllText((Join-Path $paths.Site 'web.config'), $webConfig, (New-Object Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText($webConfigPath, $webConfig, (New-Object Text.UTF8Encoding($false)))
 Invoke-GcpeQuiet -FilePath $appcmd -Arguments @('start', 'site', $siteName)
 Write-GcpeOk "https://$HostName/ forwards to 127.0.0.1:$Port"
+if ($hsts) { Write-GcpeOk "Strict-Transport-Security: max-age=$($HstsMaxAgeDays * 86400) ($HstsMaxAgeDays days)" } else { Write-GcpeNote 'no Strict-Transport-Security on a self-signed certificate' }
 
 Write-GcpeStep "IIS logs: subscribe URLs never logged, $LogRetentionDays days kept"
 # The paths whose URLs carry e-mail addresses or tokens (docs/deploy/windows.md, 7.3 "Logs and retention").

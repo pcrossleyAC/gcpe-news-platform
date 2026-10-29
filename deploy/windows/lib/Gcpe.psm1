@@ -377,6 +377,24 @@ function Set-GcpeIisLogging {
     $logDir
 }
 
+# The web.config <customHeaders> line for Strict-Transport-Security (HSTS), or '' for a self-signed
+# certificate: HSTS turns a browser's certificate warning into an error nobody can click past, so a
+# Dev site on a self-signed certificate never sends it. This host only (no includeSubDomains: the
+# parent domain is shared) and no preload. -MaxAgeDays 0 sends max-age=0, which tells browsers that
+# saw it before to forget it: the way back if a site must ever answer over http again.
+function Get-GcpeHstsHeaderLine {
+    param([Parameter(Mandatory)][Security.Cryptography.X509Certificates.X509Certificate2]$Certificate, [Parameter(Mandatory)][int]$MaxAgeDays)
+    if ($Certificate.Subject -eq $Certificate.Issuer) { return '' }
+    "        <add name=`"Strict-Transport-Security`" value=`"max-age=$($MaxAgeDays * 86400)`" />"
+}
+
+# -HstsMaxAgeDays as the last run wrote it into web.config (a re-run keeps it), else $Default.
+function Get-GcpeHstsMaxAgeDays {
+    param([Parameter(Mandatory)][string]$WebConfigPath, [Parameter(Mandatory)][int]$Default)
+    if ((Test-Path -LiteralPath $WebConfigPath) -and ((Get-Content -Raw -LiteralPath $WebConfigPath) -match 'name="Strict-Transport-Security" value="max-age=(\d+)"')) { return [int]([long]$Matches[1] / 86400) }
+    $Default
+}
+
 function ConvertTo-GcpeDottedIp {
     param([Parameter(Mandatory)][long]$Value)
     (@(24, 16, 8, 0) | ForEach-Object { [long][math]::Floor($Value / [math]::Pow(2, $_)) % 256 }) -join '.'
