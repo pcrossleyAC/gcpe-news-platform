@@ -88,6 +88,15 @@ describe("DocumentsSection", () => {
     expect(visibleText(screen.getByRole("button", { name: "Remove document 1" }))).toBe("Remove");
   });
 
+  it("keeps each document's Move up, Move down and Remove in one group, so they wrap together on a narrow screen", async () => {
+    stubFetch();
+    renderSection(TWO_DOCS);
+    const up = await screen.findByRole("button", { name: "Move document 1 up" });
+    const group = up.closest(".gcpe-documents__item-actions");
+    expect(group).not.toBeNull();
+    expect(within(group as HTMLElement).getAllByRole("button").map(visibleText)).toEqual(["Move up", "Move down", "Remove"]);
+  });
+
   it("Move document 1 up is disabled for the first document", async () => {
     stubFetch();
     renderSection(TWO_DOCS);

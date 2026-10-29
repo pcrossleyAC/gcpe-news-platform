@@ -1570,6 +1570,16 @@ body {
 .gcpe-documents__item-header h3 {
   margin: 0.5rem auto 0.5rem 0;
 }
+/* Move up / Move down / Remove stay together: on a narrow screen they wrap as one row under the
+ * heading rather than one by one. */
+.gcpe-documents__item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gcpe-documents__item-actions .bcds-react-aria-Button {
+  white-space: nowrap;
+}
 
 /* A generic card, the same as the release editor's parts: 1px border, 4px corners, h2 on top. */
 .gcpe-card {

@@ -109,7 +109,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
               Document {index + 1}
             </h3>
             {!readOnly && (
-              <>
+              <div className="gcpe-documents__item-actions">
                 <span data-move-id={doc.id} data-move-dir="up">
                   <Button size="small" variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0} isPending={section.saving}>
                     <span>Move <span className="gcpe-visually-hidden">document {index + 1}</span> up</span>
@@ -141,7 +141,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
                     </AlertDialog>
                   </Modal>
                 </DialogTrigger>
-              </>
+              </div>
             )}
           </div>
           <DocumentTabs view={view} setView={setView} documentId={doc.id} readOnly={readOnly} />
