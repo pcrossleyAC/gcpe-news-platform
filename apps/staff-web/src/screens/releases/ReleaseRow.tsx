@@ -12,6 +12,8 @@ export interface ReleaseRowProps {
    * per row) so every row on a page agrees on what day it is. */
   now: Date;
   timeZone: string;
+  /** Drafts: who last changed the release, and when. */
+  showLastEdited?: boolean;
 }
 
 /** Words only, lower case: "KAMLOOPS –" and "Kamloops -" compare equal. */
@@ -53,11 +55,12 @@ function pageTitleShown(pageTitle: string, type: ReleaseType): boolean {
  * activity id, with the Approved/Flickr-alert badges), the headline linking to the release,
  * and the `LOCATION – summary` dateline clamped to two lines. Shared between the release lists
  * and search so both stay visually identical. */
-export function ReleaseRow({ item, now, timeZone }: ReleaseRowProps): React.JSX.Element {
+export function ReleaseRow({ item, now, timeZone, showLastEdited = false }: ReleaseRowProps): React.JSX.Element {
   // Scheduled/Drafts show the planned publishAt; Published shows the actual releasedAt
   // (constraints.md / codemap §8).
   const dateIso = item.status === "published" ? item.releasedAt : item.publishAt;
-  const when = dateIso ? formatWhen(dateIso, now, timeZone) : null;
+  const when = dateIso ? formatWhen(dateIso, now, timeZone, { withDate: true }) : null;
+  const edited = showLastEdited && item.lastEdited ? `Last edited ${formatWhen(item.lastEdited.at, now, timeZone, { withDate: true })} by ${item.lastEdited.by}` : null;
 
   const dateline = datelineText(item.location, item.summary);
   const typeLabel = TYPE_LABEL[item.type];
@@ -110,6 +113,12 @@ export function ReleaseRow({ item, now, timeZone }: ReleaseRowProps): React.JSX.
             <>
               {sep}
               <span>Calendar activity {item.activityId}</span>
+            </>
+          )}
+          {edited && (
+            <>
+              {sep}
+              <span className="gcpe-release-row__edited">{edited}</span>
             </>
           )}
         </p>

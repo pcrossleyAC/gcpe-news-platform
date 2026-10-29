@@ -29,6 +29,7 @@ function item(overrides: Partial<ReleaseListItem> = {}): ReleaseListItem {
     activityId: null,
     approved: false,
     flickrAlert: null,
+    lastEdited: null,
     ...overrides,
   };
 }

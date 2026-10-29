@@ -14,7 +14,7 @@ function jsonResponse(status: number, body: unknown): Response {
 const release = (over: Partial<ReleaseListItem> = {}): ReleaseListItem => ({
   id: "11111111-1111-1111-1111-111111111111", type: "release", key: null, reference: "NEWS-00001", status: "scheduled", statusText: "Scheduled",
   leadOrganization: "Health", pageTitle: "News Release", headline: "Sample scheduled release", location: "VICTORIA", summary: "A summary.",
-  publishAt: "2031-06-10T17:00:00.000Z", releasedAt: null, activityId: 4101, approved: true, flickrAlert: null, ...over,
+  publishAt: "2031-06-10T17:00:00.000Z", releasedAt: null, activityId: 4101, approved: true, flickrAlert: null, lastEdited: null, ...over,
 });
 const ITEMS: ForecastItem[] = [
   { kind: "release", at: "2031-06-10T17:00:00.000Z", release: release() },

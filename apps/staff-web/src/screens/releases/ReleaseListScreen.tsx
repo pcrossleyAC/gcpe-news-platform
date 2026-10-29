@@ -115,7 +115,7 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
       {!error && result && result.items.length > 0 && (
         <ul className="gcpe-release-list__rows">
           {result.items.map((item) => (
-            <ReleaseRow key={item.id} item={item} now={now} timeZone={timeZone} />
+            <ReleaseRow key={item.id} item={item} now={now} timeZone={timeZone} showLastEdited={folder === "drafts"} />
           ))}
         </ul>
       )}
