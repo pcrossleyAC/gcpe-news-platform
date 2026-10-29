@@ -68,7 +68,7 @@ export function DocumentTabs({ view, setView, documentId, readOnly }: DocumentTa
        * — the Add/Remove translation actions are a separate, sibling toolbar, not tabs. */}
       <div role="tablist" aria-label="Document language">
         {present.map((l) => (
-          <button key={l} type="button" role="tab" aria-selected={l === activeLanguage} id={`doc-${documentId}-tab-${l}`} onClick={() => setActive(l)}>
+          <button key={l} type="button" role="tab" aria-selected={l === activeLanguage} aria-controls={`doc-${documentId}-panel-${l}`} id={`doc-${documentId}-tab-${l}`} onClick={() => setActive(l)}>
             {LANGUAGE_NAME[l]}
           </button>
         ))}
@@ -105,12 +105,15 @@ export function DocumentTabs({ view, setView, documentId, readOnly }: DocumentTa
         )}
       </div>
 
-      <div role="tabpanel" id={`doc-${documentId}-panel-${activeLanguage}`} aria-labelledby={`doc-${documentId}-tab-${activeLanguage}`}>
-        {/* `key` forces a full remount on language switch — DocumentLanguageForm's own form
-         * state is seeded once (from the server value or a restored draft) in a `useState`
-         * initializer, which otherwise wouldn't re-run on a languageId prop change alone. */}
-        <DocumentLanguageForm key={activeLanguage} view={view} setView={setView} documentId={documentId} languageId={activeLanguage} readOnly={readOnly} />
-      </div>
+      {/* Every language's panel stays mounted, the inactive one hidden: an edited tab that isn't
+       * showing still holds unsaved text, so it must stay registered with the unsaved-changes
+       * guard (blocking Publish now, offering its Save in the save bar) rather than being
+       * unmounted on a tab switch (review P1). */}
+      {present.map((l) => (
+        <div key={l} role="tabpanel" id={`doc-${documentId}-panel-${l}`} aria-labelledby={`doc-${documentId}-tab-${l}`} hidden={l !== activeLanguage}>
+          <DocumentLanguageForm view={view} setView={setView} documentId={documentId} languageId={l} readOnly={readOnly} />
+        </div>
+      ))}
     </div>
   );
 }

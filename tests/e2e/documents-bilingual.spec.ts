@@ -26,6 +26,8 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     await page.goto(`${baseUrl()}/hub/releases/${view.id}`);
 
     const docsSection = page.getByRole("region", { name: "Documents" });
+    // Each document keeps every language's panel mounted (the inactive one hidden), so fields
+    // are looked up inside the panel that's showing (getByRole skips hidden elements).
     const firstItem = docsSection.locator(".gcpe-documents__item").nth(0);
 
     // The release was created with a body already — summaryFromBody fills the summary and
@@ -50,16 +52,16 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
 
     // Add a contact to document 1's English content.
     await firstItem.getByRole("button", { name: "Add contact" }).click();
-    await firstItem.getByLabel("Contact 1").fill("Media Relations\nMinistry of Health\n250-555-0101");
+    await firstItem.getByRole("tabpanel").getByLabel("Contact 1").fill("Media Relations\nMinistry of Health\n250-555-0101");
     await clickAndWaitForSave(page, firstItem.getByRole("button", { name: /Save English content/ }));
-    await expect(firstItem.getByLabel("Contact 1")).toHaveValue("Media Relations\nMinistry of Health\n250-555-0101");
+    await expect(firstItem.getByRole("tabpanel").getByLabel("Contact 1")).toHaveValue("Media Relations\nMinistry of Health\n250-555-0101");
 
     // Add a French translation to document 1, with its own content and a contact.
     await clickAndWaitForSave(page, firstItem.getByRole("button", { name: "Add French translation" }));
     await expect(firstItem.getByRole("tab", { name: "French" })).toHaveAttribute("aria-selected", "true");
-    await firstItem.getByLabel("Page title").fill("Communiqué de presse");
-    await firstItem.getByLabel("Headline", { exact: true }).fill("Des cliniques ouvertes les week-ends");
-    await firstItem.getByLabel("Organizations").fill("Ministère de la Santé");
+    await firstItem.getByRole("tabpanel").getByLabel("Page title").fill("Communiqué de presse");
+    await firstItem.getByRole("tabpanel").getByLabel("Headline", { exact: true }).fill("Des cliniques ouvertes les week-ends");
+    await firstItem.getByRole("tabpanel").getByLabel("Organizations").fill("Ministère de la Santé");
     const frenchBodyText = "Les cliniques seront ouvertes les week-ends à partir de novembre.";
     const frenchBody = firstItem.getByRole("textbox", { name: "Body" });
     await frenchBody.click();
@@ -67,9 +69,9 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     await page.keyboard.type(frenchBodyText);
     await expect(frenchBody).toContainText(frenchBodyText);
     await firstItem.getByRole("button", { name: "Add contact" }).click();
-    await firstItem.getByLabel("Contact 1").fill("Relations avec les médias\n250-555-0101");
+    await firstItem.getByRole("tabpanel").getByLabel("Contact 1").fill("Relations avec les médias\n250-555-0101");
     await clickAndWaitForSave(page, firstItem.getByRole("button", { name: /Save French content/ }));
-    await expect(firstItem.getByLabel("Contact 1")).toHaveValue("Relations avec les médias\n250-555-0101");
+    await expect(firstItem.getByRole("tabpanel").getByLabel("Contact 1")).toHaveValue("Relations avec les médias\n250-555-0101");
 
     // Hand-edit the summary (Page details section) — this should flip summaryEdited.
     const pageDetails = page.getByRole("region", { name: "Page details" });
@@ -100,7 +102,7 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     await clickAndWaitForSave(page, addForm.getByRole("button", { name: "Add", exact: true }));
     await expect(docsSection.locator(".gcpe-documents__item")).toHaveCount(2);
 
-    const pageTitleOf = (index: number) => docsSection.locator(".gcpe-documents__item").nth(index).getByLabel("Page title");
+    const pageTitleOf = (index: number) => docsSection.locator(".gcpe-documents__item").nth(index).getByRole("tabpanel").getByLabel("Page title");
     // Document 1's active tab is English again (switched above) — "News Release" is its
     // English page title; document 2 is the one just added.
     await expect(pageTitleOf(0)).toHaveValue("News Release");
@@ -139,11 +141,11 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     const reloadedFirstItem = docsSection.locator(".gcpe-documents__item").nth(0);
     await expect(reloadedFirstItem.getByRole("tab", { name: "French" })).toBeVisible();
     await reloadedFirstItem.getByRole("tab", { name: "English" }).click();
-    await expect(reloadedFirstItem.getByLabel("Contact 1")).toHaveValue("Media Relations\nMinistry of Health\n250-555-0101");
+    await expect(reloadedFirstItem.getByRole("tabpanel").getByLabel("Contact 1")).toHaveValue("Media Relations\nMinistry of Health\n250-555-0101");
     await reloadedFirstItem.getByRole("tab", { name: "French" }).click();
-    await expect(reloadedFirstItem.getByLabel("Page title")).toHaveValue("Communiqué de presse");
-    await expect(reloadedFirstItem.getByLabel("Headline", { exact: true })).toHaveValue("Des cliniques ouvertes les week-ends");
-    await expect(reloadedFirstItem.getByLabel("Contact 1")).toHaveValue("Relations avec les médias\n250-555-0101");
+    await expect(reloadedFirstItem.getByRole("tabpanel").getByLabel("Page title")).toHaveValue("Communiqué de presse");
+    await expect(reloadedFirstItem.getByRole("tabpanel").getByLabel("Headline", { exact: true })).toHaveValue("Des cliniques ouvertes les week-ends");
+    await expect(reloadedFirstItem.getByRole("tabpanel").getByLabel("Contact 1")).toHaveValue("Relations avec les médias\n250-555-0101");
   });
 });
 

@@ -656,6 +656,25 @@ describe("ReleaseEditorPage", () => {
     });
   });
 
+  // Review P1: an edited language tab that isn't showing still holds unsaved text; it must keep
+  // blocking Publish now (and keep its button in the save bar) after switching tabs.
+  it("an edited French tab keeps Publish now blocked after switching back to English", async () => {
+    const base = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const v = releaseView({
+      ...base,
+      documents: [{ ...base.documents[0]!, languages: [...base.documents[0]!.languages, { ...base.documents[0]!.languages[0]!, languageId: 3084, pageTitle: "Communiqué", headline: "Cliniques ouvertes" }] }],
+    });
+    renderPage(v.id, { view: v });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "French" }));
+    await user.type(within(screen.getByRole("tabpanel")).getByLabelText("Headline"), " le samedi");
+    await user.click(screen.getByRole("tab", { name: "English" }));
+    expect(within(screen.getByRole("tabpanel")).getByLabelText("Headline")).toHaveValue("Clinics open");
+    expect(screen.getByRole("button", { name: "Publish now" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Save your changes to French content (Document 1) first." })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save French content (Document 1)" })).toBeInTheDocument();
+  });
+
   it("two dirty sections show two buttons in the bar", async () => {
     renderPage("11111111-1111-1111-1111-111111111111");
     const user = userEvent.setup();
