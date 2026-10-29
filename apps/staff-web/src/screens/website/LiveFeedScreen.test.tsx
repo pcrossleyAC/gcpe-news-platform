@@ -52,8 +52,8 @@ describe("LiveFeedScreen", () => {
     stub(["NRMS.SiteEditor"], OFF, []);
     render(withAuth(<LiveFeedScreen />));
     await screen.findByRole("heading", { name: "Live Feed", level: 1 });
-    expect(screen.getByRole("button", { name: "What is Manifest URL?" })).toHaveAttribute("aria-expanded", "false");
-    await userEvent.setup().click(screen.getByRole("button", { name: "What is M3U URL?" }));
+    expect(screen.getByText("What is Manifest URL?").closest("details")!.open).toBe(false);
+    await userEvent.setup().click(screen.getByText("What is M3U URL?").closest("summary")!);
     expect(screen.getByText(/shows its Live Webcast button only while Live Feed is on/)).toBeVisible();
   });
 

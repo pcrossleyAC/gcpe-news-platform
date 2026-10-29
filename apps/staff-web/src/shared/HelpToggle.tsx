@@ -1,32 +1,33 @@
-import { useId, useState } from "react";
 import { Link } from "react-router";
 import { glossaryEntry } from "./glossary";
 
 /**
- * A small "?" button beside a piece of jargon that shows (and hides) its short explanation, from
- * the glossary (shared/glossary.ts), with a link to the full Help page entry. A real button —
- * reachable and operable from the keyboard, its state announced (`aria-expanded`), named for
- * what it explains ("What is LA Status?") — and the text shows in the page below it, not in a
- * hover-only tooltip. Esc closes it (shared/escapeClosesPanels.ts).
+ * A small "?" beside a piece of jargon that shows (and hides) its short explanation, from the
+ * glossary (shared/glossary.ts), with a link to the full Help page entry.
  *
- * Renders the button and the explanation as siblings: put them where the label is, in a
- * `gcpe-label-row` (the explanation takes the row's full width under the label).
+ * A native disclosure (`<details>`/`<summary>`): reachable and operable from the keyboard (Enter
+ * or Space), announced as a collapsed/expanded button, named for what it explains ("What is LA
+ * Status?"), and the text shows in the page, not in a hover-only tooltip. Esc closes it
+ * (shared/escapeClosesPanels.ts). Unlike a `<button>`, a summary isn't disabled by a disabled
+ * `<fieldset>` — so a read-only form (an activity a viewer can't edit) still explains itself.
+ *
+ * Put it in a `gcpe-label-row` beside the label; open, it takes the row's full width.
  */
 export function HelpToggle({ entry }: { entry: string }): React.JSX.Element {
   const { id, term, definition } = glossaryEntry(entry);
-  const [open, setOpen] = useState(false);
-  const panelId = `help-${id}-${useId()}`;
   return (
-    <>
-      <button type="button" className="gcpe-help-toggle" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((o) => !o)}>
-        <span aria-hidden="true">?</span>
+    <details className="gcpe-help-toggle">
+      <summary>
+        <span className="gcpe-help-toggle__mark" aria-hidden="true">
+          ?
+        </span>
         <span className="gcpe-visually-hidden">What is {term}?</span>
-      </button>
-      <div id={panelId} className="gcpe-help-text" hidden={!open}>
+      </summary>
+      <div className="gcpe-help-text">
         <p>
           {definition} <Link to={`/help#glossary-${id}`}>More in Help</Link>
         </p>
       </div>
-    </>
+    </details>
   );
 }

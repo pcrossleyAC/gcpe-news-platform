@@ -3425,33 +3425,51 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   flex: 1 1 16rem;
 }
 
-/* 24px at least (WCAG 2.5.8), a circle with a "?" in the link colour. */
-.gcpe-help-toggle {
+/* The "?" (a <summary>): more than 24px (WCAG 2.5.8), a circle with a "?" in the link colour. Open,
+ * the disclosure takes the row's full width, its text under the "?". */
+.gcpe-help-toggle[open] {
+  flex-basis: 100%;
+}
+
+.gcpe-help-toggle > summary {
+  display: inline-flex;
+  list-style: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.gcpe-help-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gcpe-help-toggle__mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  inline-size: 1.5rem;
-  block-size: 1.5rem;
-  padding: 0;
+  /* 28px: still 24px or more when a sticky bar covers its edge while scrolling. */
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
   border: 1px solid var(--surface-color-border-active, #2e5dd7);
   border-radius: 50%;
   background: var(--surface-color-forms-default, #fff);
   color: var(--typography-color-link, #255a90);
-  font: inherit;
   font-size: 0.875rem;
   font-weight: 700;
   line-height: 1;
-  cursor: pointer;
 }
 
-.gcpe-help-toggle[aria-expanded="true"] {
+.gcpe-help-toggle[open] .gcpe-help-toggle__mark {
   background: var(--surface-color-border-active, #2e5dd7);
   color: var(--typography-color-primary-invert, #fff);
 }
 
-.gcpe-help-toggle:focus-visible {
+.gcpe-help-toggle > summary:focus-visible {
   outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
   outline-offset: 2px;
+}
+
+.gcpe-help-toggle .gcpe-help-text {
+  margin-block-start: 0.375rem;
 }
 
 .gcpe-help-text {

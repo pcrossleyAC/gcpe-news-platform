@@ -93,7 +93,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     renderList();
     const user = userEvent.setup();
     await openListTool("LA status");
-    await user.click(await screen.findByRole("button", { name: "What is LA Status?" }));
+    await user.click((await screen.findByText("What is LA Status?")).closest("summary")!);
     expect(screen.getByText(/HQ's New or Changed flag on an activity/)).toBeVisible();
   });
 
