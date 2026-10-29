@@ -176,7 +176,7 @@ if ($existingEnv) {
     if ($PSBoundParameters.ContainsKey('ProxyHops')) {
         # The one setting a re-run may change: it keeps its value unless -ProxyHops is passed.
         $kept = @([IO.File]::ReadAllLines($paths.EnvFile) | Where-Object { $_ -notmatch '^\s*TRUST_PROXY_HOPS\s*=' })
-        Write-GcpeSecretFile -Path $paths.EnvFile -Value ((($kept + "TRUST_PROXY_HOPS=$ProxyHops") -join "`n") + "`n")
+        Write-GcpeSecretFile -Path $paths.EnvFile -ReaderAccount $serviceAccount -Value ((($kept + "TRUST_PROXY_HOPS=$ProxyHops") -join "`n") + "`n")
         Write-GcpeOk "TRUST_PROXY_HOPS=$ProxyHops"
     }
     $coreUrl = [Uri]$existingEnv['CORE_DATABASE_URL']

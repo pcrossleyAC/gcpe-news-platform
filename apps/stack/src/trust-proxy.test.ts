@@ -7,13 +7,13 @@ const APPS = ["core", "nrms", "news-api", "nod", "distribution", "calendar", "pu
 describe("every mounted app honours TRUST_PROXY_HOPS", () => {
   it.each(APPS)("%s: createApp takes trustProxyHops and start passes it from env, no hardcoded hop count", (app) => {
     const appSrc = read(`../../${app}/src/app.ts`);
-    expect(appSrc).not.toMatch(/"trust proxy",\s*\d/);
-    expect(appSrc).toMatch(/"trust proxy",\s*deps\.trustProxyHops \?\? 1/);
+    expect(appSrc.match(/trust[ -]proxy/gi)).toHaveLength(1);
+    expect(appSrc).toMatch(/set\(\s*["'`]trust proxy["'`]\s*,\s*deps\.trustProxyHops \?\? 1\s*\)/);
     expect(read(`../../${app}/src/start.ts`)).toMatch(/trustProxyHops:\s*trustProxyHopsFrom\(env\)/);
   });
   it("the stack's own app uses the parsed setting", () => {
     const src = read("./stack.ts");
-    expect(src).not.toMatch(/"trust proxy",\s*\d/);
-    expect(src).toMatch(/"trust proxy",\s*stackEnv\.TRUST_PROXY_HOPS/);
+    expect(src.match(/trust[ -]proxy/gi)).toHaveLength(1);
+    expect(src).toMatch(/set\(\s*["'`]trust proxy["'`]\s*,\s*stackEnv\.TRUST_PROXY_HOPS\s*\)/);
   });
 });

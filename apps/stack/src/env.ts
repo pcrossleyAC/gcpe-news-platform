@@ -71,7 +71,7 @@ export const stackEnvSchema = z.object({
   STAFF_WEB_DIR: z.string().default(defaultStaffWebDir),
   // How many reverse proxies sit in front of the stack (1 = SiteGround nginx / local IIS; 2 = a
   // DMZ proxy in front of IIS). Applied to the stack's own app and, via envFor, every mounted app.
-  TRUST_PROXY_HOPS: trustProxyHopsSchema.default("1"),
+  TRUST_PROXY_HOPS: trustProxyHopsSchema,
 });
 export type StackEnv = z.infer<typeof stackEnvSchema>;
 

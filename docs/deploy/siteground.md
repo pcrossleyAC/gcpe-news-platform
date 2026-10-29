@@ -161,14 +161,14 @@ and restart the Node.js app. The site-state marker records the base URL, so the 
 one rebuild-all, which the next ticks drain; `/site/…` then 301s to `/…`. Check with
 `curl -sI https://<domain>/site/ministries/` (expect `301`, `location: /ministries/`).
 
-**`TRUST_PROXY_HOPS`** (optional, a whole number 0 to 5, default `1`). How many reverse proxies sit
+**`TRUST_PROXY_HOPS`** (optional, a whole number 1 to 5, default `1`). How many reverse proxies sit
 in front of the stack and add to `X-Forwarded-For`. Every app, and the stack itself, uses it to
 find the visitor's address (`req.ip`), which the logs and the per-IP limits (login, subscribe,
 search, the live-updates connection cap) rely on. `1` is right for SiteGround's nginx, the
 OpenShift router and a single IIS in front of the stack, so leave it unset there. Set `2` on the
 Windows servers when a DMZ reverse proxy sits in front of the app server's IIS (see
 `docs/deploy/windows.md`; the installer's `-ProxyHops 2` writes it). A value that is not a whole
-number from 0 to 5 stops the stack from starting. Set too low, every visitor looks like the
+number from 1 to 5 (empty means the default) stops the stack from starting. With `2`, the internal IIS must accept connections only from the DMZ proxy (firewall or IIS IP restriction); otherwise a client that reaches it directly picks its own address. Set too low, every visitor looks like the
 proxy; set too high, a visitor can choose their own address by sending `X-Forwarded-For`. An app
 run on its own (not under the stack) reads the same variable, unprefixed, and defaults to `1`.
 

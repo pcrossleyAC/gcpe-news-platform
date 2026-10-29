@@ -723,10 +723,11 @@ describe("NRMS → Calendar release.status_changed route", () => {
 
 describe("TRUST_PROXY_HOPS", () => {
   const base = { TICK_TOKEN: "t".repeat(32) };
-  it("stack env: defaults to 1, accepts 0-5, refuses anything else", () => {
+  it("stack env: defaults to 1, accepts 1-5, refuses anything else", () => {
     expect(stackEnvSchema.parse(base).TRUST_PROXY_HOPS).toBe(1);
     expect(stackEnvSchema.parse({ ...base, TRUST_PROXY_HOPS: "2" }).TRUST_PROXY_HOPS).toBe(2);
-    for (const bad of ["abc", "-1", "6", "1.5"]) expect(stackEnvSchema.safeParse({ ...base, TRUST_PROXY_HOPS: bad }).success, bad).toBe(false);
+    expect(stackEnvSchema.parse({ ...base, TRUST_PROXY_HOPS: "" }).TRUST_PROXY_HOPS).toBe(1);
+    for (const bad of ["abc", "0", "-1", "6", "1.5"]) expect(stackEnvSchema.safeParse({ ...base, TRUST_PROXY_HOPS: bad }).success, bad).toBe(false);
   });
   it("is shared with every app's env view", () => {
     for (const prefix of APP_PREFIXES) expect(envFor({ TRUST_PROXY_HOPS: "2" }, prefix).TRUST_PROXY_HOPS, prefix).toBe("2");
