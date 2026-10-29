@@ -2676,12 +2676,13 @@ fieldset.gcpe-org-contact {
   }
 }
 
-/* Release page titles: each row's fields wrap onto two lines when the table can't fit across,
+/* Release page titles: each row's fields wrap onto two lines when the table can't fit across
+ * (it needs about 61rem: below an 80rem window, after the side menu, it doesn't),
  * each with its column's name above it, instead of the table scrolling sideways in its box. */
 .gcpe-page-titles__table input[type="number"] {
   width: 5rem;
 }
-@media (max-width: 90rem) {
+@media (max-width: 79.99rem) {
   .gcpe-page-titles__table {
     width: 100%;
   }
@@ -2727,7 +2728,7 @@ fieldset.gcpe-org-contact {
     margin-bottom: 0.25rem;
   }
 }
-@media (max-width: 90rem) {
+@media (max-width: 79.99rem) {
   .gcpe-page-titles__table td:first-child :is(.bcds-react-aria-TextField, .bcds-react-aria-TextField--container, input) {
     width: 100%;
   }
@@ -2773,4 +2774,10 @@ fieldset.gcpe-org-contact {
  * (the phone layout's display: block would otherwise show it). */
 .gcpe-users__table tr[hidden] {
   display: none;
+}
+
+/* Calendar activity: a field the keyboard moves to never scrolls under the sticky Save/Cancel
+ * bar (WCAG 2.4.11). */
+html:has(.gcpe-activity form > .gcpe-actions) {
+  scroll-padding-bottom: 5rem;
 }

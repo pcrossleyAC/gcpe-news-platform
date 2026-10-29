@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Button } from "@bcgov/design-system-react-components";
-import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
+import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
 
 const DISPLAY_LABELS: Record<ListDisplay, string> = {
   all: "Show All", my_ministries: "My Ministries' Activities Only", my_activities: "My Activities Only", my_watchlist: "My Watchlist Only",
 };
 const STATUS_LABELS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
+/** HqTools' Corporate Queries labels. */
+const CORPORATE_LABELS: Record<CorporateStatus, string> = { new: "New", changed: "Changed", reviewed: "Reviewed", deleted: "Deleted", la_new: "LA New", la_changed: "LA Changed" };
 const tri = (v: boolean | null) => (v === null ? "" : String(v));
 const fromTri = (s: string) => (s === "" ? null : s === "true");
 const num = (v: number | null) => (v === null ? "" : String(v));
@@ -39,6 +41,13 @@ const nameOf = (xs: { id: number; name: string }[], id: number | null) => (id ==
  * narrows the list.
  */
 export function activeFilterParts(query: ListQuery, options: ListOptions): string[] {
+  // A corporate query replaces the filter and the display altogether (the server lists by it alone).
+  if (query.corporate) {
+    const c = query.corporate;
+    const statuses = c.statuses.map((s) => CORPORATE_LABELS[s]);
+    const list = statuses.length > 1 ? `${statuses.slice(0, -1).join(", ")} and ${statuses.at(-1)}` : statuses[0];
+    return [`Corporate query: ${c.days === null ? "all upcoming" : `next ${c.days} ${c.days === 1 ? "day" : "days"}`}, ${list}`];
+  }
   const f = query.filter;
   const parts: string[] = [];
   if (f.thisDayOnly && f.from) parts.push(`Date: ${f.from}`);
@@ -63,6 +72,8 @@ export function activeFilterParts(query: ListQuery, options: ListOptions): strin
   if (query.display !== "all") parts.push(DISPLAY_LABELS[query.display]);
   return parts;
 }
+
+const isPhone = () => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 40rem)").matches;
 
 /** Whether Filters is open, for this browser tab only: the screen keeps no other per-user UI state locally. */
 const OPEN_KEY = "gcpe.calendar.filtersOpen";
@@ -91,7 +102,8 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     setDisplay(query.display);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const parts = activeFilterParts(query, options);
-  const [open, setOpen] = useState<boolean>(() => storedOpen() ?? parts.length === 0);
+  // On a phone the open panel is about three screens before the first activity: closed there too.
+  const [open, setOpen] = useState<boolean>(() => storedOpen() ?? (parts.length === 0 && !isPhone()));
   const set = <K extends keyof ListFilter>(k: K, v: ListFilter[K]) => setFilter((f) => ({ ...f, [k]: v }));
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
