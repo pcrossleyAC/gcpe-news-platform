@@ -2,6 +2,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { enqueueEvent, termEventType, termRecordSchema, type SubscriberConfig, type TermKind, type TermRecord } from "@gcpe/events";
 import { terms } from "../db/schema";
+import { sameLegacyExtras, type LegacyExtras } from "./legacy-extras";
 import { CORE_SOURCE, lockAggregate, termAggregateId } from "./aggregate";
 
 export const termInputSchema = termRecordSchema.omit({ updatedAt: true });
@@ -54,7 +55,11 @@ export async function upsertTerm(
   db: Db,
   input: TermInput,
   subscribers: SubscriberConfig[],
-  opts: { legacyId?: string } = {},
+  opts: {
+    legacyId?: string;
+    /** Raw legacy HTML (sectors only). undefined keeps the stored value; a difference alone is stored with no event. */
+    legacyExtras?: LegacyExtras | null;
+  } = {},
 ): Promise<{ record: TermRecord; changed: boolean }> {
   const data = termInputSchema.parse(input);
   return db.transaction(async (tx) => {
@@ -67,10 +72,15 @@ export async function upsertTerm(
     if (existing) {
       const { updatedAt: _u, ...current } = toTermRecord(existing);
       if (JSON.stringify(termInputSchema.parse(current)) === JSON.stringify(data)) {
-        if (opts.legacyId !== undefined && opts.legacyId !== existing.legacyId) {
+        const legacyIdDiffers = opts.legacyId !== undefined && opts.legacyId !== existing.legacyId;
+        const extrasDiffer = opts.legacyExtras !== undefined && !sameLegacyExtras(existing.legacyExtras, opts.legacyExtras);
+        if (legacyIdDiffers || extrasDiffer) {
           const [row] = await tx
             .update(terms)
-            .set({ legacyId: opts.legacyId })
+            .set({
+              ...(legacyIdDiffers ? { legacyId: opts.legacyId } : {}),
+              ...(extrasDiffer ? { legacyExtras: opts.legacyExtras ?? null } : {}),
+            })
             .where(and(eq(terms.kind, data.kind), eq(terms.key, data.key)))
             .returning();
           return { record: toTermRecord(row!), changed: false };
@@ -78,7 +88,12 @@ export async function upsertTerm(
         return { record: toTermRecord(existing), changed: false };
       }
     }
-    const values = { ...data, legacyId: opts.legacyId ?? existing?.legacyId ?? null, updatedAt: new Date() };
+    const values = {
+      ...data,
+      legacyId: opts.legacyId ?? existing?.legacyId ?? null,
+      ...(opts.legacyExtras !== undefined ? { legacyExtras: opts.legacyExtras } : {}),
+      updatedAt: new Date(),
+    };
     const [row] = await tx
       .insert(terms)
       .values(values)

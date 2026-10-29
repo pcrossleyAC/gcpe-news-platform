@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { OrgRecord, TermRecord } from "@gcpe/events";
+import type { LegacyExtras } from "../services/legacy-extras";
 
 export * from "@gcpe/events/tables";
 
@@ -33,6 +34,8 @@ export const organizations = pgTable("organizations", {
   /** Ordered successor ministries, set by a hand-over (new-government spec §4); the first is the redirect target. Cleared on reactivation. */
   successorKeys: text("successor_keys").array().notNull().default(sql`'{}'::text[]`),
   legacyId: uuid("legacy_id"),
+  /** Raw legacy HTML news.gov never displayed (owner decision 2026-10-28). Written only by the legacy importer; never rendered, edited or published. Not part of OrgRecord. */
+  legacyExtras: jsonb("legacy_extras").$type<LegacyExtras | null>(),
   /** Set when staff edit the organization from the Hub; the seed and importer leave such rows alone. Not part of OrgRecord. */
   staffEditedAt: timestamp("staff_edited_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -49,6 +52,8 @@ export const terms = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     social: jsonb("social").$type<TermRecord["social"]>().notNull(),
     legacyId: uuid("legacy_id"),
+    /** As organizations.legacyExtras: sectors only. Not part of TermRecord. */
+    legacyExtras: jsonb("legacy_extras").$type<LegacyExtras | null>(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique("terms_kind_key").on(t.kind, t.key)],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapMinistry, mapTerm, type LegacyMinistryRow } from "./map";
+import { mapMinistry, mapMinistryExtras, mapTerm, mapTermExtras, type LegacyMinistryRow } from "./map";
 
 // Values from gcpe-hub-develop/db-scripts/gcpe.hub-data-01-dbo.sql (GCPE Media Relations row)
 const mediaRelations: LegacyMinistryRow = {
@@ -117,5 +117,42 @@ describe("mapTerm", () => {
       youtubeUrl: null,
       audioUrl: null,
     });
+  });
+});
+
+describe("legacy extras (hidden HTML columns)", () => {
+  const html = {
+    MiscHtml: "<p>misc</p>",
+    MiscRightHtml: "<p>right</p>",
+    FacebookEmbedHtml: "<iframe src=\"https://fb\"></iframe>",
+    YoutubeEmbedHtml: "<iframe src=\"https://yt\"></iframe>",
+    AudioEmbedHtml: "<audio src=\"a.mp3\"></audio>",
+  };
+
+  it("maps the five ministry columns verbatim into camelCase keys", () => {
+    expect(mapMinistryExtras({ ...mediaRelations, ...html })).toEqual({
+      miscHtml: "<p>misc</p>",
+      miscRightHtml: "<p>right</p>",
+      facebookEmbedHtml: '<iframe src="https://fb"></iframe>',
+      youtubeEmbedHtml: '<iframe src="https://yt"></iframe>',
+      audioEmbedHtml: '<audio src="a.mp3"></audio>',
+    });
+  });
+
+  it("omits null, absent and blank columns, and is null when nothing is left", () => {
+    expect(mapMinistryExtras({ ...mediaRelations, MiscHtml: "<p>x</p>", MiscRightHtml: null, FacebookEmbedHtml: "", YoutubeEmbedHtml: "  \r\n" })).toEqual({ miscHtml: "<p>x</p>" });
+    expect(mapMinistryExtras(mediaRelations)).toBeNull();
+    expect(mapMinistryExtras({ ...mediaRelations, MiscHtml: "", MiscRightHtml: null })).toBeNull();
+  });
+
+  it("does not put the extras on the organization input (and so never on its event)", () => {
+    expect(Object.keys(mapMinistry({ ...mediaRelations, ...html }, { topics: [], services: [], sectorKeys: [] }))).not.toContain("legacyExtras");
+  });
+
+  it("maps the same five columns for a sector, and nothing for a theme", () => {
+    const sector = { Id: "1b1c7a5e-0000-0000-0000-000000000001", Key: "s", SortOrder: 0, IsActive: true, DisplayName: "S", ...html };
+    expect(mapTermExtras("sector", sector)?.miscRightHtml).toBe("<p>right</p>");
+    expect(mapTermExtras("sector", { ...sector, MiscHtml: null, MiscRightHtml: "", FacebookEmbedHtml: undefined, YoutubeEmbedHtml: "", AudioEmbedHtml: "" })).toBeNull();
+    expect(mapTermExtras("theme", sector)).toBeNull();
   });
 });

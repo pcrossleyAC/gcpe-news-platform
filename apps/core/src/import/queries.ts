@@ -3,6 +3,7 @@ SELECT m.Id, m.[Key], m.SortOrder, m.DisplayName, m.Abbreviation, m.IsActive,
        m.MinisterEmail, m.MinisterPhotoUrl, m.MinisterPageHtml, m.MinisterAddress, m.MinisterName, m.MinisterSummary,
        m.MinistryUrl, p.[Key] AS ParentKey, m.WeekendContactNumber, m.DisplayAdditionalName,
        m.TwitterUsername, m.FlickrUrl, m.YoutubeUrl, m.AudioUrl,
+       m.MiscHtml, m.MiscRightHtml, m.FacebookEmbedHtml, m.YoutubeEmbedHtml, m.AudioEmbedHtml,
        m.ContactUserId, c1.FullName AS ContactFullName, c1.PhoneNumber AS ContactPhone, c1.MobileNumber AS ContactMobile, c1.EmailAddress AS ContactEmail,
        m.SecondContactUserId, c2.FullName AS SecondContactFullName, c2.PhoneNumber AS SecondContactPhone, c2.MobileNumber AS SecondContactMobile, c2.EmailAddress AS SecondContactEmail
 FROM dbo.Ministry m
@@ -21,7 +22,8 @@ SELECT ms.MinistryId, s.[Key] AS SectorKey FROM dbo.MinistrySector ms JOIN dbo.S
 
 export const Q_SECTORS = `-- name: sectors
 SELECT s.Id, s.[Key], s.SortOrder, s.IsActive, s.DisplayName, sl.Name AS EnglishName,
-       s.TwitterUsername, s.FlickrUrl, s.YoutubeUrl, s.AudioUrl
+       s.TwitterUsername, s.FlickrUrl, s.YoutubeUrl, s.AudioUrl,
+       s.MiscHtml, s.MiscRightHtml, s.FacebookEmbedHtml, s.YoutubeEmbedHtml, s.AudioEmbedHtml
 FROM dbo.Sector s
 LEFT JOIN dbo.SectorLanguage sl ON sl.SectorId = s.Id AND sl.LanguageId = 4105`;
 

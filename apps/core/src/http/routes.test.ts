@@ -752,4 +752,16 @@ describe("Core HTTP API", () => {
       expect((await request(app).get("/api/cabinet-change").set(auth(admin))).status).toBe(404);
     });
   });
+
+  it("never returns legacy extras from the organization read API", async () => {
+    const { key: _k, ...rest } = healthOrg;
+    await organizationsService.upsertOrganization(tdb.db, { ...rest, key: "extras-org" }, [], { legacyExtras: { miscHtml: "<script>secret-misc</script>", audioEmbedHtml: "<audio></audio>" } });
+    const [row] = await tdb.db.select().from(organizations).where(eq(organizations.key, "extras-org"));
+    expect(row!.legacyExtras).toMatchObject({ miscHtml: "<script>secret-misc</script>" });
+    for (const path of ["/api/organizations", "/api/organizations/extras-org"]) {
+      const res = await request(app).get(path).set(auth(admin));
+      expect(res.status).toBe(200);
+      expect(res.text).not.toMatch(/legacyExtras|legacy_extras|miscHtml|miscRightHtml|EmbedHtml|secret-misc/);
+    }
+  });
 });

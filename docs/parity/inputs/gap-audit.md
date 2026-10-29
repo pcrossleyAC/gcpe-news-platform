@@ -6,6 +6,10 @@
 
 ## Verdict
 
+**Final status (plan 5, 2026-10-28, boxs.ca at `main` 7bfb7e7, deploy ad3f5f8): no High or Medium entry is open.** Every one of H1–H6 and M1–M17 is addressed by a commit, some with a recorded deliberate difference beside it (C-rows named in the re-walk table below). Two Low entries stay open: **L5** (web analytics, an operator feature the owner decides, spec §7) and nothing else; the **`/assets/license` remnant of L3** is fixed in code (F-P5-1, C305: 302 to the licence PDF as legacy; the boxs.ca check waits for the next deploy). The rest of what boxs.ca does not show is data that the cutover import brings: minister biographies, Health factsheets and the 78 legacy releases outside boxs.ca's slice. See "Plan 5 final re-walk".
+
+The original verdict (2026-10-27) follows.
+
 The static site covers the main reading path: home, release pages, ministry/sector/theme/tag pages, a monthly archive, search, RSS, sitemaps and subscribe. Every internal link on the pages I fetched works (37 of 37 checked, 200) [V-live]. It does not yet match what a member of the public gets on news.gov.bc.ca:
 
 - **Six legacy pages or flows a reader reaches from navigation are missing or broken:**
@@ -27,17 +31,17 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 
 | Legacy URL pattern | Ours | Status | Notes |
 |---|---|---|---|
-| `/` | `/site/` | gap (elements) | Page exists [V-live]. Home cards (M8 for home), carousel, Connect With Us and Resources done in plan 2 (d6591b1). M13 (navigation) addressed by plan 4 (81364e0, 7426dd5). Still missing: L13. Carousel: C205, C236. |
+| `/` | `/site/` | gap (elements) | Page exists [V-live]. Home cards (M8 for home), carousel, Connect With Us and Resources done in plan 2 (d6591b1). M13 (navigation) addressed by plan 4 (81364e0, 7426dd5). Site meta description added in plan 5 (98c2889, C297). Nothing open: structure 8/8 `ok` on boxs.ca at both widths (plan 5 final audit). Carousel: C205, C236. |
 | `/releases/<key>` | `/site/releases/<key>/` | addressed (plan 2) | Page rebuilt: M3–M7 done (1868215, 6269b24); remaining differences are C234-C256. The `/releases/<key>/image` endpoint (M5) is not built; `og:image` is the release image or the default. |
 | `/factsheets/<slug>`, `/stories/<slug>`, `/updates/<slug>` | `/site/releases/<slug>/` | already decided C206 | One path for every kind. |
 | `/releases`, `/factsheets`, `/stories`, `/updates` (listings) | `/site/releases/`, `/site/factsheets/`, `/site/stories/`, `/site/updates/` | **H5 addressed by plan 4** (78c2e57) | Built per kind from the navigation settings' titles (C283). |
 | `/{kind}/more-news`, `/{kind}/archive[/y[/m]]`, `/{kind}/morearticles` | `/site/archive/…` | already decided C202 | Legacy redirects these to `/Search` or uses AJAX "Load More News". |
 | `/{kind}/feed[/atom]` | `/site/feeds/<kind>.xml`, `.atom.xml` | **M10 addressed by plan 3** (c6667eb, b0f2f87, 2937c26) | Legacy `/<kind>/feed` URLs are served in place with legacy content types. |
-| `/releases/<key>/image` | missing | gap M5 | og:image endpoint; legacy 200 image/jpeg [V-live]. |
+| `/releases/<key>/image` | 302 to the default Open Graph image | recorded difference **C260** | og:image endpoint; legacy 200 image/jpeg [V-live]. boxs.ca 302 to `default-og-image-new.jpg` (plan 5 final audit). |
 | `/ministries` | `/site/ministries/` | **M8 index addressed by plan 4** (d0008cb, 837f7a7) | Each ministry's latest posts, from one batch call (C292). |
 | `/ministries/<key>` | `/site/ministries/<key>/` | addressed (plan 2) | M1 (media contacts render) and M2 (minister card) done in efa17ea and 3881b34; Premier Meet the Team and ministers of state in efa17ea (M15). |
-| `/ministries/<key>/biography`, `/office-of-the-premier/biography` | missing | **H2 addressed in plan 2** (3881b34) for `/ministries/<key>/biography/` | Served from the plan-2 build; boxs.ca still 404s until batch C deploys. Legacy `/office-of-the-premier/biography` and `/ministries/<parent>/<key>/biography` still need plan 3 (url-compat). |
-| `/ministries/<parent>/<key>[…]` (ministers of state) | missing | partly addressed (M15) | Minister-of-state cards on the parent page (efa17ea). The nested `/ministries/<parent>/<key>` path is not served; plan 3. |
+| `/ministries/<key>/biography`, `/office-of-the-premier/biography` | missing | **H2 addressed in plan 2** (3881b34) for `/ministries/<key>/biography/`; legacy paths by plan 3 (dcda081, de7e6ec) | The page is written only while the minister has a bio (`builder.ts`); otherwise the address 301s to the ministry page. boxs.ca has no bio text in Core (data; see the plan 5 re-walk). `/office-of-the-premier/biography` 301s to the ministry's biography, else its page. |
+| `/ministries/<parent>/<key>[…]` (ministers of state) | 301 to `/ministries/<key>/`, else the parent | addressed (M15: efa17ea; nested paths: de7e6ec) | Minister-of-state cards on the parent page. |
 | `/ministries/<key>/<kind>` (e.g. `/factsheets`) | `/site/ministries/<key>/factsheets/` only | **H5 addressed by plan 4** (ed1f2c3) | Other `/<cat>/<key>/<kind>` paths go to the category page (C284). |
 | `/{category}/<key>/feed` | `/site/{category}/<key>/feed.xml` | parity (path differs, D1/C202); M10 addressed by plan 3 | Atom added beside RSS (c6667eb, b0f2f87). No `<category>` element (not in scope). |
 | `/{category}/<key>/top\|feature` feeds, `/top/feed`, `/feature/feed` | served in place at the legacy URLs | **M10 addressed by plan 3** (c6667eb, b0f2f87, 2937c26) | Legacy `/top/feed` and `/feature/feed` are served in place. |
@@ -49,7 +53,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 | `/tags/<key>` → 302 `/news-subscribe/<key>` | `/site/tags/<key>/` | **L4 addressed by plan 3** (de7e6ec) | `/news-subscribe/<key>` gets a 301 to `/tags/<key>/`, which stays canonical. |
 | `/archive`, `/archive/<y>/<m>` | `/site/archive/`, `/site/archive/<y>/<m>/` | already decided C202 | Legacy redirects to `/Search?daterange=…` [V-live]. |
 | `/more-news` | — | already decided C202 | Legacy redirects to `/Search`. |
-| `/search` (`/Search?q=…&ministry=&sector=&city=&content=&language=&date…`) | `/site/search/` | **M9 addressed by plan 4** (a88a53b, 455354e, 5a8a559); H6 not marked in this audit | Language and City are not built (C285). |
+| `/search` (`/Search?q=…&ministry=&sector=&city=&content=&language=&date…`) | `/site/search/` | **M9 addressed by plan 4** (a88a53b, 455354e, 5a8a559); **H6 addressed** (e6b740c) | Language and City are not built (C285). |
 | `/feed`, `/feed/atom` | `/site/feed.xml`, `/site/atom.xml` | **M10 addressed by plan 3** | Legacy `/feed` and `/feed/atom` are served in place. Path differs (D1). |
 | `/embed[…]` | — | n/a | Legacy 410 [V-live]. |
 | `/connect` | `/site/connect/` | **M12 addressed by plan 4** (6febcda, 3fe99ee) | LinkedIn, the RSS list and the policy link (C273, C287). |
@@ -60,19 +64,19 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 | `/privacy` | `/site/privacy/` | **L1 addressed by plan 4** (5598052) | From Page text settings, without Reset Preferences (C279, C280). |
 | `/sitemap/html` | `/site/sitemap/` (+ `/site/sitemap.xml`) | **L2 addressed by plan 4** (91629ee, 62a9ebe) | Pages, categories and months, not every post (C275). Legacy has no `/sitemap.xml` (404) [V-live]. |
 | `/robots.txt` | `/site/robots.txt` | parity | Test site uses `Disallow: /` (C39). |
-| `/<digits>` (NEWS- reference permalink) → redirect | missing | not verified | `/1123` returned 404 on legacy; I don't know the reference format. |
+| `/<digits>` (NEWS- reference permalink) → redirect | NEWS-n references resolved | addressed by plan 3 (url-compat T5: baeddc5, 5c3590b) | `/1123` returned 404 on legacy; the curated URL list's references section passes on boxs.ca (1/1). |
 | `/newsletters[/…]` | — | n/a | Legacy 302 to `/` (retired) [V-live]. |
-| `/files/*`, `/assets/*`, `/assets/license` | `/files/<key>` (NRMS storage) | gap L3 (licence line addressed by plan 4, 5598052) | `/assets/license` 302 to a PDF [V-live]; our licence text and link are Page text settings (C281). |
+| `/files/*`, `/assets/*`, `/assets/license` | `/files/<key>` (NRMS storage) | gap L3 (licence line addressed by plan 4, 5598052); **`/assets/license` fixed in code by F-P5-1 (C305), live after the next deploy** | `/assets/license` 302 to `/files/News_Footage_License_British_Columbia.pdf` (legacy, re-checked 2026-10-28); boxs.ca answers 404. Our licence text and link are Page text settings (C281). `/files/*` is runbook item 2f. |
 | `/CarouselImage/<id>`, `/SiteStatus`, `/api/live/granville`, `{controller}/MoreArticles` | — | n/a (internal) | Covered by C204, C202 and the Blue Bridge switch. |
 | `/error` | — | n/a | Legacy 500 [V-live]. |
-| Unknown path (404) | JSON `{"error":"not found"}` | **gap H1** | Legacy shows a styled 404 page [V-live]. |
+| Unknown path (404) | the site's 404 page, status 404 | **H1 addressed** (c769bd2; text 5598052, C282) | Legacy shows a styled 404 page [V-live]. |
 | Legacy redirect middleware (`/ministries/justice` → …, trailing slash, `/sectors/families`) | — | already decided C202 / D1 | |
 
 ## Gaps, ranked by public impact
 
 ### High
 
-**H1. Unknown URLs show raw JSON, not the 404 page.** Code, S.
+**H1. Unknown URLs show raw JSON, not the 404 page.** Code, S. **Status: addressed** (c769bd2 site 404 for unknown URLs; 5598052 and 67da9ca 404 text, C282): boxs.ca `/this-page-does-not-exist` answers 404 `text/html` with the site chrome (plan 5 re-walk).
 - Legacy: `https://news.gov.bc.ca/this-page-does-not-exist` returns a styled 404 page with navigation [V-live].
 - Ours: `https://boxs.ca/site/releases/2026HLTH0085-001117/` and `/site/privacy/` return HTTP 404 `application/json` with the body `{"error":"not found"}` [V-live].
 - Cause: `404.html` is built (`static-pages.ts`) and is reachable at `/site/404.html` [V-live]. But `apps/stack/src/stack.ts:345` mounts `express.static` with no 404 fallback, so misses fall through to a JSON 404 [V-src].
@@ -101,7 +105,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 - Each is about 12 posts with an RSS feed. "Factsheets" is in the Resources box and in each ministry's "More from this Ministry".
 - Ours: nothing in `pageFiles`/`PageId` [V-src]. C206 decides the post URLs, not these listings.
 
-**H6. "Search <ministry> news" links open an empty search.** Code, S–M.
+**H6. "Search <ministry> news" links open an empty search.** Code, S–M. **Status: addressed** (e6b740c): a ministry or sector search with no text lists that filter's posts; boxs.ca `/api/v2/search?ministry=citizens-services` answers 200 with 8 results (plan 5 re-walk).
 - Where: every ministry and sector page links to `/site/search/?ministry=<key>` or `?sector=<key>` with no `q` [V-live: `ours/min-citz.html`].
 - Two reasons it shows nothing:
   - The search script stops at `if (!q) return;` [V-src `search.ts`].
@@ -190,7 +194,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 - Ours: RSS 2.0 only, home and category feeds only, items without a category [V-live `ours/feed.xml`].
 - Feed URLs differ (`/feed` vs `/feed.xml`). Under D1 there are no redirects, so existing subscribers and ministry websites would break on a switch. [I]
 
-**M11. Footer has no land acknowledgement.** Code or settings, S.
+**M11. Footer has no land acknowledgement.** Code or settings, S. **Status: addressed** (524ec15 setting, b502a1e footer band, 1e5b274): the acknowledgement is a footer setting; the strict `landAck` region passes on every page at both widths (plan 5 final audit, max 0.0072).
 - Every legacy page's footer says "The B.C. Public Service acknowledges the territories of First Nations around B.C. …" [V-live].
 - The live footer (`https://boxs.ca/site/`, deployed today) has the help text, two link columns and the copyright, but no acknowledgement [V-live]. No settings field holds one [V-src].
 
@@ -243,11 +247,48 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 
 **L4. Tag URLs differ.** **Status: addressed by plan 3** (de7e6ec): `/news-subscribe/<key>` gets a 301 to `/tags/<key>/`, which stays canonical. Legacy's canonical tag URL is `/news-subscribe/<key>`, and `/tags/<key>` 302s there [V-live]. Ours is `/tags/<key>/`. Only matters if redirects are added later (D1).
 
-**L5. No web analytics.** Code, S. Legacy loads `/Scripts/webanalytics.js` on every page [V-live]. Ours loads none. The footer keeps legacy's footer link ids (`footerHome` etc.) but nothing reads them. Readers don't see this; the owner loses statistics.
+**L5. No web analytics.** Code, S. Legacy loads `/Scripts/webanalytics.js` on every page [V-live]. Ours loads none. The footer keeps legacy's footer link ids (`footerHome` etc.) but nothing reads them. Readers don't see this; the owner loses statistics. **Status: open** (Low; operator feature): spec P13 puts Snowplow behind an operator flag, and spec §7 leaves production analytics to the owner. Nothing is built.
 
 **L6. No "Connect With Us" icon strip, and Resources only on the home page.** Code, S. **Status: partly closed by plan 2** (d6591b1, efa17ea): strip and Resources on home and ministry pages; LinkedIn and RSS closed by plan 4 (3fe99ee; C240 superseded, C287). Legacy listing pages show social icons, "View all Social Media", and the Resources box [V-live]. Ours has Resources on the home page only, and no icons.
 
 **L7. Related posts depend on similarity.** **Status: closed by plan 2** (6269b24): same-ministry fallback (C251). [I] On a full dataset, text-mode related posts may return results. Legacy always shows 3 posts from the same ministry; ours hides the section when nothing matches (boxs.ca: empty) [V-live].
+
+## Plan 5 final re-walk (2026-10-28)
+
+One request per entry to boxs.ca (deploy ad3f5f8 of `main` 7bfb7e7), plus the full parity harness and the three URL lists run by the controller at the same deploy (`.superpowers/sdd/2026-10-28-parity-5-identity-and-leftovers/parity.txt`, `urls-*.txt`). Four news.gov requests re-checked legacy facts (the Citizens' Services ministry card, the Health factsheets list, `/assets/license`, release 2026HLTH0085-001117). Status: **addressed** (commit), **recorded difference** (C-row), or **open**.
+
+| Entry | boxs.ca request and result | Status |
+|---|---|---|
+| H1 | `/this-page-does-not-exist`: 404 `text/html`, title "That web page doesn't exist.", header and land acknowledgement present | addressed (c769bd2, 5598052); C282 |
+| H2 | `/office-of-the-premier/biography`: 301 to the ministry's biography, else the ministry page (`middleware.ts:353`). `/ministries/citizens-services/biography/` 301s to the ministry page because Core on boxs.ca holds no bio text (the card shows the placeholder name "First Name Last Name"; legacy shows Diana Gibson and "Read Bio"). Harness: biography structure `missing` `.biography-details`, `.minister-bio-picture img` | addressed (3881b34, 53b4f9c; dcda081, de7e6ec). **Data**: the importer reads `MinisterPageHtml`, `MinisterPhotoUrl` and `MinisterName` (`apps/core/src/import/queries.ts:3`), and the builder writes the page only while a bio exists (`apps/public-site/src/builder.ts:365-368`) |
+| H3 | `/contacts/`: 200; structure 4/4 | addressed (3966eaf); C276, C277 |
+| H4 | `/live/`: 200; structure 3/3 | addressed (7426dd5, 59526ac); C218, C278 |
+| H5 | `/factsheets/`: 200, 20 factsheets; structure 6/6. `/ministries/health/factsheets/` shows "Nothing has been published yet." because boxs.ca has no Health factsheets (two legacy Health factsheet keys answer 404 on boxs.ca); harness `missing` `.regular-articles .article` | addressed (78c2e57, ed1f2c3); C283, C284. **Data** for the Health list |
+| H6 | `/api/v2/search?ministry=citizens-services`: 200, 8 results with no `q` | addressed (e6b740c) |
+| M1 | `/ministries/citizens-services/`: Media Contacts with two named contacts and mailto links | addressed (efa17ea, bbd6104) |
+| M2 | Same page: photo, name heading, title, email. No "Read Bio" because no bio (data, H2) | addressed (3881b34, efa17ea); C238 |
+| M3 | `/releases/2026HLTH0086-001123/`: 200, "Backgrounders" heading present | addressed (1868215) |
+| M4 | `/releases/2026HLTH0085-001117/`: kind label, "Tuesday, September 22, 2026 11:45 AM", ministry | addressed (fd04cfd, 1868215) |
+| M5 | Same release: `og:` title/description/image/type/url and `twitter:` card/site/title/description/image. `/releases/<key>/image`: 302 to the default OG image | addressed (6269b24, 98c2889); C242, C247, C260, C298 |
+| M6 | Lead media and players | recorded difference C234 (links with placeholders) |
+| M7 | Same release: related articles, contacts, connect/share and translate boxes | addressed (1868215, 6269b24); C246 (no minister card) |
+| M8 | `/ministries/`: 27 "Browse More News" and 27 "Search News"; structure 4/4 | addressed (fd04cfd, d6591b1, d0008cb, 837f7a7); C292 |
+| M9 | `/search/?q=health`: Ministry, Sector, Content and Date facets; structure 5/5 | addressed (a88a53b, 455354e, 5a8a559); C285, C286 |
+| M10 | `/feed/atom`: 200 `application/atom+xml`; generated list feeds 40/40 | addressed (c6667eb, b0f2f87, 2937c26); C265, C270 |
+| M11 | Every page: strict `landAck` region ok (max 0.0072) | addressed (524ec15, b502a1e) |
+| M12 | `/connect/`: LinkedIn and RSS sections and the policy link | addressed (6febcda, 3fe99ee); C273, C287 |
+| M13 | `/`: News menu, Office of the Premier, Subscribe, Live Webcast; strict header ≤ 0.0062 | addressed (81364e0, 7426dd5) |
+| M14 | `/subscribe/`: Notice of Collection and manage link; structure 4/4 | addressed (bb0ea79, cbe5040); C288-C290 |
+| M15 | `/office-of-the-premier/`: 301 to `/ministries/office-of-the-premier/`; premier structure 4/4. Nested `/ministries/<parent>/<key>` 301s to the key, else the parent | addressed (efa17ea, de7e6ec) |
+| M16 | `/sectors/`: 200; structure 3/3 + 1 `legacy-absent` | addressed (d0008cb, 837f7a7); C292 |
+| M17 | Curated list "long keys" 1/1 | addressed (e95720f, 464581c) |
+| L1 | `/privacy/`: 200, "B.C. Government Website Privacy Statement" | addressed (5598052); C279, C280 |
+| L2 | `/sitemap/html`: 301 to `/sitemap/` | addressed (91629ee, 62a9ebe); C275 |
+| L3 | Release asset rows and translations inside `#assets` (89016db); `/assets/license`: was 404 on boxs.ca, now a 302 to the licence PDF in code as legacy | partly addressed (1868215, 5598052, 89016db; C281, C302). `/assets/license` addressed by F-P5-1 (C305), live after the next deploy |
+| L4 | `/news-subscribe/bc-coroners-service`: 301 to `/tags/bc-coroners-service/` | addressed (de7e6ec) |
+| L5 | No analytics script | **open** (Low; operator feature, spec P13 and §7) |
+| L6 | `/sectors/economy/`: Connect strip, "View all Social Media", Resources | addressed (d6591b1, efa17ea, 3fe99ee); C287 |
+| L7 | Release page shows Related Articles | addressed (6269b24); C251 |
 
 ## Already decided (not gaps)
 

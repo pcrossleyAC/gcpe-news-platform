@@ -139,6 +139,9 @@ export function fixedRule(path: string, query: string): LegacyAction | null {
   let p = path.toLowerCase();
   if (p.length > 1 && p.endsWith("/")) p = p.slice(0, -1);
 
+  // Legacy: 302 to its own /files PDF (F-P5-1, C305). Fixed, not the Hub's licence setting: this layer reads no settings.
+  if (p === "/assets/license") return { do: "redirect", to: ["/files/News_Footage_License_British_Columbia.pdf!"], query: "drop", status: 302 };
+
   if (p === "/subscribe" && query.toLowerCase().includes("newsletters")) return redirect(["/subscribe/!"], "drop");
 
   if (p === "/subscribe.aspx") {
