@@ -693,6 +693,56 @@ describe("ReleaseEditorPage", () => {
       expect(within(screen.getByRole("region", { name: "Page details" })).queryByText(/someone else changed this/i)).not.toBeInTheDocument();
     });
 
+    // Review (HIGH): saving Document 1's English regenerates the release's summary (never hand-
+    // edited) and, for a story, its key — fields Page details shows. That's this page's own save,
+    // so Page details must not then 409 as if someone else had changed them.
+    it("the document and Page details saved together: the document's regenerated summary is taken in, and Page details saves with the new version", async () => {
+      const v = releaseView({ status: "draft", type: "release", version: 1 });
+      const metaBodies: Record<string, unknown>[] = [];
+      renderLive(v, {
+        "/4105": (cur, body) => ({
+          ...cur, version: cur.version + 1,
+          languages: [{ ...cur.languages[0]!, summary: "Regenerated from the new body" }],
+          documents: [{ ...cur.documents[0]!, languages: [{ ...cur.documents[0]!.languages[0]!, headline: String(body.headline) }] }],
+        }),
+        "/meta": (cur, body) => {
+          metaBodies.push(body);
+          return body.version === cur.version ? { ...cur, version: cur.version + 1, languages: [{ ...cur.languages[0]!, location: String(body.location) }] } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+        },
+      });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Headline"), " this weekend");
+      await user.type(screen.getByLabelText("Location"), "X");
+      await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(metaBodies).toHaveLength(1));
+      expect(metaBodies[0]).toMatchObject({ version: 2, summary: "Regenerated from the new body" });
+      expect(String(metaBodies[0]!.location)).toMatch(/X$/);
+      expect(await screen.findByRole("region", { name: "Save status" })).toHaveTextContent("All changes saved.");
+      expect(screen.queryByText(/someone else changed this/i)).not.toBeInTheDocument();
+    });
+
+    it("a story's typed URL key wins over the key its headline change regenerated (the user's later, explicit edit)", async () => {
+      const v = releaseView({ status: "draft", type: "story", key: "clinics-open", version: 1 });
+      const metaBodies: Record<string, unknown>[] = [];
+      renderLive(v, {
+        "/4105": (cur) => ({ ...cur, version: cur.version + 1, key: "clinics-open-this-weekend" }),
+        "/meta": (cur, body) => {
+          metaBodies.push(body);
+          return body.version === cur.version ? { ...cur, version: cur.version + 1, key: String(body.key) } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+        },
+      });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Headline"), " this weekend");
+      const key = screen.getByLabelText("URL key");
+      await user.clear(key);
+      await user.type(key, "weekend-clinics");
+      await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(metaBodies).toHaveLength(1));
+      expect(metaBodies[0]).toMatchObject({ version: 2, key: "weekend-clinics" });
+      expect(await screen.findByRole("region", { name: "Save status" })).toHaveTextContent("All changes saved.");
+      expect(screen.getByLabelText("URL key")).toHaveValue("weekend-clinics");
+    });
+
     it("a 409 Reload in one section brings in someone else's changes without making other sections dirty", async () => {
       const v = releaseView({ status: "draft", version: 1, sectors: ["health"] });
       const live = renderLive(v, { "/meta": () => jsonResponse(409, { error: "version conflict" }) });
