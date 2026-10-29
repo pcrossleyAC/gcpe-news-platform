@@ -20,6 +20,11 @@ import type { RequestHandler } from "express";
  * Accept-Encoding upstream, this sends identity and nginx compresses as before. Either way a
  * body is encoded at most once.
  *
+ * The public site's own files skip all of this: its builder stores `<file>.br` and `<file>.gz` beside
+ * every text file it writes and site-precompressed.ts serves those with Content-Encoding set (so the
+ * rule above leaves them alone, and the body is encoded exactly once). Only a file with no current
+ * stored copy (a site written before this, a Range request, deflate-only clients) is compressed here.
+ *
  * A 206 is left alone: its Content-Range counts identity bytes.
  */
 export function textCompression(): RequestHandler {

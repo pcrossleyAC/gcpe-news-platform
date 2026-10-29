@@ -1,12 +1,39 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { buildFixtureSite, FIXTURE_PAGES, serveStatic } from "../scripts/fixture-site";
 
 const fileOf = (path: string) => (path.endsWith("/") ? `${path}index.html` : path).replace(/^\//, "");
 
 describe("the fixture site (6e exit checks)", () => {
+  it("every compressible file the builder wrote has stored .br and .gz copies that decompress to it, and nothing else does", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      const all = (await readdir(dir, { recursive: true, withFileTypes: true })).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
+      const set = new Set(all);
+      const originals = all.filter((f) => !/\.(br|gz)$/.test(f));
+      let n = 0;
+      for (const f of originals) {
+        const body = await readFile(f);
+        const name = f.slice(f.lastIndexOf("/") + 1);
+        const want = body.length >= 1024 && !name.startsWith(".") && /\.(html|xml|css|js|json|svg|txt|ico)$/.test(name);
+        expect(set.has(`${f}.br`), f).toBe(want);
+        expect(set.has(`${f}.gz`), f).toBe(want);
+        if (!want) continue;
+        n++;
+        expect(brotliDecompressSync(await readFile(`${f}.br`)).equals(body), f).toBe(true);
+        expect(gunzipSync(await readFile(`${f}.gz`)).equals(body), f).toBe(true);
+      }
+      expect(n).toBeGreaterThan(40);
+      expect(all.length - originals.length).toBe(n * 2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it.each([false, true])("builds every page type with the real builder (test site: %s)", async (test) => {
     const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
     try {

@@ -1,6 +1,7 @@
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { companionPaths, compressCompanions, isCompanionCandidate, isCompressibleName } from "./precompress";
 
 export interface SiteStorage {
   write(relPath: string, content: string | Uint8Array): Promise<void>;
@@ -96,12 +97,24 @@ export function fsStorage(root: string): SiteStorage {
       // chain, in case a symlink was planted deeper than the pre-check's ancestor.
       assertInsideRoot(await realpath(base), await realpath(dir), relPath);
 
-      const tmp = `${full}.${randomUUID()}.tmp`;
+      // Compressed first, before anything on disk changes: the slow part (brotli) never sits
+      // between the old files and the new ones.
+      const body = typeof content === "string" ? Buffer.from(content) : Buffer.from(content.buffer, content.byteOffset, content.byteLength);
+      const companions = isCompanionCandidate(relPath, body.length) ? await compressCompanions(body) : null;
+      const [brPath, gzPath] = companionPaths(full);
+      const writes: { tmp: string; to: string; bytes: Uint8Array }[] = [{ tmp: `${full}.${randomUUID()}.tmp`, to: full, bytes: body }];
+      if (companions?.br) writes.push({ tmp: `${brPath}.${randomUUID()}.tmp`, to: brPath, bytes: companions.br });
+      if (companions?.gz) writes.push({ tmp: `${gzPath}.${randomUUID()}.tmp`, to: gzPath, bytes: companions.gz });
       try {
-        await writeFile(tmp, content);
-        await rename(tmp, full); // atomic on one filesystem: readers never see a half-written page
+        // Temp files first, original before its companions, so each companion is newer than the page
+        // it was made from (the stack serves a companion only if it is not older than the page).
+        for (const w of writes) await writeFile(w.tmp, w.bytes);
+        // The old companions go before the new page lands: from here until the new ones are renamed
+        // in, a request finds none and is compressed per request, so a stored copy never disagrees with its page.
+        if (isCompressibleName(relPath)) await Promise.all([rm(brPath, { force: true }), rm(gzPath, { force: true })]);
+        for (const w of writes) await rename(w.tmp, w.to); // atomic on one filesystem: readers never see a half-written page
       } catch (err) {
-        await rm(tmp, { force: true }); // don't leave a stray .tmp behind on failure
+        await Promise.all(writes.map((w) => rm(w.tmp, { force: true }))); // don't leave a stray .tmp behind on failure
         throw err;
       }
     },
@@ -110,6 +123,8 @@ export function fsStorage(root: string): SiteStorage {
       const realDir = await tryRealpath(dirname(full));
       if (realDir === undefined) return; // the parent doesn't exist, so neither does the file
       assertInsideRoot(await realpath(base), realDir, relPath);
+      // Companions first: nothing is left serving a copy of a page that is gone.
+      if (isCompressibleName(relPath)) await Promise.all(companionPaths(full).map((c) => rm(c, { force: true })));
       await rm(full, { force: true });
     },
     async removeEmptyDir(relPath) {
