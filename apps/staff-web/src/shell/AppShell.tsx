@@ -1,70 +1,13 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Header, InlineAlert } from "@bcgov/design-system-react-components";
 import { Button } from "../shared/Button";
-import { useSession, type SessionValue } from "../session/SessionContext";
+import { useSession } from "../session/SessionContext";
+import { NAV_GROUPS } from "./nav";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
 import { AnnouncerProvider } from "../shared/Announcer";
 import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 import { useEscapeClosesPanels } from "../shared/escapeClosesPanels";
-import { canReadWebsite } from "../screens/website/access";
-import { canReadSubscribers } from "../screens/subscribers/access";
-import { canManageCalendarAccess } from "../screens/admin/calendar-access/calendar-roles";
-import { canEditOrgProfile, isCoreAdmin } from "../screens/admin/organizations/access";
-import { hasCalendarRole } from "../screens/calendar/access";
-
-interface NavItem {
-  to: string;
-  label: string;
-  show(session: SessionValue): boolean;
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has("NRMS.Editor") || s.has("NRMS.SiteEditor");
-
-/**
- * Sections shown only when the signed-in user's roles allow them (constraints.md: "roles
- * decide what's shown, but the server is the authority"). Website is visible to every read
- * role (minors: Featured/the log are read-only for all of them; canReadWebsite) — WebsiteScreen
- * itself (and each manage-only sub-screen) still restricts the other six sections to
- * NRMS.SiteEditor/Core.Admin; Users, Media list names and the error log are Core.Admin only.
- * Subscribers is visible to any NoD role (canReadSubscribers) — an NRMS-only user never sees
- * it, and vice versa. Calendar is visible to any Calendar role (hasCalendarRole). Calendar
- * access is visible to Core.Admin, Calendar.Administrator and Calendar.SysAdmin; Organizations
- * to Core.Admin and NRMS.SiteEditor (canEditOrgProfile); Government terms to Core.Admin.
- *
- * Two groups: the day-to-day work, then the administration screens. A group with nothing the
- * user may see is left out altogether, heading and all.
- */
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "Work",
-    items: [
-      { to: "/releases", label: "Releases", show: hasAnyReadRole },
-      { to: "/search", label: "Search", show: hasAnyReadRole },
-      { to: "/website", label: "Website", show: canReadWebsite },
-      { to: "/subscribers", label: "Subscribers", show: canReadSubscribers },
-      { to: "/calendar", label: "Calendar", show: hasCalendarRole },
-    ],
-  },
-  {
-    label: "Administration",
-    items: [
-      { to: "/users", label: "Users", show: (s) => s.has("Core.Admin") },
-      { to: "/calendar-access", label: "Calendar access", show: canManageCalendarAccess },
-      { to: "/organizations", label: "Organizations", show: canEditOrgProfile },
-      { to: "/government-terms", label: "Government terms", show: isCoreAdmin },
-      { to: "/categories", label: "Sectors, themes and tags", show: isCoreAdmin },
-      { to: "/release-page-titles", label: "Release page titles", show: isCoreAdmin },
-      { to: "/media-list-names", label: "Media list names", show: (s) => s.has("Core.Admin") },
-      { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
-    ],
-  },
-];
 
 export function AppShell(): React.JSX.Element {
   const session = useSession();
@@ -108,6 +51,9 @@ export function AppShell(): React.JSX.Element {
         <Header title="GCPE News — Staff">
           <div className="gcpe-shell__user">
             {session.user && <span>Signed in as {session.user.name}</span>}
+            <Link to="/help" className="gcpe-shell__help">
+              Help
+            </Link>
             <Button size="small" variant="secondary" onPress={onSignOut}>
               Sign out
             </Button>

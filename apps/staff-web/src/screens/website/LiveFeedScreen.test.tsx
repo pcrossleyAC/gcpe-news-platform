@@ -48,6 +48,15 @@ describe("LiveFeedScreen", () => {
     await waitFor(() => expect(document.title).toBe("Live Feed — GCPE News Staff"));
   });
 
+  it("explains Manifest URL and M3U URL with ? buttons", async () => {
+    stub(["NRMS.SiteEditor"], OFF, []);
+    render(withAuth(<LiveFeedScreen />));
+    await screen.findByRole("heading", { name: "Live Feed", level: 1 });
+    expect(screen.getByRole("button", { name: "What is Manifest URL?" })).toHaveAttribute("aria-expanded", "false");
+    await userEvent.setup().click(screen.getByRole("button", { name: "What is M3U URL?" }));
+    expect(screen.getByText(/shows its Live Webcast button only while Live Feed is on/)).toBeVisible();
+  });
+
   it("refuses to enable with no M3U URL, client-side, without calling the server", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(["NRMS.SiteEditor"], OFF, calls);

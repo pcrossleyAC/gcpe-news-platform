@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { InlineAlert } from "@bcgov/design-system-react-components";
+import { Link } from "react-router";
 import { LIST_COLUMN_LABELS, LIST_COLUMNS, LIST_PAGE_SIZE, LIST_SORTS, type HideableColumn, type ListColumn, type ListQuery, type ListRow, type ListSort } from "@gcpe/calendar-contract";
 import { ApiError } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
@@ -15,6 +16,19 @@ const plural = (n: number) => `${n} ${n === 1 ? "activity" : "activities"}`;
 export const loadFailure = (caught: unknown, general: string) => (caught instanceof ApiError && caught.status === 403 ? messagesOf(caught).join(" ") : general);
 
 /** The grid (UCFlexiGrid): 30 rows at a time as the end scrolls into view, as legacy's did. */
+/** Legacy's short column names, spelled out (the Help page's glossary explains each). */
+const SPELLED_OUT: Partial<Record<ListColumn, string>> = {
+  commMaterials: "Communication materials",
+  commContact: "Communications contact",
+  governmentRep: "Government representative",
+  leadOrg: "Lead organization",
+};
+
+function ColumnLabel({ column }: { column: ListColumn }): React.JSX.Element {
+  const full = SPELLED_OUT[column];
+  return full ? <abbr title={full}>{LIST_COLUMN_LABELS[column]}</abbr> : <>{LIST_COLUMN_LABELS[column]}</>;
+}
+
 export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, tools }: {
   query: ListQuery;
   hidden: readonly HideableColumn[];
@@ -103,10 +117,10 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
                   <th key={c} scope="col" className={`gcpe-col-${c}`} aria-sort={query.sort === c ? (query.dir === "asc" ? "ascending" : "descending") : undefined}>
                     {isSortable(c) ? (
                       <button type="button" className="gcpe-sort" onClick={() => onSort(c, query.sort === c && query.dir === "asc" ? "desc" : "asc")}>
-                        {LIST_COLUMN_LABELS[c]}
+                        <ColumnLabel column={c} />
                       </button>
                     ) : (
-                      LIST_COLUMN_LABELS[c]
+                      <ColumnLabel column={c} />
                     )}
                   </th>
                 ))}
@@ -129,6 +143,11 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
             </tbody>
           </table>
         </div>
+      )}
+      {rows.length > 0 && (
+        <p className="gcpe-hint">
+          <Link to="/help#glossary-calendar">What the column names mean</Link>
+        </p>
       )}
       {error && rows.length > 0 && <p role="alert">{error}</p>}
       {total !== null && rows.length < total && (

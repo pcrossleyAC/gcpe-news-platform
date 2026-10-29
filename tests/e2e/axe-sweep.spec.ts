@@ -110,6 +110,20 @@ test.describe("item 16: axe across every staff screen", () => {
     await expect(page.getByText(publishedHeadline)).toBeVisible();
   });
 
+  test("Help (from the header), and a ? explanation open", async ({ page, context }) => {
+    await signInAs(context, "editor");
+    await gotoAndWaitForH1(page, "/hub/releases/drafts");
+    await page.getByRole("banner").getByRole("link", { name: "Help" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Help" })).toBeVisible();
+    await expectNoSeriousA11yViolations(page, "/hub/help");
+
+    await signInAs(context, "siteEditor");
+    await gotoAndWaitForH1(page, "/hub/website/live-feed");
+    await page.getByRole("button", { name: "What is M3U URL?" }).click();
+    await expect(page.getByRole("link", { name: "More in Help" })).toBeVisible();
+    await expectNoSeriousA11yViolations(page, "/hub/website/live-feed: M3U URL explained");
+  });
+
   test("the release editor, including Documents/side bar and a real focus-trapped, inert-background delete dialog", async ({ page, context }) => {
     const cookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
     const published = await createApprovedAndPublished(cookie);

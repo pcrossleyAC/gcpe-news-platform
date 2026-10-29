@@ -120,6 +120,14 @@ describe("AppShell header", () => {
     expect(within(banner).getByRole("button", { name: "Sign out" })).toBeInTheDocument();
     expect(within(screen.getByRole("main")).queryByRole("button", { name: "Sign out" })).toBeNull();
   });
+
+  it("links to Help from the header, for every signed-in user", async () => {
+    for (const roles of [["NRMS.Viewer"], ["NoD.Viewer"], ["Calendar.ReadOnly"], []]) {
+      await renderShell(roles);
+      expect(within(screen.getByRole("banner")).getByRole("link", { name: "Help" })).toHaveAttribute("href", "/help");
+      cleanup();
+    }
+  });
 });
 
 // Fix round 1 (3f Task 3), finding 3: a persistent warning when the browser's own tzdata

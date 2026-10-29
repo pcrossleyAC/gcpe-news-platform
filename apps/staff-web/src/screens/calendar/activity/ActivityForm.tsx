@@ -53,22 +53,22 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
       <fieldset className="gcpe-fieldset">
         <legend>Overview</legend>
         <SelectField id={id("categoryId")} label="Category" required value={str(f.categoryId)} onChange={(v) => change((x) => withCategory(x, num(v), o, rules))} options={categoryChoices(o, rules, config.editor.useHqPlaceholder, s?.categoryId ?? null)} empty="Choose a category" error={err("categoryId")} review={rev("categoryId")} />
-        <CheckField id={id("isConfidential")} label="Not for Look Ahead" checked={f.isConfidential} onChange={(v) => change({ isConfidential: v })} review={rev("isConfidential")} />
+        <CheckField id={id("isConfidential")} label="Not for Look Ahead" help="not-for-look-ahead" checked={f.isConfidential} onChange={(v) => change({ isConfidential: v })} review={rev("isConfidential")} />
         <TextField id={id("title")} label="Title" required value={f.title} onChange={(v) => change({ title: v })} error={err("title")} review={rev("title")} hint="At most 100 characters." />
         <TextField id={id("details")} label="Summary" multiline required={!relax} value={f.details} onChange={(v) => change({ details: v })} error={err("details")} review={rev("details")} hint="At most 700 characters." />
         <CheckField id={id("isIssue")} label="Issue" checked={f.isIssue} onChange={(v) => change({ isIssue: v })} review={rev("isIssue")} />
         <TextField id={id("significance")} label="Significance" multiline required={rules.required.significance && !relax} value={f.significance} onChange={(v) => change({ significance: v })} error={err("significance")} review={rev("significance")} />
-        <TextField id={id("leadOrganization")} label="Lead Organization" value={f.leadOrganization} onChange={(v) => change({ leadOrganization: v })} error={err("leadOrganization")} review={rev("leadOrganization")} />
+        <TextField id={id("leadOrganization")} label="Lead Organization" help="lead-organization" value={f.leadOrganization} onChange={(v) => change({ leadOrganization: v })} error={err("leadOrganization")} review={rev("leadOrganization")} />
         <CheckList readOnly={p.readOnly} id={id("initiativeIds")} label="HQ Initiatives & Leads" values={f.initiativeIds.map(String)} onChange={(v) => change({ initiativeIds: v.map(Number) })} options={lookupChoices(o.initiatives, s?.initiativeIds ?? [])} error={err("initiativeIds")} review={rev("initiativeIds")} />
         <TagField id={id("keywordNames")} label="HQ Tags" values={f.keywordNames} onChange={(v) => change({ keywordNames: v })} suggestions={o.keywords.filter((k) => k.isActive).map((k) => k.name)} error={err("keywordNames")} review={rev("keywordNames")} />
       </fieldset>
 
       <fieldset className="gcpe-fieldset">
         <legend>Planning</legend>
-        <SelectField id={id("commContactId")} label="Comm Contact" required value={str(f.commContactId)} onChange={(v) => change({ commContactId: num(v) })} options={commContactChoices(o, f.contactMinistryKey, s?.commContactId ?? null)} empty={f.contactMinistryKey ? "Choose a comm contact" : "Choose the lead ministry first"} error={err("commContactId")} />
+        <SelectField id={id("commContactId")} label="Comm Contact" help="comm-contact" required value={str(f.commContactId)} onChange={(v) => change({ commContactId: num(v) })} options={commContactChoices(o, f.contactMinistryKey, s?.commContactId ?? null)} empty={f.contactMinistryKey ? "Choose a comm contact" : "Choose the lead ministry first"} error={err("commContactId")} />
         <CheckField id={id("isMilestone")} label="Key activity" checked={f.isMilestone} onChange={(v) => change({ isMilestone: v })} />
         <TextField id={id("strategy")} label="Strategy" multiline required={rules.required.strategy} value={f.strategy} onChange={(v) => change({ strategy: v })} error={err("strategy")} review={rev("strategy")} />
-        <CheckList readOnly={p.readOnly} id={id("commMaterialIds")} label="Comm Materials" required={isRelease} values={f.commMaterialIds.map(String)} onChange={(v) => change({ commMaterialIds: v.map(Number) })} options={lookupChoices(o.commMaterials, s?.commMaterialIds ?? [])} error={err("commMaterialIds")} review={rev("commMaterialIds")} />
+        <CheckList readOnly={p.readOnly} id={id("commMaterialIds")} label="Comm Materials" help="comm-materials" required={isRelease} values={f.commMaterialIds.map(String)} onChange={(v) => change({ commMaterialIds: v.map(Number) })} options={lookupChoices(o.commMaterials, s?.commMaterialIds ?? [])} error={err("commMaterialIds")} review={rev("commMaterialIds")} />
         <TextField id={id("comments")} label="Internal notes" multiline value={f.comments} onChange={(v) => change({ comments: v })} error={err("comments")} review={rev("comments")} />
       </fieldset>
 
@@ -83,10 +83,10 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
         <fieldset className="gcpe-fieldset">
           <legend>Look Ahead</legend>
           <TextField id={id("lookAhead.hqComments")} label="Executive Summary" multiline value={la.hqComments} onChange={(v) => setLa({ hqComments: v })} error={err("lookAhead.hqComments")} hint="At most 2000 characters." />
-          <SelectField id={id("lookAhead.hqStatus")} label="LA Status" value={la.hqStatus ?? ""} onChange={(v) => setLa({ hqStatus: (v || null) as HqStatus | null })} options={[{ value: "new", label: "New" }, { value: "changed", label: "Changed" }]} empty="None" />
+          <SelectField id={id("lookAhead.hqStatus")} label="LA Status" help="la-status" value={la.hqStatus ?? ""} onChange={(v) => setLa({ hqStatus: (v || null) as HqStatus | null })} options={[{ value: "new", label: "New" }, { value: "changed", label: "Changed" }]} empty="None" />
           {p.lookAhead.inferred.kind === "section" ? (
             <div className={p.lookAhead.overridden ? "gcpe-override" : undefined}>
-              <SelectField id={id("lookAhead.hqSection")} label="LA Section" value={la.hqSection} onChange={(v) => p.lookAhead.choose(v as HqSection)} options={SECTIONS} hint={p.lookAhead.overridden ? `Override (inferred: ${inferredLabel(p.lookAhead.inferred)})` : "Inferred from the activity"} />
+              <SelectField id={id("lookAhead.hqSection")} label="LA Section" help="la-section" value={la.hqSection} onChange={(v) => p.lookAhead.choose(v as HqSection)} options={SECTIONS} hint={p.lookAhead.overridden ? `Override (inferred: ${inferredLabel(p.lookAhead.inferred)})` : "Inferred from the activity"} />
               {p.lookAhead.overridden && (
                 <button type="button" className="gcpe-small-button" onClick={p.lookAhead.reset}>
                   Use the inferred section
@@ -121,7 +121,7 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
         <fieldset className="gcpe-fieldset">
           <legend>Release</legend>
           <DateTimeField idDate={id("nrDate")} idTime={id("nrTime")} label="Release" date={f.nrDate} time={f.nrTime} onDate={(v) => change({ nrDate: v })} onTime={(v) => change({ nrTime: v })} showTime timeEmpty="No release time" dateError={err("nrDate")} timeError={err("nrTime")} />
-          <SelectField id={id("nrOriginId")} label="Origin" required={isRelease} value={str(f.nrOriginId)} onChange={(v) => change({ nrOriginId: num(v) })} options={lookupChoices(o.origins, one("nrOriginId"))} empty="None" error={err("nrOriginId")} review={rev("nrOriginId")} />
+          <SelectField id={id("nrOriginId")} label="Origin" help="nr-origin" required={isRelease} value={str(f.nrOriginId)} onChange={(v) => change({ nrOriginId: num(v) })} options={lookupChoices(o.origins, one("nrOriginId"))} empty="None" error={err("nrOriginId")} review={rev("nrOriginId")} />
           <SelectField id={id("nrDistributionId")} label="Distribution" required={isRelease} value={str(f.nrDistributionId)} onChange={(v) => change({ nrDistributionId: num(v) })} options={lookupChoices(o.distributions, one("nrDistributionId"))} empty="None" error={err("nrDistributionId")} review={rev("nrDistributionId")} />
           <CheckList readOnly={p.readOnly} id={id("translations")} label="Translations Required" values={f.translations} onChange={(v) => change({ translations: v })} options={translationChoices(rules.translationsDefault, s?.translations ?? f.translations)} error={err("translations")} review={rev("translations")} />
           <CheckList readOnly={p.readOnly} id={id("sectorKeys")} label="Sectors" values={f.sectorKeys} onChange={(v) => change({ sectorKeys: v })} options={termChoices(o.sectors, s?.sectorKeys ?? [])} error={err("sectorKeys")} />
@@ -134,7 +134,7 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
       <fieldset className="gcpe-fieldset">
         <legend>Event</legend>
         <SelectField id={id("premierRequestedId")} label="Premier Requested" value={str(f.premierRequestedId)} onChange={(v) => change({ premierRequestedId: num(v) })} options={lookupChoices(o.premierRequested, one("premierRequestedId"))} empty="None" error={err("premierRequestedId")} review={rev("premierRequestedId")} />
-        <SelectField id={id("governmentRepresentativeId")} label="Representative" value={str(f.governmentRepresentativeId)} onChange={(v) => change({ governmentRepresentativeId: num(v) })} options={lookupChoices(o.representatives, one("governmentRepresentativeId"))} empty="None" error={err("governmentRepresentativeId")} review={rev("governmentRepresentativeId")} />
+        <SelectField id={id("governmentRepresentativeId")} label="Representative" help="government-representative" value={str(f.governmentRepresentativeId)} onChange={(v) => change({ governmentRepresentativeId: num(v) })} options={lookupChoices(o.representatives, one("governmentRepresentativeId"))} empty="None" error={err("governmentRepresentativeId")} review={rev("governmentRepresentativeId")} />
         <CheckField id={id("isAtLegislature")} label="At BC Legislature" checked={f.isAtLegislature} onChange={(v) => change({ isAtLegislature: v })} />
         <SelectField id={id("cityId")} label="City" value={str(f.cityId)} onChange={(v) => change({ cityId: num(v) })} options={lookupChoices(o.cities, one("cityId"))} empty="None" error={err("cityId")} review={rev("cityId")} />
         {f.cityId === rules.otherCityId && (

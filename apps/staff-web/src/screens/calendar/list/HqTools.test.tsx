@@ -88,6 +88,15 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     expect(screen.getByText(`Select at most ${REVIEW_SELECTED_MAX} at a time.`)).toBeInTheDocument();
   });
 
+  it("explains LA status with a ? beside the days field, from the glossary", async () => {
+    hq([], () => undefined);
+    renderList();
+    const user = userEvent.setup();
+    await openListTool("LA status");
+    await user.click(await screen.findByRole("button", { name: "What is LA Status?" }));
+    expect(screen.getByText(/HQ's New or Changed flag on an activity/)).toBeVisible();
+  });
+
   // Owner decision 2026-10-29: it asks first, saying how many activities it will change.
   it("clears the LA status for the days chosen, once confirmed with the count", async () => {
     const calls: Call[] = [];

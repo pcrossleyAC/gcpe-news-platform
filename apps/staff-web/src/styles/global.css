@@ -3401,3 +3401,136 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 .gcpe-contents {
   display: contents;
 }
+
+/* A label (or field) with its "?" explanation button beside it (shared/HelpToggle.tsx); the
+ * explanation opens under them, the row's full width. */
+.gcpe-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.gcpe-label-row > label,
+.gcpe-label-row__text {
+  margin: 0;
+}
+
+/* A design-system field with its "?" after it: the button sits level with the input. */
+.gcpe-label-row--field {
+  align-items: flex-end;
+}
+
+.gcpe-label-row--field > :first-child {
+  flex: 1 1 16rem;
+}
+
+/* 24px at least (WCAG 2.5.8), a circle with a "?" in the link colour. */
+.gcpe-help-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--surface-color-border-active, #2e5dd7);
+  border-radius: 50%;
+  background: var(--surface-color-forms-default, #fff);
+  color: var(--typography-color-link, #255a90);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gcpe-help-toggle[aria-expanded="true"] {
+  background: var(--surface-color-border-active, #2e5dd7);
+  color: var(--typography-color-primary-invert, #fff);
+}
+
+.gcpe-help-toggle:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: 2px;
+}
+
+.gcpe-help-text {
+  flex-basis: 100%;
+  max-inline-size: 40rem;
+  padding: 0.5rem 0.75rem;
+  border-inline-start: 4px solid var(--surface-color-border-active, #2e5dd7);
+  background: var(--surface-color-background-light-blue, #f1f8fe);
+}
+
+.gcpe-help-text p {
+  margin: 0;
+}
+
+/* Calendar column names: their spelled-out form on hover, without the browser's dotted underline
+ * fighting the sort button's own. */
+.gcpe-calendar-table abbr[title] {
+  text-decoration: none;
+}
+
+/* Help, in the header bar beside Sign out: a plain link, at least 24px tall (WCAG 2.5.8). */
+.gcpe-shell__help {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 1.5rem;
+  color: var(--typography-color-link, #255a90);
+  white-space: nowrap;
+}
+
+/* /hub/help: a reading page — a comfortable measure, the glossary as term-over-definition pairs. */
+.gcpe-help {
+  max-inline-size: 60rem;
+}
+
+.gcpe-help > p,
+.gcpe-help__list,
+.gcpe-help__glossary {
+  max-inline-size: 45rem;
+}
+
+.gcpe-help nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.gcpe-help section {
+  margin-block-start: 2rem;
+}
+
+.gcpe-help__list li + li {
+  margin-block-start: 0.5rem;
+}
+
+.gcpe-help__glossary div + div {
+  margin-block-start: 1rem;
+}
+
+.gcpe-help__glossary dt {
+  font-weight: 700;
+}
+
+.gcpe-help__glossary dd {
+  margin: 0.25rem 0 0;
+}
+
+.gcpe-help__aka {
+  color: var(--typography-color-secondary, #474543);
+}
+
+.gcpe-help kbd {
+  font-family: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* A term reached by a link from a "?" explanation: the browser's focus ring, plus a tint. */
+.gcpe-help__glossary dt:focus {
+  background: var(--surface-color-background-light-blue, #f1f8fe);
+}

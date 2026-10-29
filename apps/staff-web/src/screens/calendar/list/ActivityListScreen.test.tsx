@@ -39,6 +39,16 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     expect(screen.getByText(/^Tue Nov 10( 2026)? 10:00-11:00 AM$/)).toBeInTheDocument();
   });
 
+  it("spells out the abbreviated column names (abbr) and links to their meanings in Help", async () => {
+    stubFetch([], { preferences: { display: "my_ministries", hiddenColumns: [] } });
+    renderList();
+    await screen.findByText("Sample listed");
+    const header = screen.getByRole("columnheader", { name: /Comm\. Materials/ });
+    expect(header.querySelector("abbr")).toHaveAttribute("title", "Communication materials");
+    expect(screen.getByRole("columnheader", { name: /Govt Rep\./ }).querySelector("abbr")).toHaveAttribute("title", "Government representative");
+    expect(screen.getByRole("link", { name: "What the column names mean" })).toHaveAttribute("href", "/help#glossary-calendar");
+  });
+
   it("puts the filter in a closed Filters disclosure, and the list actions and view switch above the results", async () => {
     stubFetch([]);
     renderList();
