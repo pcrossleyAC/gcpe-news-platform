@@ -13,6 +13,29 @@ import type { Categories } from "../categories";
 import { useSaveQueue, withVersion } from "../saveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
+import { wallClockNowMinute } from "../timezone";
+
+/** Schedule's field error for a time that isn't in the future. */
+export const PAST_SCHEDULE = "Choose a time in the future, or use Publish now.";
+
+/** `GET /nrms/api/config`'s server-side offset for the tenant zone (see wallClockNowMinute). */
+function useServerZoneOffset(enabled: boolean): number | null {
+  const [offset, setOffset] = useState<number | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    apiFetch<{ tzCheck?: { offsetMinutes: number } }>("/nrms/api/config").then(
+      (c) => {
+        if (active && typeof c.tzCheck?.offsetMinutes === "number") setOffset(c.tzCheck.offsetMinutes);
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [enabled]);
+  return offset;
+}
 
 /** apps/nrms/src/releases/service.ts's DELETABLE_STATUSES. */
 const DELETABLE_STATUSES = new Set(["draft", "approved", "failed"]);
@@ -64,6 +87,11 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
   const [schedulerOpen, setSchedulerOpen] = useState(false);
   const [scheduleValue, setScheduleValue] = useState<ScheduleValue | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const serverOffset = useServerZoneOffset(schedulerOpen);
+  // The server publishes a time up to 5 minutes in the past at once (no dialog), so a time must
+  // be after the current BC minute — checked as it's typed, and again at Confirm.
+  const futureProblem = (local: string) => (local <= wallClockNowMinute(Date.now(), timeZone, serverOffset) ? PAST_SCHEDULE : null);
   // Just blocks navigation while open (no save of its own to offer the sticky bar — Schedule's
   // own "Confirm schedule" below is the only way to act on it).
   useRegisterDirty("actions-scheduler", schedulerOpen);
@@ -123,6 +151,11 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
   const submitSchedule = async () => {
     if (!scheduleValue) return;
+    const problem = futureProblem(scheduleValue.local);
+    if (problem) {
+      setScheduleError(problem);
+      return;
+    }
     // Fix round 1, finding 3: sends the raw BC wall-clock string (`publishAtLocal`), not a
     // client-converted instant — the server (whose tzdata is authoritative) converts it.
     const result = await section.save("/schedule", { version: view.version, publishAtLocal: scheduleValue.local }, "POST");
@@ -299,7 +332,17 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
       {schedulerOpen && canPublish && (
         <div className="gcpe-release-editor__scheduler">
-          <SchedulePicker timeZone={timeZone} legend="Schedule for" idPrefix="schedule" onChange={setScheduleValue} futureOnly />
+          <SchedulePicker
+            timeZone={timeZone}
+            legend="Schedule for"
+            idPrefix="schedule"
+            onChange={(value) => {
+              setScheduleError(null);
+              setScheduleValue(value);
+            }}
+            validate={futureProblem}
+            error={scheduleError}
+          />
           <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue || unsavedBlockers.length > 0} isPending={section.saving}>
             Confirm schedule
           </Button>

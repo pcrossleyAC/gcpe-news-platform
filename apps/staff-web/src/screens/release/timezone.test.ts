@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bcLocalToInstant, instantToBcLocal, wallClockToInstant } from "./timezone";
+import { bcLocalToInstant, instantToBcLocal, wallClockNowMinute, wallClockToInstant } from "./timezone";
 
 const TZ = "America/Vancouver";
 
@@ -68,5 +68,21 @@ describe("instantToBcLocal (the inverse, for pre-filling the picker)", () => {
 
   it("round-trips a PST instant back to its BC-local date and time", () => {
     expect(instantToBcLocal("2026-01-15T22:30:00.000Z", TZ)).toEqual({ date: "2026-01-15", time: "14:30" });
+  });
+});
+
+// Review P2: Schedule's "is this time still in the future" check, in BC time as the server
+// reckons it (GET /config's tzCheck offset), never trusting a browser with stale tzdata.
+describe("wallClockNowMinute", () => {
+  const TZ = "America/Vancouver";
+  it("is the BC wall-clock minute now", () => {
+    expect(wallClockNowMinute(Date.parse("2031-06-11T17:02:40Z"), TZ, -420)).toBe("2031-06-11T10:02");
+  });
+  it("takes the server's offset over a stale browser's (which still thinks BC winters are UTC-8)", () => {
+    const staleBrowser = () => -480;
+    expect(wallClockNowMinute(Date.parse("2026-12-15T18:00:00Z"), TZ, -420, staleBrowser)).toBe("2026-12-15T11:00");
+  });
+  it("without the server's answer, uses the browser's", () => {
+    expect(wallClockNowMinute(Date.parse("2026-12-15T18:00:00Z"), TZ, null, () => -480)).toBe("2026-12-15T10:00");
   });
 });

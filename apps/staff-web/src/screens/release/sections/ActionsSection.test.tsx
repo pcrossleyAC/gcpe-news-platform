@@ -395,7 +395,7 @@ describe("ActionsSection", () => {
   // so Schedule only accepts a time in the future.
   it("Schedule refuses a time at or before now, pointing to Publish now", async () => {
     const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
-    const fetchMock = vi.fn(async () => jsonResponse(200, v));
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(200, v));
     vi.stubGlobal("fetch", fetchMock);
     renderActions(v);
     const user = userEvent.setup();
@@ -404,7 +404,41 @@ describe("ActionsSection", () => {
     fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "09:00" } });
     expect(await screen.findByText("Choose a time in the future, or use Publish now.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm schedule" })).toBeDisabled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    // Only the time-zone lookup — nothing posted.
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toEqual([]);
+  });
+
+  // Review P2: the server publishes a time up to 5 minutes in the past at once, with no
+  // dialog. A time that was in the future when picked can be in the past when Confirm is
+  // pressed, so it's checked again then — against BC time as the server reckons it.
+  it("Confirm schedule re-checks the time: one that has passed since it was picked isn't sent", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2031-06-11T17:00:00.000Z")); // 10:00 in BC (UTC-7)
+      const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+      const posts: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", publicSiteUrl: "", tzCheck: { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 } });
+          if (init?.method === "POST") posts.push(url);
+          return jsonResponse(200, v);
+        }),
+      );
+      renderActions(v);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Schedule" }));
+      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-11" } });
+      fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "10:01" } });
+      expect(screen.queryByText("Choose a time in the future, or use Publish now.")).not.toBeInTheDocument();
+
+      vi.setSystemTime(new Date("2031-06-11T17:02:00.000Z")); // two minutes later: 10:02
+      await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+      expect(await screen.findByText("Choose a time in the future, or use Publish now.")).toBeInTheDocument();
+      expect(posts).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a 409 on an action shows the reload message with a Reload button, and never auto-retries", async () => {

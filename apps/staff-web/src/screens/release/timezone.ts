@@ -120,3 +120,33 @@ export function instantToBcLocal(iso: string, timeZone: string): { date: string;
   const get = (type: string) => parts.find((p) => p.type === type)!.value;
   return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
 }
+
+/** The browser's own UTC offset for `timeZone` at `epochMs`, in minutes (negative west of UTC). */
+function browserOffsetMinutes(epochMs: number, timeZone: string): number {
+  return -offsetAt(epochMs, timeZone) / 60_000;
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * Now, as a "YYYY-MM-DDTHH:mm" wall-clock minute in `timeZone` — comparable as a string with a
+ * picker's `local` value. For Schedule's "is this time still in the future" check, which has to
+ * agree with the server (it converts `publishAtLocal` with its own tzdata and publishes a time
+ * at or before now at once).
+ *
+ * `serverOffsetMinutes` is `GET /nrms/api/config`'s `tzCheck.offsetMinutes`: the server's own
+ * offset for the zone (UTC-7 for BC from 2026-11-01, permanently). A browser with stale tzdata
+ * still puts BC winters at UTC-8, an hour behind; so when both answers are known, the later wall
+ * clock wins — a time is only "in the future" if it is by both reckonings. Without the server's
+ * answer (not loaded yet, or failed), the browser's is used.
+ */
+export function wallClockNowMinute(
+  nowMs: number,
+  timeZone: string,
+  serverOffsetMinutes: number | null,
+  browserOffset: (epochMs: number, timeZone: string) => number = browserOffsetMinutes,
+): string {
+  const offsets = [browserOffset(nowMs, timeZone), ...(serverOffsetMinutes === null ? [] : [serverOffsetMinutes])];
+  const wall = new Date(nowMs + Math.max(...offsets) * 60_000);
+  return `${wall.getUTCFullYear()}-${pad(wall.getUTCMonth() + 1)}-${pad(wall.getUTCDate())}T${pad(wall.getUTCHours())}:${pad(wall.getUTCMinutes())}`;
+}
