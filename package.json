@@ -18,6 +18,7 @@
     "core:seed-test-users": "npm --workspace @gcpe/core run seed:test-users",
     "nrms:flickr-authorize": "npm --workspace @gcpe/nrms run flickr:authorize",
     "nrms:import": "npm --workspace @gcpe/nrms run import:legacy --",
+    "nrms:import-public-slides": "npm --workspace @gcpe/nrms run import:public-slides --",
     "nod:import": "npm --workspace @gcpe/nod run import:legacy --",
     "nrms:release-holds": "npm --workspace @gcpe/nrms run release-holds --",
     "nrms:replay-to-news-api": "npm --workspace @gcpe/nrms run replay-to-news-api --",

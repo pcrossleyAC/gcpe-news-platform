@@ -141,6 +141,13 @@
       "when": 1793201567018,
       "tag": "0019_slide_action_label",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793240645704,
+      "tag": "0020_public_import_slides",
+      "breakpoints": true
     }
   ]
 }

@@ -835,6 +835,90 @@ then delete them too.
 From a checkout (for a database you can reach directly), the same command is
 `DATABASE_URL=... npm run news-api:import-public -- --dry-run`.
 
+## Seeding boxs.ca with news.gov's carousel
+
+`import:public-slides` copies news.gov's **current** home-page carousel into NRMS and publishes it,
+for test hosts that never had the legacy SQL import. It makes **one** request (`GET
+https://api.news.gov.bc.ca/api/Slides?api-version=1.0`, public, read-only, same User-Agent as
+`import:public`); the list's order is the carousel's order. Each slide becomes an NRMS carousel
+slide exactly like the Hub's (and the SQL importer's) — `headline`, `summary`, `actionUri` → action
+URL, `actionLabel` → action label (empty when missing or over the Hub's 40-character plain-text
+rule, so the site shows its default), `facebookPostUri` (empty when null), `justify` (`left` when
+missing) and the image, stored on the slide and as `slides/<sha256>.<png|jpg>` in NRMS's file store.
+A slide the Hub would refuse is reported under `refused` and left out, the rest imported: an image
+that isn't strict base64, isn't a PNG or JPEG by its bytes, doesn't match its `imageType`, or is
+over the Hub's 2 MiB limit; an action or Facebook URL that isn't http(s); a headline or summary
+over 255 characters; a missing or duplicate key.
+
+**How it publishes.** Carousels are `live` / `next` / `past` (no draft). The imported carousel goes
+live through the Hub's own switch-over — what "Make live now" runs: the old live carousel becomes
+`past`, one `site_log` line ("Imported news.gov's current carousel", by System) and one
+`site.content.changed` (`site:slides`) snapshot in NRMS's outbox, which the running stack delivers
+to the News API; the public home page rebuilds from it. Nothing else is emitted: no release event,
+nothing to NoD or Distribution, no email (pinned by `apps/nrms/src/import/public-slides.test.ts`).
+The one difference from the Hub: the switch-over doesn't trim past carousels to five (the next one
+does), so `--remove` can always restore the carousel it replaced. A staff-scheduled `next`
+carousel is left alone and reported; it still goes live at its time.
+
+**Staff edits are protected.** If the live carousel has staff edits (any non-System `carousel` line
+in the site log since it was created — anything made in the Hub counts), the tool refuses, exits
+`1`, and the report's `write.replaces` lists the carousel and slides it would replace and
+`write.staffEdits` the edits; pass `--replace` to replace it anyway (`--remove` puts it back).
+A carousel left by the SQL importer and never edited is replaced without asking.
+
+**Re-runs.** Slides are matched by news.gov key (`public_import_slides`, migration `0020`): a re-run
+against an unchanged source reports `unchanged` and writes nothing; a changed source updates the
+imported carousel in place (slide ids kept) and emits one snapshot. If staff edited the imported
+carousel since, a changed re-run refuses without `--replace`; if staff have since made another
+carousel live, it refuses and says to `--remove` first.
+
+Run it on the server from the deployed artifact, which carries the tool as
+`tools/nrms-import-public-slides.mjs` (with NRMS's migrations beside it). Paste the value of
+`NRMS_DATABASE_URL` from Site Tools at the prompt (read hidden, never put on a command line). The
+tool writes the images where the running stack serves `/files` from: `NRMS_STORAGE_DIR` if set,
+else `<DATA_DIR>/storage`, with `DATA_DIR` defaulting to `~/gcpe-data` — on boxs.ca
+`~/gcpe-data/storage`, in the SSH user's home, the same home the stack runs under (it refuses to
+run if that folder doesn't exist). If Site Tools
+sets `DATA_DIR` or `NRMS_STORAGE_DIR`, export the same value first. Image URLs in the event carry
+the public site's origin, as the stack's own `PUBLIC_FILES_BASE` does, so set
+`SITE_PUBLIC_SITE_URL` to the value Site Tools has:
+
+```sh
+ssh boxs
+TOOL=~/www/boxs.ca/public_html/.nodeapp/latest/app_source/tools/nrms-import-public-slides.mjs   # `latest` is the live release
+read -rs -p 'NRMS_DATABASE_URL: ' DATABASE_URL && export DATABASE_URL && echo
+export SITE_PUBLIC_SITE_URL=https://boxs.ca
+ls -d ~/gcpe-data/storage                     # NRMS's file store (served at /files)
+/usr/local/bin/node-24 "$TOOL" --dry-run      # fetch once, compare with the database, write nothing
+/usr/local/bin/node-24 "$TOOL"                # import and publish (refuses if staff edited the carousel)
+/usr/local/bin/node-24 "$TOOL" --replace      # …replacing a staff-edited carousel (e.g. a test slide)
+```
+
+The report is JSON on stdout (`source` lists each slide with its image type, size and SHA-256,
+plus `refused` and `warnings`; `write.action` is `create`, `update`, `unchanged` or `refused`);
+diagnostics go to stderr; exit code `1` on any failure or refusal. Within a minute the outbox
+delivers the snapshot and the home page shows the slides; check
+`https://boxs.ca/api/Slides?api-version=1.0` lists them.
+
+**Removing it:**
+
+```sh
+/usr/local/bin/node-24 "$TOOL" --remove --dry-run   # show what would be restored
+/usr/local/bin/node-24 "$TOOL" --remove
+```
+
+This deletes the imported carousel and makes the carousel it replaced live again exactly as it
+was (same slides, ids, version and timestamps), then emits the same snapshot the Hub would, so the
+site shows what it showed before; with no carousel before the import, the site has none again. If
+staff edited the imported carousel since, `--remove` refuses without `--replace` (their edits go
+with it). If staff have since made another carousel live, `--remove` only deletes the imported
+(now past) one and leaves the live carousel alone. Image files stay in the store
+(content-addressed, harmless, as the Hub leaves them).
+
+From a checkout, the same command is `DATABASE_URL=... STORAGE_DIR=... PUBLIC_FILES_BASE=...
+npm run nrms:import-public-slides -- --dry-run`. Outside the stack, an explicit `EVENT_SUBSCRIBERS`
+(or `NRMS_EVENT_SUBSCRIBERS`) replaces the stack's own NRMS → News API route.
+
 ## Legacy translations and media assets (`import:files`, cutover)
 
 The News API's legacy import (`import:legacy`, apps/news-api/src/import) copies posts from legacy

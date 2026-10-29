@@ -24,7 +24,8 @@ import {
   slideImage,
   type PinSlot,
 } from "../website/carousel";
-import type { SlideImageFiles } from "../website/slide-images";
+import { MAX_SITE_IMAGE_BYTES, type SlideImageFiles } from "../website/slide-images";
+import { actionLabelField, httpOrEmpty, justifySchema, slideInputSchema } from "../website/slide-input";
 import { deleteFile, listFiles, uploadFile, MAX_SITE_FILE_BYTES } from "../website/files";
 import { featuredWhere } from "../website/features";
 import { getLinks, saveLinks } from "../website/links";
@@ -65,32 +66,12 @@ export interface SiteRouteDeps {
 /** Legacy ProjectBlueBridge.aspx:50 — shown on every GET so the staff app can display it next to the switch. */
 export const BLUE_BRIDGE_WARNING = "Do not click OK unless you have approval from IGRS";
 
-/** Slide/pin images, same 2 MiB cap as the brief (constraints.md §6.1). */
-export const MAX_SITE_IMAGE_BYTES = 2 * 1024 * 1024;
+/** Slide/pin images' 2 MiB cap, defined beside the slide image store (website/slide-images.ts). */
+export { MAX_SITE_IMAGE_BYTES };
 const SLOT = /^(primary|secondary)$/;
 const AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features", "settings"];
 
 const dateish = z.string().refine((s) => !Number.isNaN(Date.parse(s)), "must be a valid date/time");
-const httpOrEmpty = z
-  .string()
-  .trim()
-  .max(255)
-  .refine((s) => s === "" || /^https?:\/\/\S+$/i.test(s), "must be an absolute http:// or https:// URL, or empty");
-/** Optional: a writer that omits it (a Hub tab opened before this field shipped) keeps the stored label.
- * Trimmed here; the 40-character and plain-text rules stay in the store, so a too-long label gets its
- * plain 422 message rather than a schema 400. */
-const actionLabelField = z.string().trim().optional();
-const justify = z.enum(["left", "right"]);
-
-const slideInputSchema = z.object({
-  id: z.string().uuid().optional(),
-  headline: z.string().max(255),
-  summary: z.string().max(255),
-  actionUrl: httpOrEmpty,
-  actionLabel: actionLabelField,
-  facebookPostUrl: httpOrEmpty,
-  justify,
-});
 /**
  * 3f task 5 fix round 1 (controller ruling): exactly one of `goLiveAt` (an already-resolved
  * instant with an explicit offset — today's form) or `goLiveAtLocal` (a BC wall-clock time with
@@ -124,7 +105,7 @@ const savePinSchema = z.object({
   actionUrl: httpOrEmpty,
   actionLabel: actionLabelField,
   facebookPostUrl: httpOrEmpty,
-  justify,
+  justify: justifySchema,
 });
 const setPinnedSchema = z.object({ version: z.number().int().positive(), pinned: z.boolean() });
 const deleteNextQuerySchema = z.object({ version: z.coerce.number().int().positive() });

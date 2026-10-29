@@ -7,6 +7,7 @@
     "dev": "tsx watch src/main.ts",
     "flickr:authorize": "tsx src/cli/flickr-authorize.ts",
     "import:legacy": "tsx src/import/cli.ts",
+    "import:public-slides": "tsx src/import/public-slides-cli.ts",
     "release-holds": "tsx src/cli/release-holds.ts",
     "replay-to-news-api": "tsx src/cli/replay-to-news-api.ts",
     "replay-activity-links": "tsx src/cli/replay-activity-links.ts",
