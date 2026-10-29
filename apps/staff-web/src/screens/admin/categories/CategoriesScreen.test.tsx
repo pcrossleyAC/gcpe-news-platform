@@ -133,6 +133,24 @@ describe("CategoriesScreen", () => {
     expect(puts(calls)[0]!.url).toBe("/core/api/terms/sector/education");
   });
 
+  // Review (MEDIUM): typing into a row while the batch save is under way must not be lost.
+  it("an edit typed into a row while its save is under way stays, marked Unsaved", async () => {
+    let release!: (r: Response) => void;
+    const calls = stub(["Core.Admin"], () => new Promise<Response>((r) => (release = r)));
+    renderIt();
+    const user = userEvent.setup();
+    const name = await screen.findByRole("textbox", { name: "Name for education" });
+    await user.type(name, "!");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(puts(calls)).toHaveLength(1));
+    await user.type(name, "?");
+    release(jsonResponse(200, {}));
+    await screen.findByText(/Saved 1 change/);
+    expect(name).toHaveValue("Education!?");
+    expect(name.closest("tr")!).toHaveTextContent("Unsaved");
+    expect(screen.getByText("1 row has unsaved changes.")).toBeInTheDocument();
+  });
+
   it("an edit put back to what was loaded is no longer unsaved", async () => {
     stub(["Core.Admin"]);
     renderIt();

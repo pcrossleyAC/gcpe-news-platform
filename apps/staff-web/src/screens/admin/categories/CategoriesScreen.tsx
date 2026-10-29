@@ -156,14 +156,15 @@ function CategoriesEditor(): React.JSX.Element {
     savingRef.current = true;
     setSaving(true);
     const failed = new Map<string, RowError>();
-    const saved: string[] = [];
+    // Each saved row with the draft that was sent: a row typed into while saving keeps its newer edit.
+    const saved: { id: string; draft: Draft }[] = [];
     for (const { record, draft } of pending) {
       try {
         await apiFetch(`/core/api/terms/${record.kind}/${encodeURIComponent(record.key)}`, {
           method: "PUT",
           body: { ...record, displayName: draft.name.trim(), sortOrder: Number(draft.order), isActive: draft.active },
         });
-        saved.push(idOf(record));
+        saved.push({ id: idOf(record), draft });
       } catch (err) {
         const e = explain(err);
         failed.set(idOf(record), { field: e.field === "key" ? "form" : e.field, text: e.text });
@@ -171,7 +172,10 @@ function CategoriesEditor(): React.JSX.Element {
     }
     setEdits((prev) => {
       const next = new Map(prev);
-      for (const id of saved) next.delete(id);
+      for (const { id, draft } of saved) {
+        const now = next.get(id);
+        if (now && sameDraft(now.draft, draft)) next.delete(id);
+      }
       return next;
     });
     setErrors(failed);
