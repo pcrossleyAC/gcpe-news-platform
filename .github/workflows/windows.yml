@@ -71,6 +71,11 @@ jobs:
         with:
           name: gcpe-windows
           path: drop
+      # The DMZ proxy is installed from its own package (no app\ in it), as on a real DMZ server.
+      - uses: actions/download-artifact@v4
+        with:
+          name: gcpe-proxy
+          path: drop-proxy
       - name: Remove the runner's own PostgreSQL, so the installer sees a clean server
         run: |
           $svc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue
@@ -82,6 +87,11 @@ jobs:
           $zip = Get-ChildItem drop\*.zip | Select-Object -First 1
           Expand-Archive $zip.FullName -DestinationPath C:\pkg
           Get-ChildItem C:\pkg\gcpe-windows | Format-Table Name
+          $proxyZip = Get-ChildItem drop-proxy\*.zip | Select-Object -First 1
+          Expand-Archive $proxyZip.FullName -DestinationPath C:\pkg-proxy
+          $proxyFiles = @(Get-ChildItem C:\pkg-proxy\gcpe-proxy -Recurse -File | ForEach-Object { $_.FullName.Substring('C:\pkg-proxy\gcpe-proxy\'.Length) })
+          $proxyFiles | ForEach-Object { Write-Host "  proxy package: $_" }
+          if (@($proxyFiles | Where-Object { $_ -like 'app\*' }).Count -gt 0) { throw 'the proxy package must not carry the app' }
       - name: Install-Gcpe.ps1 (first install)
         run: |
           $pw = ConvertTo-SecureString 'ci-admin-password-0001' -AsPlainText -Force
@@ -108,10 +118,19 @@ jobs:
           Check "service runs as NT SERVICE\gcpe-stack ($account)" ($account -eq 'NT SERVICE\gcpe-stack')
           $direct = Test-NetConnection -ComputerName $env:COMPUTERNAME -Port 3000 -WarningAction SilentlyContinue
           Write-Host "port 3000 from the machine's own name: $($direct.TcpTestSucceeded) (loopback isn't firewalled; the rule blocks other machines)"
-      - name: X-Forwarded-For without ports, private IIS logs, log retention
+      - name: X-Forwarded-For without ports, private folders, PostgreSQL closed, private IIS logs, log retention
         run: |
           $ErrorActionPreference = 'Stop'
           function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          foreach ($dir in @('C:\gcpe\data', 'C:\gcpe\service\logs', 'C:\gcpe\logs', 'C:\gcpe\import-reports')) {
+            $acl = Get-Acl -LiteralPath $dir
+            $who = @($acl.Access | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique)
+            Check "$dir inherits nothing and BUILTIN\Users can't read it ($($who -join ', '))" ($acl.AreAccessRulesProtected -and $who -notcontains 'BUILTIN\Users' -and $who -notcontains 'NT AUTHORITY\Authenticated Users')
+          }
+          Check 'the service may change C:\gcpe\data' (@((Get-Acl C:\gcpe\data).Access | Where-Object { $_.IdentityReference.Value -eq 'NT SERVICE\gcpe-stack' -and $_.FileSystemRights -match 'Modify' }).Count -gt 0)
+          Import-Module C:\pkg\gcpe-windows\lib\Gcpe.psm1 -Force
+          $pgOpen = @(Get-GcpeInboundAllowRules -Ports @('5432'))
+          Check "no firewall rule opens 5432 to other machines ($(($pgOpen | ForEach-Object { $_.DisplayName }) -join ', '))" ($pgOpen.Count -eq 0)
           $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
           $proxyCfg = (& $appcmd list config -section:system.webServer/proxy) -join "`n"
           Check 'ARR leaves the client port out of X-Forwarded-For' ($proxyCfg -match 'includePortInXForwardedFor="false"')
@@ -162,6 +181,9 @@ jobs:
           Check "it covers 443 and 80 ($($ports -join ', '))" ($ports -contains '443' -and $ports -contains '80')
           $iis = @(Get-NetFirewallRule -Name 'IIS-WebServerRole-HTTP*-In-TCP' -ErrorAction SilentlyContinue)
           Check "IIS's own web rules exist ($($iis.Count)) and are all off" ($iis.Count -gt 0 -and @($iis | Where-Object { $_.Enabled -eq 'True' }).Count -eq 0)
+          Import-Module C:\pkg\gcpe-windows\lib\Gcpe.psm1 -Force
+          $open = @(Get-GcpeInboundAllowRules -Ports @('443', '80') -ExceptDisplayName @('GCPE web: allowed client ranges only'))
+          Check "no other rule opens 443 or 80, TCP or UDP ($(($open | ForEach-Object { $_.DisplayName }) -join ', '))" ($open.Count -eq 0)
           $health = curl.exe -k -sS -f https://localhost/stack/health | ConvertFrom-Json
           Check 'the site still answers on loopback' ($health.status -eq 'ok')
       - name: A release that never becomes healthy is rolled back
@@ -250,9 +272,9 @@ jobs:
         run: |
           $appCert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.FriendlyName -eq 'GCPE self-signed (gcpe-ci.example.test)' } | Select-Object -First 1
           if (-not $appCert) { throw 'the app install''s self-signed certificate is missing' }
-          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName gcpe-proxy-ci.example.test -Upstream https://localhost -UpstreamCertificateThumbprint $appCert.Thumbprint -HttpsPort 8443 -HttpPort 8080 -Environment Test
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName gcpe-proxy-ci.example.test -Upstream https://localhost -UpstreamCertificateThumbprint $appCert.Thumbprint -HttpsPort 8443 -HttpPort 8080 -Environment Test
           # Safe to re-run.
-          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName gcpe-proxy-ci.example.test -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName gcpe-proxy-ci.example.test -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080
       - name: The proxy forwards only the public paths
         run: |
           $ErrorActionPreference = 'Stop'
@@ -378,18 +400,35 @@ jobs:
           function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
           $h = 'gcpe-proxy-ci.example.test'
           $res = @('--resolve', "$($h):8443:127.0.0.1")
-          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowedClientRanges 192.0.2.0/24
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowedClientRanges 192.0.2.0/24
           $s = curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/"
           Check "a client outside the ranges gets 403 (HTTP $s)" ($s -eq '403')
-          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080
           $s = curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/"
           Check "a re-run without -AllowedClientRanges keeps the restriction (HTTP $s)" ($s -eq '403')
-          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowedClientRanges 127.0.0.0/8
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowedClientRanges 127.0.0.0/8
           $s = curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/"
           Check "a client inside the ranges gets the site (HTTP $s)" ($s -eq '200')
-          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowAllClients
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowAllClients
           $s = curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/"
           Check "-AllowAllClients removes it (HTTP $s)" ($s -eq '200')
+      - name: The proxy keeps -Environment on a re-run
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          $h = 'gcpe-proxy-ci.example.test'
+          $res = @('--resolve', "$($h):8443:127.0.0.1")
+          function Robots { ((curl.exe -k -s @res -D - -o NUL "https://$($h):8443/") -join "`n") -match '(?im)^x-robots-tag:' }
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -Environment Prod -CacheMaxSizeGB 3
+          Check 'Prod: no X-Robots-Tag' (-not (Robots))
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost
+          Check 'a re-run without -Environment stays Prod (no X-Robots-Tag)' (-not (Robots))
+          $state = Get-Content -Raw C:\gcpe-proxy\proxy-settings.json | ConvertFrom-Json
+          Check "the saved settings ($($state | ConvertTo-Json -Compress))" ($state.Environment -eq 'Prod' -and $state.CacheMaxSizeGB -eq 3 -and $state.HttpsPort -eq 8443 -and $state.HttpPort -eq 8080)
+          Check 'the ports were kept too (the site still answers on 8443)' ((curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/") -eq '200')
+          Check 'the replaced rules were kept for a rollback' (@(Get-ChildItem C:\gcpe-proxy\logs\web.config.*.bak).Count -gt 0)
+          C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -Environment Test
+          Check '-Environment Test turns noindex back on' (Robots)
       - name: Logs
         if: always()
         run: |

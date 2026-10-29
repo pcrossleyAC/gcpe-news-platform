@@ -155,14 +155,39 @@ function Set-GcpeSecretFileAcl {
 # it: inheritance from the parent off, FullControl for Administrators and SYSTEM only, passed down
 # to every file and subfolder (ContainerInherit, ObjectInherit). Call it on an empty folder,
 # before anything is written into it.
+# -FullControlAccounts adds others with FullControl (a backup share's writer, whose own
+# Administrators and SYSTEM are not this server's); -ModifyAccounts adds accounts that may change
+# the contents (the gcpe-stack service on C:\gcpe\data).
 function Set-GcpePrivateDirectoryAcl {
-    param([Parameter(Mandatory)][string]$Path)
+    param([Parameter(Mandatory)][string]$Path, [string[]]$FullControlAccounts = @(), [string[]]$ModifyAccounts = @())
     $acl = New-Object System.Security.AccessControl.DirectorySecurity
     $acl.SetAccessRuleProtection($true, $false)
-    foreach ($who in @('BUILTIN\Administrators', 'NT AUTHORITY\SYSTEM')) {
+    foreach ($who in @('BUILTIN\Administrators', 'NT AUTHORITY\SYSTEM') + @($FullControlAccounts | Where-Object { $_ })) {
         $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($who, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
     }
+    foreach ($who in @($ModifyAccounts | Where-Object { $_ })) {
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($who, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+    }
     Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+# This computer's domain account (DOMAIN\NAME$), as a file server sees this server (and SYSTEM on
+# it) over SMB; $null when the server isn't in a domain.
+function Get-GcpeComputerAccount {
+    if (-not (Get-CimInstance Win32_ComputerSystem).PartOfDomain) { return $null }
+    $name = "$env:USERDOMAIN\$($env:COMPUTERNAME)`$"
+    try { (New-Object Security.Principal.NTAccount($name)).Translate([Security.Principal.SecurityIdentifier]) | Out-Null; $name }
+    catch { $null }
+}
+
+# Enabled inbound Allow rules in force (ActiveStore: Group Policy's included) that open one of
+# $Ports, TCP or UDP, other than those named in $ExceptDisplayName.
+function Get-GcpeInboundAllowRules {
+    param([Parameter(Mandatory)][string[]]$Ports, [string[]]$ExceptDisplayName = @())
+    @(Get-NetFirewallPortFilter -PolicyStore ActiveStore -ErrorAction SilentlyContinue |
+        Where-Object { ($_.Protocol -eq 'TCP' -or $_.Protocol -eq 'UDP') -and @(@($_.LocalPort) | Where-Object { $Ports -contains $_ }).Count -gt 0 } |
+        Get-NetFirewallRule -ErrorAction SilentlyContinue |
+        Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' -and $ExceptDisplayName -notcontains $_.DisplayName })
 }
 
 # Creates the file empty, locks it down, then writes it: written first, it would inherit

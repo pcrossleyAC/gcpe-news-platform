@@ -77,6 +77,9 @@ $legacy = @{
     LEGACY_SQL_TRUST_CERT = $(if ($TrustServerCertificate) { 'true' } else { 'false' })
     TENANT_CONFIG         = Join-Path $release 'config\tenants\bc.json'
 }
+# The stack's own tenant file when gcpe.env names one (docs/deploy/windows.md, D8), so the
+# importers and the running stack read the same settings.
+if ($envValues.Contains('TENANT_CONFIG') -and $envValues['TENANT_CONFIG']) { $legacy.TENANT_CONFIG = $envValues['TENANT_CONFIG'] }
 $summary = New-Object System.Collections.Generic.List[object]
 
 function Get-EventSubscribers([string]$Prefix) {

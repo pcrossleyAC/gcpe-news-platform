@@ -73,6 +73,8 @@ Write-GcpeOk 'reachable from this session (the task itself runs as SYSTEM: the f
 Write-GcpeStep "Installing the backup script in $Root\backup"
 $installDir = Join-Path $Root 'backup'
 New-Item -ItemType Directory -Force -Path (Join-Path $installDir 'lib') | Out-Null
+# SYSTEM runs these files every night: only Administrators and SYSTEM may change (or read) them.
+Set-GcpePrivateDirectoryAcl -Path $installDir
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Backup-Gcpe.ps1') -Destination $installDir -Force
 Copy-Item -Path (Join-Path $PSScriptRoot 'lib\*') -Destination (Join-Path $installDir 'lib') -Force
 Write-GcpeOk 'copied'

@@ -21,8 +21,10 @@
 
   Every folder it makes (this computer's folder, the run's folder, and -BackupPath itself when it
   is a local folder it creates) gets an explicit ACL before anything is written into it:
-  inheritance off, FullControl for Administrators and SYSTEM only. On a UNC share it warns if it
-  can't set that; the share's own permissions must be restricted by its owner either way.
+  inheritance off, FullControl for Administrators and SYSTEM only, plus this server's computer
+  account (DOMAIN\NAME$) on a UNC share, since that is who SYSTEM is to the file server. On a
+  share it warns if it can't set that; the share's own permissions must be restricted by its
+  owner either way, and a restore needs an account with read access on the share.
 
   A run that finishes writes COMPLETE.txt and manifest.json in its folder. Old folders are deleted
   only after a run has finished, and only folders named yyyyMMdd-HHmmss under this computer's own
@@ -58,16 +60,25 @@ $runDir = Join-Path $machineDir $stamp
 function Quote([string]$Value) { '"' + $Value + '"' }
 
 # A backup holds gcpe.env (every secret) and the subscribers' e-mail addresses: each folder this
-# script makes is locked to Administrators and SYSTEM (the account the task runs as) before
-# anything is written into it. On a share the folder ACL is only half of it: the share's own
-# permissions must be as narrow (docs/deploy/windows.md, 7.1 "Backups and the restore drill").
+# script makes is locked down before anything is written into it, inheritance off:
+#  - a local folder: Administrators and SYSTEM (the account the task runs as);
+#  - on a share: the file server's Administrators and SYSTEM (well-known SIDs mean the file
+#    server's own groups there) plus this server's computer account (DOMAIN\NAME$), which is who
+#    SYSTEM is on the network: without it the next step could not write into the folder.
+# On a share the folder ACL is only half of it: the share's own permissions must be as narrow
+# (docs/deploy/windows.md, 7.1 "Backups and the restore drill").
+$onShare = $BackupPath.StartsWith('\\')
+$shareWriter = $null
+if ($onShare) {
+    $shareWriter = Get-GcpeComputerAccount
+    if (-not $shareWriter) { Write-GcpeNote "this server is not in a domain (or its computer account can't be resolved): the share folders get the file server's Administrators and SYSTEM only, and this run may not be able to write into them" }
+}
 function New-PrivateDirectory([string]$Path) {
-    $isNew = -not (Test-Path -LiteralPath $Path)
-    if ($isNew) { New-Item -ItemType Directory -Force -Path $Path | Out-Null }
+    if (-not (Test-Path -LiteralPath $Path)) { New-Item -ItemType Directory -Force -Path $Path | Out-Null }
     try {
-        Set-GcpePrivateDirectoryAcl -Path $Path
+        Set-GcpePrivateDirectoryAcl -Path $Path -FullControlAccounts @($shareWriter)
     } catch {
-        if ($Path.StartsWith('\\')) { Write-GcpeNote "could not lock down $Path ($($_.Exception.Message)): restrict the share and its folder permissions to the backup administrators and this server's account by hand" }
+        if ($onShare) { Write-GcpeNote "could not lock down $Path ($($_.Exception.Message)): restrict the share and its folder permissions to the backup administrators and this server's computer account by hand" }
         else { throw }
     }
 }
@@ -75,7 +86,7 @@ function New-PrivateDirectory([string]$Path) {
 Start-Transcript -Path (Join-Path $paths.Logs "backup-$stamp.log") | Out-Null
 try {
     Write-GcpeStep "Backing up to $runDir"
-    if (-not $BackupPath.StartsWith('\\') -and -not (Test-Path -LiteralPath $BackupPath)) { New-PrivateDirectory $BackupPath }
+    if (-not $onShare -and -not (Test-Path -LiteralPath $BackupPath)) { New-PrivateDirectory $BackupPath }
     New-PrivateDirectory $machineDir
     New-PrivateDirectory $runDir
     $manifest = [ordered]@{ computer = $env:COMPUTERNAME; started = (Get-Date).ToString('o'); databases = @(); files = @() }

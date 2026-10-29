@@ -56,6 +56,9 @@ param(
     # (copied into LocalMachine\Root when it isn't there yet). With -UpstreamCertificateFile: the
     # file's thumbprint must match.
     [string]$UpstreamCertificateThumbprint,
+    # Intermediate CA certificates (.cer) between the app server's certificate and the root above,
+    # imported into Cert:\LocalMachine\CA (an internal CA chain: root via -UpstreamCertificateFile).
+    [string[]]$UpstreamIntermediateCertificateFile,
     # The thumbprint of the public certificate in Cert:\LocalMachine\My. Omit for a self-signed one
     # (Test only); a re-run keeps the certificate already bound.
     [string]$CertificateThumbprint,
@@ -63,6 +66,9 @@ param(
     # the ranges already set unless you pass new ones, or -AllowAllClients to remove the restriction.
     [string[]]$AllowedClientRanges,
     [switch]$AllowAllClients,
+    # Test (the default on a first install) or Prod. -Environment, -CacheMaxSizeGB, -HttpsPort,
+    # -HttpPort and -LogRetentionDays are saved in <Root>\proxy-settings.json: a re-run without them
+    # keeps the values of the last run (so a Prod proxy never turns back into Test by itself).
     [ValidateSet('Test', 'Prod')][string]$Environment = 'Test',
     [ValidateRange(1, 1000)][int]$CacheMaxSizeGB = 5,
     [ValidateRange(1, 65535)][int]$HttpsPort = 443,
@@ -93,6 +99,22 @@ $NeverCachedPaths = @('subscribe', 'news-subscribe', 'newsletters', 'enewsletter
 Assert-GcpeAdministrator
 if (-not (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue)) { throw 'This script needs Windows Server (Install-WindowsFeature is missing).' }
 if ($AllowedClientRanges -and $AllowAllClients) { throw 'Pass -AllowedClientRanges or -AllowAllClients, not both.' }
+# The settings of the last run, unless passed again.
+$stateFile = Join-Path $Root 'proxy-settings.json'
+$savedNames = @('Environment', 'CacheMaxSizeGB', 'HttpsPort', 'HttpPort', 'LogRetentionDays')
+$kept = @()
+if (Test-Path -LiteralPath $stateFile) {
+    $saved = Get-Content -Raw -LiteralPath $stateFile | ConvertFrom-Json
+    foreach ($name in $savedNames) {
+        if (-not $PSBoundParameters.ContainsKey($name) -and @($saved.PSObject.Properties.Name) -contains $name) {
+            Set-Variable -Name $name -Value $saved.$name
+            $kept += "-$name $($saved.$name)"
+        }
+    }
+    if (@($saved.PSObject.Properties.Name) -contains 'Environment' -and $saved.Environment -eq 'Prod' -and $Environment -eq 'Test') {
+        Write-Warning 'This proxy was Prod and -Environment Test turns it into Test: every response gets X-Robots-Tag noindex.'
+    }
+}
 if ($HttpsPort -eq $HttpPort) { throw '-HttpsPort and -HttpPort must differ.' }
 $ranges = @()
 foreach ($r in @($AllowedClientRanges)) { if ($r) { $ranges += ConvertFrom-GcpeCidr -Cidr $r.Trim() } }
@@ -112,6 +134,7 @@ foreach ($dir in @($Root, $siteDir, $cacheDir, $logDir)) { New-Item -ItemType Di
 $transcript = Join-Path $logDir ('install-proxy-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 Start-Transcript -Path $transcript | Out-Null
 try {
+if ($kept.Count -gt 0) { Write-GcpeNote "keeping the last run's $($kept -join ', ') ($stateFile)" }
 
 # --- 1. Prerequisites ------------------------------------------------------------------------
 Write-GcpeStep 'IIS'
@@ -159,6 +182,13 @@ Write-GcpeOk 'on; it follows the app''s Cache-Control, and never stores /api, th
 
 # --- 3. Trust for the upstream's certificate --------------------------------------------------
 Write-GcpeStep "Trust for $upstreamBase"
+foreach ($file in @($UpstreamIntermediateCertificateFile | Where-Object { $_ })) {
+    if (-not (Test-Path -LiteralPath $file)) { throw "No file $file" }
+    $mid = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath $file).Path)
+    if ($mid.HasPrivateKey) { throw "$file holds a private key: export the certificate only (.cer)." }
+    if (-not (Test-Path -LiteralPath "Cert:\LocalMachine\CA\$($mid.Thumbprint)")) { Import-Certificate -FilePath $file -CertStoreLocation Cert:\LocalMachine\CA | Out-Null }
+    Write-GcpeOk "intermediate $($mid.Subject) ($($mid.Thumbprint)) in LocalMachine\CA"
+}
 if ($UpstreamCertificateFile) {
     if (-not (Test-Path -LiteralPath $UpstreamCertificateFile)) { throw "No file $UpstreamCertificateFile" }
     $fileCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath $UpstreamCertificateFile).Path)
@@ -374,7 +404,14 @@ $robots
   </system.webServer>
 </configuration>
 "@
-[IO.File]::WriteAllText((Join-Path $siteDir 'web.config'), $webConfig, (New-Object Text.UTF8Encoding($false)))
+$webConfigPath = Join-Path $siteDir 'web.config'
+if (Test-Path -LiteralPath $webConfigPath) {
+    # The rules this run replaces, for a rollback: copy it back over site\web.config.
+    Copy-Item -LiteralPath $webConfigPath -Destination (Join-Path $logDir ('web.config.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak')) -Force
+}
+[IO.File]::WriteAllText($webConfigPath, $webConfig, (New-Object Text.UTF8Encoding($false)))
+$state = [ordered]@{ Environment = $Environment; CacheMaxSizeGB = $CacheMaxSizeGB; HttpsPort = $HttpsPort; HttpPort = $HttpPort; LogRetentionDays = $LogRetentionDays }
+[IO.File]::WriteAllText($stateFile, ($state | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 Invoke-GcpeQuiet -FilePath $appcmd -Arguments @('start', 'site', $siteName)
 Write-GcpeOk "https://$httpsAuthority/ forwards the public paths to $upstreamBase"
 

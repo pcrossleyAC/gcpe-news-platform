@@ -211,6 +211,7 @@ if ($existingEnv) {
     $db = @{ user = 'gcpe_app'; password = New-GcpeSecret -Bytes 24; prefix = 'gcpe' }
     $smtp = @{ host = $SmtpHost; port = $SmtpPort; secure = [bool]$SmtpSecure }
     if ($SmtpUser) { $smtp.user = $SmtpUser }
+    if ($SmtpUser -and -not $SmtpPassword) { $SmtpPassword = Read-Host "Password for SMTP user '$SmtpUser'" -AsSecureString }
     if ($SmtpPassword) { $smtp.pass = ConvertFrom-GcpeSecureString $SmtpPassword }
     $settings = @{
         hostName = $HostName; dataDir = $paths.Data; port = $Port
@@ -277,8 +278,13 @@ if (-not (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)) {
 & sc.exe config $serviceName obj= $serviceAccount | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "could not set the service to run as $serviceAccount" }
 Set-GcpeSecretFileAcl -Path $paths.EnvFile -ReaderAccount $serviceAccount
-Grant-GcpeDirectoryAccess -Path $paths.Data -Account $serviceAccount -Rights Modify
-Grant-GcpeDirectoryAccess -Path $paths.ServiceLogs -Account $serviceAccount -Rights Modify
+# Data (subscriber files, attachments, the error log), the stack's logs, install logs and import
+# reports would otherwise inherit BUILTIN\Users read access from C:\: Administrators, SYSTEM and
+# (for the first two) the service only.
+Set-GcpePrivateDirectoryAcl -Path $paths.Data -ModifyAccounts @($serviceAccount)
+Set-GcpePrivateDirectoryAcl -Path $paths.ServiceLogs -ModifyAccounts @($serviceAccount)
+Set-GcpePrivateDirectoryAcl -Path $paths.Logs
+Set-GcpePrivateDirectoryAcl -Path $paths.ImportReports
 Write-GcpeOk "runs as $serviceAccount; it may change only $($paths.Data) and its own logs, and read gcpe.env"
 
 Write-GcpeStep "Firewall: port $Port reachable from this server only"
@@ -291,35 +297,45 @@ Write-GcpeOk 'inbound connections to the stack''s port are blocked'
 Write-GcpeStep 'Firewall: who may reach IIS (443, 80)'
 # Windows Firewall blocks inbound by default and an Allow rule opens a port to the addresses it
 # names, so "only these ranges" is: our one Allow rule scoped to the ranges, and no other enabled
-# Allow rule for 443 or 80. IIS's own rules (IIS-WebServerRole-HTTP-In-TCP, -HTTPS-In-TCP) open
-# them to everyone; they are turned off while the restriction is on and back on without it.
-# Loopback traffic is never filtered, so this server always reaches its own IIS.
+# Allow rule for 443 or 80, TCP or UDP. IIS's own rules (IIS-WebServerRole-*: HTTP, HTTPS, and
+# QUIC on UDP 443) open them to everyone; they are turned off while the restriction is on, and the
+# TCP ones back on without it. Loopback traffic is never filtered, so this server always reaches
+# its own IIS.
 $webRule = 'GCPE web: allowed client ranges only'
-function Get-OtherWebAllowRules {
-    # ActiveStore: the rules in force, Group Policy's included, not only this server's own.
-    @(Get-NetFirewallPortFilter -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.Protocol -eq 'TCP' -and @(@($_.LocalPort) | Where-Object { $_ -eq '443' -or $_ -eq '80' }).Count -gt 0 } |
-        Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' -and $_.DisplayName -ne $webRule })
-}
-$iisRules = @(Get-NetFirewallRule -Name 'IIS-WebServerRole-HTTP*-In-TCP' -ErrorAction SilentlyContinue)
+$iisRules = @(Get-NetFirewallRule -Name 'IIS-WebServerRole-*' -ErrorAction SilentlyContinue | Where-Object {
+    @(@(($_ | Get-NetFirewallPortFilter).LocalPort) | Where-Object { @('443', '80') -contains $_ }).Count -gt 0 })
+$iisTcpRules = @($iisRules | Where-Object { ($_ | Get-NetFirewallPortFilter).Protocol -eq 'TCP' })
 if ($clientRanges.Count -gt 0) {
     Get-NetFirewallRule -DisplayName $webRule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     New-NetFirewallRule -DisplayName $webRule -Direction Inbound -Protocol TCP -LocalPort 443, 80 -RemoteAddress $clientRanges -Action Allow | Out-Null
     foreach ($r in $iisRules) { Disable-NetFirewallRule -Name $r.Name }
-    $others = Get-OtherWebAllowRules
+    # @(): a function returning an empty array returns $null, and $null.Count fails under StrictMode.
+    $others = @(Get-GcpeInboundAllowRules -Ports @('443', '80') -ExceptDisplayName @($webRule))
     if ($others.Count -gt 0) {
-        throw "These enabled firewall rules also open port 443 or 80 to other addresses, so the restriction would not hold: $(($others | ForEach-Object { "'$($_.DisplayName)' ($($_.Name))" }) -join ', '). Disable them (or ask whoever manages them), then re-run."
+        throw "These enabled firewall rules also open port 443 or 80 (TCP or UDP) to other addresses, so the restriction would not hold: $(($others | ForEach-Object { "'$($_.DisplayName)' ($($_.Name))" }) -join ', '). Disable them (or ask whoever manages them), then re-run."
     }
     Write-GcpeOk "443 and 80 accept only $($clientRanges -join ', ') (and this server itself)"
 } elseif ($AllowAllClients) {
     Get-NetFirewallRule -DisplayName $webRule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-    foreach ($r in $iisRules) { Enable-NetFirewallRule -Name $r.Name }
+    foreach ($r in $iisTcpRules) { Enable-NetFirewallRule -Name $r.Name }
     Write-GcpeOk 'restriction removed: 443 and 80 are open to every client'
 } elseif (Get-NetFirewallRule -DisplayName $webRule -ErrorAction SilentlyContinue) {
     $kept = @((Get-NetFirewallRule -DisplayName $webRule | Get-NetFirewallAddressFilter).RemoteAddress)
     Write-GcpeOk "keeping the restriction already set: $($kept -join ', ') (-AllowAllClients removes it)"
 } else {
-    foreach ($r in $iisRules) { Enable-NetFirewallRule -Name $r.Name }
+    foreach ($r in $iisTcpRules) { Enable-NetFirewallRule -Name $r.Name }
     Write-GcpeOk '443 and 80 are open to every client (no -AllowedClientRanges)'
+}
+
+if ($pgServiceName) {
+    Write-GcpeStep 'Firewall: PostgreSQL (5432) for this server only'
+    # PostgreSQL here serves this server's own stack over localhost; the EDB installer may add a rule
+    # opening 5432 to every address. pg_hba.conf refuses other machines anyway; this closes the port.
+    foreach ($r in (Get-GcpeInboundAllowRules -Ports @('5432'))) {
+        try { Disable-NetFirewallRule -Name $r.Name -ErrorAction Stop; Write-GcpeOk "turned off '$($r.DisplayName)'" }
+        catch { Write-GcpeNote "could not turn off '$($r.DisplayName)' (Group Policy?): 5432 is still open to other machines; pg_hba.conf refuses them" }
+    }
+    Write-GcpeOk 'no rule opens 5432 to other machines'
 }
 
 # --- 5. IIS -----------------------------------------------------------------------------------
@@ -416,9 +432,19 @@ Write-GcpeStep 'Deploying the release in this package'
 
 Write-Host ''
 Write-Host 'Installed.' -ForegroundColor Green
-Write-Host "  Staff app (Hub):   https://$HostName/hub/   (sign in as '$AdminUsername')"
-Write-Host "  Public site:       https://$HostName/"
-Write-Host "  Health:            https://$HostName/stack/health"
+$hops = $ProxyHops
+if (-not $PSBoundParameters.ContainsKey('ProxyHops') -and $existingEnv -and $existingEnv.Contains('TRUST_PROXY_HOPS') -and $existingEnv['TRUST_PROXY_HOPS']) { $hops = [int]$existingEnv['TRUST_PROXY_HOPS'] }
+if ($hops -ge 2) {
+    # Behind the DMZ proxy, which never forwards /hub or /stack: staff use this server's own name.
+    $internal = [Net.Dns]::GetHostEntry('').HostName
+    Write-Host "  Staff app (Hub):   https://$internal/hub/   (this server's internal name; sign in as '$AdminUsername')"
+    Write-Host "  Public site:       https://$HostName/   (through the DMZ proxy)"
+    Write-Host "  Health:            https://$internal/stack/health"
+} else {
+    Write-Host "  Staff app (Hub):   https://$HostName/hub/   (sign in as '$AdminUsername')"
+    Write-Host "  Public site:       https://$HostName/"
+    Write-Host "  Health:            https://$HostName/stack/health"
+}
 Write-Host "  Settings:          $($paths.EnvFile)"
 Write-Host "  Stack logs:        $($paths.ServiceLogs)"
 Write-Host "  This install log:  $transcript"
