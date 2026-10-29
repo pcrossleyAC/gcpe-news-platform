@@ -215,6 +215,23 @@ recent errors across restarts.
 `legacy-files-copy`; see siteground.md), runnable with `oc exec` or as a Job. The Windows
 package's legacy importers (which read the legacy SQL Server) are not in this image.
 
+## Scaling later (planned, not built)
+
+The owner expects to want to scale on OpenShift at some point (2026-10-29). The plan is **one
+image, several Deployments**, not an image per app (the per-app `apps/*/Dockerfile` images were
+removed: they predated the single-stack design and nothing deployed them):
+
+- A public tier (public site and News API) scaled to several replicas, and a staff tier (Core,
+  NRMS, NoD, Distribution, Calendar) kept at one, each running the same image with a switch that
+  mounts only its apps. **That switch does not exist yet** — today every process mounts every app.
+  `STACK_LOOPS` already turns the background loops off, which is what every replica but one needs.
+- Before more than one replica of anything: shared `ReadWriteMany` storage for `/data` (uploads,
+  the generated site), and a check that every background job is safe with two processes (the NRMS
+  publisher, Flickr jobs and carousel, the event dispatcher, NoD send jobs, Distribution's sender
+  and the News API embeddings worker use `SKIP LOCKED` row claims; the other loops are unverified).
+- The Route splits by path: public paths to the public tier, `/hub` and staff APIs to the staff
+  tier, with the same allow list the Windows DMZ proxy applies.
+
 ## How it stays in sync
 
 - **CI** (`.github/workflows/openshift-image.yml`) runs on every pull request and every push to
