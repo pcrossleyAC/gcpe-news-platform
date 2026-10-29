@@ -173,6 +173,8 @@ test.describe("item 12: Website section", () => {
   test("resource links can be added, saved, and actually reordered", async ({ page, context }) => {
     await signInAs(context, "siteEditor");
     await page.goto(`${baseUrl()}/hub/website/links`);
+    // "Add link" renders only once the links have loaded; counting before that sees 0.
+    await expect(page.getByRole("button", { name: "Add link" })).toBeVisible();
     const before = await page.locator(".gcpe-links__item").count();
 
     const firstText = uniqueHeadline("First link");
