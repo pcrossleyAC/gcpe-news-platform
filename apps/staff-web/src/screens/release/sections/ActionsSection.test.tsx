@@ -241,7 +241,7 @@ describe("ActionsSection", () => {
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(dialog).toHaveTextContent("Publishes to news.example.test now."));
     await waitFor(() => expect(dialog).toHaveTextContent("Sends to media distribution lists: Regional newspapers."));
-    expect(dialog).toHaveTextContent("Emails News on Demand subscribers of Health and Seniors, and everyone subscribed to all news.");
+    expect(dialog).toHaveTextContent("Emails News on Demand subscribers who follow any of: Health; Seniors — and everyone subscribed to all news.");
   });
 
   it("the Publish now dialog says nobody is emailed when News on Demand and media lists are off", async () => {

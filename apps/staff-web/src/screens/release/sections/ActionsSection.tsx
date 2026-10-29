@@ -329,11 +329,9 @@ interface MediaListName {
   displayName: string;
 }
 
-/** "A, B and C". */
-function listText(items: string[]): string {
-  if (items.length <= 1) return items.join("");
-  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
-}
+/** Names joined with semicolons: many category and list names contain "and" or commas
+ * themselves ("Transportation and Transit"), so "A, B and C" would be ambiguous. */
+const listText = (items: string[]): string => items.join("; ");
 
 /**
  * What Publish now will do, from the release as saved (publishing is blocked while anything is
@@ -382,7 +380,7 @@ function PublishConsequences({ view }: { view: ReleaseView }): React.JSX.Element
       <li>{toLists ? `Sends to media distribution lists: ${listText(listNames)}.` : "No media distribution lists."}</li>
       <li>
         {toSubscribers
-          ? `Emails News on Demand subscribers of ${listText([...new Set(followed)]) || "this release's categories"}${view.ministries.length > 0 ? ", and everyone subscribed to all news" : ""}.`
+          ? `Emails News on Demand subscribers who follow ${followed.length > 0 ? `any of: ${listText([...new Set(followed)])}` : "this release's categories"}${view.ministries.length > 0 ? " — and everyone subscribed to all news" : ""}.`
           : "News on Demand subscribers will not be emailed."}
       </li>
     </ul>
