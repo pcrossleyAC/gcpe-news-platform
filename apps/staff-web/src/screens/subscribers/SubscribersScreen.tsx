@@ -6,6 +6,7 @@ import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
+import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { Pagination } from "../releases/Pagination";
 import { canEditSubscribers } from "./access";
@@ -220,11 +221,12 @@ export function SubscribersScreen(): React.JSX.Element {
 
       {result && items.length === 0 && <p>No subscribers match.</p>}
       {items.length > 0 && (
-        <table aria-label="Subscribers">
+        <TableScroll label="Subscribers">
+        <table aria-label="Subscribers" className="gcpe-table gcpe-table--reflow">
           <thead>
             <tr>
               {canEdit && (
-                <th scope="col">
+                <th scope="col" className="gcpe-table__select">
                   <input
                     type="checkbox"
                     aria-label="Select all on this page"
@@ -243,23 +245,24 @@ export function SubscribersScreen(): React.JSX.Element {
             {items.map((s) => (
               <tr key={s.id}>
                 {canEdit && (
-                  <td>
+                  <td className="gcpe-table__select">
                     <input type="checkbox" aria-label={`Select ${s.email}`} checked={selected.includes(s.id)} onChange={() => toggle(s.id)} />
                   </td>
                 )}
-                <td>
+                <td className="gcpe-table__primary">
                   <Link to={`/subscribers/${s.id}`}>{s.email}</Link>
                 </td>
-                <td>
+                <td data-label="Status">
                   {STATUS_LABELS[s.status]}
                   {s.needsAttention ? " (needs attention)" : ""}
                 </td>
-                <td>{timingLabel(s)}</td>
-                <td>{formatWhen(s.createdAt, new Date(), timeZone)}</td>
+                <td data-label="Timing">{timingLabel(s)}</td>
+                <td data-label="Registered">{formatWhen(s.createdAt, new Date(), timeZone)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
       {result && <Pagination page={result.page} pageSize={result.pageSize} total={result.total} onPageChange={onPage} />}
     </div>

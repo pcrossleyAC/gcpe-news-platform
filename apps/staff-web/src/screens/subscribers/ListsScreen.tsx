@@ -4,6 +4,7 @@ import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
+import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { moveBy } from "../../shared/reorder";
 import { canAdminSubscribers } from "./access";
@@ -127,7 +128,8 @@ export function ListsScreen(): React.JSX.Element {
           {c.lists.length === 0 ? (
             <p>No lists yet.</p>
           ) : (
-            <table aria-label={`${c.name} lists`}>
+            <TableScroll label={`${c.name} lists`}>
+            <table aria-label={`${c.name} lists`} className="gcpe-table">
               <thead>
                 <tr>
                   <th scope="col">List</th>
@@ -175,6 +177,7 @@ export function ListsScreen(): React.JSX.Element {
                 ))}
               </tbody>
             </table>
+            </TableScroll>
           )}
         </section>
       ))}

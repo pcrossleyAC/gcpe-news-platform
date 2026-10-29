@@ -433,8 +433,9 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
       ))}
       <div className="gcpe-button-row">
         {/* aria-disabled, not disabled, while saving: focus stays on the button, so an error leaves it there.
-         * A native button styled as the design system's primary one: its Button drops aria-busy. */}
-        <button type="submit" className="gcpe-native-button gcpe-native-button--primary" aria-disabled={busy || undefined} aria-busy={busy || undefined}>
+         * A native button styled as the design system's primary one (its Button drops aria-busy); the
+         * danger fill when it deactivates, like every other Delete or Leave confirm. */}
+        <button type="submit" className={`gcpe-native-button ${deactivating ? "gcpe-native-button--danger" : "gcpe-native-button--primary"}`} aria-disabled={busy || undefined} aria-busy={busy || undefined}>
           {!deactivating ? "Set successor" : chosen.length ? "Deactivate and hand over" : "Deactivate"}
         </button>
         <Button variant="secondary" isPending={busy} onPress={onCancel}>

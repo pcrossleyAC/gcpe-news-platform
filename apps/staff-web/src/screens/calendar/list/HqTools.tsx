@@ -3,6 +3,7 @@ import { CORPORATE_STATUSES, type CorporateQuery, type CorporateStatus, type Lis
 import { Button } from "../../../shared/BusyButton";
 import { messagesOf } from "../../admin/messages";
 import { downloadExport, listApi } from "./api";
+import { corporateSummary } from "./FilterPanel";
 
 /** POST /activities/review-selected takes at most this many. */
 export const REVIEW_SELECTED_MAX = 500;
@@ -86,7 +87,7 @@ export function ClearLaStatus({ onDone }: { onDone: () => void }): React.JSX.Ele
   };
   return (
     <div>
-      <label htmlFor="la-days">Days ahead</label>
+      <label htmlFor="la-days">Days ahead (Clear LA Status)</label>
       <input id="la-days" type="number" min={0} max={366} value={days} aria-invalid={!valid} onChange={(e) => setDays(e.target.value)} />
       <Button variant="secondary" isPending={busy} isDisabled={!valid} pendingLabel="Clearing…" onPress={() => void run()}>
         Clear LA Status
@@ -98,55 +99,73 @@ export function ClearLaStatus({ onDone }: { onDone: () => void }): React.JSX.Ele
 
 const CORPORATE_LABELS: Record<CorporateStatus, string> = { new: "New", changed: "Changed", reviewed: "Reviewed", deleted: "Deleted", la_new: "LA New", la_changed: "LA Changed" };
 
-/** Corporate Queries (Default.aspx:628-660; HQ Advanced and above): every ministry's upcoming activities by status. */
-export function CorporateQueries({ active, onRun, onClear }: { active: CorporateQuery | null; onRun: (c: CorporateQuery) => void; onClear: () => void }): React.JSX.Element {
+/**
+ * Corporate Queries (Default.aspx:628-660; HQ Advanced and above): every ministry's upcoming
+ * activities by status. Its choices are only a form until run: while no corporate query is
+ * running it says so, so its ticked boxes never read as the list's filter. A running one is
+ * announced by CorporateBanner above the list instead.
+ */
+export function CorporateQueries({ active, onRun }: { active: CorporateQuery | null; onRun: (c: CorporateQuery) => void }): React.JSX.Element {
   const [showAll, setShowAll] = useState(false);
   const [days, setDays] = useState("8");
   const [statuses, setStatuses] = useState<CorporateStatus[]>(["new", "changed"]);
   const valid = statuses.length > 0 && (showAll || (/^\d{1,3}$/.test(days) && Number(days) <= 366));
   return (
-    <section aria-labelledby="corporate-heading">
+    <section aria-labelledby="corporate-heading" className="gcpe-saved-views__part">
       <h2 id="corporate-heading">Corporate Queries</h2>
-      {active && (
-        <p role="status">
-          Showing a corporate query.{" "}
-          <Button variant="tertiary" onPress={onClear}>
-            Back to the filter
-          </Button>
-        </p>
-      )}
+      <p className="gcpe-hint">{active ? `Running now: the list shows the corporate query (${corporateSummary(active)}).` : "Not applied: the list shows your filters. Choose below and run it to list every ministry's activities by status."}</p>
       <form
         aria-label="Corporate query"
+        className="gcpe-corporate-query"
         onSubmit={(e) => {
           e.preventDefault();
           if (valid) onRun({ days: showAll ? null : Number(days), statuses: CORPORATE_STATUSES.filter((s) => statuses.includes(s)) });
         }}
       >
-        <fieldset>
+        <fieldset className="gcpe-calendar-filter__group">
           <legend>Upcoming activities to show</legend>
-          <div>
+          <div className="gcpe-check">
             <input type="radio" id="corp-all" name="corp-range" checked={showAll} onChange={() => setShowAll(true)} />
             <label htmlFor="corp-all">Show all</label>
           </div>
-          <div>
+          <div className="gcpe-check gcpe-corporate-query__days">
             <input type="radio" id="corp-days" name="corp-range" checked={!showAll} onChange={() => setShowAll(false)} />
-            <label htmlFor="corp-days">For the next</label> <input aria-label="Number of days" type="number" min={0} max={366} value={days} disabled={showAll} onChange={(e) => setDays(e.target.value)} /> days
+            <label htmlFor="corp-days">For the next</label>{" "}
+            <input aria-label="Days ahead (corporate query)" type="number" min={0} max={366} value={days} disabled={showAll} onChange={(e) => setDays(e.target.value)} /> days
           </div>
         </fieldset>
-        <fieldset>
+        <fieldset className="gcpe-calendar-filter__group">
           <legend>With status of</legend>
-          {CORPORATE_STATUSES.map((s) => (
-            <div key={s}>
-              <input type="checkbox" id={`corp-${s}`} checked={statuses.includes(s)} onChange={(e) => setStatuses((xs) => (e.target.checked ? [...xs, s] : xs.filter((x) => x !== s)))} />
-              <label htmlFor={`corp-${s}`}>{CORPORATE_LABELS[s]}</label>
-            </div>
-          ))}
+          <div className="gcpe-corporate-query__statuses">
+            {CORPORATE_STATUSES.map((s) => (
+              <div key={s} className="gcpe-check">
+                <input type="checkbox" id={`corp-${s}`} checked={statuses.includes(s)} onChange={(e) => setStatuses((xs) => (e.target.checked ? [...xs, s] : xs.filter((x) => x !== s)))} />
+                <label htmlFor={`corp-${s}`}>{CORPORATE_LABELS[s]}</label>
+              </div>
+            ))}
+          </div>
         </fieldset>
-        <Button type="submit" isDisabled={!valid}>
-          Search
-        </Button>
+        <div className="gcpe-actions">
+          <Button type="submit" variant="secondary" isDisabled={!valid}>
+            Run corporate query
+          </Button>
+        </div>
       </form>
     </section>
+  );
+}
+
+/** While a corporate query is running: said above the list, with the way back to the filter. */
+export function CorporateBanner({ active, onClear }: { active: CorporateQuery; onClear: () => void }): React.JSX.Element {
+  return (
+    <div className="gcpe-corporate-banner">
+      <p role="status">
+        <strong>Showing a corporate query.</strong> {`Every ministry's activities: ${corporateSummary(active)}.`}
+      </p>
+      <Button variant="secondary" onPress={onClear}>
+        Back to the filter
+      </Button>
+    </div>
   );
 }
 
@@ -155,10 +174,10 @@ const LOOK_AHEAD_LABELS: Record<LookAheadFilter, string> = { all: "Show All", lo
 /** The Admin Settings' Look Ahead filter (Default.aspx:684-698; HQ Advanced and above). */
 export function LookAheadFilterChoice({ value, onChange }: { value: LookAheadFilter; onChange: (v: LookAheadFilter) => void }): React.JSX.Element {
   return (
-    <fieldset role="group" aria-labelledby="la-filter-legend">
+    <fieldset role="group" aria-labelledby="la-filter-legend" className="gcpe-inline-choice">
       <legend id="la-filter-legend">Look Ahead filter</legend>
       {(Object.keys(LOOK_AHEAD_LABELS) as LookAheadFilter[]).map((v) => (
-        <div key={v}>
+        <div key={v} className="gcpe-check">
           <input type="radio" id={`la-filter-${v}`} name="la-filter" checked={value === v} onChange={() => onChange(v)} />
           <label htmlFor={`la-filter-${v}`}>{LOOK_AHEAD_LABELS[v]}</label>
         </div>

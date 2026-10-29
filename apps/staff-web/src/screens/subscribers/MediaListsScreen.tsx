@@ -6,6 +6,7 @@ import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
+import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
 import { describeSync, mediaErrorText } from "./labels";
@@ -72,7 +73,8 @@ export function MediaListsScreen(): React.JSX.Element {
       {!lists && !loadError && <p>Loading…</p>}
       {lists && lists.length === 0 && <p>No media lists yet.</p>}
       {lists && lists.length > 0 && (
-        <table aria-label="Media lists">
+        <TableScroll label="Media lists">
+        <table aria-label="Media lists" className="gcpe-table">
           <thead>
             <tr>
               <th scope="col">List</th>
@@ -94,6 +96,7 @@ export function MediaListsScreen(): React.JSX.Element {
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
 
       <section aria-labelledby="media-sync-heading">

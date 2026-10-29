@@ -39,13 +39,13 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     expect(screen.getByText(/^Tue Nov 10( 2026)? 10:00-11:00 AM$/)).toBeInTheDocument();
   });
 
-  it("puts the filter in an open Filters disclosure, and the list actions and view switch above the results", async () => {
+  it("puts the filter in a closed Filters disclosure, and the list actions and view switch above the results", async () => {
     stubFetch([]);
     renderList();
     await screen.findByText("Sample listed");
     const form = screen.getByRole("form", { name: "Filter activities" });
     const details = form.closest("details")!;
-    expect(details).toHaveAttribute("open");
+    expect(details).not.toHaveAttribute("open");
     expect(details.querySelector("summary")).toHaveTextContent("Filters");
     expect(details.querySelector("summary")).toHaveTextContent("No filters");
     const actions = screen.getByRole("region", { name: "List actions" });
@@ -88,9 +88,11 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     const form = screen.getByRole("form", { name: "Filter activities" });
     await user.type(within(form).getByLabelText("Search for"), "launch");
     await user.selectOptions(within(form).getByLabelText("Category"), "Sample category");
-    await user.selectOptions(within(form).getByLabelText("HQ Tags"), ["Sample tag", "Sample other tag"]);
+    const tagGroup = within(form).getByRole("group", { name: "HQ Tags" });
+    await user.click(within(tagGroup).getByLabelText("Sample other tag"));
+    await user.click(within(tagGroup).getByLabelText("Sample tag"));
     await user.click(within(form).getByLabelText("My Watchlist Only"));
-    await user.click(within(form).getByRole("button", { name: "Search" }));
+    await user.click(within(form).getByRole("button", { name: "Apply filters" }));
     await waitFor(() => expect(listCalls(calls)).toHaveLength(2));
     expect(qOf(listCalls(calls)[1]!.url)).toMatchObject({ display: "my_watchlist", corporate: null, filter: { quickSearch: "launch", categoryId: 32, keywordIds: [1, 2] } });
     const put = calls.find((c) => c.url === "/calendar/api/list/preferences" && c.init?.method === "PUT")!;
@@ -108,7 +110,7 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     const form = screen.getByRole("form", { name: "Filter activities" });
     await user.type(within(form).getByLabelText("From"), "2026-11-20");
     await user.type(within(form).getByLabelText("To"), "2026-11-10");
-    await user.click(within(form).getByRole("button", { name: "Search" }));
+    await user.click(within(form).getByRole("button", { name: "Apply filters" }));
     expect(await within(form).findByRole("alert")).toHaveTextContent("From must be on or before To.");
     expect(listCalls(calls)).toHaveLength(1);
   });
@@ -222,7 +224,7 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     const user = userEvent.setup();
     const form = screen.getByRole("form", { name: "Filter activities" });
     await user.type(within(form).getByLabelText("Search for"), "launch");
-    await user.click(within(form).getByRole("button", { name: "Search" }));
+    await user.click(within(form).getByRole("button", { name: "Apply filters" }));
     await waitFor(() => expect(listCalls(calls)).toHaveLength(2));
     expect(qOf(listCalls(calls)[1]!.url)).toMatchObject({ lookAhead: "all", corporate: null, filter: { quickSearch: "launch" } });
   });
@@ -256,12 +258,13 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     const form = screen.getByRole("form", { name: "Filter activities" });
     const category = within(form).getByLabelText<HTMLSelectElement>("Category");
     expect(category.selectedOptions[0]).toHaveTextContent("(no longer available)");
-    const tags = within(form).getByLabelText<HTMLSelectElement>("HQ Tags");
-    expect([...tags.selectedOptions].map((o) => o.textContent)).toEqual(["Sample tag", "(no longer available)", "(no longer available)"]);
+    const tags = within(form).getByRole("group", { name: "HQ Tags" });
+    const checked = () => within(tags).getAllByRole<HTMLInputElement>("checkbox").filter((c) => c.checked);
+    expect(checked().map((c) => c.labels![0]!.textContent)).toEqual(["Sample tag", "(no longer available)", "(no longer available)"]);
     const user = userEvent.setup();
     await user.selectOptions(category, "Any category");
-    await user.deselectOptions(tags, tags.selectedOptions[1]!);
-    await user.click(within(form).getByRole("button", { name: "Search" }));
+    await user.click(checked()[1]!);
+    await user.click(within(form).getByRole("button", { name: "Apply filters" }));
     await waitFor(() => expect(listCalls(calls)).toHaveLength(2));
     expect(qOf(listCalls(calls)[1]!.url)).toMatchObject({ filter: { categoryId: null, keywordIds: [1, 77777] } });
   });

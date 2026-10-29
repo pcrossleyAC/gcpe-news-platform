@@ -3,6 +3,7 @@ import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { formatWhen } from "../../format/dates";
+import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { SITE_LOG_AREAS, type SiteLogArea, type SiteLogEntry } from "./types";
 
@@ -66,7 +67,8 @@ export function LogScreen(): React.JSX.Element {
       ) : entries.length === 0 ? (
         <p>No log entries yet.</p>
       ) : (
-        <table>
+        <TableScroll label="Website log">
+        <table className="gcpe-table">
           <caption>Website log</caption>
           <thead>
             <tr>
@@ -87,6 +89,7 @@ export function LogScreen(): React.JSX.Element {
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
+import { TableScroll } from "../../../shared/TableScroll";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 
@@ -89,7 +90,8 @@ export function DeadLettersScreen(): React.JSX.Element {
       ) : (
         <>
           {truncated && <p>Only the 200 most recent are listed.</p>}
-          <table>
+          <TableScroll label="Undelivered events">
+          <table className="gcpe-table">
             <caption>Undelivered events, newest first</caption>
             <thead>
               <tr>
@@ -129,6 +131,7 @@ export function DeadLettersScreen(): React.JSX.Element {
               ))}
             </tbody>
           </table>
+          </TableScroll>
         </>
       )}
     </div>

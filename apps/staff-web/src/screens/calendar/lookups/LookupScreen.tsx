@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
+import { TableScroll } from "../../../shared/TableScroll";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 import { withArticle, type LookupDetail, type LookupRowView, type LookupSummary } from "./types";
@@ -141,7 +142,8 @@ export function LookupScreen(): React.JSX.Element {
           {m}
         </p>
       ))}
-      <table>
+      <TableScroll label={lookup.label}>
+      <table className="gcpe-table">
         <caption>{lookup.label}</caption>
         <thead>
           <tr>
@@ -180,6 +182,7 @@ export function LookupScreen(): React.JSX.Element {
           ))}
         </tbody>
       </table>
+      </TableScroll>
       {lookup.editable && (
         <>
           <h2>Add {withArticle(lookup.singular)}</h2>

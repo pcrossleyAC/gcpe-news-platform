@@ -266,6 +266,7 @@ test.describe("item 16: axe across every staff screen", () => {
     await expect(page.locator(".gcpe-activity-title")).toHaveCount(6);
     for (const name of ["Review selected (0)", "Clear LA Status"]) await expect(page.getByRole("button", { name })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: `Select HLTH-${f.ids.A}` })).toBeVisible();
+    await page.getByText("Saved views", { exact: true }).click();
     await expect(page.getByRole("region", { name: "Corporate Queries" })).toBeVisible();
     await expect(page.getByRole("group", { name: "Look Ahead filter" })).toBeVisible();
     await expectNoSeriousA11yViolations(page, "the Calendar list as an HQ Administrator");

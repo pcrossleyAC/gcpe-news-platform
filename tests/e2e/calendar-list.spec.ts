@@ -13,6 +13,8 @@ import { activityInput, listFixture, listUrl, MAY, sessionOf, useCookie, type Ke
 import { apiCall, baseUrl, expectNoSeriousA11yViolations } from "./playwright-support";
 
 const titles = (page: Page) => page.locator(".gcpe-activity-title");
+/** My Queries and Corporate Queries sit in the closed "Saved views" disclosure. */
+const openSavedViews = (page: Page) => page.getByText("Saved views", { exact: true }).click();
 const q = (query: object) => encodeURIComponent(JSON.stringify(query));
 
 /** The activity ids the list shows, in order, read from each row's "MIN-Id". */
@@ -81,10 +83,12 @@ test.describe("the Calendar list: journeys", () => {
     await page.goto(listUrl({ filter: { ...MAY, quickSearch: f.tag } }));
     await expect(titles(page)).toHaveCount(3);
     const queries = page.getByRole("region", { name: "My Queries" });
+    await openSavedViews(page);
     await queries.getByLabel("Name for this filter").fill(`Sample query ${f.tag}`);
     await queries.getByRole("button", { name: "Save query" }).click();
     await expect(queries.getByRole("status")).toHaveText(`Saved the query “Sample query ${f.tag}”.`);
     await page.goto(`${baseUrl()}/hub/calendar`);
+    await openSavedViews(page);
     await queries.getByRole("button", { name: `Sample query ${f.tag}`, exact: true }).click();
     await expect(titles(page)).toHaveText([`Vis A ${f.tag}`, `Vis B ${f.tag}`, `Vis E ${f.tag}`]);
     await queries.getByRole("button", { name: `Rename Sample query ${f.tag}` }).click();
@@ -146,18 +150,19 @@ test.describe("the Calendar list: journeys", () => {
       [h, "changed"],
     ]);
 
-    await page.getByLabel("Days ahead").fill("0");
+    await page.getByLabel("Days ahead (Clear LA Status)").fill("0");
     await page.getByRole("button", { name: "Clear LA Status" }).click();
     await expect(page.getByText(/^Cleared the LA status of \d+ activit(y|ies)\.$/)).toBeVisible();
 
     const corp = page.getByRole("region", { name: "Corporate Queries" });
+    await openSavedViews(page);
     await corp.getByLabel("Show all").check();
-    await corp.getByRole("button", { name: "Search" }).click();
-    await expect(corp.getByText("Showing a corporate query.")).toBeVisible();
+    await corp.getByRole("button", { name: "Run corporate query" }).click();
+    await expect(page.getByText("Showing a corporate query.")).toBeVisible();
     await expect(page.getByText(/^Showing \d+ of \d+ activit(y|ies)\.$/)).toBeVisible();
     await expectNoSeriousA11yViolations(page, "a corporate query");
-    await corp.getByRole("button", { name: "Back to the filter" }).click();
-    await expect(corp.getByText("Showing a corporate query.")).toHaveCount(0);
+    await page.getByRole("button", { name: "Back to the filter" }).click();
+    await expect(page.getByText("Showing a corporate query.")).toHaveCount(0);
 
     await page.goto(listUrl({ filter: { ...MAY, quickSearch: f.tag } }));
     await expect(titles(page)).toHaveCount(6);

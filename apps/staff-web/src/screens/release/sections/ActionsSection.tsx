@@ -14,6 +14,7 @@ import { useSaveQueue, withVersion } from "../saveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
 import { wallClockNowMinute } from "../timezone";
+import { dateTimeText } from "../../calendar/list/dates";
 
 /** Schedule's field error for a time that isn't in the future. */
 export const PAST_SCHEDULE = "Choose a time in the future, or use Publish now.";
@@ -343,6 +344,11 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
             validate={futureProblem}
             error={scheduleError}
           />
+          <p className="gcpe-hint gcpe-release-editor__planned-note">
+            {view.publishAt && view.status === "approved"
+              ? `Planned in Publish settings: ${dateTimeText(view.publishAt, timeZone)}. That's only a plan; the time you confirm here is the one that's committed.`
+              : "The time you confirm here is the one that's committed. (A planned publish date in Publish settings is only a plan.)"}
+          </p>
           <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue || unsavedBlockers.length > 0} isPending={section.saving}>
             Confirm schedule
           </Button>

@@ -78,6 +78,22 @@ describe("UsersScreen", () => {
     expect(admin.closest("label")!.querySelector("strong")).toHaveTextContent("Core.Admin");
   });
 
+  it("shows a Calendar role read-only in the Roles column, with the way to Calendar access", async () => {
+    const CAL: UserView = { id: "cal-1", email: "cal@x.invalid", displayName: "Cal", isActive: true, signInMethod: "local", roles: [] };
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, CAL]);
+      if (url === "/core/api/calendar-access") return jsonResponse(200, [{ id: "cal-1", email: "cal@x.invalid", displayName: "Cal", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"] }]);
+      if (url === "/core/api/organizations") return jsonResponse(200, [{ key: "health", displayName: "Health", abbreviation: "HLTH", isActive: true, isHq: false, isPublic: true }]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const table = await screen.findByRole("table", { name: "Staff users" });
+    const row = within(table).getByRole("rowheader", { name: "Cal" }).closest("tr")!;
+    expect(await within(row).findByText(/^Calendar: Editor \(HLTH\)/)).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: "manage in Calendar access" })).toHaveAttribute("href", "/calendar-access");
+    expect(within(row).queryByText("None")).toBeNull();
+  });
+
   it("lists users in a table, filters them by name, email or role, and opens one user's editor in place", async () => {
     stubSession([], (url, init) => {
       if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);

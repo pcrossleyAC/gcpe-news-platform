@@ -2781,3 +2781,391 @@ fieldset.gcpe-org-contact {
 html:has(.gcpe-activity form > .gcpe-actions) {
   scroll-padding-bottom: 5rem;
 }
+
+/* Batch 4 -------------------------------------------------------------------------------- */
+
+/* Every plain link is a BC link: the link blue, underlined, a brighter blue and a heavier
+ * underline on hover (the design system's Link hover), the focus ring the buttons use. Zero
+ * specificity (:where, states included), so the side menu, the tabs, the button-styled links and
+ * the design system's own links keep their looks, hover included.
+ * Visited links stay the link blue: staff revisit the same records all day, and purple would
+ * only say "you opened this before". */
+:where(a) {
+  color: var(--typography-color-link, #255a90);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+:where(a:visited) {
+  color: var(--typography-color-link, #255a90);
+}
+:where(a:hover) {
+  color: var(--surface-color-border-active, #2e5dd7);
+  text-decoration-thickness: 2px;
+}
+:where(a:focus-visible) {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+  border-radius: 2px;
+}
+
+/* A table whose rows become cards of "Label: value" lines on a phone (as the Calendar's do):
+ * the first cell (.gcpe-table__primary) leads each card, a select-box column keeps only its
+ * "select all" box above the cards. */
+@media (max-width: 40rem) {
+  .gcpe-table--reflow,
+  .gcpe-table--reflow tbody,
+  .gcpe-table--reflow tr,
+  .gcpe-table--reflow td {
+    display: block;
+    width: auto;
+    min-width: 0;
+  }
+  .gcpe-table--reflow thead,
+  .gcpe-table--reflow thead tr {
+    display: flex;
+    align-items: center;
+  }
+  .gcpe-table--reflow thead th:not(.gcpe-table__select) {
+    display: none;
+  }
+  .gcpe-table--reflow thead th.gcpe-table__select {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 0;
+    padding: 0 0 0.25rem;
+  }
+  .gcpe-table--reflow thead th.gcpe-table__select::after {
+    content: "Select all on this page";
+    content: "Select all on this page" / "";
+    font-weight: 400;
+  }
+  .gcpe-table--reflow tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.125rem 0.75rem;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+  }
+  .gcpe-table--reflow tbody tr:first-child {
+    border-top: 2px solid var(--surface-color-border-default, #d8d8d8);
+  }
+  .gcpe-table--reflow tbody tr:has(> td.gcpe-table__select) {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .gcpe-table--reflow tbody td {
+    grid-column: -2 / -1;
+    border: 0;
+    padding: 0;
+  }
+  .gcpe-table--reflow tbody td.gcpe-table__select {
+    grid-column: 1;
+    grid-row: 1 / span 4;
+    padding-top: 0.125rem;
+  }
+  .gcpe-table--reflow tbody td.gcpe-table__primary {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+  .gcpe-table--reflow tbody td[data-label]::before {
+    content: attr(data-label) ": ";
+    content: attr(data-label) ": " / "";
+    color: var(--typography-color-secondary, #474543);
+  }
+}
+.gcpe-table__select input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  vertical-align: middle;
+}
+
+/* The filled danger button, for a native <button> kept for aria-busy (organization Deactivate). */
+.gcpe-native-button--danger {
+  background: var(--surface-color-primary-danger-button-default, #ce3e39);
+  box-shadow: none;
+  color: var(--typography-color-primary-invert, #fff);
+}
+.gcpe-native-button--danger:hover {
+  background: var(--surface-color-primary-danger-button-hover, #a2312d);
+}
+
+/* Calendar list, batch 4: the filter's groups are headed lists, not boxes inside the box. */
+.gcpe-calendar-filter__group {
+  border: 0;
+  padding: 0;
+  gap: 0.375rem;
+}
+.gcpe-calendar-filter__group > legend {
+  padding: 0;
+  margin-bottom: 0.375rem;
+  font: var(--typography-bold-small-body);
+}
+.gcpe-calendar-filter__tags {
+  grid-column: span 2;
+}
+.gcpe-calendar-filter__tag-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.25rem 1rem;
+}
+/* A long tag list scrolls inside its own box rather than pushing the other filters down. */
+.gcpe-calendar-filter__tag-list:has(> :nth-child(13)) {
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+}
+@media (max-width: 40rem) {
+  .gcpe-calendar-filter__tags {
+    grid-column: auto;
+  }
+}
+
+/* Saved views: My Queries and Corporate Queries side by side when there's room. */
+.gcpe-saved-views__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem 2.5rem;
+}
+.gcpe-saved-views__part > h2 {
+  margin: 0 0 0.25rem;
+  font: var(--typography-bold-h5);
+}
+.gcpe-saved-views__part > .gcpe-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+}
+.gcpe-my-queries__list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+.gcpe-my-queries__list > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+}
+.gcpe-my-queries__list > li > .bcds-react-aria-Button:first-child {
+  margin-right: auto;
+  font-weight: 700;
+}
+.gcpe-corporate-query {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem 2rem;
+}
+.gcpe-corporate-query > .gcpe-actions {
+  flex-basis: 100%;
+}
+.gcpe-corporate-query__days {
+  align-items: center;
+}
+.gcpe-corporate-query__days > input[type="number"] {
+  width: 4.5rem;
+}
+.gcpe-corporate-query__statuses {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 0.25rem 1.5rem;
+}
+
+/* Look Ahead filter and Columns: one quiet line of view settings above the list's actions. */
+.gcpe-calendar-viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 2rem;
+  margin: 0 0 0.25rem;
+}
+.gcpe-inline-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.gcpe-inline-choice > legend {
+  float: left;
+  margin-right: 0.25rem;
+  padding: 0;
+  font: var(--typography-bold-small-body);
+}
+.gcpe-inline-choice > .gcpe-check {
+  align-items: center;
+}
+.gcpe-columns > summary {
+  cursor: pointer;
+  min-height: 24px;
+  color: var(--typography-color-link, #255a90);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.gcpe-columns > fieldset {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+}
+.gcpe-columns > fieldset > legend {
+  font: var(--typography-bold-small-body);
+  padding: 0 0.25rem;
+}
+.gcpe-columns > fieldset > div {
+  display: flex;
+  align-items: center;
+}
+
+/* A running corporate query: said above the list, with the way back beside it. */
+.gcpe-corporate-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  background: var(--support-surface-color-info, #f7f9fc);
+  border: 1px solid var(--support-border-color-info, #053662);
+  border-radius: var(--layout-border-radius-medium, 4px);
+}
+.gcpe-corporate-banner > p {
+  margin: 0;
+}
+
+/* The list's actions on the left, List / Month / Week held at the top right beside them; the
+ * export set wraps under the actions, never under the switch. */
+.gcpe-calendar-toolbar {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.gcpe-calendar-toolbar > .gcpe-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.gcpe-calendar-toolbar > .gcpe-segmented {
+  flex: none;
+}
+@media (max-width: 40rem) {
+  .gcpe-calendar-toolbar {
+    flex-wrap: wrap;
+  }
+}
+.gcpe-calendar-list > .bcds-Inline-Alert {
+  margin-bottom: 1rem;
+}
+
+/* A number in a row of fields (an order) needs a few digits, not a full field's width. */
+.gcpe-field-row > .gcpe-field:has(> input[type="number"]) {
+  flex: 0 0 7rem;
+  min-width: 0;
+}
+
+/* Release editor: the planned date and the Schedule panel each say how they relate. */
+.gcpe-release-editor__planned-note {
+  margin: 0.25rem 0 0;
+  max-width: 65ch;
+}
+.gcpe-release-editor__scheduler > .gcpe-release-editor__planned-note {
+  margin: 0.5rem 0 0.75rem;
+}
+
+/* New release: the error summary is a heading and a list of links, set off from the form. */
+.gcpe-error-summary > h2 {
+  margin: 0 0 0.5rem;
+  font: var(--typography-bold-h5);
+}
+.gcpe-error-summary > ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+/* Each problem's link a full 24px target, apart from the next (WCAG 2.5.8). */
+.gcpe-error-summary li + li {
+  margin-top: 0.25rem;
+}
+.gcpe-error-summary li > a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 0.125rem 0;
+}
+.gcpe-error-summary:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+}
+
+/* Search: an empty result says what was searched, and the way out of the filters. */
+.gcpe-search__empty > p {
+  margin: 0.5rem 0;
+  max-width: 65ch;
+}
+.gcpe-search .gcpe-release-row__headline {
+  max-width: 75ch;
+}
+/* New release: a field's own error under it, in the design system's field-error size, and a
+ * native select marked invalid gets the error border its text fields get. */
+.gcpe-new-release .gcpe-field-error {
+  margin: -0.5rem 0 0;
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-danger, #ce3e39);
+}
+.gcpe-shell__main select[aria-invalid="true"] {
+  border-color: var(--support-border-color-danger, #ce3e39);
+}
+
+/* Inside a card (a release editor part, a .gcpe-card, a user's editor), a group of fields is a
+ * headed list, not a box in the box: no border, the legend a small heading, space around it. */
+:is(.gcpe-release-editor section, .gcpe-release-editor aside, .gcpe-card, .gcpe-users__editor) :is(.gcpe-fieldset, .gcpe-options) {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0.5rem 0 1rem;
+}
+:is(.gcpe-release-editor section, .gcpe-release-editor aside, .gcpe-card, .gcpe-users__editor) :is(.gcpe-fieldset, .gcpe-options) > legend {
+  padding: 0;
+  margin-bottom: 0.5rem;
+  font: var(--typography-bold-small-body);
+}
+
+/* Users: a Calendar role, read from Calendar access, under the staff roles. */
+.gcpe-users__calendar {
+  margin: 0.25rem 0 0;
+  font: var(--typography-regular-small-body);
+}
+.gcpe-badge-list + .gcpe-users__calendar {
+  margin-top: 0.375rem;
+}
+
+/* Subscriber preferences: the lists under their categories, each category a small heading with
+ * its lists in columns, inside the one Lists box (not a box per category). */
+.gcpe-list-picker > .gcpe-options {
+  border: 0;
+  border-radius: 0;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.gcpe-list-picker > .gcpe-options > legend {
+  padding: 0;
+  margin-bottom: 0.375rem;
+  font: var(--typography-bold-small-body);
+}
+.gcpe-list-picker > .gcpe-options + .gcpe-options {
+  margin-top: 1rem;
+}
+.gcpe-check-row + .gcpe-list-picker {
+  margin-top: 0.75rem;
+}
+/* Deactivate (and Activate) sit apart from Save preferences: a different act. */
+.gcpe-subscriber__status-actions {
+  margin: 1rem 0;
+}

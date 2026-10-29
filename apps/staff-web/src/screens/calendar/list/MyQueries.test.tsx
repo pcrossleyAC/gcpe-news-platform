@@ -34,6 +34,8 @@ describe("My Queries and the watchlist (spec addendum §8.1)", () => {
     const user = userEvent.setup();
     await user.click(await within(region).findByRole("button", { name: "Sample one" }));
     await waitFor(() => expect(qOf(listCalls(calls).at(-1)!.url)).toMatchObject({ filter: { categoryId: 32 }, corporate: null }));
+    // The closed Saved views names the query the list is running.
+    await waitFor(() => expect(region.closest("details")!.querySelector("summary")).toHaveTextContent("Running “Sample one”"));
     expect(within(region).getByRole("button", { name: "Sample two" })).toBeDisabled();
     expect(within(region).getByText("This query can no longer be read. Delete it.")).toBeInTheDocument();
 

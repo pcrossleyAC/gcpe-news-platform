@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -179,6 +179,20 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     expect(alerts.some((a) => /choose at least one ministry/i.test(a.textContent ?? ""))).toBe(true);
   });
 
+  it("says what to fix in plain words, in a summary that links each problem to its field", async () => {
+    stubFetch();
+    renderScreen();
+    await screen.findByText("Legislature");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Create release" }));
+    const summary = await screen.findByRole("alert", { name: "Fix these to create" });
+    expect(summary).toHaveFocus();
+    expect(within(summary).getByRole("link", { name: "Choose a page title." })).toHaveAttribute("href", "#new-release-page-title");
+    expect(within(summary).getByRole("link", { name: "Enter a headline." })).toHaveAttribute("href", "#new-release-headline");
+    expect(summary).not.toHaveTextContent(/String must contain/);
+    expect(screen.getByLabelText("Headline", { exact: false })).toHaveAttribute("id", "new-release-headline");
+  });
+
   // Fix round 1, finding 1: only NRMS.Editor sees the form at all.
   it("a Viewer gets a permission message instead of the form, with a link back", async () => {
     stubFetch({ roles: ["NRMS.Viewer"] });
@@ -233,7 +247,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
       }),
     );
     renderScreen();
-    expect(await screen.findByText("No page types are set up — run the importer or add them.")).toBeInTheDocument();
+    expect(await screen.findByText("No page titles are set up yet. An administrator adds them under Release page titles.")).toBeInTheDocument();
   });
 
   it("an Editor still sees the real form (no permission message)", async () => {
