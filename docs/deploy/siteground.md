@@ -846,9 +846,11 @@ URL, `actionLabel` → action label (empty when missing or over the Hub's 40-cha
 rule, so the site shows its default), `facebookPostUri` (empty when null), `justify` (`left` when
 missing) and the image, stored on the slide and as `slides/<sha256>.<png|jpg>` in NRMS's file store.
 A slide the Hub would refuse is reported under `refused` and left out, the rest imported: an image
-that isn't strict base64, isn't a PNG or JPEG by its bytes, doesn't match its `imageType`, or is
-over the Hub's 2 MiB limit; an action or Facebook URL that isn't http(s); a headline or summary
-over 255 characters; a missing or duplicate key.
+that isn't strict base64, isn't a PNG or JPEG by its bytes, doesn't match its `imageType`
+(`image/jpg` counts as `image/jpeg`), or is over the Hub's 2 MiB limit (base64 text longer than a
+2 MiB image needs is refused before it is decoded); an action or Facebook URL that isn't http(s); a headline or summary
+over 255 characters; a missing or duplicate key. An answer over 20 MB stops the run before anything
+is written.
 
 **How it publishes.** Carousels are `live` / `next` / `past` (no draft). The imported carousel goes
 live through the Hub's own switch-over — what "Make live now" runs: the old live carousel becomes
@@ -860,10 +862,13 @@ The one difference from the Hub: the switch-over doesn't trim past carousels to 
 does), so `--remove` can always restore the carousel it replaced. A staff-scheduled `next`
 carousel is left alone and reported; it still goes live at its time.
 
-**Staff edits are protected.** If the live carousel has staff edits (any non-System `carousel` line
-in the site log since it was created — anything made in the Hub counts), the tool refuses, exits
+**Staff edits are protected.** If the live carousel has staff edits (a non-System `carousel` line
+in the site log naming that carousel — anything made in the Hub counts; editing a scheduled next
+carousel doesn't), the tool refuses, exits
 `1`, and the report's `write.replaces` lists the carousel and slides it would replace and
 `write.staffEdits` the edits; pass `--replace` to replace it anyway (`--remove` puts it back).
+Carousel log lines name their carousel from migration `0021` on; an older line that doesn't still
+counts, and the refusal then says "a carousel was edited in the Hub since…".
 A carousel left by the SQL importer and never edited is replaced without asking.
 
 **Re-runs.** Slides are matched by news.gov key (`public_import_slides`, migration `0020`): a re-run
@@ -879,15 +884,17 @@ tool writes the images where the running stack serves `/files` from: `NRMS_STORA
 else `<DATA_DIR>/storage`, with `DATA_DIR` defaulting to `~/gcpe-data` — on boxs.ca
 `~/gcpe-data/storage`, in the SSH user's home, the same home the stack runs under (it refuses to
 run if that folder doesn't exist). If Site Tools
-sets `DATA_DIR` or `NRMS_STORAGE_DIR`, export the same value first. Image URLs in the event carry
-the public site's origin, as the stack's own `PUBLIC_FILES_BASE` does, so set
-`SITE_PUBLIC_SITE_URL` to the value Site Tools has:
+sets `DATA_DIR` or `NRMS_STORAGE_DIR`, export the same value first (only the stack's names count:
+a bare `STORAGE_DIR` or `PUBLIC_FILES_BASE` is ignored, with a warning). Image URLs in the event
+carry the public site's origin, as the stack's own `NRMS_PUBLIC_FILES_BASE` does: copy
+`SITE_PUBLIC_SITE_URL` from Site Tools if it is set there; otherwise use `https://boxs.ca`. The
+commands are bash (SiteGround's SSH shell):
 
 ```sh
 ssh boxs
 TOOL=~/www/boxs.ca/public_html/.nodeapp/latest/app_source/tools/nrms-import-public-slides.mjs   # `latest` is the live release
 read -rs -p 'NRMS_DATABASE_URL: ' DATABASE_URL && export DATABASE_URL && echo
-export SITE_PUBLIC_SITE_URL=https://boxs.ca
+export SITE_PUBLIC_SITE_URL=https://boxs.ca   # or Site Tools' value, if set there
 ls -d ~/gcpe-data/storage                     # NRMS's file store (served at /files)
 /usr/local/bin/node-24 "$TOOL" --dry-run      # fetch once, compare with the database, write nothing
 /usr/local/bin/node-24 "$TOOL"                # import and publish (refuses if staff edited the carousel)
@@ -910,12 +917,15 @@ delivers the snapshot and the home page shows the slides; check
 This deletes the imported carousel and makes the carousel it replaced live again exactly as it
 was (same slides, ids, version and timestamps), then emits the same snapshot the Hub would, so the
 site shows what it showed before; with no carousel before the import, the site has none again. If
+the carousel it replaced is gone (a later switch-over trimmed it), `--remove` refuses rather than
+leave the site with no carousel; `--replace` removes it anyway. The restore is all or nothing: if
+the old carousel can't be made live, nothing changes. If
 staff edited the imported carousel since, `--remove` refuses without `--replace` (their edits go
 with it). If staff have since made another carousel live, `--remove` only deletes the imported
 (now past) one and leaves the live carousel alone. Image files stay in the store
 (content-addressed, harmless, as the Hub leaves them).
 
-From a checkout, the same command is `DATABASE_URL=... STORAGE_DIR=... PUBLIC_FILES_BASE=...
+From a checkout, the same command is `DATABASE_URL=... NRMS_STORAGE_DIR=... NRMS_PUBLIC_FILES_BASE=...
 npm run nrms:import-public-slides -- --dry-run`. Outside the stack, an explicit `EVENT_SUBSCRIBERS`
 (or `NRMS_EVENT_SUBSCRIBERS`) replaces the stack's own NRMS → News API route.
 

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { localStore } from "@gcpe/storage";
 import { fetchPublicSlides, runPublicSlides } from "./public-slides";
-import { filesBaseFromEnv, parsePublicSlidesArgs, storageDirFromEnv, subscribersFromEnv } from "./public-slides-options";
+import { bareEnvWarnings, filesBaseFromEnv, parsePublicSlidesArgs, storageDirFromEnv, subscribersFromEnv } from "./public-slides-options";
 import type { SlideImageFiles } from "../website/slide-images";
 
 /** NRMS's migrations: beside the source in a checkout, or `migrations/nrms` beside the bundled tool in the SiteGround artifact. */
@@ -27,11 +27,12 @@ try {
   const writing = !options.dryRun;
   let files: SlideImageFiles | null = null;
   if (url) {
+    for (const w of bareEnvWarnings(process.env)) console.error(`[import:public-slides] warning: ${w}`);
     const storageDir = storageDirFromEnv(process.env);
     const filesBase = filesBaseFromEnv(process.env);
     if (writing) {
       if (!existsSync(storageDir)) throw new Error(`NRMS's file store ${storageDir} does not exist: set NRMS_STORAGE_DIR (or DATA_DIR) to what the running stack uses`);
-      if (filesBase === null) throw new Error("set SITE_PUBLIC_SITE_URL (e.g. https://boxs.ca) or PUBLIC_FILES_BASE, as the running stack has it, so slide image URLs match the Hub's");
+      if (filesBase === null) throw new Error("set SITE_PUBLIC_SITE_URL (e.g. https://boxs.ca) or NRMS_PUBLIC_FILES_BASE, as the running stack has it, so slide image URLs match the Hub's");
     }
     files = { store: localStore(storageDir, "/files/"), filesBase: filesBase ?? "" };
     console.error(`[import:public-slides] file store ${storageDir}, image URLs under ${filesBase ?? "(unset)"}/files/`);

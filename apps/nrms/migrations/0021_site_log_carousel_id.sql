@@ -1,0 +1,1 @@
+ALTER TABLE "site_log" ADD COLUMN "carousel_id" uuid;

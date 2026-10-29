@@ -17,13 +17,15 @@ import {
   fetchPublicSlides,
   IMPORT_LOG_TEXT,
   mapPublicSlides,
+  MAX_BASE64_IMAGE_CHARS,
+  MAX_RESPONSE_BYTES,
   PUBLIC_SLIDES_USER_AGENT,
   runPublicSlides,
   STACK_SITE_SUBSCRIBERS,
   type FetchedSlides,
   type PublicSlidesOptions,
 } from "./public-slides";
-import { filesBaseFromEnv, parsePublicSlidesArgs, storageDirFromEnv, subscribersFromEnv } from "./public-slides-options";
+import { bareEnvWarnings, filesBaseFromEnv, parsePublicSlidesArgs, storageDirFromEnv, subscribersFromEnv } from "./public-slides-options";
 
 /** news.gov's GET /api/Slides as recorded 2026-10-28, images swapped for tiny generated PNG/JPEGs. */
 const FIXTURE = JSON.parse(readFileSync(new URL("../../test/fixtures/public-slides.json", import.meta.url), "utf8")) as Record<string, unknown>[];
@@ -128,6 +130,23 @@ describe("import:public-slides — mapping and validation", () => {
     expect(refused[3]!.reasons).toEqual(["duplicate key (an earlier slide has it)"]);
   });
 
+  it("refuses an image whose base64 text is too long before decoding it; the rest still import", async () => {
+    const list = fixture();
+    list[0]!.image = "A".repeat(MAX_BASE64_IMAGE_CHARS + 1);
+    const { slides, refused } = await mapPublicSlides(list);
+    expect(slides).toHaveLength(3);
+    expect(refused[0]!.reasons).toEqual([`image's base64 text is ${MAX_BASE64_IMAGE_CHARS + 1} characters, over the ${MAX_BASE64_IMAGE_CHARS} a 2 MiB image needs`]);
+    expect(MAX_BASE64_IMAGE_CHARS).toBe(Math.ceil((MAX_SITE_IMAGE_BYTES * 4) / 3) + 8);
+  });
+
+  it("accepts imageType image/jpg as image/jpeg", async () => {
+    const list = fixture();
+    list[1]!.imageType = "image/jpg";
+    const { slides, refused } = await mapPublicSlides(list);
+    expect(refused).toEqual([]);
+    expect(slides[1]!.imageType).toBe("image/jpeg");
+  });
+
   it("decodeBase64Strict refuses what Buffer.from would silently skip", () => {
     expect(decodeBase64Strict("QUJD")?.toString()).toBe("ABC");
     expect(decodeBase64Strict("QU JD\n")?.toString()).toBe("ABC");
@@ -152,6 +171,9 @@ describe("import:public-slides — fetch, options and environment", () => {
     await expect(fetchPublicSlides("https://api.example", { fetchImpl: fake(200, "{}") })).rejects.toThrow(/not a list/);
     await expect(fetchPublicSlides("https://api.example", { fetchImpl: fake(200, "<html>") })).rejects.toThrow(/not JSON/);
     expect(calls).toHaveLength(5);
+    // A body over the cap is refused, whatever it holds.
+    await expect(fetchPublicSlides("https://api.example", { fetchImpl: fake(200, JSON.stringify(FIXTURE)), maxBytes: 1000 })).rejects.toThrow(/larger than 1000 bytes/);
+    expect(MAX_RESPONSE_BYTES).toBe(20 * 1024 * 1024);
   });
 
   it("parses flags and rejects unknown ones", () => {
@@ -171,6 +193,17 @@ describe("import:public-slides — fetch, options and environment", () => {
     expect(filesBaseFromEnv({ SITE_PUBLIC_SITE_URL: "https://boxs.ca/site" })).toBe("https://boxs.ca");
     expect(filesBaseFromEnv({ NRMS_PUBLIC_FILES_BASE: "https://files.example/", SITE_PUBLIC_SITE_URL: "https://boxs.ca" })).toBe("https://files.example");
     expect(filesBaseFromEnv({})).toBeNull();
+  });
+
+  it("uses only the stack's names (NRMS_STORAGE_DIR, NRMS_PUBLIC_FILES_BASE) and warns when a bare one differs", () => {
+    const env = { DATA_DIR: "/srv/data", STORAGE_DIR: "/elsewhere", PUBLIC_FILES_BASE: "https://other.example", SITE_PUBLIC_SITE_URL: "https://boxs.ca" };
+    expect(storageDirFromEnv(env)).toBe(join("/srv/data", "storage"));
+    expect(filesBaseFromEnv(env)).toBe("https://boxs.ca");
+    expect(bareEnvWarnings(env)).toEqual([
+      `STORAGE_DIR=/elsewhere is ignored (the stack reads NRMS_STORAGE_DIR); using ${join("/srv/data", "storage")}`,
+      "PUBLIC_FILES_BASE=https://other.example is ignored (the stack reads NRMS_PUBLIC_FILES_BASE); using https://boxs.ca",
+    ]);
+    expect(bareEnvWarnings({ DATA_DIR: "/srv/data", STORAGE_DIR: join("/srv/data", "storage") })).toEqual([]);
   });
 
   it("the default subscribers are the stack's own NRMS route for site.content.changed, and only that", () => {
@@ -422,6 +455,63 @@ describe("import:public-slides — the database", () => {
     expect(report.remove).toMatchObject({ action: "drop-past" });
     expect((await state()).carousels.map((c) => [c.id, c.state])).toEqual([[staffId, "live"]]);
     expect((await outbox()).length).toBe(eventsBefore); // nothing public changed
+  });
+
+  it("--remove refuses when the carousel it replaced was trimmed (the site would have none), unless --replace", async () => {
+    await hubLive(["Test slide"]);
+    await run({ replace: true });
+    const prev = (await tdb.pool.query("SELECT previous_live_id FROM public_import_carousel")).rows[0].previous_live_id as string;
+    await tdb.pool.query("DELETE FROM carousels WHERE id = $1", [prev]); // as a later switch-over's trim would
+    const before = { ...(await state()), events: (await outbox()).length };
+
+    const refused = await run({ remove: true });
+    expect(refused.failed).toBe(true);
+    expect(refused.remove).toMatchObject({ action: "refused" });
+    expect(refused.remove!.reason).toMatch(/no longer exists.*no carousel.*--replace/);
+    expect({ ...(await state()), events: (await outbox()).length }).toEqual(before);
+
+    const forced = await run({ remove: true, replace: true });
+    expect(forced.remove).toMatchObject({ action: "restore", restores: null });
+    expect((await state()).carousels).toEqual([]);
+  });
+
+  it("--remove rolls back if the carousel to restore can't be made live (the restore must touch exactly one row)", async () => {
+    await hubLive(["Test slide"]);
+    await run({ replace: true });
+    const prev = (await tdb.pool.query("SELECT previous_live_id FROM public_import_carousel")).rows[0].previous_live_id as string;
+    await tdb.pool.query("UPDATE carousels SET state = 'next', go_live_at = now() + interval '1 hour' WHERE id = $1", [prev]);
+    const before = { ...(await state()), events: (await outbox()).length };
+    await expect(run({ remove: true })).rejects.toThrow(/restore/);
+    expect({ ...(await state()), events: (await outbox()).length }).toEqual(before);
+  });
+
+  it("a staff-scheduled next carousel is not an edit of the live one: import and --remove go ahead", async () => {
+    await sqlImportedLive("From the SQL import");
+    const t = await dbClock(tdb.db);
+    await createNextCarousel(tdb.db, { goLiveAt: new Date(t.getTime() + 3_600_000).toISOString() }, editor, subs, TZ);
+    const imported = await run();
+    expect(imported.write).toMatchObject({ action: "create", staffEdits: [] });
+
+    // Staff edit the next carousel (a copy of the imported one) after the import.
+    const { next } = await import("../website/carousel").then((m) => m.getCarousels(tdb.db));
+    await saveCarousel(tdb.db, next!.id, { version: next!.version, slides: [hubSlide("Next week")] }, editor, subs, TZ, files);
+    const list = fixture();
+    list[0]!.headline = "Get vaccinated (updated)";
+    expect((await run({}, list)).write).toMatchObject({ action: "update" });
+    expect((await run({ remove: true })).remove).toMatchObject({ action: "restore", staffEdits: [] });
+  });
+
+  it("carousel log lines name their carousel; an older line without one still counts, with an accurate message", async () => {
+    const id = await hubLive(["Test slide"]);
+    const ids = (await tdb.pool.query("SELECT DISTINCT carousel_id FROM site_log WHERE area = 'carousel'")).rows.map((r) => r.carousel_id);
+    expect(ids).toEqual([id]);
+
+    await tdb.pool.query("TRUNCATE carousels, slides, site_log CASCADE");
+    await sqlImportedLive("From the SQL import");
+    await tdb.pool.query("INSERT INTO site_log (actor_id, actor_name, area, text) VALUES ($1, $2, 'carousel', 'Saved the live carousel')", [editor.id, editor.name]);
+    const report = await run();
+    expect(report.write).toMatchObject({ action: "refused" });
+    expect(report.write!.reason).toMatch(/^a carousel was edited in the Hub since the live carousel was created/);
   });
 
   it("refuses to empty the carousel when the source has nothing importable", async () => {

@@ -5,9 +5,9 @@ import { carousels, categoryFeatures, emergencyPins, newsReleases, siteLog, site
 import type { Actor } from "../releases/store";
 import { slideImageRef, type SlideImageFiles } from "./slide-images";
 
-/** Mirrors releases/store.ts's `writeLog`: actor, area and a length-capped line. */
-export async function writeSiteLog(tx: DbOrTx, actor: Actor, area: SiteLogArea, text: string): Promise<void> {
-  await tx.insert(siteLog).values({ actorId: actor.id, actorName: actor.name, area, text: text.slice(0, 500) });
+/** Mirrors releases/store.ts's `writeLog`: actor, area and a length-capped line; a `carousel` line names its carousel. */
+export async function writeSiteLog(tx: DbOrTx, actor: Actor, area: SiteLogArea, text: string, carouselId: string | null = null): Promise<void> {
+  await tx.insert(siteLog).values({ actorId: actor.id, actorName: actor.name, area, text: text.slice(0, 500), carouselId });
 }
 
 async function releaseKeyOf(tx: DbOrTx, releaseId: string | null): Promise<string | null> {

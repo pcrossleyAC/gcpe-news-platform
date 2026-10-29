@@ -520,6 +520,9 @@ export const siteLog = pgTable(
     actorName: text("actor_name").notNull(),
     area: text("area").$type<SiteLogArea>().notNull(),
     text: text("text").notNull(),
+    /** The carousel a `carousel` line is about (null before migration 0021, and for other areas).
+     * No foreign key: the log outlives deleted and trimmed carousels. */
+    carouselId: uuid("carousel_id"),
   },
   (t) => [
     index("site_log_at_idx").on(t.at.desc()),

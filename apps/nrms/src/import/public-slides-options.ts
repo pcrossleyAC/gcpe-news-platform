@@ -33,19 +33,31 @@ export function parsePublicSlidesArgs(argv: string[]): PublicSlidesOptions {
 /**
  * Where NRMS keeps (and the stack serves at /files) slide images, found as the stack finds it
  * (apps/stack/src/env.ts): NRMS_STORAGE_DIR, else `<DATA_DIR>/storage` with DATA_DIR defaulting
- * to ~/gcpe-data. A plain STORAGE_DIR (standalone NRMS) wins over both.
+ * to ~/gcpe-data. A bare STORAGE_DIR is not the stack's name for it and is ignored (see {@link bareEnvWarnings}).
  */
 export function storageDirFromEnv(env: NodeJS.ProcessEnv): string {
-  return env.STORAGE_DIR || env.NRMS_STORAGE_DIR || join(resolveDataDir(env), "storage");
+  return env.NRMS_STORAGE_DIR || join(resolveDataDir(env), "storage");
 }
 
-/** The origin slide image URLs carry, as the stack sets NRMS's PUBLIC_FILES_BASE: explicit, else the public site URL's origin. */
+/** The origin slide image URLs carry, as the stack sets NRMS's PUBLIC_FILES_BASE: NRMS_PUBLIC_FILES_BASE, else the public site URL's origin. */
 export function filesBaseFromEnv(env: NodeJS.ProcessEnv): string | null {
-  const explicit = env.PUBLIC_FILES_BASE ?? env.NRMS_PUBLIC_FILES_BASE;
+  const explicit = env.NRMS_PUBLIC_FILES_BASE;
   if (explicit !== undefined) return explicit.replace(/\/+$/, "");
   const site = env.SITE_PUBLIC_SITE_URL;
   if (!site) return null;
   return new URL(site).origin;
+}
+
+/** A bare STORAGE_DIR / PUBLIC_FILES_BASE (a standalone NRMS's names) that differs from what the stack's names give: ignored, and said so. */
+export function bareEnvWarnings(env: NodeJS.ProcessEnv): string[] {
+  const out: string[] = [];
+  const dir = storageDirFromEnv(env);
+  if (env.STORAGE_DIR && env.STORAGE_DIR !== dir) out.push(`STORAGE_DIR=${env.STORAGE_DIR} is ignored (the stack reads NRMS_STORAGE_DIR); using ${dir}`);
+  const base = filesBaseFromEnv(env);
+  if (env.PUBLIC_FILES_BASE !== undefined && env.PUBLIC_FILES_BASE.replace(/\/+$/, "") !== base) {
+    out.push(`PUBLIC_FILES_BASE=${env.PUBLIC_FILES_BASE} is ignored (the stack reads NRMS_PUBLIC_FILES_BASE); using ${base ?? "(unset)"}`);
+  }
+  return out;
 }
 
 /** NRMS's EVENT_SUBSCRIBERS as configured, else the stack's own (which is what boxs.ca runs). */

@@ -60,8 +60,11 @@ export interface FetchedSlides {
   body: unknown[];
 }
 
+/** The most of the Slides answer this reads (tonight's four slides were 0.66 MB); anything bigger stops the run. */
+export const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
+
 /** One GET of the public Slides list. Anything but a 2xx JSON list is an error (nothing is written). */
-export async function fetchPublicSlides(base: string, opts: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): Promise<FetchedSlides> {
+export async function fetchPublicSlides(base: string, opts: { fetchImpl?: typeof fetch; timeoutMs?: number; maxBytes?: number } = {}): Promise<FetchedSlides> {
   const url = base.replace(/\/+$/, "") + SLIDES_API_PATH;
   const res = await (opts.fetchImpl ?? fetch)(url, {
     headers: { "user-agent": PUBLIC_SLIDES_USER_AGENT, accept: "application/json" },
@@ -69,7 +72,29 @@ export async function fetchPublicSlides(base: string, opts: { fetchImpl?: typeof
   });
   if (res.status === 429) throw new Error(`the public API answered 429 Too Many Requests for ${url}; stopping`);
   if (!res.ok) throw new Error(`the public API answered ${res.status} for ${url}`);
-  const text = await res.text();
+  const max = opts.maxBytes ?? MAX_RESPONSE_BYTES;
+  const tooBig = () => new Error(`the public API's answer for ${url} is larger than ${max} bytes; stopping`);
+  if (Number(res.headers.get("content-length")) > max) {
+    await res.body?.cancel();
+    throw tooBig();
+  }
+  // Counted as it streams in, so an answer without (or lying in) Content-Length is capped too.
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  if (res.body) {
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel();
+        throw tooBig();
+      }
+      chunks.push(value);
+    }
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
   let body: unknown;
   try {
     body = JSON.parse(text);
@@ -113,6 +138,10 @@ export interface MappedSlides {
   warnings: SlideIssue[];
 }
 
+/** The longest base64 text a {@link MAX_SITE_IMAGE_BYTES} image can take (with a little slack for
+ * padding and line breaks); longer text is refused before it is scanned or decoded. */
+export const MAX_BASE64_IMAGE_CHARS = Math.ceil((MAX_SITE_IMAGE_BYTES * 4) / 3) + 8;
+
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
@@ -128,6 +157,7 @@ export async function checkPublicSlideImage(image: unknown, imageType: unknown):
     return imageType === null || imageType === undefined || imageType === "" ? { image: null, imageType: null } : { reason: `imageType is ${String(imageType)} but there is no image` };
   }
   if (typeof image !== "string") return { reason: "image is not a base64 string" };
+  if (image.length > MAX_BASE64_IMAGE_CHARS) return { reason: `image's base64 text is ${image.length} characters, over the ${MAX_BASE64_IMAGE_CHARS} a 2 MiB image needs` };
   const bytes = decodeBase64Strict(image);
   if (!bytes || bytes.length === 0) return { reason: "image is not valid base64" };
   if (bytes.length > MAX_SITE_IMAGE_BYTES) return { reason: `image is ${bytes.length} bytes, over the Hub's ${MAX_SITE_IMAGE_BYTES}-byte limit` };
@@ -137,7 +167,9 @@ export async function checkPublicSlideImage(image: unknown, imageType: unknown):
   } catch {
     return { reason: "image is not a JPEG or PNG (by its bytes)" };
   }
-  if (imageType !== sniffed) return { reason: `imageType is ${JSON.stringify(imageType ?? null)} but the bytes are ${sniffed}` };
+  // news.gov's own type names; image/jpg is a common alias of image/jpeg.
+  const declared = imageType === "image/jpg" ? "image/jpeg" : imageType;
+  if (declared !== sniffed) return { reason: `imageType is ${JSON.stringify(imageType ?? null)} but the bytes are ${sniffed}` };
   return { image: bytes, imageType: sniffed };
 }
 
@@ -211,6 +243,8 @@ export interface StaffEdit {
   at: string;
   by: string;
   text: string;
+  /** The carousel the log line names; null for a line from before migration 0021, which doesn't say. */
+  carouselId: string | null;
 }
 
 export type ImportAction = "create" | "update" | "unchanged" | "refused";
@@ -246,21 +280,40 @@ async function summary(db: DbOrTx, row: CarouselRow): Promise<CarouselSummary> {
   return { carouselId: row.id, state: row.state, slides: slides.map((s) => ({ id: s.id, headline: s.headline, legacyKey: s.legacyKey })) };
 }
 
+/** False before migration 0021 (a dry run against a database the new stack hasn't started on yet). */
+async function logNamesCarousels(db: DbOrTx): Promise<boolean> {
+  const { rows } = await db.execute<{ n: number }>(sql`
+    SELECT count(*)::int AS n FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'site_log' AND column_name = 'carousel_id'`);
+  return rows[0]!.n > 0;
+}
+
 /**
- * Carousel edits by anyone but the system (every Hub carousel action writes a `carousel`
- * site_log line: create/save/image/make-live/delete), at or after the given carousel's creation
- * or strictly after the import. Compared in SQL, at the database's own (microsecond) precision.
+ * Edits of `carouselId` by anyone but the system: every Hub carousel action writes a `carousel`
+ * site_log line naming its carousel (create/save/image/make-live/delete), so an edit of a
+ * scheduled next carousel doesn't count against the live one. A line from before migration 0021
+ * names no carousel and still counts (it may have been this one). `since` is the carousel's
+ * creation (inclusive) or the import (exclusive), compared in SQL at the database's precision.
  */
-async function staffCarouselEdits(db: DbOrTx, since: { carouselCreated: string } | "import"): Promise<StaffEdit[]> {
+async function staffCarouselEdits(db: DbOrTx, carouselId: string, since: "created" | "import"): Promise<StaffEdit[]> {
   const bound =
     since === "import"
       ? sql`at > (SELECT imported_at FROM public_import_carousel WHERE id = 1)`
-      : sql`at >= (SELECT created_at FROM carousels WHERE id = ${since.carouselCreated})`;
-  const { rows } = await db.execute<{ at: string | Date; actor_name: string; text: string }>(sql`
-    SELECT at, actor_name, text FROM site_log
+      : sql`at >= (SELECT created_at FROM carousels WHERE id = ${carouselId})`;
+  const named = await logNamesCarousels(db);
+  const { rows } = await db.execute<{ at: string | Date; actor_name: string; text: string; carousel_id: string | null }>(sql`
+    SELECT at, actor_name, text, ${named ? sql`carousel_id` : sql`NULL::uuid AS carousel_id`} FROM site_log
      WHERE area = 'carousel' AND actor_id <> ${SYSTEM_ACTOR.id} AND ${bound}
+       ${named ? sql`AND (carousel_id = ${carouselId} OR carousel_id IS NULL)` : sql``}
      ORDER BY at DESC LIMIT 5`);
-  return rows.map((r) => ({ at: new Date(r.at).toISOString(), by: r.actor_name, text: r.text }));
+  return rows.map((r) => ({ at: new Date(r.at).toISOString(), by: r.actor_name, text: r.text, carouselId: r.carousel_id }));
+}
+
+/** Why `edits` refuse: an edit of this carousel itself, or only older lines that don't say which carousel. */
+function editsReason(edits: StaffEdit[], which: string, since: string, then: string): string {
+  return edits.some((e) => e.carouselId !== null)
+    ? `staff have edited ${which}${since === "the import" ? " since the import" : ""}; ${then}`
+    : `a carousel was edited in the Hub since ${since} (an older log line that doesn't say which carousel); ${then}`;
 }
 
 const sameBytes = (a: Buffer | null, b: Buffer | null) => (a === null || b === null ? a === b : a.equals(b));
@@ -319,18 +372,18 @@ export async function decideImport(db: DbOrTx, slides: PublicSlide[], opts: { re
     const changes = diff(current, slides);
     const replaces = await summary(db, live);
     if (!changes.added.length && !changes.changed.length && !changes.removed.length && !changes.reordered) return { ...base, action: "unchanged", replaces };
-    const staffEdits = await staffCarouselEdits(db, "import");
+    const staffEdits = await staffCarouselEdits(db, live.id, "import");
     if (staffEdits.length > 0 && !opts.replace) {
-      return { ...base, action: "refused", reason: "staff have edited the imported carousel since it was imported; pass --replace to overwrite their edits", replaces, staffEdits, changes };
+      return { ...base, action: "refused", reason: editsReason(staffEdits, "the imported carousel", "the import", "pass --replace to overwrite their edits"), replaces, staffEdits, changes };
     }
     return { ...base, action: "update", replaces, staffEdits, changes };
   }
 
   if (!live) return { ...base, action: "create", replaces: null };
   const replaces = await summary(db, live);
-  const staffEdits = await staffCarouselEdits(db, { carouselCreated: live.id });
+  const staffEdits = await staffCarouselEdits(db, live.id, "created");
   if (staffEdits.length > 0 && !opts.replace) {
-    return { ...base, action: "refused", reason: "staff have edited the live carousel; pass --replace to replace it (--remove puts it back)", replaces, staffEdits };
+    return { ...base, action: "refused", reason: editsReason(staffEdits, "the live carousel", "the live carousel was created", "pass --replace to replace it (--remove puts it back)"), replaces, staffEdits };
   }
   return { ...base, action: "create", replaces, staffEdits };
 }
@@ -419,7 +472,7 @@ export async function importPublicSlides(db: Db, slides: PublicSlide[], deps: { 
     }
     await tx.update(carousels).set({ version: sql`${carousels.version} + 1`, updatedAt: sql`now()` }).where(eq(carousels.id, carouselId));
     await tx.update(publicImportCarousel).set({ importedAt: sql`now()` }).where(eq(publicImportCarousel.id, 1));
-    await writeSiteLog(tx, SYSTEM_ACTOR, "carousel", "Updated the imported news.gov carousel (import:public-slides)");
+    await writeSiteLog(tx, SYSTEM_ACTOR, "carousel", "Updated the imported news.gov carousel (import:public-slides)", carouselId);
     await emitSite(tx, deps.subscribers, "slides", deps.files);
     return { ...decision, carouselId };
   });
@@ -451,14 +504,18 @@ export async function decideRemove(db: DbOrTx, opts: { replace: boolean }): Prom
   }
   const warnings: string[] = [];
   let restores: CarouselSummary | null = null;
+  const staffEdits = await staffCarouselEdits(db, imported!.id, "import");
   if (tracked.previousLiveId) {
     const [prev] = await db.select().from(carousels).where(eq(carousels.id, tracked.previousLiveId));
     if (prev) restores = await summary(db, prev);
-    else warnings.push(`the carousel the import replaced (${tracked.previousLiveId}) no longer exists (a later switch-over trimmed it); the site will have no carousel`);
+    else {
+      const gone = `the carousel the import replaced (${tracked.previousLiveId}) no longer exists (a later switch-over trimmed it), so removing the import would leave the site with no carousel`;
+      if (!opts.replace) return { action: "refused", reason: `${gone}; pass --replace to remove it anyway`, imported: importedSummary, restores, staffEdits, warnings };
+      warnings.push(gone);
+    }
   }
-  const staffEdits = await staffCarouselEdits(db, "import");
   if (staffEdits.length > 0 && !opts.replace) {
-    return { action: "refused", reason: "staff have edited the carousel since the import; pass --replace to remove it anyway (their edits to it go too)", imported: importedSummary, restores, staffEdits, warnings };
+    return { action: "refused", reason: editsReason(staffEdits, "the imported carousel", "the import", "pass --replace to remove it anyway (their edits to it go too)"), imported: importedSummary, restores, staffEdits, warnings };
   }
   return { action: "restore", imported: importedSummary, restores, staffEdits, warnings };
 }
@@ -481,19 +538,22 @@ export async function removePublicSlides(db: Db, deps: { subscribers: Subscriber
     const previousUpdatedAt = rows[0]?.t ?? null;
     await tx.delete(carousels).where(eq(carousels.id, tracked!.carouselId));
     if (decision.action === "drop-past") {
-      await writeSiteLog(tx, SYSTEM_ACTOR, "carousel", "Deleted the imported news.gov carousel, no longer live (import:public-slides --remove)");
+      await writeSiteLog(tx, SYSTEM_ACTOR, "carousel", "Deleted the imported news.gov carousel, no longer live (import:public-slides --remove)", tracked!.carouselId);
       return decision;
     }
     if (decision.restores) {
-      await tx.execute(sql`
+      const restored = await tx.execute(sql`
         UPDATE carousels SET state = 'live', updated_at = ${previousUpdatedAt ? sql`${previousUpdatedAt}::timestamptz` : sql`now()`}
          WHERE id = ${decision.restores.carouselId} AND state = 'past'`);
+      // Throwing rolls the whole removal back: the imported carousel stays live rather than the site losing its carousel.
+      if (restored.rowCount !== 1) throw new Error(`could not restore the previous carousel ${decision.restores.carouselId} (it is no longer a past carousel); nothing was changed`);
     }
     await writeSiteLog(
       tx,
       SYSTEM_ACTOR,
       "carousel",
       decision.restores ? "Removed the imported news.gov carousel and made the previous carousel live again (import:public-slides --remove)" : "Removed the imported news.gov carousel; there was no carousel before it (import:public-slides --remove)",
+      decision.restores?.carouselId ?? null,
     );
     await emitSite(tx, deps.subscribers, "slides", deps.files);
     return decision;
@@ -536,7 +596,7 @@ export async function runPublicSlides(
       const remove = await decideRemove(deps.db, { replace: o.replace });
       return { mode: "remove-dry-run", remove, failed: remove.action === "refused" };
     }
-    if (!deps.files) throw new Error("--remove needs the slide image settings (STORAGE_DIR, PUBLIC_FILES_BASE)");
+    if (!deps.files) throw new Error("--remove needs the slide image settings (NRMS_STORAGE_DIR, NRMS_PUBLIC_FILES_BASE)");
     const remove = await removePublicSlides(deps.db, { subscribers: deps.subscribers, files: deps.files, replace: o.replace });
     return { mode: "remove", remove, failed: remove.action === "refused" };
   }
@@ -567,7 +627,7 @@ export async function runPublicSlides(
   if (!deps.db) return report;
   if (o.dryRun) report.write = await decideImport(deps.db, mapped.slides, { replace: o.replace });
   else {
-    if (!deps.files) throw new Error("an import needs the slide image settings (STORAGE_DIR, PUBLIC_FILES_BASE)");
+    if (!deps.files) throw new Error("an import needs the slide image settings (NRMS_STORAGE_DIR, NRMS_PUBLIC_FILES_BASE)");
     report.write = await importPublicSlides(deps.db, mapped.slides, { subscribers: deps.subscribers, files: deps.files, replace: o.replace });
   }
   // `failed` last, after the outcome it summarises.

@@ -216,7 +216,7 @@ export async function createNextCarousel(
         );
       }
     }
-    await writeSiteLog(tx, actor, "carousel", `Created the next carousel for ${formatBcDateTime(goLiveAt, timeZone)}`);
+    await writeSiteLog(tx, actor, "carousel", `Created the next carousel for ${formatBcDateTime(goLiveAt, timeZone)}`, created.id);
     return carouselView(created, await slidesOf(tx, created.id));
   });
 }
@@ -274,7 +274,7 @@ export async function saveCarousel(
       .set({ version: row.version + 1, updatedAt: sql`now()`, ...(goLiveAt !== undefined ? { goLiveAt } : {}) })
       .where(eq(carousels.id, id))
       .returning();
-    await writeSiteLog(tx, actor, "carousel", row.state === "live" ? "Saved the live carousel" : "Saved the next carousel");
+    await writeSiteLog(tx, actor, "carousel", row.state === "live" ? "Saved the live carousel" : "Saved the next carousel", id);
     if (row.state === "live") await emitSite(tx, subs, "slides", files);
     return carouselView(updated!, await slidesOf(tx, id));
   });
@@ -302,7 +302,7 @@ export async function setSlideImage(db: Db, slideId: string, bytes: Buffer, acto
     // the slides before this write lands, permanently missing the image from that snapshot.
     const [carousel] = await tx.select({ state: carousels.state }).from(carousels).where(eq(carousels.id, slide.carouselId)).for("update");
     await tx.update(websiteSlides).set({ image: bytes, imageType: mimeType, updatedAt: sql`now()` }).where(eq(websiteSlides.id, slideId));
-    await writeSiteLog(tx, actor, "carousel", "Updated a slide's image");
+    await writeSiteLog(tx, actor, "carousel", "Updated a slide's image", slide.carouselId);
     if (carousel?.state === "live") await emitSite(tx, subs, "slides", files);
   });
 }
@@ -338,7 +338,7 @@ export async function performSwitch(tx: Tx, nextId: string, subs: SubscriberConf
     if (toDelete.length) await tx.delete(carousels).where(inArray(carousels.id, toDelete));
   }
 
-  await writeSiteLog(tx, actor, "carousel", logText);
+  await writeSiteLog(tx, actor, "carousel", logText, nextId);
   await emitSite(tx, subs, "slides", files);
 }
 
@@ -420,7 +420,7 @@ export async function deleteNextCarousel(db: Db, version: number, actor: Actor):
     if (!row) throw new SiteNotFoundError("no next carousel");
     if (row.version !== version) throw new SiteConflictError();
     await tx.delete(carousels).where(eq(carousels.id, row.id));
-    await writeSiteLog(tx, actor, "carousel", "Deleted the next carousel");
+    await writeSiteLog(tx, actor, "carousel", "Deleted the next carousel", row.id);
   });
 }
 

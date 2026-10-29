@@ -148,6 +148,13 @@
       "when": 1793240645704,
       "tag": "0020_public_import_slides",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793241457022,
+      "tag": "0021_site_log_carousel_id",
+      "breakpoints": true
     }
   ]
 }
