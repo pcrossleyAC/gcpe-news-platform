@@ -354,19 +354,28 @@ jobs:
             Write-Host "  $path proxy log: $(Count $proxyId $path); app log: $(Count $appId $path)"
             Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $($_.FullName) $($_.Length)" }
           }
-          Seq '/live/' @('', '', 8, 'br', 'br', 'gzip', '', 'gzip, deflate, br', 8, '', 'gzip', 'br', 'gzip, deflate, br')
-          Hits '/live/'
-          Seq '/ministries/' @('gzip', 8, 'gzip', 'br', '', 'br', 'gzip, deflate, br', 'gzip')
-          Hits '/ministries/'
-          Seq '/search/' @('gzip, deflate, br', 8, 'gzip', 'br', '', 'gzip, deflate, br', 'br')
-          Hits '/search/'
-          Write-Host '  -- direct to the app site, twice 8 s apart (must leave no localhost folder)'
-          One 'https://localhost/connect/' '' @(); Start-Sleep -Seconds 8; One 'https://localhost/connect/' '' @()
-          Hits '/connect/'
-          Write-Host '  -- Cache-Control as sent: proxy vs app server'
-          foreach ($p in @('/api/v2/ministries', '/subscribe/', '/?x=1', '/archive/')) {
-            One "$base$p" '' $res; One "$base$p" 'gzip' $res; One "https://localhost$p" 'gzip' @()
+          function Lines([string]$path) {
+            & netsh.exe http flush logbuffer | Out-Null
+            Start-Sleep -Seconds 3
+            foreach ($site in @(@('proxy', $proxyId), @('app', $appId))) {
+              Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$($site[1])\*.log" | Get-Content | Where-Object { $_ -match " GET $([regex]::Escape($path)) " } | ForEach-Object { $f = $_ -split ' '; Write-Host "    $($site[0]) $($f[1]) $($f[5].Substring(0, [Math]::Min(18, $f[5].Length))) $($f[10]) $($f[13])" }
+            }
+            Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($path.Trim('/')) } | ForEach-Object { Write-Host "    $($_.FullName) $($_.Length) $($_.LastWriteTime.ToString('HH:mm:ss'))" }
           }
+          $i = 0
+          foreach ($ae in @('gzip', 'gzip,br')) {
+            foreach ($p in @(@('/live/', '/ministries/'), @('/search/', '/connect/'))[$i]) {
+              Write-Host "=== allowedAcceptEncoding=$ae"
+              & $appcmd set config -section:system.webServer/diskCache "/allowedAcceptEncoding:$ae" /commit:apphost | Out-Null
+              & $appcmd recycle apppool GCPE-Proxy | Out-Null
+              Start-Sleep -Seconds 2
+              Seq $p @('br', 7, 'br', 'br', 7, 'gzip', 7, 'gzip', 'gzip, deflate, br', 7, 'gzip, deflate, br', '', 'br')
+              Lines $p
+            }
+            $i++
+          }
+          & $appcmd set config -section:system.webServer/diskCache /allowedAcceptEncoding:gzip /commit:apphost | Out-Null
+          & $appcmd recycle apppool GCPE-Proxy | Out-Null
       - name: The proxy caches public pages only, per encoding
         run: |
           $ErrorActionPreference = 'Stop'
