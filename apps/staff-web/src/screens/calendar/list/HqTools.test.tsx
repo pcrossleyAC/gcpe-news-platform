@@ -45,7 +45,15 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
   });
 
   it("a 207 partial commit is an alert, not a success", async () => {
-    hq([], (url) => (url === "/calendar/api/activities/review-selected" ? jsonResponse(207, { reviewed: [20001], skipped: [], failed: true }) : url === "/calendar/api/activities/clear-la-status" ? jsonResponse(207, { cleared: 100, failed: true }) : undefined));
+    hq([], (url) =>
+      url === "/calendar/api/activities/review-selected"
+        ? jsonResponse(207, { reviewed: [20001], skipped: [], failed: true })
+        : url === "/calendar/api/activities/clear-la-status?days=8"
+          ? jsonResponse(200, { count: 250 })
+          : url === "/calendar/api/activities/clear-la-status"
+            ? jsonResponse(207, { cleared: 100, failed: true })
+            : undefined,
+    );
     renderList();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: "Select HLTH-20001" }));
@@ -53,6 +61,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     await user.click(screen.getByRole("button", { name: "Review selected (2)" }));
     expect(await screen.findByText("Only 1 of 2 activities were reviewed before a later batch failed. Select the rest and review them again.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Clear LA Status" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Clear LA Status" }));
     expect(await screen.findByText("The LA status of 100 activities was cleared before a later batch failed. Run Clear LA Status again to finish.")).toBeInTheDocument();
   });
 
@@ -76,9 +85,16 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     expect(screen.getByText(`Select at most ${REVIEW_SELECTED_MAX} at a time.`)).toBeInTheDocument();
   });
 
-  it("clears the LA status for the days chosen", async () => {
+  // Owner decision 2026-10-29: it asks first, saying how many activities it will change.
+  it("clears the LA status for the days chosen, once confirmed with the count", async () => {
     const calls: Call[] = [];
-    hq(calls, (url) => (url === "/calendar/api/activities/clear-la-status" ? jsonResponse(200, { cleared: 3 }) : undefined));
+    hq(calls, (url, init) =>
+      url === "/calendar/api/activities/clear-la-status?days=14"
+        ? jsonResponse(200, { count: 3 })
+        : url === "/calendar/api/activities/clear-la-status" && init?.method === "POST"
+          ? jsonResponse(200, { cleared: 3 })
+          : undefined,
+    );
     renderList();
     const user = userEvent.setup();
     const days = await screen.findByLabelText("Days ahead (Clear LA Status)");
@@ -86,8 +102,36 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     await user.clear(days);
     await user.type(days, "14");
     await user.click(screen.getByRole("button", { name: "Clear LA Status" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Clear the LA status of 3 activities?");
+    expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
+    await user.click(within(dialog).getByRole("button", { name: "Clear LA Status" }));
     expect(await screen.findByText("Cleared the LA status of 3 activities.")).toBeInTheDocument();
     expect(JSON.parse(String(calls.find((c) => c.url === "/calendar/api/activities/clear-la-status")!.init!.body))).toEqual({ days: 14 });
+  });
+
+  it("Cancel on the Clear LA Status confirmation changes nothing", async () => {
+    const calls: Call[] = [];
+    hq(calls, (url) => (url === "/calendar/api/activities/clear-la-status?days=8" ? jsonResponse(200, { count: 1 }) : undefined));
+    renderList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Clear the LA status of 1 activity?");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(calls.some((c) => c.url === "/calendar/api/activities/clear-la-status")).toBe(false);
+  });
+
+  it("with nothing to clear, says so and asks nothing", async () => {
+    const calls: Call[] = [];
+    hq(calls, (url) => (url === "/calendar/api/activities/clear-la-status?days=8" ? jsonResponse(200, { count: 0 }) : undefined));
+    renderList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
+    expect(await screen.findByText("No activities up to 8 days ahead have an LA status to clear.")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(calls.some((c) => c.url === "/calendar/api/activities/clear-la-status")).toBe(false);
   });
 
   it("runs a corporate query and goes back to the filter; sets the Look Ahead filter", async () => {

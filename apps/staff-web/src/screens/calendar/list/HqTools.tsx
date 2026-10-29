@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { CORPORATE_STATUSES, type CorporateQuery, type CorporateStatus, type ListQuery, type LookAheadFilter } from "@gcpe/calendar-contract";
+import { AlertDialog, Modal } from "@bcgov/design-system-react-components";
 import { Button } from "../../../shared/BusyButton";
+import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { messagesOf } from "../../admin/messages";
 import { downloadExport, listApi } from "./api";
 import { corporateSummary } from "./FilterPanel";
@@ -63,24 +65,52 @@ export function ReviewSelected({ selected, onDone }: { selected: Map<number, { v
   );
 }
 
-/** Clear LA Status (Default.aspx.cs:44-53; HQ Editors and above): every visible activity starting within the days given. */
+/**
+ * Clear LA Status (Default.aspx.cs:44-53; HQ Editors and above): every visible activity starting
+ * within the days given. Owner decision 2026-10-29: it asks first, saying how many activities it
+ * will change (the Calendar's count for the same rule — the list on screen is filtered and paged,
+ * so it can't tell); with none to change it just says so.
+ */
 export function ClearLaStatus({ onDone }: { onDone: () => void }): React.JSX.Element {
   const [days, setDays] = useState("8");
   const [busy, setBusy] = useState(false);
+  const [counting, setCounting] = useState(false);
+  const [confirm, setConfirm] = useState<{ days: number; count: number } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const valid = /^\d{1,3}$/.test(days) && Number(days) <= 366;
-  const run = async () => {
+  const ask = async () => {
+    const n = Number(days);
+    setCounting(true);
+    setStatus(null);
+    setError(null);
+    try {
+      const { count } = await listApi.countLaStatus(n);
+      if (count === 0) setStatus(`No activities up to ${n} ${n === 1 ? "day" : "days"} ahead have an LA status to clear.`);
+      else setConfirm({ days: n, count });
+    } catch (caught) {
+      setError(messagesOf(caught).join(" "));
+    } finally {
+      setCounting(false);
+    }
+  };
+  const run = async (n: number) => {
     setBusy(true);
     setStatus(null);
     setError(null);
     try {
-      const out = await listApi.clearLaStatus(Number(days));
-      if (out.failed) setError(`The LA status of ${plural(out.cleared)} was cleared before a later batch failed. Run Clear LA Status again to finish.`);
-      else setStatus(`Cleared the LA status of ${plural(out.cleared)}.`);
+      const out = await listApi.clearLaStatus(n);
+      setConfirm(null);
+      // Shown (and so announced) only once the confirmation has fully closed.
+      afterDialogsClose(() => {
+        if (out.failed) setError(`The LA status of ${plural(out.cleared)} was cleared before a later batch failed. Run Clear LA Status again to finish.`);
+        else setStatus(`Cleared the LA status of ${plural(out.cleared)}.`);
+      });
       onDone();
     } catch (caught) {
-      setError(messagesOf(caught).join(" "));
+      setConfirm(null);
+      const messages = messagesOf(caught).join(" ");
+      afterDialogsClose(() => setError(messages));
     } finally {
       setBusy(false);
     }
@@ -89,10 +119,38 @@ export function ClearLaStatus({ onDone }: { onDone: () => void }): React.JSX.Ele
     <div>
       <label htmlFor="la-days">Days ahead (Clear LA Status)</label>
       <input id="la-days" type="number" min={0} max={366} value={days} aria-invalid={!valid} onChange={(e) => setDays(e.target.value)} />
-      <Button variant="secondary" isPending={busy} isDisabled={!valid} pendingLabel="Clearing…" onPress={() => void run()}>
+      <Button variant="secondary" isPending={counting || busy} isDisabled={!valid} pendingLabel={busy ? "Clearing…" : "Checking…"} onPress={() => void ask()}>
         Clear LA Status
       </Button>
       <Result status={status} error={error} />
+      <Modal
+        isOpen={confirm !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setConfirm(null);
+        }}
+        isDismissable
+      >
+        <AlertDialog
+          role="alertdialog"
+          variant="warning"
+          title={`Clear the LA status of ${confirm ? plural(confirm.count) : ""}?`}
+          buttons={
+            <>
+              <Button variant="secondary" isPending={busy} onPress={() => setConfirm(null)}>
+                Cancel
+              </Button>
+              <Button isPending={busy} pendingLabel="Clearing…" onPress={() => confirm && void run(confirm.days)}>
+                Clear LA Status
+              </Button>
+            </>
+          }
+        >
+          <p>
+            {confirm &&
+              `Every activity you can see that starts up to ${confirm.days} ${confirm.days === 1 ? "day" : "days"} ahead, past ones included, loses its LA New or LA Changed status. Each change is recorded in the activity's history.`}
+          </p>
+        </AlertDialog>
+      </Modal>
     </div>
   );
 }

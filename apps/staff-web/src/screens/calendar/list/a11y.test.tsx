@@ -168,10 +168,22 @@ describe("accessibility: the activity list in every state", () => {
   });
 
   it("Clear LA Status: its result, then days it can't take", async () => {
-    stubFetch([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, other: (url) => (url === "/calendar/api/activities/clear-la-status" ? jsonResponse(200, { cleared: 3 }) : undefined) });
+    stubFetch([], {
+      me: HQ_ADMIN_ME,
+      config: HQ_ADMIN_CONFIG,
+      other: (url) =>
+        url === "/calendar/api/activities/clear-la-status?days=8"
+          ? jsonResponse(200, { count: 3 })
+          : url === "/calendar/api/activities/clear-la-status"
+            ? jsonResponse(200, { cleared: 3 })
+            : undefined,
+    });
     const { container } = renderList();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(await seriousViolations(dialog)).toEqual([]);
+    await user.click(within(dialog).getByRole("button", { name: "Clear LA Status" }));
     await screen.findByText("Cleared the LA status of 3 activities.");
     expect(await seriousViolations(container)).toEqual([]);
     const days = screen.getByLabelText("Days ahead (Clear LA Status)");
