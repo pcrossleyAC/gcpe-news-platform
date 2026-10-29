@@ -148,11 +148,17 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
         </div>
       ))}
 
-      {!readOnly && !adding && <Button onPress={() => setAdding(true)}>Add document</Button>}
+      {!readOnly && !adding && (
+        <div>
+          <Button variant="secondary" onPress={() => setAdding(true)}>
+            Add document
+          </Button>
+        </div>
+      )}
       {!readOnly && adding && (
-        <form onSubmit={submitAdd} aria-label="Add document">
+        <form onSubmit={submitAdd} aria-label="Add document" className="gcpe-field-row gcpe-documents__add">
           <TextField label="Page title" value={newPageTitle} onChange={setNewPageTitle} isRequired maxLength={50} />
-          <label>
+          <label className="gcpe-field">
             Layout
             <select value={newLayout} onChange={(e) => setNewLayout(e.target.value as Layout)}>
               {LAYOUTS.map((l) => (

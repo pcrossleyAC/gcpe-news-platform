@@ -20,6 +20,7 @@ export interface ForecastActivityRowProps {
  */
 export function ForecastActivityRow({ activity: a, at, now, timeZone, canStartRelease }: ForecastActivityRowProps): React.JSX.Element {
   const title = `${a.location ? `${a.location} - ` : ""}${a.title || "(untitled)"}`;
+  const sep = " · ";
   return (
     <li className="gcpe-release-row">
       <span className="gcpe-release-row__bar gcpe-release-row__bar--activity" aria-hidden="true" />
@@ -28,21 +29,27 @@ export function ForecastActivityRow({ activity: a, at, now, timeZone, canStartRe
           <span className="gcpe-release-row__type">Calendar activity</span>
           {a.ministryName && (
             <>
-              {" "}
-              &middot; <span>{a.ministryName}</span>
+              {sep}
+              <span>{a.ministryName}</span>
             </>
           )}
+          {a.categoryNames.length > 0 && (
+            <>
+              {sep}
+              <span className="gcpe-release-row__page-title">{a.categoryNames.join(", ")}</span>
+            </>
+          )}
+          {sep}
+          <span className="gcpe-release-row__status">
+            Planned for {formatWhen(at, now, timeZone)} &middot; Activity ID {a.activityId}
+          </span>
         </p>
-        {a.categoryNames.length > 0 && <p className="gcpe-release-row__page-title">{a.categoryNames.join(", ")}</p>}
-        <p className="gcpe-release-row__headline">
+        <h2 className="gcpe-release-row__headline">
           <Link to={activityPath(a.activityId)}>{title}</Link>
-        </p>
+        </h2>
         {a.details && <p className="gcpe-release-row__summary">{a.details}</p>}
-        <p className="gcpe-release-row__status">
-          Planned for {formatWhen(at, now, timeZone)} &middot; Activity ID {a.activityId}
-        </p>
         {canStartRelease && (
-          <p>
+          <p className="gcpe-release-row__action">
             <Link to={`/releases/new?activity=${a.activityId}`}>Start a release</Link>
           </p>
         )}

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { FeaturedScreen } from "./FeaturedScreen";
 import type { FeaturedWhereRow } from "./types";
@@ -17,18 +18,21 @@ describe("FeaturedScreen", () => {
 
   it("renders a read-only table of what's featured where, with no write controls", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => (url === "/nrms/api/site/features" ? jsonResponse(200, ROWS) : jsonResponse(200, {}))));
-    render(<FeaturedScreen />);
+    render(<MemoryRouter><FeaturedScreen /></MemoryRouter>);
     await screen.findByRole("heading", { name: "What’s featured where", level: 1 });
     // I5: document.title matches the h1.
     await waitFor(() => expect(document.title).toBe("What’s featured where — GCPE News Staff"));
     expect(screen.getByRole("cell", { name: "Big news" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "Clinics open" })).toBeInTheDocument();
+    // Each featured release opens in the release editor.
+    expect(screen.getByRole("link", { name: "Big news" })).toHaveAttribute("href", "/releases/r1");
+    expect(screen.getByRole("link", { name: "Clinics open" })).toHaveAttribute("href", "/releases/r2");
     expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("shows a friendly message when nothing is featured", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, [])));
-    render(<FeaturedScreen />);
+    render(<MemoryRouter><FeaturedScreen /></MemoryRouter>);
     await screen.findByText("Nothing is currently Top or Feature anywhere.");
   });
 });

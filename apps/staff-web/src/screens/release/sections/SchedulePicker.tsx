@@ -26,6 +26,12 @@ export interface SchedulePickerProps {
   /** Called with `{ local, instant }` once both fields hold a valid date and time, or `null`
    * while incomplete/invalid. */
   onChange(value: ScheduleValue | null): void;
+  /** An extra check on a complete `local` value ("YYYY-MM-DDTHH:mm"): returns the field error
+   * to show, or null (Schedule: only a time after now, in BC time as the server reckons it). */
+  validate?(local: string): string | null;
+  /** An error the caller found itself (Schedule re-checks at Confirm), shown like the picker's
+   * own until the user changes a field. */
+  error?: string | null;
 }
 
 /**
@@ -34,7 +40,7 @@ export interface SchedulePickerProps {
  * type="time">` rather than the design system's DatePicker/TimeField (which take
  * `CalendarDate`/`Time` objects) — simpler to wire to BC local time and to drive from tests.
  */
-export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange }: SchedulePickerProps): React.JSX.Element {
+export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange, validate, error: callerError = null }: SchedulePickerProps): React.JSX.Element {
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState(initialTime);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +55,12 @@ export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", i
     }
     try {
       const instant = bcLocalToInstant(nextDate, nextTime, timeZone);
+      const problem = validate?.(`${nextDate}T${nextTime}`) ?? null;
+      if (problem) {
+        onChange(null);
+        setError(problem);
+        return;
+      }
       onChange({ local: `${nextDate}T${nextTime}`, instant });
       setError(null);
     } catch {
@@ -62,7 +74,7 @@ export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", i
       <legend>{legend}</legend>
       <TextField label="Date" type="date" value={date} onChange={(v) => update(v, time)} id={`${idPrefix}-date`} />
       <TextField label="Time (BC time)" type="time" value={time} onChange={(v) => update(date, v)} id={`${idPrefix}-time`} />
-      {error && <p role="alert">{error}</p>}
+      {(error ?? callerError) && <p role="alert">{error ?? callerError}</p>}
     </fieldset>
   );
 }

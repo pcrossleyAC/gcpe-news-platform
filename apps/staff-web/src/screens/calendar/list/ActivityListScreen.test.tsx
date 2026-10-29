@@ -21,6 +21,7 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    sessionStorage.clear();
   });
 
   it("loads the first page with the saved display and hides the saved columns", async () => {
@@ -46,10 +47,28 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     const details = form.closest("details")!;
     expect(details).toHaveAttribute("open");
     expect(details.querySelector("summary")).toHaveTextContent("Filters");
+    expect(details.querySelector("summary")).toHaveTextContent("No filters");
     const actions = screen.getByRole("region", { name: "List actions" });
     const table = screen.getAllByRole("table")[0]!;
     expect(actions.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("group", { name: "View" }).compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("starts Filters closed when the list is already filtered, naming the filter beside it; remembers opening it for the tab", async () => {
+    stubFetch([]);
+    const link = `/calendar?q=${encodeURIComponent(JSON.stringify({ ...DEFAULT_LIST_QUERY, filter: { ...DEFAULT_LIST_QUERY.filter, quickSearch: "launch", status: "new" } }))}`;
+    renderList(link);
+    await screen.findByText("Sample listed");
+    const details = screen.getByRole("form", { name: "Filter activities" }).closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    expect(details.querySelector("summary")).toHaveTextContent("Filters");
+    expect(details.querySelector("summary")).toHaveTextContent("Search: “launch” · Status: New");
+    await userEvent.setup().click(details.querySelector("summary")!);
+    expect(details).toHaveAttribute("open");
+    cleanup();
+    renderList(link);
+    await screen.findByText("Sample listed");
+    expect(screen.getByRole("form", { name: "Filter activities" }).closest("details")).toHaveAttribute("open");
   });
 
   it("an unreadable q falls back to the defaults", async () => {

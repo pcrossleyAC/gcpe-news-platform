@@ -32,7 +32,7 @@ export function DigestRunsReportScreen(): React.JSX.Element {
         <>
           <CsvLink href={csvHref("/nod/api/reports/digest-runs.csv")}>Download (CSV)</CsvLink>
           {d.items.length > 0 ? (
-            <table aria-label="Daily digest runs">
+            <table className="gcpe-table" aria-label="Daily digest runs">
               <thead>
                 <tr>
                   <th scope="col">Run</th>

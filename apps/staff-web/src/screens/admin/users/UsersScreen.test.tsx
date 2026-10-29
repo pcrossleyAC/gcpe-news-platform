@@ -35,6 +35,26 @@ function stubSession(calls: { url: string; init?: RequestInit }[], extra: (url: 
   );
 }
 
+/** Opens a user's editor from their row in the users table (the table's Edit button). */
+async function openEditor(who: string, user = userEvent.setup()): Promise<void> {
+  await user.click(await screen.findByRole("button", { name: `Edit ${who}` }));
+}
+
+
+/** Records, the moment a live region first gets text, whether it was hidden from assistive
+ * technology then (inside an aria-hidden ancestor, as a still-open modal leaves the page). */
+function watchFirstText(region: Element): { hiddenWhenSet: boolean | null } {
+  const seen = { hiddenWhenSet: null as boolean | null };
+  const observer = new MutationObserver(() => {
+    if (seen.hiddenWhenSet === null && region.textContent) {
+      seen.hiddenWhenSet = region.closest('[aria-hidden="true"]') !== null || document.querySelector('[role="alertdialog"]') !== null;
+      observer.disconnect();
+    }
+  });
+  observer.observe(region, { childList: true, subtree: true, characterData: true });
+  return seen;
+}
+
 describe("UsersScreen", () => {
   afterEach(() => {
     cleanup();
@@ -49,12 +69,77 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
-    const row = (await screen.findByRole("heading", { name: "self@x.invalid", level: 3 })).closest("li")!;
+    await openEditor("self@x.invalid");
+    const row = (await screen.findByRole("heading", { name: "self@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     const name = within(row).getByRole("textbox", { name: "self@x.invalid display name" });
     expect(visibleText(row.querySelector(`label[for="${name.id}"]`)!)).toBe("display name");
     expect(visibleText(within(row).getByRole("switch", { name: "self@x.invalid is active" }).closest("label")!)).toBe("Active");
     const admin = within(row).getByLabelText(/^Core\.Admin — Manage staff users/);
     expect(admin.closest("label")!.querySelector("strong")).toHaveTextContent("Core.Admin");
+  });
+
+  it("lists users in a table, filters them by name, email or role, and opens one user's editor in place", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "Staff users" });
+    expect(within(table).getByRole("rowheader", { name: "Self" })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: "Other" })).toBeInTheDocument();
+    expect(within(within(table).getByRole("rowheader", { name: "Other" }).closest("tr")!).getByText("NRMS Viewer")).toBeInTheDocument();
+    // Closed until asked for.
+    expect(screen.queryByRole("switch")).toBeNull();
+
+    await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "nrms.viewer");
+    expect(within(table).queryByRole("rowheader", { name: "Self" })).toBeNull();
+    expect(within(table).getByRole("rowheader", { name: "Other" })).toBeInTheDocument();
+    expect(await screen.findByText("Showing 1 of 2 users")).toBeInTheDocument();
+
+    const edit = screen.getByRole("button", { name: "Edit other@x.invalid" });
+    expect(edit).toHaveAttribute("aria-expanded", "false");
+    await user.click(edit);
+    expect(screen.getByRole("button", { name: "Close other@x.invalid" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("switch", { name: "other@x.invalid is active" })).toBeInTheDocument();
+  });
+
+  it("keeps an editor's unsaved edits when its row is closed or filtered out, and shows them again", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    await openEditor("other@x.invalid", user);
+    const name = screen.getByRole("textbox", { name: "other@x.invalid display name" });
+    await user.clear(name);
+    await user.type(name, "Other Person");
+    await user.click(screen.getByRole("button", { name: "Close other@x.invalid" }));
+    await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "self");
+    expect(screen.queryByRole("rowheader", { name: "Other" })).toBeNull();
+    await user.clear(screen.getByRole("searchbox", { name: /Filter users/ }));
+    await openEditor("other@x.invalid", user);
+    expect(screen.getByRole("textbox", { name: "other@x.invalid display name" })).toHaveValue("Other Person");
+  });
+
+  it("matches a status as a whole word: active finds no inactive user", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, { ...OTHER, isActive: false }]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    await screen.findByRole("rowheader", { name: "Other" });
+    await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "active");
+    expect(screen.queryByRole("rowheader", { name: "Other" })).toBeNull();
+    expect(screen.getByRole("rowheader", { name: "Self" })).toBeInTheDocument();
+    await user.clear(screen.getByRole("searchbox", { name: /Filter users/ }));
+    await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "inactive");
+    expect(screen.queryByRole("rowheader", { name: "Self" })).toBeNull();
+    expect(screen.getByRole("rowheader", { name: "Other" })).toBeInTheDocument();
+    // The count is announced once typing pauses.
+    expect(await screen.findByText("Showing 1 of 2 users")).toBeInTheDocument();
   });
 
   // I5: document.title matches the h1.
@@ -105,11 +190,82 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
     const user = userEvent.setup();
     const toggle = await screen.findByRole("switch", { name: "self@x.invalid is active" });
     await user.click(toggle);
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Deactivate" }));
 
     expect(await screen.findByText("you can't remove your own admin access")).toBeInTheDocument();
+  });
+
+  // Owner decision 2026-10-29: switching Active off asks first; switching it on stays instant.
+  it("asks before deactivating a user; Cancel leaves them active and posts nothing", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid");
+    const user = userEvent.setup();
+    const toggle = await screen.findByRole("switch", { name: "other@x.invalid is active" });
+    await user.click(toggle);
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Deactivate Other?");
+    expect(dialog).toHaveTextContent(/They can[’']t sign in until reactivated\./);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(toggle).toBeChecked();
+    expect(calls.some((c) => c.init?.method === "PATCH")).toBe(false);
+  });
+
+  it("deactivates a user once confirmed, and says Saved next to the switch", async () => {
+    let other = OTHER;
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, other]);
+      if (url === "/core/api/users/other-1" && init?.method === "PATCH") {
+        other = { ...OTHER, isActive: false };
+        return jsonResponse(200, other);
+      }
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid");
+    const user = userEvent.setup();
+    const toggleBefore = await screen.findByRole("switch", { name: "other@x.invalid is active" });
+    const seen = watchFirstText(toggleBefore.closest(".gcpe-inline-control")!.querySelector("[aria-live='polite']")!);
+    await user.click(toggleBefore);
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Deactivate" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1" && c.init?.method === "PATCH")).toBe(true));
+    expect(JSON.parse(calls.find((c) => c.init?.method === "PATCH")!.init!.body as string)).toEqual({ isActive: false });
+    const toggle = await screen.findByRole("switch", { name: "other@x.invalid is inactive" });
+    expect(toggle).not.toBeChecked();
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    // Only once the dialog has gone (the page no longer aria-hidden), so it is announced.
+    expect(seen.hiddenWhenSet).toBe(false);
+  });
+
+  it("reactivates a user at once, with no question, and says Saved", async () => {
+    let other: UserView = { ...OTHER, isActive: false };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, other]);
+      if (url === "/core/api/users/other-1" && init?.method === "PATCH") {
+        other = { ...OTHER, isActive: true };
+        return jsonResponse(200, other);
+      }
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("switch", { name: "other@x.invalid is inactive" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1" && c.init?.method === "PATCH")).toBe(true));
+    expect(JSON.parse(calls.find((c) => c.init?.method === "PATCH")!.init!.body as string)).toEqual({ isActive: true });
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
   });
 
   it("shows the server's self-lockout message when removing your own Core.Admin role", async () => {
@@ -120,8 +276,9 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
     const user = userEvent.setup();
-    const row = (await screen.findByRole("heading", { name: "self@x.invalid" })).closest("li")!;
+    const row = (await screen.findByRole("heading", { name: "self@x.invalid" })).closest<HTMLElement>(".gcpe-users__editor")!;
     await user.click(within(row).getByLabelText(/^Core\.Admin —/));
     await user.click(within(row).getByRole("button", { name: "Save roles" }));
 
@@ -136,6 +293,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
     const user = userEvent.setup();
     const passwordField = (await screen.findByLabelText("self@x.invalid new password")) as HTMLInputElement;
     // Minors: autocomplete="new-password" — never offers to autofill the user's own existing
@@ -162,6 +320,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
     const user = userEvent.setup();
     const passwordField = (await screen.findByLabelText("self@x.invalid new password")) as HTMLInputElement;
     await user.type(passwordField, "a-new-strong-password{Enter}");
@@ -208,6 +367,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("Kim Imported (no email)");
     const user = userEvent.setup();
     expect(await screen.findByRole("heading", { name: "Kim Imported (no email) (inactive)" })).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: /Kim Imported/ })).toBeNull();
@@ -228,6 +388,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("Kim Imported (no email)");
     const user = userEvent.setup();
     const form = await screen.findByRole("form", { name: "Link Kim Imported to an email" });
     const email = within(form).getByLabelText(/^Email for Kim Imported/);
@@ -256,7 +417,8 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
-    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    await openEditor("other@x.invalid");
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     expect(within(row).getByText("Sign-in: Microsoft (Entra)")).toBeInTheDocument();
     expect(within(row).queryByLabelText("other@x.invalid new password")).not.toBeInTheDocument();
 
@@ -265,7 +427,7 @@ describe("UsersScreen", () => {
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Unlink" }));
 
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1/unlink-entra" && c.init?.method === "POST")).toBe(true));
-    const after = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    const after = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     expect(await within(after).findByText("Sign-in: Local password")).toBeInTheDocument();
     expect(within(after).getByLabelText("other@x.invalid new password")).toBeInTheDocument();
     expect(within(after).queryByRole("button", { name: /unlink/i })).not.toBeInTheDocument();
@@ -279,7 +441,8 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
-    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    await openEditor("other@x.invalid");
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     const user = userEvent.setup();
     await user.click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Unlink" }));
@@ -294,7 +457,8 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
-    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    await openEditor("other@x.invalid");
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     const user = userEvent.setup();
     await user.click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }));

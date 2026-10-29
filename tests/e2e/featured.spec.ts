@@ -15,9 +15,11 @@ test.describe("item 13: Top/Feature switches", () => {
 
     await signInAs(context, "editor");
     await page.goto(`${baseUrl()}/hub/releases/${releaseA.id}`);
-    const categoriesA = page.getByRole("region", { name: "Categories" });
-    await categoriesA.getByRole("group", { name: "Home" }).getByRole("switch", { name: "Top" }).click({ force: true });
-    await expect(categoriesA.getByRole("group", { name: "Home" }).getByRole("switch", { name: "Top" })).toBeChecked();
+    // Top / Feature is its own card, its switches behind a disclosure that starts closed.
+    const featuresA = page.getByRole("region", { name: "Top / Feature" });
+    await featuresA.getByRole("button", { name: "Change Top / Feature" }).click();
+    await featuresA.getByRole("group", { name: "Home" }).getByRole("switch", { name: "Top" }).click({ force: true });
+    await expect(featuresA.getByRole("group", { name: "Home" }).getByRole("switch", { name: "Top" })).toBeChecked();
 
     // Release B takes the same slot, directly against the API.
     await apiCall(cookie, "/nrms/api/releases/" + releaseB.id + "/features", { method: "POST", body: { kind: "home", key: "default", slot: "top", on: true } });

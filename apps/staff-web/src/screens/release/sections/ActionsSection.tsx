@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { approveProblems, publishProblems, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
@@ -6,10 +6,36 @@ import { apiFetch, ApiError } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
-import { useRegisterDirty } from "../useUnsavedChanges";
+import { useRegisterDirty, type DirtySection } from "../useUnsavedChanges";
+import { documentsInOrder } from "../documents/documentHelpers";
+import { usePublicSiteUrl } from "../sidebar/usePublicSiteUrl";
+import type { Categories } from "../categories";
 import { useSaveQueue, withVersion } from "../saveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
+import { wallClockNowMinute } from "../timezone";
+
+/** Schedule's field error for a time that isn't in the future. */
+export const PAST_SCHEDULE = "Choose a time in the future, or use Publish now.";
+
+/** `GET /nrms/api/config`'s server-side offset for the tenant zone (see wallClockNowMinute). */
+function useServerZoneOffset(enabled: boolean): number | null {
+  const [offset, setOffset] = useState<number | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    apiFetch<{ tzCheck?: { offsetMinutes: number } }>("/nrms/api/config").then(
+      (c) => {
+        if (active && typeof c.tzCheck?.offsetMinutes === "number") setOffset(c.tzCheck.offsetMinutes);
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [enabled]);
+  return offset;
+}
 
 /** apps/nrms/src/releases/service.ts's DELETABLE_STATUSES. */
 const DELETABLE_STATUSES = new Set(["draft", "approved", "failed"]);
@@ -20,7 +46,31 @@ export interface ActionsSectionProps {
   view: ReleaseView;
   setView(v: ReleaseView): void;
   timeZone: string;
+  /** Sections with unsaved edits (the page's unsaved-changes guard). While any is listed,
+   * Approve, Publish now and Schedule are unavailable: they act on the release as saved, so
+   * the edits on screen would be left out (owner decision 2026-10-29). */
+  unsaved?: DirtySection[];
 }
+
+/** A reason an action is unavailable, and the section/field it links to (if any). */
+interface Blocker {
+  text: string;
+  target: string | null;
+}
+
+/** Where a dirty section lives on the page, by its {@link useRegisterDirty} key. */
+function unsavedTarget(key: string, view: ReleaseView): string | null {
+  const fixed: Record<string, string> = { settings: "section-settings", "page-details": "section-page-details", categories: "section-categories", asset: "section-asset" };
+  if (fixed[key]) return fixed[key];
+  // A document language: its own tab panel (DocumentTabs shows that tab when the link is
+  // followed — the edited language may not be the one showing).
+  const doc = /^document-(.+)-(\d+)$/.exec(key);
+  if (doc) return documentsInOrder(view).some((d) => d.id === doc[1]) ? `doc-${doc[1]}-panel-${doc[2]}` : "section-documents";
+  return null;
+}
+
+/** "Save page details" → "page details": the bar's button text as the words a sentence names it by. */
+const unsavedName = (label: string) => label.replace(/^save\s+/i, "");
 
 /**
  * Editors-only (the caller gates this whole section on `NRMS.Editor`): Approve, Publish
@@ -29,7 +79,7 @@ export interface ActionsSectionProps {
  * preconditions; the server remains the authority (constraints.md) — these are convenience
  * gates, not the enforcement.
  */
-export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps): React.JSX.Element {
+export function ActionsSection({ view, setView, timeZone, unsaved = [] }: ActionsSectionProps): React.JSX.Element {
   const navigate = useNavigate();
   const section = useReleaseSection(view, setView);
   const queue = useSaveQueue();
@@ -37,6 +87,11 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
 
   const [schedulerOpen, setSchedulerOpen] = useState(false);
   const [scheduleValue, setScheduleValue] = useState<ScheduleValue | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const serverOffset = useServerZoneOffset(schedulerOpen);
+  // The server publishes a time up to 5 minutes in the past at once (no dialog), so a time must
+  // be after the current BC minute — checked as it's typed, and again at Confirm.
+  const futureProblem = (local: string) => (local <= wallClockNowMinute(Date.now(), timeZone, serverOffset) ? PAST_SCHEDULE : null);
   // Just blocks navigation while open (no save of its own to offer the sticky bar — Schedule's
   // own "Confirm schedule" below is the only way to act on it).
   useRegisterDirty("actions-scheduler", schedulerOpen);
@@ -47,6 +102,26 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [unpublishOpen, setUnpublishOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  // After a successful Publish now its button leaves the page (the release is publishing), so
+  // focus goes to the Actions heading rather than falling to <body>.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [focusHeading, setFocusHeading] = useState(false);
+  useEffect(() => {
+    if (!focusHeading) return;
+    // After React Aria's own focus restore (a frame after the dialog unmounts).
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        headingRef.current?.focus();
+        setFocusHeading(false);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [focusHeading]);
 
   const canApprove = view.status === "draft";
   const canPublish = (view.status === "approved" || view.status === "failed") && view.key !== null;
@@ -56,11 +131,18 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
   const canDelete = DELETABLE_STATUSES.has(view.status);
   // Why Approve/Publish are greyed out, said next to the buttons themselves (the header's
   // checklists are a long scroll away) — hand-check feedback on boxs.ca.
-  const approveBlockers = canApprove ? approveProblems(view) : [];
-  const publishBlockers = canPublish ? publishProblems(view) : [];
+  const unsavedBlockers: Blocker[] = unsaved.map((s) => ({ text: `Save your changes to ${unsavedName(s.label)} first.`, target: unsavedTarget(s.key, view) }));
+  const asBlockers = (problems: string[]): Blocker[] => problems.map((p) => ({ text: p, target: blockerTarget(p) }));
+  const approveBlockers = canApprove ? [...unsavedBlockers, ...asBlockers(approveProblems(view))] : [];
+  const publishBlockers = canPublish ? [...unsavedBlockers, ...asBlockers(publishProblems(view))] : [];
 
   const approve = () => void section.save("/approve", { version: view.version }, "POST");
-  const publishNow = () => void section.save("/schedule", { version: view.version, publishAt: "now" }, "POST");
+  const publishNow = () =>
+    void section.save("/schedule", { version: view.version, publishAt: "now" }, "POST").then((next) => {
+      if (!next) return;
+      setPublishOpen(false);
+      setFocusHeading(true);
+    });
   const cancelSchedule = () => void section.save("/cancel", { version: view.version }, "POST");
   const unpublish = () =>
     void section.save("/unpublish", { version: view.version }, "POST").then((next) => {
@@ -69,6 +151,11 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
 
   const submitSchedule = async () => {
     if (!scheduleValue) return;
+    const problem = futureProblem(scheduleValue.local);
+    if (problem) {
+      setScheduleError(problem);
+      return;
+    }
     // Fix round 1, finding 3: sends the raw BC wall-clock string (`publishAtLocal`), not a
     // client-converted instant — the server (whose tzdata is authoritative) converts it.
     const result = await section.save("/schedule", { version: view.version, publishAtLocal: scheduleValue.local }, "POST");
@@ -95,7 +182,9 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
 
   return (
     <section className="gcpe-release-editor__actions" aria-label="Actions">
-      <h2>Actions</h2>
+      <h2 ref={headingRef} tabIndex={-1}>
+        Actions
+      </h2>
 
       {section.conflict && (
         <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => void section.reload()}>Reload</Button>} />
@@ -119,9 +208,41 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
 
         {canPublish && (
           <>
-            <Button onPress={publishNow} isPending={section.saving} isDisabled={publishBlockers.length > 0} aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}>
-              Publish now
-            </Button>
+            {/* Owner decision 2026-10-29: a confirm dialog saying what publishing does, same
+             * pattern as Unpublish; only the dialog's own button sends the request. */}
+            <DialogTrigger isOpen={publishOpen} onOpenChange={setPublishOpen}>
+              <Button isPending={section.saving} isDisabled={publishBlockers.length > 0} aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}>
+                Publish now
+              </Button>
+              <Modal isDismissable>
+                <AlertDialog
+                  title="Publish this release now?"
+                  buttons={
+                    <>
+                      <Button variant="secondary" onPress={() => setPublishOpen(false)} isPending={section.saving}>
+                        Cancel
+                      </Button>
+                      <Button onPress={publishNow} isPending={section.saving} isDisabled={publishBlockers.length > 0} pendingLabel="Publishing…">
+                        Publish now
+                      </Button>
+                    </>
+                  }
+                >
+                  <PublishConsequences view={view} />
+                  {section.conflict && (
+                    <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => void section.reload()}>Reload</Button>} />
+                  )}
+                  {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
+                  {section.problems && (
+                    <ul role="alert" className="gcpe-release-editor__problems">
+                      {section.problems.map((p) => (
+                        <li key={p}>{p}</li>
+                      ))}
+                    </ul>
+                  )}
+                </AlertDialog>
+              </Modal>
+            </DialogTrigger>
             <Button
               variant="secondary"
               onPress={() => setSchedulerOpen((o) => !o)}
@@ -211,8 +332,18 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
 
       {schedulerOpen && canPublish && (
         <div className="gcpe-release-editor__scheduler">
-          <SchedulePicker timeZone={timeZone} legend="Schedule for" idPrefix="schedule" onChange={setScheduleValue} />
-          <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue} isPending={section.saving}>
+          <SchedulePicker
+            timeZone={timeZone}
+            legend="Schedule for"
+            idPrefix="schedule"
+            onChange={(value) => {
+              setScheduleError(null);
+              setScheduleValue(value);
+            }}
+            validate={futureProblem}
+            error={scheduleError}
+          />
+          <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue || unsavedBlockers.length > 0} isPending={section.saving}>
             Confirm schedule
           </Button>
         </div>
@@ -233,32 +364,102 @@ function blockerTarget(problem: string): string | null {
   return null;
 }
 
-function BlockerList({ id, lead, items }: { id: string; lead: string; items: string[] }): React.JSX.Element {
+function BlockerList({ id, lead, items }: { id: string; lead: string; items: Blocker[] }): React.JSX.Element {
   return (
     <div id={id} className="gcpe-release-editor__why">
       <p>{lead}</p>
       <ul>
-        {items.map((p) => {
-          const target = blockerTarget(p);
-          return (
-            <li key={p}>
-              {target ? (
-                <a
-                  href={`#${target}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    scrollToAndFocus(target);
-                  }}
-                >
-                  {p}
-                </a>
-              ) : (
-                p
-              )}
-            </li>
-          );
-        })}
+        {items.map(({ text, target }) => (
+          <li key={text}>
+            {target ? (
+              <a
+                href={`#${target}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToAndFocus(target);
+                }}
+              >
+                {text}
+              </a>
+            ) : (
+              text
+            )}
+          </li>
+        ))}
       </ul>
     </div>
+  );
+}
+
+interface MediaListName {
+  key: string;
+  displayName: string;
+}
+
+/** Names joined with semicolons: many category and list names contain "and" or commas
+ * themselves ("Transportation and Transit"), so "A, B and C" would be ambiguous. */
+const listText = (items: string[]): string => items.join("; ");
+
+/**
+ * What Publish now will do, from the release as saved (publishing is blocked while anything is
+ * unsaved, so saved is what goes out): the public site it goes on, the media distribution lists
+ * it's sent to (by name), and whose News on Demand inboxes it reaches. NoD has no "how many
+ * subscribers would get this" endpoint, so it names the categories subscribers follow instead
+ * of a count. Names come from the same lists the Categories and Publish settings sections read;
+ * if a lookup fails, the keys are shown instead.
+ */
+function PublishConsequences({ view }: { view: ReleaseView }): React.JSX.Element {
+  const rules = typeRules(view.type);
+  const publicSiteUrl = usePublicSiteUrl();
+  const [lists, setLists] = useState<MediaListName[] | null>(null);
+  const [categories, setCategories] = useState<Categories | null>(null);
+
+  // NoD and media sends go out once per release (apps/nrms/src/releases/workflow.ts: the send
+  // keys are insert-or-ignore), so a release published before (a correction, or one unpublished
+  // and published again) emails nobody this time.
+  const alreadySent = view.releasedAt !== null;
+  const toLists = !alreadySent && rules.mediaListsAllowed && view.publishOptions.toMediaLists && view.mediaListKeys.length > 0;
+  const toSubscribers = !alreadySent && rules.nodAllowed && view.publishOptions.toSubscribers;
+
+  useEffect(() => {
+    let active = true;
+    if (toLists) apiFetch<MediaListName[]>("/nrms/api/media-lists").then((l) => active && setLists(l), () => {});
+    if (toSubscribers) apiFetch<Categories>("/nrms/api/categories").then((c) => active && setCategories(c), () => {});
+    return () => {
+      active = false;
+    };
+  }, [toLists, toSubscribers]);
+
+  let host = "";
+  try {
+    host = publicSiteUrl ? new URL(publicSiteUrl).host : "";
+  } catch {
+    host = "";
+  }
+  const nameIn = (terms: { key: string; name: string }[] | undefined, key: string) => terms?.find((t) => t.key === key)?.name ?? key;
+  const listNames = view.mediaListKeys.map((k) => lists?.find((l) => l.key === k)?.displayName ?? k);
+  const followed = [
+    ...view.ministries.map((k) => nameIn(categories?.ministries, k)),
+    ...view.sectors.map((k) => nameIn(categories?.sectors, k)),
+    ...view.themes.map((k) => nameIn(categories?.themes, k)),
+    ...view.tags.map((k) => nameIn(categories?.tags, k)),
+  ];
+
+  return (
+    <ul className="gcpe-publish-consequences">
+      <li>{view.publishOptions.toWeb ? `Publishes to ${host || "the public news site"} now.` : "Doesn't go on the public news site."}</li>
+      {alreadySent ? (
+        <li>Subscribers and media lists already received this when it was first published; they won&rsquo;t be emailed again.</li>
+      ) : (
+        <>
+          <li>{toLists ? `Sends to media distribution lists: ${listText(listNames)}.` : "No media distribution lists."}</li>
+          <li>
+            {toSubscribers
+              ? `Emails News on Demand subscribers who follow ${followed.length > 0 ? `any of: ${listText([...new Set(followed)])}` : "this release's categories"}${view.ministries.length > 0 ? " — and everyone subscribed to all news" : ""}.`
+              : "News on Demand subscribers will not be emailed."}
+          </li>
+        </>
+      )}
+    </ul>
   );
 }

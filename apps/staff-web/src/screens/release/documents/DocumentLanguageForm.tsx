@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, type FormEvent } from "react";
 import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import { useSeededForm } from "../useSeededForm";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { BodyEditor } from "../../../editor/BodyEditor";
@@ -66,13 +67,14 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   const userId = session.user?.id ?? null;
   const canPersistDraft = !readOnly && userId !== null;
   const draftKey = userId !== null ? { userId, releaseId: view.id, documentId, languageId } : null;
-  const [form, setForm] = useState<FormState>(() => {
+  // Compared against what it was seeded from, not the live view (useSeededForm.ts), so a change
+  // made elsewhere (another section's Reload, a background refresh) never reads as an edit here.
+  // A restored session-expiry draft seeds the form but not the baseline, so it counts as dirty.
+  const { form, setForm, dirty: edited, reseed, staleVersion } = useSeededForm<FormState>(fromView(view, documentId, languageId), view.version, () => {
     if (!canPersistDraft || !draftKey) return fromView(view, documentId, languageId);
     return loadDraft<FormState>(draftKey) ?? fromView(view, documentId, languageId);
   });
-
-  const serverForm = fromView(view, documentId, languageId);
-  const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(serverForm);
+  const dirty = !readOnly && edited;
   const languageLabel = LANGUAGE_NAME[languageId];
 
   const doc = findDocument(view, documentId);
@@ -96,11 +98,12 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
           contacts: form.contacts.map((c) => c.trim()).filter((c) => c !== ""),
         },
         "PUT",
+        staleVersion,
       )
       .then((next) => {
         if (!next) return;
         if (draftKey) clearDraft(draftKey);
-        setForm(fromView(next, documentId, languageId));
+        reseed(fromView(next, documentId, languageId), next.version);
       });
   };
   // "Save English content (Document 1)" — the sticky save bar's own copy of this section's
@@ -129,7 +132,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
     void doSave();
   };
 
-  const reload = () => void section.reload().then((next) => setForm(fromView(next, documentId, languageId)));
+  const reload = () => void section.reload().then((next) => reseed(fromView(next, documentId, languageId), next.version));
 
   return (
     <div className="gcpe-document-language" aria-label={`${languageLabel} document content`}>
@@ -143,32 +146,46 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-      <Form onSubmit={onSubmit}>
-        <TextField label="Page title" value={form.pageTitle} onChange={(v) => setForm((f) => ({ ...f, pageTitle: v }))} isDisabled={readOnly} isRequired maxLength={50} />
-        <TextField label="Organizations" value={form.organizations} onChange={(v) => setForm((f) => ({ ...f, organizations: v }))} isDisabled={readOnly} />
+      <Form onSubmit={onSubmit} className="gcpe-doc-form">
+        <div className="gcpe-form-grid">
+          <TextField label="Page title" value={form.pageTitle} onChange={(v) => setForm((f) => ({ ...f, pageTitle: v }))} isDisabled={readOnly} isRequired maxLength={50} />
+          <TextField label="Organizations" value={form.organizations} onChange={(v) => setForm((f) => ({ ...f, organizations: v }))} isDisabled={readOnly} />
+        </div>
         <TextField label="Headline" value={form.headline} onChange={(v) => setForm((f) => ({ ...f, headline: v }))} isDisabled={readOnly} maxLength={255} />
         <TextField label="Subheadline" value={form.subheadline} onChange={(v) => setForm((f) => ({ ...f, subheadline: v }))} isDisabled={readOnly} maxLength={100} />
-        <TextField label="Byline" value={form.byline} onChange={(v) => setForm((f) => ({ ...f, byline: v }))} isDisabled={readOnly} maxLength={250} />
+        <div className="gcpe-form-grid">
+          <TextField label="Byline" value={form.byline} onChange={(v) => setForm((f) => ({ ...f, byline: v }))} isDisabled={readOnly} maxLength={250} />
+        </div>
 
         <BodyEditor id={`${idBase}-body`} label="Body" value={form.bodyHtml} onChange={(html) => setForm((f) => ({ ...f, bodyHtml: html }))} readOnly={readOnly} allowItalic />
 
-        <fieldset>
+        <fieldset className="gcpe-fieldset">
           <legend>Contacts</legend>
           {form.contacts.map((contact, i) => (
             <div key={i} className="gcpe-document-language__contact">
               <TextArea label={`Contact ${i + 1}`} value={contact} onChange={(v) => setContact(i, v)} isDisabled={readOnly} maxLength={250} />
-              {!readOnly && <Button variant="secondary" onPress={() => removeContact(i)}>Remove contact {i + 1}</Button>}
+              {!readOnly && (
+                <Button size="small" variant="secondary" onPress={() => removeContact(i)}>
+                  Remove contact {i + 1}
+                </Button>
+              )}
             </div>
           ))}
-          {!readOnly && form.contacts.length < 20 && <Button variant="secondary" onPress={addContact}>Add contact</Button>}
+          {!readOnly && form.contacts.length < 20 && (
+            <Button size="small" variant="secondary" onPress={addContact}>
+              Add contact
+            </Button>
+          )}
         </fieldset>
 
         {!readOnly && (
-          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
-            Save {languageLabel} content
-          </Button>
+          <div className="gcpe-button-row">
+            <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
+              Save {languageLabel} content
+            </Button>
+            <SaveStatus saving={section.saving} waiting={section.waiting} />
+          </div>
         )}
-        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </div>
   );

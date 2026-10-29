@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
@@ -35,7 +35,12 @@ function stubFetch(onPut?: (body: unknown) => Response) {
 }
 
 function renderSection(view: ReleaseView, setView: (v: ReleaseView) => void = () => {}, readOnly = false) {
-  return render(<CategoriesSection view={view} setView={setView} readOnly={readOnly} />);
+  const result = render(<CategoriesSection view={view} setView={setView} readOnly={readOnly} />);
+  // The checkbox lists and the Top/Feature switches sit behind their cards' disclosures (closed
+  // by default); open both, as a user would.
+  fireEvent.click(screen.getByRole("button", { name: /(Edit|Show) categories/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Top \/ Feature/ }));
+  return result;
 }
 
 describe("CategoriesSection", () => {

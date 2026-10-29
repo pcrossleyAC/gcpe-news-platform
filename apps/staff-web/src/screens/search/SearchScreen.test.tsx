@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { createMemoryRouter, MemoryRouter, RouterProvider, Route, Routes, useParams } from "react-router";
@@ -49,9 +49,10 @@ interface StubOptions {
   gotoCalls?: string[];
   searchCalls?: string[];
   searchResult?: ReleasePage<ReleaseListItem>;
+  recent?: ReleasePage<ReleaseListItem>;
 }
 
-function stubFetch({ gotoHit = null, gotoCalls = [], searchCalls = [], searchResult = searchPage([]) }: StubOptions = {}) {
+function stubFetch({ gotoHit = null, gotoCalls = [], searchCalls = [], searchResult = searchPage([]), recent = searchPage([]) }: StubOptions = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -64,6 +65,7 @@ function stubFetch({ gotoHit = null, gotoCalls = [], searchCalls = [], searchRes
         gotoCalls.push(url);
         return gotoHit ? jsonResponse(200, gotoHit) : jsonResponse(404, { error: "not found" });
       }
+      if (url === "/nrms/api/releases?folder=published&type=all&page=1&pageSize=5") return jsonResponse(200, recent);
       if (url.startsWith("/nrms/api/search")) {
         searchCalls.push(url);
         return jsonResponse(200, searchResult);
@@ -112,6 +114,22 @@ describe("SearchScreen", () => {
     renderSearch();
     await screen.findByRole("heading", { level: 1 });
     await waitFor(() => expect(document.title).toBe("Search — GCPE News Staff"));
+  });
+
+  it("before any search, says what it searches and lists the latest published releases", async () => {
+    stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
+    renderSearch();
+    expect(await screen.findByText("Search releases by words in the headline, summary or body; filter by ministry or sector.")).toBeInTheDocument();
+    const recent = await screen.findByRole("region", { name: "Recently published" });
+    expect(within(recent).getByText("Latest published release")).toBeInTheDocument();
+  });
+
+  it("with a ministry or sector chosen but no words, doesn't show the unfiltered recent releases", async () => {
+    stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
+    renderSearch("/search?ministry=educ");
+    expect(await screen.findByText("Search releases by words in the headline, summary or body; filter by ministry or sector.")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("region", { name: "Recently published" })).toBeNull();
   });
 
   it("a goto hit navigates straight to the release", async () => {

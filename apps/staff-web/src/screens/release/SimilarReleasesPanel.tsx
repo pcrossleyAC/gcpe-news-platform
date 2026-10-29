@@ -4,6 +4,7 @@ import { isSafeUrl } from "@gcpe/http-kit/url";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { Button } from "../../shared/BusyButton";
+import { SectionDisclosure } from "../../shared/SectionDisclosure";
 
 /** Shown under the button while the staff-AI flag is on (addendum §7). */
 export const AI_NOTE = "Sends this draft's text to the AI service to compare.";
@@ -97,42 +98,43 @@ export function SimilarReleasesPanel({ view, timeZone }: { view: ReleaseView; ti
   return (
     <section id="similar-releases" className="gcpe-release-editor__similar" aria-labelledby={headingId}>
       <h2 id={headingId}>Similar published releases</h2>
-      <p className="gcpe-similar__hint">Compares the last saved version of this release with published posts.</p>
-      <Button onPress={() => void find()} isPending={busy} pendingLabel="Finding…" aria-describedby={ai ? noteId : undefined}>
-        Find similar
-      </Button>
-      {ai && (
-        <p id={noteId} className="gcpe-similar__note">
-          {AI_NOTE}
-        </p>
-      )}
-      <div role="status">{busy ? "Looking for similar releases…" : statusText(found, ai)}</div>
-      {error && <InlineAlert variant="danger" role="alert" description={error} />}
-      {found && found.results.length > 0 && (
-        <ol className="gcpe-similar__results">
-          {found.results.map((r) => {
-            const href = typeof r.url === "string" && isSafeUrl(r.url) ? r.url : null;
-            const label = r.headline || r.key;
-            return (
-              <li key={r.key}>
-                {href ? (
-                  <a href={href} target="_blank" rel="noreferrer">
-                    {label}
-                    <span className="gcpe-visually-hidden"> (opens in a new tab)</span>
-                  </a>
-                ) : (
-                  <span>{label}</span>
-                )}
-                <span className="gcpe-similar__meta">
-                  {" "}
-                  {dateText(r.publishDate, timeZone)} · {r.leadMinistry ?? "No lead ministry"}
-                </span>
-                <span className={`gcpe-similar__match gcpe-similar__match--${r.match}`}>{r.match === "ai" ? "AI match" : "Text match"}</span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
+      <SectionDisclosure label="Open similar-release search" summary="Compares the last saved version of this release with published posts.">
+        <Button onPress={() => void find()} isPending={busy} pendingLabel="Finding…" aria-describedby={ai ? noteId : undefined}>
+          Find similar
+        </Button>
+        {ai && (
+          <p id={noteId} className="gcpe-similar__note">
+            {AI_NOTE}
+          </p>
+        )}
+        <div role="status">{busy ? "Looking for similar releases…" : statusText(found, ai)}</div>
+        {error && <InlineAlert variant="danger" role="alert" description={error} />}
+        {found && found.results.length > 0 && (
+          <ol className="gcpe-similar__results">
+            {found.results.map((r) => {
+              const href = typeof r.url === "string" && isSafeUrl(r.url) ? r.url : null;
+              const label = r.headline || r.key;
+              return (
+                <li key={r.key}>
+                  {href ? (
+                    <a href={href} target="_blank" rel="noreferrer">
+                      {label}
+                      <span className="gcpe-visually-hidden"> (opens in a new tab)</span>
+                    </a>
+                  ) : (
+                    <span>{label}</span>
+                  )}
+                  <span className="gcpe-similar__meta">
+                    {" "}
+                    {dateText(r.publishDate, timeZone)} · {r.leadMinistry ?? "No lead ministry"}
+                  </span>
+                  <span className={`gcpe-similar__match gcpe-similar__match--${r.match}`}>{r.match === "ai" ? "AI match" : "Text match"}</span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </SectionDisclosure>
     </section>
   );
 }

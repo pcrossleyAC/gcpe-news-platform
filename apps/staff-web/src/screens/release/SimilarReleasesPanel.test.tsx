@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
@@ -21,6 +21,8 @@ function stub(config: object, similar: () => Response): string[] {
   return calls;
 }
 const renderPanel = () => render(<SimilarReleasesPanel view={VIEW} timeZone="America/Vancouver" />);
+/** The panel's contents sit behind its disclosure (closed by default): open it as a user would. */
+const openPanel = async () => fireEvent.click(await screen.findByRole("button", { name: "Open similar-release search" }));
 
 describe("SimilarReleasesPanel (addendum §7)", () => {
   afterEach(() => {
@@ -38,6 +40,7 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
   it("runs nothing until Find similar is pressed; with the flag on, the button is described by the AI note", async () => {
     const calls = stub({ similarAvailable: true, staffAi: true }, () => jsonResponse(200, { mode: "ai", results: [RESULT] }));
     renderPanel();
+    await openPanel();
     const button = await screen.findByRole("button", { name: "Find similar" });
     expect(button).toHaveAccessibleDescription(AI_NOTE);
     expect(calls).toEqual(["/nrms/api/config"]);
@@ -52,6 +55,7 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
   it("with the flag off: no AI note, text matches", async () => {
     stub({ similarAvailable: true, staffAi: false }, () => jsonResponse(200, { mode: "text", results: [{ ...RESULT, match: "text" }] }));
     renderPanel();
+    await openPanel();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
     expect(await screen.findByText("Text match")).toBeInTheDocument();
     expect(screen.queryByText(AI_NOTE)).not.toBeInTheDocument();
@@ -60,6 +64,7 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
   it("says when AI was asked for but the answer is text matches", async () => {
     stub({ similarAvailable: true, staffAi: true }, () => jsonResponse(200, { mode: "text", results: [{ ...RESULT, match: "text" }] }));
     renderPanel();
+    await openPanel();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
     expect(await screen.findByText(/The AI service wasn.t available, so these are text matches\./)).toBeInTheDocument();
   });
@@ -67,6 +72,7 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
   it("says so when nothing is similar", async () => {
     stub({ similarAvailable: true, staffAi: false }, () => jsonResponse(200, { mode: "text", results: [] }));
     renderPanel();
+    await openPanel();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("No similar published releases found."));
   });
@@ -74,6 +80,7 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
   it("shows the server's message on a failure", async () => {
     stub({ similarAvailable: true, staffAi: false }, () => jsonResponse(422, { error: "Add a headline or some body text first." }));
     renderPanel();
+    await openPanel();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Add a headline or some body text first.");
   });
@@ -81,6 +88,7 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
   it("renders an unsafe url as plain text, not a link (M6)", async () => {
     stub({ similarAvailable: true, staffAi: false }, () => jsonResponse(200, { mode: "text", results: [{ ...RESULT, match: "text", url: "javascript:alert(1)" }] }));
     renderPanel();
+    await openPanel();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
     expect(await screen.findByText("Clinics budget")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
@@ -93,6 +101,7 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
     const bad = { ...RESULT, match: "text" as const, url: null as unknown as string, publishDate: "not-a-date" };
     stub({ similarAvailable: true, staffAi: false }, () => jsonResponse(200, { mode: "text", results: [bad] }));
     renderPanel();
+    await openPanel();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
     expect(await screen.findByText("Clinics budget")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
@@ -102,6 +111,7 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
   it("has no serious or critical axe violations with results shown", async () => {
     stub({ similarAvailable: true, staffAi: true }, () => jsonResponse(200, { mode: "ai", results: [RESULT, { ...RESULT, key: "K2", headline: null, leadMinistry: null, match: "text" }] }));
     const { container } = renderPanel();
+    await openPanel();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
     await screen.findByText("Text match");
     const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });

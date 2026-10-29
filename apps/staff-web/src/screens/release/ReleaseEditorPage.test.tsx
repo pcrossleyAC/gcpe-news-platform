@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import axe from "axe-core";
@@ -159,6 +159,8 @@ describe("ReleaseEditorPage", () => {
     async function startCategoriesSave(writes: HeldWrite[], user: ReturnType<typeof userEvent.setup>) {
       // The checkbox list comes from its own GET /categories, which can land after the section's
       // heading has already rendered.
+      // The lists sit behind the card's disclosure (closed by default): open it as a user would.
+      await user.click(await screen.findByRole("button", { name: "Edit categories" }));
       await user.click(await screen.findByLabelText("Sector One"));
       // Checking that box also dirties the sticky save bar, which gets its own "Save categories"
       // button — scope to the Categories section itself for its inline one.
@@ -508,6 +510,252 @@ describe("ReleaseEditorPage", () => {
     const body = JSON.parse(calls[0]!.init!.body as string);
     expect(body).toMatchObject({ version: 1, headline: "Clinics open more" });
     await waitFor(() => expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument());
+  });
+
+  // Owner decision 2026-10-29: Publish now/Schedule act on the release as saved, so they wait
+  // until every edit on the page is saved.
+  it("Publish now is disabled with a 'save first' blocker while a section is dirty, and enabled again once it's saved", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 1 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [], sectors: [], themes: [], tags: [] });
+        if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+        if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+        if (init?.method === "PUT" && url.endsWith("/meta")) {
+          const body = JSON.parse(init.body as string);
+          return jsonResponse(200, releaseView({ ...v, version: 2, languages: [{ ...v.languages[0]!, location: body.location }] }));
+        }
+        if (/\/nrms\/api\/releases\/[^/]+$/.test(url)) return jsonResponse(200, v);
+        throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+      }),
+    );
+    const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${v.id}`] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    const user = userEvent.setup();
+    expect(await screen.findByRole("button", { name: "Publish now" })).toBeEnabled();
+
+    await user.type(await screen.findByLabelText("Location"), "X");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Publish now" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "Schedule" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Save your changes to page details first." })).toHaveAttribute("href", "#section-page-details");
+
+    await user.click(within(screen.getByRole("region", { name: "Page details" })).getByRole("button", { name: "Save page details" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Publish now" })).toBeEnabled());
+    expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+  });
+
+  it("a blocker link to Categories opens its closed disclosure and focuses the section", async () => {
+    renderPage("11111111-1111-1111-1111-111111111111", { view: releaseView({ status: "draft", ministries: [], leadMinistryKey: null }) });
+    const toggle = await screen.findByRole("button", { name: "Edit categories" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.setup().click(screen.getByRole("link", { name: "Choose at least one ministry." }));
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "true"));
+    expect(screen.getByRole("region", { name: "Categories" })).toHaveFocus();
+    expect(screen.getByRole("group", { name: "Ministries" })).toBeVisible();
+  });
+
+  // Review P1: every section compares its form with what it was seeded from, so a change the
+  // server makes (Approve's key/reference, Publish now/Schedule's publishAt) or a Reload in
+  // another section never reads as an unsaved edit that blocks publishing.
+  describe("server-side changes are never unsaved edits", () => {
+    /** The editor over a live `current` view: GET returns it; each listed write replaces it. */
+    function renderLive(initial: ReleaseView, writes: Record<string, (v: ReleaseView, body: Record<string, unknown>) => Response | ReleaseView>) {
+      let current = initial;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+          if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+          if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "health", name: "Health" }, { key: "sector1", name: "Sector One" }], themes: [], tags: [] });
+          if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+          if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+          const write = Object.entries(writes).find(([suffix]) => url.endsWith(suffix));
+          if (write && init?.method && init.method !== "GET") {
+            const result = write[1](current, init.body ? JSON.parse(init.body as string) : {});
+            if (result instanceof Response) return result;
+            current = result;
+            return jsonResponse(200, current);
+          }
+          if (/\/nrms\/api\/releases\/[^/]+$/.test(url)) return jsonResponse(200, current);
+          throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+        }),
+      );
+      const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${initial.id}`] });
+      render(
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>,
+      );
+      return { setCurrent: (v: ReleaseView) => (current = v) };
+    }
+
+    it("Approve (which assigns the key and reference) leaves Publish now enabled", async () => {
+      const v = releaseView({ status: "draft", key: null, reference: null, version: 1 });
+      renderLive(v, { "/approve": (cur) => ({ ...cur, status: "approved", key: "2026HLTH0001-000001", reference: "NEWS-00001", version: cur.version + 1 }) });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Approve" }));
+      const publish = await screen.findByRole("button", { name: "Publish now" });
+      await waitFor(() => expect(publish).toBeEnabled());
+      expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    });
+
+    it("Schedule, then Cancel schedule (publishAt stays set): Publish now is enabled again", async () => {
+      const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 1 });
+      renderLive(v, {
+        "/schedule": (cur, body) => ({ ...cur, status: "scheduled", publishAt: body.publishAtLocal ? "2031-06-11T17:00:00.000Z" : cur.publishAt, version: cur.version + 1 }),
+        "/cancel": (cur) => ({ ...cur, status: "approved", version: cur.version + 1 }),
+      });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Schedule" }));
+      const actions = screen.getByRole("region", { name: "Actions" });
+      fireEvent.change(within(actions).getByLabelText("Date"), { target: { value: "2031-06-11" } });
+      fireEvent.change(within(actions).getByLabelText("Time (BC time)"), { target: { value: "10:00" } });
+      await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+      await user.click(await screen.findByRole("button", { name: "Cancel schedule" }));
+      const publish = await screen.findByRole("button", { name: "Publish now" });
+      await waitFor(() => expect(publish).toBeEnabled());
+      expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+      // And Publish settings now shows the date the release holds.
+      expect(within(screen.getByRole("region", { name: "Publish settings" })).getByLabelText("Date")).toHaveValue("2031-06-11");
+    });
+
+    it("a publish that failed (publishAt set by the attempt) leaves Publish now enabled", async () => {
+      const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 1 });
+      renderLive(v, { "/schedule": (cur) => ({ ...cur, status: "failed", publishAt: "2026-10-29T08:00:00.000Z", lastError: "The News API was unavailable.", version: cur.version + 1 }) });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Publish now" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Publish now" }));
+      await screen.findByText("The News API was unavailable.");
+      await waitFor(() => expect(screen.getByRole("button", { name: "Publish now" })).toBeEnabled());
+      expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+    });
+
+    it("reverting an edit after the release changed underneath shows the release's new value, not the old one", async () => {
+      const v = releaseView({ status: "draft", version: 1 });
+      renderLive(v, {
+        // Saving the media asset brings back a release someone else has also edited: a new location.
+        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt", languages: [{ ...cur.languages[0]!, location: "KAMLOOPS" }] }),
+      });
+      const user = userEvent.setup();
+      const location = await screen.findByLabelText("Location");
+      await user.type(location, "X");
+      const asset = screen.getByRole("region", { name: "Media asset" });
+      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
+      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
+      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
+      await waitFor(() => expect(screen.getByRole("region", { name: "Unsaved changes" })).toHaveTextContent("page details"));
+      // The user takes their own edit back out: the form now matches what they started from,
+      // which is stale — it shows the release's current location instead.
+      await user.type(location, "{Backspace}");
+      await waitFor(() => expect(location).toHaveValue("KAMLOOPS"));
+      expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    });
+
+    it("saving an edit whose fields changed underneath it sends the version it started from, so the server answers 409 instead of overwriting", async () => {
+      const v = releaseView({ status: "draft", version: 1 });
+      const metaVersions: unknown[] = [];
+      renderLive(v, {
+        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt", languages: [{ ...cur.languages[0]!, location: "KAMLOOPS" }] }),
+        "/meta": (cur, body) => {
+          metaVersions.push(body.version);
+          return body.version === cur.version ? { ...cur, version: cur.version + 1 } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+        },
+      });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Location"), "X");
+      const asset = screen.getByRole("region", { name: "Media asset" });
+      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
+      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
+      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
+      const pageDetails = screen.getByRole("region", { name: "Page details" });
+      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
+      expect(await within(pageDetails).findByText(/someone else changed this/i)).toBeInTheDocument();
+      expect(metaVersions).toEqual([1]);
+    });
+
+    it("an edit whose fields did not change underneath still saves with the latest version", async () => {
+      const v = releaseView({ status: "draft", version: 1 });
+      const metaVersions: unknown[] = [];
+      renderLive(v, {
+        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt" }),
+        "/meta": (cur, body) => {
+          metaVersions.push(body.version);
+          return body.version === cur.version ? { ...cur, version: cur.version + 1 } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+        },
+      });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Location"), "X");
+      const asset = screen.getByRole("region", { name: "Media asset" });
+      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
+      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
+      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
+      const pageDetails = screen.getByRole("region", { name: "Page details" });
+      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
+      await waitFor(() => expect(metaVersions).toEqual([3]));
+      expect(within(pageDetails).queryByText(/someone else changed this/i)).not.toBeInTheDocument();
+    });
+
+    it("a 409 Reload in one section brings in someone else's changes without making other sections dirty", async () => {
+      const v = releaseView({ status: "draft", version: 1, sectors: ["health"] });
+      const live = renderLive(v, { "/meta": () => jsonResponse(409, { error: "version conflict" }) });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Location"), "X");
+      const pageDetails = screen.getByRole("region", { name: "Page details" });
+      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
+      // Meanwhile someone else changed the sectors, the NoD option and the headline.
+      live.setCurrent({
+        ...v, version: 5, sectors: ["health", "sector1"], publishOptions: { ...v.publishOptions, toSubscribers: false },
+        documents: [{ ...v.documents[0]!, languages: [{ ...v.documents[0]!.languages[0]!, headline: "Someone else's headline" }] }],
+      });
+      await user.click(await within(pageDetails).findByRole("button", { name: "Reload" }));
+      await waitFor(() => expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument());
+      expect(screen.getByLabelText("Headline")).toHaveValue("Someone else's headline");
+    });
+  });
+
+  // Review P1: an edited language tab that isn't showing still holds unsaved text; it must keep
+  // blocking Publish now (and keep its button in the save bar) after switching tabs.
+  it("an edited French tab keeps Publish now blocked after switching back to English", async () => {
+    const base = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const v = releaseView({
+      ...base,
+      documents: [{ ...base.documents[0]!, languages: [...base.documents[0]!.languages, { ...base.documents[0]!.languages[0]!, languageId: 3084, pageTitle: "Communiqué", headline: "Cliniques ouvertes" }] }],
+    });
+    renderPage(v.id, { view: v });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "French" }));
+    await user.type(within(screen.getByRole("tabpanel")).getByLabelText("Headline"), " le samedi");
+    await user.click(screen.getByRole("tab", { name: "English" }));
+    expect(within(screen.getByRole("tabpanel")).getByLabelText("Headline")).toHaveValue("Clinics open");
+    expect(screen.getByRole("button", { name: "Publish now" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Save your changes to French content (Document 1) first." })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save French content (Document 1)" })).toBeInTheDocument();
+  });
+
+  it("the 'save French first' blocker link shows the French tab and focuses its panel", async () => {
+    const base = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const v = releaseView({
+      ...base,
+      documents: [{ ...base.documents[0]!, languages: [...base.documents[0]!.languages, { ...base.documents[0]!.languages[0]!, languageId: 3084, pageTitle: "Communiqué", headline: "Cliniques ouvertes" }] }],
+    });
+    renderPage(v.id, { view: v });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "French" }));
+    await user.type(within(screen.getByRole("tabpanel")).getByLabelText("Headline"), " le samedi");
+    await user.click(screen.getByRole("tab", { name: "English" }));
+    await user.click(screen.getByRole("link", { name: "Save your changes to French content (Document 1) first." }));
+    expect(screen.getByRole("tab", { name: "French" })).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("tabpanel");
+    expect(panel).toHaveFocus();
+    expect(within(panel).getByLabelText("Headline")).toHaveValue("Cliniques ouvertes le samedi");
   });
 
   it("two dirty sections show two buttons in the bar", async () => {

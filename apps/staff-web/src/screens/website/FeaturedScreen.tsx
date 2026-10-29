@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
+import { TableScroll } from "../../shared/TableScroll";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
@@ -33,25 +35,28 @@ export function FeaturedScreen(): React.JSX.Element {
       {rows.length === 0 ? (
         <p>Nothing is currently Top or Feature anywhere.</p>
       ) : (
-        <table>
-          <caption>What&rsquo;s featured where</caption>
-          <thead>
-            <tr>
-              <th scope="col">Place</th>
-              <th scope="col">Top</th>
-              <th scope="col">Feature</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${row.kind}:${row.key}`}>
-                <th scope="row">{row.label}</th>
-                <td>{row.top ? row.top.headline : "—"}</td>
-                <td>{row.feature ? row.feature.headline : "—"}</td>
+        <TableScroll label="What’s featured where">
+          <table className="gcpe-table gcpe-featured__table">
+            {/* Named for assistive technology only: the h1 above already says it on screen. */}
+            <caption className="gcpe-visually-hidden">What&rsquo;s featured where</caption>
+            <thead>
+              <tr>
+                <th scope="col">Place</th>
+                <th scope="col">Top</th>
+                <th scope="col">Feature</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${row.kind}:${row.key}`}>
+                  <th scope="row">{row.label}</th>
+                  <td>{row.top ? <Link to={`/releases/${row.top.id}`}>{row.top.headline}</Link> : "—"}</td>
+                  <td>{row.feature ? <Link to={`/releases/${row.feature.id}`}>{row.feature.headline}</Link> : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </div>
   );

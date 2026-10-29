@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Button } from "@bcgov/design-system-react-components";
-import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
+import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
 
 const DISPLAY_LABELS: Record<ListDisplay, string> = {
   all: "Show All", my_ministries: "My Ministries' Activities Only", my_activities: "My Activities Only", my_watchlist: "My Watchlist Only",
 };
 const STATUS_LABELS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
+/** HqTools' Corporate Queries labels. */
+const CORPORATE_LABELS: Record<CorporateStatus, string> = { new: "New", changed: "Changed", reviewed: "Reviewed", deleted: "Deleted", la_new: "LA New", la_changed: "LA Changed" };
 const tri = (v: boolean | null) => (v === null ? "" : String(v));
 const fromTri = (s: string) => (s === "" ? null : s === "true");
 const num = (v: number | null) => (v === null ? "" : String(v));
@@ -31,7 +33,65 @@ function Choice({ id, label, value, onChange, options, any }: { id: string; labe
   );
 }
 
-/** The Filter panel (Default.aspx:524-622). Search runs it; the display chosen here is also saved for next time. */
+const nameOf = (xs: { id: number; name: string }[], id: number | null) => (id === null ? null : (xs.find((x) => x.id === id)?.name ?? GONE));
+
+/**
+ * The filter the list is running, as short "Label: value" parts ("Lead Ministry: HLTH",
+ * "Dates: 2026-11-01 to 2026-11-14"), for the closed Filters disclosure. Empty when nothing
+ * narrows the list.
+ */
+export function activeFilterParts(query: ListQuery, options: ListOptions): string[] {
+  // A corporate query replaces the filter and the display altogether (the server lists by it alone).
+  if (query.corporate) {
+    const c = query.corporate;
+    const statuses = c.statuses.map((s) => CORPORATE_LABELS[s]);
+    const list = statuses.length > 1 ? `${statuses.slice(0, -1).join(", ")} and ${statuses.at(-1)}` : statuses[0];
+    return [`Corporate query: ${c.days === null ? "all upcoming" : `next ${c.days} ${c.days === 1 ? "day" : "days"}`}, ${list}`];
+  }
+  const f = query.filter;
+  const parts: string[] = [];
+  if (f.thisDayOnly && f.from) parts.push(`Date: ${f.from}`);
+  else if (f.from && f.to) parts.push(`Dates: ${f.from} to ${f.to}`);
+  else if (f.from) parts.push(`From ${f.from}`);
+  else if (f.to) parts.push(`To ${f.to}`);
+  if (f.quickSearch) parts.push(`Search: “${f.quickSearch}”`);
+  if (f.keywordIds.length) parts.push(`HQ Tags: ${f.keywordIds.map((id) => nameOf(options.keywords, id)).join(", ")}`);
+  if (f.isIssue !== null) parts.push(f.isIssue ? "Is an Issue" : "Not an Issue");
+  if (f.dateConfirmed !== null) parts.push(f.dateConfirmed ? "Date is Confirmed" : "Date is not Confirmed");
+  if (f.status) parts.push(`Status: ${STATUS_LABELS[f.status]}`);
+  if (f.categoryId !== null) parts.push(`Category: ${nameOf(options.categories, f.categoryId)}`);
+  if (f.ministryKey) {
+    const m = options.ministries.find((x) => x.key === f.ministryKey);
+    parts.push(`Lead Ministry: ${m ? (m.abbreviation ?? m.name) : GONE}`);
+  }
+  if (f.commContactUserId) parts.push(`Comm Contact: ${options.commContacts.find((c) => c.userId === f.commContactUserId)?.name ?? GONE}`);
+  if (f.representativeId !== null) parts.push(`Representative: ${nameOf(options.representatives, f.representativeId)}`);
+  if (f.initiativeId !== null) parts.push(`Initiative: ${nameOf(options.initiatives, f.initiativeId)}`);
+  if (f.premierRequestedId !== null) parts.push(`Premier Requested: ${nameOf(options.premierRequested, f.premierRequestedId)}`);
+  if (f.distributionId !== null) parts.push(`Distribution: ${nameOf(options.distributions, f.distributionId)}`);
+  if (query.display !== "all") parts.push(DISPLAY_LABELS[query.display]);
+  return parts;
+}
+
+const isPhone = () => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 40rem)").matches;
+
+/** Whether Filters is open, for this browser tab only: the screen keeps no other per-user UI state locally. */
+const OPEN_KEY = "gcpe.calendar.filtersOpen";
+function storedOpen(): boolean | null {
+  try {
+    const v = sessionStorage.getItem(OPEN_KEY);
+    return v === null ? null : v === "true";
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The Filter panel (Default.aspx:524-622). Search runs it; the display chosen here is also saved
+ * for next time. It starts closed whenever the list is already filtered (a saved query, a shared
+ * link, a saved display), with the filter shown as one line beside "Filters", so the results come
+ * first; open only when nothing narrows the list. Opening or closing it is remembered for the tab.
+ */
 export function FilterPanel({ query, options, onSearch }: { query: ListQuery; options: ListOptions; onSearch: (q: ListQuery) => void }): React.JSX.Element {
   const [filter, setFilter] = useState<ListFilter>(query.filter);
   const [display, setDisplay] = useState<ListDisplay>(query.display);
@@ -41,6 +101,9 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     setFilter(query.filter);
     setDisplay(query.display);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const parts = activeFilterParts(query, options);
+  // On a phone the open panel is about three screens before the first activity: closed there too.
+  const [open, setOpen] = useState<boolean>(() => storedOpen() ?? (parts.length === 0 && !isPhone()));
   const set = <K extends keyof ListFilter>(k: K, v: ListFilter[K]) => setFilter((f) => ({ ...f, [k]: v }));
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,8 +112,25 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     onSearch({ ...query, corporate: null, display, filter: { ...filter, quickSearch: filter.quickSearch.trim(), to: filter.thisDayOnly ? null : filter.to } });
   };
   return (
-    <details className="gcpe-disclosure" open>
-      <summary>Filters</summary>
+    <details
+      className="gcpe-disclosure gcpe-calendar-filters"
+      open={open}
+      onToggle={(e) => {
+        const next = e.currentTarget.open;
+        // Browsers also fire toggle when a details first renders open: only a real change is the user's.
+        if (next === open) return;
+        setOpen(next);
+        try {
+          sessionStorage.setItem(OPEN_KEY, String(next));
+        } catch {
+          /* private mode: just not remembered */
+        }
+      }}
+    >
+      <summary>
+        Filters
+        <span className="gcpe-calendar-filters__summary">{parts.length ? parts.join(" · ") : "No filters"}</span>
+      </summary>
       <form aria-label="Filter activities" className="gcpe-calendar-filter" onSubmit={submit}>
         <fieldset className="gcpe-calendar-filter__group">
           <legend>Dates</legend>

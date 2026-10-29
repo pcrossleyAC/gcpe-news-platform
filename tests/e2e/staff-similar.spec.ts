@@ -16,6 +16,8 @@ test("Find similar lists a matching published release as an AI match, and the pa
   await signInAs(context, "editor");
   await page.goto(`${baseUrl()}/hub/releases/${draft.id}`);
   const panel = page.getByRole("region", { name: "Similar published releases" });
+  // The panel's contents sit behind a disclosure that starts closed.
+  await panel.getByRole("button", { name: "Open similar-release search" }).click();
   await expect(panel.getByText("Sends this draft's text to the AI service to compare.")).toBeVisible();
   await panel.getByRole("button", { name: "Find similar" }).click();
 

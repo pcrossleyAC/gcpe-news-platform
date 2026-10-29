@@ -206,6 +206,29 @@ describe("BodyEditor", () => {
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(onChange.mock.calls.at(-1)![0]).toContain("<asset>https://youtu.be/pasted00002</asset>");
   });
+  // Review P3: an untouched release editor form re-seeds when the release changes underneath it
+  // (useSeededForm). If the body has focus at that moment the new value must still land — or
+  // the next keystroke would send the old text back over it.
+  it("a new value arriving while the editor has focus (and holds no unsent edits) replaces the content, so the next keystroke builds on it", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<BodyEditor id="body" label="Body" value="<p>Old text</p>" onChange={onChange} readOnly={false} />);
+    const field = await screen.findByLabelText("Body");
+    const user = userEvent.setup();
+    await user.click(field);
+    expect(field).toHaveFocus();
+
+    rerender(<BodyEditor id="body" label="Body" value="<p>New text</p>" onChange={onChange} readOnly={false} />);
+    await waitFor(() => expect(field).toHaveTextContent("New text"));
+    expect(onChange).not.toHaveBeenCalled();
+
+    caretToEnd(field);
+    await user.type(field, "!", { skipClick: true });
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const last = onChange.mock.calls.at(-1)![0] as string;
+    expect(last).toContain("New text");
+    expect(last).not.toContain("Old text");
+  });
+
   it("caretToEnd holds on a slow runner: typing after stored text appends, even when ProseMirror's post-focus timer runs first", async () => {
     // The Windows CI failure ("<p>yzx</p>"), made deterministic. On a slow runner, ProseMirror's
     // 20ms post-focus timer (armed by the click) can run before the selectionchange event (a

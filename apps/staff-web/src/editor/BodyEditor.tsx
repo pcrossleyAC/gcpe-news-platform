@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { EditorContent, ReactNodeViewRenderer, useEditor, useEditorState } from "@tiptap/react";
 import { Button, ToggleButton } from "@bcgov/design-system-react-components";
 import { Asset, bodyExtensions } from "./schema";
@@ -51,6 +51,11 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
   // useEditor(…, []) creates the editor once but re-applies these options after every render
   // (@tiptap/react's setOptions on render), so a description that comes and goes (a note, a
   // server error) reaches the editing area's attributes without an effect of its own.
+  // The user has edited in the editor since it last took a value from outside (or since it last
+  // lost focus). While focused and untouched it holds nothing of the user's, so a new `value`
+  // can replace it; once they've typed, an outside value waits (it may only be the parent
+  // catching up with a keystroke, and replacing would lose the newer ones).
+  const typedSinceSync = useRef(false);
   const editor = useEditor(
     {
       extensions: bodyExtensions(allowAssets ? AssetWithView : null, { italic: allowItalic }),
@@ -60,7 +65,10 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
         attributes: attributes(),
         transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, (allowAssets ? BODY_TAGS : BIO_TAGS).filter((t) => allowItalic || t !== "em")),
       },
-      onUpdate: ({ editor: e }) => onChange(e.getHTML()),
+      onUpdate: ({ editor: e }) => {
+        typedSinceSync.current = true;
+        onChange(e.getHTML());
+      },
     },
     [],
   );
@@ -84,15 +92,28 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
     editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
 
-  // Resyncs when `value` changes from outside (a reload after a 409, or the session-expiry
-  // restore) — never while the user is actively focused in the editor, so an external replace
-  // (e.g. the whole page's `view` being swapped by an unrelated section's save) can't clobber
-  // what they're mid-typing.
+  // Resyncs when `value` changes from outside (a reload after a 409, the session-expiry restore,
+  // an untouched release form re-seeding from a changed release). While focused, only if the
+  // user hasn't typed since the last sync — so an external replace can't clobber what they're
+  // mid-typing, yet a focused, untouched editor still takes the new value (otherwise the next
+  // keystroke would send the old text back over it).
   useEffect(() => {
-    if (!editor || editor.isFocused) return;
+    if (!editor) return;
     if (editor.getHTML() === value) return;
+    if (editor.isFocused && typedSinceSync.current) return;
     editor.commands.setContent(value, { emitUpdate: false });
+    typedSinceSync.current = false;
   }, [editor, value]);
+  useEffect(() => {
+    if (!editor) return;
+    const onBlur = () => {
+      typedSinceSync.current = false;
+    };
+    editor.on("blur", onBlur);
+    return () => {
+      editor.off("blur", onBlur);
+    };
+  }, [editor]);
 
   const insertAsset = () => {
     if (!editor) return;
@@ -119,24 +140,32 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
       </span>
       {!readOnly && editor && (
         <div className="gcpe-body-editor__toolbar" role="toolbar" aria-label={`${label} formatting`}>
-          <ToggleButton isSelected={active.bold} onChange={() => editor.chain().focus().toggleBold().run()}>
-            Bold
-          </ToggleButton>
-          {allowItalic && (
-            <ToggleButton isSelected={active.italic} onChange={() => editor.chain().focus().toggleItalic().run()}>
-              Italic
+          {/* One visual group of formatting toggles (the design system's toggle-group look);
+           * Insert asset, an action rather than a format, sits apart as a secondary button. */}
+          <div className="gcpe-body-editor__toggles">
+            <ToggleButton size="small" isSelected={active.bold} onChange={() => editor.chain().focus().toggleBold().run()}>
+              Bold
             </ToggleButton>
+            {allowItalic && (
+              <ToggleButton size="small" isSelected={active.italic} onChange={() => editor.chain().focus().toggleItalic().run()}>
+                Italic
+              </ToggleButton>
+            )}
+            <ToggleButton size="small" isSelected={active.bullet} onChange={() => editor.chain().focus().toggleBulletList().run()}>
+              Bulleted list
+            </ToggleButton>
+            <ToggleButton size="small" isSelected={active.ordered} onChange={() => editor.chain().focus().toggleOrderedList().run()}>
+              Numbered list
+            </ToggleButton>
+            <ToggleButton size="small" isSelected={active.link} onChange={toggleLink}>
+              Link
+            </ToggleButton>
+          </div>
+          {allowAssets && (
+            <Button size="small" variant="secondary" onPress={insertAsset}>
+              Insert asset
+            </Button>
           )}
-          <ToggleButton isSelected={active.bullet} onChange={() => editor.chain().focus().toggleBulletList().run()}>
-            Bulleted list
-          </ToggleButton>
-          <ToggleButton isSelected={active.ordered} onChange={() => editor.chain().focus().toggleOrderedList().run()}>
-            Numbered list
-          </ToggleButton>
-          <ToggleButton isSelected={active.link} onChange={toggleLink}>
-            Link
-          </ToggleButton>
-          {allowAssets && <Button onPress={insertAsset}>Insert asset</Button>}
         </div>
       )}
       <EditorContent editor={editor} className="gcpe-body-editor__area" />

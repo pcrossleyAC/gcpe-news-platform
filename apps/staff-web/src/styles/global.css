@@ -146,9 +146,57 @@ body {
   gap: 0.25rem;
 }
 
+/* A document's English/French switcher as tabs: a rule under the row, the selected tab marked by
+ * weight and a 3px bar (same look as the section tabs). */
 .gcpe-document-tabs [role="tablist"] {
   display: flex;
   gap: 0.25rem;
+  border-bottom: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+  margin-bottom: 0.75rem;
+}
+.gcpe-document-tabs [role="tab"] {
+  padding: 0.5rem 0.875rem;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font: var(--typography-regular-body);
+  color: var(--typography-color-link, #255a90);
+  cursor: pointer;
+}
+.gcpe-document-tabs [role="tab"]:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.gcpe-document-tabs [role="tab"][aria-selected="true"] {
+  font: var(--typography-bold-body);
+  color: var(--typography-color-primary, #2d2d2d);
+  border-bottom-color: var(--surface-color-primary-default, #013366);
+}
+.gcpe-document-tabs [role="tab"]:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: calc(-1 * var(--layout-border-width-medium, 2px));
+}
+.gcpe-document-tabs__translation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.gcpe-document-tabs__translation-actions:empty {
+  display: none;
+}
+.gcpe-documents__item + .gcpe-documents__item {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+}
+.gcpe-documents__summary-note {
+  margin: 0 0 1rem;
+  color: var(--typography-color-secondary, #474543);
+}
+.gcpe-documents__add {
+  margin-top: 1rem;
 }
 
 .gcpe-shell__main {
@@ -427,7 +475,8 @@ body {
   text-decoration: underline;
 }
 
-.gcpe-section-tabs a[aria-current="page"] {
+.gcpe-section-tabs a[aria-current="page"],
+.gcpe-section-tabs a[aria-current="true"] {
   font-weight: 700;
   color: var(--typography-color-primary, #2d2d2d);
   border-bottom-color: var(--surface-color-primary-default, #013366);
@@ -525,21 +574,89 @@ body {
   margin: 1rem 0;
 }
 
+/* The list's h1 with its New release button on the same line; the folder tabs under them. */
+.gcpe-release-list__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.gcpe-release-list__head h1 {
+  margin: 0;
+}
+.gcpe-release-list > h1 {
+  margin-bottom: 0.75rem;
+}
+.gcpe-release-list .gcpe-section-tabs ul {
+  margin-bottom: 0;
+}
+
 .gcpe-release-list__rows {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
+/* One release (or Forecast activity) per card: a meta line, the headline, a two-line summary. */
 .gcpe-release-row {
   display: flex;
-  gap: 0.75rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 0.75rem;
+  gap: 0.875rem;
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-forms-default, #fff);
+  padding: 0.625rem 1rem;
+}
+
+/* Ordinary inline text, so the " · " separators keep their spaces (a flex row would trim them,
+ * and run the words together for a screen reader too). */
+.gcpe-release-row__meta {
+  margin: 0;
+  line-height: 1.75;
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-secondary, #474543);
+}
+.gcpe-release-row__meta .gcpe-badge + .gcpe-badge {
+  margin-left: 0.375rem;
+}
+.gcpe-release-row__type {
+  font: var(--typography-bold-small-body);
+  color: var(--typography-color-primary, #2d2d2d);
+}
+
+.gcpe-release-row__headline {
+  margin: 0.25rem 0 0;
+  font: var(--typography-bold-large-body);
+  text-wrap: pretty;
+}
+.gcpe-release-row__headline a {
+  color: var(--typography-color-link, #255a90);
+  text-underline-offset: 0.2em;
+}
+
+/* Two lines at most; the full text is on the release itself. */
+.gcpe-release-row__summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  max-width: 75ch;
+  margin: 0.25rem 0 0;
+  color: var(--typography-color-secondary, #474543);
+}
+
+.gcpe-release-row__action {
+  margin: 0.375rem 0 0;
+}
+.gcpe-release-row__action a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 0.125rem 0;
 }
 
 /* Decorative only (aria-hidden) — the type is always also shown as text. */
@@ -573,18 +690,15 @@ body {
   flex: 1 1 auto;
 }
 
-.gcpe-release-row__badges {
-  display: flex;
-  gap: 0.5rem;
-  margin: 0.25rem 0 0;
-}
-
 .gcpe-badge {
   display: inline-block;
-  padding: 0.1rem 0.5rem;
+  padding: 0 0.5rem;
   border-radius: 999px;
-  border: 1px solid #666;
-  font-size: 0.8rem;
+  border: 1px solid var(--surface-color-border-medium, #898785);
+  background: var(--surface-color-background-light-gray, #faf9f8);
+  color: var(--typography-color-primary, #2d2d2d);
+  font: var(--typography-regular-small-body);
+  line-height: 1.5;
 }
 
 .gcpe-badge--alert {
@@ -616,22 +730,277 @@ body {
 
 /* Task 3 (staff-web): new release and the release editor. */
 
+/* One column below 80rem: the header, Actions, the release itself, then Publish settings and the
+ * release's facts. */
 .gcpe-release-editor {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-width: 48rem;
+  max-width: 90rem;
 }
 
+.gcpe-release-editor__top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.gcpe-release-editor__main,
+.gcpe-release-editor__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+/* From 80rem: the release on the left; on the right, Actions and under it the rail (Publish
+ * settings, the facts), which sticks while the release scrolls and scrolls on its own when it's
+ * taller than the screen (above the save bar while that is open). */
+@media (min-width: 80rem) {
+  .gcpe-release-editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24rem;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "top top"
+      "main actions"
+      "main rail";
+    align-items: start;
+    column-gap: 2rem;
+    row-gap: 1.5rem;
+  }
+
+  .gcpe-release-editor__top {
+    grid-area: top;
+  }
+
+  .gcpe-release-editor__main {
+    grid-area: main;
+  }
+
+  .gcpe-release-editor__actions {
+    grid-area: actions;
+  }
+
+  .gcpe-release-editor__rail {
+    grid-area: rail;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* Room for focus rings, which the scroller would otherwise clip. */
+    padding: 0.25rem;
+    margin: -0.25rem;
+    gap: 1rem;
+  }
+
+  .gcpe-release-editor--save-bar-open .gcpe-release-editor__rail {
+    max-height: calc(100vh - 8rem);
+  }
+}
+
+/* Every part of the editor is the same card: a 1px border, 4px corners, its h2 on top. */
 .gcpe-release-editor__header,
 .gcpe-release-editor__actions,
 .gcpe-release-editor__settings,
 .gcpe-release-editor__categories,
+.gcpe-release-editor__features,
 .gcpe-release-editor__asset,
-.gcpe-release-editor__page-details {
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 1rem;
+.gcpe-release-editor__page-details,
+.gcpe-release-editor__documents,
+.gcpe-release-editor__files,
+.gcpe-release-editor__similar,
+.gcpe-release-editor__sidebar {
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-forms-default, #fff);
+  padding: 1rem 1.25rem 1.25rem;
+  min-width: 0;
+}
+
+.gcpe-release-editor__header {
+  padding-block: 1rem;
+}
+
+.gcpe-release-editor__header h1 {
+  margin: 0;
+  font: var(--typography-bold-h2);
+  text-wrap: balance;
+}
+
+.gcpe-release-editor :is(section, aside) > h2 {
+  margin: 0 0 0.75rem;
+  font: var(--typography-bold-h5);
+}
+
+.gcpe-release-editor__actions,
+.gcpe-release-editor__rail :is(section, aside) {
+  padding: 0.875rem 1rem 1rem;
+}
+
+/* A section's id target takes focus from the "why is this unavailable" links: a ring, not the
+ * browser's default box, and only for keyboard-visible focus. */
+.gcpe-release-editor :is(section, h2, h3)[tabindex="-1"]:focus {
+  outline: none;
+}
+.gcpe-release-editor :is(section, h2, h3)[tabindex="-1"]:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+}
+
+/* A closed long list: what is picked, then the design system's disclosure. Its panel stacks its
+ * own content (the design system lays it out as a row). */
+.gcpe-section-disclosure__summary {
+  margin: 0 0 0.75rem;
+  color: var(--typography-color-secondary, #474543);
+  overflow-wrap: anywhere;
+}
+.gcpe-section-disclosure .bcds-react-aria-Disclosure--Button {
+  width: 100%;
+  min-height: 40px;
+}
+.gcpe-section-disclosure .bcds-react-aria-Disclosure[data-expanded] > .bcds-react-aria-Disclosure--Panel {
+  display: block;
+}
+.gcpe-section-disclosure .bcds-react-aria-Disclosure--Panel > .gcpe-stack > .gcpe-options:last-of-type {
+  margin-bottom: 0;
+}
+
+/* Fields side by side on the form grid, wrapping one under another when narrow. */
+.gcpe-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem 1rem;
+  align-items: start;
+  align-self: stretch;
+}
+
+/* A document's language form: headline and subheadline the full width, groups spaced evenly. */
+.gcpe-doc-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.gcpe-doc-form > .bcds-react-aria-TextField {
+  align-self: stretch;
+  max-width: none;
+}
+.gcpe-doc-form .gcpe-body-editor {
+  margin-block: 0;
+}
+
+/* A bordered group of fields with its legend, the design system's form look. */
+.gcpe-fieldset {
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.gcpe-fieldset > legend {
+  padding: 0 0.25rem;
+  font: var(--typography-bold-small-body);
+}
+.gcpe-document-language__contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+  align-self: stretch;
+}
+.gcpe-document-language__contact > .bcds-react-aria-TextArea {
+  flex: 1 1 18rem;
+}
+
+/* A native file picker as a labelled field: its button drawn as the design system's small
+ * secondary button. */
+.gcpe-file-input {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-primary, #2d2d2d);
+}
+.gcpe-file-input input[type="file"] {
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-secondary, #474543);
+  max-width: 100%;
+}
+.gcpe-file-input input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-dark, #353433);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-secondary-default, #fff);
+  color: var(--typography-color-primary, #2d2d2d);
+  font: var(--typography-regular-small-body);
+  cursor: pointer;
+}
+.gcpe-file-input input[type="file"]::file-selector-button:hover {
+  background: var(--surface-color-secondary-hover, #edebe9);
+}
+.gcpe-file-input input[type="file"]:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+}
+.gcpe-files-section__group + .gcpe-files-section__group {
+  margin-top: 1.25rem;
+}
+.gcpe-files-section__group > h3 {
+  margin: 0 0 0.25rem;
+  font: var(--typography-bold-body);
+}
+.gcpe-files-section__group > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The release's facts in the rail: label and value on one line each. */
+.gcpe-sidebar__reference {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.375rem 1rem;
+  margin: 0 0 0.75rem;
+}
+.gcpe-sidebar__reference > div {
+  display: contents;
+}
+.gcpe-sidebar__reference dt {
+  color: var(--typography-color-secondary, #474543);
+  font: var(--typography-regular-small-body);
+}
+.gcpe-sidebar__reference dd {
+  margin: 0;
+  font: var(--typography-bold-small-body);
+  overflow-wrap: anywhere;
+}
+.gcpe-sidebar__email-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+.gcpe-sidebar__history h3 {
+  margin: 1rem 0 0.25rem;
+  font: var(--typography-bold-body);
+}
+.gcpe-sidebar__history ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  font: var(--typography-regular-small-body);
+}
+.gcpe-sidebar__history li + li {
+  margin-top: 0.25rem;
 }
 
 .gcpe-release-editor__meta {
@@ -720,7 +1089,17 @@ body {
 .gcpe-body-editor__toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+/* The formatting toggles as one group: the design system's toggle-group track. */
+.gcpe-body-editor__toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--layout-margin-xsmall, 0.25rem);
+  padding: var(--layout-padding-xsmall, 0.25rem);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-secondary-button-disabled, #edebe9);
 }
 .gcpe-body-editor__area .ProseMirror {
   min-height: 12rem;
@@ -750,6 +1129,16 @@ body {
 
 .gcpe-release-editor__why ul {
   margin: 0.25rem 0 0;
+}
+
+/* Release editor: what Publish now will do, in its confirm dialog. */
+.gcpe-publish-consequences {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 40rem;
 }
 
 /* Release editor: the "this page updates on its own" note while publishing/unpublishing. */
@@ -1016,6 +1405,24 @@ body {
   color: #013366;
   text-decoration: none;
 }
+/* A link that starts a task, drawn as the design system's medium primary button. */
+.gcpe-button-link--primary {
+  min-height: 40px;
+  padding: 0 1.125rem;
+  border: 0;
+  background: var(--surface-color-primary-button-default, #013366);
+  color: var(--typography-color-primary-invert, #fff);
+  font: var(--typography-regular-body);
+}
+.gcpe-button-link--primary:hover {
+  background: var(--surface-color-primary-button-hover, #1e5189);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.gcpe-button-link--primary:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+}
 .gcpe-review-mark {
   font-size: 0.8rem;
   font-weight: 700;
@@ -1150,32 +1557,115 @@ body {
   margin: 0.5rem auto 0.5rem 0;
 }
 
-/* Users: each user is a compact block. */
-.gcpe-users__list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+/* A generic card, the same as the release editor's parts: 1px border, 4px corners, h2 on top. */
+.gcpe-card {
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-forms-default, #fff);
+  padding: 1rem 1.25rem 1.25rem;
+  margin: 1.5rem 0;
+  min-width: 0;
+}
+.gcpe-card > h2:first-child,
+.gcpe-card > header:first-child h2 {
+  margin: 0 0 0.75rem;
+  font: var(--typography-bold-h5);
+}
+
+/* Users: one table row per user; Edit opens the user's editor in a row underneath. */
+.gcpe-users__filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem 1.5rem;
+  margin: 0 0 0.5rem;
+}
+.gcpe-users__filter > .bcds-react-aria-TextField {
+  width: min(100%, 24rem);
+}
+.gcpe-users__count {
+  margin: 0 0 0.5rem;
+  color: var(--typography-color-secondary, #474543);
+}
+.gcpe-users__table {
+  width: 100%;
+}
+.gcpe-users__table tbody th {
+  text-align: left;
+  font-weight: 700;
+}
+.gcpe-users__table td,
+.gcpe-users__table th {
+  vertical-align: top;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+.gcpe-users__email {
+  overflow-wrap: anywhere;
+}
+.gcpe-users__open > :is(td, th) {
+  border-bottom: 0;
+}
+.gcpe-users__editor-row > td {
+  padding: 0 0 1.25rem;
+}
+.gcpe-users__editor {
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: 4px;
+  background: var(--surface-color-background-light-gray, #faf9f8);
+  padding: 1rem 1.25rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  align-items: flex-start;
+  gap: 0.75rem;
   max-width: 60rem;
 }
-.gcpe-users__row {
-  border: 1px solid #d8d8d8;
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
+.gcpe-users__editor > * {
+  margin: 0;
 }
 .gcpe-users__who {
-  font-size: 1.125rem;
+  font: var(--typography-bold-h5);
   margin: 0;
   overflow-wrap: anywhere;
 }
 .gcpe-users__sign-in {
-  margin: 0.25rem 0 0;
+  margin: 0;
 }
-.gcpe-users__row .gcpe-options {
-  margin-top: 0.75rem;
-  margin-bottom: 0.5rem;
+.gcpe-users__editor .gcpe-options {
+  margin: 0.25rem 0;
+  align-self: stretch;
+}
+.gcpe-badge-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+@media (max-width: 40rem) {
+  /* Phone: each user reads as a small card of label-free lines. */
+  .gcpe-users__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .gcpe-users__table,
+  .gcpe-users__table tbody,
+  .gcpe-users__table tr,
+  .gcpe-users__table :is(td, th) {
+    display: block;
+  }
+  .gcpe-users__table tr:not(.gcpe-users__editor-row) {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #d8d8d8;
+  }
+  .gcpe-users__table :is(td, th) {
+    border: 0;
+    padding: 0.15rem 0;
+  }
 }
 
 /* Shows its text with the first letter capitalised (HiddenPrefixLabel). */
@@ -1720,4 +2210,574 @@ fieldset.gcpe-org-contact {
 /* A sort-order number needs a few digits, not a full-width field. */
 .gcpe-table input[type="number"] {
   width: 6rem;
+}
+
+/* Batch 3: a control that saves the moment it changes, with its outcome ("Saved" or the error)
+ * beside it in a polite live region. */
+.gcpe-inline-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+}
+
+.gcpe-inline-control > input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+}
+
+.gcpe-inline-control input[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Never display:none while empty: a live region has to be in the accessibility tree before its
+ * text arrives, or "Saved" isn't announced. Empty, an inline span takes no room anyway. */
+.gcpe-inline-note {
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-secondary, #474543);
+}
+
+.gcpe-inline-note--error {
+  margin: 0.25rem 0 0;
+  color: #b00020;
+}
+
+/* Calendar list, batch 3 ------------------------------------------------------------------- */
+
+/* Closed Filters shows the running filter on one line beside its name. */
+.gcpe-calendar-filters > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+.gcpe-calendar-filters__summary {
+  font-weight: 400;
+  color: var(--typography-color-secondary, #474543);
+  overflow-wrap: anywhere;
+}
+.gcpe-calendar-filters[open] .gcpe-calendar-filters__summary {
+  display: none;
+}
+
+/* The Excel export and the PDF reports read as one set. */
+.gcpe-calendar-toolbar .gcpe-actions > .gcpe-toolbar-group {
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-background-light-gray, #faf9f8);
+}
+.gcpe-toolbar-group > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gcpe-toolbar-group > div > p {
+  margin: 0;
+  flex-basis: 100%;
+}
+.gcpe-toolbar-group__label {
+  font: var(--typography-bold-small-body);
+  color: var(--typography-color-secondary, #474543);
+}
+
+/* List / Month / Week: one segmented control (each is still a toggle button, aria-pressed). */
+.gcpe-segmented {
+  display: inline-flex;
+  border: 1px solid var(--surface-color-border-dark, #353433);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  overflow: hidden;
+}
+.gcpe-segmented > .gcpe-view-button {
+  border: 0;
+  border-radius: 0;
+  background: var(--surface-color-forms-default, #fff);
+  color: var(--typography-color-primary, #2d2d2d);
+  min-height: 40px;
+  padding: 0 1rem;
+}
+.gcpe-segmented > .gcpe-view-button + .gcpe-view-button {
+  border-left: 1px solid var(--surface-color-border-dark, #353433);
+}
+.gcpe-segmented > .gcpe-view-button:hover {
+  background: var(--surface-color-secondary-button-hover, #edebe9);
+}
+.gcpe-segmented > .gcpe-view-button[aria-pressed="true"] {
+  background: var(--surface-color-primary-button-default, #013366);
+  color: var(--typography-color-primary-invert, #fff);
+}
+.gcpe-segmented > .gcpe-view-button:focus-visible {
+  outline: 2px solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: -4px;
+}
+
+/* The activity table: roomier cells; headers wrap between words, never inside one. */
+.gcpe-calendar-table th,
+.gcpe-calendar-table td {
+  padding: 0.5rem 0.625rem;
+}
+.gcpe-calendar-table thead th {
+  background: var(--surface-color-background-light-gray, #faf9f8);
+  vertical-align: bottom;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+.gcpe-calendar-table .gcpe-sort {
+  padding: 0.2rem 0;
+}
+.gcpe-calendar-table .gcpe-col-title {
+  min-width: 14rem;
+}
+.gcpe-calendar-table .gcpe-col-dateTime {
+  min-width: 7.5rem;
+}
+.gcpe-activity-meta {
+  display: block;
+  margin-top: 0.25rem;
+}
+.gcpe-activity-title + div {
+  margin-top: 0.125rem;
+}
+
+/* Phone: each activity is a card of "Label: value" lines; the sort buttons stay as a row above. */
+@media (max-width: 40rem) {
+  .gcpe-calendar-table,
+  .gcpe-calendar-table tbody,
+  .gcpe-calendar-table tr,
+  .gcpe-calendar-table td {
+    display: block;
+    width: auto;
+  }
+  .gcpe-calendar-table thead,
+  .gcpe-calendar-table thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+  }
+  .gcpe-calendar-table thead::before {
+    content: "Sort by";
+    font-weight: 700;
+    align-self: center;
+  }
+  .gcpe-calendar-table thead th {
+    border: 0;
+    padding: 0;
+    background: none;
+  }
+  .gcpe-calendar-table thead th:not(:has(button)) {
+    display: none;
+  }
+  .gcpe-calendar-table thead th[aria-sort] .gcpe-sort::after {
+    content: " (sorted)";
+    font-weight: 400;
+  }
+  .gcpe-calendar-table tbody tr {
+    margin: 0.75rem 0;
+    border: 1px solid #d8d8d8;
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+  }
+  .gcpe-calendar-table tbody td {
+    border: 0;
+    padding: 0.2rem 0;
+  }
+  .gcpe-calendar-table tbody td:is(:empty, :has(> span:only-child:empty)) {
+    display: none;
+  }
+  .gcpe-calendar-table tbody td:not(.gcpe-col-activity):not(.gcpe-col-title)::before {
+    content: attr(data-label) ": ";
+    content: attr(data-label) ": " / "";
+    font-weight: 700;
+  }
+  .gcpe-calendar-table .gcpe-col-title {
+    min-width: 0;
+  }
+  .gcpe-calendar-table tbody .gcpe-col-title {
+    font-size: 1rem;
+  }
+  .gcpe-calendar-table .gcpe-activity-cell {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+  }
+}
+
+/* Every Save / Cancel pair (and other button rows marked as actions) sits apart, side by side. */
+:where(.gcpe-shell__main) :where(.gcpe-actions) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+/* Calendar activity: Save / Cancel ride along at the bottom of the screen while the form scrolls. */
+.gcpe-activity form > .gcpe-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 1rem -0.5rem 0;
+  padding: 0.75rem 0.5rem;
+  background: var(--surface-color-forms-default, #fff);
+  border-top: 1px solid var(--surface-color-border-default, #d8d8d8);
+  box-shadow: 0 -4px 8px -4px rgba(0, 0, 0, 0.12);
+}
+/* The Activity Id cell: checkbox and star side by side, the id never broken at its hyphen. */
+.gcpe-calendar-table .gcpe-activity-cell {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.375rem;
+}
+.gcpe-calendar-table .gcpe-activity-cell > strong {
+  flex-basis: 100%;
+  white-space: nowrap;
+}
+.gcpe-calendar-table .gcpe-activity-cell > span:empty {
+  display: none;
+}
+@media (max-width: 40rem) {
+  .gcpe-calendar-table .gcpe-activity-cell > strong {
+    flex-basis: auto;
+  }
+}
+
+/* Calendar activity: the small in-form buttons (Add tag, Use the inferred section) drawn as the
+ * design system's small secondary button, apart from the field they follow. */
+.gcpe-tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gcpe-small-button {
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border: none;
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-secondary-button-default, #fff);
+  box-shadow: inset 0 0 0 1px var(--surface-color-border-dark, #353433);
+  color: var(--typography-color-primary, #2d2d2d);
+  font: var(--typography-regular-small-body);
+  cursor: pointer;
+}
+.gcpe-small-button:hover {
+  background: var(--surface-color-secondary-button-hover, #edebe9);
+}
+.gcpe-small-button:focus-visible {
+  outline: 2px solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: 2px;
+}
+/* A tag's remove button stays compact inside its chip (still at least 24px). */
+.gcpe-activity .gcpe-tags li .gcpe-small-button {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0 0.25rem;
+  box-shadow: none;
+}
+
+/* Website: the pages under Site settings, as a quiet secondary row under the tabs. */
+.gcpe-subnav ul {
+  list-style: none;
+  margin: -0.25rem 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font: var(--typography-regular-small-body);
+}
+.gcpe-subnav a {
+  display: inline-block;
+  padding: 0.25rem 0;
+  color: var(--typography-color-link, #255a90);
+}
+.gcpe-subnav a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--typography-color-primary, #2d2d2d);
+  text-decoration: none;
+}
+
+/* Site settings index: each page a link with one line on what it changes, in columns. */
+.gcpe-link-cards {
+  list-style: none;
+  margin: 0.75rem 0 1.5rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.75rem;
+  max-width: 64rem;
+}
+.gcpe-link-cards > li {
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  padding: 0.75rem 1rem;
+}
+.gcpe-link-cards > li > a {
+  font-weight: 700;
+}
+.gcpe-link-cards > li > p {
+  margin: 0.25rem 0 0;
+  color: var(--typography-color-secondary, #474543);
+}
+.gcpe-site-settings-index > h2 {
+  font: var(--typography-bold-h5);
+  margin: 1.5rem 0 0;
+}
+
+/* Carousel: each slide a card with "Slide N" and its tools in the header, fields in two columns. */
+.gcpe-carousel__slide {
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-forms-default, #fff);
+  padding: 0.75rem 1.25rem 1.25rem;
+  margin: 0 0 1rem;
+  max-width: 64rem;
+}
+.gcpe-carousel__slide-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+}
+.gcpe-carousel__slide-head > h3 {
+  margin: 0;
+  font: var(--typography-bold-h5);
+}
+.gcpe-carousel__slide-tools {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gcpe-carousel__slide-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+  align-items: start;
+}
+.gcpe-carousel__slide-fields > .bcds-react-aria-TextField {
+  min-width: 0;
+}
+.gcpe-carousel__slide-fields .bcds-react-aria-TextField--Input,
+.gcpe-carousel__slide-fields .bcds-react-aria-TextField--container {
+  width: 100%;
+}
+.gcpe-carousel__slide-fields > .gcpe-field select {
+  width: 100%;
+  max-width: 12rem;
+}
+.gcpe-carousel__image {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.5rem;
+  margin: 0;
+}
+.gcpe-carousel__image > .gcpe-file-input {
+  margin: 0;
+}
+.gcpe-carousel__image > img {
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: 4px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  height: auto;
+}
+.gcpe-carousel__actions {
+  margin: 0.5rem 0 1.5rem;
+}
+@media (max-width: 40rem) {
+  .gcpe-carousel__slide-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gcpe-carousel__slide-tools {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}
+.gcpe-carousel__slide-fields > .gcpe-field > label {
+  font: var(--typography-regular-small-body);
+}
+
+/* Search: the box, both filters and the button on one row, labels on top, button on the inputs' line. */
+.gcpe-search__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin: 0 0 1rem;
+}
+.gcpe-search__row > .gcpe-search__q {
+  flex: 1 1 18rem;
+  max-width: 32rem;
+}
+.gcpe-search__row > .gcpe-field select {
+  max-width: 16rem;
+}
+.gcpe-search__hint {
+  color: var(--typography-color-secondary, #474543);
+  max-width: 65ch;
+}
+.gcpe-search__recent-heading {
+  font: var(--typography-bold-h5);
+  margin: 1.5rem 0 0.5rem;
+}
+
+/* Phone header: logo, title and Sign out on one line; who is signed in is shown in the Menu panel. */
+.gcpe-shell__menu-user {
+  display: none;
+}
+@media (max-width: 40rem) {
+  .gcpe-shell > .bcds-header > .bcds-header--container {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 0;
+    padding-block: 0.5rem;
+  }
+  .gcpe-shell > .bcds-header > .bcds-header--container svg#bcgov-logo-header {
+    min-width: 96px;
+    width: 96px;
+    height: auto;
+  }
+  .gcpe-shell > .bcds-header > .bcds-header--container > .bcds-header--line {
+    display: none;
+  }
+  .gcpe-shell > .bcds-header > .bcds-header--container > .bcds-header--title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: var(--typography-bold-body);
+  }
+  .gcpe-shell__user {
+    flex: none;
+  }
+  .gcpe-shell__user > span {
+    display: none;
+  }
+  .gcpe-shell__menu-user {
+    display: block;
+    margin: 0 0 0.5rem;
+    padding: 0 var(--layout-padding-medium, 1rem) 0.5rem;
+    border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+    font: var(--typography-regular-small-body);
+    overflow-wrap: anywhere;
+  }
+  .gcpe-shell__menu-user > span {
+    color: var(--typography-color-secondary, #474543);
+  }
+}
+
+/* Release page titles: each row's fields wrap onto two lines when the table can't fit across
+ * (it needs about 61rem: below an 80rem window, after the side menu, it doesn't),
+ * each with its column's name above it, instead of the table scrolling sideways in its box. */
+.gcpe-page-titles__table input[type="number"] {
+  width: 5rem;
+}
+@media (max-width: 79.99rem) {
+  .gcpe-page-titles__table {
+    width: 100%;
+  }
+  .gcpe-page-titles__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .gcpe-page-titles__table,
+  .gcpe-page-titles__table tbody {
+    display: block;
+  }
+  .gcpe-page-titles__table tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #d8d8d8;
+  }
+  .gcpe-page-titles__table tbody td {
+    display: block;
+    border: 0;
+    padding: 0;
+  }
+  .gcpe-page-titles__table tbody td:first-child {
+    flex: 1 1 14rem;
+  }
+  .gcpe-page-titles__table tbody td:is([data-label="Language"], [data-label="Order"], [data-label="Layout"], [data-label="Page image"])::before {
+    content: attr(data-label);
+    content: attr(data-label) / "";
+    display: block;
+    font: var(--typography-regular-small-body);
+    margin-bottom: 0.25rem;
+  }
+  .gcpe-page-titles__table tbody td:first-child::before {
+    content: attr(data-label);
+    content: attr(data-label) / "";
+    display: block;
+    font: var(--typography-regular-small-body);
+    margin-bottom: 0.25rem;
+  }
+}
+@media (max-width: 79.99rem) {
+  .gcpe-page-titles__table td:first-child :is(.bcds-react-aria-TextField, .bcds-react-aria-TextField--container, input) {
+    width: 100%;
+  }
+}
+
+/* A record's facts (subscriber Status, Source, Registered, ...): label and value on one line
+ * each, the same as the release's facts in the editor rail. */
+.gcpe-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.375rem 1.25rem;
+  margin: 0 0 1.25rem;
+  max-width: 48rem;
+}
+.gcpe-facts dt {
+  color: var(--typography-color-secondary, #474543);
+}
+.gcpe-facts dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.gcpe-facts dd ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.gcpe-facts dd p {
+  margin: 0.25rem 0 0;
+  font-weight: 400;
+}
+
+/* Cabinet change: an empty status or messages container stays in the page (a live region must be
+ * there before its text arrives) but takes no room: out of the stack's flow, so no gap either. */
+.gcpe-cabinet-change > :is([role="status"], [role="alert"], div[tabindex="-1"]):empty {
+  position: absolute;
+  margin: 0;
+}
+.gcpe-cabinet-change > h1 {
+  margin-bottom: 0;
+}
+
+/* A filtered-out user, or a closed editor kept for its unsaved edits, stays hidden at every width
+ * (the phone layout's display: block would otherwise show it). */
+.gcpe-users__table tr[hidden] {
+  display: none;
+}
+
+/* Calendar activity: a field the keyboard moves to never scrolls under the sticky Save/Cancel
+ * bar (WCAG 2.4.11). */
+html:has(.gcpe-activity form > .gcpe-actions) {
+  scroll-padding-bottom: 5rem;
 }

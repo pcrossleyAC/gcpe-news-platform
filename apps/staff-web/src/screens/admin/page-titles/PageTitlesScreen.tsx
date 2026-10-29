@@ -159,7 +159,7 @@ function PageTitlesEditor(): React.JSX.Element {
                 <p>No page titles yet.</p>
               ) : (
                 <TableScroll label={`${TYPE_LABEL[t]} page titles`}>
-                  <table aria-label={`${TYPE_LABEL[t]} page titles`} className="gcpe-table">
+                  <table aria-label={`${TYPE_LABEL[t]} page titles`} className="gcpe-table gcpe-page-titles__table">
                     <thead>
                       <tr>
                         <th scope="col">Page title</th>
@@ -327,7 +327,7 @@ function TitleRow({
 
   return (
     <tr ref={rowEl}>
-      <td>
+      <td data-label="Page title">
         <TextField
           aria-label={`Page title for ${name}`}
           value={f.pageTitle}
@@ -337,7 +337,7 @@ function TitleRow({
           aria-describedby={described("title")}
         />
       </td>
-      <td>
+      <td data-label="Language">
         <select
           aria-label={`Language for ${name}`}
           value={f.languageId}
@@ -347,7 +347,7 @@ function TitleRow({
           <LanguageOptions current={f.languageId} />
         </select>
       </td>
-      <td>
+      <td data-label="Order">
         <input
           type="number"
           aria-label={`Order for ${name}`}
@@ -357,17 +357,17 @@ function TitleRow({
           aria-describedby={described("order")}
         />
       </td>
-      <td>
+      <td data-label="Layout">
         <select aria-label={`Layout for ${name}`} value={f.layout} onChange={(e) => set({ layout: e.target.value as Layout })}>
           <LayoutOptions />
         </select>
       </td>
-      <td>
+      <td data-label="Page image">
         <select aria-label={`Page image for ${name}`} value={f.pageImageId} onChange={(e) => set({ pageImageId: e.target.value })}>
           <ImageOptions images={images} current={f.pageImageId} />
         </select>
       </td>
-      <td>
+      <td data-label="Save">
         <Button variant="secondary" isPending={busy} onPress={() => void save()}>
           <span>
             Save <span className="gcpe-visually-hidden">{name}</span>
@@ -375,7 +375,7 @@ function TitleRow({
         </Button>
         {error && <ErrorAlert id={errorId} text={error.text} wrapperRef={alertEl} />}
       </td>
-      <td>
+      <td data-label="Delete">
         <Button variant="secondary" isPending={busy} onPress={() => setConfirmDelete(true)}>
           <span>
             Delete <span className="gcpe-visually-hidden">{name}</span>

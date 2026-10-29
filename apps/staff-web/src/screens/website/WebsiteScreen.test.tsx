@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
-import { WebsiteScreen } from "./WebsiteScreen";
+import { SiteSettingsIndex, WebsiteScreen } from "./WebsiteScreen";
 
-function renderWithRole(role: string) {
+function renderWithRole(role: string, at = "/website") {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -16,11 +16,13 @@ function renderWithRole(role: string) {
   );
   return render(
     <SessionProvider>
-      <MemoryRouter initialEntries={["/website"]}>
+      <MemoryRouter initialEntries={[at]}>
         <RequireAuth>
           <Routes>
             <Route path="/website" element={<WebsiteScreen />}>
               <Route index element={<p>index child</p>} />
+              <Route path="settings" element={<SiteSettingsIndex />} />
+              <Route path="banner" element={<p>banner child</p>} />
             </Route>
           </Routes>
         </RequireAuth>
@@ -35,21 +37,37 @@ describe("WebsiteScreen", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the sub-nav and outlet to NRMS.SiteEditor", async () => {
+  it("shows the daily tabs, then Site settings, and the outlet to NRMS.SiteEditor", async () => {
     renderWithRole("NRMS.SiteEditor");
     await screen.findByRole("link", { name: "Carousel" });
-    expect(screen.getByRole("link", { name: "Project Blue Bridge" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Banner" })).toHaveAttribute("href", "/website/banner");
+    const tabs = within(screen.getByRole("navigation", { name: "Website sections" })).getAllByRole("link").map((l) => l.textContent);
+    expect(tabs).toEqual(["Carousel", "Emergency pins", "Live Feed", "What's featured where", "Resource links", "Files", "Website log", "Site settings"]);
+    expect(screen.getByRole("link", { name: "Site settings" })).toHaveAttribute("href", "/website/settings");
+    expect(screen.queryByRole("navigation", { name: "Site settings pages" })).toBeNull();
     expect(screen.getByText("index child")).toBeInTheDocument();
   });
 
-  it("lists the settings tabs after Social links, in order, to a manage role only", async () => {
-    renderWithRole("NRMS.SiteEditor");
-    await screen.findByRole("link", { name: "Carousel" });
-    const labels = screen.getAllByRole("link").map((l) => l.textContent);
-    expect(labels.slice(labels.indexOf("Social links"))).toEqual(["Social links", "Theme", "Ministry pages", "Media contacts page", "Page text", "Navigation and labels", "Site identity", "Settings history"]);
-    expect(screen.getByRole("link", { name: "Settings history" })).toHaveAttribute("href", "/website/settings-history");
-    expect(screen.getByRole("link", { name: "Ministry pages" })).toHaveAttribute("href", "/website/ministry-pages");
+  it("Site settings lists every settings page with a line on each, and Project Blue Bridge under Restricted", async () => {
+    renderWithRole("NRMS.SiteEditor", "/website/settings");
+    await screen.findByRole("heading", { name: "Site settings", level: 1 });
+    expect(screen.getByRole("link", { name: "Site settings" })).toHaveAttribute("aria-current", "page");
+    const main = screen.getByRole("heading", { name: "Site settings", level: 1 }).parentElement!;
+    const labels = within(main).getAllByRole("link").map((l) => l.textContent);
+    expect(labels).toEqual(["Banner", "Footer", "Social links", "Theme", "Ministry pages", "Media contacts page", "Page text", "Navigation and labels", "Site identity", "Settings history", "Project Blue Bridge"]);
+    expect(within(main).getByRole("link", { name: "Banner" })).toHaveAttribute("href", "/website/banner");
+    expect(within(main).getByRole("link", { name: "Settings history" })).toHaveAttribute("href", "/website/settings-history");
+    expect(within(main).getByRole("link", { name: "Project Blue Bridge" })).toHaveAttribute("href", "/website/blue-bridge");
+    expect(screen.getByRole("heading", { name: "Restricted", level: 2 })).toBeInTheDocument();
+  });
+
+  it("on a settings page, Site settings is the current tab and a second row moves between settings pages", async () => {
+    renderWithRole("NRMS.SiteEditor", "/website/banner");
+    await screen.findByText("banner child");
+    expect(screen.getByRole("link", { name: "Site settings" })).toHaveAttribute("aria-current", "true");
+    const pages = screen.getByRole("navigation", { name: "Site settings pages" });
+    expect(within(pages).getByRole("link", { name: "Banner" })).toHaveAttribute("aria-current", "page");
+    expect(within(pages).getByRole("link", { name: "All site settings" })).toHaveAttribute("href", "/website/settings");
+    expect(within(pages).getByRole("link", { name: "Ministry pages" })).toHaveAttribute("href", "/website/ministry-pages");
   });
 
   it("shows the sub-nav to Core.Admin too", async () => {
@@ -67,6 +85,7 @@ describe("WebsiteScreen", () => {
     expect(screen.queryByRole("link", { name: "Carousel" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Project Blue Bridge" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Banner" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Site settings" })).toBeNull();
     expect(screen.getByText("index child")).toBeInTheDocument();
   });
 

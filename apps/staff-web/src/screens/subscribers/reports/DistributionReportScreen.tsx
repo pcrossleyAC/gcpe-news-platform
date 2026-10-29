@@ -39,7 +39,7 @@ export function DistributionReportScreen(): React.JSX.Element {
       {d && (
         <>
           <CsvLink href={csvHref("/nod/api/reports/distribution.csv")}>Download (CSV)</CsvLink>
-          <table aria-label="Totals">
+          <table className="gcpe-table" aria-label="Totals">
             <thead>
               <tr>
                 <th scope="col">Sent by</th>
@@ -62,7 +62,7 @@ export function DistributionReportScreen(): React.JSX.Element {
             </tbody>
           </table>
           {d.days.length > 0 ? (
-            <table aria-label="By day">
+            <table className="gcpe-table" aria-label="By day">
               <thead>
                 <tr>
                   <th scope="col">Date</th>

@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Form, InlineAlert, NumberField } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import { useSeededForm } from "../useSeededForm";
 import { instantToBcLocal } from "../timezone";
 import { ActivityLookupPanel, useActivityLookup } from "../ActivityLookupPanel";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
@@ -24,18 +25,21 @@ interface MediaListOption {
 }
 
 interface FormState {
-  activityId: number | null;
+  /** The Calendar activity ID as typed (digits only). */
+  activityText: string;
   toSubscribers: boolean;
   toMediaLists: boolean;
   mediaListKeys: string[];
+  planned: ScheduleValue | null;
 }
 
-function fromView(view: ReleaseView): FormState {
+function fromView(view: ReleaseView, timeZone: string): FormState {
   return {
-    activityId: view.activityId,
+    activityText: view.activityId === null ? "" : String(view.activityId),
     toSubscribers: view.publishOptions.toSubscribers,
     toMediaLists: view.publishOptions.toMediaLists,
     mediaListKeys: view.mediaListKeys,
+    planned: view.publishAt ? scheduleValueFromInstant(view.publishAt, timeZone) : null,
   };
 }
 
@@ -53,10 +57,16 @@ function scheduleValueFromInstant(iso: string, timeZone: string): ScheduleValue 
 export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsSectionProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
-  const [form, setForm] = useState<FormState>(() => fromView(view));
-  const [plannedValue, setPlannedValue] = useState<ScheduleValue | null>(view.publishAt ? scheduleValueFromInstant(view.publishAt, timeZone) : null);
+  // Compared against what it was seeded from, not the live view (useSeededForm.ts): Publish now,
+  // Schedule and Approve change `publishAt` and the rest of the view server-side, and that must
+  // never read as an unsaved edit here.
+  const { form, setForm, dirty: edited, baseline, reseed, staleVersion } = useSeededForm<FormState>(fromView(view, timeZone), view.version);
+  const typedActivityId = form.activityText === "" ? null : Number(form.activityText);
+  // The id the activity lookup runs for: the typed id once the field loses focus (as the number
+  // stepper this replaced committed it), so it isn't looked up on every keystroke.
+  const [lookupId, setLookupId] = useState<number | null>(view.activityId);
   const [lists, setLists] = useState<MediaListOption[]>([]);
-  const { lookup, error: lookupError } = useActivityLookup(form.activityId);
+  const { lookup, error: lookupError } = useActivityLookup(lookupId);
 
   useEffect(() => {
     // GET /media-lists also returns retired lists: kept here so a release already targeting
@@ -70,11 +80,13 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   }, []);
 
   const resetFrom = (next: ReleaseView) => {
-    setForm(fromView(next));
-    setPlannedValue(next.publishAt ? scheduleValueFromInstant(next.publishAt, timeZone) : null);
+    reseed(fromView(next, timeZone), next.version);
+    setLookupId(next.activityId);
   };
 
-  const dirty = !readOnly && (JSON.stringify(form) !== JSON.stringify(fromView(view)) || (plannedValue?.instant ?? null) !== view.publishAt);
+  const dirty = !readOnly && edited;
+  const plannedValue = form.planned;
+  const setPlannedValue = (planned: ScheduleValue | null) => setForm((f) => ({ ...f, planned }));
 
   const toggleMediaList = (key: string) =>
     setForm((f) => ({ ...f, mediaListKeys: f.mediaListKeys.includes(key) ? f.mediaListKeys.filter((k) => k !== key) : [...f.mediaListKeys, key] }));
@@ -85,15 +97,15 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   // can silently change the stored instant by a few seconds. For a published/approved release
   // that's not a no-op in the server's eyes (saveSettings only allows an unplanned-time change
   // from draft/approved/failed — see service.rules.test.ts) — it was rejected as a state error
-  // on every retry, forever. Same check as the `dirty` flag above: if the picker shows exactly
-  // what the release already has, re-send that exact instant unchanged instead of recomputing it.
-  const plannedUnchanged = (plannedValue?.instant ?? null) === view.publishAt;
+  // on every retry, forever. So: if the user hasn't changed the planned date, re-send the
+  // release's current instant unchanged instead of recomputing it.
+  const plannedUnchanged = JSON.stringify(plannedValue) === JSON.stringify(baseline.planned);
 
   const doSave = () =>
     section
       .save("/settings", {
         version: view.version,
-        activityId: form.activityId,
+        activityId: typedActivityId,
         ...(plannedUnchanged
           ? { plannedPublishAt: view.publishAt }
           : plannedValue
@@ -102,7 +114,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
         toSubscribers: form.toSubscribers,
         toMediaLists: form.toMediaLists,
         mediaListKeys: form.mediaListKeys,
-      })
+      }, "PUT", staleVersion)
       .then((next) => {
         if (next) resetFrom(next);
       });
@@ -113,7 +125,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
     void doSave();
   };
 
-  const initialPlanned = view.publishAt ? instantToBcLocal(view.publishAt, timeZone) : null;
+  const initialPlanned = plannedValue ? instantToBcLocal(plannedValue.instant, timeZone) : null;
 
   return (
     <section className="gcpe-release-editor__settings" aria-label="Publish settings" id="section-settings" tabIndex={-1}>
@@ -136,16 +148,22 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-      <Form onSubmit={onSubmit}>
-        <NumberField
+      <Form onSubmit={onSubmit} className="gcpe-stack">
+        <TextField
           label="Calendar activity ID"
-          value={form.activityId ?? undefined}
-          onChange={(v) => setForm((f) => ({ ...f, activityId: Number.isFinite(v) ? v : null }))}
+          inputMode="numeric"
+          maxLength={9}
+          value={form.activityText}
+          onChange={(v) => setForm((f) => ({ ...f, activityText: v.replace(/\D/g, "") }))}
+          onBlur={() => setLookupId(typedActivityId)}
           isDisabled={readOnly}
         />
         <ActivityLookupPanel lookup={lookup} error={lookupError} storedId={view.activityId} timeZone={timeZone} />
 
         <SchedulePicker
+          // A new baseline (re-seeded from the release, or after a save) restarts the picker
+          // from it; the user's own typing never does.
+          key={baseline.planned?.instant ?? "none"}
           timeZone={timeZone}
           legend="Planned publish date (not yet committed)"
           idPrefix="planned"
@@ -154,9 +172,9 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           onChange={setPlannedValue}
         />
         {plannedValue && !readOnly && (
-          <button type="button" onClick={() => setPlannedValue(null)}>
+          <Button size="small" variant="secondary" onPress={() => setPlannedValue(null)}>
             Clear planned date
-          </button>
+          </Button>
         )}
 
         <label className="gcpe-check">
@@ -168,7 +186,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
         {rules.mediaListsAllowed && (
           <fieldset className="gcpe-options">
             <legend>Media distribution lists</legend>
-            <label className="gcpe-options__wide">
+            <label className="gcpe-options__wide gcpe-check">
               <input type="checkbox" checked={form.toMediaLists} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, toMediaLists: e.target.checked }))} />
               Send to media distribution lists
             </label>

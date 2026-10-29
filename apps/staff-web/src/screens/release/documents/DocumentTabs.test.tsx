@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
@@ -98,11 +98,14 @@ describe("DocumentTabs", () => {
     });
     renderTabs(both);
     const user = userEvent.setup();
-    expect(await screen.findByLabelText("Headline")).toHaveValue("Clinics open");
+    // Both panels stay mounted (the inactive one hidden), so look inside the one showing.
+    const shown = () => within(screen.getByRole("tabpanel"));
+    await screen.findAllByLabelText("Headline");
+    expect(shown().getByLabelText("Headline")).toHaveValue("Clinics open");
     expect(screen.getByRole("button", { name: "Remove French translation" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "French" }));
-    expect(screen.getByLabelText("Headline")).toHaveValue("Cliniques ouvertes");
+    expect(shown().getByLabelText("Headline")).toHaveValue("Cliniques ouvertes");
   });
 
   it("removing a translation asks for confirmation before calling the remove endpoint", async () => {

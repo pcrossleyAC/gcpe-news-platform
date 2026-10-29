@@ -112,6 +112,8 @@ function stub(
         init?.method === "PUT"
       )
         return jsonResponse(200, { ...ORGS[0], isPublic: false });
+      if (url === "/core/api/organizations/gcpe-media-relations/public" && init?.method === "PUT")
+        return jsonResponse(200, { ...ORGS[1], isPublic: true });
       throw new Error(`unhandled: ${url}`);
     }),
   );
@@ -134,6 +136,21 @@ const renderScreen = () =>
       </MemoryRouter>
     </SessionProvider>,
   );
+
+
+/** Records, the moment a live region first gets text, whether it was hidden from assistive
+ * technology then (inside an aria-hidden ancestor, as a still-open modal leaves the page). */
+function watchFirstText(region: Element): { hiddenWhenSet: boolean | null } {
+  const seen = { hiddenWhenSet: null as boolean | null };
+  const observer = new MutationObserver(() => {
+    if (seen.hiddenWhenSet === null && region.textContent) {
+      seen.hiddenWhenSet = region.closest('[aria-hidden="true"]') !== null || document.querySelector('[role="alertdialog"]') !== null;
+      observer.disconnect();
+    }
+  });
+  observer.observe(region, { childList: true, subtree: true, characterData: true });
+  return seen;
+}
 
 describe("OrganizationsScreen", () => {
   afterEach(() => {
@@ -166,36 +183,72 @@ describe("OrganizationsScreen", () => {
         calls.find((c) => c.init?.method === "PUT")!.init!.body as string,
       ),
     ).toEqual({ isHq: true });
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Health is now an HQ organization.",
-    );
+    // Owner decision 2026-10-29: an instant change says "Saved" next to the control (polite live region).
+    expect(await within(health.closest("td")!).findByText("Saved")).toBeInTheDocument();
+    expect(health.closest("td")!.querySelector("[aria-live='polite']")).toHaveTextContent("Saved");
   });
 
-  it("shows and sets whether each organization is listed publicly", async () => {
+  it("shows a failed instant change next to its control", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    failures["PUT /core/api/organizations/health/hq"] = () => jsonResponse(500, { error: "database unavailable" });
+    stub(["Core.Admin"], calls);
+    renderScreen();
+    const health = await screen.findByLabelText("Health is an HQ organization");
+    await userEvent.setup().click(health);
+    expect(await within(health.closest("td")!).findByText(/database unavailable/)).toBeInTheDocument();
+    expect(within(health.closest("td")!).queryByText("Saved")).toBeNull();
+  });
+
+  it("shows whether each organization is listed publicly; ticking Public posts at once and says Saved", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(["Core.Admin"], calls);
     renderScreen();
-    expect(
-      await screen.findByLabelText("GCPE Media Relations is listed publicly"),
-    ).not.toBeChecked();
-    const health = screen.getByLabelText("Health is listed publicly");
-    expect(health).toBeChecked();
-    await userEvent.setup().click(health);
+    const gcpe = await screen.findByLabelText("GCPE Media Relations is listed publicly");
+    expect(gcpe).not.toBeChecked();
+    expect(screen.getByLabelText("Health is listed publicly")).toBeChecked();
+    await userEvent.setup().click(gcpe);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     await waitFor(() =>
-      expect(
-        calls.some(
-          (c) => c.url.endsWith("/public") && c.init?.method === "PUT",
-        ),
-      ).toBe(true),
+      expect(calls.some((c) => c.url === "/core/api/organizations/gcpe-media-relations/public" && c.init?.method === "PUT")).toBe(true),
     );
-    expect(
-      JSON.parse(
-        calls.find((c) => c.url.endsWith("/public"))!.init!.body as string,
-      ),
-    ).toEqual({ isPublic: false });
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Health is no longer listed publicly.",
+    expect(JSON.parse(calls.find((c) => c.url.endsWith("/public"))!.init!.body as string)).toEqual({ isPublic: true });
+    expect(await within(gcpe.closest("td")!).findByText("Saved")).toBeInTheDocument();
+  });
+
+  it("asks before taking an organization off the public site; Cancel leaves it public and posts nothing", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(["Core.Admin"], calls);
+    renderScreen();
+    const user = userEvent.setup();
+    const health = await screen.findByLabelText("Health is listed publicly");
+    await user.click(health);
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Remove Health from the public site?");
+    expect(dialog).toHaveTextContent("It disappears from the public ministry list and the subscribe page.");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(health).toBeChecked();
+    expect(calls.some((c) => c.url.endsWith("/public"))).toBe(false);
+    expect(within(health.closest("td")!).queryByText("Saved")).toBeNull();
+  });
+
+  it("takes an organization off the public site once confirmed", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(["Core.Admin"], calls);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText("Health is listed publicly"));
+    const seen = watchFirstText(screen.getByLabelText("Health is listed publicly").closest("td")!.querySelector("[aria-live='polite']")!);
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove from public site" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url === "/core/api/organizations/health/public" && c.init?.method === "PUT")).toBe(true),
     );
+    expect(JSON.parse(calls.find((c) => c.url.endsWith("/public"))!.init!.body as string)).toEqual({ isPublic: false });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(await within(screen.getByLabelText("Health is listed publicly").closest("td")!).findByText("Saved")).toBeInTheDocument();
+    // "Saved" arrives only once the dialog has gone, when the page is no longer hidden from
+    // assistive technology, so it is actually announced.
+    expect(seen.hiddenWhenSet).toBe(false);
   });
 
   it("a SiteEditor sees names, ministers and Edit buttons but no HQ/Public checkboxes", async () => {

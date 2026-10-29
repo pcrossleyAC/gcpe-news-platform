@@ -100,7 +100,7 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
             <thead>
               <tr>
                 {columns.map((c) => (
-                  <th key={c} scope="col" aria-sort={query.sort === c ? (query.dir === "asc" ? "ascending" : "descending") : undefined}>
+                  <th key={c} scope="col" className={`gcpe-col-${c}`} aria-sort={query.sort === c ? (query.dir === "asc" ? "ascending" : "descending") : undefined}>
                     {isSortable(c) ? (
                       <button type="button" className="gcpe-sort" onClick={() => onSort(c, query.sort === c && query.dir === "asc" ? "desc" : "asc")}>
                         {LIST_COLUMN_LABELS[c]}
@@ -118,8 +118,8 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
                   {columns.map((c) => {
                     const flagged = needsReviewOf(c, r);
                     return (
-                      <td key={c} className={flagged ? "gcpe-needs-review" : undefined}>
-                        <CellContent column={c} row={r} today={today} timeZone={timeZone} tools={tools} update={update(r.id)} />
+                      <td key={c} data-label={LIST_COLUMN_LABELS[c]} className={`gcpe-col-${c}${flagged ? " gcpe-needs-review" : ""}`}>
+                        <CellContent column={c} row={r} today={today} timeZone={timeZone} tools={tools} update={update(r.id)} metaUnderTitle={columns.includes("title")} />
                         {flagged && <span className="gcpe-visually-hidden"> (changed, needs review)</span>}
                       </td>
                     );
