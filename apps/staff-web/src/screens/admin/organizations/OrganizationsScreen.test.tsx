@@ -13,6 +13,11 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { OrganizationsScreen } from "./OrganizationsScreen";
 
+/** Unavailable to the user: natively disabled, or a BC button that is busy (aria-disabled, still focusable). */
+function expectUnavailable(el: HTMLElement): void {
+  expect(el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true").toBe(true);
+}
+
 const ORGS = [
   {
     key: "health",
@@ -850,13 +855,13 @@ describe("OrganizationsScreen", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Deactivate Health" }));
     await user.click(screen.getByRole("button", { name: "Deactivate" }));
-    expect(screen.getByRole("button", { name: "Deactivate GCPE Media Relations" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Set successor for Old Ministry" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Reactivate Old Ministry" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Add ministry" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Edit Health" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Edit Old Ministry" })).toBeDisabled();
+    expectUnavailable(screen.getByRole("button", { name: "Deactivate GCPE Media Relations" }));
+    expectUnavailable(screen.getByRole("button", { name: "Set successor for Old Ministry" }));
+    expectUnavailable(screen.getByRole("button", { name: "Reactivate Old Ministry" }));
+    expectUnavailable(screen.getByRole("button", { name: "Cancel" }));
+    expectUnavailable(screen.getByRole("button", { name: "Add ministry" }));
+    expectUnavailable(screen.getByRole("button", { name: "Edit Health" }));
+    expectUnavailable(screen.getByRole("button", { name: "Edit Old Ministry" }));
     release();
     expect(await screen.findByRole("status")).toHaveTextContent("Health is deactivated.");
     expect(screen.getByRole("button", { name: "Reactivate Old Ministry" })).toBeEnabled();
