@@ -259,7 +259,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
                             else deleteButtons.current.delete(t.id);
                           }}
                           aria-label={`Delete ${nameOf(t)}`}
-                          isDisabled={busy}
+                          isPending={busy}
                           onPress={() => {
                             setStatus(null);
                             setMessages([]);
@@ -293,7 +293,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
                           </p>
                         ))}
                         <div className="gcpe-button-row">
-                          <Button size="small" danger isDisabled={busy} onPress={() => void remove(t)}>
+                          <Button size="small" danger isPending={busy} onPress={() => void remove(t)}>
                             Confirm
                           </Button>
                           <Button
@@ -416,7 +416,7 @@ function TermEditForm({
         <p id={`${uid}-url-hint`}>Optional. Must start with https://. Leave empty for none.</p>
       </div>
       <div className="gcpe-button-row">
-        <Button type="submit" ref={saveRef} isDisabled={busy || confirmingMove}>
+        <Button type="submit" ref={saveRef} isPending={busy} isDisabled={confirmingMove}>
           Save
         </Button>
         <Button variant="secondary" onPress={onCancel}>
@@ -434,12 +434,12 @@ function TermEditForm({
             </p>
           ))}
           <div className="gcpe-button-row">
-            <Button type="submit" isDisabled={busy}>
+            <Button type="submit" isPending={busy}>
               Confirm
             </Button>
             <Button
               variant="secondary"
-              isDisabled={busy}
+              isPending={busy}
               onPress={() => {
                 setConfirmingMove(false);
                 setMessages([]);
