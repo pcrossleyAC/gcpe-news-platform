@@ -638,6 +638,71 @@ describe("ReleaseEditorPage", () => {
       expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
     });
 
+    it("reverting an edit after the release changed underneath shows the release's new value, not the old one", async () => {
+      const v = releaseView({ status: "draft", version: 1 });
+      renderLive(v, {
+        // Saving the media asset brings back a release someone else has also edited: a new location.
+        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt", languages: [{ ...cur.languages[0]!, location: "KAMLOOPS" }] }),
+      });
+      const user = userEvent.setup();
+      const location = await screen.findByLabelText("Location");
+      await user.type(location, "X");
+      const asset = screen.getByRole("region", { name: "Media asset" });
+      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
+      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
+      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
+      await waitFor(() => expect(screen.getByRole("region", { name: "Unsaved changes" })).toHaveTextContent("page details"));
+      // The user takes their own edit back out: the form now matches what they started from,
+      // which is stale — it shows the release's current location instead.
+      await user.type(location, "{Backspace}");
+      await waitFor(() => expect(location).toHaveValue("KAMLOOPS"));
+      expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    });
+
+    it("saving an edit whose fields changed underneath it sends the version it started from, so the server answers 409 instead of overwriting", async () => {
+      const v = releaseView({ status: "draft", version: 1 });
+      const metaVersions: unknown[] = [];
+      renderLive(v, {
+        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt", languages: [{ ...cur.languages[0]!, location: "KAMLOOPS" }] }),
+        "/meta": (cur, body) => {
+          metaVersions.push(body.version);
+          return body.version === cur.version ? { ...cur, version: cur.version + 1 } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+        },
+      });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Location"), "X");
+      const asset = screen.getByRole("region", { name: "Media asset" });
+      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
+      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
+      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
+      const pageDetails = screen.getByRole("region", { name: "Page details" });
+      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
+      expect(await within(pageDetails).findByText(/someone else changed this/i)).toBeInTheDocument();
+      expect(metaVersions).toEqual([1]);
+    });
+
+    it("an edit whose fields did not change underneath still saves with the latest version", async () => {
+      const v = releaseView({ status: "draft", version: 1 });
+      const metaVersions: unknown[] = [];
+      renderLive(v, {
+        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt" }),
+        "/meta": (cur, body) => {
+          metaVersions.push(body.version);
+          return body.version === cur.version ? { ...cur, version: cur.version + 1 } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+        },
+      });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Location"), "X");
+      const asset = screen.getByRole("region", { name: "Media asset" });
+      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
+      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
+      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
+      const pageDetails = screen.getByRole("region", { name: "Page details" });
+      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
+      await waitFor(() => expect(metaVersions).toEqual([3]));
+      expect(within(pageDetails).queryByText(/someone else changed this/i)).not.toBeInTheDocument();
+    });
+
     it("a 409 Reload in one section brings in someone else's changes without making other sections dirty", async () => {
       const v = releaseView({ status: "draft", version: 1, sectors: ["health"] });
       const live = renderLive(v, { "/meta": () => jsonResponse(409, { error: "version conflict" }) });

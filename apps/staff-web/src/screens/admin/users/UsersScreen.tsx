@@ -46,6 +46,9 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   const [passwordSaved, setPasswordSaved] = useState(false);
   const [unlinkMessages, setUnlinkMessages] = useState<string[]>([]);
   const [confirmingUnlink, setConfirmingUnlink] = useState(false);
+  // Switching Active off asks first (owner decision 2026-10-29); switching it on is instant.
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
+  const [activeSaved, setActiveSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const saveName = async () => {
@@ -64,13 +67,16 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   const toggleActive = async (next: boolean) => {
     setBusy(true);
     setActiveMessages([]);
+    setActiveSaved(false);
     try {
       await apiFetch<UserView>(`/core/api/users/${user.id}`, { method: "PATCH", body: { isActive: next } });
+      setActiveSaved(true);
       onChanged();
     } catch (caught) {
       setActiveMessages(messagesOf(caught));
     } finally {
       setBusy(false);
+      setConfirmingDeactivate(false);
     }
   };
 
@@ -184,9 +190,42 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
           <LinkForm user={user} onChanged={onChanged} />
         </>
       ) : (
-        <Switch isSelected={user.isActive} isReadOnly={busy} onChange={(v) => void toggleActive(v)}>
-          <ShortLabel short="Active" full={`${who} is ${user.isActive ? "active" : "inactive"}`} />
-        </Switch>
+        <div className="gcpe-inline-control">
+          <Switch
+            isSelected={user.isActive}
+            isReadOnly={busy}
+            onChange={(v) => {
+              setActiveSaved(false);
+              if (v) void toggleActive(true);
+              else setConfirmingDeactivate(true);
+            }}
+          >
+            <ShortLabel short="Active" full={`${who} is ${user.isActive ? "active" : "inactive"}`} />
+          </Switch>
+          {/* Always rendered, so the "Saved" that appears in it is announced. */}
+          <span aria-live="polite" className="gcpe-inline-note">
+            {activeSaved ? "Saved" : ""}
+          </span>
+          <Modal isOpen={confirmingDeactivate} onOpenChange={(open) => { if (!open && !busy) setConfirmingDeactivate(false); }} isDismissable>
+            <AlertDialog
+              role="alertdialog"
+              variant="warning"
+              title={`Deactivate ${user.displayName}?`}
+              buttons={
+                <>
+                  <Button variant="secondary" isPending={busy} onPress={() => setConfirmingDeactivate(false)}>
+                    Cancel
+                  </Button>
+                  <Button danger isPending={busy} onPress={() => void toggleActive(false)}>
+                    Deactivate
+                  </Button>
+                </>
+              }
+            >
+              <p>They can&rsquo;t sign in until reactivated.</p>
+            </AlertDialog>
+          </Modal>
+        </div>
       )}
 
       {rolesMessages.map((m) => (

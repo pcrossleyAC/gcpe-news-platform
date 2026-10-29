@@ -2127,3 +2127,35 @@ fieldset.gcpe-org-contact {
 .gcpe-table input[type="number"] {
   width: 6rem;
 }
+
+/* Batch 3: a control that saves the moment it changes, with its outcome ("Saved" or the error)
+ * beside it in a polite live region. */
+.gcpe-inline-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+}
+
+.gcpe-inline-control > input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+}
+
+.gcpe-inline-control input[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Never display:none while empty: a live region has to be in the accessibility tree before its
+ * text arrives, or "Saved" isn't announced. Empty, an inline span takes no room anyway. */
+.gcpe-inline-note {
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-secondary, #474543);
+}
+
+.gcpe-inline-note--error {
+  margin: 0.25rem 0 0;
+  color: #b00020;
+}

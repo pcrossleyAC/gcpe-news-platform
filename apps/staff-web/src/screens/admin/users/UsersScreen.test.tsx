@@ -108,8 +108,71 @@ describe("UsersScreen", () => {
     const user = userEvent.setup();
     const toggle = await screen.findByRole("switch", { name: "self@x.invalid is active" });
     await user.click(toggle);
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Deactivate" }));
 
     expect(await screen.findByText("you can't remove your own admin access")).toBeInTheDocument();
+  });
+
+  // Owner decision 2026-10-29: switching Active off asks first; switching it on stays instant.
+  it("asks before deactivating a user; Cancel leaves them active and posts nothing", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    const toggle = await screen.findByRole("switch", { name: "other@x.invalid is active" });
+    await user.click(toggle);
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Deactivate Other?");
+    expect(dialog).toHaveTextContent(/They can[’']t sign in until reactivated\./);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(toggle).toBeChecked();
+    expect(calls.some((c) => c.init?.method === "PATCH")).toBe(false);
+  });
+
+  it("deactivates a user once confirmed, and says Saved next to the switch", async () => {
+    let other = OTHER;
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, other]);
+      if (url === "/core/api/users/other-1" && init?.method === "PATCH") {
+        other = { ...OTHER, isActive: false };
+        return jsonResponse(200, other);
+      }
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("switch", { name: "other@x.invalid is active" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Deactivate" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1" && c.init?.method === "PATCH")).toBe(true));
+    expect(JSON.parse(calls.find((c) => c.init?.method === "PATCH")!.init!.body as string)).toEqual({ isActive: false });
+    const toggle = await screen.findByRole("switch", { name: "other@x.invalid is inactive" });
+    expect(toggle).not.toBeChecked();
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+  });
+
+  it("reactivates a user at once, with no question, and says Saved", async () => {
+    let other: UserView = { ...OTHER, isActive: false };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, other]);
+      if (url === "/core/api/users/other-1" && init?.method === "PATCH") {
+        other = { ...OTHER, isActive: true };
+        return jsonResponse(200, other);
+      }
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("switch", { name: "other@x.invalid is inactive" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1" && c.init?.method === "PATCH")).toBe(true));
+    expect(JSON.parse(calls.find((c) => c.init?.method === "PATCH")!.init!.body as string)).toEqual({ isActive: true });
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
   });
 
   it("shows the server's self-lockout message when removing your own Core.Admin role", async () => {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { TableScroll } from "../../../shared/TableScroll";
 import { Button } from "../../../shared/Button";
 import { Link } from "react-router";
-import { InlineAlert } from "@bcgov/design-system-react-components";
+import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -55,6 +55,14 @@ export function OrganizationsScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The last instant HQ/Public change: "Saved", or what went wrong, shown next to that control.
+  const [flagNote, setFlagNote] = useState<{
+    key: string;
+    flag: "hq" | "public";
+    errors: string[];
+  } | null>(null);
+  // Unticking Public asks first (owner decision 2026-10-29); ticking it and HQ stay instant.
+  const [confirmingUnlist, setConfirmingUnlist] = useState<OrgRecord | null>(null);
   // The hand-over panel's save in flight: every other row action waits for it.
   const [panelBusy, setPanelBusy] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -116,9 +124,11 @@ export function OrganizationsScreen(): React.JSX.Element {
     flag: "hq" | "public",
     value: boolean,
   ) => {
+    if (busy || panelBusy) return;
     setBusy(true);
     setMessages([]);
     setStatus(null);
+    setFlagNote(null);
     try {
       await apiFetch(
         `/core/api/organizations/${encodeURIComponent(o.key)}/${flag}`,
@@ -127,17 +137,56 @@ export function OrganizationsScreen(): React.JSX.Element {
           body: flag === "hq" ? { isHq: value } : { isPublic: value },
         },
       );
-      setStatus(
-        flag === "hq"
-          ? `${o.displayName} is ${value ? "now" : "no longer"} an HQ organization.`
-          : `${o.displayName} is ${value ? "now" : "no longer"} listed publicly.`,
-      );
+      setFlagNote({ key: o.key, flag, errors: [] });
       reload();
     } catch (caught) {
-      setMessages(messagesOf(caught));
+      setFlagNote({ key: o.key, flag, errors: messagesOf(caught) });
     } finally {
       setBusy(false);
+      setConfirmingUnlist(null);
     }
+  };
+
+  // A HQ/Public checkbox and, beside it, the outcome of its last instant change. The polite
+  // region is always rendered (empty until a change), so the "Saved" that appears in it is announced.
+  const flagCell = (o: OrgRecord, flag: "hq" | "public") => {
+    const note =
+      flagNote?.key === o.key && flagNote.flag === flag ? flagNote : null;
+    const checked = flag === "hq" ? o.isHq : o.isPublic;
+    const unavailable = busy || panelBusy;
+    return (
+      <td>
+        <div className="gcpe-inline-control">
+          <input
+            type="checkbox"
+            aria-label={
+              flag === "hq"
+                ? `${o.displayName} is an HQ organization`
+                : `${o.displayName} is listed publicly`
+            }
+            checked={checked}
+            // aria-disabled, not disabled: a natively disabled checkbox drops keyboard focus
+            // to the page while its own change is saving.
+            aria-disabled={unavailable || undefined}
+            onChange={(e) => {
+              if (unavailable) return;
+              if (flag === "public" && !e.target.checked) {
+                setFlagNote(null);
+                setConfirmingUnlist(o);
+              } else void setFlag(o, flag, e.target.checked);
+            }}
+          />
+          <span aria-live="polite" className="gcpe-inline-note">
+            {note && note.errors.length === 0 ? "Saved" : ""}
+          </span>
+        </div>
+        {note && note.errors.length > 0 && (
+          <p role="alert" className="gcpe-inline-note gcpe-inline-note--error">
+            Not saved: {note.errors.join(" ")}
+          </p>
+        )}
+      </td>
+    );
   };
 
   // An open edit form was built from the row's old state; saving it after a row action would undo that action.
@@ -365,30 +414,8 @@ export function OrganizationsScreen(): React.JSX.Element {
                   <td>{o.abbreviation ?? ""}</td>
                   <td>{o.minister.name ?? ""}</td>
                   <td>{o.isActive ? "Yes" : "No"}</td>
-                  {isAdmin && (
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label={`${o.displayName} is an HQ organization`}
-                        checked={o.isHq}
-                        disabled={busy || panelBusy}
-                        onChange={(e) => void setFlag(o, "hq", e.target.checked)}
-                      />
-                    </td>
-                  )}
-                  {isAdmin && (
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label={`${o.displayName} is listed publicly`}
-                        checked={o.isPublic}
-                        disabled={busy || panelBusy}
-                        onChange={(e) =>
-                          void setFlag(o, "public", e.target.checked)
-                        }
-                      />
-                    </td>
-                  )}
+                  {isAdmin && flagCell(o, "hq")}
+                  {isAdmin && flagCell(o, "public")}
                   <td>
                     <div className="gcpe-button-row">
                       <Button
@@ -456,6 +483,44 @@ export function OrganizationsScreen(): React.JSX.Element {
           </table>
         </TableScroll>
       )}
+      <Modal
+        isOpen={confirmingUnlist !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setConfirmingUnlist(null);
+        }}
+        isDismissable
+      >
+        <AlertDialog
+          role="alertdialog"
+          variant="warning"
+          title={`Remove ${confirmingUnlist?.displayName ?? ""} from the public site?`}
+          buttons={
+            <>
+              <Button
+                variant="secondary"
+                isPending={busy}
+                onPress={() => setConfirmingUnlist(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                danger
+                isPending={busy}
+                onPress={() => {
+                  if (confirmingUnlist)
+                    void setFlag(confirmingUnlist, "public", false);
+                }}
+              >
+                Remove from public site
+              </Button>
+            </>
+          }
+        >
+          <p>
+            It disappears from the public ministry list and the subscribe page.
+          </p>
+        </AlertDialog>
+      </Modal>
     </div>
   );
 }
