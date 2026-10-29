@@ -260,7 +260,7 @@ jobs:
           $h = 'gcpe-proxy-ci.example.test'
           $base = "https://$($h):8443"
           $res = @('--resolve', "$($h):8443:127.0.0.1", '--resolve', "$($h):8080:127.0.0.1")
-          function Status([string]$path, [string]$method = 'GET') { curl.exe -k -s --path-as-is --max-time 30 @res -X $method -o NUL -w '%{http_code}' "$base$path" }
+          function Status([string]$path, [string]$method = 'GET') { $len = if ($method -ne 'GET' -and $method -ne 'HEAD') { @('-H', 'Content-Length: 0') } else { @() }; curl.exe -k -s --path-as-is --max-time 30 @res @len -X $method -o NUL -w '%{http_code}' "$base$path" }
           # The site is built by the app's background ticks: wait until the app itself serves / and a feed.
           $deadline = (Get-Date).AddSeconds(300)
           while ((curl.exe -k -s -o NUL -w '%{http_code}' https://localhost/) -ne '200' -or (curl.exe -k -s -o NUL -w '%{http_code}' https://localhost/feed) -ne '200') {
@@ -280,10 +280,10 @@ jobs:
             $s = Status $p
             Check "$p never reaches the app (HTTP $s)" ($s -eq '404' -or $s -eq '400')
           }
-          Check "POST /stack/tick is 404" ((Status '/stack/tick' 'POST') -eq '404')
-          Check "POST /core/auth/login is 404" ((Status '/core/auth/login' 'POST') -eq '404')
-          Check "POST /updates/negotiate is 404 (live-updates hub not public)" ((Status '/updates/negotiate' 'POST') -eq '404')
-          Check "PUT under /api is 404" ((Status '/api/Posts' 'PUT') -eq '404')
+          $s = Status '/stack/tick' 'POST'; Check "POST /stack/tick is 404 (HTTP $s)" ($s -eq '404')
+          $s = Status '/core/auth/login' 'POST'; Check "POST /core/auth/login is 404 (HTTP $s)" ($s -eq '404')
+          $s = Status '/updates/negotiate' 'POST'; Check "POST /updates/negotiate is 404 (live-updates hub not public) (HTTP $s)" ($s -eq '404')
+          $s = Status '/api/Posts' 'PUT'; Check "PUT under /api is 404 (HTTP $s)" ($s -eq '404')
           $headers = (curl.exe -k -s @res -D - -o NUL "$base/") -join "`n"
           Check "X-Robots-Tag: noindex at the proxy" ($headers -match '(?im)^x-robots-tag:\s*noindex, nofollow')
           $old = curl.exe -k -s @res -o NUL -w '%{http_code} %{redirect_url}' "$base/contact"

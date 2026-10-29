@@ -1,6 +1,6 @@
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { buildFixtureSite, FIXTURE_PAGES, serveStatic } from "../scripts/fixture-site";
@@ -18,7 +18,7 @@ describe("the fixture site (6e exit checks)", () => {
       let n = 0;
       for (const f of originals) {
         const body = await readFile(f);
-        const name = f.slice(f.lastIndexOf("/") + 1);
+        const name = basename(f);
         const want = body.length >= 1024 && !name.startsWith(".") && /\.(html|xml|css|js|json|svg|txt|ico)$/.test(name);
         expect(set.has(`${f}.br`), f).toBe(want);
         expect(set.has(`${f}.gz`), f).toBe(want);
