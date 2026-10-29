@@ -147,9 +147,13 @@ async function runBuild() {
   // `import:files` (apps/news-api/src/import/files-cli.ts) likewise: the cutover step that fills
   // legacy posts' translation and media-asset links (docs/deploy/siteground.md, "Legacy
   // translations and media assets").
+  // `import:public-slides` (apps/nrms/src/import/public-slides-cli.ts): news.gov's current
+  // carousel into NRMS on a test host ("Seeding boxs.ca with news.gov's carousel"); its
+  // migrations are at ../migrations/nrms.
   for (const [entry, tool] of [
     ["apps/news-api/src/import/public-cli.ts", "tools/news-api-import-public.mjs"],
     ["apps/news-api/src/import/files-cli.ts", "tools/news-api-import-files.mjs"],
+    ["apps/nrms/src/import/public-slides-cli.ts", "tools/nrms-import-public-slides.mjs"],
   ]) {
     console.log(`[build-siteground] bundling ${tool} …`);
     await build({
