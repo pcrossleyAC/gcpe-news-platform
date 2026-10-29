@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { DEFAULT_LIST_QUERY, type ReportJobView } from "@gcpe/calendar-contract";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { REPORT_WAIT_MAX_MS, runReport } from "./api";
-import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, never, renderList, stubFetch, type Call } from "./fixtures";
+import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, never, openListTool, renderList, stubFetch, type Call } from "./fixtures";
 import { ReportButtons } from "./Reports";
 
 const ID = "AbCdEfGhIjKlMnOpQrSt_-";
@@ -32,11 +32,13 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     stubFetch([]);
     const { container } = renderList();
     await screen.findByText("Sample listed");
+    await openListTool("Export and reports");
     expect(reports(container).getAllByRole("button").map((b) => b.textContent)).toEqual(["Look Ahead", "30/60/90", "Planning"]);
     cleanup();
     stubFetch([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG });
     const hq = renderList();
     await screen.findByText("Sample listed");
+    await openListTool("Export and reports");
     expect(reports(hq.container).getAllByRole("button").map((b) => b.textContent)).toEqual(["Look Ahead", "Exec Look Ahead", "30/60/90", "Planning"]);
   });
 
@@ -47,6 +49,7 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     });
     renderList();
     await screen.findByText("Sample listed");
+    await openListTool("Export and reports");
     await userEvent.setup().click(screen.getByRole("button", { name: "Look Ahead" }));
     expect(await screen.findByText("The Look Ahead report has downloaded.")).toBeInTheDocument();
     const post = calls.find((c) => c.url === "/calendar/api/reports/look-ahead")!;
@@ -67,6 +70,7 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     });
     renderList();
     await screen.findByText("Sample listed");
+    await openListTool("Export and reports");
     const lookAhead = screen.getByRole("button", { name: "Look Ahead" });
     const planning = screen.getByRole("button", { name: "Planning" });
     await userEvent.setup().click(planning);
@@ -93,6 +97,7 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     });
     renderList();
     await screen.findByText("Sample listed");
+    await openListTool("Export and reports");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Look Ahead" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("The report is too large to prepare: narrow the filter and run it again.");
@@ -120,6 +125,7 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     stubFetch([], { other: (url) => (url === "/calendar/api/reports/look-ahead" ? never() : undefined) });
     const { container } = renderList();
     await screen.findByText("Sample listed");
+    await openListTool("Export and reports");
     await userEvent.setup().click(screen.getByRole("button", { name: "Look Ahead" }));
     expect(await reports(container).findByRole("status")).toHaveTextContent("Preparing your Look Ahead report…");
   });

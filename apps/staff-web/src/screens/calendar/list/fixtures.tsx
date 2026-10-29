@@ -1,4 +1,5 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router";
 import type { CalendarRangeView, ListOptions, ListPage, ListPreferences, ListRow, SavedFilterView } from "@gcpe/calendar-contract";
@@ -124,3 +125,8 @@ export const renderList = (path = "/calendar") =>
       </MemoryRouter>
     </SessionProvider>,
   );
+
+/** Opens one of the list's tool panels (Columns, Export and reports, LA status) as a user does. */
+export async function openListTool(name: "Columns" | "Export and reports" | "LA status"): Promise<void> {
+  await userEvent.setup().click(await screen.findByRole("button", { name }));
+}

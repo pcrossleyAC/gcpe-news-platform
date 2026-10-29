@@ -120,6 +120,8 @@ test.describe("the Calendar list: journeys", () => {
     await Promise.all([savedPreferences(), page.getByRole("checkbox", { name: "City", exact: true }).check()]);
     await expect(page.getByRole("columnheader", { name: "City", exact: true })).toHaveCount(1);
 
+    // The export sits in the list's "Export and reports" panel.
+    await page.getByRole("button", { name: "Export and reports" }).click();
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Excel export" }).click()]);
     expect(download.suggestedFilename()).toBe("BCGovernmentActivities.xlsx");
     const { cells } = readXlsx(readFileSync(await download.path()));
@@ -150,6 +152,7 @@ test.describe("the Calendar list: journeys", () => {
       [h, "changed"],
     ]);
 
+    await page.getByRole("button", { name: "LA status", exact: true }).click();
     await page.getByLabel("Days ahead (Clear LA Status)").fill("0");
     await page.getByRole("button", { name: "Clear LA Status" }).click();
     // It asks first, with the count (owner decision 2026-10-29); with nothing to clear it just says so.

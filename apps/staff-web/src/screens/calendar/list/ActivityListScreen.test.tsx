@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { DEFAULT_LIST_QUERY, type ListPage } from "@gcpe/calendar-contract";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { listApi } from "./api";
-import { listCalls, qOf, renderList, row, stubFetch, CONFIG, type Call } from "./fixtures";
+import { listCalls, never, openListTool, qOf, renderList, row, stubFetch, CONFIG, type Call } from "./fixtures";
 
 /** The server's own refusal (apps/calendar/src/list/query.ts listWhere) of an HQ-only part of a query. */
 const refuseHqParts = (url: string) => {
@@ -196,12 +196,41 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
   it("always shows the freeze window, and an alert while it applies to you", async () => {
     stubFetch([]);
     renderList();
-    expect(await screen.findByText(CONFIG.freeze.message)).toBeInTheDocument();
+    // Outside the freeze: one quiet line, not a boxed alert.
+    const line = (await screen.findByText(CONFIG.freeze.message)).closest("p");
+    expect(line).toHaveClass("gcpe-freeze-line");
+    expect(line).toHaveTextContent(`Daily change freeze. ${CONFIG.freeze.message}`);
+    expect(screen.queryByText("Change freeze")).toBeNull();
     cleanup();
     vi.unstubAllGlobals();
     stubFetch([], { config: { ...CONFIG, freeze: { ...CONFIG.freeze, active: true, appliesToYou: true } } });
     renderList();
     expect(await screen.findByText("Change freeze")).toBeInTheDocument();
+  });
+
+  it("the list's tools sit behind disclosures, one open at a time; a closed panel keeps its state", async () => {
+    stubFetch([], { other: (url) => (url === "/calendar/api/reports/look-ahead" ? never() : undefined) });
+    renderList();
+    await screen.findByText("Sample listed");
+    const columns = screen.getByRole("button", { name: "Columns" });
+    const exports = screen.getByRole("button", { name: "Export and reports" });
+    expect(columns).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Excel export" })).toBeNull();
+    const user = userEvent.setup();
+    await user.click(exports);
+    expect(exports).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("group", { name: "Export and reports" })).toContainElement(screen.getByRole("button", { name: "Excel export" }));
+    await user.click(screen.getByRole("button", { name: "Look Ahead" }));
+    expect(await screen.findByText("Preparing your Look Ahead report…")).toBeInTheDocument();
+    await user.click(columns);
+    expect(columns).toHaveAttribute("aria-expanded", "true");
+    expect(exports).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("checkbox", { name: "City" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Excel export" })).toBeNull();
+    await openListTool("Export and reports");
+    expect(screen.getByText("Preparing your Look Ahead report…")).toBeInTheDocument();
+    await user.click(exports);
+    expect(exports).toHaveAttribute("aria-expanded", "false");
   });
 
   it("says so when nothing matches, and when the list can't load", async () => {
