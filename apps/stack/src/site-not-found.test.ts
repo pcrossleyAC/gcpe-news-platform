@@ -57,6 +57,21 @@ describe("siteNotFound", () => {
     expect(res.text).not.toContain("granvilleOn");
   });
 
+  it("a Range or conditional request still gets the whole 404 page with status 404 (no 206, no 304, no validators)", async () => {
+    await writeFile(join(outputDir, "404.html"), "<h1>Page not found</h1>");
+    const app = appFor(outputDir);
+    const ranged = await request(app).get("/site/missing.html").set("range", "bytes=0-3");
+    expect(ranged.status).toBe(404);
+    expect(ranged.text).toBe("<h1>Page not found</h1>");
+    expect(ranged.headers["content-range"]).toBeUndefined();
+    expect(ranged.headers["accept-ranges"]).toBeUndefined();
+    expect(ranged.headers["etag"]).toBeUndefined();
+    expect(ranged.headers["last-modified"]).toBeUndefined();
+    const conditional = await request(app).get("/site/missing.html").set("if-modified-since", new Date(Date.now() + 86_400_000).toUTCString());
+    expect(conditional.status).toBe(404);
+    expect(conditional.text).toBe("<h1>Page not found</h1>");
+  });
+
   it("an existing page is still served by the static mount", async () => {
     await writeFile(join(outputDir, "index.html"), "<p>home</p>");
     const res = await request(appFor(outputDir)).get("/site/");

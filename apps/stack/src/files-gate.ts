@@ -1,3 +1,5 @@
+import { lstat } from "node:fs/promises";
+import { join } from "node:path";
 import express, { type ErrorRequestHandler, type RequestHandler } from "express";
 import { siteNotFound } from "./site-not-found";
 
@@ -12,7 +14,7 @@ export const FILES_MAX_AGE_MS = 60_000;
 /** Carousel and emergency-pin images (apps/nrms/src/website/slide-images.ts): `slides/<sha256>.<png|jpg>`. */
 const SLIDE_KEY = /^slides\/[0-9a-f]{64}\.(png|jpg)$/;
 
-export type FileClass = { kind: "public" } | { kind: "lookup"; key: string } | { kind: "deny" };
+export type FileClass = { kind: "public"; key: string } | { kind: "lookup"; key: string } | { kind: "deny" };
 
 /**
  * What NRMS's file store (`STORAGE_DIR`) holds, by key shape — every writer is in apps/nrms:
@@ -29,8 +31,24 @@ export type FileClass = { kind: "public" } | { kind: "lookup"; key: string } | {
  * under `/files`, decoded the same way express.static (send) decodes it, so the key looked up
  * is exactly the file that would be served. Backslashes, colons and NULs never occur in a key
  * and are refused, so a Windows path separator or drive/stream syntax can't reach a release
- * file through a "single segment".
+ * file through a "single segment". A segment starting with "." is refused too.
  */
+
+/** Defence in depth for the no-lookup branches: the key must be a regular file, and no part of
+ * its path a symlink or (for the last part) a directory. */
+async function isRegularFile(root: string, key: string): Promise<boolean> {
+  const parts = key.split("/");
+  try {
+    for (let i = 1; i <= parts.length; i++) {
+      const st = await lstat(join(root, ...parts.slice(0, i)));
+      if (st.isSymbolicLink()) return false;
+      if (i === parts.length ? !st.isFile() : !st.isDirectory()) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 export function classifyFilePath(rawPath: string): FileClass {
   let path: string;
   try {
@@ -40,7 +58,10 @@ export function classifyFilePath(rawPath: string): FileClass {
   }
   if (!path.startsWith("/") || path.length < 2 || /[\\:\0]/.test(path)) return { kind: "deny" };
   const key = path.slice(1);
-  if (!key.includes("/") || SLIDE_KEY.test(key)) return { kind: "public" };
+  // Dot segments: the store's own `.meta` folder, `.`/`..`. express.static would answer 403
+  // (dotfiles: "deny") or refuse them; here they are the same 404 as any unknown key.
+  if (key.split("/").some((s) => s.startsWith("."))) return { kind: "deny" };
+  if (!key.includes("/") || SLIDE_KEY.test(key)) return { kind: "public", key };
   return { kind: "lookup", key };
 }
 
@@ -82,7 +103,10 @@ export function filesHandlers(opts: FilesMountOptions): [RequestHandler, Request
     // Other methods go to express.static, which refuses them (405) as before.
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     const c = classifyFilePath(req.path);
-    if (c.kind === "public") return next();
+    if (c.kind === "public") {
+      void isRegularFile(opts.storageDir, c.key).then((ok) => (ok ? next() : notFound(req, res, next)));
+      return;
+    }
     if (c.kind === "deny") return notFound(req, res, next);
     opts.isPublic(c.key).then(
       (ok) => (ok ? next() : notFound(req, res, next)),
@@ -92,9 +116,10 @@ export function filesHandlers(opts: FilesMountOptions): [RequestHandler, Request
       },
     );
   };
-  // express.static's own misses (no such file, a directory) become the same 404.
+  // express.static's own misses (no such file, a directory, a refused path) become the same 404.
   const staticMiss: ErrorRequestHandler = (err, req, res, next) => {
-    if (statusOf(err) === 404 && (req.method === "GET" || req.method === "HEAD") && !res.headersSent) return notFound(req, res, next);
+    const status = statusOf(err);
+    if ((status === 404 || status === 403) && (req.method === "GET" || req.method === "HEAD") && !res.headersSent) return notFound(req, res, next);
     next(err);
   };
   return [

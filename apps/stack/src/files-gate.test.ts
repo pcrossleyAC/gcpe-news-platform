@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -20,9 +20,9 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
 
 describe("classifyFilePath", () => {
   it("passes single-segment site files and content-addressed slide images straight to the static mount", () => {
-    expect(classifyFilePath(`/${SITE_FILE}`)).toEqual({ kind: "public" });
-    expect(classifyFilePath(`/${SLIDE}`)).toEqual({ kind: "public" });
-    expect(classifyFilePath(`/slides/${"b".repeat(64)}.jpg`)).toEqual({ kind: "public" });
+    expect(classifyFilePath(`/${SITE_FILE}`)).toEqual({ kind: "public", key: SITE_FILE });
+    expect(classifyFilePath(`/${SLIDE}`)).toEqual({ kind: "public", key: SLIDE });
+    expect(classifyFilePath(`/slides/${"b".repeat(64)}.jpg`)).toEqual({ kind: "public", key: `slides/${"b".repeat(64)}.jpg` });
   });
 
   it("sends every other multi-segment path to the release lookup, decoded exactly as express.static decodes it", () => {
@@ -31,7 +31,10 @@ describe("classifyFilePath", () => {
     // Not canonical keys: these reach the lookup and are simply not found there.
     expect(classifyFilePath(`/Releases/${UUID}/x.pdf`)).toEqual({ kind: "lookup", key: `Releases/${UUID}/x.pdf` });
     expect(classifyFilePath(`/slides/${"A".repeat(64)}.png`)).toEqual({ kind: "lookup", key: `slides/${"A".repeat(64)}.png` });
-    expect(classifyFilePath(`/.meta/${LIVE}.json`)).toEqual({ kind: "lookup", key: `.meta/${LIVE}.json` });
+  });
+
+  it("refuses any segment that starts with a dot (the store's .meta folder, dot segments)", () => {
+    for (const p of ["/.meta", `/.meta/${LIVE}.json`, "/.hidden.pdf", `/releases/${UUID}/../x.pdf`, `/slides/.${"a".repeat(64)}.png`]) expect(classifyFilePath(p), p).toEqual({ kind: "deny" });
   });
 
   it("refuses malformed encodings, backslashes, colons, NULs and the bare root outright", () => {
@@ -109,6 +112,24 @@ describe("filesHandlers (the stack's public /files)", () => {
     ]) {
       expect(shape(await request(app).get(p)), p).toEqual(unknown);
     }
+  });
+
+  it("dot paths, Range requests and non-regular public files all get the same whole-page 404", async () => {
+    const unknown = shape(await request(app).get(`/files/releases/${UUID}/translations/0000000000000000-nope.pdf`));
+    await mkdir(join(storageDir, "a-directory"), { recursive: true });
+    await symlink(join(storageDir, SITE_FILE), join(storageDir, "linked.pdf"));
+    await mkdir(join(storageDir, "slides", `${"c".repeat(64)}.png`), { recursive: true });
+    await symlink(join(storageDir, SLIDE), join(storageDir, "slides", `${"d".repeat(64)}.png`));
+    for (const p of ["/files/.meta", `/files/.meta/${LIVE}.json`, "/files/a-directory", "/files/linked.pdf", `/files/slides/${"c".repeat(64)}.png`, `/files/slides/${"d".repeat(64)}.png`]) {
+      expect(shape(await request(app).get(p)), p).toEqual(unknown);
+    }
+    const ranged = await request(app).get(`/files/${DRAFT}`).set("range", "bytes=0-3");
+    expect(shape(ranged)).toEqual(unknown);
+    expect(ranged.headers["content-range"]).toBeUndefined();
+    expect(unknown.etag).toBeUndefined();
+    expect(unknown.lastModified).toBeUndefined();
+    // A real file is still served (and still honours ranges, as express.static always has).
+    expect((await request(app).get(`/files/${SITE_FILE}`)).status).toBe(200);
   });
 
   it("HEAD follows the same rule", async () => {
