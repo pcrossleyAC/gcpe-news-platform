@@ -4,8 +4,7 @@
  * it, so a definition is written once.
  *
  * Each definition comes from what the code and docs say (docs/manuals/running-notes.md,
- * docs/parity/, the Calendar contract and the legacy names). `toConfirm` marks a definition that
- * is the best reading of them but that nobody has confirmed yet — listed for the owner to check.
+ * docs/parity/, the Calendar contract and the legacy names), confirmed by the owner (2026-10-29).
  */
 export type GlossaryArea = "Releases" | "Website" | "Subscribers" | "Calendar";
 
@@ -17,7 +16,6 @@ export interface GlossaryEntry {
   alsoShownAs?: string[];
   area: GlossaryArea;
   definition: string;
-  toConfirm?: boolean;
 }
 
 export const GLOSSARY: readonly GlossaryEntry[] = [
@@ -61,7 +59,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     area: "Website",
     definition:
       "Live Feed: the address of the live webcast's media manifest (the older streaming format legacy called the Flash media manifest). It's sent to the public site with the M3U URL while Live Feed is on.",
-    toConfirm: true,
   },
   {
     id: "m3u-url",
@@ -76,7 +73,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     area: "Website",
     definition:
       "The demise-of-the-Crown switch. Turned on, the public site changes to its mourning theme with a black banner announcing the King's death. Only a Hub administrator can turn it on, after typing a confirmation phrase and confirming the Intergovernmental Relations Secretariat (IGRS) has approved it; every change is logged and emailed.",
-    toConfirm: true,
   },
   {
     id: "look-ahead",
@@ -92,7 +88,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     area: "Calendar",
     definition:
       "Marks the activity confidential (the old Calendar's Confidential flag): only its lead and shared ministries, and HQ Advanced users and above, see it in the list, reports, the updates feed and search; it isn't offered on the releases Forecast, and a new activity isn't given a Look Ahead section (one it already has is kept).",
-    toConfirm: true,
   },
   {
     id: "la-section",
@@ -108,7 +103,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     area: "Calendar",
     definition:
       "HQ's New or Changed flag on an activity, shown beside it in HQ's Look Ahead and in the list's Status. HQ Editors and above clear it with Clear LA Status (the list's LA status tool) for activities in the next few days (8 by default), so the next Look Ahead flags only what is new or changed since.",
-    toConfirm: true,
   },
   {
     id: "comm-materials",
@@ -117,7 +111,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     area: "Calendar",
     definition:
       "Communication materials: the products planned for the activity (a news release, for one), chosen from the Calendar's Comm materials list. Required when the activity has a release; they also help decide its LA Section.",
-    toConfirm: true,
   },
   {
     id: "comm-contact",
@@ -132,7 +125,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     alsoShownAs: ["Govt Rep."],
     area: "Calendar",
     definition: "Government representative: who represents government at the activity, chosen from the Calendar's Government representatives list.",
-    toConfirm: true,
   },
   {
     id: "lead-organization",
@@ -140,7 +132,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     alsoShownAs: ["Lead Org."],
     area: "Calendar",
     definition: "The organization leading the activity, typed in when it's someone other than the lead ministry (a partner or agency, for one).",
-    toConfirm: true,
   },
   {
     id: "nr-origin",
@@ -148,7 +139,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     alsoShownAs: ["NR origins"],
     area: "Calendar",
     definition: "News release origin: where the activity's news release comes from, chosen from the Calendar's NR origins list. Required when the activity has a release.",
-    toConfirm: true,
   },
   {
     id: "corp-cal-manager",
