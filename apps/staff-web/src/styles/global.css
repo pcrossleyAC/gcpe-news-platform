@@ -2785,8 +2785,9 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 /* Batch 4 -------------------------------------------------------------------------------- */
 
 /* Every plain link is a BC link: the link blue, underlined, a brighter blue and a heavier
- * underline on hover (the design system's Link hover), the focus ring the buttons use. Zero specificity (:where), so the side
- * menu, the tabs, the button-styled links and the design system's own links keep their looks.
+ * underline on hover (the design system's Link hover), the focus ring the buttons use. Zero
+ * specificity (:where, states included), so the side menu, the tabs, the button-styled links and
+ * the design system's own links keep their looks, hover included.
  * Visited links stay the link blue: staff revisit the same records all day, and purple would
  * only say "you opened this before". */
 :where(a) {
@@ -2794,14 +2795,14 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
-:where(a):visited {
+:where(a:visited) {
   color: var(--typography-color-link, #255a90);
 }
-:where(a):hover {
+:where(a:hover) {
   color: var(--surface-color-border-active, #2e5dd7);
   text-decoration-thickness: 2px;
 }
-:where(a):focus-visible {
+:where(a:focus-visible) {
   outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
   outline-offset: var(--layout-margin-hair, 2px);
   border-radius: 2px;
@@ -2928,7 +2929,7 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
   gap: 1rem 2.5rem;
 }
-.gcpe-saved-views__part > h3 {
+.gcpe-saved-views__part > h2 {
   margin: 0 0 0.25rem;
   font: var(--typography-bold-h5);
 }
@@ -3088,6 +3089,15 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 .gcpe-error-summary > ul {
   margin: 0;
   padding-left: 1.25rem;
+}
+/* Each problem's link a full 24px target, apart from the next (WCAG 2.5.8). */
+.gcpe-error-summary li + li {
+  margin-top: 0.25rem;
+}
+.gcpe-error-summary li > a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 0.125rem 0;
 }
 .gcpe-error-summary:focus-visible {
   outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);

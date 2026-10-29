@@ -112,7 +112,7 @@ export function CorporateQueries({ active, onRun }: { active: CorporateQuery | n
   const valid = statuses.length > 0 && (showAll || (/^\d{1,3}$/.test(days) && Number(days) <= 366));
   return (
     <section aria-labelledby="corporate-heading" className="gcpe-saved-views__part">
-      <h3 id="corporate-heading">Corporate Queries</h3>
+      <h2 id="corporate-heading">Corporate Queries</h2>
       <p className="gcpe-hint">{active ? `Running now: the list shows the corporate query (${corporateSummary(active)}).` : "Not applied: the list shows your filters. Choose below and run it to list every ministry's activities by status."}</p>
       <form
         aria-label="Corporate query"
