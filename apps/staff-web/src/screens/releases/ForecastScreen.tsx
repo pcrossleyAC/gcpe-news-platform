@@ -56,8 +56,8 @@ export function ForecastScreen(): React.JSX.Element {
 
   return (
     <div className="gcpe-release-list">
-      <h1>Forecast</h1>
       <ReleaseFolderTabs />
+      <h1>Forecast</h1>
 
       {result && !result.calendarActivities && <p>Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it.</p>}
       {error && <p role="alert">{error}</p>}

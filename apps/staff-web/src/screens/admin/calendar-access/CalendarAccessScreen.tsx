@@ -5,6 +5,7 @@ import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { AccessEditor, actorFor, lockedMessage, type Actor } from "./AccessEditor";
 import { calendarRoleLabel, canManageCalendarAccess, checkCalendarGrant, type CalendarRoleName } from "./calendar-roles";
+import { TableScroll } from "../../../shared/TableScroll";
 
 export interface CalendarAccessUser {
   id: string;
@@ -90,85 +91,87 @@ export function CalendarAccessScreen(): React.JSX.Element {
       </div>
       {users === null && !loadError && <p>Loading…</p>}
       {users !== null && (
-        <table className="gcpe-table gcpe-calendar-access__table">
-          <caption className="gcpe-visually-hidden">Staff and their Calendar access</caption>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Email</th>
-              <th scope="col">Calendar role</th>
-              <th scope="col">Ministries</th>
-              <th scope="col">
-                <span className="gcpe-visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((u) => {
-              const ministries = u.organizationKeys.map((k) => byKey.get(k)?.abbreviation ?? k).join(", ") || "none";
-              // The same check the server makes, for a save that keeps the user's role and ministries.
-              const refusal = checkCalendarGrant({
-                actorId: actor.id,
-                actorRoles: actor.roles,
-                actorIsHq: actor.isHq,
-                targetId: u.id,
-                targetRole: u.calendarRole,
-                nextRole: null,
-                addsHqOrganization: false,
-                targetHasHqAfter: u.organizationKeys.some((k) => hqKeys.has(k)),
-              });
-              const locked = lockedMessage(refusal, actor, u);
-              return (
-                <Fragment key={u.id}>
-                  <tr>
-                    <th scope="row">{u.displayName}</th>
-                    <td>
-                      {u.email ?? "No email"}
-                      {u.isActive ? "" : " — inactive"}
-                    </td>
-                    <td>{u.calendarRole ? calendarRoleLabel(u.calendarRole) : "No Calendar access"}</td>
-                    <td>{ministries}</td>
-                    <td>
-                      {locked ? (
-                        <span className="gcpe-hint">{locked}</span>
-                      ) : editing === u.id ? null : (
-                        <Button
-                          size="small"
-                          variant="secondary"
-                          onPress={() => {
-                            setStatus(null);
-                            setEditing(u.id);
-                          }}
-                        >
-                          <span>
-                            Edit <span className="gcpe-visually-hidden">access for {u.displayName}</span>
-                          </span>
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                  {!locked && editing === u.id && (
-                    <tr className="gcpe-calendar-access__editor-row">
-                      <td colSpan={5}>
-                        <AccessEditor
-                          user={u}
-                          orgs={orgs}
-                          actor={actor}
-                          onSaved={(m) => {
-                            setEditing(null);
-                            setStatus(m);
-                            reload();
-                          }}
-                          onCancel={() => setEditing(null)}
-                        />
+        <TableScroll label="Staff and their Calendar access">
+          <table className="gcpe-table gcpe-calendar-access__table">
+            <caption className="gcpe-visually-hidden">Staff and their Calendar access</caption>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Calendar role</th>
+                <th scope="col">Ministries</th>
+                <th scope="col">
+                  <span className="gcpe-visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((u) => {
+                const ministries = u.organizationKeys.map((k) => byKey.get(k)?.abbreviation ?? k).join(", ") || "none";
+                // The same check the server makes, for a save that keeps the user's role and ministries.
+                const refusal = checkCalendarGrant({
+                  actorId: actor.id,
+                  actorRoles: actor.roles,
+                  actorIsHq: actor.isHq,
+                  targetId: u.id,
+                  targetRole: u.calendarRole,
+                  nextRole: null,
+                  addsHqOrganization: false,
+                  targetHasHqAfter: u.organizationKeys.some((k) => hqKeys.has(k)),
+                });
+                const locked = lockedMessage(refusal, actor, u);
+                return (
+                  <Fragment key={u.id}>
+                    <tr>
+                      <th scope="row">{u.displayName}</th>
+                      <td>
+                        {u.email ?? "No email"}
+                        {u.isActive ? "" : " — inactive"}
+                      </td>
+                      <td>{u.calendarRole ? calendarRoleLabel(u.calendarRole) : "No Calendar access"}</td>
+                      <td>{ministries}</td>
+                      <td>
+                        {locked ? (
+                          <span className="gcpe-hint">{locked}</span>
+                        ) : editing === u.id ? null : (
+                          <Button
+                            size="small"
+                            variant="secondary"
+                            onPress={() => {
+                              setStatus(null);
+                              setEditing(u.id);
+                            }}
+                          >
+                            <span>
+                              Edit <span className="gcpe-visually-hidden">access for {u.displayName}</span>
+                            </span>
+                          </Button>
+                        )}
                       </td>
                     </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                    {!locked && editing === u.id && (
+                      <tr className="gcpe-calendar-access__editor-row">
+                        <td colSpan={5}>
+                          <AccessEditor
+                            user={u}
+                            orgs={orgs}
+                            actor={actor}
+                            onSaved={(m) => {
+                              setEditing(null);
+                              setStatus(m);
+                              reload();
+                            }}
+                            onCancel={() => setEditing(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </div>
   );

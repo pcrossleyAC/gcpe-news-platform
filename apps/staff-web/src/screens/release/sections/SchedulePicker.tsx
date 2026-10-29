@@ -26,6 +26,8 @@ export interface SchedulePickerProps {
   /** Called with `{ local, instant }` once both fields hold a valid date and time, or `null`
    * while incomplete/invalid. */
   onChange(value: ScheduleValue | null): void;
+  /** Every edit, with the raw date and time as typed (complete or not). */
+  onEdit?(date: string, time: string): void;
   /** An extra check on a complete `local` value ("YYYY-MM-DDTHH:mm"): returns the field error
    * to show, or null (Schedule: only a time after now, in BC time as the server reckons it). */
   validate?(local: string): string | null;
@@ -40,7 +42,7 @@ export interface SchedulePickerProps {
  * type="time">` rather than the design system's DatePicker/TimeField (which take
  * `CalendarDate`/`Time` objects) — simpler to wire to BC local time and to drive from tests.
  */
-export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange, validate, error: callerError = null }: SchedulePickerProps): React.JSX.Element {
+export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange, onEdit, validate, error: callerError = null }: SchedulePickerProps): React.JSX.Element {
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState(initialTime);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", i
   const update = (nextDate: string, nextTime: string) => {
     setDate(nextDate);
     setTime(nextTime);
+    onEdit?.(nextDate, nextTime);
     if (!nextDate || !nextTime) {
       setError(null);
       onChange(null);

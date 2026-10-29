@@ -13,6 +13,7 @@ import { ALL_MOVES, HandOverMoveBoxes, useHandOverCounts, type HandOverMoves } f
 import { deactivateWarning } from "./OrganizationEditForm";
 import { normalizeAbbreviation } from "./abbreviation";
 import { isCoreAdmin } from "./access";
+import { TableScroll } from "../../../shared/TableScroll";
 
 /*
  * Core's cabinet change (apps/core/src/services/cabinet-changes.ts), as the Hub sends and reads it.
@@ -822,26 +823,28 @@ function PreviewResult({
       {preview.diff.length === 0 ? (
         <p>Nothing would change.</p>
       ) : (
-        <table className="gcpe-table" aria-labelledby={`${uid}-diff`}>
-          <thead>
-            <tr>
-              <th scope="col">Ministry</th>
-              <th scope="col">What</th>
-              <th scope="col">Now</th>
-              <th scope="col">After publishing</th>
-            </tr>
-          </thead>
-          <tbody>
-            {preview.diff.map((row, i) => (
-              <tr key={i}>
-                <td>{row.displayName}</td>
-                <td>{FIELD_LABELS[row.field] ?? row.field}</td>
-                <td>{row.kind === "created" ? "New ministry" : formatValue(row.field, row.from, names)}</td>
-                <td>{formatValue(row.field, row.to, names)}</td>
+        <TableScroll label="What will change">
+          <table className="gcpe-table" aria-labelledby={`${uid}-diff`}>
+            <thead>
+              <tr>
+                <th scope="col">Ministry</th>
+                <th scope="col">What</th>
+                <th scope="col">Now</th>
+                <th scope="col">After publishing</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {preview.diff.map((row, i) => (
+                <tr key={i}>
+                  <td>{row.displayName}</td>
+                  <td>{FIELD_LABELS[row.field] ?? row.field}</td>
+                  <td>{row.kind === "created" ? "New ministry" : formatValue(row.field, row.from, names)}</td>
+                  <td>{formatValue(row.field, row.to, names)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
       {ops.some((o) => o.op === "succeed" && !o.noSuccessor && o.successors.length > 0) && (
         <>

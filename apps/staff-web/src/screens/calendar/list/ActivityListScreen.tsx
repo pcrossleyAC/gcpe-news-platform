@@ -18,6 +18,7 @@ import { ClearLaStatus, CorporateBanner, CorporateQueries, ExportButton, LookAhe
 import { MyQueries } from "./MyQueries";
 import { ReportButtons } from "./Reports";
 import type { CalendarConfigView, ListView } from "./types";
+import { ToolMessageSlot } from "./ToolMessages";
 import { WatchStar } from "./WatchStar";
 
 /** The list query, from `?q=`. Anything that no longer parses gives way to the defaults. */
@@ -40,13 +41,67 @@ export function usableQuery(query: ListQuery, list: CalendarConfigView["list"]):
   return lookAhead === query.lookAhead && corporate === query.corporate ? query : { ...query, lookAhead, corporate };
 }
 
-/** Legacy's standing note (UCFlexiGrid.ascx:124) as an information alert, a warning while the freeze applies to this user (spec addendum §7.4). */
+/**
+ * Legacy's standing note (UCFlexiGrid.ascx:124): a warning alert while the freeze applies to this
+ * user (spec addendum §7.4); the rest of the day, one quiet line, since it is up all day and only
+ * says when the freeze is.
+ */
 function FreezeNotice({ freeze }: { freeze: CalendarConfigView["freeze"] }) {
   if (freeze.start === freeze.end) return null;
   return freeze.appliesToYou ? (
     <InlineAlert variant="warning" title="Change freeze" description={freeze.message} />
   ) : (
-    <InlineAlert variant="info" title="Daily change freeze" description={freeze.message} />
+    <p className="gcpe-freeze-line">
+      <svg className="gcpe-freeze-line__icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8 7v4.5M8 4.5v.01" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      </svg>
+      <span>
+        <strong>Daily change freeze.</strong> <span>{freeze.message}</span>
+      </span>
+    </p>
+  );
+}
+
+type ListTool = "columns" | "export" | "la";
+
+/**
+ * The list's secondary tools, each behind a disclosure on one quiet line beside the Look Ahead
+ * filter, so the list's own actions lead. One panel shows at a time, under the line. Closed panels
+ * stay mounted (only hidden), so a report still being prepared or a result message is kept.
+ */
+function ListTools({ lookAhead, panels }: { lookAhead: React.ReactNode; panels: { id: ListTool; label: string; content: React.ReactNode }[] }): React.JSX.Element {
+  const [open, setOpen] = useState<ListTool | null>(null);
+  // The panels' status and error lines render here, outside the panels, so closing a panel never
+  // hides or silences a result still to come (ToolMessages).
+  const [messages, setMessages] = useState<HTMLElement | null>(null);
+  return (
+    <ToolMessageSlot.Provider value={messages}>
+      <div className="gcpe-calendar-viewbar">
+        {lookAhead}
+        <div className="gcpe-list-tools">
+          {panels.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              id={`list-tool-${p.id}-toggle`}
+              className="gcpe-disclosure-toggle"
+              aria-expanded={open === p.id}
+              aria-controls={`list-tool-${p.id}`}
+              onClick={() => setOpen((o) => (o === p.id ? null : p.id))}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {panels.map((p) => (
+        <div key={p.id} id={`list-tool-${p.id}`} role="group" aria-labelledby={`list-tool-${p.id}-toggle`} className="gcpe-list-tool-panel" hidden={open !== p.id}>
+          {p.content}
+        </div>
+      ))}
+      <div ref={setMessages} className="gcpe-list-tool-messages" />
+    </ToolMessageSlot.Provider>
   );
 }
 
@@ -210,11 +265,6 @@ export function ActivityListScreen(): React.JSX.Element {
         <MyQueries current={query.filter} onRun={(filter) => setQuery({ ...query, corporate: null, filter })} onRunning={setRunningQuery} />
         {config.list.corporateQueries && <CorporateQueries active={query.corporate} onRun={(corporate) => setQuery({ ...query, corporate })} />}
       </SavedViews>
-      <div className="gcpe-calendar-viewbar">
-        {config.list.lookAheadFilter && <LookAheadFilterChoice value={query.lookAhead} onChange={(lookAhead) => setQuery({ ...query, lookAhead })} />}
-        <ColumnChooser hidden={prefs.hiddenColumns} onChange={(hiddenColumns) => void savePrefs({ ...prefs, hiddenColumns })} />
-      </div>
-      {prefsError && <p role="alert">{prefsError}</p>}
       {query.corporate && <CorporateBanner active={query.corporate} onClear={() => setQuery({ ...query, corporate: null })} />}
       <div className="gcpe-calendar-toolbar">
         <section aria-label="List actions" className="gcpe-actions">
@@ -224,18 +274,27 @@ export function ActivityListScreen(): React.JSX.Element {
             </Link>
           )}
           {config.list.reviewSelected && <ReviewSelected selected={selected} onDone={reload} />}
-          {config.list.clearLaStatus && <ClearLaStatus onDone={reload} />}
-          {/* One visibly grouped set: the Excel export and the PDF reports of the current list. */}
-          <div role="group" aria-labelledby="list-export-heading" className="gcpe-toolbar-group">
-            <span id="list-export-heading" className="gcpe-toolbar-group__label">
-              Export and reports
-            </span>
-            <ExportButton query={query} />
-            <ReportButtons query={query} execLookAhead={config.list.execLookAhead} />
-          </div>
         </section>
         <ViewSwitch view={view} onChange={(v) => setParam("view", v === "list" ? null : v)} />
       </div>
+      <ListTools
+        lookAhead={config.list.lookAheadFilter && <LookAheadFilterChoice value={query.lookAhead} onChange={(lookAhead) => setQuery({ ...query, lookAhead })} />}
+        panels={[
+          { id: "columns", label: "Columns", content: <ColumnChooser hidden={prefs.hiddenColumns} onChange={(hiddenColumns) => void savePrefs({ ...prefs, hiddenColumns })} /> },
+          {
+            id: "export",
+            label: "Export and reports",
+            content: (
+              <>
+                <ExportButton query={query} />
+                <ReportButtons query={query} execLookAhead={config.list.execLookAhead} />
+              </>
+            ),
+          },
+          ...(config.list.clearLaStatus ? [{ id: "la" as const, label: "LA status", content: <ClearLaStatus onDone={reload} /> }] : []),
+        ]}
+      />
+      {prefsError && <p role="alert">{prefsError}</p>}
       {view === "list" ? (
         <ActivityTable query={query} hidden={prefs.hiddenColumns} timeZone={config.timeZone} reloadToken={reloadToken} onSort={(sort, dir) => setQuery({ ...query, sort, dir })} tools={tools} />
       ) : (

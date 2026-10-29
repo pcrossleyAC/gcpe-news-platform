@@ -3,7 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { jsonResponse } from "../../../../test/jsonResponse";
-import { CONFIG, HQ_ADMIN_CONFIG, HQ_ADMIN_ME, never, renderList, row, stubFetch } from "./fixtures";
+import { CONFIG, HQ_ADMIN_CONFIG, HQ_ADMIN_ME, never, openListTool, renderList, row, stubFetch } from "./fixtures";
 import { REVIEW_SELECTED_MAX, ReviewSelected } from "./HqTools";
 
 async function seriousViolations(container: Element) {
@@ -180,6 +180,7 @@ describe("accessibility: the activity list in every state", () => {
     });
     const { container } = renderList();
     const user = userEvent.setup();
+    await openListTool("LA status");
     await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(await seriousViolations(dialog)).toEqual([]);
@@ -203,6 +204,7 @@ describe("accessibility: the activity list in every state", () => {
   it("the export failing", async () => {
     stubFetch([], { other: (url) => (url.startsWith("/calendar/api/list/export.xlsx") ? jsonResponse(503, { error: "Other exports are running: try again in a few seconds" }) : undefined) });
     const { container } = renderList();
+    await openListTool("Export and reports");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Excel export" }));
     await screen.findByText("Other exports are running: try again in a few seconds");
     expect(await seriousViolations(container)).toEqual([]);
@@ -211,6 +213,7 @@ describe("accessibility: the activity list in every state", () => {
   it("the reports: all four for an HQ Administrator, one being prepared", async () => {
     stubFetch([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, other: (url) => (url === "/calendar/api/reports/exec-look-ahead" ? never() : undefined) });
     const { container } = renderList();
+    await openListTool("Export and reports");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Exec Look Ahead" }));
     await screen.findByText("Preparing your Exec Look Ahead report…");
     expect(await seriousViolations(container)).toEqual([]);
@@ -219,6 +222,7 @@ describe("accessibility: the activity list in every state", () => {
   it("a report refused", async () => {
     stubFetch([], { other: (url) => (url === "/calendar/api/reports/planning" ? jsonResponse(422, { error: "Too many activities match: narrow the filter and run the report again" }) : undefined) });
     const { container } = renderList();
+    await openListTool("Export and reports");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Planning" }));
     await screen.findByText("Too many activities match: narrow the filter and run the report again");
     expect(await seriousViolations(container)).toEqual([]);

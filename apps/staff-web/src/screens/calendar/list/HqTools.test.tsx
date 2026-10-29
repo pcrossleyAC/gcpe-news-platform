@@ -5,7 +5,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { onUnauthorized } from "../../../api/client";
 import { DEFAULT_LIST_QUERY } from "@gcpe/calendar-contract";
 import { downloadExport } from "./api";
-import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, listCalls, qOf, renderList, row, stubFetch, type Call } from "./fixtures";
+import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, listCalls, openListTool, qOf, renderList, row, stubFetch, type Call } from "./fixtures";
 import { REVIEW_SELECTED_MAX, ReviewSelected } from "./HqTools";
 
 const ROWS = [row({ id: 20001, version: 3 }), row({ id: 20002, version: 5, title: "Sample second" })];
@@ -22,6 +22,8 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     stubFetch([]);
     renderList();
     await screen.findByText("Sample listed");
+    expect(screen.queryByRole("button", { name: "LA status" })).toBeNull();
+    await openListTool("Export and reports");
     expect(screen.getByRole("button", { name: "Excel export" })).toBeInTheDocument();
     for (const name of [/^Review selected/, "Clear LA Status"]) expect(screen.queryByRole("button", { name })).toBeNull();
     expect(screen.queryByRole("region", { name: "Corporate Queries" })).toBeNull();
@@ -60,6 +62,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     await user.click(screen.getByRole("checkbox", { name: "Select HLTH-20002" }));
     await user.click(screen.getByRole("button", { name: "Review selected (2)" }));
     expect(await screen.findByText("Only 1 of 2 activities were reviewed before a later batch failed. Select the rest and review them again.")).toBeInTheDocument();
+    await openListTool("LA status");
     await user.click(screen.getByRole("button", { name: "Clear LA Status" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Clear LA Status" }));
     expect(await screen.findByText("The LA status of 100 activities was cleared before a later batch failed. Run Clear LA Status again to finish.")).toBeInTheDocument();
@@ -97,6 +100,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     );
     renderList();
     const user = userEvent.setup();
+    await openListTool("LA status");
     const days = await screen.findByLabelText("Days ahead (Clear LA Status)");
     expect(days).toHaveValue(8);
     await user.clear(days);
@@ -115,6 +119,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     hq(calls, (url) => (url === "/calendar/api/activities/clear-la-status?days=8" ? jsonResponse(200, { count: 1 }) : undefined));
     renderList();
     const user = userEvent.setup();
+    await openListTool("LA status");
     await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Clear the LA status of 1 activity?");
@@ -123,11 +128,24 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     expect(calls.some((c) => c.url === "/calendar/api/activities/clear-la-status")).toBe(false);
   });
 
+  it("Clear LA Status's result stays shown with its panel closed", async () => {
+    hq([], (url) => (url === "/calendar/api/activities/clear-la-status?days=8" ? jsonResponse(200, { count: 0 }) : undefined));
+    renderList();
+    const user = userEvent.setup();
+    await openListTool("LA status");
+    await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
+    await openListTool("Columns");
+    const said = await screen.findByText("No activities up to 8 days ahead have an LA status to clear.");
+    expect(said).toHaveAttribute("role", "status");
+    expect(said).toBeVisible();
+  });
+
   it("with nothing to clear, says so and asks nothing", async () => {
     const calls: Call[] = [];
     hq(calls, (url) => (url === "/calendar/api/activities/clear-la-status?days=8" ? jsonResponse(200, { count: 0 }) : undefined));
     renderList();
     const user = userEvent.setup();
+    await openListTool("LA status");
     await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
     expect(await screen.findByText("No activities up to 8 days ahead have an LA status to clear.")).toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -162,6 +180,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
   it("an export the server refuses shows its reason", async () => {
     stubFetch([], { other: (url) => (url.startsWith("/calendar/api/list/export.xlsx") ? jsonResponse(422, { error: "More than 10,000 activities match: narrow the filter and export again" }) : undefined) });
     renderList();
+    await openListTool("Export and reports");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Excel export" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("More than 10,000 activities match: narrow the filter and export again");
   });
@@ -169,6 +188,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
   it("an export turned away while others run says to try again shortly", async () => {
     stubFetch([], { other: (url) => (url.startsWith("/calendar/api/list/export.xlsx") ? jsonResponse(503, { error: "Other exports are running: try again in a few seconds" }) : undefined) });
     renderList();
+    await openListTool("Export and reports");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Excel export" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("try again in a few seconds");
   });
@@ -192,6 +212,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
     stubFetch(calls, { other: (url) => (url.startsWith("/calendar/api/list/export.xlsx") ? new Response(new Blob(["PK"]), { status: 200 }) : undefined) });
     renderList();
+    await openListTool("Export and reports");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Excel export" }));
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(qOf(calls.find((c) => c.url.startsWith("/calendar/api/list/export.xlsx"))!.url)).toMatchObject({ sort: "dateTime" });

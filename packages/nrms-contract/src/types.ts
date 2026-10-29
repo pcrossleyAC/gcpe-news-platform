@@ -136,6 +136,8 @@ export interface ReleaseListItem {
   approved: boolean;
   /** See {@link ReleaseView.flickrAlert}. */
   flickrAlert: string | null;
+  /** The release's latest history line: when, and by whom (read-only; null if it has none). */
+  lastEdited: { at: string; by: string } | null;
 }
 
 export interface ReleasePage<T> {

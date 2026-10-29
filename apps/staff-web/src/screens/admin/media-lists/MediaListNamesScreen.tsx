@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { TableScroll } from "../../../shared/TableScroll";
 
 interface MediaListRecord {
   key: string;
@@ -86,29 +87,31 @@ function MediaListNamesEditor(): React.JSX.Element {
       {message && <p role="status">{message}</p>}
       {rows === null && !loadError && <p>Loading…</p>}
       {rows && (
-        <table aria-label="Media lists" className="gcpe-table">
-          <thead>
-            <tr>
-              <th scope="col">Key</th>
-              <th scope="col">Name</th>
-              <th scope="col">Order</th>
-              <th scope="col">Active</th>
-              <th scope="col">Save</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <MediaListRow
-                key={r.key}
-                record={r}
-                onSaved={(text) => {
-                  setMessage(text);
-                  reload();
-                }}
-              />
-            ))}
-          </tbody>
-        </table>
+        <TableScroll label="Media lists">
+          <table aria-label="Media lists" className="gcpe-table">
+            <thead>
+              <tr>
+                <th scope="col">Key</th>
+                <th scope="col">Name</th>
+                <th scope="col">Order</th>
+                <th scope="col">Active</th>
+                <th scope="col">Save</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <MediaListRow
+                  key={r.key}
+                  record={r}
+                  onSaved={(text) => {
+                    setMessage(text);
+                    reload();
+                  }}
+                />
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
       <h2>Add a media list</h2>
       <Form onSubmit={(e) => void onAdd(e)} aria-label="Add a media list" className="gcpe-field-row">

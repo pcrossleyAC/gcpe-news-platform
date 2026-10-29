@@ -29,6 +29,7 @@ function item(overrides: Partial<ReleaseListItem> = {}): ReleaseListItem {
     activityId: null,
     approved: false,
     flickrAlert: null,
+    lastEdited: null,
     ...overrides,
   };
 }
@@ -106,6 +107,15 @@ describe("SearchScreen", () => {
     renderSearch();
     await screen.findByRole("heading", { level: 1 });
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  // Its own class must not replace the design system's, or the field loses its layout and its
+  // label sits lower than the Ministry and Sector labels beside it.
+  it("the search box keeps the design system's field class beside its own", async () => {
+    stubFetch();
+    renderSearch();
+    const box = (await screen.findByRole("textbox", { name: "Search" })).closest(".gcpe-search__q");
+    expect(box).toHaveClass("bcds-react-aria-TextField");
   });
 
   // I5: document.title matches the screen's own h1.

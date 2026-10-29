@@ -253,8 +253,12 @@ describe("the activity's actions (spec addendum §8.2)", () => {
     const star = await screen.findByRole("button", { name: "Watch HLTH-20001" });
     expect(star).toHaveAttribute("aria-pressed", "false");
     expect(star).toHaveAccessibleDescription("Watched by Sample Admin");
+    // A drawn icon, not a text glyph: outlined until watched, then filled.
+    expect(star.textContent).toBe("");
+    expect(star.querySelector("svg path")).toHaveAttribute("fill", "none");
     await userEvent.click(star);
     expect(star).toHaveAttribute("aria-pressed", "true");
+    expect(star.querySelector("svg path")).toHaveAttribute("fill", "currentColor");
     expect(star).toHaveAccessibleDescription("Watched by Robin Staff, Sample Admin");
   });
 

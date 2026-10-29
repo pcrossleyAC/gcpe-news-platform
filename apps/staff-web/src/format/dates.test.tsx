@@ -99,4 +99,13 @@ describe('formatWhen (constraints.md: times as h:mm a, e.g. "Today 2:30 PM")', (
     const now = new Date("2026-06-15T18:00:00Z");
     expect(formatWhen("2026-06-22T21:30:00Z", now, TZ)).toBe("Jun 22, 2026 2:30 PM");
   });
+
+  it("withDate: a bare weekday also names its date; Today/Tomorrow and full dates are unchanged", () => {
+    const now = new Date("2026-06-15T18:00:00Z"); // Monday 11:00 PDT
+    expect(formatWhen("2026-06-19T16:00:00Z", now, TZ, { withDate: true })).toBe("Friday, Jun 19 9:00 AM");
+    expect(formatWhen("2026-06-12T16:00:00Z", now, TZ, { withDate: true })).toBe("Friday, Jun 12 9:00 AM");
+    expect(formatWhen("2026-06-16T16:00:00Z", now, TZ, { withDate: true })).toBe("Tomorrow 9:00 AM");
+    expect(formatWhen("2026-06-22T21:30:00Z", now, TZ, { withDate: true })).toBe("Jun 22, 2026 2:30 PM");
+    expect(formatWhen("2026-06-19T16:00:00Z", now, TZ)).toBe("Friday 9:00 AM");
+  });
 });

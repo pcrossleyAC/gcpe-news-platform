@@ -264,12 +264,18 @@ test.describe("item 16: axe across every staff screen", () => {
     const query = { filter: { ...MAY, quickSearch: f.tag } };
     await page.goto(listUrl(query));
     await expect(page.locator(".gcpe-activity-title")).toHaveCount(6);
-    for (const name of ["Review selected (0)", "Clear LA Status"]) await expect(page.getByRole("button", { name })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Review selected (0)" })).toBeVisible();
+    // The list's tools open in panels under the Look Ahead filter: LA status here, Export and reports below.
+    await page.getByRole("button", { name: "LA status", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Clear LA Status" })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: `Select HLTH-${f.ids.A}` })).toBeVisible();
     await page.getByText("Saved views", { exact: true }).click();
     await expect(page.getByRole("region", { name: "Corporate Queries" })).toBeVisible();
     await expect(page.getByRole("group", { name: "Look Ahead filter" })).toBeVisible();
     await expectNoSeriousA11yViolations(page, "the Calendar list as an HQ Administrator");
+    await page.getByRole("button", { name: "Export and reports" }).click();
+    await expect(page.getByRole("button", { name: "Exec Look Ahead" })).toBeVisible();
+    await expectNoSeriousA11yViolations(page, "the Calendar list's Export and reports panel");
 
     for (const [view, heading] of [["month", "May 2031"], ["week", "Week of May 11, 2031"]] as const) {
       await page.goto(listUrl(query, `&view=${view}&on=${FIXTURE_DAY}`));

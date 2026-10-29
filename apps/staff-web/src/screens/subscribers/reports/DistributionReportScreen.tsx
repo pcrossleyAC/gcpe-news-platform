@@ -5,6 +5,7 @@ import { reportErrorText } from "./errors";
 import { RangeForm } from "./RangeForm";
 import { useRangedReport } from "./useRangedReport";
 import type { DeliveryCounts, DistributionReport } from "./types";
+import { TableScroll } from "../../../shared/TableScroll";
 
 const HEADINGS = ["Sent", "Delivered", "Hard bounces", "Soft bounces", "Failed"];
 
@@ -39,33 +40,10 @@ export function DistributionReportScreen(): React.JSX.Element {
       {d && (
         <>
           <CsvLink href={csvHref("/nod/api/reports/distribution.csv")}>Download (CSV)</CsvLink>
-          <table className="gcpe-table" aria-label="Totals">
-            <thead>
-              <tr>
-                <th scope="col">Sent by</th>
-                {HEADINGS.map((h) => (
-                  <th key={h} scope="col">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {d.apps.map((a) => (
-                <tr key={a.app}>
-                  <th scope="row">{a.app}</th>
-                  <CountCells c={a} />
-                </tr>
-              ))}
-              <tr>
-                <th scope="row">All senders</th>
-                <CountCells c={d.totals} />
-              </tr>
-            </tbody>
-          </table>
-          {d.days.length > 0 ? (
-            <table className="gcpe-table" aria-label="By day">
+          <TableScroll label="Totals">
+            <table className="gcpe-table" aria-label="Totals">
               <thead>
                 <tr>
-                  <th scope="col">Date</th>
                   <th scope="col">Sent by</th>
                   {HEADINGS.map((h) => (
                     <th key={h} scope="col">{h}</th>
@@ -73,15 +51,42 @@ export function DistributionReportScreen(): React.JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {d.days.map((day) => (
-                  <tr key={`${day.date}|${day.app}`}>
-                    <th scope="row">{day.date}</th>
-                    <td>{day.app}</td>
-                    <CountCells c={day} />
+                {d.apps.map((a) => (
+                  <tr key={a.app}>
+                    <th scope="row">{a.app}</th>
+                    <CountCells c={a} />
                   </tr>
                 ))}
+                <tr>
+                  <th scope="row">All senders</th>
+                  <CountCells c={d.totals} />
+                </tr>
               </tbody>
             </table>
+          </TableScroll>
+          {d.days.length > 0 ? (
+            <TableScroll label="By day">
+              <table className="gcpe-table" aria-label="By day">
+                <thead>
+                  <tr>
+                    <th scope="col">Date</th>
+                    <th scope="col">Sent by</th>
+                    {HEADINGS.map((h) => (
+                      <th key={h} scope="col">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.days.map((day) => (
+                    <tr key={`${day.date}|${day.app}`}>
+                      <th scope="row">{day.date}</th>
+                      <td>{day.app}</td>
+                      <CountCells c={day} />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
           ) : (
             <p>Nothing was sent in this range.</p>
           )}

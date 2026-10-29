@@ -29,6 +29,7 @@ function item(overrides: Partial<ReleaseListItem> = {}): ReleaseListItem {
     activityId: null,
     approved: false,
     flickrAlert: null,
+    lastEdited: null,
     ...overrides,
   };
 }
@@ -87,6 +88,24 @@ describe("ReleaseListScreen", () => {
     expect(await screen.findByText("First headline")).toBeInTheDocument();
     const releasesCall = calls.find((c) => c.startsWith("/nrms/api/releases"));
     expect(releasesCall).toBe("/nrms/api/releases?folder=drafts&type=all&page=1&pageSize=25");
+  });
+
+  it("Drafts says who last edited each release; Scheduled doesn't", async () => {
+    const edited = page([item({ lastEdited: { at: "2026-06-15T17:30:00Z", by: "Pat Example" } })]);
+    renderScreen("drafts", "/releases/drafts", { releasesPage: edited });
+    expect(await screen.findByText(/^Last edited .* by Pat Example$/)).toBeInTheDocument();
+    cleanup();
+    renderScreen("scheduled", "/releases/scheduled", { releasesPage: edited });
+    await screen.findByText("A headline");
+    expect(screen.queryByText(/Last edited/)).toBeNull();
+  });
+
+  // The section tabs sit above the page heading, as on Website, Subscribers and Calendar.
+  it("puts the folder tabs above the h1", async () => {
+    renderScreen("drafts", "/releases/drafts");
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Releases" });
+    const tabs = screen.getByRole("navigation", { name: "Release folders" });
+    expect(tabs.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("has exactly one h1", async () => {

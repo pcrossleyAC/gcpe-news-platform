@@ -193,6 +193,20 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     expect(screen.getByLabelText("Headline", { exact: false })).toHaveAttribute("id", "new-release-headline");
   });
 
+  it("the page title's error sits under Page title itself, and describes that field", async () => {
+    stubFetch();
+    renderScreen();
+    await screen.findByText("Legislature");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Create release" }));
+    await screen.findByRole("alert", { name: "Fix these to create" });
+    const select = screen.getByRole("combobox", { name: "Page title" });
+    const error = screen.getAllByText("Choose a page title.").find((e) => e.classList.contains("gcpe-field-error"))!;
+    expect(select.closest(".gcpe-field")).toContainElement(error);
+    expect(screen.getByRole("combobox", { name: "Type" }).closest(".gcpe-field")).not.toContainElement(error);
+    expect(select).toHaveAttribute("aria-invalid", "true");
+    expect(select).toHaveAccessibleDescription("Choose a page title.");
+  });
+
   // Fix round 1, finding 1: only NRMS.Editor sees the form at all.
   it("a Viewer gets a permission message instead of the form, with a link back", async () => {
     stubFetch({ roles: ["NRMS.Viewer"] });

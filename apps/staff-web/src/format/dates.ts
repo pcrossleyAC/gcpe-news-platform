@@ -49,10 +49,14 @@ export function relativeDay(iso: string, now: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(target);
 }
 
-/** {@link relativeDay}'s wording plus a `h:mm a` time, e.g. `Today 2:30 PM`. */
-export function formatWhen(iso: string, now: Date, timeZone: string): string {
+/** {@link relativeDay}'s wording plus a `h:mm a` time, e.g. `Today 2:30 PM`. With `withDate`, a
+ * bare weekday also names its date (`Monday, Nov 2 9:00 AM`), for lists people scan for a day. */
+export function formatWhen(iso: string, now: Date, timeZone: string, opts: { withDate?: boolean } = {}): string {
   const target = new Date(iso);
-  const day = relativeDay(iso, now, timeZone);
+  let day = relativeDay(iso, now, timeZone);
+  if (opts.withDate && WEEKDAYS.has(day)) day = `${day}, ${new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric" }).format(target)}`;
   const time = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(target);
   return `${day} ${time}`;
 }
+
+const WEEKDAYS = new Set(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]);

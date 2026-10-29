@@ -41,7 +41,7 @@ export function ForecastActivityRow({ activity: a, at, now, timeZone, canStartRe
           )}
           {sep}
           <span className="gcpe-release-row__status">
-            Planned for {formatWhen(at, now, timeZone)} &middot; Activity ID {a.activityId}
+            Planned for {formatWhen(at, now, timeZone, { withDate: true })} &middot; Activity ID {a.activityId}
           </span>
         </p>
         <h2 className="gcpe-release-row__headline">

@@ -341,20 +341,33 @@ body {
   min-width: 12rem;
 }
 
+/* A row of native fields that may show an error under one of them: tops aligned, so the error
+ * adds height below its own field and the boxes stay on one line. */
+.gcpe-field-row--top {
+  align-items: flex-start;
+}
+.gcpe-field-row .gcpe-field > .gcpe-field-error {
+  margin: 0.25rem 0 0;
+}
+
 /* The design system stretches its text fields to the row's height; in a row they sit at the
  * bottom with everything else. */
 .gcpe-field-row > .bcds-react-aria-TextField {
   align-self: flex-end;
 }
 
-/* In a row beside design-system fields, native labels match their label size. */
+/* In a row beside design-system fields, native labels match their label: the same size, the same
+ * padding, and (as there) no gap between label and box, so every label in the row lines up. */
 .gcpe-field-row label.gcpe-field,
-.gcpe-field-row .gcpe-field > label {
+.gcpe-field-row .gcpe-field > label,
+.gcpe-search__row .gcpe-field > label {
   font: var(--typography-regular-small-body);
   color: var(--typography-color-primary, #2d2d2d);
 }
-.gcpe-field-row .gcpe-field > label {
+.gcpe-field-row .gcpe-field > label,
+.gcpe-search__row .gcpe-field > label {
   padding: var(--layout-padding-xsmall, 0.25rem) 0;
+  margin-bottom: -0.25rem;
 }
 
 /* A plain form's fields, one under another. */
@@ -573,7 +586,8 @@ body {
   margin: 1rem 0;
 }
 
-/* The list's h1 with its New release button on the same line; the folder tabs under them. */
+/* The list's h1 with its New release button on the same line, under the folder tabs (the
+ * section tabs sit above the page heading in every section). */
 .gcpe-release-list__head {
   display: flex;
   flex-wrap: wrap;
@@ -587,9 +601,6 @@ body {
 }
 .gcpe-release-list > h1 {
   margin-bottom: 0.75rem;
-}
-.gcpe-release-list .gcpe-section-tabs ul {
-  margin-bottom: 0;
 }
 
 .gcpe-release-list__rows {
@@ -1240,6 +1251,32 @@ body {
   font: inherit;
   cursor: pointer;
 }
+/* The watch toggle: a quiet bordered icon button (border 3.6:1 on white), the star in the
+ * primary colour and filled while watched. */
+.gcpe-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0.25rem;
+  color: var(--typography-color-primary, #2d2d2d);
+  background: var(--surface-color-forms-default, #fff);
+  border: 1px solid var(--surface-color-border-medium, #898785);
+  border-radius: var(--layout-border-radius-medium, 4px);
+}
+.gcpe-star:hover {
+  background: var(--surface-color-background-light-gray, #faf9f8);
+}
+.gcpe-star[aria-pressed="true"] {
+  color: var(--surface-color-primary-default, #013366);
+}
+.gcpe-star:disabled {
+  cursor: progress;
+}
+.gcpe-star__icon {
+  display: block;
+}
 .gcpe-sort {
   background: none;
   border: none;
@@ -1572,6 +1609,16 @@ body {
 .gcpe-documents__item-header h3 {
   margin: 0.5rem auto 0.5rem 0;
 }
+/* Move up / Move down / Remove stay together: on a narrow screen they wrap as one row under the
+ * heading rather than one by one. */
+.gcpe-documents__item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gcpe-documents__item-actions .bcds-react-aria-Button {
+  white-space: nowrap;
+}
 
 /* A generic card, the same as the release editor's parts: 1px border, 4px corners, h2 on top. */
 .gcpe-card {
@@ -1840,9 +1887,6 @@ body {
 }
 .gcpe-calendar-toolbar .gcpe-actions > div > p {
   margin: 0;
-}
-.gcpe-calendar-toolbar #la-days {
-  width: 5.5rem;
 }
 .gcpe-calendar-toolbar .gcpe-button-link {
   min-height: 40px;
@@ -2127,6 +2171,11 @@ fieldset.gcpe-org-contact {
   grid-row: 1;
   width: 8rem;
 }
+/* The hex box is 8rem; its input shrinks to fit inside it instead of running past its border. */
+.gcpe-site-theme__color .bcds-react-aria-TextField--Input {
+  min-width: 0;
+  width: 100%;
+}
 .gcpe-site-theme__color .bcds-react-aria-TextField--Error,
 .gcpe-site-theme__color .bcds-react-aria-TextField--Description {
   grid-column: 3 / -1;
@@ -2174,7 +2223,12 @@ fieldset.gcpe-org-contact {
 .gcpe-site-theme__preview {
   margin-top: 0.5rem;
 }
-@media (max-width: 40rem) {
+/* Stacked by the form's own width, not the window's: beside the side navigation (a 768px
+ * tablet) the one-row layout left the contrast badges a sliver of a column past the edge. */
+.gcpe-site-theme {
+  container-type: inline-size;
+}
+@container (max-width: 44rem) {
   .gcpe-site-theme__color {
     grid-template-columns: 2.5rem 8rem minmax(0, 1fr);
   }
@@ -2278,28 +2332,6 @@ fieldset.gcpe-org-contact {
   display: none;
 }
 
-/* The Excel export and the PDF reports read as one set. */
-.gcpe-calendar-toolbar .gcpe-actions > .gcpe-toolbar-group {
-  gap: 0.5rem;
-  padding: 0.375rem 0.5rem 0.375rem 0.75rem;
-  border: 1px solid var(--surface-color-border-default, #d8d8d8);
-  border-radius: var(--layout-border-radius-medium, 4px);
-  background: var(--surface-color-background-light-gray, #faf9f8);
-}
-.gcpe-toolbar-group > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-.gcpe-toolbar-group > div > p {
-  margin: 0;
-  flex-basis: 100%;
-}
-.gcpe-toolbar-group__label {
-  font: var(--typography-bold-small-body);
-  color: var(--typography-color-secondary, #474543);
-}
 
 /* List / Month / Week: one segmented control (each is still a toggle button, aria-pressed). */
 .gcpe-segmented {
@@ -2991,13 +3023,15 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   gap: 0.25rem 1.5rem;
 }
 
-/* Look Ahead filter and Columns: one quiet line of view settings above the list's actions. */
+/* The Look Ahead filter and the list's tools: one quiet line under the list's actions. */
 .gcpe-calendar-viewbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.5rem 2rem;
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
 }
 .gcpe-inline-choice {
   display: flex;
@@ -3018,29 +3052,121 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 .gcpe-inline-choice > .gcpe-check {
   align-items: center;
 }
-.gcpe-columns > summary {
-  cursor: pointer;
+/* Columns, Export and reports, LA status: disclosure toggles that read as quiet links (the
+ * chevron turns when open), each opening its panel under the line. */
+.gcpe-list-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+}
+.gcpe-disclosure-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
   min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
   color: var(--typography-color-link, #255a90);
   text-decoration: underline;
   text-underline-offset: 0.15em;
+  cursor: pointer;
 }
-.gcpe-columns > fieldset {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.25rem 1rem;
+.gcpe-disclosure-toggle::after {
+  content: "";
+  width: 0.4em;
+  height: 0.4em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-0.15em) rotate(45deg);
+  transition: transform 150ms ease-out;
+}
+.gcpe-disclosure-toggle[aria-expanded="true"]::after {
+  transform: translateY(0.1em) rotate(-135deg);
+}
+.gcpe-disclosure-toggle:hover {
+  text-decoration-thickness: 2px;
+}
+.gcpe-disclosure-toggle[aria-expanded="true"] {
+  font-weight: 700;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gcpe-disclosure-toggle::after {
+    transition: none;
+  }
+}
+.gcpe-list-tool-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
   margin: 0.5rem 0 0.75rem;
   padding: 0.75rem 1rem;
   border: 1px solid var(--surface-color-border-default, #d8d8d8);
   border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-background-light-gray, #faf9f8);
 }
-.gcpe-columns > fieldset > legend {
+.gcpe-list-tool-panel[hidden] {
+  display: none;
+}
+.gcpe-list-tool-panel > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gcpe-list-tool-panel > div > p {
+  margin: 0;
+  flex-basis: 100%;
+}
+/* The tools' results (report, export, Clear LA Status), outside the panels so they stay shown. */
+.gcpe-list-tool-messages > p {
+  margin: 0 0 0.5rem;
+}
+.gcpe-list-tool-panel #la-days {
+  width: 5.5rem;
+}
+.gcpe-list-tool-panel .bcds-react-aria-Button {
+  white-space: nowrap;
+}
+.gcpe-columns {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.gcpe-columns > legend {
   font: var(--typography-bold-small-body);
-  padding: 0 0.25rem;
+  padding: 0;
+  margin-bottom: 0.5rem;
 }
-.gcpe-columns > fieldset > div {
+.gcpe-columns > div {
   display: flex;
   align-items: center;
+}
+
+/* The daily freeze, outside its hour: one quiet line, not a boxed alert. */
+.gcpe-freeze-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--typography-color-secondary, #474543);
+  text-wrap: pretty;
+}
+.gcpe-freeze-line__icon {
+  flex: none;
+  margin-top: 0.15em;
+  color: var(--icons-color-info, #053662);
+}
+.gcpe-freeze-line strong {
+  color: var(--typography-color-primary, #2d2d2d);
 }
 
 /* A running corporate query: said above the list, with the way back beside it. */

@@ -58,6 +58,7 @@ test.describe("the reports, as each role (spec addendum §3 row 5g, §10, §16 a
     expect(refused.status).toBe(403);
     await useCookie(context, hqEditor);
     await page.goto(listUrl(q));
+    await page.getByRole("button", { name: "Export and reports" }).click();
     await expect(page.getByRole("group", { name: "Reports (PDF)" }).getByRole("button")).toHaveText(["Look Ahead", "30/60/90", "Planning"]);
     const admin = await sessionOf(CAL_HQ_ADMIN_EMAIL);
     const exec = outlineOf(await pdfPages(await reportPdf(admin, "exec-look-ahead", q)));
@@ -78,7 +79,8 @@ test.describe("the reports, as each role (spec addendum §3 row 5g, §10, §16 a
     await useCookie(context, await sessionOf(CAL_HQ_EDITOR_EMAIL));
     await page.goto(listUrl({ filter: { ...MAY, quickSearch: f.tag } }));
     await expect(page.locator(".gcpe-activity-title")).toHaveCount(2);
-    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Look Ahead" }).click()]);
+    await page.getByRole("button", { name: "Export and reports" }).click();
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Look Ahead", exact: true }).click()]);
     expect(download.suggestedFilename()).toBe("LookAhead.pdf");
     const outline = outlineOf(await pdfPages(new Uint8Array(readFileSync(await download.path()))));
     // May 2031, In the News on Wednesday May 14 only; the other days have no Events. Awareness Dates

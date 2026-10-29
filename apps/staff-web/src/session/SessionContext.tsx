@@ -121,6 +121,12 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
+/** The session when there is one, or null outside a SessionProvider: for shared hooks that only
+ * adjust what they do by role and must keep working where no session is set up. */
+export function useOptionalSession(): SessionValue | null {
+  return useContext(SessionContext);
+}
+
 export function useSession(): SessionValue {
   const ctx = useContext(SessionContext);
   if (!ctx) throw new Error("useSession must be used within a SessionProvider");

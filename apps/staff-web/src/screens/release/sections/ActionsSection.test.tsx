@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
+import { AnnouncerProvider } from "../../../shared/Announcer";
+import { useUnsavedChangesGuard } from "../useUnsavedChanges";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { ActionsSection } from "./ActionsSection";
@@ -557,6 +559,48 @@ describe("ActionsSection", () => {
     await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
     await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
     expect(posts).toEqual([{ url: `/nrms/api/releases/${v.id}/schedule`, body: { version: 2, publishAtLocal: "2031-06-15T14:30" } }]);
+  });
+
+  it("the Schedule toggle says whether its panel is open, and which panel it controls", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: null });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    renderActions(v);
+    const toggle = screen.getByRole("button", { name: "Schedule" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.setup().click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const panel = document.getElementById(toggle.getAttribute("aria-controls")!);
+    expect(panel).toContainElement(screen.getByLabelText("Date"));
+  });
+
+  it("an open Schedule panel counts as unsaved only once its date or time is changed from what it opened with", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: "2031-06-15T21:30:00.000Z" });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    function Page(): React.JSX.Element {
+      const guard = useUnsavedChangesGuard();
+      return (
+        <guard.Provider>
+          <p>{guard.anyDirty ? "dirty" : "clean"}</p>
+          <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" />
+        </guard.Provider>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Page /> }], { initialEntries: ["/"] });
+    render(
+      <AnnouncerProvider>
+        <RouterProvider router={router} />
+      </AnnouncerProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Schedule" }));
+    // Prefilled from the planned date: nothing to lose yet.
+    expect(screen.getByText("clean")).toBeInTheDocument();
+    const time = screen.getByLabelText("Time (BC time)");
+    fireEvent.change(time, { target: { value: "15:00" } });
+    expect(await screen.findByText("dirty")).toBeInTheDocument();
+    // Back to what it opened with: clean again.
+    fireEvent.change(time, { target: { value: "14:30" } });
+    expect(await screen.findByText("clean")).toBeInTheDocument();
   });
 
   it("Schedule starts empty when the planned publish date has passed", async () => {

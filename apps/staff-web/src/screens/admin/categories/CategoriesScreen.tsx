@@ -5,6 +5,7 @@ import { apiFetch, ApiError } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { TableScroll } from "../../../shared/TableScroll";
 
 type Kind = "sector" | "theme" | "tag";
 const KINDS: { kind: Kind; plural: string; singular: string }[] = [
@@ -105,26 +106,28 @@ function CategoriesEditor(): React.JSX.Element {
       <p role="status">{message}</p>
       {rows === null && !loadError && <p>Loading…</p>}
       {rows && (
-        <table aria-label={labels.plural} className="gcpe-table">
-          <thead>
-            <tr>
-              <th scope="col">Key</th>
-              <th scope="col">Name</th>
-              <th scope="col">Order</th>
-              <th scope="col">Active</th>
-              <th scope="col">Save</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <TermRow
-                key={`${kind}/${r.key}`}
-                record={r}
-                onSaved={(text) => afterSave(r.kind as Kind, text)}
-              />
-            ))}
-          </tbody>
-        </table>
+        <TableScroll label={labels.plural}>
+          <table aria-label={labels.plural} className="gcpe-table">
+            <thead>
+              <tr>
+                <th scope="col">Key</th>
+                <th scope="col">Name</th>
+                <th scope="col">Order</th>
+                <th scope="col">Active</th>
+                <th scope="col">Save</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <TermRow
+                  key={`${kind}/${r.key}`}
+                  record={r}
+                  onSaved={(text) => afterSave(r.kind as Kind, text)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
       <AddForm
         key={kind}

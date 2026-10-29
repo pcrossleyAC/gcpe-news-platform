@@ -24,13 +24,14 @@ const BASE: ReleaseListItem = {
   activityId: 54321,
   approved: true,
   flickrAlert: null,
+  lastEdited: null,
 };
 
-function renderRow(item: ReleaseListItem) {
+function renderRow(item: ReleaseListItem, opts: { showLastEdited?: boolean } = {}) {
   return render(
     <MemoryRouter>
       <ul>
-        <ReleaseRow item={item} now={NOW} timeZone={TZ} />
+        <ReleaseRow item={item} now={NOW} timeZone={TZ} {...opts} />
       </ul>
     </MemoryRouter>,
   );
@@ -50,6 +51,23 @@ describe("ReleaseRow", () => {
     expect(screen.getByText("Approved", { selector: ".gcpe-release-row__status-text" })).toBeInTheDocument();
     expect(screen.getByText(/Tomorrow 9:00 AM/)).toBeInTheDocument(); // publishAt, this item is a draft
     expect(screen.getByText(/54321/)).toBeInTheDocument();
+  });
+
+  it("a date within the week names its weekday and its date (Scheduled), not the weekday alone", () => {
+    renderRow({ ...BASE, status: "scheduled", statusText: "Scheduled", publishAt: "2026-06-19T16:00:00Z" });
+    expect(screen.getByText("Friday, Jun 19 9:00 AM")).toBeInTheDocument();
+  });
+
+  it("with showLastEdited (Drafts), says who last edited the release and when; never otherwise", () => {
+    const item = { ...BASE, lastEdited: { at: "2026-06-15T17:30:00Z", by: "Pat Example" } };
+    renderRow(item, { showLastEdited: true });
+    expect(screen.getByText("Last edited Today 10:30 AM by Pat Example")).toBeInTheDocument();
+    cleanup();
+    renderRow(item);
+    expect(screen.queryByText(/Last edited/)).toBeNull();
+    cleanup();
+    renderRow({ ...BASE, lastEdited: null }, { showLastEdited: true });
+    expect(screen.queryByText(/Last edited/)).toBeNull();
   });
 
   it("uses releasedAt (not publishAt) for a published item", () => {

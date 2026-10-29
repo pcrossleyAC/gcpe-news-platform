@@ -97,6 +97,18 @@ describe("release queries", () => {
       expect(item!.summary).not.toBe("");
     });
 
+    it("carries each release's latest history line as lastEdited (when, and by whom); none without history", async () => {
+      const v = await create();
+      await tdb.db.execute(sql`INSERT INTO release_log (release_id, at, actor_id, actor_name, text) VALUES
+        (${v.id}, '2099-10-01T17:00:00Z', 'a', 'Older Person', 'Edited headline'),
+        (${v.id}, '2099-10-02T17:00:00Z', 'b', 'Latest Person', 'Edited summary')`);
+      const bare = await create({ headline: "No history" });
+      await tdb.db.execute(sql`DELETE FROM release_log WHERE release_id = ${bare.id}`);
+      const items = (await list({ folder: "drafts" })).items;
+      expect(items.find((i) => i.id === v.id)!.lastEdited).toEqual({ at: "2099-10-02T17:00:00.000Z", by: "Latest Person" });
+      expect(items.find((i) => i.id === bare.id)!.lastEdited).toBeNull();
+    });
+
     it("lead organization falls back to the first organizations line without 'Ministry of '", async () => {
       await create({ ministries: ["health", "finance"], leadMinistryKey: null, organizations: "Ministry of Finance\nTreasury Board" });
       const [item] = (await list({ folder: "drafts" })).items;

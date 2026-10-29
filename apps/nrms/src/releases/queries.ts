@@ -127,6 +127,12 @@ export async function listItems(db: DbOrTx, rows: NewsReleaseRow[], nowMs: numbe
     .from(releaseCategories)
     .where(and(inArray(releaseCategories.releaseId, ids), eq(releaseCategories.kind, "ministries")))
     .orderBy(asc(releaseCategories.key));
+  // Each release's latest history line (release_log_release_idx covers the lookup).
+  const edits = await db
+    .selectDistinctOn([releaseLogTable.releaseId], { releaseId: releaseLogTable.releaseId, at: releaseLogTable.at, by: releaseLogTable.actorName })
+    .from(releaseLogTable)
+    .where(inArray(releaseLogTable.releaseId, ids))
+    .orderBy(releaseLogTable.releaseId, desc(releaseLogTable.at), desc(releaseLogTable.id));
   const orgKeys = [...new Set([...rows.flatMap((r) => (r.leadMinistryKey ? [r.leadMinistryKey] : [])), ...cats.map((c) => c.key)])];
   const names = new Map(
     orgKeys.length
@@ -135,6 +141,7 @@ export async function listItems(db: DbOrTx, rows: NewsReleaseRow[], nowMs: numbe
   );
   const langOf = new Map(langs.map((l) => [l.releaseId, l]));
   const docOf = new Map(docs.map((d) => [d.releaseId, d]));
+  const editOf = new Map(edits.map((e) => [e.releaseId, { at: e.at.toISOString(), by: e.by }]));
   return rows.map((r) => {
     const lang = langOf.get(r.id);
     const doc = docOf.get(r.id);
@@ -146,7 +153,7 @@ export async function listItems(db: DbOrTx, rows: NewsReleaseRow[], nowMs: numbe
       leadOrganization: leadOrganization(r, ministries, names, doc),
       pageTitle: doc?.pageTitle ?? "", headline: doc?.headline ?? "", location: (lang?.location ?? "").toUpperCase(), summary: lang?.summary ?? "",
       publishAt, releasedAt: r.releasedAt?.toISOString() ?? null, activityId: r.activityId, approved: r.reference !== null,
-      flickrAlert: r.flickrAlert,
+      flickrAlert: r.flickrAlert, lastEdited: editOf.get(r.id) ?? null,
     };
   });
 }

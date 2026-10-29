@@ -14,7 +14,7 @@ function jsonResponse(status: number, body: unknown): Response {
 const release = (over: Partial<ReleaseListItem> = {}): ReleaseListItem => ({
   id: "11111111-1111-1111-1111-111111111111", type: "release", key: null, reference: "NEWS-00001", status: "scheduled", statusText: "Scheduled",
   leadOrganization: "Health", pageTitle: "News Release", headline: "Sample scheduled release", location: "VICTORIA", summary: "A summary.",
-  publishAt: "2031-06-10T17:00:00.000Z", releasedAt: null, activityId: 4101, approved: true, flickrAlert: null, ...over,
+  publishAt: "2031-06-10T17:00:00.000Z", releasedAt: null, activityId: 4101, approved: true, flickrAlert: null, lastEdited: null, ...over,
 });
 const ITEMS: ForecastItem[] = [
   { kind: "release", at: "2031-06-10T17:00:00.000Z", release: release() },
@@ -123,6 +123,13 @@ describe("ForecastScreen (spec addendum §11; Releases.aspx's Forecast folder)",
     renderForecast();
     const tabs = within(await screen.findByRole("navigation", { name: "Release folders" })).getAllByRole("link");
     expect(tabs.map((t) => t.textContent)).toEqual(["Forecast", "Drafts", "Scheduled", "Published"]);
+  });
+
+  it("puts the folder tabs above the h1, as every section does", async () => {
+    renderForecast();
+    const tabs = await screen.findByRole("navigation", { name: "Release folders" });
+    const h1 = screen.getByRole("heading", { level: 1, name: "Forecast" });
+    expect(tabs.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("has no serious or critical axe violations: listed, Editor, no Calendar access, empty, failed", async () => {
