@@ -740,6 +740,24 @@ describe("ReleaseEditorPage", () => {
     expect(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save French content (Document 1)" })).toBeInTheDocument();
   });
 
+  it("the 'save French first' blocker link shows the French tab and focuses its panel", async () => {
+    const base = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const v = releaseView({
+      ...base,
+      documents: [{ ...base.documents[0]!, languages: [...base.documents[0]!.languages, { ...base.documents[0]!.languages[0]!, languageId: 3084, pageTitle: "Communiqué", headline: "Cliniques ouvertes" }] }],
+    });
+    renderPage(v.id, { view: v });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "French" }));
+    await user.type(within(screen.getByRole("tabpanel")).getByLabelText("Headline"), " le samedi");
+    await user.click(screen.getByRole("tab", { name: "English" }));
+    await user.click(screen.getByRole("link", { name: "Save your changes to French content (Document 1) first." }));
+    expect(screen.getByRole("tab", { name: "French" })).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("tabpanel");
+    expect(panel).toHaveFocus();
+    expect(within(panel).getByLabelText("Headline")).toHaveValue("Cliniques ouvertes le samedi");
+  });
+
   it("two dirty sections show two buttons in the bar", async () => {
     renderPage("11111111-1111-1111-1111-111111111111");
     const user = userEvent.setup();

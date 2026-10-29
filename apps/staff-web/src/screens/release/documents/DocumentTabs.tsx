@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { REVEAL_EVENT } from "../../../shared/scrollToSection";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { LANG_EN, LANG_FR, LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { Button } from "../../../shared/BusyButton";
@@ -28,6 +30,20 @@ export function DocumentTabs({ view, setView, documentId, readOnly }: DocumentTa
   const missing = BOTH_LANGUAGES.filter((l) => !present.includes(l));
   const [active, setActive] = useState<LanguageId>(present[0] ?? LANG_EN);
   const [removeOpen, setRemoveOpen] = useState(false);
+  // A "save your changes to French content first" link (ActionsSection) targets that language's
+  // panel: show its tab first (synchronously, so the panel is visible when it takes focus).
+  const panelsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = panelsRef.current;
+    if (!root) return;
+    const onReveal = (e: Event) => {
+      const l = Number((e.target as HTMLElement).dataset.language);
+      if (l) flushSync(() => setActive(l as LanguageId));
+    };
+    // Capture: the event doesn't bubble, and it's dispatched on the panel itself.
+    root.addEventListener(REVEAL_EVENT, onReveal, true);
+    return () => root.removeEventListener(REVEAL_EVENT, onReveal, true);
+  }, []);
 
   if (!doc) return <p role="alert">This document no longer exists.</p>;
   const activeLanguage = present.includes(active) ? active : present[0]!;
@@ -109,11 +125,21 @@ export function DocumentTabs({ view, setView, documentId, readOnly }: DocumentTa
        * showing still holds unsaved text, so it must stay registered with the unsaved-changes
        * guard (blocking Publish now, offering its Save in the save bar) rather than being
        * unmounted on a tab switch (review P1). */}
-      {present.map((l) => (
-        <div key={l} role="tabpanel" id={`doc-${documentId}-panel-${l}`} aria-labelledby={`doc-${documentId}-tab-${l}`} hidden={l !== activeLanguage}>
-          <DocumentLanguageForm view={view} setView={setView} documentId={documentId} languageId={l} readOnly={readOnly} />
-        </div>
-      ))}
+      <div ref={panelsRef}>
+        {present.map((l) => (
+          <div
+            key={l}
+            role="tabpanel"
+            id={`doc-${documentId}-panel-${l}`}
+            aria-labelledby={`doc-${documentId}-tab-${l}`}
+            hidden={l !== activeLanguage}
+            tabIndex={-1}
+            data-language={l}
+          >
+            <DocumentLanguageForm view={view} setView={setView} documentId={documentId} languageId={l} readOnly={readOnly} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

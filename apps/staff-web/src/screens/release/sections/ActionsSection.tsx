@@ -39,11 +39,10 @@ interface Blocker {
 function unsavedTarget(key: string, view: ReleaseView): string | null {
   const fixed: Record<string, string> = { settings: "section-settings", "page-details": "section-page-details", categories: "section-categories", asset: "section-asset" };
   if (fixed[key]) return fixed[key];
-  const doc = /^document-(.+)-\d+$/.exec(key);
-  if (doc) {
-    const index = documentsInOrder(view).findIndex((d) => d.id === doc[1]);
-    return index >= 0 ? `document-${index + 1}-heading` : "section-documents";
-  }
+  // A document language: its own tab panel (DocumentTabs shows that tab when the link is
+  // followed — the edited language may not be the one showing).
+  const doc = /^document-(.+)-(\d+)$/.exec(key);
+  if (doc) return documentsInOrder(view).some((d) => d.id === doc[1]) ? `doc-${doc[1]}-panel-${doc[2]}` : "section-documents";
   return null;
 }
 

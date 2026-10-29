@@ -359,7 +359,7 @@ describe("ActionsSection", () => {
     const docId = v.documents[0]!.id;
     renderActions(v, () => {}, [{ key: `document-${docId}-1`, label: "Save English content (Document 1)", save: () => {} }]);
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-    expect(screen.getByRole("link", { name: "Save your changes to English content (Document 1) first." })).toHaveAttribute("href", "#document-1-heading");
+    expect(screen.getByRole("link", { name: "Save your changes to English content (Document 1) first." })).toHaveAttribute("href", `#doc-${docId}-panel-1`);
   });
 
   // Fix round 1 (3f Task 3), finding 3: Schedule now sends the raw BC wall-clock string
