@@ -18,7 +18,9 @@ test("subscribe, confirm, manage and unsubscribe through the test pages", async 
   await page.goto(`${baseUrl()}/site/subscribe/`);
   await expectNoSeriousA11yViolations(page, "subscribe page");
   await page.getByLabel("Email address").fill(email);
-  await page.getByRole("checkbox", { name: "All news" }).check();
+  // Plan 4 rebuilt the page: "all news" vs "customize" is a radio pair (all news is the default;
+  // chosen explicitly here so the journey proves the all-news path, not the default).
+  await page.getByRole("radio", { name: /all ministries and sectors/ }).check();
   await page.getByRole("button", { name: "Subscribe" }).click();
   await expect(page.getByRole("status")).toHaveText("Check your email to confirm your subscription.");
   await tick(); // Distribution sends

@@ -46,8 +46,11 @@ test("the search page finds a just-published release", async ({ page }) => {
   const word = `zebrafinch${Date.now().toString(36)}`;
   const published = await createApprovedAndPublished(cookie, { headline: `Search check ${word}` });
   await page.goto(`${baseUrl()}/site/search/?q=${word}`);
-  await expect(page.getByRole("status")).toContainText("Results 1 to 1 of 1.");
-  await expect(page.getByRole("link", { name: new RegExp(word) })).toHaveAttribute("href", `/site/releases/${published.key}/`);
-  await page.getByRole("link", { name: new RegExp(word) }).click();
+  await expect(page.getByRole("status")).toContainText("Showing results 1 - 1 of 1");
+  // Each result card has the headline link (in its h2) and a "Read More: <headline>" link; the
+  // headline link is the one under test.
+  const headlineLink = page.getByRole("heading", { level: 2 }).getByRole("link", { name: new RegExp(word) });
+  await expect(headlineLink).toHaveAttribute("href", `/site/releases/${published.key}/`);
+  await headlineLink.click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText(word);
 });
