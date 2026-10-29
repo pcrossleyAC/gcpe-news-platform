@@ -247,10 +247,11 @@ function Set-GcpeJunction {
     New-Item -ItemType Junction -Path $Path -Target $Target | Out-Null
 }
 
-# The thumbprint bound to https on 0.0.0.0:443, or $null when there is no binding.
+# The thumbprint bound to https on 0.0.0.0:<Port> (443 unless given), or $null when there is no binding.
 function Get-GcpeSslBinding {
+    param([int]$Port = 443)
     $ErrorActionPreference = 'Continue'
-    $out = (& netsh.exe http show sslcert ipport=0.0.0.0:443 | Out-String)
+    $out = (& netsh.exe http show sslcert "ipport=0.0.0.0:$Port" | Out-String)
     if ($out -match 'Certificate Hash\s*:\s*([0-9a-fA-F]{40})') { return $Matches[1].ToUpperInvariant() }
     $null
 }
@@ -264,6 +265,41 @@ function Invoke-GcpeQuiet {
     $err = [IO.Path]::GetTempFileName()
     try { Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null }
     finally { Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue }
+}
+
+# Runs a native command and returns its exit code, stdout and stderr without letting stderr stop
+# the script (see Invoke-GcpeQuiet for why it goes through temporary files).
+function Invoke-GcpeCapture {
+    param([Parameter(Mandatory)][string]$FilePath, [Parameter(Mandatory)][string[]]$Arguments)
+    $out = [IO.Path]::GetTempFileName()
+    $err = [IO.Path]::GetTempFileName()
+    try {
+        $p = Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err
+        [pscustomobject]@{ ExitCode = $p.ExitCode; Out = ([IO.File]::ReadAllText($out)).Trim(); Err = ([IO.File]::ReadAllText($err)).Trim() }
+    } finally { Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue }
+}
+
+# "10.20.0.0/16" -> @{ Address = '10.20.0.0'; Mask = '255.255.0.0' } for IIS ipSecurity. IPv4 only:
+# throws on anything else, so a typo never becomes a wider (or empty) allow-list.
+function ConvertFrom-GcpeCidr {
+    param([Parameter(Mandatory)][string]$Cidr)
+    if ($Cidr -notmatch '^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})$') { throw "Not an IPv4 CIDR range: '$Cidr' (expected e.g. 142.34.0.0/16)" }
+    $octets = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3], [int]$Matches[4])
+    $bits = [int]$Matches[5]
+    if (@($octets | Where-Object { $_ -gt 255 }).Count -gt 0 -or $bits -gt 32) { throw "Not an IPv4 CIDR range: '$Cidr'" }
+    # Plain [long] arithmetic, no bitwise operators: Windows PowerShell 5.1's -band/-bnot on
+    # 32-bit unsigned values go through signed types.
+    [long]$value = 0
+    foreach ($o in $octets) { $value = $value * 256 + $o }
+    [long]$block = [long][math]::Pow(2, 32 - $bits)
+    [long]$mask = [long][math]::Pow(2, 32) - $block
+    if (($value % $block) -ne 0) { throw "'$Cidr' has host bits set; did you mean $(ConvertTo-GcpeDottedIp ($value - ($value % $block)))/$($bits)?" }
+    [pscustomobject]@{ Address = ConvertTo-GcpeDottedIp $value; Mask = ConvertTo-GcpeDottedIp $mask }
+}
+
+function ConvertTo-GcpeDottedIp {
+    param([Parameter(Mandatory)][long]$Value)
+    (@(24, 16, 8, 0) | ForEach-Object { [long][math]::Floor($Value / [math]::Pow(2, $_)) % 256 }) -join '.'
 }
 
 Export-ModuleMember -Function *-Gcpe*

@@ -61,6 +61,7 @@ reference for what every setting means.
 | `Import-GcpeLegacy.ps1` | Copies the legacy data from SQL Server, in the right order. Safe to re-run. |
 | `Install-GcpeDatabaseServer.ps1` | Sets up a separate PostgreSQL server (Test, Prod). |
 | `Install-GcpeRunner.ps1` | Installs the GitHub Actions runner that deploys pushes automatically. |
+| `Install-GcpeProxy.ps1` | Sets up a DMZ server as the public reverse proxy (Test, Prod); see "DMZ reverse proxy". |
 | `Get-GcpePrereqs.ps1` | Downloads every installer, for a server without internet access. |
 | `app\` | The release: `stack.js`, the staff app, migrations, the bundled importers. |
 | `prereqs\pgvector\` | pgvector compiled for PostgreSQL 17 on Windows (by CI). |
@@ -397,6 +398,201 @@ C:\gcpe\
   import-reports\     one folder per import run
   logs\               install logs
 ```
+
+## DMZ reverse proxy (Test, Prod)
+
+Test and Production are reached from the internet through a server in the DMZ that holds no app,
+no database and no secret except its TLS certificate. It runs IIS only (TLS, URL Rewrite, ARR),
+forwards the public paths to the internal app server over HTTPS, and answers everything else
+with a 404 itself.
+
+```
+ internet ──443/80──▶ DMZ server: IIS "GCPE-Proxy" ──443 only──▶ internal app server: IIS "GCPE" ──▶ 127.0.0.1:3000 (stack)
+                      (Install-GcpeProxy.ps1)                    (Install-Gcpe.ps1 -ProxyHops 2)        │ 5432
+ staff network ─────────────────────────────────────443────────▶ (the same IIS, for /hub)    PostgreSQL server
+```
+
+| | Internal (app + PostgreSQL) | DMZ |
+|---|---|---|
+| Dev | app server (PostgreSQL on it) | none |
+| Test | app server + database server | DMZ server 1: `Install-GcpeProxy.ps1 -Environment Test` |
+| Prod | later | DMZ server 2: ready for `Install-GcpeProxy.ps1 -Environment Prod` once Prod's app server exists |
+
+### Firewall openings to request
+
+| From | To | Port | Why |
+|---|---|---|---|
+| internet | DMZ server | 443, 80 | the public site (80 only redirects to 443) |
+| DMZ server | internal app server | 443 | the only way in from the DMZ |
+| staff network (named ranges) | internal app server | 443 | staff use the Hub on the internal server, never through the DMZ |
+| anything else | internal app server | 443 | **closed** (see "Why the app server's 443 must be closed to everyone else") |
+| DMZ server | PostgreSQL, SQL Server, anything else internal | any | **closed**: the DMZ never reaches a database |
+| internal | DMZ server | any | nothing needed beyond your remote-admin access |
+
+On the app server, Windows Firewall should say the same: allow 443 from the DMZ server's address
+and the staff ranges only, e.g.
+
+```powershell
+Disable-NetFirewallRule -DisplayGroup 'World Wide Web Services (HTTPS)' -ErrorAction SilentlyContinue
+Disable-NetFirewallRule -DisplayGroup 'World Wide Web Services (HTTP)' -ErrorAction SilentlyContinue
+New-NetFirewallRule -DisplayName 'GCPE: 443 from the DMZ proxy and staff only' -Direction Inbound -Protocol TCP -LocalPort 443 `
+    -RemoteAddress <DMZ server IP>, <staff range 1>, <staff range 2> -Action Allow
+```
+
+### Install
+
+1. On the **app server**, re-run `Install-Gcpe.ps1 -HostName <public host name> -ProxyHops 2`
+   (with its usual options), so the app counts two proxies (the DMZ server's IIS and its own)
+   when it reads the visitor's address from `X-Forwarded-For`.
+2. Export the app server's certificate **without its private key** (`certlm.msc` → Personal →
+   the certificate → All Tasks → Export → "No, do not export the private key", DER `.cer`), or get
+   the internal CA's root certificate. Skip this if the DMZ server already trusts the CA that
+   issued it (domain-distributed root).
+3. Copy the package to the DMZ server (step 1; `Get-GcpePrereqs.ps1` if it has no internet; only
+   URL Rewrite and ARR are used there) and the `.cer`, then in an elevated PowerShell:
+
+   ```powershell
+   .\Install-GcpeProxy.ps1 -HostName news-test.example.gov.bc.ca -Upstream https://<app server name> `
+       -CertificateThumbprint <public certificate thumbprint> -UpstreamCertificateFile C:\install\app-server.cer
+   ```
+
+   `-Upstream` must use a name on the app server's certificate; if DNS in the DMZ doesn't resolve
+   it, add it to `C:\Windows\System32\drivers\etc\hosts`. Prod adds `-Environment Prod` (no
+   `X-Robots-Tag`; a self-signed certificate is refused). All the options: `Get-Help
+   .\Install-GcpeProxy.ps1 -Full`.
+
+What it does (log in `C:\gcpe-proxy\logs\install-proxy-<time>.log`):
+
+1. Installs IIS, URL Rewrite 2.1 and ARR 3.0 (the same pinned installers as the app server), and
+   IIS IP and Domain Restrictions (a Windows Server feature) when `-AllowedClientRanges` is given.
+2. Turns on the ARR proxy: the visitor's `Host` is passed on, `X-Forwarded-For` gets the visitor's
+   address appended (without its port), `X-Forwarded-Proto: https` is set, 2-minute upstream
+   timeout, responses streamed.
+3. Turns on the ARR disk cache in `C:\gcpe-proxy\cache`, at most `-CacheMaxSizeGB` (default 5).
+4. Trusts `-UpstreamCertificateFile` (imported into `LocalMachine\Root`) or
+   `-UpstreamCertificateThumbprint`, then checks the app server answers over verified TLS. It
+   never turns certificate checks off; it stops if the check fails.
+5. Creates the IIS site **GCPE-Proxy** (https on 443 with the certificate, http on 80 → 301 to
+   https; Default Web Site is stopped if it holds those ports) and writes its rules to
+   `C:\gcpe-proxy\site\web.config` (the allow-list below). Request bodies are capped at 1 MB (the
+   largest public body is a subscribe form; the app accepts 100 KB).
+6. `-Environment Test` adds `X-Robots-Tag: noindex, nofollow` to every response, a second guard
+   next to the app's own noindex and `robots.txt Disallow: /` while `SITE_ENVIRONMENT=test`.
+7. Checks `/hub/` answers 404 and `/` comes back from the app server through the proxy.
+
+Re-running is safe. A re-run keeps the bound certificate unless `-CertificateThumbprint` is given,
+and keeps the client restriction unless `-AllowedClientRanges` or `-AllowAllClients` is given.
+
+### What it forwards
+
+Derived from the code at commit `6421522`. The stack answers a fixed list of first path segments
+itself (`STACK_OWNED_PREFIXES`, `apps/stack/src/stack.ts:133`; `tests/stack-owned-prefixes.test.ts`
+keeps it equal to the stack's mounts); every other GET/HEAD is the public site: old news.gov
+addresses, then the static site, then the site's 404 page (`mountSite`,
+`apps/stack/src/site-mount.ts:113`, root chain at `:145`; `rootSiteNotFound` at `:155`, mounted at
+`apps/stack/src/stack.ts:615`). So the proxy blocks the stack-owned prefixes that aren't public and
+forwards the rest by method. `tests/dmz-proxy-allow-list.test.ts` fails when the stack gains a
+prefix the proxy doesn't classify. First match wins, in this order:
+
+| Path (any case) | Methods | At the proxy | Why |
+|---|---|---|---|
+| any path containing `\`, `%5c`, `%2f`, `%2e`, `%00`, or a `.`/`..` segment | all | **404** | IIS decides on the normalised path but forwards the path as sent; refusing these makes them the same path. The stack 404s them anyway (`apps/stack/src/legacy/safe-path.ts:37`). |
+| `/hub` | all | **404** | staff app (`apps/stack/src/stack.ts:419`, `:430`) |
+| `/core` | all | **404** | Core: staff sign-in, sessions (the only `Set-Cookie`s: `apps/core/src/http/session.ts:52`, `:57`), staff API (`stack.ts:602`) |
+| `/nrms`, `/calendar`, `/distribution`, `/site-builder` | all | **404** | staff/service APIs behind bearer tokens (`stack.ts:603`, `:605`, `:609`, `:610`; e.g. `apps/calendar/src/app.ts:41`, `apps/distribution/src/app.ts:30`) |
+| `/nod` | all | **404** | NoD's staff API and event receiver (`stack.ts:604`). The public subscribe flow does not use `/nod`: pages call `/api/Subscribe` (`apps/public-site/src/subscribe-pages.ts:39`), which News API proxies to NoD in-process; emailed links point at `/subscribe/manage/` and `/api/Subscribe` (`apps/nod/src/start.ts:165`, `:170`). Open question: `/nod/Subscribe/SubscriberInformation` (Media Hub's lookup, `apps/nod/src/http/membership.ts:146`). |
+| `/stack` | all | **404** | `/stack/health`, `/stack/errors`, `/stack/tick` (`stack.ts:533`-`:535`); Windows runs its own loops, no outside scheduler |
+| `/events` | all | **404** | signed app-to-app events (`packages/events/src/receiver.ts:33`, News API's at `apps/news-api/src/app.ts:56`) |
+| `/health` | all | **404** | News API's readiness probes (`apps/news-api/src/app.ts:53`) |
+| `/fake-flickr`, `/fake-media-hub`, `/fake-emergency-feed`, `/fake-entra` | all | **404** | test fakes (`stack.ts:475`, `:493`, `:503`, `:521`); see open questions |
+| `/api/v2/changes` | all | **404** | the site builder's change feed, bearer only, read in-process (`apps/news-api/src/http/v2/changes.ts:36`) |
+| `/api/v2/internal/…` | all | **404** | NRMS's similar-releases call, service token only (`apps/news-api/src/http/v2/routes.ts:135`) |
+| `/api/…` | GET, HEAD, POST | forwarded, **never cached** | the public News API other BC systems read (v1 `apps/news-api/src/app.ts:80`; v2 `routes.ts:42`-`:96`, search used by the site's search page, `apps/public-site/src/pages/search.ts:189`) and the subscribe API (`apps/news-api/src/http/v1/subscribe.ts:38`-`:44`, one-click unsubscribe POST `:133`). The app sends `no-store` (`routes.ts:37`; v1's `no-cache` at `app.ts:68` becomes `no-store`, `apps/stack/src/cache-control.ts:22`). |
+| `/api/…` | anything else | **404** | no public route takes it |
+| `/subscribe…`, `/news-subscribe…`, `/newsletters…`, `/enewsletters…` | GET, HEAD | forwarded, **never cached** | subscribe, manage and unsubscribe pages and their old addresses; tokens travel in the query string |
+| any URL with a query string | GET, HEAD | forwarded, **never cached** | search terms and tokens never land on the DMZ disk |
+| `/files/…` | GET, HEAD | forwarded, cached as the app says | release attachments (`stack.ts:397`), `public, max-age=60`. Note: a file is downloadable from upload, before the release is published, behind a 16-hex random key (`stack.ts:385`-`:392`, open question Q17). |
+| `/updates/…` | GET, HEAD | forwarded, cached as the app says | the site's Updates pages (`SITE_PASS_THROUGH`, `stack.ts:161`) |
+| everything else (`/`, pages, feeds, assets, `robots.txt`, `/site/…`, old news.gov addresses) | GET, HEAD | forwarded, cached as the app says | the public site (`site-mount.ts:113`-`:145`), `public, max-age=60` |
+| everything else | other methods | **404** | includes `POST /updates/negotiate`, the live-updates hub (`apps/news-api/src/updates/hub.ts:102`); see open questions |
+
+### Caching at the proxy
+
+The ARR disk cache takes load off the app server for the public pages:
+
+- It keeps what the app allows and for no longer: the site's pages, feeds, assets and `/files/`
+  are `Cache-Control: public, max-age=60`. **After a release is published, the public sees it within
+  about a minute** (the old page may be served for up to 60 seconds); nothing purges the cache on
+  publish.
+- A response without `Cache-Control`, or with `no-store`/`private`/`no-cache`, is not kept (every
+  app response after the static mounts is `no-store`, `apps/stack/src/cache-control.ts:22`).
+- Never kept, whatever the response says: `/api/…`, the subscribe pages, any URL with a query
+  string, and every blocked path (those are answered at the proxy and never fetched).
+- `Set-Cookie`: no forwarded path sets a cookie (only `/core`, which is blocked).
+- Encodings: the app sends brotli or gzip with `Vary: Accept-Encoding`; CI checks that a
+  gzip-only client never gets a brotli body and a client without `Accept-Encoding` gets a plain one.
+- Only GET and HEAD can be cached; the size cap is `-CacheMaxSizeGB` (re-run to change it).
+
+To empty it: `iisreset /stop`, delete `C:\gcpe-proxy\cache\*`, `iisreset /start`. To see hits: the
+site's IIS log (`C:\inetpub\logs\LogFiles\W3SVC<id>\`) shows `X-ARR-CACHE-HIT=1` in the query
+field of a request served from the cache.
+
+### Why the app server's 443 must be closed to everyone else
+
+With `-ProxyHops 2` the app takes the visitor's address from the second-last entry of
+`X-Forwarded-For`. Through the DMZ that is the visitor. A client that reaches the app server
+directly controls that entry: it can send `X-Forwarded-For: <any address>` and be counted as that
+address by every per-address limit (sign-in, subscribe, search). Hence the firewall above: the app server's 443 accepts the DMZ
+server and the staff ranges only.
+
+Staff need that same IIS for the Hub, which the DMZ never forwards. The simplest sound setup is
+the one above: staff reach the app server directly, by its internal name, from named staff ranges.
+**Residual risk:** a person on a staff range can choose the address the app records for their own
+requests (per-address limits such as the 10-a-minute sign-in limit). They are already on the
+internal network. To close it later, the app server's IIS can clear `X-Forwarded-For` on requests whose `REMOTE_ADDR`
+is not the DMZ server (an `Install-Gcpe.ps1` change, not made yet).
+
+### Restrict Test to some networks
+
+```powershell
+.\Install-GcpeProxy.ps1 -HostName news-test.example.gov.bc.ca -Upstream https://<app server name> -AllowedClientRanges 142.22.0.0/16, 142.34.0.0/16
+```
+
+Everyone else gets 403 (IIS IP and Domain Restrictions, a Windows Server feature the script
+installs). IPv4 CIDR ranges only; a range with host bits set is refused. A re-run keeps the
+ranges; `-AllowAllClients` removes them. If a load balancer or NAT sits in front of the DMZ server,
+IIS sees its address, not the visitor's, and the restriction cannot tell visitors apart.
+
+### Check it
+
+From outside (or from the DMZ server with `--resolve <host>:443:127.0.0.1`):
+
+| Command | Expect |
+|---|---|
+| `curl.exe -sI https://<host>/` | `200`, and on Test `X-Robots-Tag: noindex, nofollow` |
+| `curl.exe -s -o NUL -w '%{http_code}' https://<host>/hub/` | `404` (also `/stack/health`, `/core/api/organizations`) |
+| `curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' https://<host>/contact` | `301 https://forms.gov.bc.ca/` (an old news.gov address) |
+| `curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' http://<host>/` | `301 https://<host>/` |
+
+**The visitor's address reaches the app.** The stack doesn't log client addresses, but its
+per-address limits show which address it sees. `/api/v2/search` counts requests per address and
+says how many are left in its `RateLimit` header. From two machines with different outside
+addresses, run `curl.exe -sI "https://<host>/api/v2/search?q=test"` a few times each: each machine's
+remaining count (`r=`) goes down on its own. If the second machine's count carries on from the
+first's, the app sees every visitor as the DMZ server: `-ProxyHops 2` is missing on the app server.
+(The app server's IIS log always shows the DMZ server as the client; that is expected.)
+
+`502` through the proxy: the app server is down, its firewall refuses the DMZ server, or its
+certificate is not trusted or not for the `-Upstream` name (the proxy's IIS log substatus, e.g.
+502.3, and the install log say which). Re-run with `-UpstreamCertificateFile`.
+
+**Renew the certificates.** Public: import it, re-run with `-CertificateThumbprint <new>`. App
+server's: if it is self-signed or its issuer changes, re-run with `-UpstreamCertificateFile` for the
+new one.
+
+**Not yet verified:** a real DMZ server or firewall; the proxy is installed and checked
+automatically only on a GitHub runner, in front of an app install on the same machine (the
+`windows` workflow), using a public host name that is not on the app's certificate, as in Test.
 
 ## Not yet verified
 

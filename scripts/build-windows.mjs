@@ -2,7 +2,7 @@
 // copies to the server and installs with deploy/windows/Install-Gcpe.ps1.
 //
 //   dist/windows/gcpe-windows/          the package
-//     *.ps1, lib/                       deploy/windows/ (installer, deploy, import, runner scripts)
+//     *.ps1, lib/                       deploy/windows/ (installer, DMZ proxy, deploy, import, runner scripts)
 //     app/                              one release: dist/siteground/ (stack.js, hub/, migrations/,
 //                                       config/, report worker) plus the command-line tools below
 //     prereqs/pgvector/                 only when --pgvector <dir> is given (CI builds it on Windows)

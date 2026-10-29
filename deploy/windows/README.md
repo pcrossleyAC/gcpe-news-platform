@@ -16,6 +16,11 @@ PowerShell in this folder:
 
 # Deploy a newer package by hand (rolls back by itself if it isn't healthy).
 .\Deploy-GcpeRelease.ps1 -Package C:\drops\gcpe-windows-<commit>.zip
+
+# Test/Prod: on the DMZ server, the public reverse proxy in front of the app server
+# (the app server then needs Install-Gcpe.ps1 -ProxyHops 2).
+.\Install-GcpeProxy.ps1 -HostName news-test.example.gov.bc.ca -Upstream https://<app server name> `
+    -CertificateThumbprint <thumbprint> -UpstreamCertificateFile C:\install\app-server.cer
 ```
 
 `Get-Help .\<script>.ps1 -Full` describes each script and every option. No internet on the

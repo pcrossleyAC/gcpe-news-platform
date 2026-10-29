@@ -138,8 +138,136 @@ jobs:
           Write-Host 'ok: the bundled importer started and tried to connect'
           # The step's result would otherwise be the importer's expected exit code 1.
           exit 0
+      # The DMZ reverse proxy (docs/deploy/windows.md, "DMZ reverse proxy"), as a second IIS site on
+      # this runner in front of the install above: its own host name and ports, the app's
+      # self-signed certificate trusted by thumbprint. Every request uses the proxy's host name,
+      # which is NOT on the app's certificate, as in Test/Prod (public name != app server name).
+      - name: Install-GcpeProxy.ps1 (a DMZ proxy in front of this install)
+        run: |
+          $appCert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.FriendlyName -eq 'GCPE self-signed (gcpe-ci.example.test)' } | Select-Object -First 1
+          if (-not $appCert) { throw 'the app install''s self-signed certificate is missing' }
+          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName gcpe-proxy-ci.example.test -Upstream https://localhost -UpstreamCertificateThumbprint $appCert.Thumbprint -HttpsPort 8443 -HttpPort 8080 -Environment Test
+          # Safe to re-run.
+          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName gcpe-proxy-ci.example.test -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080
+      - name: The proxy forwards only the public paths
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          $h = 'gcpe-proxy-ci.example.test'
+          $base = "https://$($h):8443"
+          $res = @('--resolve', "$($h):8443:127.0.0.1", '--resolve', "$($h):8080:127.0.0.1")
+          function Status([string]$path, [string]$method = 'GET') { curl.exe -k -s --path-as-is --max-time 30 @res -X $method -o NUL -w '%{http_code}' "$base$path" }
+          # The site is built by the app's background ticks: wait until the app itself serves / and a feed.
+          $deadline = (Get-Date).AddSeconds(300)
+          while ((curl.exe -k -s -o NUL -w '%{http_code}' https://localhost/) -ne '200' -or (curl.exe -k -s -o NUL -w '%{http_code}' https://localhost/feed) -ne '200') {
+            if ((Get-Date) -gt $deadline) { throw 'the app never served / and /feed directly (not a proxy problem)' }
+            Start-Sleep -Seconds 5
+          }
+          Check "public home page through the proxy" ((Status '/') -eq '200')
+          Check "feed through the proxy" ((Status '/feed') -eq '200')
+          Check "public News API through the proxy" ((Status '/api/v2/ministries') -eq '200')
+          Check "robots.txt through the proxy (test site: Disallow /)" ((curl.exe -k -s @res "$base/robots.txt") -match 'Disallow: /\s*$')
+          foreach ($p in @('/hub/', '/hub/assets/x.js', '/HUB/', '/stack/health', '/stack/errors', '/core/api/organizations', '/core/auth/login', '/nrms/health/ready', '/nod/Subscribe/SubscriberInformation?emailAddress=a@example.test', '/calendar/', '/distribution/', '/site-builder/', '/events', '/health/ready', '/api/v2/changes', '/api/v2/internal/similar', '/fake-entra/')) {
+            $s = Status $p
+            Check "$p is 404 at the proxy (HTTP $s)" ($s -eq '404')
+          }
+          # Sent as they are (--path-as-is): IIS may refuse these itself (400) before the proxy's rule (404).
+          foreach ($p in @('/hub/../hub/', '/releases/../hub/', '/files/..%2fhub/', '/%68ub/')) {
+            $s = Status $p
+            Check "$p never reaches the app (HTTP $s)" ($s -eq '404' -or $s -eq '400')
+          }
+          Check "POST /stack/tick is 404" ((Status '/stack/tick' 'POST') -eq '404')
+          Check "POST /core/auth/login is 404" ((Status '/core/auth/login' 'POST') -eq '404')
+          Check "POST /updates/negotiate is 404 (live-updates hub not public)" ((Status '/updates/negotiate' 'POST') -eq '404')
+          Check "PUT under /api is 404" ((Status '/api/Posts' 'PUT') -eq '404')
+          $headers = (curl.exe -k -s @res -D - -o NUL "$base/") -join "`n"
+          Check "X-Robots-Tag: noindex at the proxy" ($headers -match '(?im)^x-robots-tag:\s*noindex, nofollow')
+          $old = curl.exe -k -s @res -o NUL -w '%{http_code} %{redirect_url}' "$base/contact"
+          Check "an old news.gov address redirects ($old)" ($old -eq '301 https://forms.gov.bc.ca/')
+          $site = curl.exe -k -s @res -o NUL -w '%{http_code} %{redirect_url}' "$base/site/archive/"
+          Check "/site/... redirects to the root ($site)" ($site -like '301 */archive/')
+          $redirect = curl.exe -s @res -o NUL -w '%{http_code} %{redirect_url}' "http://$($h):8080/archive/"
+          Check "http redirects to https ($redirect)" ($redirect -eq "301 $base/archive/")
+      - name: The proxy caches public pages only, per encoding
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          $h = 'gcpe-proxy-ci.example.test'
+          $base = "https://$($h):8443"
+          $res = @('--resolve', "$($h):8443:127.0.0.1")
+          $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
+          $appSite = (& $appcmd list site GCPE /text:id)
+          $proxySite = (& $appcmd list site GCPE-Proxy /text:id)
+          function LogLines([string]$site) {
+            & netsh.exe http flush logbuffer | Out-Null
+            Start-Sleep -Seconds 2
+            @(Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$site\*.log" -ErrorAction SilentlyContinue | Get-Content | Where-Object { $_ -notmatch '^#' })
+          }
+          # How many requests a site logged for one path (W3C field 4 is cs-uri-stem, 5 cs-uri-query).
+          # A request the proxy answers from its cache never reaches the app server's site (GCPE).
+          function Logged([string]$site, [string]$stem, [string]$queryPrefix = '') {
+            @(LogLines $site | Where-Object { $f = $_ -split ' '; $f[4] -eq $stem -and ($queryPrefix -eq '' -or $f[5].StartsWith($queryPrefix)) }).Count
+          }
+          function Fetch([string]$path, [string]$encoding) {
+            $curlArgs = @('-k', '-s') + $res + @('-D', '-', '-o', 'NUL')
+            if ($encoding) { $curlArgs += @('-H', "Accept-Encoding: $encoding") }
+            $out = (curl.exe @curlArgs "$base$path") -join "`n"
+            [pscustomobject]@{ Status = [regex]::Match($out, '^HTTP/\S+ (\d+)').Groups[1].Value; Encoding = [regex]::Match($out, '(?im)^content-encoding:\s*(\S+)').Groups[1].Value }
+          }
+          # http.sys's own memory cache lasts 5 s: the waits below go past it, inside the page's max-age=60.
+          $first = Fetch '/' 'br'
+          Check "first / (br) is 200 and br-encoded ($($first.Status) '$($first.Encoding)')" ($first.Status -eq '200' -and $first.Encoding -eq 'br')
+          Start-Sleep -Seconds 7
+          $before = Logged $appSite '/'
+          $second = Fetch '/' 'br'
+          Check "second / (br) is 200 and br-encoded ($($second.Status) '$($second.Encoding)')" ($second.Status -eq '200' -and $second.Encoding -eq 'br')
+          $reached = (Logged $appSite '/') - $before
+          $hits = @(LogLines $proxySite | Where-Object { $_ -match ' GET / X-ARR-CACHE-HIT=1' }).Count
+          Check "the second / came from the proxy's cache (reached the app server: $reached; X-ARR-CACHE-HIT=1 lines for /: $hits)" ($reached -eq 0 -or $hits -gt 0)
+          $gzip = Fetch '/' 'gzip'
+          Check "a gzip-only client never gets br ($($gzip.Status) '$($gzip.Encoding)')" ($gzip.Status -eq '200' -and ($gzip.Encoding -eq 'gzip' -or $gzip.Encoding -eq ''))
+          $plain = Fetch '/' ''
+          Check "a client without Accept-Encoding gets an unencoded body ($($plain.Status) '$($plain.Encoding)')" ($plain.Status -eq '200' -and $plain.Encoding -eq '')
+          # Never cached: the API, the subscribe pages, anything with a query string.
+          foreach ($t in @(@('/api/v2/ministries', '', ''), @('/subscribe/', '', ''), @('/', 'ci=1', '?ci=1'))) {
+            $before = Logged $appSite $t[0] $t[1]
+            Fetch "$($t[0])$($t[2])" 'gzip' | Out-Null
+            Start-Sleep -Seconds 7
+            Fetch "$($t[0])$($t[2])" 'gzip' | Out-Null
+            $seen = (Logged $appSite $t[0] $t[1]) - $before
+            Check "$($t[0])$($t[2]) is never cached: both requests reached the app server ($seen)" ($seen -eq 2)
+          }
+          $before = Logged $appSite '/hub/'
+          Check "/hub/ is 404 twice at the proxy" (((Fetch '/hub/' 'gzip').Status -eq '404') -and ((Fetch '/hub/' 'gzip').Status -eq '404'))
+          Check "/hub/ never reached the app server" ((Logged $appSite '/hub/') -eq $before)
+          $files = @(Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+          $files | ForEach-Object { Write-Host "  cached: $_" }
+          Check "the cache folder holds something ($($files.Count) files)" ($files.Count -gt 0)
+          Check "nothing staff, API or subscribe in the cache folder" (@($files | Where-Object { $_ -match '\\(hub|core|nrms|nod|stack|api|subscribe)(\\|\.|$)' }).Count -eq 0)
+      - name: The proxy's client address restriction
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          $h = 'gcpe-proxy-ci.example.test'
+          $res = @('--resolve', "$($h):8443:127.0.0.1")
+          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowedClientRanges 192.0.2.0/24
+          $s = curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/"
+          Check "a client outside the ranges gets 403 (HTTP $s)" ($s -eq '403')
+          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080
+          $s = curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/"
+          Check "a re-run without -AllowedClientRanges keeps the restriction (HTTP $s)" ($s -eq '403')
+          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowedClientRanges 127.0.0.0/8
+          $s = curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/"
+          Check "a client inside the ranges gets the site (HTTP $s)" ($s -eq '200')
+          C:\pkg\gcpe-windows\Install-GcpeProxy.ps1 -HostName $h -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080 -AllowAllClients
+          $s = curl.exe -k -s @res -o NUL -w '%{http_code}' "https://$($h):8443/"
+          Check "-AllowAllClients removes it (HTTP $s)" ($s -eq '200')
       - name: Logs
         if: always()
         run: |
+          Get-ChildItem C:\gcpe-proxy\logs -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "=== $($_.Name)"; Get-Content $_.FullName -Tail 120 }
+          if (Test-Path C:\gcpe-proxy\site\web.config) { Write-Host '=== proxy web.config'; Get-Content C:\gcpe-proxy\site\web.config }
+          & netsh.exe http flush logbuffer | Out-Null
+          Get-ChildItem C:\inetpub\logs\LogFiles\W3SVC* -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "=== $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
           Get-ChildItem C:\gcpe\service\logs -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "=== $($_.Name)"; Get-Content $_.FullName -Tail 80 }
           Get-ChildItem C:\gcpe\logs -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "=== $($_.Name)"; Get-Content $_.FullName -Tail 120 }
