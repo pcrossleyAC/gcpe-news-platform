@@ -72,7 +72,7 @@ export interface PinInput {
 }
 
 /** The link text on a slide or pin: plain text, trimmed, at most 40 characters. */
-function checkActionLabel(label: string): void {
+export function checkActionLabel(label: string): void {
   const t = label.trim();
   if (t.length > 40 || /[<>]/.test(t)) throw new SiteRuleError(["Keep the action label to 40 characters or fewer, in plain text."]);
 }
@@ -216,7 +216,7 @@ export async function createNextCarousel(
         );
       }
     }
-    await writeSiteLog(tx, actor, "carousel", `Created the next carousel for ${formatBcDateTime(goLiveAt, timeZone)}`);
+    await writeSiteLog(tx, actor, "carousel", `Created the next carousel for ${formatBcDateTime(goLiveAt, timeZone)}`, created.id);
     return carouselView(created, await slidesOf(tx, created.id));
   });
 }
@@ -274,13 +274,14 @@ export async function saveCarousel(
       .set({ version: row.version + 1, updatedAt: sql`now()`, ...(goLiveAt !== undefined ? { goLiveAt } : {}) })
       .where(eq(carousels.id, id))
       .returning();
-    await writeSiteLog(tx, actor, "carousel", row.state === "live" ? "Saved the live carousel" : "Saved the next carousel");
+    await writeSiteLog(tx, actor, "carousel", row.state === "live" ? "Saved the live carousel" : "Saved the next carousel", id);
     if (row.state === "live") await emitSite(tx, subs, "slides", files);
     return carouselView(updated!, await slidesOf(tx, id));
   });
 }
 
-async function checkImageBytes(bytes: Buffer): Promise<"image/png" | "image/jpeg"> {
+/** The Hub's check on an uploaded slide or pin image (the route also caps it at slide-images.ts's `MAX_SITE_IMAGE_BYTES`). */
+export async function checkImageBytes(bytes: Buffer): Promise<"image/png" | "image/jpeg"> {
   const type = sniff(bytes);
   if (type !== "image/png" && type !== "image/jpeg") throw new SiteRuleError(["Upload a JPEG or PNG image."]);
   return type;
@@ -301,7 +302,7 @@ export async function setSlideImage(db: Db, slideId: string, bytes: Buffer, acto
     // the slides before this write lands, permanently missing the image from that snapshot.
     const [carousel] = await tx.select({ state: carousels.state }).from(carousels).where(eq(carousels.id, slide.carouselId)).for("update");
     await tx.update(websiteSlides).set({ image: bytes, imageType: mimeType, updatedAt: sql`now()` }).where(eq(websiteSlides.id, slideId));
-    await writeSiteLog(tx, actor, "carousel", "Updated a slide's image");
+    await writeSiteLog(tx, actor, "carousel", "Updated a slide's image", slide.carouselId);
     if (carousel?.state === "live") await emitSite(tx, subs, "slides", files);
   });
 }
@@ -319,18 +320,25 @@ export async function setPinImage(db: Db, slot: PinSlot, bytes: Buffer, actor: A
   });
 }
 
-/** `performSwitch`'s shared mechanics: `nextId` becomes `live`, the old live becomes `past`, past is trimmed to five, logged and emitted. */
-async function performSwitch(tx: Tx, nextId: string, subs: SubscriberConfig[], actor: Actor, logText: string, files: SlideImageFiles, clock?: TestClock): Promise<void> {
+/**
+ * The switch-over every carousel publish shares: `nextId` becomes `live`, the old live becomes
+ * `past`, past is trimmed to five, logged and emitted. `import:public-slides` (import/
+ * public-slides.ts) publishes through this too, with `trimPast: false` so that `--remove` can
+ * still restore the carousel it replaced (the next switch-over trims as usual).
+ */
+export async function performSwitch(tx: Tx, nextId: string, subs: SubscriberConfig[], actor: Actor, logText: string, files: SlideImageFiles, clock?: TestClock, opts: { trimPast?: boolean } = {}): Promise<void> {
   const now = sqlNow(clock);
   const [liveRow] = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "live"));
   if (liveRow) await tx.update(carousels).set({ state: "past", updatedAt: now }).where(eq(carousels.id, liveRow.id));
   await tx.update(carousels).set({ state: "live", wentLiveAt: now, updatedAt: now }).where(eq(carousels.id, nextId));
 
-  const pastRows = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "past")).orderBy(desc(carousels.updatedAt));
-  const toDelete = pastRows.slice(5).map((r) => r.id);
-  if (toDelete.length) await tx.delete(carousels).where(inArray(carousels.id, toDelete));
+  if (opts.trimPast !== false) {
+    const pastRows = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "past")).orderBy(desc(carousels.updatedAt));
+    const toDelete = pastRows.slice(5).map((r) => r.id);
+    if (toDelete.length) await tx.delete(carousels).where(inArray(carousels.id, toDelete));
+  }
 
-  await writeSiteLog(tx, actor, "carousel", logText);
+  await writeSiteLog(tx, actor, "carousel", logText, nextId);
   await emitSite(tx, subs, "slides", files);
 }
 
@@ -412,7 +420,7 @@ export async function deleteNextCarousel(db: Db, version: number, actor: Actor):
     if (!row) throw new SiteNotFoundError("no next carousel");
     if (row.version !== version) throw new SiteConflictError();
     await tx.delete(carousels).where(eq(carousels.id, row.id));
-    await writeSiteLog(tx, actor, "carousel", "Deleted the next carousel");
+    await writeSiteLog(tx, actor, "carousel", "Deleted the next carousel", row.id);
   });
 }
 

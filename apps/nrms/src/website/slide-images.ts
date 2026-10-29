@@ -17,6 +17,10 @@ export interface SlideImageFiles {
   filesBase: string;
 }
 
+/** Slide/pin images, same 2 MiB cap as the brief (constraints.md §6.1): the Hub's upload routes
+ * (http/site-routes.ts) refuse a bigger body, and `import:public-slides` a bigger image. */
+export const MAX_SITE_IMAGE_BYTES = 2 * 1024 * 1024;
+
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg" };
 
 /** The content-addressed key, public URL and hash for `bytes`/`mimeType` — doesn't touch storage. */

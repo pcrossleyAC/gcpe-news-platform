@@ -412,6 +412,34 @@ export const websiteSlides = pgTable(
 );
 
 /**
+ * `import:public-slides` (test hosts only): the carousel it made live, and the live carousel it
+ * replaced, so `--remove` can put that one back exactly. At most one row (id = 1). The previous
+ * carousel has no foreign key: a later switch-over may trim it, and `--remove` must then say so
+ * rather than lose track of it silently.
+ */
+export const publicImportCarousel = pgTable(
+  "public_import_carousel",
+  {
+    id: integer("id").primaryKey().default(1),
+    carouselId: uuid("carousel_id")
+      .notNull()
+      .references(() => carousels.id, { onDelete: "cascade" }),
+    previousLiveId: uuid("previous_live_id"),
+    previousLiveUpdatedAt: tz("previous_live_updated_at"),
+    importedAt: tz("imported_at").notNull().defaultNow(),
+  },
+  (t) => [check("public_import_carousel_id_check", sql`${t.id} = 1`)],
+);
+
+/** `import:public-slides`: the news.gov slide key (legacy `Slide.Id`) each imported slide came from. */
+export const publicImportSlides = pgTable("public_import_slides", {
+  slideId: uuid("slide_id")
+    .primaryKey()
+    .references(() => websiteSlides.id, { onDelete: "cascade" }),
+  legacyKey: text("legacy_key").notNull(),
+});
+
+/**
  * The two emergency-pin slots (above the carousel when `pinned`). `slide_id` is a stable id
  * (independent of any carousel slide) used as the emitted slide's `id`, so pinning/unpinning
  * doesn't change the id the public site sees for the same pin.
@@ -492,6 +520,9 @@ export const siteLog = pgTable(
     actorName: text("actor_name").notNull(),
     area: text("area").$type<SiteLogArea>().notNull(),
     text: text("text").notNull(),
+    /** The carousel a `carousel` line is about (null before migration 0021, and for other areas).
+     * No foreign key: the log outlives deleted and trimmed carousels. */
+    carouselId: uuid("carousel_id"),
   },
   (t) => [
     index("site_log_at_idx").on(t.at.desc()),
