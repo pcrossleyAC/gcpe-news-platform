@@ -55,6 +55,10 @@ describe("accessibility — Users, Media list names and error log", () => {
       }),
     );
     const { container } = render(withAuth(<UsersScreen />));
+    await screen.findByRole("table", { name: "Staff users" });
+    expect(await seriousViolations(container)).toEqual([]);
+    // And with a user's editor open in its row.
+    (await screen.findByRole("button", { name: "Edit pat@x.invalid" })).click();
     await screen.findByRole("heading", { name: "pat@x.invalid" });
     expect(await seriousViolations(container)).toEqual([]);
   });

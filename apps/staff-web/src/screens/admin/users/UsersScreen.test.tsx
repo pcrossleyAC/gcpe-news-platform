@@ -35,6 +35,11 @@ function stubSession(calls: { url: string; init?: RequestInit }[], extra: (url: 
   );
 }
 
+/** Opens a user's editor from their row in the users table (the table's Edit button). */
+async function openEditor(who: string, user = userEvent.setup()): Promise<void> {
+  await user.click(await screen.findByRole("button", { name: `Edit ${who}` }));
+}
+
 describe("UsersScreen", () => {
   afterEach(() => {
     cleanup();
@@ -49,12 +54,39 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
-    const row = (await screen.findByRole("heading", { name: "self@x.invalid", level: 3 })).closest("li")!;
+    await openEditor("self@x.invalid");
+    const row = (await screen.findByRole("heading", { name: "self@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     const name = within(row).getByRole("textbox", { name: "self@x.invalid display name" });
     expect(visibleText(row.querySelector(`label[for="${name.id}"]`)!)).toBe("display name");
     expect(visibleText(within(row).getByRole("switch", { name: "self@x.invalid is active" }).closest("label")!)).toBe("Active");
     const admin = within(row).getByLabelText(/^Core\.Admin — Manage staff users/);
     expect(admin.closest("label")!.querySelector("strong")).toHaveTextContent("Core.Admin");
+  });
+
+  it("lists users in a table, filters them by name, email or role, and opens one user's editor in place", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "Staff users" });
+    expect(within(table).getByRole("rowheader", { name: "Self" })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: "Other" })).toBeInTheDocument();
+    expect(within(within(table).getByRole("rowheader", { name: "Other" }).closest("tr")!).getByText("NRMS Viewer")).toBeInTheDocument();
+    // Closed until asked for.
+    expect(screen.queryByRole("switch")).toBeNull();
+
+    await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "nrms.viewer");
+    expect(within(table).queryByRole("rowheader", { name: "Self" })).toBeNull();
+    expect(within(table).getByRole("rowheader", { name: "Other" })).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 2 users")).toBeInTheDocument();
+
+    const edit = screen.getByRole("button", { name: "Edit other@x.invalid" });
+    expect(edit).toHaveAttribute("aria-expanded", "false");
+    await user.click(edit);
+    expect(screen.getByRole("button", { name: "Close other@x.invalid" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("switch", { name: "other@x.invalid is active" })).toBeInTheDocument();
   });
 
   // I5: document.title matches the h1.
@@ -105,6 +137,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
     const user = userEvent.setup();
     const toggle = await screen.findByRole("switch", { name: "self@x.invalid is active" });
     await user.click(toggle);
@@ -121,6 +154,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid");
     const user = userEvent.setup();
     const toggle = await screen.findByRole("switch", { name: "other@x.invalid is active" });
     await user.click(toggle);
@@ -145,6 +179,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid");
     const user = userEvent.setup();
     await user.click(await screen.findByRole("switch", { name: "other@x.invalid is active" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Deactivate" }));
@@ -167,6 +202,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid");
     const user = userEvent.setup();
     await user.click(await screen.findByRole("switch", { name: "other@x.invalid is inactive" }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -183,8 +219,9 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
     const user = userEvent.setup();
-    const row = (await screen.findByRole("heading", { name: "self@x.invalid" })).closest("li")!;
+    const row = (await screen.findByRole("heading", { name: "self@x.invalid" })).closest<HTMLElement>(".gcpe-users__editor")!;
     await user.click(within(row).getByLabelText(/^Core\.Admin —/));
     await user.click(within(row).getByRole("button", { name: "Save roles" }));
 
@@ -199,6 +236,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
     const user = userEvent.setup();
     const passwordField = (await screen.findByLabelText("self@x.invalid new password")) as HTMLInputElement;
     // Minors: autocomplete="new-password" — never offers to autofill the user's own existing
@@ -225,6 +263,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
     const user = userEvent.setup();
     const passwordField = (await screen.findByLabelText("self@x.invalid new password")) as HTMLInputElement;
     await user.type(passwordField, "a-new-strong-password{Enter}");
@@ -271,6 +310,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("Kim Imported (no email)");
     const user = userEvent.setup();
     expect(await screen.findByRole("heading", { name: "Kim Imported (no email) (inactive)" })).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: /Kim Imported/ })).toBeNull();
@@ -291,6 +331,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await openEditor("Kim Imported (no email)");
     const user = userEvent.setup();
     const form = await screen.findByRole("form", { name: "Link Kim Imported to an email" });
     const email = within(form).getByLabelText(/^Email for Kim Imported/);
@@ -319,7 +360,8 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
-    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    await openEditor("other@x.invalid");
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     expect(within(row).getByText("Sign-in: Microsoft (Entra)")).toBeInTheDocument();
     expect(within(row).queryByLabelText("other@x.invalid new password")).not.toBeInTheDocument();
 
@@ -328,7 +370,7 @@ describe("UsersScreen", () => {
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Unlink" }));
 
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1/unlink-entra" && c.init?.method === "POST")).toBe(true));
-    const after = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    const after = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     expect(await within(after).findByText("Sign-in: Local password")).toBeInTheDocument();
     expect(within(after).getByLabelText("other@x.invalid new password")).toBeInTheDocument();
     expect(within(after).queryByRole("button", { name: /unlink/i })).not.toBeInTheDocument();
@@ -342,7 +384,8 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
-    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    await openEditor("other@x.invalid");
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     const user = userEvent.setup();
     await user.click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Unlink" }));
@@ -357,7 +400,8 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
-    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    await openEditor("other@x.invalid");
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
     const user = userEvent.setup();
     await user.click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }));

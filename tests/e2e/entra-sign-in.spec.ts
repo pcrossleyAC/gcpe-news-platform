@@ -33,7 +33,9 @@ test.describe("Sign in with Microsoft", () => {
     await signInAs(adminContext, "admin");
     const admin = await adminContext.newPage();
     await admin.goto(`${baseUrl()}/hub/users`);
-    const row = admin.getByRole("listitem").filter({ has: admin.getByRole("heading", { name: STAFF.email, level: 3 }) });
+    // Each user is a row of the users table; Edit opens that user's editor underneath it.
+    await admin.getByRole("button", { name: `Edit ${STAFF.email}` }).click();
+    const row = admin.locator(".gcpe-users__editor").filter({ has: admin.getByRole("heading", { name: STAFF.email, level: 3 }) });
     await expect(row.getByText("Sign-in: Microsoft (Entra)")).toBeVisible();
     await row.getByRole("button", { name: `Unlink ${STAFF.email} from Microsoft sign-in` }).click();
     await admin.getByRole("alertdialog").getByRole("button", { name: "Unlink" }).click();

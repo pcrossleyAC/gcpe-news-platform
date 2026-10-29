@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { AlertDialog, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
@@ -7,7 +7,9 @@ import { ignoreWhileBusy } from "../../../shared/guardSubmit";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { HiddenPrefixLabel, ShortLabel } from "../../../shared/ShortLabel";
 import { messagesOf } from "../messages";
+import { useSeededValue } from "../../../shared/useSeededValue";
 import { STAFF_ROLES } from "./roles";
+import { TableScroll } from "../../../shared/TableScroll";
 
 export interface UserView {
   id: string;
@@ -35,9 +37,11 @@ function RoleCheckboxes({ selected, onChange, idPrefix, disabled }: { selected: 
   );
 }
 
-function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): React.JSX.Element {
-  const [displayName, setDisplayName] = useState(user.displayName);
-  const [roles, setRoles] = useState(user.roles);
+function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void; id: string }): React.JSX.Element {
+  // Seeded from the server's copy: after a save (or any other change) reloads the list, an
+  // untouched field follows the new value instead of keeping the old one.
+  const { value: displayName, setValue: setDisplayName } = useSeededValue(user.displayName);
+  const { value: roles, setValue: setRoles } = useSeededValue(user.roles);
   const [password, setPassword] = useState("");
   const [nameMessages, setNameMessages] = useState<string[]>([]);
   const [activeMessages, setActiveMessages] = useState<string[]>([]);
@@ -129,7 +133,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   const who = user.email ?? `${user.displayName} (no email)`;
 
   return (
-    <li className="gcpe-users__row">
+    <div className="gcpe-users__editor" id={id}>
       <h3 className="gcpe-users__who">
         {who} {!user.isActive && "(inactive)"}
       </h3>
@@ -266,7 +270,112 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
           </div>
         </form>
       )}
-    </li>
+    </div>
+  );
+}
+
+const signInLabel = (u: UserView) => (u.signInMethod === "local" ? "Password" : "Microsoft");
+
+/** The role's area and name, shortened for a badge ("NRMS.SiteEditor" → "NRMS Site editor"). */
+const roleBadge = (role: string) => {
+  const [area, name = ""] = role.split(".");
+  return `${area} ${name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/ (\w)/g, (_, c: string) => ` ${c.toLowerCase()}`)}`.trim();
+};
+
+/**
+ * Every user as one table row (name, email, sign-in, roles, active), filtered as you type; Edit
+ * opens that user's editor in a row underneath, with every field and save it always had.
+ */
+function UsersTable({ users, onChanged }: { users: UserView[]; onChanged(): void }): React.JSX.Element {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? users.filter((u) => [u.displayName, u.email ?? "", ...u.roles, u.isActive ? "active" : "inactive"].some((t) => t.toLowerCase().includes(q)))
+    : users;
+  const toggle = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  return (
+    <>
+      <div className="gcpe-users__filter">
+        <TextField label="Filter users" description="By name, email or role" type="search" value={query} onChange={setQuery} />
+        <p aria-live="polite" className="gcpe-users__count">
+          {q ? `Showing ${shown.length} of ${users.length} users` : `${users.length} users`}
+        </p>
+      </div>
+      <TableScroll label="Staff users">
+        <table className="gcpe-table gcpe-users__table">
+          <caption className="gcpe-visually-hidden">Staff users</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Email</th>
+              <th scope="col">Sign-in</th>
+              <th scope="col">Roles</th>
+              <th scope="col">Status</th>
+              <th scope="col">
+                <span className="gcpe-visually-hidden">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.length === 0 && (
+              <tr>
+                <td colSpan={6}>No users match &ldquo;{query.trim()}&rdquo;.</td>
+              </tr>
+            )}
+            {shown.map((u) => {
+              const who = u.email ?? `${u.displayName} (no email)`;
+              const isOpen = open.has(u.id);
+              const editorId = `user-editor-${u.id}`;
+              return (
+                <Fragment key={u.id}>
+                  <tr className={isOpen ? "gcpe-users__open" : undefined}>
+                    <th scope="row">{u.displayName}</th>
+                    <td className="gcpe-users__email">{u.email ?? <span className="gcpe-hint">No email</span>}</td>
+                    <td>{signInLabel(u)}</td>
+                    <td>
+                      {u.roles.length === 0 ? (
+                        <span className="gcpe-hint">None</span>
+                      ) : (
+                        <ul className="gcpe-badge-list">
+                          {u.roles.map((r) => (
+                            <li key={r} className="gcpe-badge" title={r}>
+                              {roleBadge(r)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td>{u.isActive ? "Active" : <span className="gcpe-badge gcpe-badge--alert">Inactive</span>}</td>
+                    <td>
+                      <Button size="small" variant="secondary" aria-expanded={isOpen} aria-controls={isOpen ? editorId : undefined} onPress={() => toggle(u.id)}>
+                        <span>
+                          {isOpen ? "Close" : "Edit"} <span className="gcpe-visually-hidden">{who}</span>
+                        </span>
+                      </Button>
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="gcpe-users__editor-row">
+                      <td colSpan={6}>
+                        <UserEditor id={editorId} user={u} onChanged={onChanged} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableScroll>
+    </>
   );
 }
 
@@ -373,7 +482,12 @@ export function UsersScreen(): React.JSX.Element {
       <h1>Users</h1>
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
 
-      <h2>Add a user</h2>
+      <h2>All users</h2>
+      {users === null && !loadError && <p>Loading…</p>}
+      {users && <UsersTable users={users} onChanged={reload} />}
+
+      <section className="gcpe-card" aria-labelledby="add-user-heading">
+      <h2 id="add-user-heading">Add a user</h2>
       <form onSubmit={onCreate} aria-label="Add a user" className="gcpe-stack">
         {createMessages.map((m) => (
           <p role="alert" key={m}>
@@ -394,10 +508,8 @@ export function UsersScreen(): React.JSX.Element {
           Add user
         </Button>
       </form>
+      </section>
 
-      <h2>All users</h2>
-      {users === null && !loadError && <p>Loading…</p>}
-      <ul className="gcpe-users__list">{users?.map((u) => <UserRow key={u.id} user={u} onChanged={reload} />)}</ul>
     </div>
   );
 }
