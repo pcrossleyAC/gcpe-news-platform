@@ -2158,6 +2158,11 @@ fieldset.gcpe-org-contact {
   grid-row: 1;
   width: 8rem;
 }
+/* The hex box is 8rem; its input shrinks to fit inside it instead of running past its border. */
+.gcpe-site-theme__color .bcds-react-aria-TextField--Input {
+  min-width: 0;
+  width: 100%;
+}
 .gcpe-site-theme__color .bcds-react-aria-TextField--Error,
 .gcpe-site-theme__color .bcds-react-aria-TextField--Description {
   grid-column: 3 / -1;
@@ -2205,7 +2210,12 @@ fieldset.gcpe-org-contact {
 .gcpe-site-theme__preview {
   margin-top: 0.5rem;
 }
-@media (max-width: 40rem) {
+/* Stacked by the form's own width, not the window's: beside the side navigation (a 768px
+ * tablet) the one-row layout left the contrast badges a sliver of a column past the edge. */
+.gcpe-site-theme {
+  container-type: inline-size;
+}
+@container (max-width: 44rem) {
   .gcpe-site-theme__color {
     grid-template-columns: 2.5rem 8rem minmax(0, 1fr);
   }
