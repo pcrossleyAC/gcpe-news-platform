@@ -12,6 +12,7 @@ import { AddOrganizationForm } from "./AddOrganizationForm";
 import { OrganizationEditForm, SAVED_MESSAGE } from "./OrganizationEditForm";
 import { HandOverPanel } from "./HandOverPanel";
 import { abbreviationTakenMessage } from "./abbreviation";
+import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { canEditOrgProfile, isCoreAdmin } from "./access";
 
 /**
@@ -137,10 +138,12 @@ export function OrganizationsScreen(): React.JSX.Element {
           body: flag === "hq" ? { isHq: value } : { isPublic: value },
         },
       );
-      setFlagNote({ key: o.key, flag, errors: [] });
       reload();
+      // Shown (and so announced) only once a confirmation dialog has fully closed.
+      afterDialogsClose(() => setFlagNote({ key: o.key, flag, errors: [] }));
     } catch (caught) {
-      setFlagNote({ key: o.key, flag, errors: messagesOf(caught) });
+      const errors = messagesOf(caught);
+      afterDialogsClose(() => setFlagNote({ key: o.key, flag, errors }));
     } finally {
       setBusy(false);
       setConfirmingUnlist(null);

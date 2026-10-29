@@ -40,6 +40,21 @@ async function openEditor(who: string, user = userEvent.setup()): Promise<void> 
   await user.click(await screen.findByRole("button", { name: `Edit ${who}` }));
 }
 
+
+/** Records, the moment a live region first gets text, whether it was hidden from assistive
+ * technology then (inside an aria-hidden ancestor, as a still-open modal leaves the page). */
+function watchFirstText(region: Element): { hiddenWhenSet: boolean | null } {
+  const seen = { hiddenWhenSet: null as boolean | null };
+  const observer = new MutationObserver(() => {
+    if (seen.hiddenWhenSet === null && region.textContent) {
+      seen.hiddenWhenSet = region.closest('[aria-hidden="true"]') !== null || document.querySelector('[role="alertdialog"]') !== null;
+      observer.disconnect();
+    }
+  });
+  observer.observe(region, { childList: true, subtree: true, characterData: true });
+  return seen;
+}
+
 describe("UsersScreen", () => {
   afterEach(() => {
     cleanup();
@@ -181,13 +196,17 @@ describe("UsersScreen", () => {
     render(withAuth(<UsersScreen />));
     await openEditor("other@x.invalid");
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("switch", { name: "other@x.invalid is active" }));
+    const toggleBefore = await screen.findByRole("switch", { name: "other@x.invalid is active" });
+    const seen = watchFirstText(toggleBefore.closest(".gcpe-inline-control")!.querySelector("[aria-live='polite']")!);
+    await user.click(toggleBefore);
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Deactivate" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1" && c.init?.method === "PATCH")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.init?.method === "PATCH")!.init!.body as string)).toEqual({ isActive: false });
     const toggle = await screen.findByRole("switch", { name: "other@x.invalid is inactive" });
     expect(toggle).not.toBeChecked();
     expect(await screen.findByText("Saved")).toBeInTheDocument();
+    // Only once the dialog has gone (the page no longer aria-hidden), so it is announced.
+    expect(seen.hiddenWhenSet).toBe(false);
   });
 
   it("reactivates a user at once, with no question, and says Saved", async () => {

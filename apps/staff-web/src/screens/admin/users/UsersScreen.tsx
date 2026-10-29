@@ -8,6 +8,7 @@ import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { HiddenPrefixLabel, ShortLabel } from "../../../shared/ShortLabel";
 import { messagesOf } from "../messages";
 import { useSeededValue } from "../../../shared/useSeededValue";
+import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { STAFF_ROLES } from "./roles";
 import { TableScroll } from "../../../shared/TableScroll";
 
@@ -74,10 +75,12 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
     setActiveSaved(false);
     try {
       await apiFetch<UserView>(`/core/api/users/${user.id}`, { method: "PATCH", body: { isActive: next } });
-      setActiveSaved(true);
       onChanged();
+      // Shown (and so announced) only once the Deactivate dialog has fully closed.
+      afterDialogsClose(() => setActiveSaved(true));
     } catch (caught) {
-      setActiveMessages(messagesOf(caught));
+      const messages = messagesOf(caught);
+      afterDialogsClose(() => setActiveMessages(messages));
     } finally {
       setBusy(false);
       setConfirmingDeactivate(false);

@@ -137,6 +137,21 @@ const renderScreen = () =>
     </SessionProvider>,
   );
 
+
+/** Records, the moment a live region first gets text, whether it was hidden from assistive
+ * technology then (inside an aria-hidden ancestor, as a still-open modal leaves the page). */
+function watchFirstText(region: Element): { hiddenWhenSet: boolean | null } {
+  const seen = { hiddenWhenSet: null as boolean | null };
+  const observer = new MutationObserver(() => {
+    if (seen.hiddenWhenSet === null && region.textContent) {
+      seen.hiddenWhenSet = region.closest('[aria-hidden="true"]') !== null || document.querySelector('[role="alertdialog"]') !== null;
+      observer.disconnect();
+    }
+  });
+  observer.observe(region, { childList: true, subtree: true, characterData: true });
+  return seen;
+}
+
 describe("OrganizationsScreen", () => {
   afterEach(() => {
     cleanup();
@@ -223,6 +238,7 @@ describe("OrganizationsScreen", () => {
     renderScreen();
     const user = userEvent.setup();
     await user.click(await screen.findByLabelText("Health is listed publicly"));
+    const seen = watchFirstText(screen.getByLabelText("Health is listed publicly").closest("td")!.querySelector("[aria-live='polite']")!);
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove from public site" }));
     await waitFor(() =>
       expect(calls.some((c) => c.url === "/core/api/organizations/health/public" && c.init?.method === "PUT")).toBe(true),
@@ -230,6 +246,9 @@ describe("OrganizationsScreen", () => {
     expect(JSON.parse(calls.find((c) => c.url.endsWith("/public"))!.init!.body as string)).toEqual({ isPublic: false });
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(await within(screen.getByLabelText("Health is listed publicly").closest("td")!).findByText("Saved")).toBeInTheDocument();
+    // "Saved" arrives only once the dialog has gone, when the page is no longer hidden from
+    // assistive technology, so it is actually announced.
+    expect(seen.hiddenWhenSet).toBe(false);
   });
 
   it("a SiteEditor sees names, ministers and Edit buttons but no HQ/Public checkboxes", async () => {
