@@ -60,6 +60,8 @@ export function CalendarGrid({ query, view, anchor, timeZone, onAnchor }: { quer
   const itemText = (i: CalendarItem, day: string) =>
     `${minId(i)} ${!i.isAllDay && i.startAt && bcDateOf(i.startAt, timeZone) === day ? `${timeText(i.startAt, timeZone)} ` : ""}${i.title}`;
 
+  const today = todayIn(timeZone);
+
   return (
     <section aria-labelledby="calendar-grid-heading" className="gcpe-calendar-grid">
       <h2 id="calendar-grid-heading">{title}</h2>
@@ -89,7 +91,7 @@ export function CalendarGrid({ query, view, anchor, timeZone, onAnchor }: { quer
               {week.map((d) => {
                 const otherMonth = view === "month" && d.slice(0, 7) !== anchor.slice(0, 7);
                 return (
-                  <td key={d} data-date={d} className={otherMonth ? "gcpe-other-month" : undefined}>
+                  <td key={d} data-date={d} className={otherMonth ? "gcpe-other-month" : undefined} aria-current={d === today ? "date" : undefined}>
                     <span className="gcpe-day">
                       {otherMonth ? (
                         <>

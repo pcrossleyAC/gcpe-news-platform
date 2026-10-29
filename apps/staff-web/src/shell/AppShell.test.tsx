@@ -15,7 +15,8 @@ function stubSession(roles: string[], tzCheck?: { at: string; offsetMinutes: num
       if (url === "/core/auth/session") {
         return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@example.invalid", roles }, expiresAt: new Date().toISOString() });
       }
-      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", ...(tzCheck ? { tzCheck } : {}) });
+      if (url === "/core/api/time-zone-check") return jsonResponse(200, { timeZone: "America/Vancouver", ...(tzCheck ? { tzCheck } : {}) });
+      if (url === "/nrms/api/config" && !roles.some((r) => r.startsWith("NRMS.") || r === "Core.Admin")) return jsonResponse(403, { error: "forbidden" });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -145,6 +146,10 @@ describe("AppShell — browser time-zone drift warning", () => {
       return new RealDateTimeFormat(locale, options);
     });
     await renderShell(["NRMS.Viewer"], { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
+    expect(await screen.findByText(/time-zone information is out of date/i)).toBeInTheDocument();
+    // Staff with no NRMS role (NRMS's /config refuses them) are warned too.
+    cleanup();
+    await renderShell(["NoD.Viewer"], { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
     expect(await screen.findByText(/time-zone information is out of date/i)).toBeInTheDocument();
   });
 });

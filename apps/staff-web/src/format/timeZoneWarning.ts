@@ -39,7 +39,8 @@ function browserOffsetMinutesFor(at: string, timeZone: string): number | null {
 }
 
 /**
- * Fix round 1 (3f Task 3), finding 3: `GET /nrms/api/config`'s `tzCheck` gives a (instant,
+ * Fix round 1 (3f Task 3), finding 3: `GET /core/api/time-zone-check`'s `tzCheck` (open to any
+ * signed-in user, so Calendar-only and NoD-only staff are covered too) gives a (instant,
  * server's UTC offset) pair for the tenant zone (`config.timeZone`); this asks the *browser's
  * own* `Intl`/tzdata what offset it computes for that same zone at that same instant
  * ({@link browserOffsetMinutesFor}) and compares. A stale browser — one that doesn't yet know
@@ -54,7 +55,7 @@ export function useTimeZoneWarning(): boolean {
   const [mismatch, setMismatch] = useState(false);
 
   useEffect(() => {
-    apiFetch<ConfigResponse>("/nrms/api/config").then(
+    apiFetch<ConfigResponse>("/core/api/time-zone-check").then(
       (config) => {
         if (!config.tzCheck || !config.timeZone) return;
         const browserOffsetMinutes = browserOffsetMinutesFor(config.tzCheck.at, config.timeZone);

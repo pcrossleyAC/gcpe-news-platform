@@ -54,6 +54,13 @@ describe("Core HTTP API", () => {
     expect((await request(app).put("/api/organizations/health").set("authorization", `Bearer ${reader}`).send(healthOrg)).status).toBe(403);
   });
 
+  it("time-zone-check: any signed-in caller (no roles needed) gets the tenant zone and the server's offset; anonymous gets 401", async () => {
+    expect((await request(app).get("/api/time-zone-check")).status).toBe(401);
+    const res = await request(app).get("/api/time-zone-check").set("authorization", `Bearer ${reader}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ timeZone: "America/Vancouver", tzCheck: { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 } });
+  });
+
   it("authenticates before parsing request bodies", async () => {
     const malformed = await request(app).put("/api/organizations/health").set("content-type", "application/json").send("{not json");
     // Parsing first would answer 400 here; an anonymous caller must get 401 without the body being parsed.

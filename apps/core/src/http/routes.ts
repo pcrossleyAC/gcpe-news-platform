@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from "express";
 import { z, ZodError } from "zod";
+import { tzCheckFor } from "@gcpe/config";
 import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
@@ -74,6 +75,13 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
   const timeZone = opts.timeZone ?? DEFAULT_TIME_ZONE;
   const r = express.Router();
   const admin = requireRole("Core.Admin");
+
+  // Any signed-in user, whatever their roles: the Hub's stale-browser time-zone warning
+  // (staff-web format/timeZoneWarning.ts) must reach Calendar-only and NoD-only staff too.
+  r.get(
+    "/time-zone-check",
+    safe(async (_req, res) => void res.json({ timeZone, tzCheck: tzCheckFor(timeZone) })),
+  );
 
   r.get(
     "/organizations",

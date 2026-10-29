@@ -205,18 +205,17 @@ body {
 }
 
 /* The screen's h1 takes focus on every route change (useFocusH1OnRouteChange) so a screen-reader
- * user lands on it; a keyboard user still sees where focus is, but as a light underline-style
- * ring clear of the text rather than the browser's heavy box around the whole heading. */
+ * user lands on it; a keyboard user still sees where focus is, as a light underline clear of the
+ * text rather than a box around the whole heading (which read as a stray frame on every load). */
 .gcpe-shell__main h1[tabindex="-1"]:focus {
   outline: none;
 }
 
 .gcpe-shell__main h1[tabindex="-1"]:focus-visible {
-  width: fit-content;
-  max-width: 100%;
-  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
-  outline-offset: var(--layout-margin-xsmall, 0.25rem);
-  border-radius: var(--layout-border-radius-small, 2px);
+  text-decoration: underline;
+  text-decoration-color: var(--surface-color-border-active, #2e5dd7);
+  text-decoration-thickness: var(--layout-border-width-medium, 2px);
+  text-underline-offset: 0.3em;
 }
 
 /* Narrow screens (phones, a tablet held upright): the section menu folds into a "Menu" button
@@ -1284,6 +1283,23 @@ body {
   vertical-align: top;
   height: 6rem;
   padding: 0.25rem;
+  /* Fixed layout: a long title wraps inside its day (a phone's month cell is ~50px) instead of
+   * widening the page. */
+  overflow-wrap: anywhere;
+}
+.gcpe-calendar-grid th {
+  padding: 0.25rem;
+  text-align: left;
+}
+.gcpe-calendar-grid th abbr {
+  text-decoration: none;
+}
+.gcpe-calendar-grid td[aria-current="date"] {
+  background: var(--surface-color-background-light-blue, #f1f8fe);
+  box-shadow: inset 0 3px 0 var(--surface-color-border-active, #2e5dd7);
+}
+.gcpe-calendar-grid td[aria-current="date"] .gcpe-day {
+  font-weight: 700;
 }
 .gcpe-calendar-grid .gcpe-other-month {
   background: #f5f5f5;
