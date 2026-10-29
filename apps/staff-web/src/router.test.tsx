@@ -166,14 +166,15 @@ describe("router (basename /hub)", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Add a subscriber" })).toBeInTheDocument();
   });
 
-  it("a Calendar administrator with no NRMS or NoD role lands on Calendar access", async () => {
+  // Owner decision 2026-10-29: a Calendar administrator lands on the Calendar itself; Calendar
+  // access stays one click away in the nav.
+  it("a Calendar administrator with no NRMS or NoD role lands on the Calendar, with Calendar access in the nav", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["Calendar.Administrator"] }, expiresAt: new Date().toISOString() });
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-        if (url === "/core/api/calendar-access") return jsonResponse(200, []);
-        if (url === "/core/api/organizations") return jsonResponse(200, []);
+        if (url === "/calendar/api/me") return jsonResponse(403, { error: "no Calendar access" });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -183,8 +184,9 @@ describe("router (basename /hub)", () => {
         <RouterProvider router={router} />
       </SessionProvider>,
     );
-    expect(await screen.findByRole("heading", { level: 1, name: "Calendar access" })).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/hub/calendar-access");
+    expect(await screen.findByRole("heading", { level: 1, name: "Corporate Calendar" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/hub/calendar");
+    expect(screen.getAllByRole("link", { name: "Calendar access" }).some((a) => a.getAttribute("href") === "/hub/calendar-access")).toBe(true);
   });
 
   it("organizations/cabinet-change is the Cabinet change screen", async () => {

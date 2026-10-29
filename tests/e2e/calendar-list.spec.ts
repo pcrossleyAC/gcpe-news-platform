@@ -152,7 +152,15 @@ test.describe("the Calendar list: journeys", () => {
 
     await page.getByLabel("Days ahead (Clear LA Status)").fill("0");
     await page.getByRole("button", { name: "Clear LA Status" }).click();
-    await expect(page.getByText(/^Cleared the LA status of \d+ activit(y|ies)\.$/)).toBeVisible();
+    // It asks first, with the count (owner decision 2026-10-29); with nothing to clear it just says so.
+    const laConfirm = page.getByRole("alertdialog");
+    const nothingToClear = page.getByText("No activities up to 0 days ahead have an LA status to clear.");
+    await expect(laConfirm.or(nothingToClear)).toBeVisible();
+    if (await laConfirm.isVisible()) {
+      await expect(laConfirm).toContainText(/Clear the LA status of \d+ activit(y|ies)\?/);
+      await laConfirm.getByRole("button", { name: "Clear LA Status" }).click();
+      await expect(page.getByText(/^Cleared the LA status of \d+ activit(y|ies)\.$/)).toBeVisible();
+    }
 
     const corp = page.getByRole("region", { name: "Corporate Queries" });
     await openSavedViews(page);

@@ -1,6 +1,8 @@
-import { NavLink, Outlet, useLocation, useOutletContext } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useOutletContext } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { useSession } from "../../session/SessionContext";
+import { canManageCalendarAccess } from "../admin/calendar-access/calendar-roles";
 import { CALENDAR_ADMIN_LEVEL, CALENDAR_SYSADMIN_LEVEL, type CalendarMe } from "./access";
 import { CalendarErrorBoundary } from "./ErrorBoundary";
 import { useCalendarMe } from "./useCalendarMe";
@@ -15,7 +17,7 @@ export function CalendarSection(): React.JSX.Element {
     return (
       <div className="gcpe-calendar">
         <h1>Corporate Calendar</h1>
-        {denied ? <p>You don&rsquo;t have Calendar access. Ask a Calendar administrator.</p> : <InlineAlert variant="danger" role="alert" description={error!} />}
+        {denied ? <NoCalendarAccess /> : <InlineAlert variant="danger" role="alert" description={error!} />}
       </div>
     );
   }
@@ -58,6 +60,17 @@ export function CalendarSection(): React.JSX.Element {
         <Outlet context={me} />
       </CalendarErrorBoundary>
     </div>
+  );
+}
+
+/** Owner decision 2026-10-29: not a dead end for someone who can grant Calendar access. */
+function NoCalendarAccess(): React.JSX.Element {
+  return canManageCalendarAccess(useSession()) ? (
+    <p>
+      You don&rsquo;t have Calendar access. Calendar roles and ministries are given in <Link to="/calendar-access">Calendar access</Link>.
+    </p>
+  ) : (
+    <p>You don&rsquo;t have Calendar access. Ask a Calendar administrator.</p>
   );
 }
 

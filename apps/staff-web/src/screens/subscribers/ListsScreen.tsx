@@ -39,6 +39,9 @@ export function ListsScreen(): React.JSX.Element {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The last Offer checkbox change: "Saved", or what went wrong, shown beside that checkbox (owner
+  // decision 2026-10-29 — the same instant-change pattern as Organizations' HQ/Public).
+  const [offerNote, setOfferNote] = useState<{ key: string; error: string | null } | null>(null);
 
   // Only the latest load may land: every save reloads, and an earlier, slower reload landing
   // after a later one would put back the lists as they were.
@@ -74,6 +77,55 @@ export function ListsScreen(): React.JSX.Element {
     }
   };
 
+  const setOffered = async (noteKey: string, path: string, enabled: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setSaveError(null);
+    setMessage(null);
+    setOfferNote(null);
+    try {
+      await apiFetch(path, { method: "PUT", body: { enabled } });
+      setOfferNote({ key: noteKey, error: null });
+    } catch (e) {
+      setOfferNote({ key: noteKey, error: saveErrorText(e) });
+    } finally {
+      setBusy(false);
+      reload();
+    }
+  };
+
+  /** An Offer checkbox with its outcome beside it. The polite region is always rendered (empty
+   * until a change), so the "Saved" that appears in it is announced. aria-disabled, not
+   * disabled, while a change saves: a natively disabled checkbox drops keyboard focus. */
+  const offerControl = (noteKey: string, label: string, checked: boolean, path: string) => {
+    const note = offerNote?.key === noteKey ? offerNote : null;
+    return (
+      <>
+        <span className="gcpe-inline-control">
+          <label>
+            <input
+              type="checkbox"
+              checked={checked}
+              aria-disabled={busy || undefined}
+              onChange={() => {
+                if (!busy) void setOffered(noteKey, path, !checked);
+              }}
+            />{" "}
+            {label}
+          </label>
+          <span aria-live="polite" className="gcpe-inline-note">
+            {note && note.error === null ? "Saved" : ""}
+          </span>
+        </span>
+        {note?.error && (
+          <p role="alert" className="gcpe-inline-note gcpe-inline-note--error">
+            Not saved: {note.error}
+          </p>
+        )}
+      </>
+    );
+  };
+
   const moveCategory = (index: number, delta: 1 | -1) => {
     const keys = moveBy(view!.categories.map((c) => c.key), index, delta);
     const name = view!.categories[index]!.name;
@@ -106,17 +158,7 @@ export function ListsScreen(): React.JSX.Element {
           )}
           {canAdmin && (
             <div className="gcpe-subscribers__lists-controls">
-              {c.editable && (
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={c.enabled}
-                    disabled={busy}
-                    onChange={() => void save(`/nod/api/list-categories/${encodeURIComponent(c.key)}`, { enabled: !c.enabled }, `${c.name} ${c.enabled ? "is no longer offered" : "is offered again"}.`)}
-                  />{" "}
-                  {`Offer ${c.name}`}
-                </label>
-              )}
+              {c.editable && <div>{offerControl(`category:${c.key}`, `Offer ${c.name}`, c.enabled, `/nod/api/list-categories/${encodeURIComponent(c.key)}`)}</div>}
               <Button variant="secondary" isPending={busy} isDisabled={ci === 0} onPress={() => moveCategory(ci, -1)}>
                 {`Move ${c.name} up`}
               </Button>
@@ -148,20 +190,7 @@ export function ListsScreen(): React.JSX.Element {
                     <td>{l.subscribers}</td>
                     <td>
                       {offeredText(c, l)}
-                      {canAdmin && c.editable && (
-                        <>
-                          {" "}
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={l.enabled}
-                              disabled={busy}
-                              onChange={() => void save(`/nod/api/lists/${encodeURIComponent(l.listKey)}`, { enabled: !l.enabled }, `${l.name} ${l.enabled ? "is no longer offered" : "is offered again"}.`)}
-                            />{" "}
-                            {`Offer ${l.name}`}
-                          </label>
-                        </>
-                      )}
+                      {canAdmin && c.editable && offerControl(`list:${l.listKey}`, `Offer ${l.name}`, l.enabled, `/nod/api/lists/${encodeURIComponent(l.listKey)}`)}
                     </td>
                     {canAdmin && c.editable && (
                       <td>

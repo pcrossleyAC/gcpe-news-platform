@@ -55,12 +55,16 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   const [slides, setSlides] = useState<SlideForm[]>(() => toForm(carousel.slides));
   const [goLive, setGoLive] = useState<ScheduleValue | null>(null);
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
+  // Owner decision 2026-10-29: the live carousel is the public home page, so saving it is
+  // publishing — its button says so and asks first. The next carousel's Save stays as it was.
+  const isLive = carousel.state === "live";
+  const [publishOpen, setPublishOpen] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const { announce } = useAnnouncer();
   const moveFocus = useMoveFocusRestore<HTMLDivElement>();
   const nextClientKey = useRef(0);
 
-  // I4: local reorders (unlike Documents, moving a slide isn't saved until "Save carousel")
+  // I4: local reorders (unlike Documents, moving a slide isn't saved until "Save carousel" or, on the live card, "Publish carousel changes")
   // re-render synchronously, so restoring focus right after the triggering state update (in an
   // effect keyed on `slides`) is enough — no need to wait on a network round trip.
   useEffect(() => {
@@ -98,6 +102,8 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
         }),
       )
       .then((next) => {
+        // Closed either way: a failure's message shows on the card, which the dialog would cover.
+        setPublishOpen(false);
         if (next) onSaved();
       });
   };
@@ -182,7 +188,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
                           </>
                         }
                       >
-                        <p>This removes the slide from this carousel. Save to commit the change.</p>
+                        <p>{isLive ? "This removes the slide from the live carousel once you publish the carousel changes." : "This removes the slide from this carousel. Save to commit the change."}</p>
                       </AlertDialog>
                     </Modal>
                   </DialogTrigger>
@@ -228,7 +234,11 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
                   )}
                 </div>
               )}
-              {!slide.id && canEdit && <p className="gcpe-hint gcpe-carousel__image">Save the carousel to add this slide&rsquo;s image.</p>}
+              {!slide.id && canEdit && (
+                <p className="gcpe-hint gcpe-carousel__image">
+                  {isLive ? "Publish the carousel changes to add this slide\u2019s image." : "Save the carousel to add this slide\u2019s image."}
+                </p>
+              )}
             </div>
           </div>
         );
@@ -244,10 +254,33 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
           Add slide
         </Button>
       )}
-      {canEdit && (
+      {canEdit && !isLive && (
         <Button onPress={save} isPending={section.saving}>
           Save carousel
         </Button>
+      )}
+      {canEdit && isLive && (
+        <DialogTrigger isOpen={publishOpen} onOpenChange={setPublishOpen}>
+          <Button isPending={section.saving}>Publish carousel changes</Button>
+          <Modal isDismissable>
+            <AlertDialog
+              variant="warning"
+              title="Publish these carousel changes now?"
+              buttons={
+                <>
+                  <Button variant="secondary" onPress={() => setPublishOpen(false)} isPending={section.saving}>
+                    Cancel
+                  </Button>
+                  <Button onPress={save} isPending={section.saving} pendingLabel="Publishing…">
+                    Publish carousel changes
+                  </Button>
+                </>
+              }
+            >
+              <p>This is the live carousel, so the public home page shows your changes straight away.</p>
+            </AlertDialog>
+          </Modal>
+        </DialogTrigger>
       )}
       </div>
     </div>

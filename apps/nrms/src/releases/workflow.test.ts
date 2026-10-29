@@ -7,9 +7,10 @@ import { ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError } from "./err
 import { bcYear, nextCounter } from "./numbering";
 import { createRelease, saveCategories } from "./service";
 import { loadView } from "./store";
-import { approve, cancel, schedule, unpublish } from "./workflow";
+import { approve, cancel, returnToDraft, schedule, unpublish } from "./workflow";
 
 const TZ = "America/Vancouver";
+const log1 = (r: { rows: { text: string }[] }) => r.rows.map((x) => x.text).at(-1);
 const deps = { timeZone: TZ };
 
 describe("workflow", () => {
@@ -190,6 +191,68 @@ describe("workflow", () => {
     expect(again.nodSubscribers).toBe(7);
     const log = await tdb.db.execute<{ text: string }>(sql`SELECT text FROM release_log WHERE release_id = ${v.id} ORDER BY id`);
     expect(log.rows.map((r) => r.text)).toEqual(["Created Release", "Approved Release", "Scheduled for Immediate Release", "Scheduled for Immediate Release"]);
+  });
+
+  // Owner decision 2026-10-29: an approved release that has never been published can go back to
+  // draft. Its generated numbers are given up (they'd carry the old lead ministry's abbreviation)
+  // and re-issued on the next approval; the history line keeps the old ones.
+  it("returnToDraft: an approved release goes back to draft, gives up its generated numbers, and logs them", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, headline: "Back to draft" }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    const d = await returnToDraft(db(), v.id, a.version, editor);
+    expect(d).toMatchObject({ status: "draft", reference: null, key: null });
+    const row = await tdb.db.execute<{ year: number | null; year_release: number | null; ministry_release: number | null }>(
+      sql`SELECT year, year_release, ministry_release FROM news_releases WHERE id = ${v.id}`,
+    );
+    expect(row.rows[0]).toEqual({ year: null, year_release: null, ministry_release: null });
+    const log = await tdb.db.execute<{ text: string }>(sql`SELECT text FROM release_log WHERE release_id = ${v.id} ORDER BY id`);
+    expect(log.rows.map((r) => r.text).at(-1)).toBe(`Returned to Draft (was ${a.reference}, ${a.key})`);
+    // Approvable again, with fresh numbers.
+    const again = await approve(db(), v.id, d.version, editor, deps);
+    expect(again.status).toBe("approved");
+    expect(again.reference).not.toBe(a.reference);
+  });
+
+  it("returnToDraft: a scheduled release is unscheduled, so the publisher never picks it up", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, headline: "Scheduled then draft" }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "2030-01-15T17:30:00Z" }, editor, deps);
+    const d = await returnToDraft(db(), v.id, s.version, editor);
+    expect(d.status).toBe("draft");
+    // Like Cancel schedule: the time stays as a plan (statusText "Planned"), nothing is committed.
+    expect(d.publishAt).toBe("2030-01-15T17:30:00.000Z");
+    const due = await tdb.db.execute(sql`SELECT id FROM news_releases WHERE id = ${v.id} AND status = 'scheduled'`);
+    expect(due.rows).toHaveLength(0);
+  });
+
+  it("returnToDraft: a story keeps its own key", async () => {
+    const s = await createRelease(db(), { ...sampleCreate, type: "story", headline: "Story back to draft" }, editor);
+    const a = await approve(db(), s.id, s.version, editor, deps);
+    const d = await returnToDraft(db(), s.id, a.version, editor);
+    expect(d).toMatchObject({ status: "draft", reference: null, key: "story-back-to-draft" });
+    expect(log1(await tdb.db.execute<{ text: string }>(sql`SELECT text FROM release_log WHERE release_id = ${s.id} ORDER BY id`))).toBe(`Returned to Draft (was ${a.reference})`);
+  });
+
+  it("returnToDraft refuses a draft, and anything that has ever been published", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, headline: "Not approved" }, editor);
+    await expect(returnToDraft(db(), v.id, v.version, editor)).rejects.toEqual(new ReleaseStateError("Only an approved release that hasn't been published can go back to draft."));
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    // Unpublished earlier: approved again, but it has been public under its key.
+    await tdb.db.execute(sql`UPDATE news_releases SET released_at = now() WHERE id = ${v.id}`);
+    await expect(returnToDraft(db(), v.id, a.version, editor)).rejects.toEqual(new ReleaseStateError("Only an approved release that hasn't been published can go back to draft."));
+  });
+
+  // A legacy import with no ReleaseDateTime has no releasedAt even after it was public; its
+  // AtomId (stamped on every publish, carried by imports) or a publication row still says so.
+  it("returnToDraft refuses a release with no releasedAt that has an atomId or a publication", async () => {
+    const msg = new ReleaseStateError("Only an approved release that hasn't been published can go back to draft.");
+    const v = await createRelease(db(), { ...sampleCreate, headline: "Imported, once public" }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    await tdb.db.execute(sql`UPDATE news_releases SET atom_id = 'legacy-atom' WHERE id = ${v.id}`);
+    await expect(returnToDraft(db(), v.id, a.version, editor)).rejects.toEqual(msg);
+    await tdb.db.execute(sql`UPDATE news_releases SET atom_id = NULL WHERE id = ${v.id}`);
+    await tdb.db.execute(sql`INSERT INTO release_publications (release_id, published_at, actor_id, actor_name, record) VALUES (${v.id}, now(), 'system', 'System', '{}'::jsonb)`);
+    await expect(returnToDraft(db(), v.id, a.version, editor)).rejects.toEqual(msg);
   });
 
   it("unpublish: only live releases, never advisories", async () => {

@@ -134,6 +134,56 @@ describe("CarouselScreen", () => {
   // Minors: Carousel stays NRMS.SiteEditor/Core.Admin only even though WebsiteScreen itself
   // now lets every read role through for Featured/Log — a Viewer gets the permission-denied
   // message, not the read-only screen (that's reserved for Core.Admin, below).
+  // Owner decision 2026-10-29: saving the live carousel changes the public home page at once, so
+  // its button says so and asks first. The next carousel keeps Save carousel.
+  it("the live carousel's Publish carousel changes asks first; only its confirm sends the PUT", async () => {
+    const live: CarouselView = {
+      id: "live-1",
+      state: "live",
+      goLiveAt: null,
+      wentLiveAt: "2026-10-01T12:00:00.000Z",
+      version: 4,
+      slides: [{ id: "slide-1", headline: "Live headline", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }],
+    };
+    const puts: { url: string; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
+        if (url === "/nrms/api/site/carousels") return jsonResponse(200, { live, next: NEXT_CAROUSEL, past: [] });
+        if (url === "/nrms/api/site/carousels/live-1" && init?.method === "PUT") {
+          puts.push({ url, body: JSON.parse(init.body as string) });
+          return jsonResponse(200, { ...live, version: 5 });
+        }
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<CarouselScreen />));
+    const liveSection = (await screen.findByRole("region", { name: "Live carousel" })) as HTMLElement;
+    const nextSection = screen.getByRole("region", { name: "Next carousel" }) as HTMLElement;
+    expect(within(liveSection).queryByRole("button", { name: "Save carousel" })).toBeNull();
+    expect(within(nextSection).getByRole("button", { name: "Save carousel" })).toBeInTheDocument();
+    const user = userEvent.setup();
+    const headline = within(liveSection).getByLabelText("Slide 1 headline");
+    await user.clear(headline);
+    await user.type(headline, "New live headline");
+
+    await user.click(within(liveSection).getByRole("button", { name: "Publish carousel changes" }));
+    let dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Publish these carousel changes now?");
+    expect(dialog).toHaveTextContent("the public home page shows your changes straight away.");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(puts).toHaveLength(0);
+
+    await user.click(within(liveSection).getByRole("button", { name: "Publish carousel changes" }));
+    dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Publish carousel changes" }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]!.body).toMatchObject({ version: 4, slides: [{ id: "slide-1", headline: "New live headline" }] });
+  });
+
   it("a Viewer can't reach Carousel at all (Featured/Log opened up to every role, not this)", async () => {
     stubBasicFetch(["NRMS.Viewer"], EMPTY);
     render(withAuth(<CarouselScreen />));

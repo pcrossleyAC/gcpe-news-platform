@@ -18,6 +18,7 @@ export const listApi = {
   reorderFilters: (ids: number[]) => apiFetch<SavedFilterView[]>("/calendar/api/saved-filters/order", { method: "PUT", body: { ids } }),
   deleteFilter: (id: number) => apiFetch<void>(`/calendar/api/saved-filters/${id}`, { method: "DELETE" }),
   reviewSelected: (items: { id: number; version: number }[]) => apiFetch<ReviewSelectedResult>("/calendar/api/activities/review-selected", { method: "POST", body: { items } }),
+  countLaStatus: (days: number) => apiFetch<{ count: number }>(`/calendar/api/activities/clear-la-status?days=${days}`),
   clearLaStatus: (days: number) => apiFetch<ClearLaStatusResult>("/calendar/api/activities/clear-la-status", { method: "POST", body: { days } }),
   calendar: (query: ListQuery, start: string, end: string) => apiFetch<CalendarRangeView>(`/calendar/api/list/calendar?q=${q(query)}&start=${start}&end=${end}`),
   exportUrl: (query: ListQuery) => `/calendar/api/list/export.xlsx?q=${q(query)}`,

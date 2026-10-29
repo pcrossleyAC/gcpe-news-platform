@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
@@ -76,8 +76,13 @@ describe("ListsScreen", () => {
     const calls = stub(["NoD.Admin"]);
     renderIt();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("checkbox", { name: "Offer Health" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Health is no longer offered.");
+    const health = await screen.findByRole("checkbox", { name: "Offer Health" });
+    await user.click(health);
+    // Owner decision 2026-10-29: "Saved" beside the checkbox, in a polite live region — the same
+    // pattern as Organizations' instant HQ/Public checkboxes.
+    expect(await within(health.closest("td")!).findByText("Saved")).toBeInTheDocument();
+    expect(health.closest("td")!.querySelector("[aria-live='polite']")).toHaveTextContent("Saved");
+    expect(health).toHaveFocus();
     expect(calls).toContainEqual({ url: "/nod/api/lists/ministries%3Ahealth", method: "PUT", body: { enabled: false } });
     await user.click(screen.getByRole("button", { name: "Move Energy up" }));
     await waitFor(() =>
@@ -87,6 +92,26 @@ describe("ListsScreen", () => {
     // getByText matches an element's own text nodes only, so the sentence around the link is
     // checked through the link itself.
     expect(screen.getByRole("link", { name: "Media list names" })).toHaveAttribute("href", "/media-list-names");
+  });
+
+  it("the category's Offer checkbox says Saved beside it too", async () => {
+    const calls = stub(["NoD.Admin"]);
+    renderIt();
+    const user = userEvent.setup();
+    const offer = await screen.findByRole("checkbox", { name: "Offer Ministries" });
+    await user.click(offer);
+    expect(await within(offer.closest(".gcpe-inline-control")! as HTMLElement).findByText("Saved")).toBeInTheDocument();
+    expect(calls).toContainEqual({ url: "/nod/api/list-categories/ministries", method: "PUT", body: { enabled: false } });
+  });
+
+  it("a failed Offer change says so beside the checkbox, not Saved", async () => {
+    stub(["NoD.Admin"], (url) => (url === "/nod/api/lists/ministries%3Ahealth" ? jsonResponse(500, { error: "boom" }) : undefined));
+    renderIt();
+    const user = userEvent.setup();
+    const health = await screen.findByRole("checkbox", { name: "Offer Health" });
+    await user.click(health);
+    expect(await within(health.closest("td")!).findByRole("alert")).toHaveTextContent("Not saved: Couldn't save. Try again.");
+    expect(within(health.closest("td")!).queryByText("Saved")).toBeNull();
   });
 
   it("an Editor sees the lists but can't change them", async () => {

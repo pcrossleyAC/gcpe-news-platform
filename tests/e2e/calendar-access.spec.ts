@@ -23,7 +23,12 @@ test.describe("Calendar access", () => {
     const [name, value] = cookie.split("=", 2) as [string, string];
     await context.addCookies([{ name, value, domain: new URL(baseUrl()).hostname, path: "/", httpOnly: true, secure: false, sameSite: "Lax" }]);
 
+    // A Calendar Administrator lands on the Calendar itself (owner decision 2026-10-29); Calendar
+    // access is in the nav.
     await page.goto(`${baseUrl()}/hub/`);
+    await expect(page).toHaveURL(/\/hub\/calendar$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Corporate Calendar" })).toBeVisible();
+    await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Calendar access" }).click();
     await expect(page).toHaveURL(/\/hub\/calendar-access$/);
     await expect(page.getByRole("heading", { level: 1, name: "Calendar access" })).toBeVisible();
     await expectNoSeriousA11yViolations(page, "Calendar access");

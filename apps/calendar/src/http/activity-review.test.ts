@@ -164,6 +164,27 @@ describe("review, review selected and Clear LA Status (spec addendum §7.1)", ()
       expect((await historyOf(tdb.db, atCutoff)).at(-1)).toMatchObject({ action: "la_status_cleared", fields: { hq_status: ["Changed", null] } });
     });
 
+    // Owner decision 2026-10-29: the Hub's confirm states how many activities it will change.
+    it("GET counts exactly what the POST then clears, with the same rules and permissions", async () => {
+      const count = (who: keyof World["as"], days: string) => call(app, "get", `/api/activities/clear-la-status?days=${days}`, w.as[who].cookie);
+      await insertRaw(tdb.db, { hqStatus: "new", startAt: new Date("2026-10-01T17:00:00Z") });
+      await insertRaw(tdb.db, { hqStatus: "changed", startAt: new Date("2026-11-06T07:00:00Z") });
+      const after = await insertRaw(tdb.db, { hqStatus: "new", startAt: new Date("2026-11-06T07:01:00Z") });
+      const hidden = await insertRaw(tdb.db, { hqStatus: "new", startAt: new Date("2026-11-04T17:00:00Z"), contactMinistryKey: "finance", isConfidential: true });
+      const before = await count("hqEditor", "3");
+      expect(before.status).toBe(200);
+      expect(before.body.count).toBeGreaterThanOrEqual(2);
+      const res = await clear("hqEditor", 3);
+      expect(res.body.cleared).toBe(before.body.count);
+      expect((await count("hqEditor", "3")).body).toEqual({ count: 0 });
+      expect((await row(after)).hqStatus).toBe("new");
+      expect((await row(hidden)).hqStatus).toBe("new");
+      expect((await count("admin", "3")).status).toBe(403);
+      expect((await count("hqReadOnly", "3")).status).toBe(403);
+      expect((await count("hqEditor", "367")).status).toBe(400);
+      expect((await count("hqEditor", "x")).status).toBe(400);
+    });
+
     it("needs HQ Editor (C139) and 0 to 366 days", async () => {
       expect((await clear("admin", 3)).status).toBe(403);
       expect((await clear("hqReadOnly", 3)).status).toBe(403);

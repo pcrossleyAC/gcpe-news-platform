@@ -3,7 +3,7 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { indexKeysFor, type SubscriberConfig } from "@gcpe/events";
 import { wallClockToInstant } from "@gcpe/config";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
-import { flickrJobs, newsReleases, organizations } from "../db/schema";
+import { flickrJobs, newsReleases, organizations, releasePublications } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
 import { ReleaseRuleError, ReleaseStateError } from "./errors";
 import { emitLinkChange, linkStateOf } from "./link-events";
@@ -31,6 +31,8 @@ function mediaListKey(key: string): string {
 const PAST_LIMIT_MS = 5 * 60_000;
 /** A live release in one of these can be taken down (a failed correction, or one re-scheduled, is still live). */
 const UNPUBLISHABLE_STATUSES = new Set(["published", "publishing", "failed", "scheduled"]);
+/** Approved and not yet gone out: what Return to draft accepts (see {@link returnToDraft}). */
+const RETURNABLE_STATUSES = new Set(["approved", "scheduled"]);
 
 /**
  * `s` ("YYYY-MM-DDTHH:mm", `scheduleSchema`'s `publishAtLocal`/`settingsSchema`'s
@@ -211,6 +213,43 @@ export async function cancel(db: Db, id: string, version: number, actor: Actor, 
       await dropUnfinishedFlickrJob(tx, id);
       await emitLinkChange(tx, before, await linkStateOf(tx, id), subscribers);
       return "Cancelled Release";
+    },
+    { correction: false },
+  );
+}
+
+/**
+ * Owner decision 2026-10-29: an approved release that has never been published (approved, or
+ * scheduled and not yet gone out) can go back to draft. Same role rule as Approve (the route's
+ * `edit`). "Approved" is having a reference throughout (statusText, Cancel schedule, the
+ * publisher's unpublish), so the reference is cleared; a Release/Advisory/Update's generated key
+ * and numbers go too — they carry the lead ministry's abbreviation, which may change before the
+ * next approval issues fresh ones. A story/factsheet key is the editor's own and stays. The old
+ * numbers are kept in the history line. A scheduled one stops being scheduled: status is no
+ * longer 'scheduled', which is all the publisher's claim looks at; its time stays as a plan, as
+ * Cancel schedule leaves it.
+ */
+export async function returnToDraft(db: Db, id: string, version: number, actor: Actor, subscribers: SubscriberConfig[] = []): Promise<ReleaseView> {
+  return mutateRelease(
+    db, id, version, actor,
+    async (tx, row) => {
+      // Ever public: releasedAt, or (a legacy import with no ReleaseDateTime) an atomId — stamped on
+      // every publish and carried by imports — or a publication row. Its key is then a public URL.
+      const published = row.releasedAt !== null || row.atomId !== null ||
+        (await tx.select({ id: releasePublications.id }).from(releasePublications).where(eq(releasePublications.releaseId, id)).limit(1)).length > 0;
+      if (!row.reference || !RETURNABLE_STATUSES.has(row.status) || row.live || published) {
+        throw new ReleaseStateError("Only an approved release that hasn't been published can go back to draft.");
+      }
+      const before = await linkStateOf(tx, id);
+      const generated = typeRules(row.type).generatesKey;
+      await tx
+        .update(newsReleases)
+        .set({ status: "draft", reference: null, ...(generated ? { key: null, year: null, yearRelease: null, ministryRelease: null } : {}) })
+        .where(eq(newsReleases.id, id));
+      await dropUnfinishedFlickrJob(tx, id);
+      await emitLinkChange(tx, before, await linkStateOf(tx, id), subscribers);
+      const was = [row.reference, generated ? row.key : null].filter(Boolean).join(", ");
+      return `Returned to Draft (was ${was})`;
     },
     { correction: false },
   );

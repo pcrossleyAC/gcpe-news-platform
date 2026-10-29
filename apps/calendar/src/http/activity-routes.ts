@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { createActivitySchema, safeString, updateActivitySchema, type ActivityView, type WriteResponse } from "@gcpe/calendar-contract";
-import { clearLaStatus, reviewSelected } from "../activities/bulk";
+import { clearLaStatus, countLaStatus, reviewSelected } from "../activities/bulk";
 import { cloneActivity } from "../activities/clone";
 import { createActivity } from "../activities/create";
 import { deleteActivity } from "../activities/delete";
@@ -27,6 +27,7 @@ const reviewSelectedSchema = z
   .strict()
   .refine((b) => new Set(b.items.map((i) => i.id)).size === b.items.length, "each activity once");
 const clearLaSchema = z.object({ days: z.number().int().min(0).max(366) }).strict();
+const clearLaCountSchema = z.object({ days: z.string().regex(/^\d{1,3}$/).transform(Number).pipe(z.number().max(366)) }).strict();
 
 type Params = { id: string };
 /** Legacy lets an HQ Editor below Advanced create, or make, a confidential activity for another ministry, then hides it from them. */
@@ -66,6 +67,11 @@ export function activityRoutes(deps: ApiDeps): Router {
   r.post("/activities/review-selected", run(async (req, res) => {
     const out = await reviewSelected(deps, req.calendar!, reviewSelectedSchema.parse(req.body).items);
     res.status(out.failed ? 207 : 200).json(out);
+  }));
+  // How many the POST below would clear now: the Hub's confirmation says so before it runs.
+  r.get("/activities/clear-la-status", run(async (req, res) => {
+    const { days } = clearLaCountSchema.parse(req.query);
+    res.json({ count: await countLaStatus(deps, req.calendar!, days) });
   }));
   r.post("/activities/clear-la-status", run(async (req, res) => {
     const out = await clearLaStatus(deps, req.calendar!, clearLaSchema.parse(req.body).days);

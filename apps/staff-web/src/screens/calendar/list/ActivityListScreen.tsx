@@ -3,6 +3,8 @@ import { Link, useLocation, useSearchParams } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { DEFAULT_LIST_QUERY, listQuerySchema, type ListDisplay, type ListOptions, type ListPreferences, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { useSession } from "../../../session/SessionContext";
+import { canManageCalendarAccess } from "../../admin/calendar-access/calendar-roles";
 import { activityPath } from "../activity/paths";
 import { useCalendarContext } from "../CalendarSection";
 import { ActivityTable } from "./ActivityTable";
@@ -70,6 +72,7 @@ export function ActivityListScreen(): React.JSX.Element {
   const here = useLocation();
   const notice = (here.state as { calendarNotice?: string } | null)?.calendarNotice ?? null;
   const me = useCalendarContext();
+  const canManage = canManageCalendarAccess(useSession());
   const [params, setParams] = useSearchParams();
   const [config, setConfig] = useState<CalendarConfigView | null>(null);
   const [options, setOptions] = useState<ListOptions | null>(null);
@@ -176,6 +179,19 @@ export function ActivityListScreen(): React.JSX.Element {
   return (
     <div className="gcpe-calendar-list">
       <h1>Corporate Calendar</h1>
+      {me.ministryKeys.length === 0 && !me.isHq && (
+        // Owner decision 2026-10-29: say why the list is empty rather than leave a dead end.
+        <p className="gcpe-notice">
+          You aren&rsquo;t in any ministry yet, so there are no activities to show you.{" "}
+          {canManage ? (
+            <>
+              Ministries are given in <Link to="/calendar-access">Calendar access</Link>.
+            </>
+          ) : (
+            "Ask a Calendar administrator."
+          )}
+        </p>
+      )}
       {notice && (
         <p role="status" className="gcpe-notice">
           {notice}

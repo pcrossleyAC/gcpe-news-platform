@@ -174,7 +174,10 @@ describe("OrganizationsScreen", () => {
     ).toBeChecked();
     const health = screen.getByLabelText("Health is an HQ organization");
     expect(health).not.toBeChecked();
-    await userEvent.setup().click(health);
+    const user = userEvent.setup();
+    await user.click(health);
+    // Owner decision 2026-10-29: ticking HQ asks first (it opens every ministry to Health's members).
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Make HQ" }));
     await waitFor(() =>
       expect(calls.some((c) => c.init?.method === "PUT")).toBe(true),
     );
@@ -194,9 +197,38 @@ describe("OrganizationsScreen", () => {
     stub(["Core.Admin"], calls);
     renderScreen();
     const health = await screen.findByLabelText("Health is an HQ organization");
-    await userEvent.setup().click(health);
+    const user = userEvent.setup();
+    await user.click(health);
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Make HQ" }));
     expect(await within(health.closest("td")!).findByText(/database unavailable/)).toBeInTheDocument();
     expect(within(health.closest("td")!).queryByText("Saved")).toBeNull();
+  });
+
+  it("asks before making an organization HQ; Cancel leaves it as it was and posts nothing", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(["Core.Admin"], calls);
+    renderScreen();
+    const user = userEvent.setup();
+    const health = await screen.findByLabelText("Health is an HQ organization");
+    await user.click(health);
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Make Health an HQ organization?");
+    expect(dialog).toHaveTextContent("Everyone in Health will see every ministry in the Corporate Calendar");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(health).not.toBeChecked();
+    expect(calls.some((c) => c.url.endsWith("/hq"))).toBe(false);
+  });
+
+  it("unticking HQ needs no confirmation (it only narrows access) and saves at once", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(["Core.Admin"], calls);
+    renderScreen();
+    const gcpe = await screen.findByLabelText("GCPE Media Relations is an HQ organization");
+    await userEvent.setup().click(gcpe);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await waitFor(() => expect(calls.some((c) => c.url === "/core/api/organizations/gcpe-media-relations/hq" && c.init?.method === "PUT")).toBe(true));
+    expect(JSON.parse(calls.find((c) => c.url.endsWith("/hq"))!.init!.body as string)).toEqual({ isHq: false });
   });
 
   it("shows whether each organization is listed publicly; ticking Public posts at once and says Saved", async () => {

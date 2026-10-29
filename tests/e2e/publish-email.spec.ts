@@ -21,6 +21,9 @@ test.describe("item 5: publish now reaches the News API, the static site and a N
     await page.goto(`${baseUrl()}/hub/releases/${created.id}`);
 
     await page.getByRole("button", { name: "Approve" }).click();
+    // Approve confirms first too (and warns about placeholder text); only the dialog's own
+    // Approve sends it.
+    await page.getByRole("dialog").getByRole("button", { name: "Approve" }).click();
     await expect(page.getByRole("button", { name: "Publish now" })).toBeVisible();
     await page.getByRole("button", { name: "Publish now" }).click();
     // Publish now confirms first (what it publishes and who is emailed); only the dialog's own
