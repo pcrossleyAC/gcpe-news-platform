@@ -1,3 +1,4 @@
+import { ObjectTooLargeError } from "@gcpe/storage";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { eq, inArray } from "drizzle-orm";
 import { z, ZodError } from "zod";
@@ -100,6 +101,8 @@ export function handleError(e: unknown, res: Response): boolean {
   // travel as inline bytes (slide events carry a URL instead, addendum §6.4), so this is no
   // longer specific to the carousel; it covers any oversized envelope, from any emitter.
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: e.message }), true;
+  // A streamed site file over its cap (website/files.ts): the rest of the body is not read.
+  if (e instanceof ObjectTooLargeError) return void res.status(413).set("connection", "close").json({ error: `A file can be at most ${Math.round(e.maxBytes / 1024 / 1024)} MB.` }), true;
   if (e instanceof PageTypeConflictError) return void res.status(409).json({ error: e.message }), true;
   if (e instanceof PageTypeRuleError) return void res.status(400).json({ error: e.message }), true;
   if (e instanceof PageTypeNotFoundError) return void res.status(404).json({ error: "not found" }), true;

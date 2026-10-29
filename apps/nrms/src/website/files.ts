@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { desc, eq, ilike, sql, type SQL } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
-import { assertSafeKey, forceExtension, hasMatchingExtension, safeFileName, sniff, type ObjectStore, type SniffedType } from "@gcpe/storage";
+import { Readable } from "node:stream";
+import { assertSafeKey, ATTACHMENT_TYPES, extensionOf, forceExtension, safeFileName, sniff, type ObjectStore, type SniffedType } from "@gcpe/storage";
 import { siteFiles } from "../db/schema";
 import type { Actor } from "../releases/store";
 import { deleteQuietly } from "../storage-log";
@@ -14,7 +15,12 @@ import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
  * `site.content.changed` events — they're served directly, not through a snapshot.
  */
 
-export const MAX_SITE_FILE_BYTES = 25 * 1024 * 1024;
+/**
+ * The largest site file (owner decision 2026-10-29: any type, like legacy, whose upload had no
+ * practical cap). 512 MiB, the legacy copy tool's default cap. Uploads are streamed to the store,
+ * never held in memory; IIS (Install-Gcpe.ps1) and the SiteGround proxy must let this through.
+ */
+export const MAX_SITE_FILE_BYTES = 512 * 1024 * 1024;
 const PAGE_SIZE = 50;
 
 export interface SiteFileView {
@@ -54,31 +60,45 @@ export async function listFiles(db: DbOrTx, input: ListFilesInput = {}): Promise
   return { total: n, files: rows.map(view) };
 }
 
-/** Magic-byte check, before anything is written — never trusts the declared/claimed type. */
-function checkBytes(bytes: Buffer): "application/pdf" | "image/png" | "image/jpeg" {
-  if (bytes.length === 0) throw new SiteRuleError(["The file is empty."]);
-  const type = sniff(bytes);
-  if (!type) throw new SiteRuleError(["Upload a PDF, PNG or JPEG file."]);
-  return type;
+const SNIFFABLE_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg"]);
+
+/**
+ * The type a site file is recorded as: the sniffed type for a PDF, PNG or JPEG; else the type its
+ * extension names in the attachment list (Office documents, GIF, RTF, text, CSV); else
+ * `application/octet-stream`. Never HTML, SVG or script. A name claiming PDF/PNG/JPEG over bytes
+ * that aren't one is octet-stream. (The stack serves `/files` by its own allowlist, files-policy.ts.)
+ */
+function recordedType(name: string, sniffed: SniffedType | null): string {
+  if (sniffed) return sniffed;
+  const ext = extensionOf(name);
+  if (!ext || SNIFFABLE_EXTENSIONS.has(ext) || !Object.hasOwn(ATTACHMENT_TYPES, ext)) return "application/octet-stream";
+  return ATTACHMENT_TYPES[ext as keyof typeof ATTACHMENT_TYPES].contentType;
 }
 
 export interface UploadFileInput {
   /** The uploader's original file name. */
   name: string;
-  bytes: Buffer;
+  /** The bytes, or `source` to stream them (the HTTP route streams the request body). */
+  bytes?: Buffer;
+  source?: AsyncIterable<Uint8Array> | Readable;
   replace?: boolean;
+  /** Default MAX_SITE_FILE_BYTES. */
+  maxBytes?: number;
 }
 
 /**
- * Adds or replaces a general file. The public name is `safeFileName(name)` with its extension
- * forced to match the sniffed type — a single path segment, so it passes `assertSafeKey` and
- * can't collide with `releases/…` (that always has a "/"). The storage key is the name itself.
+ * Adds or replaces a general file, of any type (owner decision 2026-10-29, like legacy) up to
+ * MAX_SITE_FILE_BYTES. The public name is `safeFileName(name)`, with its extension forced to match
+ * the sniffed type for a PDF, PNG or JPEG — a single path segment, so it passes `assertSafeKey`
+ * and can't collide with `releases/…` (that always has a "/"). The storage key is the name itself
+ * (a replace keeps the existing file's name and key). The recorded type is never HTML, SVG or
+ * script ({@link recordedType}); the stack serves `/files` by its own allowlist.
  *
  * Unlike release files (media/files.ts), this name is fixed and predictable rather than
  * random, so a new upload and a replace can both land on bytes that already exist at `name`.
- * The incoming bytes are always staged under a *temporary* key first (this store has no
- * rename/move, so "moving" bytes onto the real key is a second `put`); the temporary key is
- * always removed afterwards regardless of outcome.
+ * The incoming bytes are always streamed to a *temporary* key first (never held in memory), then
+ * moved (renamed) onto the real key; the temporary key is always removed afterwards regardless
+ * of outcome.
  *
  * Fix round 2: every write (or delete, see {@link deleteFile}) of the *real* key now happens
  * **inside** the database transaction, while that row's lock is held — not after it commits.
@@ -110,37 +130,41 @@ export interface UploadFileInput {
  *   even correct — see the report for a fuller discussion).
  */
 export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileInput, actor: Actor): Promise<SiteFileView> {
-  const contentType = checkBytes(input.bytes);
-  const name = forceExtension(safeFileName(input.name), contentType);
-  assertSafeKey(name);
-
-  // A prefix (not a suffix) so a long `name` can be truncated to stay inside assertSafeKey's
-  // 128-char segment limit without touching the random part that keeps it unique.
-  const tempKey = `tmp-${randomBytes(8).toString("hex")}-${name}`.slice(0, 128);
-  await store.put(tempKey, input.bytes, contentType);
+  // Staged under a temporary key first, streamed (never the whole body in memory), then sniffed
+  // from its first bytes and moved onto the real key inside the transaction. A prefix (not a
+  // suffix) so a long name can be truncated to stay inside assertSafeKey's 128-char segment limit
+  // without touching the random part that keeps it unique.
+  const tempKey = `tmp-${randomBytes(8).toString("hex")}-${safeFileName(input.name)}`.slice(0, 128);
+  const source = input.source ?? Readable.from(input.bytes ? [input.bytes] : []);
 
   // Only true once the real key has actually been written for a brand-new row — see the
   // catch below: that's the one case where a later failure means the bytes are orphaned
   // (no row ever existed) and must be cleaned up; a conflict (thrown before this point) must
   // never touch `name`'s existing bytes, and a replace's accepted residual is never cleaned up.
   let wroteRealKeyForNewRow = false;
+  let name = "";
   try {
+    const staged = await store.putStream(tempKey, source, "application/octet-stream", { maxBytes: input.maxBytes ?? MAX_SITE_FILE_BYTES });
+    if (staged.size === 0) throw new SiteRuleError(["The file is empty."]);
+    const sniffed = sniff((await store.readHead(tempKey, 1024)) ?? Buffer.alloc(0));
+    // A PDF, PNG or JPEG gets the extension its bytes prove (as before); any other type keeps its own.
+    name = sniffed ? forceExtension(safeFileName(input.name), sniffed) : safeFileName(input.name);
+    assertSafeKey(name);
+    const contentType = recordedType(name, sniffed);
+    const size = staged.size;
+
     const row = await db.transaction(async (tx) => {
       // The per-name locks importSiteFile takes (its name is the original spelling), for both spellings
       // this upload could match, in a fixed order, so an upload and a legacy import of one file serialise.
       // A name with control characters (Postgres refuses a NUL in text) can't be any file's name: match on the slug alone.
       const original = /[\u0000-\u001f\u007f]/.test(input.name) ? name : input.name;
       for (const n of [...new Set([original.toLowerCase(), name])].sort()) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"site_files:"} || ${n}))`);
-      const existing = await sameFile(tx, original, name, contentType);
+      const existing = await sameFile(tx, original, name);
       if (!input.replace) {
         if (existing) throw new SiteConflictError("A file with that name already exists.");
-        const [created] = await tx
-          .insert(siteFiles)
-          .values({ storageKey: name, name, contentType, size: input.bytes.length, createdBy: actor.id })
-          .onConflictDoNothing()
-          .returning();
+        const [created] = await tx.insert(siteFiles).values({ storageKey: name, name, contentType, size, createdBy: actor.id }).onConflictDoNothing().returning();
         if (!created) throw new SiteConflictError("A file with that name already exists.");
-        await store.put(name, input.bytes, contentType);
+        await store.move(tempKey, name);
         wroteRealKeyForNewRow = true;
         await writeSiteLog(tx, actor, "files", `Uploaded ${name}`);
         return created;
@@ -149,8 +173,8 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
       // The existing file keeps its name, URL and storage key (an imported legacy file's links keep working).
       const [locked] = await tx.select().from(siteFiles).where(eq(siteFiles.id, existing.id)).for("update");
       if (!locked) throw new SiteNotFoundError(`no file named ${name}`);
-      const [updated] = await tx.update(siteFiles).set({ contentType, size: input.bytes.length }).where(eq(siteFiles.id, locked.id)).returning();
-      await store.put(locked.storageKey, input.bytes, contentType);
+      const [updated] = await tx.update(siteFiles).set({ contentType: recordedType(locked.name, sniffed), size }).where(eq(siteFiles.id, locked.id)).returning();
+      await store.move(tempKey, locked.storageKey);
       await writeSiteLog(tx, actor, "files", `Replaced ${locked.name}`);
       return updated!;
     });
@@ -174,17 +198,17 @@ function isUniqueViolation(e: unknown): boolean {
 
 /**
  * The existing file an upload of `original` (slugged to `slug`) is the same file as: one named
- * `original` in any letter case whose extension fits the uploaded type (an imported legacy file
- * such as `Fact Sheet.pdf`), else one named `slug`, else one stored at `slug` (an imported file
- * whose storage key is the slug). Null when there is none.
+ * `original` in any letter case with the same extension as the upload's name (an imported legacy
+ * file such as `Fact Sheet.pdf` or `Plan Summary.docx`), else one named `slug`, else one stored at
+ * `slug` (an imported file whose storage key is the slug). Null when there is none.
  */
-async function sameFile(tx: DbOrTx, original: string, slug: string, contentType: SniffedType): Promise<SiteFileRow | null> {
+async function sameFile(tx: DbOrTx, original: string, slug: string): Promise<SiteFileRow | null> {
   const rows = await tx
     .select()
     .from(siteFiles)
     .where(sql`lower(${siteFiles.name}) = lower(${original}) OR ${siteFiles.name} = ${slug} OR ${siteFiles.storageKey} = ${slug}`);
   return (
-    rows.find((r) => r.name.toLowerCase() === original.toLowerCase() && hasMatchingExtension(r.name, contentType)) ??
+    rows.find((r) => r.name.toLowerCase() === original.toLowerCase() && extensionOf(r.name) === extensionOf(slug)) ??
     rows.find((r) => r.name === slug) ??
     rows.find((r) => r.storageKey === slug) ??
     null

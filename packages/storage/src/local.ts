@@ -1,5 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, open, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { InvalidKeyError, assertSafeKey } from "./names";
 
@@ -10,8 +13,22 @@ export interface StoredObject {
   updatedAt: Date;
 }
 
+/** A streamed object ran past `maxBytes`: nothing was stored. */
+export class ObjectTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`larger than ${maxBytes} bytes`);
+    this.name = "ObjectTooLargeError";
+  }
+}
+
 export interface ObjectStore {
   put(key: string, bytes: Buffer, contentType: string): Promise<StoredObject>;
+  /** Streams `source` to `key` (temp file + rename): never holds the whole object in memory. Over `maxBytes`: ObjectTooLargeError, nothing stored. */
+  putStream(key: string, source: AsyncIterable<Uint8Array> | Readable, contentType: string, opts?: { maxBytes?: number }): Promise<StoredObject>;
+  /** Renames `from` onto `to` (bytes and metadata), replacing `to`. Throws when `from` doesn't exist. */
+  move(from: string, to: string): Promise<StoredObject>;
+  /** The first `n` bytes of `key` (fewer if it is shorter), or null when there is none. */
+  readHead(key: string, n: number): Promise<Buffer | null>;
   get(key: string): Promise<{ bytes: Buffer; meta: StoredObject } | null>;
   delete(key: string): Promise<boolean>;
   list(prefix: string): Promise<StoredObject[]>;
@@ -86,6 +103,71 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
       const meta: MetaFile = { contentType, size: bytes.length, updatedAt: updatedAt.toISOString() };
       await atomicWrite(metaPath(key), JSON.stringify(meta));
       return { key, contentType, size: bytes.length, updatedAt };
+    },
+
+    async putStream(key, source, contentType, opts = {}) {
+      assertSafeKey(key);
+      const path = filePath(key);
+      await mkdir(dirname(path), { recursive: true });
+      const tmp = `${path}.tmp-${randomBytes(8).toString("hex")}`;
+      const max = opts.maxBytes ?? Infinity;
+      let size = 0;
+      const counter = new Transform({
+        transform(chunk: Buffer, _enc, done) {
+          size += chunk.length;
+          done(size > max ? new ObjectTooLargeError(max) : null, chunk);
+        },
+      });
+      try {
+        await pipeline(source instanceof Readable ? source : Readable.from(source), counter, createWriteStream(tmp, { flags: "wx" }));
+        await rename(tmp, path);
+      } catch (err) {
+        try {
+          await unlink(tmp);
+        } catch {
+          // best-effort cleanup; the original error is what matters
+        }
+        throw err;
+      }
+      const updatedAt = new Date();
+      const meta: MetaFile = { contentType, size, updatedAt: updatedAt.toISOString() };
+      await atomicWrite(metaPath(key), JSON.stringify(meta));
+      return { key, contentType, size, updatedAt };
+    },
+
+    async move(from, to) {
+      assertSafeKey(from);
+      assertSafeKey(to);
+      const meta = await readMeta(from);
+      if (!meta) throw new InvalidKeyError(from, "no such object");
+      await mkdir(dirname(filePath(to)), { recursive: true });
+      await rename(filePath(from), filePath(to));
+      const moved: MetaFile = { contentType: meta.contentType, size: meta.size, updatedAt: new Date().toISOString() };
+      await atomicWrite(metaPath(to), JSON.stringify(moved));
+      try {
+        await unlink(metaPath(from));
+      } catch (err) {
+        if (!isEnoent(err)) throw err;
+      }
+      return { key: to, contentType: moved.contentType, size: moved.size, updatedAt: new Date(moved.updatedAt) };
+    },
+
+    async readHead(key, n) {
+      assertSafeKey(key);
+      let handle;
+      try {
+        handle = await open(filePath(key), "r");
+      } catch (err) {
+        if (isEnoent(err)) return null;
+        throw err;
+      }
+      try {
+        const buf = Buffer.alloc(n);
+        const { bytesRead } = await handle.read(buf, 0, n, 0);
+        return buf.subarray(0, bytesRead);
+      } finally {
+        await handle.close();
+      }
     },
 
     async get(key) {

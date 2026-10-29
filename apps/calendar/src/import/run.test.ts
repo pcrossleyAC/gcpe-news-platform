@@ -178,6 +178,9 @@ describe("calendar:import (acceptance 15)", () => {
       async get() { return null; },
       async delete() { return false; },
       async list() { return []; },
+      async putStream() { throw new Error("disk full (synthetic failure for the test)"); },
+      async move() { throw new Error("disk full (synthetic failure for the test)"); },
+      async readHead() { return null; },
       publicPath: (key) => `/files/${key}`,
     };
     const d = await deps(undefined, failingStore);

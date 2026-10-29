@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { appendMatchingExtension, assertSafeKey, forceExtension, InvalidKeyError, localStore, randomFileKey, safeFileName, sniff } from "./index";
+import { appendMatchingExtension, assertSafeKey, forceExtension, InvalidKeyError, localStore, ObjectTooLargeError, randomFileKey, safeFileName, sniff } from "./index";
 
 const PDF = Buffer.from("%PDF-1.7\n%âãÏÓ\n1 0 obj\n");
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
@@ -109,5 +109,46 @@ describe("localStore", () => {
 
     const listed = await s.list("corrupt");
     expect(listed[0]!.contentType).toBe("application/octet-stream");
+  });
+});
+
+describe("localStore streaming (site files of any size)", () => {
+  let root: string;
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), "storage-stream-"));
+  });
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  async function* chunks(...parts: (string | Buffer)[]) {
+    for (const p of parts) yield typeof p === "string" ? Buffer.from(p) : p;
+  }
+
+  it("putStream writes the bytes and metadata without buffering them in one Buffer; readHead reads the start", async () => {
+    const store = localStore(root);
+    const meta = await store.putStream("streamed.bin", chunks("ab", "cd", "ef"), "application/octet-stream");
+    expect(meta).toMatchObject({ key: "streamed.bin", size: 6, contentType: "application/octet-stream" });
+    expect((await store.get("streamed.bin"))!.bytes.toString()).toBe("abcdef");
+    expect((await store.readHead("streamed.bin", 4))!.toString()).toBe("abcd");
+    expect(await store.readHead("missing.bin", 4)).toBeNull();
+  });
+
+  it("putStream over maxBytes throws ObjectTooLargeError and leaves nothing behind (no file, no temp file)", async () => {
+    const store = localStore(root);
+    await expect(store.putStream("big.bin", chunks("12345", "67890", "x"), "application/octet-stream", { maxBytes: 10 })).rejects.toThrow(ObjectTooLargeError);
+    expect(await store.get("big.bin")).toBeNull();
+    expect((await readdir(root)).filter((n) => n.startsWith("big.bin"))).toEqual([]);
+  });
+
+  it("move renames an object (bytes and metadata) onto another key, replacing what was there", async () => {
+    const store = localStore(root);
+    await store.put("dest.pdf", Buffer.from("old"), "application/pdf");
+    await store.putStream("tmp-1-dest.pdf", chunks("new bytes"), "application/pdf");
+    const moved = await store.move("tmp-1-dest.pdf", "dest.pdf");
+    expect(moved).toMatchObject({ key: "dest.pdf", size: 9, contentType: "application/pdf" });
+    expect((await store.get("dest.pdf"))!.bytes.toString()).toBe("new bytes");
+    expect(await store.get("tmp-1-dest.pdf")).toBeNull();
+    await expect(store.move("nope.pdf", "x.pdf")).rejects.toThrow();
   });
 });

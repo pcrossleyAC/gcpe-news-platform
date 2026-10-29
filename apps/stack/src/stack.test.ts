@@ -560,6 +560,36 @@ describe("apps/stack", () => {
     expect(await target.text()).toBe("%PDF legacy licence");
   });
 
+  it("Hub uploads of any type (owner decision 2026-10-29): .html, .svg, .js and .exe are stored and served only as sandboxed downloads; a PDF stays inline", async () => {
+    const upload = (name: string, body: string) =>
+      fetch(`${instance.stackUrl}/nrms/api/site/files?replace=false`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/octet-stream", "x-gcpe-file-name": encodeURIComponent(name) },
+        body: Buffer.from(body),
+      });
+    for (const [name, body] of [
+      ["any-type-page.html", "<script>alert(1)</script>"],
+      ["any-type-pic.svg", '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'],
+      ["any-type-app.js", "alert(1)"],
+      ["any-type-setup.exe", "MZ"],
+    ] as const) {
+      const up = await upload(name, body);
+      expect(up.status, name).toBe(201);
+      const { url, contentType } = (await up.json()) as { url: string; contentType: string };
+      expect(contentType, name).toBe("application/octet-stream");
+      const res = await fetch(`${instance.stackUrl}${url}`);
+      expect(res.status, name).toBe(200);
+      expect(res.headers.get("content-type"), name).toBe("application/octet-stream");
+      expect(res.headers.get("content-disposition"), name).toMatch(/^attachment/);
+      expect(res.headers.get("content-security-policy"), name).toBe("sandbox; default-src 'none'");
+      expect(res.headers.get("x-content-type-options"), name).toBe("nosniff");
+    }
+    const pdf = await upload("any-type-doc.pdf", "%PDF-1.7 inline");
+    const res = await fetch(`${instance.stackUrl}${((await pdf.json()) as { url: string }).url}`);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(res.headers.get("content-disposition")).toBeNull();
+  });
+
   it("Q17: a release's file is a 404 while draft, approved and embargoed, 200 once live, 404 from the moment it is unpublished and once deleted; staff read it through /nrms/api throughout", async () => {
     await seedTaxonomy(instance.dbs.nrms.db); // NRMS's local taxonomy copy; idempotent
     const admin = { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" };

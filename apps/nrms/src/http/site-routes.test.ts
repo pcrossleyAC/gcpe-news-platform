@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -366,11 +366,46 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
     expect(await store.get("budget-2026.pdf")).toBeNull();
   });
 
-  it("a 26 MiB upload is refused with 413 and nothing is stored", async () => {
+  it("a 26 MiB upload is accepted now (any type, up to 512 MiB, streamed to the store)", async () => {
     const big = Buffer.concat([PDF, Buffer.alloc(26 * 1024 * 1024)]);
     const res = await upload("/api/site/files", siteEditorCookie, big, "big.pdf");
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ name: "big.pdf", size: big.length });
+    expect((await store.get("big.pdf"))!.bytes.length).toBe(big.length);
+  });
+
+  it("any type is accepted (an HTML file is stored as octet-stream, never text/html)", async () => {
+    const res = await upload("/api/site/files", siteEditorCookie, Buffer.from("<script>alert(1)</script>"), "Evil Page.html");
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ name: "evil-page.html", url: "/files/evil-page.html", contentType: "application/octet-stream" });
+  });
+
+  it("over the site-file cap is a 413 (declared length or streamed body) and nothing is stored, not even a temp file", async () => {
+    const capped = createApp({
+      db: tdb.db,
+      auth: { session: { secret: SECRET } },
+      eventSecrets: {},
+      workflow: { timeZone: "America/Vancouver" },
+      subscribers: [],
+      store,
+      slideFiles: { store, filesBase: "" },
+      liveFeedDefaults: defaults,
+      maxSiteFileBytes: 64,
+    });
+    const server = capped.listen(0);
+    await new Promise<void>((r) => server.once("listening", () => r()));
+    const res = await request(server).post("/api/site/files").set("cookie", siteEditorCookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream").set("x-gcpe-file-name", "over.pdf").send(Buffer.concat([PDF, Buffer.alloc(100)]));
     expect(res.status).toBe(413);
-    expect(await store.get("big.pdf")).toBeNull();
+    // Chunked (no Content-Length): refused while streaming.
+    const chunked = request(server).post("/api/site/files").set("cookie", siteEditorCookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream").set("x-gcpe-file-name", "over2.pdf");
+    chunked.write(PDF);
+    chunked.write(Buffer.alloc(100));
+    const res2 = await chunked;
+    expect(res2.status).toBe(413);
+    await new Promise<void>((r) => server.close(() => r()));
+    expect(await store.get("over.pdf")).toBeNull();
+    expect(await store.get("over2.pdf")).toBeNull();
+    expect((await readdir(root)).filter((n) => n.startsWith("tmp-"))).toEqual([]);
   });
 
   it("site files: the name comes only from X-GCPE-File-Name; ?name= is refused and nothing is stored", async () => {

@@ -32,6 +32,8 @@ export function createApp(deps: {
   distribution?: DistributionClient;
   /** Uploaded release files (STORAGE_DIR); unset → the upload routes answer 503. */
   store?: ObjectStore;
+  /** The site-file upload cap (default MAX_SITE_FILE_BYTES, 512 MiB); tests set a small one. */
+  maxSiteFileBytes?: number;
   /** Carousel and emergency pin images (spec addendum §6.4); unset → falls back to `store` (or,
    * lacking that, a lazy local store under the OS temp dir — never touched unless a slide or
    * pin image is actually saved, which no test lacking a real `store` does). */
@@ -89,6 +91,7 @@ export function createApp(deps: {
       liveFeedDefaults: deps.liveFeedDefaults ?? { manifestUrl: "", m3uUrl: "" },
       siteSettingsDefaults: deps.siteSettingsDefaults,
       store: deps.store,
+      maxSiteFileBytes: deps.maxSiteFileBytes,
       slideFiles,
       siteUrl: deps.siteUrl ?? "",
       notify: deps.blueBridgeNotify ?? (async (subject) => void console.log(`[nrms] blue bridge: ${subject}`)),

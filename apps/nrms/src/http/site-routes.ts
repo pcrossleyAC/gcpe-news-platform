@@ -55,6 +55,8 @@ export interface SiteRouteDeps {
   siteSettingsDefaults?: SiteSettings;
   /** Where general files go; unset → the file upload/delete routes answer 503. */
   store?: ObjectStore;
+  /** The site-file upload cap (default MAX_SITE_FILE_BYTES). */
+  maxSiteFileBytes?: number;
   /** Where carousel and emergency pin images go, content-addressed (spec addendum §6.4). */
   slideFiles: SlideImageFiles;
   /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject. */
@@ -207,7 +209,14 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
   const blueBridgeAdmin = requireRole("Core.Admin");
   const json = express.json({ limit: "64kb" });
   const rawImage = express.raw({ type: () => true, limit: MAX_SITE_IMAGE_BYTES });
-  const rawFile = express.raw({ type: () => true, limit: MAX_SITE_FILE_BYTES });
+  // Site files (any type, up to 512 MiB) are streamed to the store, never parsed into memory: a
+  // declared length over the cap is refused before reading; a chunked body is cut off while streaming.
+  const maxSiteFile = deps.maxSiteFileBytes ?? MAX_SITE_FILE_BYTES;
+  const declaredSize = (req: Request, res: Response, next: NextFunction) => {
+    const declared = Number(req.headers["content-length"] ?? NaN);
+    if (Number.isFinite(declared) && declared > maxSiteFile) return void res.status(413).set("connection", "close").json({ error: `A file can be at most ${Math.round(maxSiteFile / 1024 / 1024)} MB.` });
+    next();
+  };
   const needStore = (_req: Request, res: Response, next: NextFunction) =>
     deps.store ? next() : void res.status(503).json({ error: "File storage isn't configured." });
 
@@ -378,10 +387,10 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     needStore,
     query(uploadFileQuerySchema),
     fileNameHeader(siteFileName),
-    rawFile,
+    declaredSize,
     run(async (req, res) => {
       const q = res.locals.query as z.infer<typeof uploadFileQuerySchema>;
-      const view = await uploadFile(db, deps.store!, { name: res.locals.fileName as string, bytes: bytesOf(req), replace: q.replace }, actorOf(req));
+      const view = await uploadFile(db, deps.store!, { name: res.locals.fileName as string, source: req, replace: q.replace, maxBytes: maxSiteFile }, actorOf(req));
       res.status(201).json(view);
     }),
   );

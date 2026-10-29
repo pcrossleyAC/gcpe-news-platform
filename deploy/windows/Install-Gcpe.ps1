@@ -343,7 +343,9 @@ Write-GcpeStep "IIS site $siteName"
 $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'
 # includePortInXForwardedFor off: the app reads X-Forwarded-For as plain addresses, so per-visitor
 # limits key on the client's address, not address:port (a new key for every connection).
-& $appcmd set config -section:system.webServer/proxy /enabled:"True" /preserveHostHeader:"True" /reverseRewriteHostInResponseHeaders:"False" /includePortInXForwardedFor:"False" /responseBufferLimit:"0" /timeout:"00:05:00" /commit:apphost | Out-Null
+# timeout 20 minutes: a 512 MiB Website > Files upload on a slow link (the stack's own request
+# timeout is the same, apps/stack/src/server-timeouts.ts).
+& $appcmd set config -section:system.webServer/proxy /enabled:"True" /preserveHostHeader:"True" /reverseRewriteHostInResponseHeaders:"False" /includePortInXForwardedFor:"False" /responseBufferLimit:"0" /timeout:"00:20:00" /commit:apphost | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'could not enable the ARR proxy' }
 $allowed = (& $appcmd list config -section:system.webServer/rewrite/allowedServerVariables) -join "`n"
 foreach ($var in @('HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST', 'ARR_CACHE_CONTROL_OVERRIDE')) {
@@ -425,7 +427,8 @@ $webConfig = @"
     </rewrite>
     <security>
       <requestFiltering allowDoubleEscaping="true">
-        <requestLimits maxAllowedContentLength="209715200" />
+        <!-- 520 MiB: Website > Files uploads take any type up to 512 MiB (MAX_SITE_FILE_BYTES, apps/nrms/src/website/files.ts). -->
+        <requestLimits maxAllowedContentLength="545259520" />
       </requestFiltering>
     </security>
     <httpErrors existingResponse="PassThrough" />

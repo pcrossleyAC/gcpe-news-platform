@@ -1028,9 +1028,20 @@ Our equivalent is NRMS's site files: the Hub's **Website > Files** screen, serve
 they are in the Hub's Files list (dated with the legacy upload time, created by "Legacy import",
 one site-log line each) and staff can open, delete or replace them like any upload. Uploading a
 file with an imported file's name (any letter case) asks to replace it, and a replace keeps the
-imported file's name and URL (`/files/Fact%20Sheet.pdf` stays), so legacy links keep working. The
-Hub's own rules still apply to the replacement (PDF, PNG or JPEG matching the name's extension, at
-most 25 MB); an imported `.docx` can be deleted from the Hub but not replaced there.
+imported file's name and URL (`/files/Fact%20Sheet.pdf` stays), so legacy links keep working, as
+long as the replacement has the same extension (an imported `.docx` is replaced by a `.docx`).
+
+**Hub uploads: any type, up to 512 MB** (owner decision 2026-10-29, like the legacy Hub, whose
+Files screen took any type with no practical size limit). Only site files: release translations
+and media assets and carousel/pin images keep their own rules. The upload is streamed to
+`<DATA_DIR>/storage` (never held in memory), so the cap is disk, not RAM. A PDF, PNG or JPEG still
+gets the extension its bytes prove; any other file keeps its own (sanitised) name. What a browser
+is given is decided by the serving policy below, so an uploaded `.html`, `.svg`, `.js` or `.exe`
+is only ever a sandboxed download. The Hub refuses a file over 512 MB before sending it; NRMS
+answers `413` for a declared or streamed body over the cap. **SiteGround hand check:** its nginx
+has its own request-body limit and proxy timeout in front of the app (see "Troubleshooting"); a
+site file over that limit gets nginx's HTML `413` instead of the Hub's message. Raise it to clear
+512 MB for `/nrms/api/site/files` if large site files are needed on that host.
 
 **What the stack serves at `/files/<name>`**, in this order:
 
@@ -1092,7 +1103,7 @@ It writes NRMS's database (`NRMS_DATABASE_URL`) and object store (`NRMS_STORAGE_
   file: no response headers within 30 s, or no body bytes for 60 s, fails that file (a slow but
   steady download is never cut off); a body shorter than its Content-Length fails (not checked when
   the server compressed it anyway); a file larger than `--max-file-mb` (default 512) fails with
-  that reason. Imports may be larger than the Hub's 25 MB upload limit, up to that cap. A file is
+  that reason (the same 512 MB as a Hub upload by default). A file is
   held in memory while it is written, so allow the cap's worth of free memory per worker.
 - **Writes.** One site file per name, idempotent case-insensitively: a name that is already a site
   file (a staff upload included) is skipped without a request; `--refresh` downloads again and
@@ -1958,8 +1969,9 @@ Both run on a developer machine (or in CI), never against boxs.ca. `npm run site
   cron-job.org's dashboard if you're on the fallback) and that it's getting `200`, not `401`
   (wrong/stale token in `~/.gcpe-tick-token`) or `202` (coalesced — a previous tick was still
   running; harmless, the next call will do the work).
-- **A media file or translation upload fails, especially a large one**: NRMS itself allows up to
-  25 MiB (`MAX_RELEASE_FILE_BYTES` in `apps/nrms/src/media/files.ts`), but SiteGround's nginx
+- **A media file or translation upload fails, especially a large one** (or a Website > Files upload,
+  which NRMS allows up to 512 MiB): NRMS itself allows up to
+  25 MiB for release files (`MAX_RELEASE_FILE_BYTES` in `apps/nrms/src/media/files.ts`), but SiteGround's nginx
   sits in front of it with its own upload size limit, which this stack doesn't control. An HTML
   `413` (not NRMS's own JSON error) means nginx refused the upload before it ever reached the
   app — check/raise nginx's limit (Site Tools → Devs, or ask SiteGround support) rather than
