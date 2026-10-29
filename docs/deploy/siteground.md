@@ -1038,7 +1038,10 @@ and media assets and carousel/pin images keep their own rules. The upload is str
 gets the extension its bytes prove; any other file keeps its own (sanitised) name. What a browser
 is given is decided by the serving policy below, so an uploaded `.html`, `.svg`, `.js` or `.exe`
 is only ever a sandboxed download. The Hub refuses a file over 512 MB before sending it; NRMS
-answers `413` for a declared or streamed body over the cap. **SiteGround hand check:** its nginx
+answers `413` for a declared or streamed body over the cap. A name already taken is the `409`
+replace prompt before the body is sent on (except PDF, PNG and JPEG names, whose final extension
+depends on the bytes); a Windows device name (`CON`, `nul.txt`, `COM1`, `CONIN$` …) is refused.
+The stack allows one request 20 minutes to arrive but closes a connection idle for 2 minutes. **SiteGround hand check:** its nginx
 has its own request-body limit and proxy timeout in front of the app (see "Troubleshooting"); a
 site file over that limit gets nginx's HTML `413` instead of the Hub's message. Raise it to clear
 512 MB for `/nrms/api/site/files` if large site files are needed on that host.

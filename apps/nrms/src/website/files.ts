@@ -62,6 +62,9 @@ export async function listFiles(db: DbOrTx, input: ListFilesInput = {}): Promise
 
 const SNIFFABLE_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg"]);
 
+/** Windows device names, with or without an extension, any case: a file named one can't be created (or would open the device). */
+export const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3]|conin\$|conout\$)(\..*)?$/i;
+
 /**
  * The type a site file is recorded as: the sniffed type for a PDF, PNG or JPEG; else the type its
  * extension names in the attachment list (Office documents, GIF, RTF, text, CSV); else
@@ -134,7 +137,17 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
   // from its first bytes and moved onto the real key inside the transaction. A prefix (not a
   // suffix) so a long name can be truncated to stay inside assertSafeKey's 128-char segment limit
   // without touching the random part that keeps it unique.
-  const tempKey = `tmp-${randomBytes(8).toString("hex")}-${safeFileName(input.name)}`.slice(0, 128);
+  const slug = safeFileName(input.name);
+  // Before a byte is read: a device name (as given, or as slugged — "con.pdf" stays a device) is the
+  // normal rule error, and a name that is already taken is the normal 409 when the final name
+  // can't change with the bytes (sniffing only renames to .pdf/.png/.jpg, so not for those or an
+  // extension-less name). The check after streaming stays the authority.
+  if (WINDOWS_DEVICE_NAME.test(input.name.trim()) || WINDOWS_DEVICE_NAME.test(slug)) throw new SiteRuleError([`"${input.name.slice(0, 80)}" is a reserved Windows device name; rename the file.`]);
+  const ext = extensionOf(slug);
+  if (!input.replace && ext && !SNIFFABLE_EXTENSIONS.has(ext) && !/[\u0000-\u001f\u007f]/.test(input.name)) {
+    if (await sameFile(db, input.name, slug)) throw new SiteConflictError("A file with that name already exists.");
+  }
+  const tempKey = `tmp-${randomBytes(8).toString("hex")}-${slug}`.slice(0, 128);
   const source = input.source ?? Readable.from(input.bytes ? [input.bytes] : []);
 
   // Only true once the real key has actually been written for a brand-new row — see the
@@ -248,7 +261,7 @@ function assertLegacyName(name: string): void {
     name.startsWith(".") ||
     /[\/\\:~<>"|?*\u0000-\u001f\u007f]/.test(name) ||
     /[. ]$/.test(name) ||
-    /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3]|conin\$|conout\$)(\..*)?$/i.test(name);
+    WINDOWS_DEVICE_NAME.test(name);
   if (bad) throw new SiteRuleError([`"${name.slice(0, 80)}" can't be a file name at /files/.`]);
 }
 

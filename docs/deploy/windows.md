@@ -465,14 +465,18 @@ assets". Not yet run on Windows.
 **Website > Files: any type, up to 512 MB** (owner decision 2026-10-29, like the legacy Hub). Every
 layer lets that through: NRMS streams the upload to `<DATA_DIR>\storage` (cap `MAX_SITE_FILE_BYTES`,
 `apps/nrms/src/website/files.ts`); the stack lets a request take 20 minutes to arrive
-(`apps/stack/src/server-timeouts.ts`; Node's default is 5); the app server's IIS `web.config`
+(`apps/stack/src/server-timeouts.ts`; Node's default is 5) but closes any connection that sends
+nothing for 2 minutes, so a stalled upload is cut off early; the app server's IIS `web.config`
 allows a 520 MiB body (`maxAllowedContentLength="545259520"`) and ARR waits 20 minutes
 (`system.webServer/proxy` `timeout`), both written by `Install-Gcpe.ps1`. A server installed before
 this change keeps 200 MB and 5 minutes until `Install-Gcpe.ps1` is run again (it keeps `gcpe.env`
 and rewrites `web.config` and the proxy settings); `Deploy-GcpeRelease.ps1` does not change them.
 The DMZ proxy keeps its 1 MB limit: staff upload on the app server's internal name, never through
 it. Release translations and media assets (25 MB) and carousel/pin images keep their own limits.
-An uploaded `.html`, `.svg`, `.js` or `.exe` is served only as a sandboxed download.
+An uploaded `.html`, `.svg`, `.js` or `.exe` is served only as a sandboxed download; a Windows
+device name (`CON`, `nul.txt`, `COM1`, `LPT¹`, `CONIN$` …) is refused. Replacing a file a reader
+has open is retried for about 3 seconds; if Windows still holds it, the Hub says "The file is in
+use; try again in a minute." (503).
 
 **Legacy `/files` import.** `https://news.gov.bc.ca/files/<name>` are the files staff uploaded in
 the legacy Hub's Website > Files screen (Azure container `files`). `legacy-files-copy.mjs` imports

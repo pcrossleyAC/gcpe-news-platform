@@ -1,8 +1,10 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
+const require = createRequire(import.meta.url);
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { appendMatchingExtension, assertSafeKey, forceExtension, InvalidKeyError, localStore, ObjectTooLargeError, randomFileKey, safeFileName, sniff } from "./index";
+import { appendMatchingExtension, assertSafeKey, forceExtension, InvalidKeyError, localStore, ObjectBusyError, ObjectTooLargeError, randomFileKey, safeFileName, sniff } from "./index";
 
 const PDF = Buffer.from("%PDF-1.7\n%âãÏÓ\n1 0 obj\n");
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
@@ -150,5 +152,71 @@ describe("localStore streaming (site files of any size)", () => {
     expect((await store.get("dest.pdf"))!.bytes.toString()).toBe("new bytes");
     expect(await store.get("tmp-1-dest.pdf")).toBeNull();
     await expect(store.move("nope.pdf", "x.pdf")).rejects.toThrow();
+  });
+});
+
+describe("localStore renames on Windows: a busy target is retried, then ObjectBusyError", () => {
+  let root: string;
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), "storage-busy-"));
+  });
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  const failing = (code: string, times: number) => {
+    let left = times;
+    const calls: string[] = [];
+    const { rename } = require("node:fs/promises") as typeof import("node:fs/promises");
+    const fn = async (from: string, to: string) => {
+      calls.push(to);
+      if (left-- > 0) throw Object.assign(new Error(`${code}: synthetic`), { code });
+      return rename(from, to);
+    };
+    return { fn, calls };
+  };
+
+  it("EBUSY/EPERM/EACCES are retried with backoff (100, 200, 400, 800, 1600 ms) and then succeed", async () => {
+    for (const code of ["EBUSY", "EPERM", "EACCES"]) {
+      const sleeps: number[] = [];
+      const f = failing(code, 2);
+      const store = localStore(root, "/files/", { rename: f.fn, sleep: async (ms) => void sleeps.push(ms) });
+      await store.put(`busy-${code.toLowerCase()}.pdf`, Buffer.from("old"), "application/pdf");
+      await store.putStream(`tmp-${code.toLowerCase()}`, [Buffer.from("new")], "application/pdf");
+      f.calls.length = 0;
+      sleeps.length = 0;
+      const failMove = failing(code, 2);
+      const moving = localStore(root, "/files/", { rename: failMove.fn, sleep: async (ms) => void sleeps.push(ms) });
+      await moving.move(`tmp-${code.toLowerCase()}`, `busy-${code.toLowerCase()}.pdf`);
+      expect(sleeps.slice(0, 2), code).toEqual([100, 200]);
+      expect((await store.get(`busy-${code.toLowerCase()}.pdf`))!.bytes.toString()).toBe("new");
+    }
+  });
+
+  it("after 5 retries it throws ObjectBusyError; the source is left in place", async () => {
+    const store = localStore(root);
+    await store.putStream("tmp-stuck", [Buffer.from("x")], "application/pdf");
+    const sleeps: number[] = [];
+    const stuck = localStore(root, "/files/", { rename: failing("EBUSY", 99).fn, sleep: async (ms) => void sleeps.push(ms) });
+    await expect(stuck.move("tmp-stuck", "stuck.pdf")).rejects.toThrow(ObjectBusyError);
+    expect(sleeps).toEqual([100, 200, 400, 800, 1600]);
+    expect(await store.get("tmp-stuck")).not.toBeNull();
+  });
+
+  it("other errors are not retried", async () => {
+    const store = localStore(root);
+    await store.putStream("tmp-other", [Buffer.from("x")], "application/pdf");
+    const sleeps: number[] = [];
+    const f = failing("EXDEV", 1);
+    const other = localStore(root, "/files/", { rename: f.fn, sleep: async (ms) => void sleeps.push(ms) });
+    await expect(other.move("tmp-other", "other.pdf")).rejects.toThrow(/EXDEV/);
+    expect(sleeps).toEqual([]);
+  });
+
+  it("put's atomic write shares the retry", async () => {
+    const sleeps: number[] = [];
+    const store = localStore(root, "/files/", { rename: failing("EPERM", 1).fn, sleep: async (ms) => void sleeps.push(ms) });
+    await store.put("retried.pdf", Buffer.from("ok"), "application/pdf");
+    expect(sleeps).toEqual([100]);
+    expect((await store.get("retried.pdf"))!.bytes.toString()).toBe("ok");
   });
 });

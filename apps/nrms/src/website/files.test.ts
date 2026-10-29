@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { localStore, ObjectTooLargeError, type ObjectStore } from "@gcpe/storage";
 import { createNrmsTestDb, editor } from "../../test/helpers";
@@ -114,6 +114,31 @@ describe("website/files — general file uploads", () => {
     await expect(uploadFile(tdb.db, store, { name: "big.pdf", source: parts(), maxBytes: 50 }, editor)).rejects.toThrow(ObjectTooLargeError);
     expect((await listFiles(tdb.db)).files.map((f) => f.name)).toEqual(["streamed.pdf"]);
     expect((await readdir(root)).filter((n) => n.startsWith("tmp-") || n.includes("big"))).toEqual([]);
+  });
+
+  it("a Windows device name (CON, nul, aux, com1, LPT¹, CONIN$ …, any case, with or without extension) is refused before anything is read", async () => {
+    for (const name of ["CON", "nul.txt", "Aux.pdf", "com1", "COM9.docx", "lpt3.log", "LPT\u00b9", "com\u00b2.txt", "CONIN$", "conout$.txt", "prn.html"]) {
+      const putStream = vi.spyOn(store, "putStream");
+      await expect(uploadFile(tdb.db, store, { name, bytes: PDF }, editor), name).rejects.toThrow(SiteRuleError);
+      expect(putStream, name).not.toHaveBeenCalled();
+      putStream.mockRestore();
+    }
+    expect(await listFiles(tdb.db)).toEqual({ total: 0, files: [] });
+  });
+
+  it("a new upload whose name doesn't depend on its bytes conflicts before the body is read (409, no streaming); PDF/PNG/JPEG names wait for the bytes", async () => {
+    await uploadFile(tdb.db, store, { name: "minutes.docx", bytes: Buffer.from("PK\u0003\u0004 docx") }, editor);
+    await importSiteFile(tdb.db, store, { name: "Plan Summary.docx", bytes: Buffer.from("PK"), contentType: "application/octet-stream", createdAt: new Date(), replace: false }, { id: "legacy-import", name: "Legacy import" });
+    const putStream = vi.spyOn(store, "putStream");
+    for (const name of ["minutes.docx", "MINUTES.DOCX", "Plan Summary.docx"]) {
+      await expect(uploadFile(tdb.db, store, { name, source: (async function* () { throw new Error("the body must not be read"); })() }, editor), name).rejects.toThrow(SiteConflictError);
+    }
+    expect(putStream).not.toHaveBeenCalled();
+    // A PDF's final name depends on its bytes: it is read, then the post-stream check decides.
+    await uploadFile(tdb.db, store, { name: "budget.pdf", bytes: PDF }, editor);
+    await expect(uploadFile(tdb.db, store, { name: "budget.pdf", bytes: PDF }, editor)).rejects.toThrow(SiteConflictError);
+    expect(putStream).toHaveBeenCalled();
+    putStream.mockRestore();
   });
 
   it("the site-file cap is 512 MiB, the copy tool's default", () => {

@@ -24,7 +24,7 @@ export class ObjectTooLargeError extends Error {
 export interface ObjectStore {
   put(key: string, bytes: Buffer, contentType: string): Promise<StoredObject>;
   /** Streams `source` to `key` (temp file + rename): never holds the whole object in memory. Over `maxBytes`: ObjectTooLargeError, nothing stored. */
-  putStream(key: string, source: AsyncIterable<Uint8Array> | Readable, contentType: string, opts?: { maxBytes?: number }): Promise<StoredObject>;
+  putStream(key: string, source: AsyncIterable<Uint8Array> | Iterable<Uint8Array> | Readable, contentType: string, opts?: { maxBytes?: number }): Promise<StoredObject>;
   /** Renames `from` onto `to` (bytes and metadata), replacing `to`. Throws when `from` doesn't exist. */
   move(from: string, to: string): Promise<StoredObject>;
   /** The first `n` bytes of `key` (fewer if it is shorter), or null when there is none. */
@@ -43,12 +43,54 @@ interface MetaFile {
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
-async function atomicWrite(path: string, data: string | Buffer): Promise<void> {
+/** The rename onto `to` kept failing because Windows has the target open (EPERM/EBUSY/EACCES), after retries. */
+export class ObjectBusyError extends Error {
+  constructor(readonly key: string) {
+    super(`${key} is in use (the rename kept failing)`);
+    this.name = "ObjectBusyError";
+  }
+}
+
+type RenameFn = (from: string, to: string) => Promise<void>;
+export interface LocalStoreOptions {
+  /** For tests: the rename to use (default fs.rename). */
+  rename?: RenameFn;
+  /** For tests: how to wait between rename retries. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/** Codes Windows answers when the rename target (or source) is open in another process: retried. */
+const BUSY_CODES = new Set(["EPERM", "EBUSY", "EACCES"]);
+/** Waits before each of 5 retries: 100, 200, 400, 800, 1600 ms (about 3 s in all). */
+const RENAME_BACKOFF_MS = [100, 200, 400, 800, 1600];
+
+/**
+ * fs.rename with retries for Windows: replacing a file that a reader (the /files static server, an
+ * antivirus scan, a backup copy) has open fails EPERM/EBUSY/EACCES until it is closed. Retried 5
+ * times with backoff; then ObjectBusyError (the caller answers 503, try again). Other errors at once.
+ */
+async function renameWithRetry(from: string, to: string, key: string, doRename: RenameFn, sleep: (ms: number) => Promise<void>): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await doRename(from, to);
+      return;
+    } catch (err) {
+      const code = typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
+      if (typeof code !== "string" || !BUSY_CODES.has(code)) throw err;
+      if (attempt >= RENAME_BACKOFF_MS.length) throw new ObjectBusyError(key);
+      await sleep(RENAME_BACKOFF_MS[attempt]!);
+    }
+  }
+}
+
+const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+async function atomicWrite(path: string, data: string | Buffer, doRename: RenameFn = rename, sleep = realSleep): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.tmp-${randomBytes(8).toString("hex")}`;
   try {
     await writeFile(tmp, data);
-    await rename(tmp, path);
+    await renameWithRetry(tmp, path, path, doRename, sleep);
   } catch (err) {
     try {
       await unlink(tmp);
@@ -67,7 +109,10 @@ function isEnoent(err: unknown): boolean {
  * A local-folder ObjectStore. Objects live at `<root>/<key>`; metadata lives
  * at `<root>/.meta/<key>.json`. Writes are atomic (temp file + rename).
  */
-export function localStore(root: string, publicPrefix = "/files/"): ObjectStore {
+export function localStore(root: string, publicPrefix = "/files/", options: LocalStoreOptions = {}): ObjectStore {
+  const doRename: RenameFn = options.rename ?? rename;
+  const sleep = options.sleep ?? realSleep;
+  const write = (path: string, data: string | Buffer) => atomicWrite(path, data, doRename, sleep);
   const filePath = (key: string) => join(root, key);
   const metaPath = (key: string) => join(root, ".meta", `${key}.json`);
 
@@ -98,10 +143,10 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
   return {
     async put(key, bytes, contentType) {
       assertSafeKey(key);
-      await atomicWrite(filePath(key), bytes);
+      await write(filePath(key), bytes);
       const updatedAt = new Date();
       const meta: MetaFile = { contentType, size: bytes.length, updatedAt: updatedAt.toISOString() };
-      await atomicWrite(metaPath(key), JSON.stringify(meta));
+      await write(metaPath(key), JSON.stringify(meta));
       return { key, contentType, size: bytes.length, updatedAt };
     },
 
@@ -120,7 +165,7 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
       });
       try {
         await pipeline(source instanceof Readable ? source : Readable.from(source), counter, createWriteStream(tmp, { flags: "wx" }));
-        await rename(tmp, path);
+        await renameWithRetry(tmp, path, key, doRename, sleep);
       } catch (err) {
         try {
           await unlink(tmp);
@@ -131,7 +176,7 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
       }
       const updatedAt = new Date();
       const meta: MetaFile = { contentType, size, updatedAt: updatedAt.toISOString() };
-      await atomicWrite(metaPath(key), JSON.stringify(meta));
+      await write(metaPath(key), JSON.stringify(meta));
       return { key, contentType, size, updatedAt };
     },
 
@@ -141,9 +186,9 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
       const meta = await readMeta(from);
       if (!meta) throw new InvalidKeyError(from, "no such object");
       await mkdir(dirname(filePath(to)), { recursive: true });
-      await rename(filePath(from), filePath(to));
+      await renameWithRetry(filePath(from), filePath(to), to, doRename, sleep);
       const moved: MetaFile = { contentType: meta.contentType, size: meta.size, updatedAt: new Date().toISOString() };
-      await atomicWrite(metaPath(to), JSON.stringify(moved));
+      await write(metaPath(to), JSON.stringify(moved));
       try {
         await unlink(metaPath(from));
       } catch (err) {
