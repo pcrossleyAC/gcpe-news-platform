@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv } from "@gcpe/auth";
-import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
@@ -60,6 +60,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   assertTimeZoneRules(tenant);
 
   const app = createApp({
+    trustProxyHops: trustProxyHopsFrom(env),
     db,
     subscribers,
     timeZone: tenant.timeZone,

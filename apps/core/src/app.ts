@@ -35,6 +35,8 @@ function requireCurrentSessionIdentity(db: Db, localConfigured: boolean): Reques
 }
 
 export function createApp(deps: {
+  /** Reverse proxies in front of the app (TRUST_PROXY_HOPS); defaults to 1. */
+  trustProxyHops?: number;
   db: Db;
   subscribers: SubscriberConfig[];
   /** The tenant's IANA time zone (a cabinet change's BC schedule time). Defaults to America/Vancouver. */
@@ -45,7 +47,7 @@ export function createApp(deps: {
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", 1); // one hop: OpenShift router / SiteGround nginx
+  app.set("trust proxy", deps.trustProxyHops ?? 1); // hops: 1 = OpenShift router / SiteGround nginx / local IIS; TRUST_PROXY_HOPS=2 behind a DMZ proxy
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`)]));
   if (deps.loginRouter) app.use(deps.loginRouter);
   if (deps.session) app.use(sessionRoutes({ db: deps.db, ...deps.session }));

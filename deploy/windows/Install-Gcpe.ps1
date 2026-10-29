@@ -48,7 +48,10 @@ param(
     [string]$EntraAudience,
     # Google Search Console verification (optional; formats are checked by windows-env.js).
     [string]$GoogleVerificationFile,
-    [string]$GoogleSiteVerification
+    [string]$GoogleSiteVerification,
+    # How many reverse proxies sit in front of this server (TRUST_PROXY_HOPS): 1 (default) when
+    # clients reach IIS directly; 2 when a DMZ reverse proxy sits in front of this server.
+    [ValidateRange(1, 5)][int]$ProxyHops = 1
 )
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
@@ -170,6 +173,12 @@ if ($PostgresAdminUrl) {
 Write-GcpeStep "Configuration ($($paths.EnvFile))"
 if ($existingEnv) {
     Write-GcpeOk 'keeping the existing file (edit it and run Restart-Service gcpe-stack to change a setting)'
+    if ($PSBoundParameters.ContainsKey('ProxyHops')) {
+        # The one setting a re-run may change: it keeps its value unless -ProxyHops is passed.
+        $kept = @([IO.File]::ReadAllLines($paths.EnvFile) | Where-Object { $_ -notmatch '^\s*TRUST_PROXY_HOPS\s*=' })
+        Write-GcpeSecretFile -Path $paths.EnvFile -Value ((($kept + "TRUST_PROXY_HOPS=$ProxyHops") -join "`n") + "`n")
+        Write-GcpeOk "TRUST_PROXY_HOPS=$ProxyHops"
+    }
     $coreUrl = [Uri]$existingEnv['CORE_DATABASE_URL']
     $userInfo = $coreUrl.UserInfo.Split(':', 2)
     $db = @{ user = [Uri]::UnescapeDataString($userInfo[0]); password = [Uri]::UnescapeDataString($userInfo[1]); prefix = $coreUrl.AbsolutePath.TrimStart('/') -replace '_core$', '' }
@@ -185,6 +194,7 @@ if ($existingEnv) {
     if ($SmtpPassword) { $smtp.pass = ConvertFrom-GcpeSecureString $SmtpPassword }
     $settings = @{
         hostName = $HostName; dataDir = $paths.Data; port = $Port
+        proxyHops = $ProxyHops
         adminUsername = $AdminUsername; adminPassword = ConvertFrom-GcpeSecureString $AdminPassword
         db = @{ host = $admin.Host; port = $(if ($admin.Port -gt 0) { $admin.Port } else { 5432 }); user = $db.user; password = $db.password; prefix = $db.prefix }
         smtp = $smtp; mailFrom = $MailFrom; mailRedirectTo = @($MailRedirectTo)

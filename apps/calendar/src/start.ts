@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type express from "express";
 import { authFromEnv } from "@gcpe/auth";
-import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { type Closer, safeErrorLabel } from "@gcpe/http-kit";
@@ -72,7 +72,7 @@ export async function startCalendar(env: NodeJS.ProcessEnv): Promise<AppHandle> 
   const orphanSweep = createOrphanSweeper(db, store);
   // No local login router: the token it issues is a bearer token, which has no Calendar access.
   const reports = startReports(parsed);
-  const app = createApp({ db, auth: auth.bearer, eventSecrets: parsed.EVENT_SECRETS, rules, subscribers, store, reports });
+  const app = createApp({ trustProxyHops: trustProxyHopsFrom(env), db, auth: auth.bearer, eventSecrets: parsed.EVENT_SECRETS, rules, subscribers, store, reports });
 
   let stopDispatcher: (() => Promise<void>) | undefined;
   let sweep: NodeJS.Timeout | undefined;

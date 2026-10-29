@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv, isValidPasswordHash, serviceTokenProvider } from "@gcpe/auth";
-import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
@@ -196,6 +196,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     : null;
 
   const app = createApp({
+    trustProxyHops: trustProxyHopsFrom(env),
     db,
     auth: auth.bearer,
     loginRouter: auth.loginRouter,

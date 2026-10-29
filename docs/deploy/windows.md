@@ -146,6 +146,8 @@ password manager.
 Test/Prod add `-PostgresAdminUrl postgres://postgres@<database server>:5432/postgres` (it asks
 for the superuser password, from step 2's `postgres-superuser.txt`) and
 `-CertificateThumbprint <thumbprint>`.
+Add `-ProxyHops 2` when a DMZ reverse proxy sits in front of this server (default 1; it sets
+`TRUST_PROXY_HOPS` so visitors are not all logged as the proxy; a re-run changes it only if you pass it).
 All the options: `Get-Help .\Install-Gcpe.ps1 -Full`.
 
 What it does, in order (a full log goes to `C:\gcpe\logs\install-<time>.log`):

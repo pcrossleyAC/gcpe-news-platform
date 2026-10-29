@@ -1,7 +1,7 @@
 import type { Server } from "node:http";
 import express from "express";
 import { authFromEnv, NOD_SUBSCRIBE_API_ROLE, serviceTokenProvider } from "@gcpe/auth";
-import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { CircuitBreaker, createEmbeddingProvider, createGuardedEmbedder } from "@gcpe/embeddings";
 import type { Closer } from "@gcpe/http-kit";
@@ -157,6 +157,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
 
   const serviceBearer = changesBearerFromEnv(env);
   const app = createApp({
+    trustProxyHops: trustProxyHopsFrom(env),
     db,
     timeZone: tenant.timeZone,
     eventSecrets: parsed.EVENT_SECRETS,

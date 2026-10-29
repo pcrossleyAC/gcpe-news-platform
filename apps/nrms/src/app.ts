@@ -22,6 +22,8 @@ import { taxonomyHandler } from "./taxonomy";
 import { successionHandler } from "./succession";
 
 export function createApp(deps: {
+  /** Reverse proxies in front of the app (TRUST_PROXY_HOPS); defaults to 1. */
+  trustProxyHops?: number;
   db: Db;
   auth: BearerOptions;
   loginRouter?: Router | null;
@@ -63,7 +65,7 @@ export function createApp(deps: {
 
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", 1); // one hop: OpenShift router / SiteGround nginx
+  app.set("trust proxy", deps.trustProxyHops ?? 1); // hops: 1 = OpenShift router / SiteGround nginx / local IIS; TRUST_PROXY_HOPS=2 behind a DMZ proxy
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`)]));
 
   // Mounted before any body parser: signatures cover the raw bytes (see

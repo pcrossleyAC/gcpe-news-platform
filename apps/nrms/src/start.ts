@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv, NEWS_API_SIMILAR_ROLE, serviceTokenProvider, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
-import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
@@ -324,6 +324,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const blueBridgeNotify = buildBlueBridgeNotify(core, distribution);
 
   const app = createApp({
+    trustProxyHops: trustProxyHopsFrom(env),
     db,
     auth: auth.bearer,
     loginRouter: auth.loginRouter,

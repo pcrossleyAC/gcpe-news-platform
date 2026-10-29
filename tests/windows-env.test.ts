@@ -190,3 +190,12 @@ describe("parseJsonQuietly", () => {
     }
   });
 });
+
+describe("proxy hops input", () => {
+  it("writes TRUST_PROXY_HOPS, 1 when not given, and the schema accepts 1-5 only", () => {
+    expect(readWithNode(buildWindowsEnvLines(input(), HASH, generateSecrets()), ["TRUST_PROXY_HOPS"])).toEqual({ TRUST_PROXY_HOPS: "1" });
+    expect(readWithNode(buildWindowsEnvLines(input({ proxyHops: 2 }), HASH, generateSecrets()), ["TRUST_PROXY_HOPS"])).toEqual({ TRUST_PROXY_HOPS: "2" });
+    for (const n of [1, 5]) expect(windowsEnvInputSchema.safeParse({ ...input(), proxyHops: n }).success).toBe(true);
+    for (const n of [0, 6, 1.5, "2"]) expect(windowsEnvInputSchema.safeParse({ ...input(), proxyHops: n }).success, String(n)).toBe(false);
+  });
+});

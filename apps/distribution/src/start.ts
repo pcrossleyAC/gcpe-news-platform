@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import express from "express";
 import { authFromEnv } from "@gcpe/auth";
-import { parseEnv } from "@gcpe/config";
+import { parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations, type Db } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
@@ -85,6 +85,7 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
   };
 
   const app = createApp({
+    trustProxyHops: trustProxyHopsFrom(env),
     db,
     auth: auth.bearer,
     loginRouter: auth.loginRouter,

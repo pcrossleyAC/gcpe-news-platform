@@ -357,7 +357,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
 
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", 1); // one hop: SiteGround's nginx
+  app.set("trust proxy", stackEnv.TRUST_PROXY_HOPS); // default 1 hop: SiteGround's nginx / local IIS; 2 behind a DMZ proxy
   // R13: text responses are compressed here, ahead of every mount, so a host whose proxy doesn't
   // compress (the Windows/IIS package) still serves compressed CSS, HTML and JSON (compress.ts).
   app.use(textCompression());
