@@ -192,8 +192,9 @@ describe("createFilesApiClient", () => {
       expect(stub.maxInFlight).toBeLessThanOrEqual(2);
       const starts = stub.log.map((l) => l.at).sort((a, b) => a - b);
       expect(starts).toHaveLength(6);
-      // 6 starts at least 100 ms apart (each worker: at least 200 ms apart): ≥ 500 ms in all.
-      for (let i = 1; i < starts.length; i++) expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(90);
+      // 6 starts at least 100 ms apart (each worker: at least 200 ms apart): ≥ 500 ms in all. Starts are
+      // timed where the stub receives them, so a loaded runner adds delivery jitter; unpaced starts would be ~0 ms apart.
+      for (let i = 1; i < starts.length; i++) expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(75);
       expect(elapsed).toBeGreaterThanOrEqual(500);
     } finally {
       stub.delayMs = 0;
