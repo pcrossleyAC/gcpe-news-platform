@@ -5,6 +5,7 @@ import { apiFetch } from "../../../api/client";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { calendarRoleLabel } from "../../admin/calendar-access/calendar-roles";
 import { RANK_OPTIONS, rowLabel, type CalendarUserRow } from "./types";
+import { TableScroll } from "../../../shared/TableScroll";
 
 const rankLabel = (rank: number | null): string => (rank ? (RANK_OPTIONS.find((o) => o.value === String(rank))?.label ?? String(rank)) : "");
 
@@ -52,34 +53,36 @@ export function CalendarUsersScreen(): React.JSX.Element {
       </div>
       {rows === null && !error && <p>Loading…</p>}
       {rows !== null && (
-        <table className="gcpe-table">
-          <caption className="gcpe-visually-hidden">Calendar users, one row per user and ministry</caption>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Ministry</th>
-              <th scope="col">Comm contact</th>
-              <th scope="col">Calendar role</th>
-              <th scope="col">Active</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((r) => (
-              <tr key={`${r.userId}:${r.ministryKey ?? ""}`}>
-                <td>
-                  {/* The link keeps legacy's full row label as its name, so each row's link stays distinct. */}
-                  <Link to={`/calendar/users/${r.userId}`}>
-                    {r.displayName} <span className="gcpe-visually-hidden">{rowLabel(r).slice(r.displayName.length).trim()}</span>
-                  </Link>
-                </td>
-                <td>{r.ministryAbbreviation ?? r.ministryKey ?? ""}</td>
-                <td>{rankLabel(r.rank)}</td>
-                <td>{r.role ? calendarRoleLabel(r.role) : "No Calendar access"}</td>
-                <td>{r.isActive ? "Yes" : "No"}</td>
+        <TableScroll label="Calendar users">
+          <table className="gcpe-table">
+            <caption className="gcpe-visually-hidden">Calendar users, one row per user and ministry</caption>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Ministry</th>
+                <th scope="col">Comm contact</th>
+                <th scope="col">Calendar role</th>
+                <th scope="col">Active</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                <tr key={`${r.userId}:${r.ministryKey ?? ""}`}>
+                  <td>
+                    {/* The link keeps legacy's full row label as its name, so each row's link stays distinct. */}
+                    <Link to={`/calendar/users/${r.userId}`}>
+                      {r.displayName} <span className="gcpe-visually-hidden">{rowLabel(r).slice(r.displayName.length).trim()}</span>
+                    </Link>
+                  </td>
+                  <td>{r.ministryAbbreviation ?? r.ministryKey ?? ""}</td>
+                  <td>{rankLabel(r.rank)}</td>
+                  <td>{r.role ? calendarRoleLabel(r.role) : "No Calendar access"}</td>
+                  <td>{r.isActive ? "Yes" : "No"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </div>
   );

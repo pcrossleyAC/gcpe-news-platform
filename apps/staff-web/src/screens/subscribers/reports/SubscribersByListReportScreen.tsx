@@ -13,6 +13,7 @@ import { reportUrl } from "./reportUrl";
 import { useReport } from "./useReport";
 import { useReportParams } from "./useReportParams";
 import type { MembersPage, SubscribersByListReport, TimingCounts, TimingFilter } from "./types";
+import { TableScroll } from "../../../shared/TableScroll";
 
 const TIMING_OPTIONS: { value: TimingFilter; label: string }[] = [
   { value: "any", label: "Any timing" },
@@ -39,18 +40,20 @@ function CountsRow({ listKey, name, counts }: { listKey: string; name: string; c
 
 function CountsTable({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return (
-    <table className="gcpe-table" aria-label={label}>
-      <thead>
-        <tr>
-          <th scope="col">List</th>
-          <th scope="col">Subscribers</th>
-          <th scope="col">As it happens</th>
-          <th scope="col">Daily digest</th>
-          <th scope="col">Members</th>
-        </tr>
-      </thead>
-      <tbody>{children}</tbody>
-    </table>
+    <TableScroll label={label}>
+      <table className="gcpe-table" aria-label={label}>
+        <thead>
+          <tr>
+            <th scope="col">List</th>
+            <th scope="col">Subscribers</th>
+            <th scope="col">As it happens</th>
+            <th scope="col">Daily digest</th>
+            <th scope="col">Members</th>
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </TableScroll>
   );
 }
 
@@ -116,28 +119,30 @@ export function SubscribersByListReportScreen(): React.JSX.Element {
                 <CsvLink href={reportUrl("/nod/api/reports/subscribers-by-list/members.csv", { list, timing })}>Download members (CSV)</CsvLink>
               )}
               {members.data.items.length > 0 && (
-                <table className="gcpe-table" aria-label="Members">
-                  <thead>
-                    <tr>
-                      <th scope="col">Email</th>
-                      <th scope="col">Timing</th>
-                      <th scope="col">Source</th>
-                      <th scope="col">Registered</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {members.data.items.map((m) => (
-                      <tr key={m.id}>
-                        <td>
-                          <Link to={`/subscribers/${m.id}`}>{m.email}</Link>
-                        </td>
-                        <td>{timingLabel(m)}</td>
-                        <td>{SOURCE_LABELS[m.source] ?? m.source}</td>
-                        <td>{bcDate(m.createdAt, timeZone)}</td>
+                <TableScroll label="Members">
+                  <table className="gcpe-table" aria-label="Members">
+                    <thead>
+                      <tr>
+                        <th scope="col">Email</th>
+                        <th scope="col">Timing</th>
+                        <th scope="col">Source</th>
+                        <th scope="col">Registered</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {members.data.items.map((m) => (
+                        <tr key={m.id}>
+                          <td>
+                            <Link to={`/subscribers/${m.id}`}>{m.email}</Link>
+                          </td>
+                          <td>{timingLabel(m)}</td>
+                          <td>{SOURCE_LABELS[m.source] ?? m.source}</td>
+                          <td>{bcDate(m.createdAt, timeZone)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
               )}
               <Pagination page={members.data.page} pageSize={members.data.pageSize} total={members.data.total} onPageChange={(n) => params.update({ page: String(n) })} />
             </>

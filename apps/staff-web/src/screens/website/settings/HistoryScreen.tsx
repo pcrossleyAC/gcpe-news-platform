@@ -10,6 +10,7 @@ import { canManageWebsite } from "../access";
 import { getHistory, getRevision, restoreRevision, type HistoryList, type PublishConflict, type RevisionDetail } from "./api";
 import { formatPublishedAt } from "./format";
 import { sectionList } from "./useSettingsEditor";
+import { TableScroll } from "../../../shared/TableScroll";
 
 const TITLE = "Settings history";
 
@@ -154,42 +155,44 @@ function HistoryTable({ canEdit }: { canEdit: boolean }): React.JSX.Element {
       {history.revisions.length === 0 ? (
         <p>Nothing has been published yet; the site uses its built-in defaults.</p>
       ) : (
-        <table className="gcpe-table">
-          <thead>
-            <tr>
-              <th scope="col">Revision</th>
-              <th scope="col">When</th>
-              <th scope="col">Who</th>
-              <th scope="col">Note</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.revisions.map((r) => (
-              <tr key={r.revision}>
-                <td>
-                  {r.revision}
-                  {r.revision === history.live && <strong> Live</strong>}
-                </td>
-                <td>{formatPublishedAt(r.publishedAt, timeZone)}</td>
-                <td>{r.publishedBy}</td>
-                <td>{r.note}</td>
-                <td>
-                  {canEdit && r.revision !== history.live && (
-                    <Button
-                      variant="secondary"
-                      aria-label={`Restore… revision ${r.revision}`}
-                      onPress={() => void open(r.revision)}
-                      isPending={opening !== null}
-                    >
-                      Restore…
-                    </Button>
-                  )}
-                </td>
+        <TableScroll label="Published versions">
+          <table className="gcpe-table">
+            <thead>
+              <tr>
+                <th scope="col">Revision</th>
+                <th scope="col">When</th>
+                <th scope="col">Who</th>
+                <th scope="col">Note</th>
+                <th scope="col">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {history.revisions.map((r) => (
+                <tr key={r.revision}>
+                  <td>
+                    {r.revision}
+                    {r.revision === history.live && <strong> Live</strong>}
+                  </td>
+                  <td>{formatPublishedAt(r.publishedAt, timeZone)}</td>
+                  <td>{r.publishedBy}</td>
+                  <td>{r.note}</td>
+                  <td>
+                    {canEdit && r.revision !== history.live && (
+                      <Button
+                        variant="secondary"
+                        aria-label={`Restore… revision ${r.revision}`}
+                        onPress={() => void open(r.revision)}
+                        isPending={opening !== null}
+                      >
+                        Restore…
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
 
       <Modal isOpen={confirmation !== null} onOpenChange={(isOpen) => { if (!isOpen && !restoring) setConfirmation(null); }} isDismissable>

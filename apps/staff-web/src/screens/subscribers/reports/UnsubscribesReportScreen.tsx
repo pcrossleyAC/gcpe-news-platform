@@ -12,6 +12,7 @@ import { reportUrl } from "./reportUrl";
 import { useReport } from "./useReport";
 import { useReportParams } from "./useReportParams";
 import type { UnsubscribeRow, UnsubscribesPage } from "./types";
+import { TableScroll } from "../../../shared/TableScroll";
 
 const HOW: Record<UnsubscribeRow["how"], string> = { subscriber: "Unsubscribed", staff: "Deleted by staff" };
 const STATUS: Record<UnsubscribeRow["status"], string> = { pending: "Pending", active: "Active", disabled: "Disabled", deleted: "Deleted" };
@@ -42,30 +43,32 @@ export function UnsubscribesReportScreen(): React.JSX.Element {
           <CsvLink href="/nod/api/reports/unsubscribes/daily.csv">Download daily counts (CSV)</CsvLink>
           {canExport && <CsvLink href="/nod/api/reports/unsubscribes.csv">Download list with addresses (CSV)</CsvLink>}
           {d.items.length > 0 ? (
-            <table className="gcpe-table" aria-label="Recent unsubscribes">
-              <thead>
-                <tr>
-                  <th scope="col">Email</th>
-                  <th scope="col">How</th>
-                  <th scope="col">When</th>
-                  <th scope="col">Status now</th>
-                  <th scope="col">Registered</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.items.map((u) => (
-                  <tr key={u.subscriberId}>
-                    <td>
-                      <Link to={`/subscribers/${u.subscriberId}`}>{u.email}</Link>
-                    </td>
-                    <td>{HOW[u.how]}</td>
-                    <td>{bcDateTime(u.at, timeZone)}</td>
-                    <td>{STATUS[u.status]}</td>
-                    <td>{bcDate(u.registeredAt, timeZone)}</td>
+            <TableScroll label="Recent unsubscribes">
+              <table className="gcpe-table" aria-label="Recent unsubscribes">
+                <thead>
+                  <tr>
+                    <th scope="col">Email</th>
+                    <th scope="col">How</th>
+                    <th scope="col">When</th>
+                    <th scope="col">Status now</th>
+                    <th scope="col">Registered</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {d.items.map((u) => (
+                    <tr key={u.subscriberId}>
+                      <td>
+                        <Link to={`/subscribers/${u.subscriberId}`}>{u.email}</Link>
+                      </td>
+                      <td>{HOW[u.how]}</td>
+                      <td>{bcDateTime(u.at, timeZone)}</td>
+                      <td>{STATUS[u.status]}</td>
+                      <td>{bcDate(u.registeredAt, timeZone)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
           ) : (
             <p>No one unsubscribed in the last 90 days.</p>
           )}
