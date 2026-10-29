@@ -62,8 +62,11 @@ export function OrganizationsScreen(): React.JSX.Element {
     flag: "hq" | "public";
     errors: string[];
   } | null>(null);
-  // Unticking Public asks first (owner decision 2026-10-29); ticking it and HQ stay instant.
-  const [confirmingUnlist, setConfirmingUnlist] = useState<OrgRecord | null>(null);
+  // Owner decisions 2026-10-29: unticking Public asks first, and so does ticking HQ (it opens
+  // every ministry in the Calendar to that organization's members). Ticking Public and unticking
+  // HQ stay instant: one lists an organization, the other only narrows access, and either is
+  // undone by ticking again.
+  const [confirming, setConfirming] = useState<{ org: OrgRecord; flag: "hq" | "public" } | null>(null);
   // The hand-over panel's save in flight: every other row action waits for it.
   const [panelBusy, setPanelBusy] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -146,7 +149,7 @@ export function OrganizationsScreen(): React.JSX.Element {
       afterDialogsClose(() => setFlagNote({ key: o.key, flag, errors }));
     } finally {
       setBusy(false);
-      setConfirmingUnlist(null);
+      setConfirming(null);
     }
   };
 
@@ -173,9 +176,9 @@ export function OrganizationsScreen(): React.JSX.Element {
             aria-disabled={unavailable || undefined}
             onChange={(e) => {
               if (unavailable) return;
-              if (flag === "public" && !e.target.checked) {
+              if ((flag === "public" && !e.target.checked) || (flag === "hq" && e.target.checked)) {
                 setFlagNote(null);
-                setConfirmingUnlist(o);
+                setConfirming({ org: o, flag });
               } else void setFlag(o, flag, e.target.checked);
             }}
           />
@@ -487,41 +490,52 @@ export function OrganizationsScreen(): React.JSX.Element {
         </TableScroll>
       )}
       <Modal
-        isOpen={confirmingUnlist !== null}
+        isOpen={confirming !== null}
         onOpenChange={(open) => {
-          if (!open && !busy) setConfirmingUnlist(null);
+          if (!open && !busy) setConfirming(null);
         }}
         isDismissable
       >
         <AlertDialog
           role="alertdialog"
           variant="warning"
-          title={`Remove ${confirmingUnlist?.displayName ?? ""} from the public site?`}
+          title={
+            confirming?.flag === "hq"
+              ? `Make ${confirming.org.displayName} an HQ organization?`
+              : `Remove ${confirming?.org.displayName ?? ""} from the public site?`
+          }
           buttons={
             <>
               <Button
                 variant="secondary"
                 isPending={busy}
-                onPress={() => setConfirmingUnlist(null)}
+                onPress={() => setConfirming(null)}
               >
                 Cancel
               </Button>
               <Button
-                danger
+                danger={confirming?.flag !== "hq"}
                 isPending={busy}
                 onPress={() => {
-                  if (confirmingUnlist)
-                    void setFlag(confirmingUnlist, "public", false);
+                  if (confirming)
+                    void setFlag(confirming.org, confirming.flag, confirming.flag === "hq");
                 }}
               >
-                Remove from public site
+                {confirming?.flag === "hq" ? "Make HQ" : "Remove from public site"}
               </Button>
             </>
           }
         >
-          <p>
-            It disappears from the public ministry list and the subscribe page.
-          </p>
+          {confirming?.flag === "hq" ? (
+            <p>
+              Everyone in {confirming.org.displayName} will see every ministry in the Corporate
+              Calendar, and get its HQ-only fields and actions, from now on.
+            </p>
+          ) : (
+            <p>
+              It disappears from the public ministry list and the subscribe page.
+            </p>
+          )}
         </AlertDialog>
       </Modal>
     </div>
