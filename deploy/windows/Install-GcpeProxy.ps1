@@ -178,7 +178,17 @@ if ($drives -match [regex]::Escape("path=`"$cacheDir`"")) {
     & $appcmd set config -section:system.webServer/diskCache /+"[path='$cacheDir',maxUsage='$CacheMaxSizeGB']" /commit:apphost | Out-Null
 }
 if ($LASTEXITCODE -ne 0) { throw "could not configure the ARR disk cache in $cacheDir" }
-Write-GcpeOk 'on; it follows the app''s Cache-Control, and never stores /api, the subscribe pages or a URL with a query string'
+# ARR's cache ignores Vary. Per URL it keeps an unencoded copy ("full") and encoded ones
+# ("full.br", "full.gzip"), and once it has the unencoded copy it answers a brotli client with
+# it, and a gzip client with its own gzip of it (docs/deploy/windows.md, 8.2). So: no copies of
+# ARR's own making (compression off: only the app's bytes and ETags are served), and the rules
+# below never let it store an unencoded copy. A URL with a query string is neither stored nor
+# looked up (the default, Ignore, answers "/?q=x" with the stored "/").
+& $appcmd set config -section:system.webServer/diskCache /compression.enabled:"False" /commit:apphost | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'could not turn off ARR''s own compression of cached copies' }
+& $appcmd set config -section:system.webServer/proxy /cache.queryStringHandling:"NoCaching" /commit:apphost | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'could not stop ARR caching URLs with a query string' }
+Write-GcpeOk 'on; it follows the app''s Cache-Control, keeps only brotli and gzip copies, and never stores /api, the subscribe pages, a URL with a query string or an unencoded response'
 
 # --- 3. Trust for the upstream's certificate --------------------------------------------------
 Write-GcpeStep "Trust for $upstreamBase"
@@ -317,6 +327,8 @@ $neverCachedPattern = '^/*(?:' + (Join-Alternatives $NeverCachedPaths) + ')(?:/|
 # its 404 anyway (apps/stack/src/legacy/safe-path.ts); refusing them here means the path IIS
 # matched is the path the app routes.
 $ambiguousPattern = '^[^?]*(?:\\|%5c|%2f|%2e|%00|/\.\.?(?:/|\?|$))'
+# A client that takes brotli or gzip (the app answers the rest unencoded; never stored, see 2).
+$encodedPattern = '(?:^|[\s,])(?:br|gzip)\s*(?:[,;]|$)'
 $httpsAuthority = $HostName
 if ($HttpsPort -ne 443) { $httpsAuthority = "$($HostName):$HttpsPort" }
 # ARR_CACHE_CONTROL_OVERRIDE "1,no-cache": never store, whatever the response says. "0,no-cache":
@@ -373,6 +385,15 @@ $neverCache
           <conditions logicalGrouping="MatchAll">
             <add input="{REQUEST_METHOD}" pattern="^(?:GET|HEAD)$" />
             <add input="{QUERY_STRING}" pattern="." />
+          </conditions>
+$neverCache
+          <action type="Rewrite" url="$target" appendQueryString="false" />
+        </rule>
+        <rule name="public site for a client that takes neither brotli nor gzip (GET, HEAD; never cached)" stopProcessing="true">
+          <match url=".*" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_METHOD}" pattern="^(?:GET|HEAD)$" />
+            <add input="{HTTP_ACCEPT_ENCODING}" pattern="$encodedPattern" negate="true" />
           </conditions>
 $neverCache
           <action type="Rewrite" url="$target" appendQueryString="false" />

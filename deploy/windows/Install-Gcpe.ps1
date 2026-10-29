@@ -380,6 +380,12 @@ if (-not (& $appcmd list site $siteName)) {
     if ($LASTEXITCODE -ne 0) { throw "could not create the IIS site $siteName" }
 }
 & $appcmd set app "$siteName/" /applicationPool:$siteName | Out-Null
+# This IIS only terminates TLS and forwards: ARR keeps no copies for this site. Its cache ignores
+# Vary (docs/deploy/windows.md, 8.2), and with a disk cache on the same server (a DMZ proxy
+# installed beside this one, as in CI) it would keep the app's pages under the public host name.
+& $appcmd unlock config $siteName -section:system.webServer/proxy /commit:apphost | Out-Null
+& $appcmd set config $siteName -section:system.webServer/proxy /cache.enabled:"False" /commit:apphost | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "could not turn off the ARR cache for the IIS site $siteName" }
 if ($boundThumbprint -ne $cert.Thumbprint.ToUpperInvariant()) {
     if ($boundThumbprint) { Invoke-GcpeQuiet -FilePath netsh.exe -Arguments @('http', 'delete', 'sslcert', 'ipport=0.0.0.0:443') }
     & netsh.exe http add sslcert ipport=0.0.0.0:443 certhash=$($cert.Thumbprint) appid='{4dc3e181-e14b-4a21-b022-59fc669b0914}' certstorename=MY | Out-Null

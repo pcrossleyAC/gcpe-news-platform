@@ -314,7 +314,7 @@ jobs:
           Check "/site/... redirects to the root ($site)" ($site -like '301 */archive/')
           $redirect = curl.exe -s @res -o NUL -w '%{http_code} %{redirect_url}' "http://$($h):8080/archive/"
           Check "http redirects to https ($redirect)" ($redirect -eq "301 $base/archive/")
-      - name: DIAG kernel cache matrix
+      - name: DIAG fix check
         continue-on-error: true
         run: |
           $h = 'gcpe-proxy-ci.example.test'
@@ -323,6 +323,9 @@ jobs:
           $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
           $proxyId = (& $appcmd list site GCPE-Proxy /text:id)
           $appId = (& $appcmd list site GCPE /text:id)
+          & $appcmd list config -section:system.webServer/proxy
+          & $appcmd list config GCPE -section:system.webServer/proxy
+          & $appcmd list config -section:system.webServer/diskCache
           function One([string]$url, [string]$enc, [string[]]$extra) {
             $a = @('-k', '-s', '-D', '-', '-o', 'NUL') + $extra
             if ($enc) { $a += @('-H', "Accept-Encoding: $enc") }
@@ -330,7 +333,12 @@ jobs:
             $ce = [regex]::Match($out, '(?im)^content-encoding:\s*(\S+)').Groups[1].Value
             $len = [regex]::Match($out, '(?im)^content-length:\s*(\S+)').Groups[1].Value
             $cc = [regex]::Match($out, '(?im)^cache-control:\s*(.+)$').Groups[1].Value.Trim()
-            Write-Host ("    {0,-8} {1,-20} -> CE={2,-5} len={3,-6} cc={4}" -f (Get-Date -Format 'ss.fff'), "'$enc'", $ce, $len, $cc)
+            $bad = ''
+            if ($enc -eq '' -and $ce) { $bad = 'VIOLATION' }
+            if ($enc -eq 'gzip' -and $ce -eq 'br') { $bad = 'VIOLATION' }
+            if ($enc -eq 'br' -and $ce -eq 'gzip') { $bad = 'VIOLATION' }
+            if ($enc -match 'br' -and $ce -ne 'br') { $bad += ' not-br' }
+            Write-Host ("    {0,-8} {1,-20} -> CE={2,-5} len={3,-6} cc={4} {5}" -f (Get-Date -Format 'ss.fff'), "'$enc'", $ce, $len, $cc, $bad)
           }
           function Seq([string]$path, [object[]]$steps) {
             Write-Host "  -- $path"
@@ -344,39 +352,21 @@ jobs:
             & netsh.exe http flush logbuffer | Out-Null
             Start-Sleep -Seconds 3
             Write-Host "  $path proxy log: $(Count $proxyId $path); app log: $(Count $appId $path)"
-            Write-Host '  cache folder:'
             Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $($_.FullName) $($_.Length)" }
           }
-          function Reset {
-            & $appcmd recycle apppool GCPE-Proxy | Out-Null
-            & $appcmd recycle apppool GCPE | Out-Null
-            Start-Sleep -Seconds 2
-            Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-          }
-          $steps = @('', 8, '', '', 'br', 'gzip', 'gzip, deflate, br', '', 8, 'br', '', 'gzip', 'br', 'gzip, deflate, br')
-          Write-Host '=== A as installed'
-          Reset; Seq '/live/' $steps; Hits '/live/'
-          Write-Host '=== B kernel cache off on both sites'
-          foreach ($site in @('GCPE', 'GCPE-Proxy')) { & $appcmd set config $site -section:system.webServer/caching /enableKernelCache:false /commit:apphost }
-          Reset; Seq '/ministries/' $steps; Hits '/ministries/'
-          Write-Host '=== C B + ARR cache off for the GCPE site only'
-          & $appcmd set config GCPE -section:system.webServer/proxy /cache.enabled:false /commit:apphost
-          Write-Host "    exit $LASTEXITCODE"
-          & $appcmd list config GCPE -section:system.webServer/proxy
-          & $appcmd list config GCPE-Proxy -section:system.webServer/proxy
-          Reset; Seq '/search/' $steps; Hits '/search/'
-          Write-Host '  -- direct to the app site (Host: localhost), twice 8 s apart'
+          Seq '/live/' @('', '', 8, 'br', 'br', 'gzip', '', 'gzip, deflate, br', 8, '', 'gzip', 'br', 'gzip, deflate, br')
+          Hits '/live/'
+          Seq '/ministries/' @('gzip', 8, 'gzip', 'br', '', 'br', 'gzip, deflate, br', 'gzip')
+          Hits '/ministries/'
+          Seq '/search/' @('gzip, deflate, br', 8, 'gzip', 'br', '', 'gzip, deflate, br', 'br')
+          Hits '/search/'
+          Write-Host '  -- direct to the app site, twice 8 s apart (must leave no localhost folder)'
           One 'https://localhost/connect/' '' @(); Start-Sleep -Seconds 8; One 'https://localhost/connect/' '' @()
           Hits '/connect/'
-          Write-Host '=== D C + output cache off on the proxy site'
-          & $appcmd set config GCPE-Proxy -section:system.webServer/caching /enabled:false /commit:apphost
-          Reset; Seq '/archive/' $steps; Hits '/archive/'
-          Write-Host '=== E C, kernel back on for the proxy site'
-          & $appcmd set config GCPE-Proxy -section:system.webServer/caching /enabled:true /enableKernelCache:true /commit:apphost
-          Reset; Seq '/connect/' $steps; Hits '/connect/'
-          Write-Host '=== back to as installed'
-          foreach ($site in @('GCPE', 'GCPE-Proxy')) { & $appcmd clear config $site -section:system.webServer/caching /commit:apphost; & $appcmd clear config $site -section:system.webServer/proxy /commit:apphost }
-          Reset
+          Write-Host '  -- Cache-Control as sent: proxy vs app server'
+          foreach ($p in @('/api/v2/ministries', '/subscribe/', '/?x=1', '/archive/')) {
+            One "$base$p" '' $res; One "$base$p" 'gzip' $res; One "https://localhost$p" 'gzip' @()
+          }
       - name: The proxy caches public pages only, per encoding
         run: |
           $ErrorActionPreference = 'Stop'
