@@ -514,6 +514,9 @@ describe("ActionsSection", () => {
     renderActions(releaseView({ status: "approved", reference: "NEWS-00001", key: "k", releasedAt: "2026-10-01T17:00:00.000Z" }));
     expect(screen.queryByRole("button", { name: "Return to draft" })).not.toBeInTheDocument();
     cleanup();
+    renderActions(releaseView({ status: "approved", reference: "NEWS-00001", key: "k", atomId: "legacy-atom" }));
+    expect(screen.queryByRole("button", { name: "Return to draft" })).not.toBeInTheDocument();
+    cleanup();
     renderActions(releaseView({ status: "draft" }));
     expect(screen.queryByRole("button", { name: "Return to draft" })).not.toBeInTheDocument();
   });

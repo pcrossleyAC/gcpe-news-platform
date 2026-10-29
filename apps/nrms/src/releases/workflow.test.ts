@@ -242,6 +242,19 @@ describe("workflow", () => {
     await expect(returnToDraft(db(), v.id, a.version, editor)).rejects.toEqual(new ReleaseStateError("Only an approved release that hasn't been published can go back to draft."));
   });
 
+  // A legacy import with no ReleaseDateTime has no releasedAt even after it was public; its
+  // AtomId (stamped on every publish, carried by imports) or a publication row still says so.
+  it("returnToDraft refuses a release with no releasedAt that has an atomId or a publication", async () => {
+    const msg = new ReleaseStateError("Only an approved release that hasn't been published can go back to draft.");
+    const v = await createRelease(db(), { ...sampleCreate, headline: "Imported, once public" }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    await tdb.db.execute(sql`UPDATE news_releases SET atom_id = 'legacy-atom' WHERE id = ${v.id}`);
+    await expect(returnToDraft(db(), v.id, a.version, editor)).rejects.toEqual(msg);
+    await tdb.db.execute(sql`UPDATE news_releases SET atom_id = NULL WHERE id = ${v.id}`);
+    await tdb.db.execute(sql`INSERT INTO release_publications (release_id, published_at, actor_id, actor_name, record) VALUES (${v.id}, now(), 'system', 'System', '{}'::jsonb)`);
+    await expect(returnToDraft(db(), v.id, a.version, editor)).rejects.toEqual(msg);
+  });
+
   it("unpublish: only live releases, never advisories", async () => {
     const v = await createRelease(db(), sampleCreate, editor);
     const a = await approve(db(), v.id, v.version, editor, deps);

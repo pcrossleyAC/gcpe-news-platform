@@ -133,7 +133,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const canPublish = (view.status === "approved" || view.status === "failed") && view.key !== null;
   const needsKeyFirst = (view.status === "approved" || view.status === "failed") && view.key === null;
   const canCancel = view.status === "scheduled";
-  const canReturnToDraft = view.reference !== null && view.releasedAt === null && RETURNABLE_STATUSES.has(view.status);
+  const canReturnToDraft = view.reference !== null && view.releasedAt === null && view.atomId === null && RETURNABLE_STATUSES.has(view.status);
   const canUnpublish = rules.unpublishable && view.releasedAt !== null && UNPUBLISHABLE_STATUSES.has(view.status);
   const canDelete = DELETABLE_STATUSES.has(view.status);
   // Why Approve/Publish are greyed out, said next to the buttons themselves (the header's
