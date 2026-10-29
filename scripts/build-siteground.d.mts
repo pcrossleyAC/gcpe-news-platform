@@ -3,3 +3,4 @@
 export declare function findLeakedPaths(dir: string, forbidden: { label: string; value: string }[]): { file: string; label: string }[];
 export declare function copyStaffWebToHub(staffWebDistDir: string, outDir: string): void;
 export declare function assertHubBuilt(outDir: string): void;
+export declare function leakScanTargets(opts: { root: string; home: string; username: () => string; env: NodeJS.ProcessEnv }): { label: string; value: string }[];

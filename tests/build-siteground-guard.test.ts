@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertHubBuilt, copyStaffWebToHub, findLeakedPaths } from "../scripts/build-siteground.mjs";
+import { assertHubBuilt, copyStaffWebToHub, findLeakedPaths, leakScanTargets } from "../scripts/build-siteground.mjs";
 
 let dir: string | undefined;
 
@@ -119,5 +119,30 @@ describe("copyStaffWebToHub / assertHubBuilt", () => {
     mkdirSync(join(dir, "hub", "assets"), { recursive: true });
     writeFileSync(join(dir, "hub", "assets", "app-abc123.js"), "console.log('x');\n");
     expect(() => assertHubBuilt(dir)).toThrow(/index\.html is missing/);
+  });
+});
+
+describe("leakScanTargets", () => {
+  const machine = { root: "/Users/alice/repo", home: "/Users/alice", username: () => "alice" };
+  const byLabel = (env: NodeJS.ProcessEnv) => Object.fromEntries(leakScanTargets({ ...machine, env }).map((t) => [t.label, t.value]));
+
+  it("scans for the repository path, the home directory and the username on a developer's machine", () => {
+    expect(byLabel({})).toEqual({
+      "the repository's absolute path": "/Users/alice/repo",
+      "the home directory": "/Users/alice",
+      "the local username": "alice",
+    });
+  });
+
+  it("drops only the username on a GitHub-hosted runner (its user is the plain word \"runner\")", () => {
+    expect(byLabel({ GITHUB_ACTIONS: "true" })).toMatchObject({ "the local username": "", "the home directory": "/Users/alice" });
+  });
+
+  it("drops only the username inside a container image build (deploy/openshift/Dockerfile), never asking for it: the build UID has no name", () => {
+    const noName = () => {
+      throw new Error("uv_os_get_passwd returned ENOENT");
+    };
+    const targets = Object.fromEntries(leakScanTargets({ ...machine, username: noName, env: { GCPE_IMAGE_BUILD: "true" } }).map((t) => [t.label, t.value]));
+    expect(targets).toMatchObject({ "the local username": "", "the repository's absolute path": "/Users/alice/repo" });
   });
 });

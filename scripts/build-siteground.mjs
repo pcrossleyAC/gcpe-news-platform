@@ -70,6 +70,24 @@ export function findLeakedPaths(dir, forbidden) {
 }
 
 /**
+ * The values {@link findLeakedPaths} must not find in the artifact: this machine's repository path,
+ * home directory and username. The username is skipped on a throwaway build machine whose user
+ * name is a plain word every bundle contains anyway: a GitHub-hosted runner ("runner";
+ * scripts/build-windows.mjs builds there) and a container image build (GCPE_IMAGE_BUILD=true, set
+ * by deploy/openshift/Dockerfile), whose build user is a bare UID with no name at all — which is
+ * why `username` is a function, called only when the name is scanned for (os.userInfo() throws
+ * for a UID with no passwd entry).
+ */
+export function leakScanTargets({ root, home, username, env }) {
+  const throwaway = env.GITHUB_ACTIONS === "true" || env.GCPE_IMAGE_BUILD === "true";
+  return [
+    { label: "the repository's absolute path", value: root },
+    { label: "the home directory", value: home },
+    { label: "the local username", value: throwaway ? "" : username() },
+  ];
+}
+
+/**
  * Task 1 (staff-web), fix round 1: copies an already-built apps/staff-web/dist into
  * `<outDir>/hub` — factored out of runBuild so this step (and {@link assertHubBuilt} below) can
  * be unit-tested against a throwaway directory, without needing a real (slow) esbuild bundle of
@@ -247,13 +265,7 @@ async function runBuild() {
   // doesn't promise none of these can ever appear, so this is checked explicitly rather than
   // assumed from "the external list is correct" or "nothing matched today").
   console.log("[build-siteground] scanning dist/siteground for leaked local paths/username …");
-  const forbidden = [
-    { label: "the repository's absolute path", value: root },
-    { label: "the home directory", value: homedir() },
-    // Not on GitHub's hosted runners (scripts/build-windows.mjs builds there): their user is
-    // "runner", a plain word the bundle contains anyway, and the machine is thrown away after.
-    { label: "the local username", value: process.env.GITHUB_ACTIONS === "true" ? "" : userInfo().username },
-  ];
+  const forbidden = leakScanTargets({ root, home: homedir(), username: () => userInfo().username, env: process.env });
   const offenders = findLeakedPaths(outDir, forbidden);
   if (offenders.length > 0) {
     console.error("[build-siteground] FAILED: the artifact leaks local machine information:");
