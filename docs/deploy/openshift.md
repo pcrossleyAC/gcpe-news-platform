@@ -139,7 +139,7 @@ OpenShift ignores a Dockerfile `HEALTHCHECK`, so the image has none; the Deploym
 | Probe | Path | Why |
 | --- | --- | --- |
 | startup | `/core/health/live` | The server listens only once every app has migrated and started; the first start on empty databases migrates everything. Allows 5 minutes (60 × 5 s). |
-| readiness | `/stack/health` | 200 only when every mounted app's own readiness check passes, databases included; 503 takes the pod out of the Service. Cached 5 s in-process. |
+| readiness | `/core/health/live` | 200 while the process serves HTTP. Not `/stack/health`: with one replica, one app's database blip (Calendar, NoD) would take the only pod out of the Service and the Route would answer 503 for everything, the public site included. Watch `/stack/health` (every app's readiness, databases included; cached 5 s) from monitoring and alert on it instead. |
 | liveness | `/core/health/live` | 200 while the process serves HTTP. Deliberately not `/stack/health`: a database outage fails that too, and restarting the pod would not fix the database but would stop the public site, which can still serve its pages from `/data`. |
 
 ## Migrations

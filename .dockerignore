@@ -6,8 +6,9 @@
 .github
 .superpowers
 docs
-.env
-.env.*
+**/.env
+**/.env.*
+**/.env-*
 **/*.log
 # Local test and tool output (deploy/openshift/Dockerfile copies the whole context).
 test-results

@@ -53,9 +53,12 @@ spec:
             periodSeconds: 5
             failureThreshold: 60
           # Ready: every app answers its own readiness check, databases included (503 otherwise).
+          # Ready: the process serves HTTP. Not /stack/health (every app's database): with one replica,
+          # a Calendar or NoD database blip would take the pod out of the Service and the Route would
+          # answer 503 for everything, the public site included. Watch /stack/health from monitoring.
           readinessProbe:
             httpGet:
-              path: /stack/health
+              path: /core/health/live
               port: http
             periodSeconds: 10
             timeoutSeconds: 5

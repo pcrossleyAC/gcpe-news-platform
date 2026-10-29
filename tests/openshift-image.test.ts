@@ -54,7 +54,9 @@ describe("deploy/openshift/manifests", () => {
     expect(deployment).toMatch(/containerPort: 8080/);
     expect(deployment).toMatch(/mountPath: \/data$/m);
     const paths = [...deployment.matchAll(/path: (\S+)/g)].map((m) => m[1]);
-    expect(paths).toEqual(["/core/health/live", "/stack/health", "/core/health/live"]);
+    // Readiness is liveness, not /stack/health: with one replica a single app's database blip would
+    // otherwise take the whole site (public pages included) out of the Service.
+    expect(paths).toEqual(["/core/health/live", "/core/health/live", "/core/health/live"]);
     expect(read("apps/stack/src/stack.ts")).toMatch(/r\.get\("\/health"/);
     expect(read("packages/http-kit/src/health.ts")).toMatch(/r\.get\("\/health\/live"/);
   });

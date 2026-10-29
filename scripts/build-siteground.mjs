@@ -74,9 +74,9 @@ export function findLeakedPaths(dir, forbidden) {
  * home directory and username. The username is skipped on a throwaway build machine whose user
  * name is a plain word every bundle contains anyway: a GitHub-hosted runner ("runner";
  * scripts/build-windows.mjs builds there) and a container image build (GCPE_IMAGE_BUILD=true, set
- * by deploy/openshift/Dockerfile), whose build user is a bare UID with no name at all — which is
- * why `username` is a function, called only when the name is scanned for (os.userInfo() throws
- * for a UID with no passwd entry).
+ * by deploy/openshift/Dockerfile), whose build user is the base image's "node" (a word every
+ * bundle contains). `username` is a function, called only when the name is scanned for, because
+ * os.userInfo() throws for a UID with no passwd entry (an image run as an arbitrary UID).
  */
 export function leakScanTargets({ root, home, username, env }) {
   const throwaway = env.GITHUB_ACTIONS === "true" || env.GCPE_IMAGE_BUILD === "true";

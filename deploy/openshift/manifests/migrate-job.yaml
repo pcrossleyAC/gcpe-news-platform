@@ -11,6 +11,8 @@ metadata:
     app.kubernetes.io/name: gcpe-stack-migrate
 spec:
   backoffLimit: 0
+  # A migration waiting on a held advisory lock fails here instead of hanging the rollout.
+  activeDeadlineSeconds: 900
   ttlSecondsAfterFinished: 86400
   template:
     metadata:
