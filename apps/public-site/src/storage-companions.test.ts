@@ -20,8 +20,8 @@ describe("fsStorage writes compressed companions", () => {
     expect(brotliDecompressSync(await readFile(join(root, "releases/K1/index.html.br"))).equals(original)).toBe(true);
     expect(gunzipSync(await readFile(join(root, "releases/K1/index.html.gz"))).equals(original)).toBe(true);
     expect((await readdir(join(root, "releases/K1"))).filter((f) => f.includes(".tmp"))).toEqual([]);
-    // Written after the original, so a freshness check (companion not older) holds.
-    expect((await stat(join(root, "releases/K1/index.html.br"))).mtimeMs).toBeGreaterThanOrEqual((await stat(join(root, "releases/K1/index.html"))).mtimeMs);
+    // Stamped with the page's own mtime: the stack serves a companion only when the two match.
+    expect((await stat(join(root, "releases/K1/index.html.br"))).mtimeMs).toBe((await stat(join(root, "releases/K1/index.html"))).mtimeMs);
   });
 
   it.each(["a.html", "feed.xml", "atom.xml", "sitemap.xml", "x.css", "x.js", "x.json", "x.svg", "robots.txt", "favicon.ico"])("%s gets companions", async (name) => {

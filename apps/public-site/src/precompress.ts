@@ -1,8 +1,9 @@
-import { readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, extname, join } from "node:path";
 import { brotliCompress, constants, gzip } from "node:zlib";
 import { promisify } from "node:util";
+import { realSiteFs, retryingFs, type SiteFs } from "./fs-retry";
 
 const brotliAsync = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
@@ -65,21 +66,35 @@ export interface BackfillResult {
   current: number;
   /** `.br`/`.gz` files whose original no longer exists, removed. */
   orphansRemoved: number;
+  /** Files whose companions could not be written or removed (logged; the rest carried on). */
+  failed: number;
 }
 
 async function* walk(dir: string): AsyncGenerator<string> {
-  for (const e of await readdir(dir, { withFileTypes: true })) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return; // a folder the live site removed mid-walk
+    throw err;
+  }
+  for (const e of entries) {
     if (e.isDirectory()) yield* walk(join(dir, e.name));
     else if (e.isFile()) yield join(dir, e.name);
   }
 }
 
-/** A companion this much older than its page still counts as current (utimes truncates below a millisecond). */
-export const FRESHNESS_SLACK_MS = 1;
+/**
+ * A companion belongs to the page whose mtime it carries: the writer stamps it with the page's own
+ * (utimes keeps whole milliseconds, hence the 1 ms tolerance). A companion newer or older than that
+ * was made from some other version of the page: a page restored with its older timestamp, edited in
+ * place, or rewritten while the companion was being made. The stack applies the same rule.
+ */
+export const MTIME_TOLERANCE_MS = 1;
 
 const freshFor = async (companion: string, mtimeMs: number): Promise<boolean> => {
   try {
-    return (await stat(companion)).mtimeMs + FRESHNESS_SLACK_MS >= mtimeMs;
+    return Math.abs((await stat(companion)).mtimeMs - mtimeMs) <= MTIME_TOLERANCE_MS;
   } catch {
     return false;
   }
@@ -87,52 +102,69 @@ const freshFor = async (companion: string, mtimeMs: number): Promise<boolean> =>
 
 /**
  * Creates the companions for files already on disk (a site written before companions existed, or
- * restored from a backup), replaces any older than their file and removes orphans. Idempotent;
- * safe while the site is live: a companion is stamped with the mtime of the original it was
- * computed from, and dropped if the original changed meanwhile, so a page the builder rewrote in
- * the middle leaves a companion older than the new page, which the stack ignores. Sequential, so
- * it takes one core at most. `site:precompress` (cli/precompress.ts) runs it.
+ * restored from a backup), replaces any whose mtime is not their file's and removes orphans.
+ * Idempotent; safe while the site is live: a companion is stamped with the mtime of the original
+ * it was computed from, and dropped if the original changed meanwhile, so a page the builder
+ * rewrote in the middle leaves a companion whose mtime is not the new page's, which the stack
+ * ignores. Sequential, so it takes one core at most. A file whose companions cannot be written or
+ * removed (a Windows sharing error that outlasts the retries, say) is logged and counted in
+ * `failed`, and the rest carry on. `site:precompress` (cli/precompress.ts) runs it.
  */
-export async function backfillCompanions(root: string, log: (line: string) => void = () => {}): Promise<BackfillResult> {
-  const result: BackfillResult = { written: 0, current: 0, orphansRemoved: 0 };
+export async function backfillCompanions(root: string, log: (line: string) => void = () => {}, fs: SiteFs = realSiteFs): Promise<BackfillResult> {
+  const result: BackfillResult = { written: 0, current: 0, orphansRemoved: 0, failed: 0 };
+  const io = retryingFs(fs);
   for await (const file of walk(root)) {
-    if (/\.(br|gz)$/i.test(file)) {
-      const original = file.slice(0, -3);
-      if (!(await stat(original).then((s) => s.isFile(), () => false)) || !isCompressibleName(original)) {
-        await rm(file, { force: true });
-        result.orphansRemoved++;
-        log(`removed orphan ${file}`);
-      }
-      continue;
+    try {
+      await backfillOne(file, io, result, log);
+    } catch (err) {
+      result.failed++;
+      const e = err as NodeJS.ErrnoException;
+      log(`failed ${file}: ${e.code ?? e.message}`);
     }
-    if (!isCompressibleName(file)) continue;
-    const before = await stat(file);
-    if (!isCompanionCandidate(file, before.size)) continue;
-    const [brPath, gzPath] = companionPaths(file);
-    if ((await freshFor(brPath, before.mtimeMs)) && (await freshFor(gzPath, before.mtimeMs))) {
-      result.current++;
-      continue;
-    }
-    const body = await readFile(file);
-    const { br, gz } = await compressCompanions(body);
-    const after = await stat(file).catch(() => null);
-    if (!after || after.mtimeMs !== before.mtimeMs || after.size !== before.size) continue; // rewritten meanwhile: the builder wrote its own
-    for (const [path, bytes] of [[brPath, br], [gzPath, gz]] as const) {
-      if (bytes === null) {
-        await rm(path, { force: true });
-        continue;
-      }
-      const tmp = `${path}.${randomUUID()}.tmp`;
-      try {
-        await writeFile(tmp, bytes);
-        await utimes(tmp, before.atime, before.mtime);
-        await rename(tmp, path);
-      } catch (err) {
-        await rm(tmp, { force: true });
-        throw err;
-      }
-    }
-    result.written++;
   }
   return result;
+}
+
+async function backfillOne(file: string, io: ReturnType<typeof retryingFs>, result: BackfillResult, log: (line: string) => void): Promise<void> {
+  if (/\.(br|gz)$/i.test(file)) {
+    const original = file.slice(0, -3);
+    if (!(await stat(original).then((s) => s.isFile(), () => false)) || !isCompressibleName(original)) {
+      await io.remove(file);
+      result.orphansRemoved++;
+      log(`removed orphan ${file}`);
+    }
+    return;
+  }
+  if (!isCompressibleName(file)) return;
+  const before = await stat(file).catch((e: NodeJS.ErrnoException) => {
+    if (e.code === "ENOENT") return null; // removed since the walk listed it
+    throw e;
+  });
+  if (!before) return;
+  if (!isCompanionCandidate(file, before.size)) return;
+  const [brPath, gzPath] = companionPaths(file);
+  if ((await freshFor(brPath, before.mtimeMs)) && (await freshFor(gzPath, before.mtimeMs))) {
+    result.current++;
+    return;
+  }
+  const body = await readFile(file);
+  const { br, gz } = await compressCompanions(body);
+  const after = await stat(file).catch(() => null);
+  if (!after || after.mtimeMs !== before.mtimeMs || after.size !== before.size) return; // rewritten meanwhile: the builder wrote its own
+  for (const [path, bytes] of [[brPath, br], [gzPath, gz]] as const) {
+    if (bytes === null) {
+      await io.remove(path);
+      continue;
+    }
+    const tmp = `${path}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(tmp, bytes);
+      await utimes(tmp, before.atime, before.mtime);
+      await io.rename(tmp, path);
+    } catch (err) {
+      await io.remove(tmp).catch(() => {});
+      throw err;
+    }
+  }
+  result.written++;
 }

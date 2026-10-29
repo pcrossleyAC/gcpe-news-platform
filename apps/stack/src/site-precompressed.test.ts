@@ -1,6 +1,6 @@
 import { request as httpRequest, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
@@ -240,5 +240,105 @@ describe("precompressed static files", () => {
     const id = await get(server, "/no/such/page/");
     expect(id.status).toBe(404);
     expect(id.body.toString()).toBe(BODY("site 404"));
+  });
+});
+
+/** chmod 000 means nothing to root or to Windows: there the unreadable-file cases cannot be staged. */
+async function canMakeUnreadable(dir: string): Promise<boolean> {
+  const probe = join(dir, ".chmod-probe");
+  await writeFile(probe, "x");
+  await chmod(probe, 0o000);
+  const readable = await readFile(probe).then(() => true, () => false);
+  await rm(probe, { force: true });
+  return !readable;
+}
+
+describe("a stored copy that cannot be read never mislabels the plain body", () => {
+  let dir: string;
+  let server: Server; // with textCompression, as the stack runs
+  let bare: Server; // without it: the fallback's own headers, nothing re-added
+  let unreadable = false;
+  beforeAll(async () => {
+    dir = await makeSite(true);
+    unreadable = await canMakeUnreadable(dir);
+    server = await listen(appFor(dir, ""));
+    const app = express();
+    mountSite(app, { outputDir: dir, basePath: "" });
+    app.use(rootSiteNotFound(dir, ["/api"]));
+    bare = await listen(app);
+  });
+  afterAll(async () => {
+    await Promise.all([close(server), close(bare)]);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("a page whose .br cannot be opened: the identity response, no Content-Encoding, not the -br ETag", async (ctx) => {
+    if (!unreadable) ctx.skip();
+    await chmod(join(dir, "releases/k/index.html.br"), 0o000);
+    try {
+      const raw = await get(bare, "/releases/k/", { "accept-encoding": "br" });
+      expect(raw.status).toBe(200);
+      expect(raw.headers["content-encoding"]).toBeUndefined();
+      expect(String(raw.headers.etag)).not.toMatch(/-(br|gz)"$/);
+      expect(Number(raw.headers["content-length"])).toBe(Buffer.byteLength(BODY("release k")));
+      expect(raw.body.toString()).toBe(BODY("release k"));
+      // With the stack's per-request compression: an honest br body (decodes), still identity's ETag.
+      const r = await get(server, "/releases/k/", { "accept-encoding": "br" });
+      expect(decode(r).toString()).toBe(BODY("release k"));
+      expect(String(r.headers.etag)).not.toMatch(/-(br|gz)"$/);
+      // The other stored copy is still used when the client takes it.
+      const g = await get(bare, "/releases/k/", { "accept-encoding": "br, gzip" });
+      expect(g.headers["content-encoding"]).toBe("gzip");
+      expect(gunzipSync(g.body).toString()).toBe(BODY("release k"));
+    } finally {
+      await chmod(join(dir, "releases/k/index.html.br"), 0o644);
+    }
+  });
+
+  it("the 404 page whose .br cannot be opened: the plain 404 page, no Content-Encoding", async (ctx) => {
+    if (!unreadable) ctx.skip();
+    await chmod(join(dir, "404.html.br"), 0o000);
+    try {
+      const raw = await get(bare, "/no/such/page/", { "accept-encoding": "br" });
+      expect(raw.status).toBe(404);
+      expect(raw.headers["content-encoding"]).toBeUndefined();
+      expect(String(raw.headers.etag)).not.toMatch(/-(br|gz)"$/);
+      expect(raw.headers["cache-control"]).toBe("no-store");
+      expect(raw.body.toString()).toBe(BODY("site 404"));
+      const r = await get(server, "/no/such/page/", { "accept-encoding": "br" });
+      expect(r.status).toBe(404);
+      expect(decode(r).toString()).toBe(BODY("site 404"));
+    } finally {
+      await chmod(join(dir, "404.html.br"), 0o644);
+    }
+  });
+
+  it("If-Modified-Since: 304 for the stored copy as send gives it; a 404 never answers 304", async () => {
+    const r = await get(bare, "/", { "accept-encoding": "br" });
+    expect(r.headers["content-encoding"]).toBe("br");
+    expect(r.headers["last-modified"]).toBeDefined();
+    const hit = await get(bare, "/", { "accept-encoding": "br", "if-modified-since": String(r.headers["last-modified"]) });
+    expect(hit.status).toBe(304);
+    expect(hit.headers["content-encoding"]).toBeUndefined();
+    expect(hit.headers["content-length"]).toBeUndefined();
+    expect(hit.body.length).toBe(0);
+    const noCache = await get(bare, "/", { "accept-encoding": "br", "if-modified-since": String(r.headers["last-modified"]), "cache-control": "no-cache" });
+    expect(noCache.status).toBe(200);
+    const nf = await get(bare, "/no/such/page/", { "accept-encoding": "br" });
+    const nf2 = await get(bare, "/no/such/page/", { "accept-encoding": "br", "if-none-match": String(nf.headers.etag) });
+    expect(nf2.status).toBe(404);
+    expect(brotliDecompressSync(nf2.body).toString()).toBe(BODY("site 404"));
+  });
+
+  it("a page rolled back to an older version (older mtime, as a restore keeps it) never gets the newer stored copy", async () => {
+    await fsStorage(dir).write("rolled/index.html", BODY("v2"));
+    await writeFile(join(dir, "rolled/index.html"), BODY("v1"));
+    const past = new Date(Date.now() - 86_400_000);
+    await utimes(join(dir, "rolled/index.html"), past, past);
+    for (const ae of ["br", "gzip", "br, gzip"]) {
+      const r = await get(server, "/rolled/", { "accept-encoding": ae });
+      expect(decode(r).toString(), ae).toBe(BODY("v1"));
+      expect(String(r.headers.etag), ae).not.toMatch(/-(br|gz)"$/);
+    }
   });
 });
