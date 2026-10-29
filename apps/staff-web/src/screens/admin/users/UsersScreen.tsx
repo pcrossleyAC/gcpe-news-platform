@@ -292,24 +292,38 @@ const roleBadge = (role: string) => {
 function UsersTable({ users, onChanged }: { users: UserView[]; onChanged(): void }): React.JSX.Element {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
+  // Editors once opened stay mounted (hidden when closed or filtered out), so typed but unsaved
+  // name, roles or password survive Close and the filter.
+  const [mounted, setMounted] = useState<Set<string>>(() => new Set());
   const q = query.trim().toLowerCase();
-  const shown = q
-    ? users.filter((u) => [u.displayName, u.email ?? "", ...u.roles, u.isActive ? "active" : "inactive"].some((t) => t.toLowerCase().includes(q)))
-    : users;
-  const toggle = (id: string) =>
+  // Name, email and roles match on any part; the status only as a whole word, so "active"
+  // never finds an inactive user.
+  const matches = (u: UserView) =>
+    !q || [u.displayName, u.email ?? "", ...u.roles].some((t) => t.toLowerCase().includes(q)) || q === (u.isActive ? "active" : "inactive");
+  const shownCount = users.filter(matches).length;
+  // The count is announced once typing pauses, not on every keystroke.
+  const [countText, setCountText] = useState(`${users.length} users`);
+  const nextCount = q ? `Showing ${shownCount} of ${users.length} users` : `${users.length} users`;
+  useEffect(() => {
+    const t = setTimeout(() => setCountText(nextCount), 500);
+    return () => clearTimeout(t);
+  }, [nextCount]);
+  const toggle = (id: string) => {
+    setMounted((prev) => new Set(prev).add(id));
     setOpen((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
 
   return (
     <>
       <div className="gcpe-users__filter">
         <TextField label="Filter users" description="By name, email or role" type="search" value={query} onChange={setQuery} />
         <p aria-live="polite" className="gcpe-users__count">
-          {q ? `Showing ${shown.length} of ${users.length} users` : `${users.length} users`}
+          {countText}
         </p>
       </div>
       <TableScroll label="Staff users">
@@ -328,18 +342,19 @@ function UsersTable({ users, onChanged }: { users: UserView[]; onChanged(): void
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && (
+            {shownCount === 0 && (
               <tr>
                 <td colSpan={6}>No users match &ldquo;{query.trim()}&rdquo;.</td>
               </tr>
             )}
-            {shown.map((u) => {
+            {users.map((u) => {
               const who = u.email ?? `${u.displayName} (no email)`;
-              const isOpen = open.has(u.id);
+              const visible = matches(u);
+              const isOpen = visible && open.has(u.id);
               const editorId = `user-editor-${u.id}`;
               return (
                 <Fragment key={u.id}>
-                  <tr className={isOpen ? "gcpe-users__open" : undefined}>
+                  <tr className={isOpen ? "gcpe-users__open" : undefined} hidden={!visible}>
                     <th scope="row">{u.displayName}</th>
                     <td className="gcpe-users__email">{u.email ?? <span className="gcpe-hint">No email</span>}</td>
                     <td>{signInLabel(u)}</td>
@@ -365,8 +380,8 @@ function UsersTable({ users, onChanged }: { users: UserView[]; onChanged(): void
                       </Button>
                     </td>
                   </tr>
-                  {isOpen && (
-                    <tr className="gcpe-users__editor-row">
+                  {mounted.has(u.id) && (
+                    <tr className="gcpe-users__editor-row" hidden={!isOpen}>
                       <td colSpan={6}>
                         <UserEditor id={editorId} user={u} onChanged={onChanged} />
                       </td>

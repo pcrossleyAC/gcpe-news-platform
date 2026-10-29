@@ -95,13 +95,51 @@ describe("UsersScreen", () => {
     await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "nrms.viewer");
     expect(within(table).queryByRole("rowheader", { name: "Self" })).toBeNull();
     expect(within(table).getByRole("rowheader", { name: "Other" })).toBeInTheDocument();
-    expect(screen.getByText("Showing 1 of 2 users")).toBeInTheDocument();
+    expect(await screen.findByText("Showing 1 of 2 users")).toBeInTheDocument();
 
     const edit = screen.getByRole("button", { name: "Edit other@x.invalid" });
     expect(edit).toHaveAttribute("aria-expanded", "false");
     await user.click(edit);
     expect(screen.getByRole("button", { name: "Close other@x.invalid" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("switch", { name: "other@x.invalid is active" })).toBeInTheDocument();
+  });
+
+  it("keeps an editor's unsaved edits when its row is closed or filtered out, and shows them again", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    await openEditor("other@x.invalid", user);
+    const name = screen.getByRole("textbox", { name: "other@x.invalid display name" });
+    await user.clear(name);
+    await user.type(name, "Other Person");
+    await user.click(screen.getByRole("button", { name: "Close other@x.invalid" }));
+    await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "self");
+    expect(screen.queryByRole("rowheader", { name: "Other" })).toBeNull();
+    await user.clear(screen.getByRole("searchbox", { name: /Filter users/ }));
+    await openEditor("other@x.invalid", user);
+    expect(screen.getByRole("textbox", { name: "other@x.invalid display name" })).toHaveValue("Other Person");
+  });
+
+  it("matches a status as a whole word: active finds no inactive user", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, { ...OTHER, isActive: false }]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    await screen.findByRole("rowheader", { name: "Other" });
+    await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "active");
+    expect(screen.queryByRole("rowheader", { name: "Other" })).toBeNull();
+    expect(screen.getByRole("rowheader", { name: "Self" })).toBeInTheDocument();
+    await user.clear(screen.getByRole("searchbox", { name: /Filter users/ }));
+    await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "inactive");
+    expect(screen.queryByRole("rowheader", { name: "Self" })).toBeNull();
+    expect(screen.getByRole("rowheader", { name: "Other" })).toBeInTheDocument();
+    // The count is announced once typing pauses.
+    expect(await screen.findByText("Showing 1 of 2 users")).toBeInTheDocument();
   });
 
   // I5: document.title matches the h1.

@@ -2768,3 +2768,9 @@ fieldset.gcpe-org-contact {
 .gcpe-cabinet-change > h1 {
   margin-bottom: 0;
 }
+
+/* A filtered-out user, or a closed editor kept for its unsaved edits, stays hidden at every width
+ * (the phone layout's display: block would otherwise show it). */
+.gcpe-users__table tr[hidden] {
+  display: none;
+}
