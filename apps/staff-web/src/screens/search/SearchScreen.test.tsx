@@ -236,8 +236,7 @@ describe("SearchScreen", () => {
         }
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
         if (url === "/nrms/api/categories") return jsonResponse(200, CATEGORIES);
-        if (url === "/nrms/api/releases?folder=published&type=all&page=1&pageSize=5") return jsonResponse(200, recent);
-      if (url.startsWith("/nrms/api/search")) {
+        if (url.startsWith("/nrms/api/search")) {
           const page5 = new URLSearchParams(url.split("?")[1]).get("page") === "5";
           return jsonResponse(200, page5 ? searchPage([], { total: 30, page: 5 }) : searchPage([item({ headline: "Page two result" })], { total: 30, page: 2 }));
         }
