@@ -124,6 +124,14 @@ describe("SearchScreen", () => {
     expect(within(recent).getByText("Latest published release")).toBeInTheDocument();
   });
 
+  it("with a ministry or sector chosen but no words, doesn't show the unfiltered recent releases", async () => {
+    stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
+    renderSearch("/search?ministry=educ");
+    expect(await screen.findByText("Search releases by words in the headline, summary or body; filter by ministry or sector.")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("region", { name: "Recently published" })).toBeNull();
+  });
+
   it("a goto hit navigates straight to the release", async () => {
     const gotoCalls: string[] = [];
     stubFetch({ gotoHit: { id: "22222222-2222-2222-2222-222222222222" }, gotoCalls });
