@@ -314,62 +314,65 @@ jobs:
           Check "/site/... redirects to the root ($site)" ($site -like '301 */archive/')
           $redirect = curl.exe -s @res -o NUL -w '%{http_code} %{redirect_url}' "http://$($h):8080/archive/"
           Check "http redirects to https ($redirect)" ($redirect -eq "301 $base/archive/")
-      - name: DIAG encoding matrix
+      - name: DIAG cache matrix
         continue-on-error: true
         run: |
           $h = 'gcpe-proxy-ci.example.test'
           $base = "https://$($h):8443"
           $res = @('--resolve', "$($h):8443:127.0.0.1")
           $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
+          $proxyId = (& $appcmd list site GCPE-Proxy /text:id)
           function One([string]$path, [string]$enc) {
             $a = @('-k', '-s', '-D', '-', '-o', 'NUL') + $res
             if ($enc) { $a += @('-H', "Accept-Encoding: $enc") }
             $out = (& curl.exe @a "$base$path") -join "`n"
             $ce = [regex]::Match($out, '(?im)^content-encoding:\s*(\S+)').Groups[1].Value
             $len = [regex]::Match($out, '(?im)^content-length:\s*(\S+)').Groups[1].Value
-            $et = [regex]::Match($out, '(?im)^etag:\s*(\S+)').Groups[1].Value
-            Write-Host ("    {0,-8} {1,-20} -> CE={2,-5} len={3,-6} etag={4}" -f (Get-Date -Format 'ss.fff'), "'$enc'", $ce, $len, $et)
+            $cc = [regex]::Match($out, '(?im)^cache-control:\s*(.+)$').Groups[1].Value.Trim()
+            Write-Host ("    {0,-8} {1,-20} -> CE={2,-5} len={3,-6} cc={4}" -f (Get-Date -Format 'ss.fff'), "'$enc'", $ce, $len, $cc)
           }
           function Seq([string]$path, [object[]]$steps) {
             Write-Host "  -- $path"
             foreach ($s in $steps) { if ($s -is [int]) { Start-Sleep -Seconds $s } else { One $path $s } }
           }
-          $page = (& curl.exe -k -s @res "$base/") -join "`n"
-          $paths = @([regex]::Matches($page, 'href="(/[^"#?]+/)"') | ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -ne '/' -and $_ -ne '/archive/' } | Select-Object -Unique)
-          Write-Host "candidate paths: $($paths.Count)"
-          $i = 0
-          function NextPath { $script:i++; if ($script:i -le $paths.Count) { $paths[$script:i - 1] } else { '/archive/' } }
-          $configs = @(
-            @{ Name = 'C0 default'; Ae = 'gzip'; Comp = 'true' },
-            @{ Name = 'C1 allowedAcceptEncoding=gzip,br'; Ae = 'gzip,br'; Comp = 'true' },
-            @{ Name = 'C2 compression off'; Ae = 'gzip'; Comp = 'false' },
-            @{ Name = 'C3 gzip,br + compression off'; Ae = 'gzip,br'; Comp = 'false' },
-            @{ Name = 'C4 allowedAcceptEncoding=br'; Ae = 'br'; Comp = 'false' }
-          )
-          foreach ($c in $configs) {
-            Write-Host "=== $($c.Name)"
-            & $appcmd set config -section:system.webServer/diskCache "/allowedAcceptEncoding:$($c.Ae)" "/compression.enabled:$($c.Comp)" /commit:apphost
-            & $appcmd list config -section:system.webServer/diskCache | Select-String 'allowedAcceptEncoding|compression'
-            & $appcmd recycle apppool GCPE-Proxy | Out-Null
-            Start-Sleep -Seconds 2
-            Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-            Seq (NextPath) @('', 8, 'br', 'gzip', '', 'br', 'gzip, deflate, br')
-            Seq (NextPath) @('br', 8, 'br', '', 'gzip', 'br', '')
-            Seq (NextPath) @('gzip', 8, 'br', '', 'gzip', 'gzip, deflate, br', '')
-            Seq (NextPath) @('gzip, deflate, br', 8, 'gzip, deflate, br', 'br', '', 'gzip', '')
+          function Hits([string]$path) {
+            & netsh.exe http flush logbuffer | Out-Null
+            Start-Sleep -Seconds 3
+            $l = @(Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$proxyId\*.log" | Get-Content | Where-Object { $_ -match " GET $([regex]::Escape($path)) " })
+            Write-Host "  proxy log for $($path): $($l.Count) lines, hits: $(@($l | Where-Object { $_ -match 'X-ARR-CACHE-HIT=1' }).Count)"
             Write-Host '  cache folder:'
             Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $($_.FullName) $($_.Length)" }
           }
-          & netsh.exe http flush logbuffer | Out-Null
-          Start-Sleep -Seconds 5
-          foreach ($s in @('GCPE', 'GCPE-Proxy')) {
-            $id = (& $appcmd list site $s /text:id)
-            Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$id" -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "=== $s $($_.FullName)"; Get-Content $_.FullName | Select-Object -Last 150 }
+          function Reset([string]$ae) {
+            & $appcmd set config -section:system.webServer/diskCache "/allowedAcceptEncoding:$ae" /commit:apphost | Out-Null
+            & $appcmd recycle apppool GCPE-Proxy | Out-Null
+            Start-Sleep -Seconds 2
+            Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
           }
-          # back to the installed defaults for the steps below
-          & $appcmd set config -section:system.webServer/diskCache /allowedAcceptEncoding:gzip /compression.enabled:true /commit:apphost
-          & $appcmd recycle apppool GCPE-Proxy | Out-Null
-          Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+          $wc = 'C:\gcpe-proxy\site\web.config'
+          $orig = Get-Content -Raw $wc
+          Write-Host '=== P1 upstream https://localhost (as installed), allowedAcceptEncoding=gzip'
+          Reset 'gzip'
+          Seq '/live/' @('', 8, '', '', 'gzip', 'br')
+          Hits '/live/'
+          Write-Host '=== P2 upstream http://127.0.0.1:3000 (node, plain http), allowedAcceptEncoding=gzip'
+          [IO.File]::WriteAllText($wc, $orig.Replace('https://localhost{UNENCODED_URL}', 'http://127.0.0.1:3000{UNENCODED_URL}'))
+          Reset 'gzip'
+          Seq '/ministries/' @('', 8, '', 'br', 'gzip', '', 'gzip, deflate, br', 8, 'br', 'gzip', '')
+          Hits '/ministries/'
+          Seq '/search/' @('br', 8, 'br', '', 'gzip', 'gzip, deflate, br', 8, '', 'br', 'gzip')
+          Hits '/search/'
+          Write-Host '=== P3 upstream http, allowedAcceptEncoding=gzip,br'
+          Reset 'gzip,br'
+          Seq '/connect/' @('', 8, '', 'br', 'gzip', '', 'gzip, deflate, br', 8, 'br', 'gzip', '')
+          Hits '/connect/'
+          Seq '/live/' @('br', 8, 'br', '', 'gzip', 'gzip, deflate, br', 8, '', 'br', 'gzip')
+          Write-Host '=== P4 upstream https://localhost, allowedAcceptEncoding=gzip,br'
+          [IO.File]::WriteAllText($wc, $orig)
+          Reset 'gzip,br'
+          Seq '/archive/' @('', 8, '', 'br', 'gzip', 8, 'br', '')
+          Hits '/archive/'
+          Reset 'gzip'
       - name: The proxy caches public pages only, per encoding
         run: |
           $ErrorActionPreference = 'Stop'
