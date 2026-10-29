@@ -489,23 +489,113 @@ describe("apps/stack", () => {
     expect(await prefixed.text()).toBe("<h1>probe home</h1>");
   });
 
-  it("/files/<key> serves an uploaded file from <DATA_DIR>/storage publicly; .meta, listings and missing keys are not served", async () => {
+  it("/files/<key> serves site files publicly from <DATA_DIR>/storage; a release key with no live release, .meta, listings and missing keys all answer one no-store 404", async () => {
     const { localStore } = await import("@gcpe/storage");
     const store = localStore(join(instance.dataDir, "storage"));
-    const key = "releases/00000000-0000-4000-8000-000000000001/translations/0123456789abcdef-budget-fr.pdf";
-    await store.put(key, Buffer.from("%PDF-1.7 probe"), "application/pdf");
-    const res = await fetch(`${instance.stackUrl}/files/${key}`);
+    const site = "probe-site-file.pdf";
+    await store.put(site, Buffer.from("%PDF-1.7 probe"), "application/pdf");
+    const res = await fetch(`${instance.stackUrl}/files/${site}`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("%PDF-1.7 probe");
     expect(res.headers.get("content-type")).toBe("application/pdf");
     expect(res.headers.get("cache-control")).toBe("public, max-age=60");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect((await fetch(`${instance.stackUrl}/files/.meta/${key}.json`)).status).toBe(403);
-    expect((await fetch(`${instance.stackUrl}/files/releases/00000000-0000-4000-8000-000000000001/translations`, { redirect: "manual" })).status).toBe(404);
-    expect((await fetch(`${instance.stackUrl}/files/releases/nope.pdf`)).status).toBe(404);
+    // On disk but not in NRMS's database (no release at all): not served.
+    const orphan = "releases/00000000-0000-4000-8000-000000000001/translations/0123456789abcdef-budget-fr.pdf";
+    await store.put(orphan, Buffer.from("%PDF-1.7 orphan"), "application/pdf");
+    const notFound = async (path: string) => {
+      const r = await fetch(`${instance.stackUrl}/files/${path}`, { redirect: "manual" });
+      return { status: r.status, cache: r.headers.get("cache-control"), type: r.headers.get("content-type"), body: await r.text() };
+    };
+    const unknown = await notFound("releases/nope.pdf");
+    expect(unknown).toMatchObject({ status: 404, cache: "no-store" });
+    expect(unknown.type).toMatch(/^text\/html/);
+    expect(await notFound(orphan)).toEqual(unknown);
+    expect(await notFound(`.meta/${orphan}.json`)).toEqual(unknown);
+    expect(await notFound("releases/00000000-0000-4000-8000-000000000001/translations")).toEqual(unknown);
   });
 
-  it("an upload through /nrms/api is downloadable at the URL in the view; publicFilesBase takes the site URL's origin", async () => {
+  it("Q17: a release's file is a 404 while draft, approved and embargoed, 200 once live, 404 from the moment it is unpublished and once deleted; staff read it through /nrms/api throughout", async () => {
+    await seedTaxonomy(instance.dbs.nrms.db); // NRMS's local taxonomy copy; idempotent
+    const admin = { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" };
+    const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, { method: "POST", headers: admin, body: JSON.stringify(sampleCreate) });
+    expect(created.status).toBe(201);
+    const { id, version } = (await created.json()) as { id: string; version: number };
+    const up = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/files?kind=translation&version=${version}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/pdf", "x-gcpe-file-name": encodeURIComponent("Budget FR.pdf") },
+      body: Buffer.from("%PDF-1.7 uploaded"),
+    });
+    expect(up.status).toBe(201);
+    let view = (await up.json()) as { version: number; status: string; files: { id: string; url: string }[] };
+    const publicUrl = `${instance.stackUrl}${view.files[0]!.url}`;
+    const staffUrl = `${instance.stackUrl}/nrms/api/releases/${id}/files/${view.files[0]!.id}`;
+    const shapeOf = async (url: string) => {
+      const r = await fetch(url);
+      return { status: r.status, cache: r.headers.get("cache-control"), type: r.headers.get("content-type"), body: await r.text() };
+    };
+    const publicShape = () => shapeOf(publicUrl);
+    // Fetched fresh each time: a tick can rebuild the site's own 404 page in between.
+    const unknownNow = async () => {
+      const u = await shapeOf(`${instance.stackUrl}/files/releases/${id}/translations/0000000000000000-nope.pdf`);
+      expect(u).toMatchObject({ status: 404, cache: "no-store" });
+      return u;
+    };
+    const staffRead = async () => {
+      const r = await fetch(staffUrl, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      return { status: r.status, body: await r.text() };
+    };
+    const post = async (path: string, body: unknown) => {
+      const r = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}${path}`, { method: "POST", headers: admin, body: JSON.stringify(body) });
+      expect(r.status, path).toBe(200);
+      return (await r.json()) as typeof view;
+    };
+    const tick = async () => expect((await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } })).status).toBe(200);
+
+    // Draft: hidden from the public (exactly the unknown-key 404), visible to staff.
+    expect(await publicShape()).toEqual(await unknownNow());
+    expect(await staffRead()).toEqual({ status: 200, body: "%PDF-1.7 uploaded" });
+    expect((await fetch(staffUrl)).status).toBe(401);
+
+    view = await post("/approve", { version: view.version });
+    expect(await publicShape()).toEqual(await unknownNow());
+
+    // Scheduled an hour ahead (embargoed): a publisher run leaves it scheduled and the file hidden.
+    view = await post("/schedule", { version: view.version, publishAt: new Date(Date.now() + 3_600_000).toISOString() });
+    expect(view.status).toBe("scheduled");
+    await tick();
+    expect(await publicShape()).toEqual(await unknownNow());
+    expect(await staffRead()).toEqual({ status: 200, body: "%PDF-1.7 uploaded" });
+
+    // The embargo lifts (go-live time moved into the past, as createScheduledRelease does), the publisher puts it live.
+    await instance.dbs.nrms.pool.query("UPDATE news_releases SET publish_at = now() - interval '1 minute' WHERE id = $1", [id]);
+    await tick();
+    const live = await fetch(publicUrl);
+    expect(live.status).toBe(200);
+    expect(await live.text()).toBe("%PDF-1.7 uploaded");
+    expect(live.headers.get("content-type")).toBe("application/pdf");
+    expect(live.headers.get("cache-control")).toBe("public, max-age=60"); // the worst-case staleness after an unpublish
+    expect(live.headers.get("x-content-type-options")).toBe("nosniff");
+
+    // Unpublish: 404 at once, before the publisher's next run has taken the page down.
+    const current = (await (await fetch(`${instance.stackUrl}/nrms/api/releases/${id}`, { headers: admin })).json()) as typeof view;
+    expect(current.status).toBe("published");
+    view = await post("/unpublish", { version: current.version });
+    expect(view.status).toBe("unpublishing");
+    expect(await publicShape()).toEqual(await unknownNow());
+    await tick();
+    expect(await publicShape()).toEqual(await unknownNow());
+    expect(await staffRead()).toEqual({ status: 200, body: "%PDF-1.7 uploaded" });
+
+    // Deleted (hidden: it has a reference, so its row and file stay): still 404, and staff lose it too.
+    const after = (await (await fetch(`${instance.stackUrl}/nrms/api/releases/${id}`, { headers: admin })).json()) as typeof view;
+    const del = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/delete`, { method: "POST", headers: admin, body: JSON.stringify({ version: after.version }) });
+    expect(await del.json()).toEqual({ result: "hidden" });
+    expect(await publicShape()).toEqual(await unknownNow());
+    expect((await staffRead()).status).toBe(404);
+  });
+
+  it("an upload through /nrms/api is readable by staff at once and publicFilesBase takes the site URL's origin", async () => {
     await seedTaxonomy(instance.dbs.nrms.db); // NRMS's local taxonomy copy; idempotent
     const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, {
       method: "POST",
@@ -524,8 +614,9 @@ describe("apps/stack", () => {
       body: Buffer.from("%PDF-1.7 uploaded"),
     });
     expect(up.status).toBe(201);
-    const view = (await up.json()) as { files: { url: string }[] };
-    const file = await fetch(`${instance.stackUrl}${view.files[0]!.url}`);
+    const view = (await up.json()) as { files: { id: string; url: string }[] };
+    expect(view.files[0]!.url).toMatch(new RegExp(`^/files/releases/${id}/translations/[0-9a-f]{16}-budget-fr\\.pdf$`));
+    const file = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/files/${view.files[0]!.id}`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
     expect(file.status).toBe(200);
     expect(await file.text()).toBe("%PDF-1.7 uploaded");
     expect(publicFilesBase("https://boxs.ca/site/")).toBe("https://boxs.ca");
