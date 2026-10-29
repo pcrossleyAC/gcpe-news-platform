@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@bcgov/design-system-react-components";
-import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
+import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateQuery, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
 
 const DISPLAY_LABELS: Record<ListDisplay, string> = {
   all: "Show All", my_ministries: "My Ministries' Activities Only", my_activities: "My Activities Only", my_watchlist: "My Watchlist Only",
@@ -33,6 +33,13 @@ function Choice({ id, label, value, onChange, options, any }: { id: string; labe
   );
 }
 
+/** A corporate query in words: "next 8 days, New and Changed", "all upcoming, Deleted". */
+export function corporateSummary(c: CorporateQuery): string {
+  const statuses = c.statuses.map((s) => CORPORATE_LABELS[s]);
+  const list = statuses.length > 1 ? `${statuses.slice(0, -1).join(", ")} and ${statuses.at(-1)}` : statuses[0];
+  return `${c.days === null ? "all upcoming" : `next ${c.days} ${c.days === 1 ? "day" : "days"}`}, ${list}`;
+}
+
 const nameOf = (xs: { id: number; name: string }[], id: number | null) => (id === null ? null : (xs.find((x) => x.id === id)?.name ?? GONE));
 
 /**
@@ -42,12 +49,7 @@ const nameOf = (xs: { id: number; name: string }[], id: number | null) => (id ==
  */
 export function activeFilterParts(query: ListQuery, options: ListOptions): string[] {
   // A corporate query replaces the filter and the display altogether (the server lists by it alone).
-  if (query.corporate) {
-    const c = query.corporate;
-    const statuses = c.statuses.map((s) => CORPORATE_LABELS[s]);
-    const list = statuses.length > 1 ? `${statuses.slice(0, -1).join(", ")} and ${statuses.at(-1)}` : statuses[0];
-    return [`Corporate query: ${c.days === null ? "all upcoming" : `next ${c.days} ${c.days === 1 ? "day" : "days"}`}, ${list}`];
-  }
+  if (query.corporate) return [`Corporate query: ${corporateSummary(query.corporate)}`];
   const f = query.filter;
   const parts: string[] = [];
   if (f.thisDayOnly && f.from) parts.push(`Date: ${f.from}`);
@@ -73,8 +75,6 @@ export function activeFilterParts(query: ListQuery, options: ListOptions): strin
   return parts;
 }
 
-const isPhone = () => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 40rem)").matches;
-
 /** Whether Filters is open, for this browser tab only: the screen keeps no other per-user UI state locally. */
 const OPEN_KEY = "gcpe.calendar.filtersOpen";
 function storedOpen(): boolean | null {
@@ -87,10 +87,10 @@ function storedOpen(): boolean | null {
 }
 
 /**
- * The Filter panel (Default.aspx:524-622). Search runs it; the display chosen here is also saved
- * for next time. It starts closed whenever the list is already filtered (a saved query, a shared
- * link, a saved display), with the filter shown as one line beside "Filters", so the results come
- * first; open only when nothing narrows the list. Opening or closing it is remembered for the tab.
+ * The Filter panel (Default.aspx:524-622). Apply filters runs it; the display chosen here is also
+ * saved for next time. It starts closed, with the running filter (or "No filters") shown as one
+ * line beside "Filters", so the activities start within the first screen; opening or closing it
+ * is remembered for the tab.
  */
 export function FilterPanel({ query, options, onSearch }: { query: ListQuery; options: ListOptions; onSearch: (q: ListQuery) => void }): React.JSX.Element {
   const [filter, setFilter] = useState<ListFilter>(query.filter);
@@ -102,8 +102,10 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     setDisplay(query.display);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const parts = activeFilterParts(query, options);
-  // On a phone the open panel is about three screens before the first activity: closed there too.
-  const [open, setOpen] = useState<boolean>(() => storedOpen() ?? (parts.length === 0 && !isPhone()));
+  // Open, the panel is most of a screen (three on a phone) before the first activity: closed until asked for.
+  const [open, setOpen] = useState<boolean>(() => storedOpen() ?? false);
+  // Every HQ tag, then any the filter still names after its tag went away (shown so it can be cleared).
+  const tagChoices = [...options.keywords.map((k) => ({ id: k.id, name: k.name })), ...filter.keywordIds.filter((id) => !options.keywords.some((k) => k.id === id)).map((id) => ({ id, name: GONE }))];
   const set = <K extends keyof ListFilter>(k: K, v: ListFilter[K]) => setFilter((f) => ({ ...f, [k]: v }));
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,23 +154,32 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
           <input id="list-search" type="search" maxLength={200} value={filter.quickSearch} aria-describedby="list-search-hint" onChange={(e) => set("quickSearch", e.target.value)} />
           <p id="list-search-hint" className="gcpe-hint">An activity number (such as HLTH-12345), or words in the title, summary, city and other text.</p>
         </div>
-        <div className="gcpe-field">
-          <label htmlFor="list-tags">HQ Tags</label>
-          <select id="list-tags" multiple value={filter.keywordIds.map(String)} onChange={(e) => set("keywordIds", [...e.target.selectedOptions].map((o) => Number(o.value)))}>
-            {options.keywords.map((k) => (
-              <option key={k.id} value={String(k.id)}>
-                {k.name}
-              </option>
-            ))}
-            {filter.keywordIds
-              .filter((id) => !options.keywords.some((k) => k.id === id))
-              .map((id) => (
-                <option key={id} value={String(id)}>
-                  {GONE}
-                </option>
+        <fieldset className="gcpe-calendar-filter__group gcpe-calendar-filter__tags">
+          <legend>HQ Tags</legend>
+          {tagChoices.length === 0 ? (
+            <p className="gcpe-hint">No HQ tags yet.</p>
+          ) : (
+            <div className="gcpe-calendar-filter__tag-list">
+              {tagChoices.map((t) => (
+                <div key={t.id} className="gcpe-check">
+                  <input
+                    type="checkbox"
+                    id={`list-tag-${t.id}`}
+                    checked={filter.keywordIds.includes(t.id)}
+                    onChange={(e) => {
+                      const on = new Set(filter.keywordIds);
+                      if (e.target.checked) on.add(t.id);
+                      else on.delete(t.id);
+                      // In the list's own order, as the multi-select used to send them.
+                      set("keywordIds", tagChoices.map((x) => x.id).filter((id) => on.has(id)));
+                    }}
+                  />
+                  <label htmlFor={`list-tag-${t.id}`}>{t.name}</label>
+                </div>
               ))}
-          </select>
-        </div>
+            </div>
+          )}
+        </fieldset>
         <Choice id="list-issue" label="Issue" value={tri(filter.isIssue)} onChange={(v) => set("isIssue", fromTri(v))} options={[{ value: "true", label: "Is an Issue" }, { value: "false", label: "Not an Issue" }]} any="Any" />
         <Choice id="list-confirmed" label="Date Confirmed" value={tri(filter.dateConfirmed)} onChange={(v) => set("dateConfirmed", fromTri(v))} options={[{ value: "true", label: "Date is Confirmed" }, { value: "false", label: "Date is not Confirmed" }]} any="Any" />
         <Choice id="list-status" label="Status" value={filter.status ?? ""} onChange={(v) => set("status", v === "" ? null : (v as ListFilter["status"]))} options={ACTIVITY_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))} any="Any status" />
@@ -194,7 +205,7 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
           </p>
         )}
         <div className="gcpe-actions gcpe-calendar-filter__actions">
-          <Button type="submit">Search</Button>
+          <Button type="submit">Apply filters</Button>
           <Button type="button" variant="secondary" onPress={() => setFilter(EMPTY_LIST_FILTER)}>
             Reset
           </Button>

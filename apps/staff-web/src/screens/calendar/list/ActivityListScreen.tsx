@@ -12,7 +12,7 @@ import { ColumnChooser } from "./ColumnChooser";
 import { CalendarGrid, ViewSwitch } from "./CalendarGrid";
 import { isValidBcDate, todayIn } from "./dates";
 import { FilterPanel } from "./FilterPanel";
-import { ClearLaStatus, CorporateQueries, ExportButton, LookAheadFilterChoice, ReviewSelected } from "./HqTools";
+import { ClearLaStatus, CorporateBanner, CorporateQueries, ExportButton, LookAheadFilterChoice, ReviewSelected } from "./HqTools";
 import { MyQueries } from "./MyQueries";
 import { ReportButtons } from "./Reports";
 import type { CalendarConfigView, ListView } from "./types";
@@ -38,10 +38,30 @@ export function usableQuery(query: ListQuery, list: CalendarConfigView["list"]):
   return lookAhead === query.lookAhead && corporate === query.corporate ? query : { ...query, lookAhead, corporate };
 }
 
-/** Legacy's standing note (UCFlexiGrid.ascx:124), and an alert while the freeze applies to this user (spec addendum §7.4). */
+/** Legacy's standing note (UCFlexiGrid.ascx:124) as an information alert, a warning while the freeze applies to this user (spec addendum §7.4). */
 function FreezeNotice({ freeze }: { freeze: CalendarConfigView["freeze"] }) {
   if (freeze.start === freeze.end) return null;
-  return freeze.appliesToYou ? <InlineAlert variant="warning" title="Change freeze" description={freeze.message} /> : <p className="gcpe-hint">{freeze.message}</p>;
+  return freeze.appliesToYou ? (
+    <InlineAlert variant="warning" title="Change freeze" description={freeze.message} />
+  ) : (
+    <InlineAlert variant="info" title="Daily change freeze" description={freeze.message} />
+  );
+}
+
+/**
+ * My Queries and Corporate Queries behind one disclosure, closed at first: the list comes first.
+ * Closed, it names the view the list is running (a saved query, or a corporate query), if any.
+ */
+function SavedViews({ running, children }: { running: string | null; children: React.ReactNode }) {
+  return (
+    <details className="gcpe-disclosure gcpe-calendar-filters gcpe-saved-views">
+      <summary>
+        <span>Saved views</span>
+        <span className="gcpe-calendar-filters__summary">{running ?? "None running"}</span>
+      </summary>
+      <div className="gcpe-saved-views__body">{children}</div>
+    </details>
+  );
 }
 
 /** `/hub/calendar` (spec addendum §8.1): the activity list. */
@@ -57,6 +77,7 @@ export function ActivityListScreen(): React.JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [prefsError, setPrefsError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [runningQuery, setRunningQuery] = useState<string | null>(null);
   const latest = useRef(0);
 
   useEffect(() => {
@@ -169,13 +190,16 @@ export function ActivityListScreen(): React.JSX.Element {
           setQuery(q);
         }}
       />
-      <MyQueries current={query.filter} onRun={(filter) => setQuery({ ...query, corporate: null, filter })} />
-      {config.list.corporateQueries && (
-        <CorporateQueries active={query.corporate} onRun={(corporate) => setQuery({ ...query, corporate })} onClear={() => setQuery({ ...query, corporate: null })} />
-      )}
-      {config.list.lookAheadFilter && <LookAheadFilterChoice value={query.lookAhead} onChange={(lookAhead) => setQuery({ ...query, lookAhead })} />}
-      <ColumnChooser hidden={prefs.hiddenColumns} onChange={(hiddenColumns) => void savePrefs({ ...prefs, hiddenColumns })} />
+      <SavedViews running={query.corporate ? "Running a corporate query" : runningQuery && `Running “${runningQuery}”`}>
+        <MyQueries current={query.filter} onRun={(filter) => setQuery({ ...query, corporate: null, filter })} onRunning={setRunningQuery} />
+        {config.list.corporateQueries && <CorporateQueries active={query.corporate} onRun={(corporate) => setQuery({ ...query, corporate })} />}
+      </SavedViews>
+      <div className="gcpe-calendar-viewbar">
+        {config.list.lookAheadFilter && <LookAheadFilterChoice value={query.lookAhead} onChange={(lookAhead) => setQuery({ ...query, lookAhead })} />}
+        <ColumnChooser hidden={prefs.hiddenColumns} onChange={(hiddenColumns) => void savePrefs({ ...prefs, hiddenColumns })} />
+      </div>
       {prefsError && <p role="alert">{prefsError}</p>}
+      {query.corporate && <CorporateBanner active={query.corporate} onClear={() => setQuery({ ...query, corporate: null })} />}
       <div className="gcpe-calendar-toolbar">
         <section aria-label="List actions" className="gcpe-actions">
           {config.editor.create && !config.freeze.appliesToYou && (

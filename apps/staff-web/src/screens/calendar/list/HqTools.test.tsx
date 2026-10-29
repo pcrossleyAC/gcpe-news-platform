@@ -81,7 +81,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     hq(calls, (url) => (url === "/calendar/api/activities/clear-la-status" ? jsonResponse(200, { cleared: 3 }) : undefined));
     renderList();
     const user = userEvent.setup();
-    const days = await screen.findByLabelText("Days ahead");
+    const days = await screen.findByLabelText("Days ahead (Clear LA Status)");
     expect(days).toHaveValue(8);
     await user.clear(days);
     await user.type(days, "14");
@@ -98,10 +98,19 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     const corp = await screen.findByRole("region", { name: "Corporate Queries" });
     await user.click(within(corp).getByLabelText("Show all"));
     await user.click(within(corp).getByLabelText("Reviewed"));
-    await user.click(within(corp).getByRole("button", { name: "Search" }));
+    // Not running yet: its ticked boxes are only a form, and it says so.
+    expect(within(corp).getByText(/^Not applied: the list shows your filters\./)).toBeInTheDocument();
+    expect(screen.queryByText("Showing a corporate query.")).toBeNull();
+    await user.click(within(corp).getByRole("button", { name: "Run corporate query" }));
     await waitFor(() => expect(qOf(listCalls(calls).at(-1)!.url)).toMatchObject({ corporate: { days: null, statuses: ["new", "changed", "reviewed"] } }));
+    // Running: a banner above the list, and the closed Saved views names it.
+    await screen.findByText("Showing a corporate query.");
+    expect(screen.getByText("Showing a corporate query.").closest("[role=status]")).toHaveTextContent("Every ministry's activities: all upcoming, New, Changed and Reviewed.");
+    expect(corp.closest("details")!.querySelector("summary")).toHaveTextContent("Running a corporate query");
+    expect(within(corp).getByText(/^Running now:/)).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "Back to the filter" }));
     await waitFor(() => expect(qOf(listCalls(calls).at(-1)!.url)).toMatchObject({ corporate: null }));
+    expect(screen.queryByText("Showing a corporate query.")).toBeNull();
     await user.click(within(screen.getByRole("group", { name: "Look Ahead filter" })).getByLabelText("Not for Look Ahead Only"));
     await waitFor(() => expect(qOf(listCalls(calls).at(-1)!.url)).toMatchObject({ lookAhead: "not_for_look_ahead_only" }));
   });

@@ -46,7 +46,7 @@ describe("accessibility: the activity list in every state", () => {
     await user.click(screen.getByText("Columns"));
     await user.type(screen.getByLabelText("From"), "2026-11-20");
     await user.type(screen.getByLabelText("To"), "2026-11-10");
-    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.click(screen.getByRole("button", { name: "Apply filters" }));
     await screen.findByText("From must be on or before To.");
     expect(await seriousViolations(container)).toEqual([]);
   });
@@ -174,7 +174,7 @@ describe("accessibility: the activity list in every state", () => {
     await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
     await screen.findByText("Cleared the LA status of 3 activities.");
     expect(await seriousViolations(container)).toEqual([]);
-    const days = screen.getByLabelText("Days ahead");
+    const days = screen.getByLabelText("Days ahead (Clear LA Status)");
     await user.clear(days);
     await user.type(days, "999");
     expect(days).toHaveAttribute("aria-invalid", "true");

@@ -5,8 +5,14 @@ import { ApiError } from "../../../api/client";
 import { messagesOf } from "../../admin/messages";
 import { listApi } from "./api";
 
-/** "My Queries" (Default.aspx:663-681): your own saved filters. Saving isn't frozen. */
-export function MyQueries({ current, onRun }: { current: ListFilter; onRun: (filter: ListFilter) => void }): React.JSX.Element {
+/** The same filter, whatever order its fields arrived in (the URL's and the server's may differ). */
+const filterKey = (f: ListFilter) => JSON.stringify(Object.keys(f).sort().map((k) => [k, f[k as keyof ListFilter]]));
+
+/**
+ * "My Queries" (Default.aspx:663-681): your own saved filters. Saving isn't frozen. `onRunning`
+ * hears the name of the saved query the list is running (its filter is the current one), or null.
+ */
+export function MyQueries({ current, onRun, onRunning }: { current: ListFilter; onRun: (filter: ListFilter) => void; onRunning?: (name: string | null) => void }): React.JSX.Element {
   const [filters, setFilters] = useState<SavedFilterView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -24,6 +30,8 @@ export function MyQueries({ current, onRun }: { current: ListFilter; onRun: (fil
     );
   };
   useEffect(load, []);
+  const running = filters?.find((f) => f.filter !== null && filterKey(f.filter) === filterKey(current))?.name ?? null;
+  useEffect(() => onRunning?.(running), [running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const act = async (work: () => Promise<string>) => {
     setErrors([]);
@@ -66,8 +74,8 @@ export function MyQueries({ current, onRun }: { current: ListFilter; onRun: (fil
     });
 
   return (
-    <section aria-labelledby="my-queries-heading" className="gcpe-my-queries">
-      <h2 id="my-queries-heading">My Queries</h2>
+    <section aria-labelledby="my-queries-heading" className="gcpe-my-queries gcpe-saved-views__part">
+      <h3 id="my-queries-heading">My Queries</h3>
       {status && <p role="status">{status}</p>}
       {errors.map((m, i) => (
         <p role="alert" key={`${i}:${m}`}>
@@ -79,9 +87,9 @@ export function MyQueries({ current, onRun }: { current: ListFilter; onRun: (fil
       ) : filters === null ? (
         <p>Loading…</p>
       ) : filters.length === 0 ? (
-        <p>Use the filter above, then save it here.</p>
+        <p className="gcpe-hint">Use the filter above, then save it here.</p>
       ) : (
-        <ul>
+        <ul className="gcpe-my-queries__list">
           {filters.map((f, i) => (
             <li key={f.id}>
               {editing === f.id ? (
