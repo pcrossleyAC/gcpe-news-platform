@@ -48,8 +48,10 @@ test.describe("Lists and categories", () => {
       // save round-trip and reload land, so Playwright's own single-shot post-click check
       // (expecting a synchronous DOM change) would fail even on success. `expect(...).not
       // .toBeChecked()` polls instead.
-      await page.getByRole("checkbox", { name: "Offer Emergency Info BC Alerts" }).click();
-      await expect(page.getByRole("status").filter({ hasText: "Emergency Info BC Alerts is no longer offered." })).toBeVisible();
+      const offer = page.getByRole("checkbox", { name: "Offer Emergency Info BC Alerts" });
+      await offer.click();
+      // "Saved" beside the checkbox (owner decision 2026-10-29), in its own polite live region.
+      await expect(page.getByRole("row").filter({ has: offer }).getByText("Saved", { exact: true })).toBeVisible();
       await expect(page.getByRole("checkbox", { name: "Offer Emergency Info BC Alerts" })).not.toBeChecked();
       const options = await apiCall<{ categories: { lists: { listKey: string }[] }[] }>(admin, "/nod/api/subscriber-list-options");
       expect(options.categories.flatMap((c) => c.lists.map((l) => l.listKey))).not.toContain("emergency:alerts");
