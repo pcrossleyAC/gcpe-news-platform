@@ -154,6 +154,9 @@ async function runBuild() {
     ["apps/news-api/src/import/public-cli.ts", "tools/news-api-import-public.mjs"],
     ["apps/news-api/src/import/files-cli.ts", "tools/news-api-import-files.mjs"],
     ["apps/nrms/src/import/public-slides-cli.ts", "tools/nrms-import-public-slides.mjs"],
+    // `legacy-files:copy` (apps/stack/src/legacy-files/cli.ts): imports legacy news.gov.bc.ca/files/*
+    // (the legacy Hub's uploads) as NRMS site files before DNS moves (docs/deploy/siteground.md, "Legacy /files import").
+    ["apps/stack/src/legacy-files/cli.ts", "tools/legacy-files-copy.mjs"],
   ]) {
     console.log(`[build-siteground] bundling ${tool} …`);
     await build({

@@ -26,6 +26,7 @@
     "news-api:search-backfill": "npm --workspace @gcpe/news-api run search-backfill --",
     "news-api:import-public": "npm --workspace @gcpe/news-api run import:public --",
     "news-api:import-files": "npm --workspace @gcpe/news-api run import:files --",
+    "legacy-files:copy": "tsx apps/stack/src/legacy-files/cli.ts",
     "calendar:import": "npm --workspace @gcpe/calendar run import:legacy --",
     "calendar:replay-to-nrms": "npm --workspace @gcpe/calendar run replay-to-nrms --",
     "staff-web:build": "node scripts/build-staff-web.mjs",

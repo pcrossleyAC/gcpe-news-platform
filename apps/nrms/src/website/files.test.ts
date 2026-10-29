@@ -7,7 +7,7 @@ import { localStore, type ObjectStore } from "@gcpe/storage";
 import { createNrmsTestDb, editor } from "../../test/helpers";
 import { siteFiles } from "../db/schema";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
-import { deleteFile, listFiles, uploadFile, type SiteFileView } from "./files";
+import { deleteFile, findSiteFileByName, importSiteFile, listFiles, MAX_SITE_FILE_BYTES, uploadFile, type SiteFileView } from "./files";
 
 const PDF = Buffer.from("%PDF-1.7\n% test\n");
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("rest-of-png")]);
@@ -223,5 +223,118 @@ describe("website/files — general file uploads", () => {
 
     const stored = await store.get(name);
     expect(stored!.bytes.length).toBe(finalSize);
+  });
+});
+
+// Legacy news.gov.bc.ca /files: the legacy Hub's Website > Files uploads, imported as site files
+// (apps/stack/src/legacy-files) so they show in the Hub's Files list and are served at /files/<name>.
+describe("website/files — legacy import and name lookup", () => {
+  let tdb: TestDatabase;
+  let root: string;
+  let store: ObjectStore;
+  const LEGACY = { id: "legacy-import", name: "Legacy import" };
+
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+    root = await mkdtemp(join(tmpdir(), "nrms-site-files-legacy-"));
+    store = localStore(root, "/files/");
+  });
+  afterAll(async () => {
+    await tdb.drop();
+    await rm(root, { recursive: true, force: true });
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE site_files, site_log CASCADE");
+  });
+
+  const at = new Date("2019-03-04T05:06:07Z");
+  const DOCX = Buffer.from("PK\u0003\u0004 docx bytes");
+
+  it("imports any type under its legacy name (case kept), storage key = the lowercased name when that is a safe key; created at the blob's date, by Legacy import; logged", async () => {
+    const r = await importSiteFile(tdb.db, store, { name: "News_Footage_License_British_Columbia.pdf", bytes: PDF, contentType: "application/pdf", createdAt: at, replace: false }, LEGACY);
+    expect(r.outcome).toBe("imported");
+    const [row] = await tdb.db.select().from(siteFiles);
+    expect(row).toMatchObject({ name: "News_Footage_License_British_Columbia.pdf", storageKey: "news_footage_license_british_columbia.pdf", contentType: "application/pdf", size: PDF.length, createdBy: "legacy-import" });
+    expect(row!.createdAt.toISOString()).toBe(at.toISOString());
+    expect((await store.get("news_footage_license_british_columbia.pdf"))!.bytes.equals(PDF)).toBe(true);
+    const log = await tdb.pool.query("SELECT actor_name, area, text FROM site_log");
+    expect(log.rows).toEqual([{ actor_name: "Legacy import", area: "files", text: "Imported News_Footage_License_British_Columbia.pdf from legacy" }]);
+    // It is in the Hub's list, and its URL is encoded.
+    expect((await listFiles(tdb.db)).files[0]).toMatchObject({ name: "News_Footage_License_British_Columbia.pdf", url: "/files/News_Footage_License_British_Columbia.pdf" });
+  });
+
+  it("a name that isn't a safe storage key (spaces, &) gets a generated single-segment key; the Hub URL is percent-encoded", async () => {
+    await importSiteFile(tdb.db, store, { name: "Q1_ MediaDeck & notes.docx", bytes: DOCX, contentType: "application/octet-stream", createdAt: at, replace: false }, LEGACY);
+    const [row] = await tdb.db.select().from(siteFiles);
+    expect(row!.storageKey).toMatch(/^legacy-[0-9a-f]{8}-q1_-mediadeck-notes\.docx$/);
+    expect((await listFiles(tdb.db)).files[0]!.url).toBe("/files/Q1_%20MediaDeck%20%26%20notes.docx");
+    expect((await store.get(row!.storageKey))!.bytes.equals(DOCX)).toBe(true);
+  });
+
+  it("idempotent by name, case-insensitively: an existing file (a staff upload included) is kept; replace swaps the bytes and logs it", async () => {
+    await uploadFile(tdb.db, store, { name: "budget.pdf", bytes: PDF }, editor);
+    const again = await importSiteFile(tdb.db, store, { name: "Budget.PDF", bytes: Buffer.from("%PDF-1.7 legacy"), contentType: "application/pdf", createdAt: at, replace: false }, LEGACY);
+    expect(again.outcome).toBe("exists");
+    expect((await store.get("budget.pdf"))!.bytes.equals(PDF)).toBe(true);
+    const newer = Buffer.from("%PDF-1.7 newer legacy bytes");
+    const replaced = await importSiteFile(tdb.db, store, { name: "BUDGET.pdf", bytes: newer, contentType: "application/pdf", createdAt: at, replace: true }, LEGACY);
+    expect(replaced.outcome).toBe("replaced");
+    expect((await store.get("budget.pdf"))!.bytes.equals(newer)).toBe(true);
+    const rows = await tdb.db.select().from(siteFiles);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.size).toBe(newer.length);
+    const log = await tdb.pool.query("SELECT text FROM site_log ORDER BY id DESC LIMIT 1");
+    expect(log.rows[0].text).toBe("Replaced budget.pdf from legacy");
+  });
+
+  it("can exceed the upload cap (legacy files may be larger than 25 MB)", async () => {
+    const big = Buffer.alloc(MAX_SITE_FILE_BYTES + 10, 1);
+    expect((await importSiteFile(tdb.db, store, { name: "big.mp4", bytes: big, contentType: "video/mp4", createdAt: at, replace: false }, LEGACY)).outcome).toBe("imported");
+  });
+
+  it("refuses a name that isn't one safe path segment", async () => {
+    for (const name of ["a/b.pdf", "../x.pdf", ".hidden", "", "x\\y.pdf", "c:x"]) {
+      await expect(importSiteFile(tdb.db, store, { name, bytes: PDF, contentType: "application/pdf", createdAt: at, replace: false }, LEGACY), name).rejects.toThrow(SiteRuleError);
+    }
+    expect(await tdb.db.select().from(siteFiles)).toEqual([]);
+  });
+
+  it("a Hub upload with an imported file's name (any case) is the normal 409 conflict, not a 500", async () => {
+    await importSiteFile(tdb.db, store, { name: "Budget.pdf", bytes: PDF, contentType: "application/pdf", createdAt: at, replace: false }, LEGACY);
+    for (const name of ["Budget.pdf", "BUDGET.PDF", "budget.pdf"]) {
+      await expect(uploadFile(tdb.db, store, { name, bytes: PDF }, editor), name).rejects.toThrow(SiteConflictError);
+    }
+    // A slugged name that is another row's storage key is a conflict too, never the raw unique violation.
+    await tdb.pool.query("INSERT INTO site_files (storage_key, name, content_type, size, created_by) VALUES ('clash.pdf', 'Some Other Name.pdf', 'application/pdf', 1, 'x')");
+    await expect(uploadFile(tdb.db, store, { name: "Clash.pdf", bytes: PDF }, editor)).rejects.toThrow(SiteConflictError);
+  });
+
+  it("replace of an imported file (a name with spaces) keeps its name, URL and storage key and swaps the bytes", async () => {
+    await importSiteFile(tdb.db, store, { name: "Fact Sheet.pdf", bytes: PDF, contentType: "application/pdf", createdAt: at, replace: false }, LEGACY);
+    const [before] = await tdb.db.select().from(siteFiles);
+    await expect(uploadFile(tdb.db, store, { name: "Fact Sheet.pdf", bytes: PDF }, editor)).rejects.toThrow(SiteConflictError);
+    const newer = Buffer.from("%PDF-1.7 staff replacement");
+    const view = await uploadFile(tdb.db, store, { name: "Fact Sheet.pdf", bytes: newer, replace: true }, editor);
+    expect(view).toMatchObject({ id: before!.id, name: "Fact Sheet.pdf", url: "/files/Fact%20Sheet.pdf", size: newer.length });
+    const rows = await tdb.db.select().from(siteFiles);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.storageKey).toBe(before!.storageKey);
+    expect((await store.get(before!.storageKey))!.bytes.equals(newer)).toBe(true);
+    const log = await tdb.pool.query("SELECT text FROM site_log ORDER BY id DESC LIMIT 1");
+    expect(log.rows[0].text).toBe("Replaced Fact Sheet.pdf");
+  });
+
+  it("an upload whose type doesn't match the imported name's extension is a new file, never a replace that would serve PNG bytes as a PDF", async () => {
+    await importSiteFile(tdb.db, store, { name: "Chart.pdf", bytes: PDF, contentType: "application/pdf", createdAt: at, replace: false }, LEGACY);
+    const v = await uploadFile(tdb.db, store, { name: "Chart.pdf", bytes: PNG }, editor);
+    expect(v.name).toBe("chart.png");
+    expect(await tdb.db.select().from(siteFiles)).toHaveLength(2);
+  });
+
+  it("findSiteFileByName: case-insensitive (legacy parity), the exact spelling preferred; null when none", async () => {
+    await importSiteFile(tdb.db, store, { name: "Report.pdf", bytes: PDF, contentType: "application/pdf", createdAt: at, replace: false }, LEGACY);
+    expect(await findSiteFileByName(tdb.db, "report.PDF")).toMatchObject({ name: "Report.pdf", storageKey: "report.pdf" });
+    expect(await findSiteFileByName(tdb.db, "missing.pdf")).toBeNull();
+    expect(await findSiteFileByName(tdb.db, "")).toBeNull();
   });
 });

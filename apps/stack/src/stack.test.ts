@@ -515,6 +515,51 @@ describe("apps/stack", () => {
     expect(await notFound("releases/00000000-0000-4000-8000-000000000001/translations")).toEqual(unknown);
   });
 
+  it("legacy /files: an imported legacy site file is served by its legacy name in any case, an HTML one only as a sandboxed download; an unknown name is a no-store 302 to legacy's Azure front door (on by default); /assets/license lands on the licence", async () => {
+    const { localStore } = await import("@gcpe/storage");
+    const { importSiteFile } = await import("../../nrms/src/website/files");
+    const store = localStore(join(instance.dataDir, "storage"));
+    const actor = { id: "legacy-import", name: "Legacy import" };
+    const at = new Date("2019-01-01T00:00:00Z");
+    await importSiteFile(instance.dbs.nrms.db, store, { name: "News_Footage_License_British_Columbia.pdf", bytes: Buffer.from("%PDF legacy licence"), contentType: "application/pdf", createdAt: at, replace: false }, actor);
+    await importSiteFile(instance.dbs.nrms.db, store, { name: "Fact Sheet.pdf", bytes: Buffer.from("%PDF fact sheet"), contentType: "application/pdf", createdAt: at, replace: false }, actor);
+    await importSiteFile(instance.dbs.nrms.db, store, { name: "Legacy Page.html", bytes: Buffer.from("<script>alert(1)</script>"), contentType: "application/octet-stream", createdAt: at, replace: false }, actor);
+    const res = await fetch(`${instance.stackUrl}/files/News_Footage_License_British_Columbia.pdf`, { redirect: "manual" });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("%PDF legacy licence");
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toBeNull();
+    expect((await fetch(`${instance.stackUrl}/files/FACT%20SHEET.PDF`, { redirect: "manual" })).status).toBe(200);
+    const page = await fetch(`${instance.stackUrl}/files/Legacy%20Page.html`, { redirect: "manual" });
+    expect(page.headers.get("content-type")).toBe("application/octet-stream");
+    expect(page.headers.get("content-disposition")).toMatch(/^attachment/);
+    expect(page.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'");
+    const miss = await fetch(`${instance.stackUrl}/files/Newsroom/Never%20Copied.pdf`, { redirect: "manual" });
+    expect(miss.status).toBe(302);
+    expect(miss.headers.get("location")).toBe("https://bcgovnews-etg7c8etapa6btfr.z03.azurefd.net/files/newsroom/never%20copied.pdf");
+    expect(miss.headers.get("cache-control")).toBe("no-store");
+    // The Hub over an imported file: the same name is the normal 409, and replace keeps the legacy URL.
+    const upload = (name: string, body: string, replace: boolean) =>
+      fetch(`${instance.stackUrl}/nrms/api/site/files?replace=${replace}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/pdf", "x-gcpe-file-name": encodeURIComponent(name) },
+        body: Buffer.from(body),
+      });
+    expect((await upload("Fact Sheet.pdf", "%PDF-1.7 staff", false)).status).toBe(409);
+    expect((await upload("FACT SHEET.PDF", "%PDF-1.7 staff", false)).status).toBe(409);
+    const replaced = await upload("Fact Sheet.pdf", "%PDF-1.7 staff replacement", true);
+    expect(replaced.status).toBe(201);
+    expect(((await replaced.json()) as { url: string }).url).toBe("/files/Fact%20Sheet.pdf");
+    expect(await (await fetch(`${instance.stackUrl}/files/Fact%20Sheet.pdf`)).text()).toBe("%PDF-1.7 staff replacement");
+    const licence = await fetch(`${instance.stackUrl}/assets/license`, { redirect: "manual" });
+    expect(licence.status).toBe(302);
+    const target = await fetch(new URL(licence.headers.get("location")!, instance.stackUrl), { redirect: "manual" });
+    expect(target.status).toBe(200);
+    expect(await target.text()).toBe("%PDF legacy licence");
+  });
+
   it("Q17: a release's file is a 404 while draft, approved and embargoed, 200 once live, 404 from the moment it is unpublished and once deleted; staff read it through /nrms/api throughout", async () => {
     await seedTaxonomy(instance.dbs.nrms.db); // NRMS's local taxonomy copy; idempotent
     const admin = { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" };
@@ -529,6 +574,7 @@ describe("apps/stack", () => {
     expect(up.status).toBe(201);
     let view = (await up.json()) as { version: number; status: string; files: { id: string; url: string }[] };
     const publicUrl = `${instance.stackUrl}${view.files[0]!.url}`;
+    // The 302 safety net is on by default: a release key must still answer the plain 404 below (Q17).
     const staffUrl = `${instance.stackUrl}/nrms/api/releases/${id}/files/${view.files[0]!.id}`;
     const shapeOf = async (url: string) => {
       const r = await fetch(url);

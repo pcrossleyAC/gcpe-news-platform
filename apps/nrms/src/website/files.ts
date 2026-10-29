@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { desc, eq, ilike, sql, type SQL } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
-import { assertSafeKey, forceExtension, safeFileName, sniff, type ObjectStore } from "@gcpe/storage";
+import { assertSafeKey, forceExtension, hasMatchingExtension, safeFileName, sniff, type ObjectStore, type SniffedType } from "@gcpe/storage";
 import { siteFiles } from "../db/schema";
 import type { Actor } from "../releases/store";
 import { deleteQuietly } from "../storage-log";
@@ -29,7 +29,7 @@ export interface SiteFileView {
 
 type SiteFileRow = typeof siteFiles.$inferSelect;
 
-const fileUrl = (name: string): string => `/files/${name}`;
+const fileUrl = (name: string): string => `/files/${encodeURIComponent(name)}`;
 
 function view(row: SiteFileRow): SiteFileView {
   return { id: row.id, name: row.name, url: fileUrl(row.name), contentType: row.contentType, size: row.size, createdAt: row.createdAt.toISOString(), createdBy: row.createdBy };
@@ -126,11 +126,18 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
   let wroteRealKeyForNewRow = false;
   try {
     const row = await db.transaction(async (tx) => {
+      // The per-name locks importSiteFile takes (its name is the original spelling), for both spellings
+      // this upload could match, in a fixed order, so an upload and a legacy import of one file serialise.
+      // A name with control characters (Postgres refuses a NUL in text) can't be any file's name: match on the slug alone.
+      const original = /[\u0000-\u001f\u007f]/.test(input.name) ? name : input.name;
+      for (const n of [...new Set([original.toLowerCase(), name])].sort()) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"site_files:"} || ${n}))`);
+      const existing = await sameFile(tx, original, name, contentType);
       if (!input.replace) {
+        if (existing) throw new SiteConflictError("A file with that name already exists.");
         const [created] = await tx
           .insert(siteFiles)
           .values({ storageKey: name, name, contentType, size: input.bytes.length, createdBy: actor.id })
-          .onConflictDoNothing({ target: siteFiles.name })
+          .onConflictDoNothing()
           .returning();
         if (!created) throw new SiteConflictError("A file with that name already exists.");
         await store.put(name, input.bytes, contentType);
@@ -138,20 +145,50 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
         await writeSiteLog(tx, actor, "files", `Uploaded ${name}`);
         return created;
       }
-      const [existing] = await tx.select().from(siteFiles).where(eq(siteFiles.name, name)).for("update");
       if (!existing) throw new SiteNotFoundError(`no file named ${name}`);
-      const [updated] = await tx.update(siteFiles).set({ contentType, size: input.bytes.length }).where(eq(siteFiles.id, existing.id)).returning();
-      await store.put(name, input.bytes, contentType);
-      await writeSiteLog(tx, actor, "files", `Replaced ${name}`);
+      // The existing file keeps its name, URL and storage key (an imported legacy file's links keep working).
+      const [locked] = await tx.select().from(siteFiles).where(eq(siteFiles.id, existing.id)).for("update");
+      if (!locked) throw new SiteNotFoundError(`no file named ${name}`);
+      const [updated] = await tx.update(siteFiles).set({ contentType, size: input.bytes.length }).where(eq(siteFiles.id, locked.id)).returning();
+      await store.put(locked.storageKey, input.bytes, contentType);
+      await writeSiteLog(tx, actor, "files", `Replaced ${locked.name}`);
       return updated!;
     });
     return view(row);
   } catch (e) {
     if (wroteRealKeyForNewRow) await deleteQuietly(store, name, "stored site file", "upload not saved");
+    // A concurrent writer took the name or the storage key between the check and the insert.
+    if (isUniqueViolation(e)) throw new SiteConflictError("A file with that name already exists.");
     throw e;
   } finally {
     await deleteQuietly(store, tempKey, "stored site file", "upload cleanup");
   }
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  for (let c: unknown = e; c && typeof c === "object"; c = (c as { cause?: unknown }).cause) {
+    if ((c as { code?: unknown }).code === "23505") return true;
+  }
+  return false;
+}
+
+/**
+ * The existing file an upload of `original` (slugged to `slug`) is the same file as: one named
+ * `original` in any letter case whose extension fits the uploaded type (an imported legacy file
+ * such as `Fact Sheet.pdf`), else one named `slug`, else one stored at `slug` (an imported file
+ * whose storage key is the slug). Null when there is none.
+ */
+async function sameFile(tx: DbOrTx, original: string, slug: string, contentType: SniffedType): Promise<SiteFileRow | null> {
+  const rows = await tx
+    .select()
+    .from(siteFiles)
+    .where(sql`lower(${siteFiles.name}) = lower(${original}) OR ${siteFiles.name} = ${slug} OR ${siteFiles.storageKey} = ${slug}`);
+  return (
+    rows.find((r) => r.name.toLowerCase() === original.toLowerCase() && hasMatchingExtension(r.name, contentType)) ??
+    rows.find((r) => r.name === slug) ??
+    rows.find((r) => r.storageKey === slug) ??
+    null
+  );
 }
 
 /**
@@ -170,4 +207,107 @@ export async function deleteFile(db: Db, store: ObjectStore, id: string, actor: 
     await store.delete(row.storageKey);
     await writeSiteLog(tx, actor, "files", `Deleted ${row.name}`);
   });
+}
+
+// ---------------------------------------------------------------- legacy import
+
+/**
+ * A legacy file name the public site can serve as `/files/<name>`: one path segment, nothing a
+ * file system or URL would read as structure (`/`, `\`, `:`, `~` 8.3 aliases, control
+ * characters, Windows-invalid characters or device names, a leading dot, a trailing dot or
+ * space), at most 255 characters.
+ */
+function assertLegacyName(name: string): void {
+  const bad =
+    name === "" ||
+    name.length > 255 ||
+    name.startsWith(".") ||
+    /[\/\\:~<>"|?*\u0000-\u001f\u007f]/.test(name) ||
+    /[. ]$/.test(name) ||
+    /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3]|conin\$|conout\$)(\..*)?$/i.test(name);
+  if (bad) throw new SiteRuleError([`"${name.slice(0, 80)}" can't be a file name at /files/.`]);
+}
+
+export interface ImportSiteFileInput {
+  /** The legacy name (blob metadata `filename`, else the blob name), case kept: the public URL is `/files/<name>`. */
+  name: string;
+  bytes: Buffer;
+  /** As the stack will serve it (apps/stack/src/files-policy.ts). */
+  contentType: string;
+  /** The legacy blob's Last-Modified. */
+  createdAt: Date;
+  /** Replace the bytes of an existing file of that name (any case). */
+  replace: boolean;
+}
+
+export type ImportSiteFileOutcome = "imported" | "replaced" | "exists";
+
+/**
+ * Imports one legacy news.gov.bc.ca `/files` file (the legacy Hub's Website > Files uploads) as
+ * a site file, so it is listed in the Hub, served at `/files/<name>` and can be deleted or
+ * replaced like any upload. Unlike {@link uploadFile}: any type (legacy accepted any; the stack
+ * serves anything but inert types as a download), no 25 MB cap (the copy command has its own),
+ * the legacy name kept as it is (case and spaces included).
+ *
+ * Idempotent by name, case-insensitively (legacy resolved `/files/<name>` in any case): an
+ * existing file, a staff upload included, is left alone (`exists`) unless `replace`. The
+ * storage key is the lowercased name when that is a safe key and free, else
+ * `legacy-<8 hex>-<safeFileName(name)>`: always one segment, never `releases/…` or `slides/…`.
+ * Bytes are written inside the transaction, under a per-name lock, as uploadFile does.
+ */
+export async function importSiteFile(db: Db, store: ObjectStore, input: ImportSiteFileInput, actor: Actor): Promise<{ outcome: ImportSiteFileOutcome; view: SiteFileView | null }> {
+  assertLegacyName(input.name);
+  let wroteNewKey: string | null = null;
+  try {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"site_files:"} || lower(${input.name})))`);
+      const [existing] = await tx.select().from(siteFiles).where(sql`lower(${siteFiles.name}) = lower(${input.name})`).for("update");
+      if (existing && !input.replace) return { outcome: "exists" as const, view: view(existing) };
+      if (existing) {
+        const [updated] = await tx.update(siteFiles).set({ contentType: input.contentType, size: input.bytes.length }).where(eq(siteFiles.id, existing.id)).returning();
+        await store.put(existing.storageKey, input.bytes, input.contentType);
+        await writeSiteLog(tx, actor, "files", `Replaced ${existing.name} from legacy`);
+        return { outcome: "replaced" as const, view: view(updated!) };
+      }
+      let storageKey = input.name.toLowerCase();
+      let safe = true;
+      try {
+        assertSafeKey(storageKey);
+      } catch {
+        safe = false;
+      }
+      const [taken] = safe ? await tx.select({ id: siteFiles.id }).from(siteFiles).where(eq(siteFiles.storageKey, storageKey)) : [];
+      if (!safe || taken || (await store.get(storageKey).catch(() => null))) storageKey = `legacy-${randomBytes(4).toString("hex")}-${safeFileName(input.name)}`.slice(0, 128);
+      assertSafeKey(storageKey);
+      const [created] = await tx
+        .insert(siteFiles)
+        .values({ storageKey, name: input.name, contentType: input.contentType, size: input.bytes.length, createdAt: input.createdAt, createdBy: actor.id })
+        .onConflictDoNothing()
+        .returning();
+      if (!created) return { outcome: "exists" as const, view: null };
+      await store.put(storageKey, input.bytes, input.contentType);
+      wroteNewKey = storageKey;
+      await writeSiteLog(tx, actor, "files", `Imported ${input.name} from legacy`);
+      return { outcome: "imported" as const, view: view(created) };
+    });
+  } catch (e) {
+    if (wroteNewKey) await deleteQuietly(store, wroteNewKey, "stored site file", "legacy import not saved");
+    throw e;
+  }
+}
+
+/**
+ * The site file `/files/<name>` names, case-insensitively (legacy parity: news.gov resolved its
+ * files in any letter case); the exact spelling first when several differ only in case. Null
+ * when there is none. One indexed-by-scan lookup over a table of at most a few thousand rows.
+ */
+export async function findSiteFileByName(db: DbOrTx, name: string): Promise<{ name: string; storageKey: string; contentType: string } | null> {
+  if (!name) return null;
+  const [row] = await db
+    .select({ name: siteFiles.name, storageKey: siteFiles.storageKey, contentType: siteFiles.contentType })
+    .from(siteFiles)
+    .where(sql`lower(${siteFiles.name}) = lower(${name})`)
+    .orderBy(sql`${siteFiles.name} = ${name} DESC`, sql`${siteFiles.name} = lower(${name}) DESC`, desc(siteFiles.createdAt))
+    .limit(1);
+  return row ?? null;
 }

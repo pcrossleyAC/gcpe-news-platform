@@ -4,6 +4,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isRealProduction, trustProxyHopsSchema } from "@gcpe/config";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
+import { DEFAULT_LEGACY_FILES_ORIGIN, parseOrigin } from "./legacy-files/options";
 import { createProjectionHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
 import { z } from "zod";
 
@@ -72,6 +73,26 @@ export const stackEnvSchema = z.object({
   // How many reverse proxies sit in front of the stack (1 = SiteGround nginx / local IIS; 2 = a
   // DMZ proxy in front of IIS). Applied to the stack's own app and, via envFor, every mounted app.
   TRUST_PROXY_HOPS: trustProxyHopsSchema,
+  // Legacy news.gov.bc.ca /files (legacy-files/, files-gate.ts): an unknown /files/<path> that is
+  // neither an NRMS file nor a site file (imported legacy files are site files) is 302'd to legacy's Azure front door. ON by
+  // owner decision (2026-10-29), relying on Azure staying up after cutover; "false" turns it
+  // off (the plain 404). Never applies to NRMS's releases/ and slides/ (Q17).
+  LEGACY_FILES_FALLBACK: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  // Where that 302 goes: an https origin only (no path). The copy command's --origin default is the same.
+  LEGACY_FILES_ORIGIN: z
+    .string()
+    .default(DEFAULT_LEGACY_FILES_ORIGIN)
+    .transform((v, ctx) => {
+      try {
+        return parseOrigin("LEGACY_FILES_ORIGIN", v);
+      } catch (e) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: e instanceof Error ? e.message : String(e) });
+        return z.NEVER;
+      }
+    }),
 });
 export type StackEnv = z.infer<typeof stackEnvSchema>;
 

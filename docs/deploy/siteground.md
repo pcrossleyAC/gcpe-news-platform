@@ -1012,6 +1012,118 @@ Options: `--concurrency <1..4>`, `--since <YYYY-MM-DD>` (publish date, Pacific),
 checkout: `DATABASE_URL=... npm run news-api:import-files -- --dry-run`. When to run it at cutover
 is in [the URL cutover runbook](../parity/url-cutover-runbook.md), section 3.
 
+## Legacy /files import (`legacy-files:copy`, cutover)
+
+`https://news.gov.bc.ca/files/<name>` are the files staff uploaded in the legacy Hub's **Website >
+Files** screen (legacy `News/FileManagement.aspx.cs`). The legacy Hub keeps them in the Azure blob
+container `files`, one blob per file under its **lowercased** name, with blob metadata `filename`
+holding the name as uploaded, and lists them newest first. news.gov serves them through legacy's
+Azure front door (`https://bcgovnews-etg7c8etapa6btfr.z03.azurefd.net/files/<name>`, same bytes;
+verified 2026-10-29), trying the lowercased name first. Release bodies link them (absolute,
+relative, percent-encoded), and `/assets/license` redirects to
+`/files/News_Footage_License_British_Columbia.pdf`.
+
+Our equivalent is NRMS's site files: the Hub's **Website > Files** screen, served at
+`/files/<name>`. `legacy-files:copy` imports the legacy files **as site files**, so after a run
+they are in the Hub's Files list (dated with the legacy upload time, created by "Legacy import",
+one site-log line each) and staff can open, delete or replace them like any upload. Uploading a
+file with an imported file's name (any letter case) asks to replace it, and a replace keeps the
+imported file's name and URL (`/files/Fact%20Sheet.pdf` stays), so legacy links keep working. The
+Hub's own rules still apply to the replacement (PDF, PNG or JPEG matching the name's extension, at
+most 25 MB); an imported `.docx` can be deleted from the Hub but not replaced there.
+
+**What the stack serves at `/files/<name>`**, in this order:
+
+1. NRMS's file at that storage key, as before. `releases/…` and `slides/…` (any letter case) are
+   NRMS's alone: a release file is public only while its release is live (Q17), anything else
+   there is the site's 404. Never a site-file lookup, never a redirect.
+2. A site file of that name **in any letter case** (legacy parity), through NRMS's database. This
+   is how an imported file whose name is not its storage key is found (`Q1_ MediaDeck.pdf` is
+   stored as `legacy-<8 hex>-q1_-mediadeck.pdf`; names that are already safe lowercase keys keep
+   them).
+3. **The safety net (on):** a `302` (`Cache-Control: no-store`) to
+   `<LEGACY_FILES_ORIGIN>/files/<path, lowercased, each segment percent-encoded>`. On by owner
+   decision (2026-10-29), relying on legacy's Azure storage staying up after cutover (Q72, which
+   the owner answered for translations and media assets; assumed to hold for this container on the
+   same front door). A 302, not a 301, so it can be withdrawn. Lowercased because the legacy Hub
+   stores uploads that way (46 of 46 mixed-case links surveyed on 2026-10-29 answered only
+   lowercased); a mixed-case-only blob (the footage licence is one) is reachable only through the
+   import, so check it (below). Stack-level settings: `LEGACY_FILES_FALLBACK=false` turns it off
+   (the site's 404 instead); `LEGACY_FILES_ORIGIN` (default the front door above, https origin
+   only) moves it.
+4. Otherwise the site's 404. Unsafe paths (`..`, dot names, `~`, `:`, a trailing dot or space,
+   encoded separators) are never looked up or redirected.
+
+**What a browser is given.** The legacy Hub accepted any file type, so `/files` now serves by an
+allowlist of inert types (`apps/stack/src/files-policy.ts`): PDF; PNG, JPEG, GIF, WebP, BMP, ICO
+(not SVG); Word, Excel, PowerPoint, OpenDocument, RTF; ZIP; MP3, MP4, M4A, WAV, MOV; CSV and TXT as
+`text/plain; charset=utf-8`. Anything else (HTML, SVG, XML, JavaScript, an unknown or missing
+extension) is `application/octet-stream` with `Content-Disposition: attachment` and
+`Content-Security-Policy: sandbox; default-src 'none'`, so it downloads instead of running on
+news.gov.bc.ca. Inline types get no CSP (a sandboxed top-level PDF can break Firefox's and Safari's
+viewers). Every `/files` answer carries `X-Content-Type-Options: nosniff`. Hub uploads are PDF, PNG
+or JPEG only, so nothing they serve changes.
+
+**The command.** `tools/legacy-files-copy.mjs` (from a checkout, `npm run legacy-files:copy --`).
+It writes NRMS's database (`NRMS_DATABASE_URL`) and object store (`NRMS_STORAGE_DIR`, else
+`<DATA_DIR>/storage`: the same folder the stack serves, so set `DATA_DIR` as the stack has it).
+
+- **Discovery, preferred: the whole container.** Set `LEGACY_FILES_SAS_URL` to the `files`
+  container's URL with a **read + list** SAS
+  (`https://<account>.blob.core.windows.net/files?sv=…&sp=rl&sig=…`). Whoever holds the legacy
+  Azure storage account issues it (the legacy Hub's configuration holds a container SAS; a fresh,
+  short-lived read+list one is better). It is a secret: the tool never prints it, and redacts it
+  from errors and the report. Every blob is listed with its metadata; each top-level blob is
+  imported under its metadata `filename` (else its blob name), fetched by its exact blob name. A
+  blob with a `/` in its name is not a Hub upload and is reported in `nested`, not imported (the
+  302 covers it). If two blobs differ only in case, the lowercased one (which legacy served) wins;
+  the other is listed in `duplicates`.
+- **Discovery without a SAS:** the links in our content: the databases named by
+  `NEWSAPI_DATABASE_URL`, `NRMS_DATABASE_URL` and `CORE_DATABASE_URL` (read-only: posts' bodies,
+  summaries and file lists, ministries and the minister's bio, carousels, site settings, resource
+  links, releases in every status), plus the footage licence, every `--paths-file <file>` (one path
+  per line) and `--scan-file <file>` (any text: an IIS log, saved HTML, a JSON export). Fetched
+  through the front door (`--origin`), lowercased name first, as legacy did; named by the blob's
+  `x-ms-meta-filename` when it answers with one. `--no-db` skips the databases.
+- **Downloads.** Throttled: `--concurrency` 1 to 4 (default 1), each worker at most one request a
+  second; User-Agent `gcpe-cutover-legacy-files (contact Paul@mtheory.ca)`; `Accept-Encoding:
+  identity`. A redirect is followed only on the same host. One retry on a 5xx. A **429 stops the
+  run** (nothing more is sent; `resume` says what to do); `--max-requests <n>` stops after n. Per
+  file: no response headers within 30 s, or no body bytes for 60 s, fails that file (a slow but
+  steady download is never cut off); a body shorter than its Content-Length fails (not checked when
+  the server compressed it anyway); a file larger than `--max-file-mb` (default 512) fails with
+  that reason. Imports may be larger than the Hub's 25 MB upload limit, up to that cap. A file is
+  held in memory while it is written, so allow the cap's worth of free memory per worker.
+- **Writes.** One site file per name, idempotent case-insensitively: a name that is already a site
+  file (a staff upload included) is skipped without a request; `--refresh` downloads again and
+  replaces the bytes. The bytes are written in the same transaction as the row, as Hub uploads are.
+- **Report.** JSON on stdout: `source` (`sas-listing` or `references`), `found`, `files`,
+  `totalBytes` (SAS only), `imported`, `replaced`, `skipped`, `bytes`, `notFound`, `failed`,
+  `nested`, `invalid`, `duplicates`, `remaining`, `stopped`, `resume`. `--dry-run` downloads and
+  writes nothing (with a SAS it still lists the container) and adds `alreadyImported`, `toFetch`,
+  `overSizeCap`, `sample`. Exit code 1 on a 429 or any failure.
+
+Run it on the server:
+
+```sh
+ssh boxs
+TOOL=~/www/boxs.ca/public_html/.nodeapp/latest/app_source/tools/legacy-files-copy.mjs
+read -rs -p 'NRMS_DATABASE_URL: ' NRMS_DATABASE_URL && export NRMS_DATABASE_URL && echo
+read -rs -p 'LEGACY_FILES_SAS_URL: ' LEGACY_FILES_SAS_URL && export LEGACY_FILES_SAS_URL && echo
+/usr/local/bin/node-24 "$TOOL" --dry-run           # files, total bytes, already imported; downloads nothing
+/usr/local/bin/node-24 "$TOOL" --concurrency 2     # import
+/usr/local/bin/node-24 "$TOOL"                     # catch-up: only what is new
+unset LEGACY_FILES_SAS_URL NRMS_DATABASE_URL
+```
+
+Without a SAS, export `NEWSAPI_DATABASE_URL` (and `CORE_DATABASE_URL`) instead of
+`LEGACY_FILES_SAS_URL`. When to run it (URL cutover runbook, "Legacy /files"): after the final
+content imports and before DNS moves, then a catch-up run. Check: the files appear in the Hub under
+**Website > Files**; `curl -sI https://<host>/files/News_Footage_License_British_Columbia.pdf`
+answers 200 `application/pdf` (not a 302); a `/files/` link from an imported release downloads.
+Backups: the imported files are site files, so they are in NRMS's database dump and its `storage`
+folder like any upload.
+
 ## Importing legacy NRMS data (Phase 3e)
 
 `npm run nrms:import` reads legacy's SQL Server through `@gcpe/legacy-import` and writes NRMS's

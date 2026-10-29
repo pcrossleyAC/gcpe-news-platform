@@ -167,3 +167,161 @@ describe("filesHandlers (the stack's public /files)", () => {
     expect(isPublic).not.toHaveBeenCalled();
   });
 });
+
+// Legacy news.gov.bc.ca/files/<name>: the legacy Hub's uploads, imported as NRMS site files
+// (apps/stack/src/legacy-files). A name that isn't its own storage key is found through
+// siteFileByName (case-insensitive); nothing found is 302'd to the Azure origin when that is on.
+describe("filesHandlers with imported legacy site files", () => {
+  const ORIGIN = "https://legacy-origin.example";
+  let storageDir: string;
+  let outputDir: string;
+  const isPublic = vi.fn(async (key: string) => key === LIVE);
+  /** name (any case) → storage key, as NRMS's findSiteFileByName answers. */
+  const rows = new Map<string, { name: string; storageKey: string }>();
+  const siteFileByName = vi.fn(async (name: string) => rows.get(name.toLowerCase()) ?? null);
+  const appWith = (fallbackOrigin: string | null) => {
+    const a = express();
+    a.use("/files", ...filesHandlers({ storageDir, outputDir, isPublic: (k) => isPublic(k), siteFileByName: (n) => siteFileByName(n), fallbackOrigin }));
+    a.use((_req, res) => void res.status(404).json({ error: "not found" }));
+    return a;
+  };
+  let on: express.Express;
+  let off: express.Express;
+  const imported = async (name: string, storageKey: string, body: string | Buffer) => {
+    await writeFile(join(storageDir, storageKey), body);
+    rows.set(name.toLowerCase(), { name, storageKey });
+  };
+
+  beforeAll(async () => {
+    storageDir = await mkdtemp(join(tmpdir(), "gcpe-files-legacy-storage-"));
+    outputDir = await mkdtemp(join(tmpdir(), "gcpe-files-legacy-site-"));
+    await writeFile(join(outputDir, "404.html"), "<h1>Page not found</h1>");
+    const store = localStore(storageDir);
+    await store.put(LIVE, Buffer.from("%PDF-1.7 live"), "application/pdf");
+    await store.put(DRAFT, PNG, "image/png");
+    await store.put(SITE_FILE, Buffer.from("%PDF-1.7 nrms site file"), "application/pdf");
+    await imported("News_Footage_License_British_Columbia.pdf", "news_footage_license_british_columbia.pdf", "%PDF legacy licence");
+    await imported("Q1_ MediaDeck.pdf", "legacy-0a1b2c3d-q1_-mediadeck.pdf", "%PDF deck");
+    // A site file row pointing at a release-shaped key must never be served through the name lookup.
+    rows.set("sneaky.pdf", { name: "sneaky.pdf", storageKey: DRAFT });
+    on = appWith(ORIGIN);
+    off = appWith(null);
+  });
+  afterAll(async () => {
+    for (const d of [storageDir, outputDir]) await rm(d, { recursive: true, force: true });
+  });
+
+  const notFoundShape = { status: 404, body: "<h1>Page not found</h1>", cache: "no-store" };
+  const brief = (res: request.Response) => ({ status: res.status, body: res.text, cache: res.headers["cache-control"] });
+
+  it("serves an imported legacy file by its legacy name, in any letter case (legacy parity), with the 60 s public cache and nosniff; inline PDFs get no sandbox CSP (Firefox/Safari PDF viewers)", async () => {
+    for (const p of ["/files/News_Footage_License_British_Columbia.pdf", "/files/news_footage_license_british_columbia.pdf", "/files/NEWS_FOOTAGE_LICENSE_BRITISH_COLUMBIA.PDF", "/files/Q1_%20MediaDeck.pdf", "/files/q1_%20mediadeck.PDF"]) {
+      const res = await request(off).get(p);
+      expect(res.status, p).toBe(200);
+      expect(res.headers["content-type"], p).toBe("application/pdf");
+      expect(res.headers["cache-control"], p).toBe("public, max-age=60");
+      expect(res.headers["x-content-type-options"], p).toBe("nosniff");
+      expect(res.headers["content-security-policy"], p).toBeUndefined();
+    }
+    expect((await request(off).get("/files/Q1_%20MediaDeck.pdf")).body.toString()).toBe("%PDF deck");
+    expect((await request(off).head("/files/Q1_%20MediaDeck.pdf")).status).toBe(200);
+  });
+
+  it("an NRMS file at the key itself is served without a name lookup, as before", async () => {
+    siteFileByName.mockClear();
+    expect((await request(on).get(`/files/${SITE_FILE}`)).body.toString()).toBe("%PDF-1.7 nrms site file");
+    expect(siteFileByName).not.toHaveBeenCalled();
+  });
+
+  it("Q17: a non-live release key stays the plain 404 (never a lookup, never the 302), in any case; the name lookup never serves a multi-segment key", async () => {
+    for (const app of [on, off]) {
+      for (const p of [`/files/${DRAFT}`, `/files/releases/${UUID}/translations/0000000000000000-nope.pdf`, `/files/Releases/${UUID}/assets/fedcba9876543210-photo.png`, `/files/RELEASES/x.pdf`, `/files/slides/${"e".repeat(64)}.png`, "/files/Slides/x.png"]) {
+        expect(brief(await request(app).get(p)), p).toEqual(notFoundShape);
+      }
+    }
+    expect(brief(await request(off).get("/files/sneaky.pdf"))).toEqual(notFoundShape);
+    expect((await request(on).get("/files/sneaky.pdf")).status).toBe(302);
+  });
+
+  it("dot paths and Windows aliases are the 404, never a lookup hit or a 302", async () => {
+    for (const p of ["/files/.meta", "/files/NEWS_F~1.PDF", "/files/News_Footage_License_British_Columbia.pdf.", "/files/a%5Cb.pdf", "/files/Newsroom/../x.pdf", "/files/Newsroom/%2e%2e/x.pdf", "/files//x.pdf", "/files/folder/"]) {
+      expect(brief(await request(on).get(p)), p).toEqual(notFoundShape);
+    }
+  });
+
+  it("the safety net: an unknown path is a 302 (no-store) to the configured origin, lowercased as legacy stored it, segments encoded; off: the 404", async () => {
+    const res = await request(on).get("/files/Newsroom/Not%20Copied%23yet.pdf?x=1");
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`${ORIGIN}/files/newsroom/not%20copied%23yet.pdf`);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect((await request(on).get("/files/Unknown.pdf")).headers.location).toBe(`${ORIGIN}/files/unknown.pdf`);
+    expect((await request(on).head("/files/unknown.pdf")).status).toBe(302);
+    expect(brief(await request(off).get("/files/Newsroom/Not%20Copied%23yet.pdf"))).toEqual(notFoundShape);
+  });
+
+  it("an NRMS single-segment name that exists but isn't a regular file is NRMS's 404, not a lookup or a fallback", async () => {
+    await mkdir(join(storageDir, "nrms-dir"), { recursive: true });
+    expect(brief(await request(on).get("/files/nrms-dir"))).toEqual(notFoundShape);
+  });
+
+  it("a failed name lookup is a 503 that is never cached, never a 302", async () => {
+    siteFileByName.mockRejectedValueOnce(new Error("db down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await request(on).get("/files/Anything.pdf");
+    expect(res.status).toBe(503);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    spy.mockRestore();
+  });
+
+  it("security: only inert types are served inline; anything that could run (.html, .svg, .xml, .js, unknown, none) is an octet-stream attachment with the sandbox CSP; inline types get no CSP; nosniff on every answer", async () => {
+    const CSP = "sandbox; default-src 'none'";
+    const files: [string, string][] = [
+      ["Page.html", "<script>alert(1)</script>"],
+      ["pic.svg", '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'],
+      ["feed.xml", "<x/>"],
+      ["thing.weird", "?"],
+      ["script.js", "alert(1)"],
+      ["noext", "?"],
+      ["notes.txt", "hello"],
+      ["data.csv", "a,b"],
+      ["deck.pptx", "pk"],
+    ];
+    for (const [name, body] of files) await imported(name, `k-${name.toLowerCase()}`, body);
+    for (const name of ["Page.html", "pic.svg", "feed.xml", "thing.weird", "script.js", "noext"]) {
+      const res = await request(off).get(`/files/${name}`);
+      expect(res.status, name).toBe(200);
+      expect(res.headers["content-type"], name).toBe("application/octet-stream");
+      expect(res.headers["content-disposition"], name).toMatch(/^attachment; filename="/);
+      expect(res.headers["content-security-policy"], name).toBe(CSP);
+      expect(res.headers["x-content-type-options"], name).toBe("nosniff");
+    }
+    // Served straight from its key (the static path) gets the same policy.
+    await writeFile(join(storageDir, "direct.html"), "<script>alert(1)</script>");
+    const direct = await request(off).get("/files/direct.html");
+    expect(direct.headers["content-type"]).toBe("application/octet-stream");
+    expect(direct.headers["content-disposition"]).toMatch(/^attachment/);
+    expect(direct.headers["content-security-policy"]).toBe(CSP);
+    const pdf = await request(off).get("/files/News_Footage_License_British_Columbia.pdf");
+    expect(pdf.headers["content-type"]).toBe("application/pdf");
+    expect(pdf.headers["content-disposition"]).toBeUndefined();
+    expect(pdf.headers["content-security-policy"]).toBeUndefined();
+    expect(pdf.headers["x-content-type-options"]).toBe("nosniff");
+    const live = await request(off).get(`/files/${LIVE}`);
+    expect(live.headers["content-type"]).toBe("application/pdf");
+    expect(live.headers["content-security-policy"]).toBeUndefined();
+    expect((await request(off).get("/files/notes.txt")).headers["content-type"]).toBe("text/plain; charset=utf-8");
+    expect((await request(off).get("/files/data.csv")).headers["content-type"]).toBe("text/plain; charset=utf-8");
+    const pptx = await request(off).get("/files/deck.pptx");
+    expect(pptx.headers["content-type"]).toBe("application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    expect(pptx.headers["content-disposition"]).toBeUndefined();
+    expect(pptx.headers["content-security-policy"]).toBeUndefined();
+    const head = await request(off).head("/files/Page.html");
+    expect(head.headers["content-type"]).toBe("application/octet-stream");
+    expect(head.headers["content-disposition"]).toMatch(/^attachment/);
+    expect(head.headers["content-security-policy"]).toBe(CSP);
+  });
+
+  it("a write method is still refused (405)", async () => {
+    expect((await request(on).post("/files/News_Footage_License_British_Columbia.pdf")).status).toBe(405);
+  });
+});

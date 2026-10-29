@@ -1,6 +1,9 @@
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
-import express, { type ErrorRequestHandler, type RequestHandler } from "express";
+import { basename } from "node:path";
+import express, { type ErrorRequestHandler, type Request, type RequestHandler, type Response } from "express";
+import { applyFilesHeaders } from "./files-policy";
+import { normalizeLegacyPath, RESERVED_FIRST_SEGMENTS } from "./legacy-files/references";
 import { siteNotFound } from "./site-not-found";
 
 /**
@@ -72,6 +75,40 @@ export interface FilesMountOptions {
   outputDir: string;
   /** NRMS's `releaseFileIsPublic` (apps/nrms/src/media/files.ts `isReleaseFilePublic`). */
   isPublic: (storageKey: string) => Promise<boolean>;
+  /**
+   * NRMS's `findSiteFileByName` (apps/nrms/src/website/files.ts): a site file by its public name,
+   * case-insensitively — how an imported legacy file whose name isn't its storage key (a space,
+   * capitals) is found. Absent: only the storage key itself is served, as before.
+   */
+  siteFileByName?: (name: string) => Promise<{ name: string; storageKey: string } | null>;
+  /**
+   * The legacy safety net: where `/files/<path>` is 302'd when nothing here answers it (legacy's
+   * Azure front door), or null/absent for the plain 404. Never for `releases/` or `slides/`.
+   */
+  fallbackOrigin?: string | null;
+}
+
+/** The policy's headers as a plain object, for res.sendFile. */
+function policyHeaders(name: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  applyFilesHeaders({ setHeader: (k: string, v: string) => void (headers[k] = v) } as unknown as Response, name);
+  return headers;
+}
+
+/** The first segment of `key` names NRMS's own namespace (any case): never a site-file name lookup or a redirect. */
+function reservedForNrms(key: string): boolean {
+  return RESERVED_FIRST_SEGMENTS.includes(key.split("/")[0]!.toLowerCase());
+}
+
+/** Nothing at all at `key` in NRMS's store (ENOENT/ENOTDIR): only then may a site file of another storage key answer for a single-segment name. */
+async function absentFromStore(root: string, key: string): Promise<boolean> {
+  try {
+    await lstat(join(root, ...key.split("/")));
+    return false;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    return code === "ENOENT" || code === "ENOTDIR";
+  }
 }
 
 const statusOf = (err: unknown): number | undefined => {
@@ -99,17 +136,60 @@ const statusOf = (err: unknown): number | undefined => {
  */
 export function filesHandlers(opts: FilesMountOptions): [RequestHandler, RequestHandler, ErrorRequestHandler] {
   const notFound = siteNotFound(opts.outputDir);
+  const fallbackOrigin = opts.fallbackOrigin ?? null;
+  /** Nothing here answers: the 302 safety net (safe paths only), else the 404. */
+  const fallbackOrNotFound: RequestHandler = (req, res, next) => {
+    if (!fallbackOrigin) return notFound(req, res, next);
+    const n = normalizeLegacyPath(req.url.replace(/[?#].*$/s, "").slice(1));
+    if (!n.ok) return notFound(req, res, next); // unsafe or reserved: never redirected
+    // To the lowercased name: legacy's Hub stored every upload under its lowercased blob name, and
+    // its resolver tried that first (46 of 46 mixed-case links surveyed on 2026-10-29 answered only
+    // lowercased). Each segment percent-encoded; the host is the configured origin, nothing else.
+    const location = `${fallbackOrigin}/files/${n.path.toLowerCase().split("/").map(encodeURIComponent).join("/")}`;
+    res.status(302).set("Cache-Control", "no-store").location(location).end();
+  };
+  const sendStored = (req: Request, res: Response, next: (err?: unknown) => void, storageKey: string, name: string) => {
+    // root + a single-segment key: send refuses anything that would leave the folder.
+    res.sendFile(storageKey, { root: opts.storageDir, maxAge: FILES_MAX_AGE_MS, dotfiles: "deny", headers: policyHeaders(name) }, (err) => {
+      if (err && !res.headersSent) notFound(req, res, next);
+    });
+  };
+  /** A single-segment name with no file at that key: a site file of that name in any case (an imported legacy file), else the fallback. */
+  const bySiteFileName: RequestHandler = (req, res, next) => {
+    const lookup = opts.siteFileByName;
+    const name = classifyFilePath(req.path);
+    if (!lookup || name.kind !== "public") return fallbackOrNotFound(req, res, next);
+    lookup(name.key).then(
+      async (row) => {
+        if (row && !row.storageKey.includes("/") && row.storageKey !== name.key && (await isRegularFile(opts.storageDir, row.storageKey))) return sendStored(req, res, next, row.storageKey, row.name);
+        if (row && row.storageKey === name.key) return notFound(req, res, next); // its own key was just checked: not a regular file
+        fallbackOrNotFound(req, res, next);
+      },
+      (err: unknown) => {
+        console.error(`[stack] site file lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+        if (!res.headersSent) res.status(503).set("Cache-Control", "no-store").type("text/plain").send("Service unavailable");
+      },
+    );
+  };
   const gate: RequestHandler = (req, res, next) => {
     // Other methods go to express.static, which refuses them (405) as before.
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     const c = classifyFilePath(req.path);
     if (c.kind === "public") {
-      void isRegularFile(opts.storageDir, c.key).then((ok) => (ok ? next() : notFound(req, res, next)));
+      void isRegularFile(opts.storageDir, c.key).then(async (ok) => {
+        if (ok) return next();
+        // Something NRMS holds under that name (a folder, a link) stays NRMS's 404; slides/ is NRMS's.
+        if (!reservedForNrms(c.key) && (await absentFromStore(opts.storageDir, c.key))) return bySiteFileName(req, res, next);
+        notFound(req, res, next);
+      });
       return;
     }
     if (c.kind === "deny") return notFound(req, res, next);
+    // Q17: a release key (releases/…, any case) is decided by NRMS alone — public only while the
+    // release is live, else the plain 404; never a name lookup, never the 302.
+    const nrmsOnly = reservedForNrms(c.key);
     opts.isPublic(c.key).then(
-      (ok) => (ok ? next() : notFound(req, res, next)),
+      (ok) => (ok ? next() : nrmsOnly ? notFound(req, res, next) : fallbackOrNotFound(req, res, next)),
       (err: unknown) => {
         console.error(`[stack] release file lookup failed: ${err instanceof Error ? err.message : String(err)}`);
         if (!res.headersSent) res.status(503).set("Cache-Control", "no-store").type("text/plain").send("Service unavailable");
@@ -130,7 +210,9 @@ export function filesHandlers(opts: FilesMountOptions): [RequestHandler, Request
       dotfiles: "deny",
       fallthrough: false,
       maxAge: FILES_MAX_AGE_MS,
-      setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
+      // Type, disposition, sandbox CSP and nosniff by name (files-policy.ts): release files and
+      // uploads are PDF/PNG/JPEG and stay inline; an imported legacy file of another type does not.
+      setHeaders: (res, path) => applyFilesHeaders(res as unknown as Response, basename(path)),
     }),
     staticMiss,
   ];
