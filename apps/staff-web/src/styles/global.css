@@ -475,7 +475,8 @@ body {
   text-decoration: underline;
 }
 
-.gcpe-section-tabs a[aria-current="page"] {
+.gcpe-section-tabs a[aria-current="page"],
+.gcpe-section-tabs a[aria-current="true"] {
   font-weight: 700;
   color: var(--typography-color-primary, #2d2d2d);
   border-bottom-color: var(--surface-color-primary-default, #013366);
@@ -2478,4 +2479,131 @@ fieldset.gcpe-org-contact {
   min-width: 24px;
   padding: 0 0.25rem;
   box-shadow: none;
+}
+
+/* Website: the pages under Site settings, as a quiet secondary row under the tabs. */
+.gcpe-subnav ul {
+  list-style: none;
+  margin: -0.25rem 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font: var(--typography-regular-small-body);
+}
+.gcpe-subnav a {
+  display: inline-block;
+  padding: 0.25rem 0;
+  color: var(--typography-color-link, #255a90);
+}
+.gcpe-subnav a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--typography-color-primary, #2d2d2d);
+  text-decoration: none;
+}
+
+/* Site settings index: each page a link with one line on what it changes, in columns. */
+.gcpe-link-cards {
+  list-style: none;
+  margin: 0.75rem 0 1.5rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.75rem;
+  max-width: 64rem;
+}
+.gcpe-link-cards > li {
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  padding: 0.75rem 1rem;
+}
+.gcpe-link-cards > li > a {
+  font-weight: 700;
+}
+.gcpe-link-cards > li > p {
+  margin: 0.25rem 0 0;
+  color: var(--typography-color-secondary, #474543);
+}
+.gcpe-site-settings-index > h2 {
+  font: var(--typography-bold-h5);
+  margin: 1.5rem 0 0;
+}
+
+/* Carousel: each slide a card with "Slide N" and its tools in the header, fields in two columns. */
+.gcpe-carousel__slide {
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-forms-default, #fff);
+  padding: 0.75rem 1.25rem 1.25rem;
+  margin: 0 0 1rem;
+  max-width: 64rem;
+}
+.gcpe-carousel__slide-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+}
+.gcpe-carousel__slide-head > h3 {
+  margin: 0;
+  font: var(--typography-bold-h5);
+}
+.gcpe-carousel__slide-tools {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gcpe-carousel__slide-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+  align-items: start;
+}
+.gcpe-carousel__slide-fields > .bcds-react-aria-TextField {
+  min-width: 0;
+}
+.gcpe-carousel__slide-fields .bcds-react-aria-TextField--Input,
+.gcpe-carousel__slide-fields .bcds-react-aria-TextField--container {
+  width: 100%;
+}
+.gcpe-carousel__slide-fields > .gcpe-field select {
+  width: 100%;
+  max-width: 12rem;
+}
+.gcpe-carousel__image {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.5rem;
+  margin: 0;
+}
+.gcpe-carousel__image > .gcpe-file-input {
+  margin: 0;
+}
+.gcpe-carousel__image > img {
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: 4px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  height: auto;
+}
+.gcpe-carousel__actions {
+  margin: 0.5rem 0 1.5rem;
+}
+@media (max-width: 40rem) {
+  .gcpe-carousel__slide-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gcpe-carousel__slide-tools {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}
+.gcpe-carousel__slide-fields > .gcpe-field > label {
+  font: var(--typography-regular-small-body);
 }

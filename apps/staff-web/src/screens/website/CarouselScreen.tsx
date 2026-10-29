@@ -9,6 +9,7 @@ import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
+import { HiddenPrefixLabel } from "../../shared/ShortLabel";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
 import { canManageWebsite } from "./access";
 import { moveItemBy, moveItemTo } from "./reorder";
@@ -134,78 +135,106 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
         <SchedulePicker timeZone={timeZone} legend="Go live at (BC time)" idPrefix={`carousel-${carousel.id}-golive`} onChange={setGoLive} />
       )}
 
-      {slides.map((slide, index) => (
-        <div key={slide.clientKey} className="gcpe-carousel__slide" {...dragReorder.dropZoneProps(index)}>
-          {canEdit && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder slide ${index + 1}`} />}
-          <h3>Slide {index + 1}</h3>
-          <TextField label={`Slide ${index + 1} headline`} value={slide.headline} onChange={(v) => update(index, { headline: v })} isDisabled={!canEdit} />
-          <TextField label={`Slide ${index + 1} summary`} value={slide.summary} onChange={(v) => update(index, { summary: v })} isDisabled={!canEdit} />
-          <TextField label={`Slide ${index + 1} action URL`} value={slide.actionUrl} onChange={(v) => update(index, { actionUrl: v })} isDisabled={!canEdit} />
-          <TextField label={`Slide ${index + 1} action label`} description="The link text. Leave empty for the default set in Navigation and labels." value={slide.actionLabel} onChange={(v) => update(index, { actionLabel: v })} isDisabled={!canEdit} />
-          <TextField label={`Slide ${index + 1} Facebook post URL`} value={slide.facebookPostUrl} onChange={(v) => update(index, { facebookPostUrl: v })} isDisabled={!canEdit} />
-          <label>
-            Slide {index + 1} justify
-            <select value={slide.justify} onChange={(e) => update(index, { justify: e.target.value as "left" | "right" })} disabled={!canEdit}>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-            </select>
-          </label>
-          {canEdit && (
-            <>
-              <span data-move-id={slide.clientKey} data-move-dir="up">
-                <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0} isPending={section.saving}>
-                  Move slide {index + 1} up
-                </Button>
-              </span>
-              <span data-move-id={slide.clientKey} data-move-dir="down">
-                <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === slides.length - 1} isPending={section.saving}>
-                  Move slide {index + 1} down
-                </Button>
-              </span>
-              <DialogTrigger isOpen={removeIndex === index} onOpenChange={(open) => setRemoveIndex(open ? index : null)}>
-                <Button variant="secondary" danger isPending={section.saving}>
-                  Remove slide {index + 1}
-                </Button>
-                <Modal isDismissable>
-                  <AlertDialog
-                    variant="destructive"
-                    title={`Remove slide ${index + 1}?`}
-                    buttons={
-                      <>
-                        <Button onPress={() => setRemoveIndex(null)}>Cancel</Button>
-                        <Button danger onPress={confirmRemove}>
-                          Confirm remove
-                        </Button>
-                      </>
-                    }
-                  >
-                    <p>This removes the slide from this carousel. Save to commit the change.</p>
-                  </AlertDialog>
-                </Modal>
-              </DialogTrigger>
-            </>
-          )}
-          {slide.id && canEdit && (
-            <label>
-              Slide {index + 1} image (JPEG or PNG, up to 2 MB)
-              <input
-                type="file"
-                accept="image/png,image/jpeg"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (file && slide.id) void uploadImage(slide.id, file);
-                }}
-              />
-            </label>
-          )}
-          {carousel.slides.find((s) => s.id === slide.id)?.imageUrl && (
-            // eslint-disable-next-line jsx-a11y/alt-text
-            <img src={carousel.slides.find((s) => s.id === slide.id)!.imageUrl!} alt="" width={120} />
-          )}
-        </div>
-      ))}
+      {slides.map((slide, index) => {
+        const n = index + 1;
+        const prefix = `Slide ${n}`;
+        // TextField types `label` as a string, but renders it as the label's content: the visible
+        // label drops the "Slide N" the card heading already shows; the accessible name keeps it.
+        const label = (text: string) => (<HiddenPrefixLabel prefix={prefix} text={text} />) as unknown as string;
+        const imageUrl = carousel.slides.find((s) => s.id === slide.id)?.imageUrl;
+        return (
+          <div key={slide.clientKey} className="gcpe-carousel__slide" {...dragReorder.dropZoneProps(index)}>
+            <div className="gcpe-carousel__slide-head">
+              {canEdit && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder slide ${n}`} />}
+              <h3>Slide {n}</h3>
+              {canEdit && (
+                <div className="gcpe-carousel__slide-tools">
+                  <span data-move-id={slide.clientKey} data-move-dir="up">
+                    <Button size="small" variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0} isPending={section.saving}>
+                      <span>
+                        Move <span className="gcpe-visually-hidden">slide {n}</span> up
+                      </span>
+                    </Button>
+                  </span>
+                  <span data-move-id={slide.clientKey} data-move-dir="down">
+                    <Button size="small" variant="secondary" onPress={() => moveDown(index)} isDisabled={index === slides.length - 1} isPending={section.saving}>
+                      <span>
+                        Move <span className="gcpe-visually-hidden">slide {n}</span> down
+                      </span>
+                    </Button>
+                  </span>
+                  <DialogTrigger isOpen={removeIndex === index} onOpenChange={(open) => setRemoveIndex(open ? index : null)}>
+                    <Button size="small" variant="secondary" danger isPending={section.saving}>
+                      <span>
+                        Remove <span className="gcpe-visually-hidden">slide {n}</span>
+                      </span>
+                    </Button>
+                    <Modal isDismissable>
+                      <AlertDialog
+                        variant="destructive"
+                        title={`Remove slide ${n}?`}
+                        buttons={
+                          <>
+                            <Button onPress={() => setRemoveIndex(null)}>Cancel</Button>
+                            <Button danger onPress={confirmRemove}>
+                              Confirm remove
+                            </Button>
+                          </>
+                        }
+                      >
+                        <p>This removes the slide from this carousel. Save to commit the change.</p>
+                      </AlertDialog>
+                    </Modal>
+                  </DialogTrigger>
+                </div>
+              )}
+            </div>
+            <div className="gcpe-carousel__slide-fields">
+              <TextField label={label("headline")} value={slide.headline} onChange={(v) => update(index, { headline: v })} isDisabled={!canEdit} />
+              <TextField label={label("summary")} value={slide.summary} onChange={(v) => update(index, { summary: v })} isDisabled={!canEdit} />
+              <TextField label={label("action URL")} value={slide.actionUrl} onChange={(v) => update(index, { actionUrl: v })} isDisabled={!canEdit} />
+              <TextField label={label("action label")} description="The link text. Leave empty for the default set in Navigation and labels." value={slide.actionLabel} onChange={(v) => update(index, { actionLabel: v })} isDisabled={!canEdit} />
+              <TextField label={label("Facebook post URL")} value={slide.facebookPostUrl} onChange={(v) => update(index, { facebookPostUrl: v })} isDisabled={!canEdit} />
+              <div className="gcpe-field">
+                <label htmlFor={`slide-${slide.clientKey}-justify`}>
+                  <HiddenPrefixLabel prefix={prefix} text="justify" />
+                </label>
+                <select id={`slide-${slide.clientKey}-justify`} value={slide.justify} onChange={(e) => update(index, { justify: e.target.value as "left" | "right" })} disabled={!canEdit}>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                </select>
+              </div>
+              {((slide.id && canEdit) || imageUrl) && (
+                <div className="gcpe-carousel__image">
+                  {slide.id && canEdit && (
+                    <label className="gcpe-file-input">
+                      <span>
+                        <HiddenPrefixLabel prefix={prefix} text="image (JPEG or PNG, up to 2 MB)" />
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (file && slide.id) void uploadImage(slide.id, file);
+                        }}
+                      />
+                    </label>
+                  )}
+                  {imageUrl && (
+                    // eslint-disable-next-line jsx-a11y/alt-text
+                    <img src={imageUrl} alt="" width={160} />
+                  )}
+                </div>
+              )}
+              {!slide.id && canEdit && <p className="gcpe-hint gcpe-carousel__image">Save the carousel to add this slide&rsquo;s image.</p>}
+            </div>
+          </div>
+        );
+      })}
 
+      <div className="gcpe-actions gcpe-carousel__actions">
       {canEdit && (
         <Button
           variant="secondary"
@@ -220,6 +249,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
           Save carousel
         </Button>
       )}
+      </div>
     </div>
   );
 }

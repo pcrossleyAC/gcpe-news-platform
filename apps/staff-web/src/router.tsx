@@ -8,7 +8,7 @@ import { ForecastScreen } from "./screens/releases/ForecastScreen";
 import { SearchScreen } from "./screens/search/SearchScreen";
 import { NewReleaseScreen } from "./screens/release/NewReleaseScreen";
 import { ReleaseEditorPage } from "./screens/release/ReleaseEditorPage";
-import { WebsiteIndexRedirect, WebsiteScreen } from "./screens/website/WebsiteScreen";
+import { SiteSettingsIndex, WebsiteIndexRedirect, WebsiteScreen } from "./screens/website/WebsiteScreen";
 import { CarouselScreen } from "./screens/website/CarouselScreen";
 import { PinsScreen } from "./screens/website/PinsScreen";
 import { LiveFeedScreen } from "./screens/website/LiveFeedScreen";
@@ -112,6 +112,7 @@ export const routes: RouteObject[] = [
           { path: "files", element: <FilesScreen /> },
           { path: "featured", element: <FeaturedScreen /> },
           { path: "log", element: <LogScreen /> },
+          { path: "settings", element: <SiteSettingsIndex /> },
           { path: "banner", element: <BannerScreen /> },
           { path: "footer", element: <FooterScreen /> },
           { path: "social", element: <SocialScreen /> },

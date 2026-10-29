@@ -96,7 +96,7 @@ describe("accessibility — Website section screens", () => {
     stub(["NRMS.SiteEditor"], { "/nrms/api/site/carousels": CAROUSELS });
     const { container } = render(withAuth(<CarouselScreen />));
     await screen.findByRole("heading", { name: "Carousel", level: 1 });
-    await screen.findByText("Slide 1 headline", { exact: false });
+    await screen.findByLabelText("Slide 1 headline");
     expect(await seriousViolations(container)).toEqual([]);
   });
 
