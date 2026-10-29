@@ -1,21 +1,35 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { ActionsSection } from "./ActionsSection";
+import type { DirtySection } from "../useUnsavedChanges";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-function renderActions(view: ReleaseView, setView: (v: ReleaseView) => void = () => {}) {
+function renderActions(view: ReleaseView, setView: (v: ReleaseView) => void = () => {}, unsaved: DirtySection[] = []) {
   return render(
     <MemoryRouter>
-      <ActionsSection view={view} setView={setView} timeZone="America/Vancouver" />
+      <ActionsSection view={view} setView={setView} timeZone="America/Vancouver" unsaved={unsaved} />
     </MemoryRouter>,
   );
+}
+
+/** The Publish now dialog's own lookups (site address, list and category names) plus the POSTs it
+ * may send, recorded in `posts`. */
+function publishFetch(posts: { url: string; body: unknown }[], next: ReleaseView) {
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.example.test/" });
+    if (url === "/nrms/api/media-lists") return jsonResponse(200, [{ key: "regional", displayName: "Regional newspapers", isActive: true }]);
+    if (url === "/nrms/api/categories")
+      return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "seniors", name: "Seniors" }], themes: [], tags: [] });
+    posts.push({ url, body: init?.body ? JSON.parse(init.body as string) : undefined });
+    return jsonResponse(200, next);
+  });
 }
 
 describe("ActionsSection", () => {
@@ -178,20 +192,100 @@ describe("ActionsSection", () => {
     expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
   });
 
-  it("Publish now POSTs /schedule with publishAt \"now\"", async () => {
+  // Owner decision 2026-10-29: Publish now confirms first, saying what will happen; only the
+  // dialog's own "Publish now" sends the request.
+  it("Publish now opens a confirm dialog; only its own Publish now POSTs /schedule with publishAt \"now\"", async () => {
     const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 2 });
     const next = releaseView({ status: "published", version: 3 });
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      expect(url).toBe(`/nrms/api/releases/${v.id}/schedule`);
-      expect(JSON.parse(init!.body as string)).toEqual({ version: 2, publishAt: "now" });
-      return jsonResponse(200, next);
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    const posts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", publishFetch(posts, next));
     const setView = vi.fn();
     renderActions(v, setView);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Publish now" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(posts).toHaveLength(0);
+
+    await user.click(within(dialog).getByRole("button", { name: "Publish now" }));
     await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
+    expect(posts).toEqual([{ url: `/nrms/api/releases/${v.id}/schedule`, body: { version: 2, publishAt: "now" } }]);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("cancelling the Publish now dialog posts nothing and returns focus to Publish now", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const posts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", publishFetch(posts, v));
+    renderActions(v);
+    const user = userEvent.setup();
+    const trigger = screen.getByRole("button", { name: "Publish now" });
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(posts).toHaveLength(0);
+    // React Aria restores focus in a requestAnimationFrame callback after the dialog unmounts.
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("the Publish now dialog says where it publishes, which media lists get it, and who on News on Demand is emailed", async () => {
+    const v = releaseView({
+      status: "approved", key: "k1", reference: "NEWS-00001",
+      ministries: ["health"], leadMinistryKey: "health", sectors: ["seniors"], themes: [], tags: [],
+      mediaListKeys: ["regional"], publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: true },
+    });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Publish now" }));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(dialog).toHaveTextContent("Publishes to news.example.test now."));
+    await waitFor(() => expect(dialog).toHaveTextContent("Sends to media distribution lists: Regional newspapers."));
+    expect(dialog).toHaveTextContent("Emails News on Demand subscribers of Health and Seniors, and everyone subscribed to all news.");
+  });
+
+  it("the Publish now dialog says nobody is emailed when News on Demand and media lists are off", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: false } });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Publish now" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("No media distribution lists.");
+    expect(dialog).toHaveTextContent("News on Demand subscribers will not be emailed.");
+  });
+
+  // Owner decision 2026-10-29: publishing (or approving) a release while edits on the page are
+  // still unsaved publishes the old text — blocked, with the reason next to the buttons.
+  it("Publish now and Schedule are disabled while a section has unsaved edits, with a blocker linking to it; enabled once saved", () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const { rerender } = render(
+      <MemoryRouter>
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "page-details", label: "Save page details", save: () => {} }]} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Publish now" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Schedule" })).toBeDisabled();
+    const why = screen.getByText("Publish now and Schedule are unavailable until:").parentElement!;
+    expect(screen.getByRole("button", { name: "Publish now" })).toHaveAttribute("aria-describedby", why.id);
+    expect(screen.getByRole("link", { name: "Save your changes to page details first." })).toHaveAttribute("href", "#section-page-details");
+
+    rerender(
+      <MemoryRouter>
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[]} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Publish now" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Schedule" })).toBeEnabled();
+    expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+  });
+
+  it("Approve is disabled while a document has unsaved edits, and the blocker links to that document", () => {
+    const v = releaseView({ status: "draft", ministries: ["health"], leadMinistryKey: "health" });
+    const docId = v.documents[0]!.id;
+    renderActions(v, () => {}, [{ key: `document-${docId}-1`, label: "Save English content (Document 1)", save: () => {} }]);
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Save your changes to English content (Document 1) first." })).toHaveAttribute("href", "#document-1-heading");
   });
 
   // Fix round 1 (3f Task 3), finding 3: Schedule now sends the raw BC wall-clock string

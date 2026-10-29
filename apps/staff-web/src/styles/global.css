@@ -752,6 +752,16 @@ body {
   margin: 0.25rem 0 0;
 }
 
+/* Release editor: what Publish now will do, in its confirm dialog. */
+.gcpe-publish-consequences {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 40rem;
+}
+
 /* Release editor: the "this page updates on its own" note while publishing/unpublishing. */
 .gcpe-release-editor__settling {
   margin: 0;

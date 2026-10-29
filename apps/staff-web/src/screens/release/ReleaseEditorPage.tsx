@@ -186,7 +186,7 @@ export function ReleaseEditorPage(): React.JSX.Element {
             </AlertDialog>
           </Modal>
 
-          {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} />}
+          {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} unsaved={guard.dirtySections} />}
           <SettingsSection view={view} setView={setView} timeZone={timeZone} readOnly={!canEdit} />
           <CategoriesSection view={view} setView={setView} readOnly={!canEdit} />
           <AssetSection view={view} setView={setView} readOnly={!canEdit} />
