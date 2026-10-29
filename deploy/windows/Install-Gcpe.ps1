@@ -346,7 +346,7 @@ $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'
 & $appcmd set config -section:system.webServer/proxy /enabled:"True" /preserveHostHeader:"True" /reverseRewriteHostInResponseHeaders:"False" /includePortInXForwardedFor:"False" /responseBufferLimit:"0" /timeout:"00:05:00" /commit:apphost | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'could not enable the ARR proxy' }
 $allowed = (& $appcmd list config -section:system.webServer/rewrite/allowedServerVariables) -join "`n"
-foreach ($var in @('HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST')) {
+foreach ($var in @('HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST', 'ARR_CACHE_CONTROL_OVERRIDE')) {
     if ($allowed -notmatch $var) { & $appcmd set config -section:system.webServer/rewrite/allowedServerVariables /+"[name='$var']" /commit:apphost | Out-Null }
 }
 
@@ -380,18 +380,17 @@ if (-not (& $appcmd list site $siteName)) {
     if ($LASTEXITCODE -ne 0) { throw "could not create the IIS site $siteName" }
 }
 & $appcmd set app "$siteName/" /applicationPool:$siteName | Out-Null
-# This IIS only terminates TLS and forwards: ARR keeps no copies for this site. Its cache ignores
-# Vary (docs/deploy/windows.md, 8.2), and with a disk cache on the same server (a DMZ proxy
-# installed beside this one, as in CI) it would keep the app's pages under the public host name.
-& $appcmd unlock config $siteName -section:system.webServer/proxy /commit:apphost | Out-Null
-& $appcmd set config $siteName -section:system.webServer/proxy /cache.enabled:"False" /commit:apphost | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "could not turn off the ARR cache for the IIS site $siteName" }
 if ($boundThumbprint -ne $cert.Thumbprint.ToUpperInvariant()) {
     if ($boundThumbprint) { Invoke-GcpeQuiet -FilePath netsh.exe -Arguments @('http', 'delete', 'sslcert', 'ipport=0.0.0.0:443') }
     & netsh.exe http add sslcert ipport=0.0.0.0:443 certhash=$($cert.Thumbprint) appid='{4dc3e181-e14b-4a21-b022-59fc669b0914}' certstorename=MY | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'could not bind the certificate to port 443' }
 }
 
+# ARR's cache ignores Vary: once it holds an unencoded copy of a page it answers brotli clients
+# with it (docs/deploy/windows.md, 8.2). This server configures no ARR disk cache, so ARR keeps
+# nothing here; but when a DMZ proxy shares the server (CI), the cache is shared too, so an
+# unencoded response is never stored here either (it goes out as Cache-Control: no-store).
+$encodedPattern = '(?:^|[\s,])(?:br|gzip)\s*(?:[,;]|$)'
 $webConfig = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Written by Install-Gcpe.ps1. IIS only terminates TLS and forwards to the stack on 127.0.0.1:$Port. -->
@@ -403,6 +402,16 @@ $webConfig = @"
           <match url=".*" />
           <conditions><add input="{HTTPS}" pattern="^OFF$" /></conditions>
           <action type="Redirect" url="https://{HTTP_HOST}{UNENCODED_URL}" appendQueryString="false" redirectType="Permanent" />
+        </rule>
+        <rule name="to the stack, for a client that takes neither brotli nor gzip (never cached)" stopProcessing="true">
+          <match url=".*" />
+          <conditions><add input="{HTTP_ACCEPT_ENCODING}" pattern="$encodedPattern" negate="true" /></conditions>
+          <serverVariables>
+            <set name="HTTP_X_FORWARDED_PROTO" value="https" />
+            <set name="HTTP_X_FORWARDED_HOST" value="{HTTP_HOST}" />
+            <set name="ARR_CACHE_CONTROL_OVERRIDE" value="1,no-store" />
+          </serverVariables>
+          <action type="Rewrite" url="http://127.0.0.1:$Port{UNENCODED_URL}" appendQueryString="false" />
         </rule>
         <rule name="to the stack" stopProcessing="true">
           <match url=".*" />

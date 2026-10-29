@@ -331,7 +331,8 @@ $ambiguousPattern = '^[^?]*(?:\\|%5c|%2f|%2e|%00|/\.\.?(?:/|\?|$))'
 $encodedPattern = '(?:^|[\s,])(?:br|gzip)\s*(?:[,;]|$)'
 $httpsAuthority = $HostName
 if ($HttpsPort -ne 443) { $httpsAuthority = "$($HostName):$HttpsPort" }
-# ARR_CACHE_CONTROL_OVERRIDE "1,no-cache": never store, whatever the response says. "0,no-cache":
+# ARR_CACHE_CONTROL_OVERRIDE "1,no-store": never store, whatever the response says (ARR also sends
+# that Cache-Control to the client in place of the app's, so it must be no-store). "0,no-cache":
 # store only what the app explicitly allows (a response without Cache-Control is not stored).
 $forwardVariables = @'
           <serverVariables>
@@ -339,7 +340,7 @@ $forwardVariables = @'
             <set name="ARR_CACHE_CONTROL_OVERRIDE" value="{0}" />
           </serverVariables>
 '@
-$neverCache = $forwardVariables -f '1,no-cache'
+$neverCache = $forwardVariables -f '1,no-store'
 $originDecides = $forwardVariables -f '0,no-cache'
 $robots = ''
 if ($Environment -eq 'Test') { $robots = '        <add name="X-Robots-Tag" value="noindex, nofollow" />' }
