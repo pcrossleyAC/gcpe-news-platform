@@ -839,7 +839,7 @@ body {
 .gcpe-calendar-table th,
 .gcpe-calendar-table td {
   border: 1px solid #d8d8d8;
-  padding: 0.35rem;
+  padding: 0.4rem 0.6rem;
   vertical-align: top;
   text-align: left;
 }
@@ -1024,10 +1024,33 @@ body {
 .gcpe-activity .gcpe-needs-review {
   background: #fef0d8;
 }
+/* Callouts: one pattern, the design system's InlineAlert look (a tinted panel with a 1px border
+ * in the message's colour and 4px corners; no accent stripe), for every boxed note that isn't an
+ * InlineAlert itself. */
+.gcpe-override,
+.gcpe-notice,
+.gcpe-settings-publish__status,
+.gcpe-settings-conflict,
+.gcpe-settings-other-errors {
+  padding: var(--layout-padding-small, 0.5rem) var(--layout-padding-medium, 1rem);
+  border: var(--layout-border-width-small, 1px) solid var(--support-border-color-info, #053662);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--support-surface-color-info, #f7f9fc);
+  color: var(--typography-color-primary, #2d2d2d);
+}
 .gcpe-override {
-  background: #fcefc0;
-  border-left: 4px solid #b8860b;
-  padding-left: 0.5rem;
+  border-color: var(--support-border-color-warning, #f8bb47);
+  background: var(--support-surface-color-warning, #fef1d8);
+}
+.gcpe-notice {
+  border-color: var(--support-border-color-success, #42814a);
+  background: var(--support-surface-color-success, #f6fff8);
+}
+.gcpe-settings-conflict,
+.gcpe-settings-other-errors {
+  padding: var(--layout-padding-medium, 1rem);
+  border-color: var(--support-border-color-danger, #ce3e39);
+  background: var(--support-surface-color-danger, #f4e1e2);
 }
 .gcpe-field-error {
   color: #ce3e39;
@@ -1042,9 +1065,13 @@ body {
   color: #6b4a00;
   grid-column: 1 / -1;
 }
-.gcpe-notice {
-  border-left: 4px solid #2e8540;
-  padding-left: 0.5rem;
+/* The activity form's Save and Cancel: side by side, apart, under the last fieldset. */
+.gcpe-activity form > .gcpe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
 .gcpe-activity-actions {
   display: flex;
@@ -1522,10 +1549,9 @@ fieldset.gcpe-org-contact {
   align-items: flex-start;
   gap: 0.75rem;
   margin-top: 1rem;
-  padding: 1rem;
-  border: 1px solid #d8d8d8;
-  border-top: 3px solid var(--surface-color-primary-default, #013366);
-  border-radius: 4px;
+  padding: var(--layout-padding-medium, 1rem);
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-medium, #898785);
+  border-radius: var(--layout-border-radius-medium, 4px);
   background: var(--surface-color-background-light-gray, #faf9f8);
 }
 .gcpe-settings-publish > p {
@@ -1543,9 +1569,6 @@ fieldset.gcpe-org-contact {
 }
 .gcpe-settings-publish__status {
   margin: 0;
-  padding: 0.5rem 0.75rem;
-  border-left: 4px solid var(--surface-color-primary-default, #013366);
-  background: #fff;
   align-self: stretch;
 }
 
@@ -1562,13 +1585,6 @@ fieldset.gcpe-org-contact {
 }
 
 /* Conflict and other-section problems: a boxed notice above the publish bar. */
-.gcpe-settings-conflict,
-.gcpe-settings-other-errors {
-  padding: 0.75rem 1rem;
-  border: 1px solid #d8d8d8;
-  border-left: 4px solid var(--support-border-color-danger, #a12622);
-  border-radius: 4px;
-}
 .gcpe-settings-conflict > h2 {
   margin: 0 0 0.5rem;
 }
