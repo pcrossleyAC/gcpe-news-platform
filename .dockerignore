@@ -1,5 +1,5 @@
-# Build context is the repo root (docker build -f apps/<app>/Dockerfile .).
-# Images install their own dependencies and build their own bundles.
+# Build context is the repo root (docker build -f deploy/openshift/Dockerfile .).
+# The image installs its own dependencies and builds the release itself.
 **/node_modules
 **/dist
 .git

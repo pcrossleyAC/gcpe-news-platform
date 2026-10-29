@@ -422,8 +422,6 @@ Every deployment runs the same release, built by `scripts/build-siteground.mjs`:
 - [docs/deploy/siteground.md](docs/deploy/siteground.md) — SiteGround: the boxs.ca test host; also the reference for every environment variable.
 - [docs/deploy/openshift.md](docs/deploy/openshift.md) — a Linux container image (`deploy/openshift/Dockerfile`) for a possible later move to BC Gov OpenShift. **Not used in production**; CI builds and smoke-tests it on every change.
 
-The per-app `apps/*/Dockerfile` images predate the single-stack design and are not a deployment target.
-
 ## Known limitations
 
 Deferred by the Phase 2 final-review controller rulings (P2-R22, P2-R25) — tracked here rather than fixed in this pass:
