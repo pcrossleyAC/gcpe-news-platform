@@ -19,6 +19,13 @@ const SITE_FILE = "news-footage-licence.pdf";
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("rest")]);
 
 describe("classifyFilePath", () => {
+  // Windows resolves 8.3 short names (NEWS_F~1.PDF) and drops trailing dots and spaces, so these
+  // would reach a real file there. No storage key can contain `~` or end in `.` or a space.
+  it("Windows aliases are denied before any filesystem check", () => {
+    for (const p of ["/NEWS_F~1.PDF", "/META~1/x", "/slides/ABCDEF~1.JPG", "/releases/2026/a~1.pdf", "/news.pdf.", "/news.pdf%20", "/releases/x.pdf.", "/a /b.pdf"]) {
+      expect(classifyFilePath(p), p).toEqual({ kind: "deny" });
+    }
+  });
   it("passes single-segment site files and content-addressed slide images straight to the static mount", () => {
     expect(classifyFilePath(`/${SITE_FILE}`)).toEqual({ kind: "public", key: SITE_FILE });
     expect(classifyFilePath(`/${SLIDE}`)).toEqual({ kind: "public", key: SLIDE });

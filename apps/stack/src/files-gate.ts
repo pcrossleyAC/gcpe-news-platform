@@ -64,6 +64,9 @@ export function classifyFilePath(rawPath: string): FileClass {
   // Dot segments: the store's own `.meta` folder, `.`/`..`. express.static would answer 403
   // (dotfiles: "deny") or refuse them; here they are the same 404 as any unknown key.
   if (key.split("/").some((s) => s.startsWith("."))) return { kind: "deny" };
+  // Windows aliases: an 8.3 short name (NEWS_F~1.PDF) or a trailing dot or space opens the real
+  // file there, past every check on the name. No storage key contains `~` or ends that way.
+  if (key.split("/").some((s) => s.includes("~") || /[. ]$/.test(s))) return { kind: "deny" };
   if (!key.includes("/") || SLIDE_KEY.test(key)) return { kind: "public", key };
   return { kind: "lookup", key };
 }
