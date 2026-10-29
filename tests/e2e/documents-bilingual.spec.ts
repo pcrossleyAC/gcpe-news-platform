@@ -44,7 +44,7 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     await page.keyboard.press("Backspace");
     await page.keyboard.type(newBody);
     await expect(englishBody).toContainText(newBody);
-    await clickAndWaitForSave(page, firstItem.getByRole("button", { name: /Save English content/ }));
+    await clickAndWaitForSave(page, page.getByRole("region", { name: "Unsaved changes" }).getByRole("button", { name: "Save changes" }));
     await expect(docsSection.locator(".gcpe-documents__summary-note")).toContainText("(auto)");
     await expect
       .poll(async () => docsSection.locator(".gcpe-documents__summary-note").textContent())
@@ -53,7 +53,7 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     // Add a contact to document 1's English content.
     await firstItem.getByRole("button", { name: "Add contact" }).click();
     await firstItem.getByRole("tabpanel").getByLabel("Contact 1").fill("Media Relations\nMinistry of Health\n250-555-0101");
-    await clickAndWaitForSave(page, firstItem.getByRole("button", { name: /Save English content/ }));
+    await clickAndWaitForSave(page, page.getByRole("region", { name: "Unsaved changes" }).getByRole("button", { name: "Save changes" }));
     await expect(firstItem.getByRole("tabpanel").getByLabel("Contact 1")).toHaveValue("Media Relations\nMinistry of Health\n250-555-0101");
 
     // Add a French translation to document 1, with its own content and a contact.
@@ -70,14 +70,14 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     await expect(frenchBody).toContainText(frenchBodyText);
     await firstItem.getByRole("button", { name: "Add contact" }).click();
     await firstItem.getByRole("tabpanel").getByLabel("Contact 1").fill("Relations avec les médias\n250-555-0101");
-    await clickAndWaitForSave(page, firstItem.getByRole("button", { name: /Save French content/ }));
+    await clickAndWaitForSave(page, page.getByRole("region", { name: "Unsaved changes" }).getByRole("button", { name: "Save changes" }));
     await expect(firstItem.getByRole("tabpanel").getByLabel("Contact 1")).toHaveValue("Relations avec les médias\n250-555-0101");
 
     // Hand-edit the summary (Page details section) — this should flip summaryEdited.
     const pageDetails = page.getByRole("region", { name: "Page details" });
     const customSummary = `Hand-written summary ${Date.now()}`;
     await pageDetails.getByLabel("Summary", { exact: true }).fill(customSummary);
-    await clickAndWaitForSave(page, pageDetails.getByRole("button", { name: "Save page details" }));
+    await clickAndWaitForSave(page, page.getByRole("region", { name: "Unsaved changes" }).getByRole("button", { name: "Save changes" }));
     await expect(docsSection.locator(".gcpe-documents__summary-note")).not.toContainText("(auto)");
     await expect(docsSection.locator(".gcpe-documents__summary-note")).toContainText(customSummary);
 
@@ -91,7 +91,7 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     await page.keyboard.press("Backspace");
     await page.keyboard.type(laterBodyText);
     await expect(laterBody).toContainText(laterBodyText);
-    await clickAndWaitForSave(page, firstItem.getByRole("button", { name: /Save English content/ }));
+    await clickAndWaitForSave(page, page.getByRole("region", { name: "Unsaved changes" }).getByRole("button", { name: "Save changes" }));
     await expect(docsSection.locator(".gcpe-documents__summary-note")).toContainText(customSummary);
     await expect(docsSection.locator(".gcpe-documents__summary-note")).not.toContainText("(auto)");
 
@@ -172,7 +172,7 @@ test.describe("sticky save bar", () => {
 
     await expect(bar).toBeVisible();
     await expect(bar).toContainText("English content (Document 1)");
-    const barSaveButton = bar.getByRole("button", { name: /Save English content/ });
+    const barSaveButton = page.getByRole("region", { name: "Unsaved changes" }).getByRole("button", { name: "Save changes" });
 
     await clickAndWaitForSave(page, barSaveButton);
     await expect(bar).not.toBeVisible();

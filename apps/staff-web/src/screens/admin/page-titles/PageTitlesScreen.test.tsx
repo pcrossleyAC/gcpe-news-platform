@@ -81,6 +81,18 @@ describe("PageTitlesScreen", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Saved Info Bulletin / Special.");
   });
 
+  it("Ctrl+S (⌘S on a Mac) saves the row focus is in, as its Save does", async () => {
+    const calls = stub(["Core.Admin"]);
+    renderIt();
+    const field = await screen.findByRole("textbox", { name: "Page title for Information Bulletin" });
+    const user = userEvent.setup();
+    await user.type(field, "!");
+    expect(screen.getByRole("button", { name: "Save Information Bulletin" })).toHaveAttribute("aria-keyshortcuts", "Control+S");
+    fireEvent.keyDown(field, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(writes(calls)).toHaveLength(1));
+    expect(writes(calls)[0]).toMatchObject({ method: "PUT", url: "/nrms/api/page-types/4105/Information%20Bulletin", body: { pageTitle: "Information Bulletin!" } });
+  });
+
   it("a blank title or an out-of-range Order is refused before any request, with the message announced and the field focused", async () => {
     const calls = stub(["Core.Admin"]);
     renderIt();

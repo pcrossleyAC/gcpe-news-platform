@@ -8,6 +8,7 @@ import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
 import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { useSearchShortcut } from "../../shared/shortcuts";
 import { Pagination } from "../releases/Pagination";
 import { canEditSubscribers } from "./access";
 import { STATUS_FILTER_OPTIONS, STATUS_LABELS, timingLabel } from "./labels";
@@ -76,6 +77,7 @@ export function describeBulk(r: BulkResult): string {
 export function SubscribersScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Subscribers");
+  useSearchShortcut("subscribers-q");
   const timeZone = useTenantTimeZone();
   const canEdit = canEditSubscribers(session);
   const [params, setParams] = useSearchParams();
@@ -159,7 +161,7 @@ export function SubscribersScreen(): React.JSX.Element {
     <div className="gcpe-subscribers__search">
       <h1>Subscribers</h1>
       <Form onSubmit={onSearch} aria-label="Search subscribers" className="gcpe-field-row">
-        <TextField label="Email contains" name="q" value={qInput} onChange={setQInput} />
+        <TextField id="subscribers-q" label="Email contains" name="q" value={qInput} onChange={setQInput} />
         <div className="gcpe-field">
           <label htmlFor="subscribers-status">Status</label>
           <select id="subscribers-status" value={statusInput} onChange={(e) => setStatusInput(e.target.value as StatusFilter)}>

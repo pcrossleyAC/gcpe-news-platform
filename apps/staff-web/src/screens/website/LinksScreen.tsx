@@ -4,6 +4,7 @@ import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useAnnouncer } from "../../shared/Announcer";
 import { Button } from "../../shared/BusyButton";
+import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
@@ -85,15 +86,6 @@ export function LinksScreen(): React.JSX.Element {
     onReorder: (from, to) => setLinks((l) => moveItemTo(l, from, to)),
   });
 
-  if (!canManage) {
-    return (
-      <div className="gcpe-links">
-        <h1>Resource links</h1>
-        <p>You don&rsquo;t have permission to view the resource links.</p>
-      </div>
-    );
-  }
-
   const save = () => {
     if (!view) return;
     void section
@@ -102,6 +94,16 @@ export function LinksScreen(): React.JSX.Element {
         if (next) resetFrom(next);
       });
   };
+  useShortcut("save", canManage && canEdit && view ? () => void (section.saving ? undefined : save()) : null);
+
+  if (!canManage) {
+    return (
+      <div className="gcpe-links">
+        <h1>Resource links</h1>
+        <p>You don&rsquo;t have permission to view the resource links.</p>
+      </div>
+    );
+  }
 
   if (loadError) {
     return (
@@ -158,7 +160,7 @@ export function LinksScreen(): React.JSX.Element {
           <Button variant="secondary" onPress={() => setLinks((l) => [...l, { clientKey: `new-${nextClientKey.current++}`, text: "", url: "" }])} isPending={section.saving}>
             Add link
           </Button>
-          <Button onPress={save} isPending={section.saving}>
+          <Button onPress={save} isPending={section.saving} shortcut="save">
             Save links
           </Button>
         </>

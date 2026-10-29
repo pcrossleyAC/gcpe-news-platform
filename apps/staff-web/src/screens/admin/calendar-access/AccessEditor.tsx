@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "../../../shared/BusyButton";
+import { useFormShortcut } from "../../../shared/shortcuts";
 import { ApiError, apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { messagesOf } from "../messages";
@@ -90,8 +91,10 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: C
   };
 
   const selectId = `calendar-role-${user.id}`;
+  // ⌘/Ctrl+S saves the access being edited, as its Save does.
+  const formRef = useFormShortcut("save", true, true);
   return (
-    <form onSubmit={save} aria-label={`Calendar access for ${user.displayName}`} className="gcpe-stack">
+    <form ref={formRef} onSubmit={save} aria-label={`Calendar access for ${user.displayName}`} className="gcpe-stack">
       {messages.map((m) => (
         <p role="alert" key={m}>
           {m}
@@ -121,7 +124,7 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: C
         })}
       </fieldset>
       <div className="gcpe-button-row">
-        <Button type="submit" isPending={busy}>
+        <Button type="submit" isPending={busy} shortcut="save">
           Save Calendar access
         </Button>
         <Button variant="secondary" onPress={onCancel} isPending={busy}>

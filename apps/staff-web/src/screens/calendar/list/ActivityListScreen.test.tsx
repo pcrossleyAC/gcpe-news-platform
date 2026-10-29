@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_LIST_QUERY, type ListPage } from "@gcpe/calendar-contract";
 import { jsonResponse } from "../../../../test/jsonResponse";
@@ -39,6 +39,16 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     expect(screen.getByText(/^Tue Nov 10( 2026)? 10:00-11:00 AM$/)).toBeInTheDocument();
   });
 
+  it("spells out the abbreviated column names (abbr) and links to their meanings in Help", async () => {
+    stubFetch([], { preferences: { display: "my_ministries", hiddenColumns: [] } });
+    renderList();
+    await screen.findByText("Sample listed");
+    const header = screen.getByRole("columnheader", { name: /Comm\. Materials/ });
+    expect(header.querySelector("abbr")).toHaveAttribute("title", "Communication materials");
+    expect(screen.getByRole("columnheader", { name: /Govt Rep\./ }).querySelector("abbr")).toHaveAttribute("title", "Government representative");
+    expect(screen.getByRole("link", { name: "What the column names mean" })).toHaveAttribute("href", "/help#glossary-calendar");
+  });
+
   it("puts the filter in a closed Filters disclosure, and the list actions and view switch above the results", async () => {
     stubFetch([]);
     renderList();
@@ -52,6 +62,19 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     const table = screen.getAllByRole("table")[0]!;
     expect(actions.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("group", { name: "View" }).compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Ctrl+K (⌘K on a Mac) opens Filters and goes to Search for", async () => {
+    stubFetch([]);
+    renderList();
+    await screen.findByText("Sample listed");
+    const details = screen.getByRole("form", { name: "Filter activities" }).closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    });
+    expect(details).toHaveAttribute("open");
+    expect(screen.getByLabelText("Search for")).toHaveFocus();
   });
 
   it("starts Filters closed when the list is already filtered, naming the filter beside it; remembers opening it for the tab", async () => {

@@ -5,6 +5,7 @@ import { LANG_EN, LANG_FR, LAYOUTS, RELEASE_TYPES, TYPE_LABEL, type Layout, type
 import { apiFetch, ApiError } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
+import { useShortcut } from "../../../shared/shortcuts";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 
 const TITLE = "Release page titles";
@@ -255,6 +256,9 @@ function TitleRow({
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const rowEl = useRef<HTMLTableRowElement>(null);
+  // ⌘/Ctrl+S saves the row you're in, as its Save does (save() ignores a press while one is under way).
+  const saveRef = useRef<() => void>(() => {});
+  useShortcut("save", () => saveRef.current(), { within: rowEl });
   const errorId = useId();
   const set = (p: Partial<Fields>) => setF((x) => ({ ...x, ...p }));
   // The row's identity on the server. A successful rename moves it at once, so a quick second Save targets the new title, not a 404.
@@ -316,6 +320,7 @@ function TitleRow({
       onSaved(`Saved ${f.pageTitle.trim()}.`, rowKey({ languageId: f.languageId, pageTitle: f.pageTitle.trim() }));
     });
   };
+  saveRef.current = () => void save();
   const remove = () =>
     run(async () => {
       await apiFetch(url, { method: "DELETE" });
@@ -326,7 +331,7 @@ function TitleRow({
   const described = (field: Problem["field"]) => (error && (error.field === field || (field === "title" && error.field === "form")) ? errorId : undefined);
 
   return (
-    <tr ref={rowEl}>
+    <tr ref={rowEl} className="gcpe-shortcut-scope">
       <td data-label="Page title">
         <TextField
           aria-label={`Page title for ${name}`}
@@ -368,7 +373,7 @@ function TitleRow({
         </select>
       </td>
       <td data-label="Save">
-        <Button variant="secondary" isPending={busy} onPress={() => void save()}>
+        <Button variant="secondary" isPending={busy} onPress={() => void save()} shortcut="save">
           <span>
             Save <span className="gcpe-visually-hidden">{name}</span>
           </span>

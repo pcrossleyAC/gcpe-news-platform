@@ -3,6 +3,8 @@ import { InlineAlert, Switch, TextField } from "@bcgov/design-system-react-compo
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
+import { useFormShortcut } from "../../shared/shortcuts";
+import { HelpToggle } from "../../shared/HelpToggle";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
@@ -45,6 +47,8 @@ export function LiveFeedScreen(): React.JSX.Element {
   useEffect(() => {
     if (canManage) reload();
   }, [canManage, reload]);
+
+  const formRef = useFormShortcut("save", canManage && canEdit && feed !== null);
 
   if (!canManage) {
     return (
@@ -92,14 +96,21 @@ export function LiveFeedScreen(): React.JSX.Element {
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-      <form onSubmit={onSubmit} aria-label="Live Feed settings">
+      <form ref={formRef} onSubmit={onSubmit} aria-label="Live Feed settings">
         <Switch isSelected={enabled} isDisabled={!canEdit} isReadOnly={section.saving} onChange={setEnabled}>
           Live Feed on
         </Switch>
-        <TextField label="Manifest URL" value={manifestUrl} onChange={setManifestUrl} isDisabled={!canEdit} />
-        <TextField label="M3U URL" value={m3uUrl} onChange={setM3uUrl} isDisabled={!canEdit} />
+        {/* The "?" follows its field: a button inside the field's label would join the field's name. */}
+        <div className="gcpe-label-row gcpe-label-row--field">
+          <TextField label="Manifest URL" value={manifestUrl} onChange={setManifestUrl} isDisabled={!canEdit} />
+          <HelpToggle entry="manifest-url" />
+        </div>
+        <div className="gcpe-label-row gcpe-label-row--field">
+          <TextField label="M3U URL" value={m3uUrl} onChange={setM3uUrl} isDisabled={!canEdit} />
+          <HelpToggle entry="m3u-url" />
+        </div>
         {canEdit && (
-          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
+          <Button type="submit" isPending={section.saving} pendingLabel="Saving…" shortcut="save">
             Save Live Feed
           </Button>
         )}

@@ -27,7 +27,7 @@ test.describe("item 7: editing a published release republishes it as a correctio
     const firstDoc = docsSection.locator(".gcpe-documents__item").first();
     const correctedHeadline = `${headline} (corrected)`;
     await firstDoc.getByLabel("Headline", { exact: true }).fill(correctedHeadline);
-    await firstDoc.getByRole("button", { name: /Save English content/ }).click();
+    await page.getByRole("region", { name: "Unsaved changes" }).getByRole("button", { name: "Save changes" }).click();
 
     // { exact: true }: the page-level status announcement (aria-live, for screen readers) also
     // contains this word ("Status: Republishing...") — exact matches only the visible span.

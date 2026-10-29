@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../../test/jsonResponse";
@@ -92,6 +92,17 @@ describe("UsersScreen", () => {
     expect(await within(row).findByText(/^Calendar: Editor \(HLTH\)/)).toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "manage in Calendar access" })).toHaveAttribute("href", "/calendar-access");
     expect(within(row).queryByText("None")).toBeNull();
+  });
+
+  it("Ctrl+K (⌘K on a Mac) goes to Filter users", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    await screen.findByRole("table", { name: "Staff users" });
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    expect(screen.getByRole("searchbox", { name: /^Filter users/ })).toHaveFocus();
   });
 
   it("lists users in a table, filters them by name, email or role, and opens one user's editor in place", async () => {

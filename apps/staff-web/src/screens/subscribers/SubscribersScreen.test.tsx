@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
@@ -57,6 +57,14 @@ describe("SubscribersScreen", () => {
     cleanup();
     vi.unstubAllGlobals();
     sessionStorage.clear();
+  });
+
+  it("Ctrl+K (⌘K on a Mac) goes to the Email contains box", async () => {
+    stub(["NoD.Viewer"]);
+    renderAt();
+    await screen.findByRole("link", { name: "pat@example.test" });
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    expect(screen.getByRole("textbox", { name: /^Email contains/ })).toHaveFocus();
   });
 
   it("sets the title and lists results with status and timing", async () => {

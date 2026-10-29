@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { AnnouncerProvider } from "../../shared/Announcer";
@@ -32,9 +32,9 @@ function EditorHarness({ onDirtySections }: { onDirtySections?: (s: DirtySection
   );
 }
 
-function DirtySection({ save }: { save?: () => void } = {}): React.JSX.Element {
+function DirtySection({ save }: { save?: () => Promise<boolean> } = {}): React.JSX.Element {
   const [dirty, setDirty] = useState(false);
-  useRegisterDirty("test-section", dirty, { label: "Test section", save: save ?? (() => {}) });
+  useRegisterDirty("test-section", dirty, { label: "Test section", save: save ?? (async () => true) });
   return <button onClick={() => setDirty(true)}>Make dirty</button>;
 }
 
@@ -127,7 +127,13 @@ describe("useUnsavedChangesGuard", () => {
       );
     }
     function SavingSection({ value, onSave }: { value: string; onSave: (v: string) => void }): React.JSX.Element {
-      useRegisterDirty("saving-section", value !== "first", { label: "Saving section", save: () => onSave(value) });
+      useRegisterDirty("saving-section", value !== "first", {
+        label: "Saving section",
+        save: async () => {
+          onSave(value);
+          return true;
+        },
+      });
       return <></>;
     }
     render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Harness /> }])} />);
@@ -150,7 +156,7 @@ describe("useUnsavedChangesGuard", () => {
       );
     }
     function SavingSection({ dirty }: { dirty: boolean }): React.JSX.Element {
-      useRegisterDirty("s", dirty, { label: "Section", save: () => {} });
+      useRegisterDirty("s", dirty, { label: "Section", save: async () => true });
       return <></>;
     }
     render(
@@ -166,5 +172,113 @@ describe("useUnsavedChangesGuard", () => {
     await user.type(screen.getByLabelText("text"), "bc");
     await new Promise((r) => setTimeout(r, 0));
     expect(status.textContent).toBe(afterFirst);
+  });
+
+  describe("saveAll (the page's one Save)", () => {
+    /** Sections that each become dirty from a checkbox and save through `saves`, which the test
+     * resolves by hand (true: saved, false: failed — the section shows its own message). */
+    function SaveAllHarness({ keys, saves }: { keys: string[]; saves: { key: string; resolve(ok: boolean): void }[] }): React.JSX.Element {
+      const guard = useUnsavedChangesGuard();
+      return (
+        <guard.Provider>
+          {keys.map((k) => (
+            <PendingSection key={k} id={k} saves={saves} />
+          ))}
+          <button onClick={() => void guard.saveAll()}>Save changes</button>
+          <p data-testid="state">{guard.saveState.status}</p>
+          <p data-testid="failed">{guard.saveState.failed?.label ?? ""}</p>
+          <p data-testid="not-saved">{guard.saveState.notSaved?.map((s) => s.label).join(", ") ?? ""}</p>
+        </guard.Provider>
+      );
+    }
+    function PendingSection({ id, saves }: { id: string; saves: { key: string; resolve(ok: boolean): void }[] }): React.JSX.Element {
+      const [dirty, setDirty] = useState(false);
+      useRegisterDirty(id, dirty, {
+        label: `${id} label`,
+        save: () =>
+          new Promise<boolean>((resolve) =>
+            saves.push({
+              key: id,
+              resolve: (ok) => {
+                if (ok) setDirty(false);
+                resolve(ok);
+              },
+            }),
+          ),
+      });
+      return (
+        <label>
+          <input type="checkbox" checked={dirty} onChange={() => setDirty(!dirty)} />
+          Edit {id}
+        </label>
+      );
+    }
+    function renderSaveAll(keys: string[]) {
+      const saves: { key: string; resolve(ok: boolean): void }[] = [];
+      render(
+        <AnnouncerProvider>
+          <RouterProvider router={createMemoryRouter([{ path: "/", element: <SaveAllHarness keys={keys} saves={saves} /> }])} />
+        </AnnouncerProvider>,
+      );
+      return { saves, user: userEvent.setup() };
+    }
+
+    it("saves every dirty section one after another, in page order (documents, page details, categories, asset, settings), not the order they were edited", async () => {
+      const { saves, user } = renderSaveAll(["settings", "categories", "document-d1-4105", "page-details"]);
+      for (const k of ["settings", "categories", "document-d1-4105", "page-details"]) await user.click(screen.getByLabelText(`Edit ${k}`));
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(saves).toHaveLength(1));
+      expect(screen.getByTestId("state")).toHaveTextContent("saving");
+      const order: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        await waitFor(() => expect(saves).toHaveLength(i + 1));
+        expect(saves).toHaveLength(i + 1); // the next waits until this one has finished
+        order.push(saves[i]!.key);
+        await act(async () => saves[i]!.resolve(true));
+      }
+      expect(order).toEqual(["document-d1-4105", "page-details", "categories", "settings"]);
+      await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("saved"));
+    });
+
+    it("announces one polite \"Saved\" when every section has saved, not one per section", async () => {
+      const { saves, user } = renderSaveAll(["page-details", "categories"]);
+      await user.click(screen.getByLabelText("Edit page-details"));
+      await user.click(screen.getByLabelText("Edit categories"));
+      const status = screen.getByRole("status");
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(saves).toHaveLength(1));
+      await act(async () => saves[0]!.resolve(true));
+      await waitFor(() => expect(saves).toHaveLength(2));
+      expect(status).not.toHaveTextContent(/^Saved/);
+      await act(async () => saves[1]!.resolve(true));
+      await waitFor(() => expect(status).toHaveTextContent(/^Saved/));
+    });
+
+    it("stops at the first section that fails: it is reported, and the sections after it are not sent and stay unsaved", async () => {
+      const { saves, user } = renderSaveAll(["page-details", "categories", "settings"]);
+      for (const k of ["page-details", "categories", "settings"]) await user.click(screen.getByLabelText(`Edit ${k}`));
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(saves).toHaveLength(1));
+      await act(async () => saves[0]!.resolve(true));
+      await waitFor(() => expect(saves).toHaveLength(2));
+      await act(async () => saves[1]!.resolve(false));
+      await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("failed"));
+      expect(screen.getByTestId("failed")).toHaveTextContent("categories label");
+      expect(screen.getByTestId("not-saved")).toHaveTextContent("settings label");
+      expect(saves).toHaveLength(2); // settings was never sent
+      expect(screen.getByLabelText("Edit settings")).toBeChecked(); // and keeps its edit
+      expect(screen.getByLabelText("Edit categories")).toBeChecked();
+    });
+
+    it("a second Save while one is running does nothing (no section is sent twice)", async () => {
+      const { saves, user } = renderSaveAll(["page-details"]);
+      await user.click(screen.getByLabelText("Edit page-details"));
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(saves).toHaveLength(1));
+      await act(async () => saves[0]!.resolve(true));
+      await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("saved"));
+      expect(saves).toHaveLength(1);
+    });
   });
 });

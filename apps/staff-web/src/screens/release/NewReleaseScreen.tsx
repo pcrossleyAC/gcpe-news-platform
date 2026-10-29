@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { Form } from "../../shared/Form";
 import {
   CREATABLE_TYPES, LANG_EN, LAYOUTS, MAX_ACTIVITY_ID, TYPE_LABEL, createReleaseSchema, typeRules, type Layout, type ReleasePrefill, type ReleaseView,
 } from "@gcpe/nrms-contract";
@@ -9,6 +10,7 @@ import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { useFormShortcut } from "../../shared/shortcuts";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { dateTimeText } from "../calendar/list/dates";
 import { ActivityLookupPanel, useActivityLookup } from "./ActivityLookupPanel";
@@ -199,6 +201,9 @@ export function NewReleaseScreen(): React.JSX.Element {
 
   const [problems, setProblems] = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
+  // ⌘/Ctrl+Enter creates, from anywhere in the form; a second press while creating is ignored.
+  const inFlight = useRef(false);
+  const formRef = useFormShortcut("submit", session.has("NRMS.Editor"));
 
   // Minors: /page-types failing, or coming back empty, used to leave the Page title picker
   // silently empty with no way to tell why the form can't be filled in. `pageTypesLoaded`
@@ -333,6 +338,7 @@ export function NewReleaseScreen(): React.JSX.Element {
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (inFlight.current) return;
     setProblems({});
 
     const parsed = createReleaseSchema.safeParse(buildInput());
@@ -347,6 +353,7 @@ export function NewReleaseScreen(): React.JSX.Element {
       return;
     }
 
+    inFlight.current = true;
     setSubmitting(true);
     try {
       const created = await apiFetch<ReleaseView>("/nrms/api/releases", { method: "POST", body: parsed.data });
@@ -358,6 +365,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         setProblems({ general: [caught instanceof ApiError ? caught.message : "Couldn't create the release."] });
       }
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   };
@@ -371,7 +379,7 @@ export function NewReleaseScreen(): React.JSX.Element {
 
       <ErrorSummary problems={problemList} />
 
-      <Form onSubmit={onSubmit} validationBehavior="aria" className="gcpe-stack">
+      <Form ref={formRef} onSubmit={onSubmit} validationBehavior="aria" className="gcpe-stack">
         {/* Top-aligned: the page title's error sits under its own field without pushing that
             field's box out of line with the others. */}
         <div className="gcpe-field-row gcpe-field-row--top">
@@ -552,7 +560,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         )}
         {fieldProblem("mediaListKeys") && <p className="gcpe-field-error">{fieldProblem("mediaListKeys")}</p>}
 
-        <Button type="submit" isPending={submitting} pendingLabel="Creating…">
+        <Button type="submit" isPending={submitting} pendingLabel="Creating…" shortcut="submit">
           Create release
         </Button>
       </Form>

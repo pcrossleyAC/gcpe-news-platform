@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
+import { useFormShortcut } from "../../../shared/shortcuts";
 import { TableScroll } from "../../../shared/TableScroll";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
@@ -43,8 +44,10 @@ function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel }: {
       setBusy(false);
     }
   };
+  // ⌘/Ctrl+S saves the row being edited (not the Add form), as its Save does.
+  const formRef = useFormShortcut("save", row !== undefined && row !== null && !busy, true);
   return (
-    <form aria-label={label} onSubmit={submit}>
+    <form ref={formRef} aria-label={label} onSubmit={submit}>
       {messages.map((m) => (
         <p role="alert" key={m}>
           {m}
@@ -64,7 +67,7 @@ function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel }: {
           <label htmlFor={`${idBase}-active`}>Active</label>
         </div>
       )}
-      <Button type="submit" isPending={busy}>
+      <Button type="submit" isPending={busy} shortcut={row ? "save" : undefined}>
         {submitLabel}
       </Button>
       {onCancel && (

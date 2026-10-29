@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Choice } from "./form";
+import { HelpToggle } from "../../../shared/HelpToggle";
 
 interface Common {
   id: string;
@@ -9,6 +10,8 @@ interface Common {
   review?: boolean;
   hint?: string;
   required?: boolean;
+  /** A glossary entry (shared/glossary.ts) explained by a "?" beside the label. */
+  help?: string;
 }
 
 function describedBy(id: string, p: Pick<Common, "error" | "review" | "hint">): string | undefined {
@@ -43,12 +46,19 @@ function Notes({ id, p }: { id: string; p: Pick<Common, "error" | "review" | "hi
  * Select show it. Hidden from the accessible name here because the control itself carries
  * aria-required, so a screen reader says "required" once, not twice.
  */
-function Label({ id, label, required }: { id: string; label: string; required?: boolean }) {
-  return (
+function Label({ id, label, required, help }: { id: string; label: string; required?: boolean; help?: string }) {
+  const text = (
     <label htmlFor={id}>
       {label}
       {required && <span aria-hidden="true"> (required)</span>}
     </label>
+  );
+  if (!help) return text;
+  return (
+    <div className="gcpe-label-row">
+      {text}
+      <HelpToggle entry={help} />
+    </div>
   );
 }
 
@@ -66,7 +76,7 @@ export function TextField(p: Common & { value: string; onChange: (v: string) => 
   };
   return (
     <div className={wrap(p)}>
-      <Label id={p.id} label={p.label} required={p.required} />
+      <Label id={p.id} label={p.label} required={p.required} help={p.help} />
       {p.multiline ? <textarea rows={p.rows ?? 3} {...attrs} /> : <input type="text" {...attrs} />}
       <Notes id={p.id} p={p} />
     </div>
@@ -76,7 +86,7 @@ export function TextField(p: Common & { value: string; onChange: (v: string) => 
 export function SelectField(p: Common & { value: string; onChange: (v: string) => void; options: Choice[]; empty?: string }): React.JSX.Element {
   return (
     <div className={wrap(p)}>
-      <Label id={p.id} label={p.label} required={p.required} />
+      <Label id={p.id} label={p.label} required={p.required} help={p.help} />
       <select id={p.id} value={p.value} onChange={(e) => p.onChange(e.target.value)} aria-invalid={invalid(p)} aria-describedby={describedBy(p.id, p)} aria-required={p.required || undefined}>
         {p.empty !== undefined && <option value="">{p.empty}</option>}
         {p.options.map((o) => (
@@ -95,6 +105,7 @@ export function CheckField(p: Common & { checked: boolean; onChange: (v: boolean
     <div className={wrap(p, "gcpe-check")}>
       <input type="checkbox" id={p.id} checked={p.checked} onChange={(e) => p.onChange(e.target.checked)} aria-describedby={describedBy(p.id, p)} />
       <label htmlFor={p.id}>{p.label}</label>
+      {p.help && <HelpToggle entry={p.help} />}
       <Notes id={p.id} p={p} />
     </div>
   );
@@ -116,6 +127,11 @@ export function CheckList(p: Common & { values: readonly string[]; onChange: (v:
         {/* A fieldset can't carry aria-required, so here the marker stays in the group's name. */}
         {p.required && " (required)"}
       </legend>
+      {p.help && (
+        <div className="gcpe-label-row">
+          <HelpToggle entry={p.help} />
+        </div>
+      )}
       {p.readOnly ? (
         chosen.length === 0 ? (
           <p>None</p>

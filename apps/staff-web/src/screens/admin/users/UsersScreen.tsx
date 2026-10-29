@@ -1,10 +1,11 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { AlertDialog, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { ignoreWhileBusy } from "../../../shared/guardSubmit";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { useSearchShortcut, useShortcut } from "../../../shared/shortcuts";
 import { HiddenPrefixLabel, ShortLabel } from "../../../shared/ShortLabel";
 import { messagesOf } from "../messages";
 import { useSeededValue } from "../../../shared/useSeededValue";
@@ -72,6 +73,13 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [activeSaved, setActiveSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  // ⌘/Ctrl+S in the name field is Save name; among the role boxes, Save roles.
+  const nameRow = useRef<HTMLDivElement>(null);
+  const rolesGroup = useRef<HTMLDivElement>(null);
+  const saveNameRef = useRef<() => Promise<void>>(async () => {});
+  const saveRolesRef = useRef<() => Promise<void>>(async () => {});
+  useShortcut("save", () => void (busy ? undefined : saveNameRef.current()), { within: nameRow });
+  useShortcut("save", () => void (busy ? undefined : saveRolesRef.current()), { within: rolesGroup });
 
   const saveName = async () => {
     setBusy(true);
@@ -116,6 +124,8 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
       setBusy(false);
     }
   };
+  saveNameRef.current = saveName;
+  saveRolesRef.current = saveRoles;
 
   const savePassword = async (e: React.FormEvent<HTMLFormElement>) => {
     if (ignoreWhileBusy(busy, e)) return;
@@ -195,10 +205,10 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
           {m}
         </p>
       ))}
-      <div className="gcpe-field-row">
+      <div className="gcpe-field-row gcpe-shortcut-scope" ref={nameRow}>
         {/* TextField types `label` as a string, but renders it as the label's content. */}
         <TextField label={(<HiddenPrefixLabel prefix={who} text="display name" />) as unknown as string} value={displayName} onChange={setDisplayName} isReadOnly={busy} />
-        <Button variant="secondary" onPress={() => void saveName()} isPending={busy}>
+        <Button variant="secondary" onPress={() => void saveName()} isPending={busy} shortcut="save">
           Save name
         </Button>
       </div>
@@ -257,10 +267,12 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
           {m}
         </p>
       ))}
-      <RoleCheckboxes selected={roles} onChange={setRoles} idPrefix={`roles-${user.id}`} disabled={busy} />
-      <Button variant="secondary" onPress={() => void saveRoles()} isPending={busy}>
-        Save roles
-      </Button>
+      <div className="gcpe-contents gcpe-shortcut-scope" ref={rolesGroup}>
+        <RoleCheckboxes selected={roles} onChange={setRoles} idPrefix={`roles-${user.id}`} disabled={busy} />
+        <Button variant="secondary" onPress={() => void saveRoles()} isPending={busy} shortcut="save">
+          Save roles
+        </Button>
+      </div>
 
       {user.signInMethod === "local" && (
         <form onSubmit={savePassword} aria-label={`Set ${who}'s password`}>
@@ -308,6 +320,7 @@ const roleBadge = (role: string) => {
  */
 function UsersTable({ users, calendar, onChanged }: { users: UserView[]; calendar: CalendarLines; onChanged(): void }): React.JSX.Element {
   const [query, setQuery] = useState("");
+  useSearchShortcut("users-filter");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   // Editors once opened stay mounted (hidden when closed or filtered out), so typed but unsaved
   // name, roles or password survive Close and the filter.
@@ -338,7 +351,7 @@ function UsersTable({ users, calendar, onChanged }: { users: UserView[]; calenda
   return (
     <>
       <div className="gcpe-users__filter">
-        <TextField label="Filter users" description="By name, email or role" type="search" value={query} onChange={setQuery} />
+        <TextField id="users-filter" label="Filter users" description="By name, email or role" type="search" value={query} onChange={setQuery} />
         <p aria-live="polite" className="gcpe-users__count">
           {countText}
         </p>

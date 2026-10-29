@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { HelpToggle } from "../../../shared/HelpToggle";
 import { CORPORATE_STATUSES, type CorporateQuery, type CorporateStatus, type ListQuery, type LookAheadFilter } from "@gcpe/calendar-contract";
 import { AlertDialog, Modal } from "@bcgov/design-system-react-components";
 import { Button } from "../../../shared/BusyButton";
@@ -118,7 +119,10 @@ export function ClearLaStatus({ onDone }: { onDone: () => void }): React.JSX.Ele
   };
   return (
     <div>
-      <label htmlFor="la-days">Days ahead (Clear LA Status)</label>
+      <div className="gcpe-label-row">
+        <label htmlFor="la-days">Days ahead (Clear LA Status)</label>
+        <HelpToggle entry="la-status" />
+      </div>
       <input id="la-days" type="number" min={0} max={366} value={days} aria-invalid={!valid} onChange={(e) => setDays(e.target.value)} />
       <Button variant="secondary" isPending={counting || busy} isDisabled={!valid} pendingLabel={busy ? "Clearing…" : "Checking…"} onPress={() => void ask()}>
         Clear LA Status

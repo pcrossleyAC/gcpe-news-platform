@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { createMemoryRouter, MemoryRouter, RouterProvider, Route, Routes } from "react-router";
@@ -88,6 +88,15 @@ describe("ReleaseListScreen", () => {
     expect(await screen.findByText("First headline")).toBeInTheDocument();
     const releasesCall = calls.find((c) => c.startsWith("/nrms/api/releases"));
     expect(releasesCall).toBe("/nrms/api/releases?folder=drafts&type=all&page=1&pageSize=25");
+  });
+
+  it("Ctrl+K (⌘K on a Mac) goes to the Type filter, which says so", async () => {
+    renderScreen("drafts", "/releases/drafts", { releasesPage: page([item({ headline: "First headline" })]) });
+    await screen.findByText("First headline");
+    const type = screen.getByLabelText("Type", { exact: false });
+    expect(type).toHaveAttribute("aria-keyshortcuts", "Control+K");
+    expect(fireEvent.keyDown(document.body, { key: "k", ctrlKey: true })).toBe(false);
+    expect(type).toHaveFocus();
   });
 
   it("Drafts says who last edited each release; Scheduled doesn't", async () => {

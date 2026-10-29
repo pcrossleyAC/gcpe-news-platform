@@ -7,7 +7,7 @@ import { Button } from "../../../shared/BusyButton";
 import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty, type DirtySection } from "../useUnsavedChanges";
-import { documentsInOrder } from "../documents/documentHelpers";
+import { unsavedTarget } from "../unsavedTarget";
 import { usePublicSiteUrl } from "../sidebar/usePublicSiteUrl";
 import type { Categories } from "../categories";
 import { useSaveQueue, withVersion } from "../saveQueue";
@@ -19,6 +19,21 @@ import { dateTimeText } from "../../calendar/list/dates";
 
 /** Schedule's field error for a time that isn't in the future. */
 export const PAST_SCHEDULE = "Choose a time in the future, or use Publish now.";
+
+/** "2031-06-15T14:30" (a BC wall-clock time, exactly as Schedule sends it as `publishAtLocal`) as
+ * "Sunday, June 15, 2031 at 2:30 PM Pacific time". Formatted from the wall-clock fields
+ * themselves, never via an instant: the server converts the wall-clock string with its own
+ * tzdata, so this is the time it will go out as the server reads it, whatever the browser's
+ * tzdata says. */
+export function scheduleText(local: string): string {
+  const [date = "", time = ""] = local.split("T");
+  const [y, mo, d] = date.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  const at = new Date(Date.UTC(y!, mo! - 1, d!, h!, mi!));
+  const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(at);
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(at).map((x) => [x.type, x.value]));
+  return `${day} at ${p.hour}:${p.minute} ${p.dayPeriod} Pacific time`;
+}
 
 /** `GET /nrms/api/config`'s server-side offset for the tenant zone (see wallClockNowMinute). */
 function useServerZoneOffset(enabled: boolean): number | null {
@@ -62,17 +77,6 @@ interface Blocker {
   target: string | null;
 }
 
-/** Where a dirty section lives on the page, by its {@link useRegisterDirty} key. */
-function unsavedTarget(key: string, view: ReleaseView): string | null {
-  const fixed: Record<string, string> = { settings: "section-settings", "page-details": "section-page-details", categories: "section-categories", asset: "section-asset" };
-  if (fixed[key]) return fixed[key];
-  // A document language: its own tab panel (DocumentTabs shows that tab when the link is
-  // followed — the edited language may not be the one showing).
-  const doc = /^document-(.+)-(\d+)$/.exec(key);
-  if (doc) return documentsInOrder(view).some((d) => d.id === doc[1]) ? `doc-${doc[1]}-panel-${doc[2]}` : "section-documents";
-  return null;
-}
-
 /** "Save page details" → "page details": the bar's button text as the words a sentence names it by. */
 const unsavedName = (label: string) => label.replace(/^save\s+/i, "");
 
@@ -112,6 +116,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
   const [unpublishOpen, setUnpublishOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [scheduleConfirmOpen, setScheduleConfirmOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   // After a successful Publish now, Approve or Return to draft its button leaves the page (the
@@ -198,10 +203,22 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
       if (next) setUnpublishOpen(false);
     });
 
+  // Owner decision 2026-10-29: Confirm schedule asks first, like Publish now — it commits a
+  // later, unattended send to the same audience. The time is checked when the dialog opens and
+  // again when its Schedule is pressed (the dialog may have sat open past it).
+  const openScheduleConfirm = (open: boolean) => {
+    if (!open) return setScheduleConfirmOpen(false);
+    if (!scheduleValue) return;
+    const problem = futureProblem(scheduleValue.local);
+    if (problem) return setScheduleError(problem);
+    section.clear();
+    setScheduleConfirmOpen(true);
+  };
   const submitSchedule = async () => {
     if (!scheduleValue) return;
     const problem = futureProblem(scheduleValue.local);
     if (problem) {
+      setScheduleConfirmOpen(false);
       setScheduleError(problem);
       return;
     }
@@ -209,8 +226,10 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
     // client-converted instant — the server (whose tzdata is authoritative) converts it.
     const result = await section.save("/schedule", { version: view.version, publishAtLocal: scheduleValue.local }, "POST");
     if (result) {
+      setScheduleConfirmOpen(false);
       setSchedulerOpen(false);
       setScheduleValue(null);
+      setFocusHeading(true);
     }
   };
 
@@ -439,7 +458,8 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
       {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead="Publish now and Schedule are unavailable until:" items={publishBlockers} />}
 
       {schedulerOpen && canPublish && (
-        <div id="actions-scheduler" className="gcpe-release-editor__scheduler">
+        // data-unsaved: Esc leaves it open once a date or time is typed (shared/escapeClosesPanels.ts).
+        <div id="actions-scheduler" className="gcpe-release-editor__scheduler" data-unsaved={scheduleTyped !== scheduleOpenedWith || undefined}>
           <SchedulePicker
             timeZone={timeZone}
             legend="Schedule for"
@@ -461,9 +481,29 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
               ? `Planned in Publish settings: ${dateTimeText(view.publishAt, timeZone)}. That's only a plan; the time you confirm here is the one that's committed.`
               : "The time you confirm here is the one that's committed. (A planned publish date in Publish settings is only a plan.)"}
           </p>
-          <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue || unsavedBlockers.length > 0} isPending={section.saving}>
-            Confirm schedule
-          </Button>
+          <DialogTrigger isOpen={scheduleConfirmOpen} onOpenChange={openScheduleConfirm}>
+            <Button isDisabled={!scheduleValue || publishBlockers.length > 0} isPending={section.saving}>
+              Confirm schedule
+            </Button>
+            <Modal isDismissable>
+              <AlertDialog
+                title={`Schedule this ${typeName} for ${scheduleValue ? scheduleText(scheduleValue.local) : ""}?`}
+                buttons={
+                  <>
+                    <Button variant="secondary" onPress={() => setScheduleConfirmOpen(false)} isPending={section.saving}>
+                      Cancel
+                    </Button>
+                    <Button onPress={() => void submitSchedule()} isPending={section.saving} isDisabled={publishBlockers.length > 0} pendingLabel="Scheduling…">
+                      Schedule
+                    </Button>
+                  </>
+                }
+              >
+                {scheduleValue && <PublishConsequences view={view} at={scheduleText(scheduleValue.local)} />}
+                <ActionErrors section={section} />
+              </AlertDialog>
+            </Modal>
+          </DialogTrigger>
         </div>
       )}
     </section>
@@ -538,14 +578,14 @@ interface MediaListName {
 const listText = (items: string[]): string => items.join("; ");
 
 /**
- * What Publish now will do, from the release as saved (publishing is blocked while anything is
+ * What Publish now (or, given `at`, Schedule) will do, from the release as saved (publishing is blocked while anything is
  * unsaved, so saved is what goes out): the public site it goes on, the media distribution lists
  * it's sent to (by name), and whose News on Demand inboxes it reaches. NoD has no "how many
  * subscribers would get this" endpoint, so it names the categories subscribers follow instead
  * of a count. Names come from the same lists the Categories and Publish settings sections read;
  * if a lookup fails, the keys are shown instead.
  */
-function PublishConsequences({ view }: { view: ReleaseView }): React.JSX.Element {
+function PublishConsequences({ view, at }: { view: ReleaseView; /** When a scheduled send goes out ("Sunday, June 15, 2031 at 2:30 PM Pacific time"); omitted for Publish now. */ at?: string }): React.JSX.Element {
   const rules = typeRules(view.type);
   const publicSiteUrl = usePublicSiteUrl();
   const [lists, setLists] = useState<MediaListName[] | null>(null);
@@ -584,7 +624,7 @@ function PublishConsequences({ view }: { view: ReleaseView }): React.JSX.Element
 
   return (
     <ul className="gcpe-publish-consequences">
-      <li>{view.publishOptions.toWeb ? `Publishes to ${host || "the public news site"} now.` : "Doesn't go on the public news site."}</li>
+      <li>{view.publishOptions.toWeb ? `Publishes to ${host || "the public news site"} ${at ? `on ${at}` : "now"}.` : "Doesn't go on the public news site."}</li>
       {alreadySent ? (
         <li>Subscribers and media lists already received this when it was first published; they won&rsquo;t be emailed again.</li>
       ) : (

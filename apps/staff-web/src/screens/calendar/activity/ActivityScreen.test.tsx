@@ -61,6 +61,26 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(calls.filter((c) => c.url.endsWith("/lock") && c.init?.method === "PUT")).toHaveLength(1);
   });
 
+  it("Ctrl+S (⌘S on a Mac) from inside a field saves, as Save does; the Save button shows the keys", async () => {
+    const calls: Call[] = [];
+    stubActivity(calls, { other: savedOk });
+    renderActivity(`/calendar/activities/20001?return=${encodeURIComponent("/calendar")}`);
+    const t = await title();
+    await userEvent.type(t, " renamed");
+    expect(screen.getByRole("button", { name: "Save" })).toHaveAttribute("aria-keyshortcuts", "Control+S");
+    expect(fireEvent.keyDown(t, { key: "s", ctrlKey: true })).toBe(false);
+    await waitFor(() => expect(calls.some(isPut)).toBe(true));
+    expect(putBody(calls)).toMatchObject({ title: "Sample activity renamed" });
+  });
+
+  it("a read-only activity has no Save, so Ctrl+S is left to the browser", async () => {
+    stubActivity([], { view: () => view({ can: NOT_EDITABLE }) });
+    renderActivity("/calendar/activities/20001");
+    await screen.findByRole("heading", { level: 1, name: "Activity HLTH-20001" });
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(fireEvent.keyDown(document.body, { key: "s", ctrlKey: true })).toBe(true);
+  });
+
   it("the form's own check stops a save and lists each problem, linked to its field", async () => {
     const calls: Call[] = [];
     stubActivity(calls);
@@ -363,6 +383,28 @@ describe("the activity editor (spec addendum §8.2)", () => {
     const post = JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body));
     expect(post).toMatchObject({ title: "Sample new", startDate: "2031-11-10", startTime: "08:00", endTime: "18:00", contactMinistryKey: "health", commContactId: 11 });
     expect(calls.filter((c) => c.url.endsWith("/lock"))).toHaveLength(0);
+  });
+
+  it("on a new activity, Ctrl+Enter (⌘Return on a Mac) creates it, the same as Save", async () => {
+    const calls: Call[] = [];
+    stubActivity(calls, {
+      view: () => view({ id: 20002 }),
+      other: (url, init) => (url === "/calendar/api/activities" && init?.method === "POST" ? jsonResponse(201, { id: 20002, activity: view({ id: 20002 }), warnings: [] }) : undefined),
+    });
+    renderActivity(`/calendar/activities/new?return=${encodeURIComponent("/calendar")}`);
+    await screen.findByRole("heading", { level: 1, name: "New activity" });
+    expect(screen.getByRole("button", { name: "Save" })).toHaveAttribute("aria-keyshortcuts", "Control+S Control+Enter");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Category" }), "32");
+    await userEvent.type(screen.getByRole("textbox", { name: "Title" }), "Sample new");
+    await userEvent.type(screen.getByRole("textbox", { name: "Summary" }), "Sample summary");
+    await userEvent.type(screen.getByRole("textbox", { name: "Significance" }), "Sample significance");
+    await userEvent.type(screen.getByRole("textbox", { name: "Scheduling considerations" }), "Sample scheduling");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Comm Contact" }), "11");
+    fireEvent.change(screen.getByLabelText(/^Start date/), { target: { value: "2031-11-10" } });
+    fireEvent.change(screen.getByLabelText(/^End date/), { target: { value: "2031-11-10" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Title" }), { key: "Enter", ctrlKey: true });
+    expect(await screen.findByRole("heading", { level: 1, name: "Activity HLTH-20002" })).toBeInTheDocument();
+    expect(calls.filter((c) => c.init?.method === "POST")).toHaveLength(1);
   });
 
   it("a save the writer can't see goes back with the server's message", async () => {

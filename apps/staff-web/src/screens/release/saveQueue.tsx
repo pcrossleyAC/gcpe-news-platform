@@ -18,9 +18,13 @@ import { createContext, useCallback, useContext, useMemo, useRef } from "react";
  */
 export interface SaveQueue {
   run<T>(task: (version: number | null) => Promise<T>): Promise<T>;
+  /** Whether the release went from version `from` to `to` through this page's own saves alone
+   * (each one sent at the version the one before returned) — so whatever changed on the server
+   * in between was this page's doing, not someone else's (useSeededForm). */
+  isOwnChange(from: number, to: number): boolean;
 }
 
-const IMMEDIATE: SaveQueue = { run: (task) => task(null) };
+const IMMEDIATE: SaveQueue = { run: (task) => task(null), isOwnChange: () => false };
 
 export const SaveQueueContext = createContext<SaveQueue>(IMMEDIATE);
 
@@ -55,12 +59,15 @@ export interface SaveQueueController {
 export function useSaveQueueController(): SaveQueueController {
   const tail = useRef<Promise<unknown>>(Promise.resolve());
   const version = useRef<number | null>(null);
+  // Each own save that succeeded: the version it was sent at -> the version it returned.
+  const ownSteps = useRef(new Map<number, number>());
 
   const noteVersion = useCallback((v: number) => {
     version.current = version.current === null ? v : Math.max(version.current, v);
   }, []);
   const reset = useCallback(() => {
     version.current = null;
+    ownSteps.current.clear();
   }, []);
 
   const queue = useMemo<SaveQueue>(
@@ -68,15 +75,31 @@ export function useSaveQueueController(): SaveQueueController {
       run<T>(task: (version: number | null) => Promise<T>): Promise<T> {
         // The version is noted in this chain, before `tail` settles — so the next task, which
         // only starts once `tail` has, always reads it.
+        let sent: number | null = null;
         const result = tail.current
-          .then(() => task(version.current))
+          .then(() => {
+            sent = version.current;
+            return task(sent);
+          })
           .then((value) => {
             const next = versionOf(value);
-            if (next !== null) noteVersion(next);
+            if (next !== null) {
+              if (sent !== null && next !== sent) ownSteps.current.set(sent, next);
+              noteVersion(next);
+            }
             return value;
           });
         tail.current = result.catch(() => undefined);
         return result;
+      },
+      isOwnChange(from: number, to: number): boolean {
+        let at = from;
+        for (let i = 0; i < 1000 && at !== to; i++) {
+          const next = ownSteps.current.get(at);
+          if (next === undefined) return false;
+          at = next;
+        }
+        return at === to;
       },
     }),
     [noteVersion],

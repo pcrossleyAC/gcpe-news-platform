@@ -1196,6 +1196,51 @@ body {
   gap: 0.5rem;
 }
 
+.gcpe-save-bar__text {
+  display: grid;
+  gap: 0.25rem;
+  flex: 1 1 20rem;
+}
+
+.gcpe-save-bar__problem {
+  margin: 0;
+  /* Darker than the danger token: it sits on the bar's yellow, not white. */
+  color: #a12622;
+  font-weight: 700;
+}
+
+/* After the page's one Save: "All changes saved" for a moment, in the success colours. */
+.gcpe-save-bar--saved {
+  background: var(--support-surface-color-success, #f6fff8);
+  border-top-color: var(--support-border-color-success, #42814a);
+}
+
+/* "Unsaved" beside a release-editor section's heading while it has edits to save. */
+.gcpe-unsaved-marker {
+  display: inline-block;
+  margin-inline-start: 0.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--support-border-color-warning, #f8bb47);
+  border-radius: 1rem;
+  background: var(--support-surface-color-warning, #fef1d8);
+  color: var(--typography-color-primary, #2d2d2d);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+/* A language tab whose fields hold unsaved edits (the document heading says so in words). */
+.gcpe-unsaved-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-start: 0.375rem;
+  border-radius: 50%;
+  background: #c08200;
+  vertical-align: middle;
+}
+
 /* The Calendar's activity list (spec addendum §8.1). Every control is at least 24px (WCAG 2.5.8). */
 .gcpe-calendar-list .gcpe-calendar-filter {
   display: grid;
@@ -3310,4 +3355,232 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 /* Deactivate (and Activate) sit apart from Save preferences: a different act. */
 .gcpe-subscriber__status-actions {
   margin: 1rem 0;
+}
+
+/* Sectors, themes and tags: the grid's one Save, with how many rows it would save beside it. */
+.gcpe-admin__save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0 2rem;
+}
+
+.gcpe-admin__save-row .gcpe-hint {
+  margin: 0;
+}
+
+/* Keyboard shortcut hint inside a button ("⌘S" / "Ctrl+S", shared/shortcuts.tsx): quiet, in the
+ * button's own colour, and not on touch screens, where there's no keyboard to press it on. */
+.gcpe-shortcut-hint {
+  margin-inline-start: 0.5rem;
+  padding: 0 0.25rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .gcpe-shortcut-hint {
+    display: none;
+  }
+}
+
+/* Where each row or form has its own Save, the hint shows only on the one the keys would save:
+ * the one focus is in. */
+.gcpe-shortcut-scope:not(:focus-within) .gcpe-shortcut-hint {
+  display: none;
+}
+
+/* A wrapper that only groups its children for code (a shortcut's scope), with no box of its own. */
+.gcpe-contents {
+  display: contents;
+}
+
+/* A label (or field) with its "?" explanation button beside it (shared/HelpToggle.tsx); the
+ * explanation opens under them, the row's full width. */
+.gcpe-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.gcpe-label-row > label,
+.gcpe-label-row__text {
+  margin: 0;
+}
+
+/* A design-system field with its "?" after it: the button sits level with the input. */
+.gcpe-label-row--field {
+  align-items: flex-end;
+}
+
+.gcpe-label-row--field > :first-child {
+  flex: 1 1 16rem;
+}
+
+/* The "?" (a <summary>): more than 24px (WCAG 2.5.8), a circle with a "?" in the link colour. Open,
+ * the disclosure takes the row's full width, its text under the "?". */
+.gcpe-help-toggle[open] {
+  flex-basis: 100%;
+}
+
+.gcpe-help-toggle > summary {
+  display: inline-flex;
+  list-style: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.gcpe-help-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gcpe-help-toggle__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 28px: still 24px or more when a sticky bar covers its edge while scrolling. */
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border: 1px solid var(--surface-color-border-active, #2e5dd7);
+  border-radius: 50%;
+  background: var(--surface-color-forms-default, #fff);
+  color: var(--typography-color-link, #255a90);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.gcpe-help-toggle[open] .gcpe-help-toggle__mark {
+  background: var(--surface-color-border-active, #2e5dd7);
+  color: var(--typography-color-primary-invert, #fff);
+}
+
+.gcpe-help-toggle > summary:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: 2px;
+}
+
+.gcpe-help-toggle .gcpe-help-text {
+  margin-block-start: 0.375rem;
+}
+
+.gcpe-help-text {
+  flex-basis: 100%;
+  max-inline-size: 40rem;
+  padding: 0.5rem 0.75rem;
+  border-inline-start: 4px solid var(--surface-color-border-active, #2e5dd7);
+  background: var(--surface-color-background-light-blue, #f1f8fe);
+}
+
+.gcpe-help-text p {
+  margin: 0;
+}
+
+/* Calendar column names: their spelled-out form on hover, without the browser's dotted underline
+ * fighting the sort button's own. */
+.gcpe-calendar-table abbr[title] {
+  text-decoration: none;
+}
+
+/* Help, in the header bar beside Sign out: a plain link, at least 24px tall (WCAG 2.5.8). */
+.gcpe-shell__help {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 1.5rem;
+  color: var(--typography-color-link, #255a90);
+  white-space: nowrap;
+}
+
+/* /hub/help: a reading page — a comfortable measure, the glossary as term-over-definition pairs. */
+.gcpe-help {
+  max-inline-size: 60rem;
+}
+
+.gcpe-help > p,
+.gcpe-help__list,
+.gcpe-help__glossary {
+  max-inline-size: 45rem;
+}
+
+.gcpe-help nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.gcpe-help section {
+  margin-block-start: 2rem;
+}
+
+.gcpe-help__list li + li {
+  margin-block-start: 0.5rem;
+}
+
+.gcpe-help__glossary div + div {
+  margin-block-start: 1rem;
+}
+
+.gcpe-help__glossary dt {
+  font-weight: 700;
+}
+
+.gcpe-help__glossary dd {
+  margin: 0.25rem 0 0;
+}
+
+.gcpe-help__aka {
+  color: var(--typography-color-secondary, #474543);
+}
+
+.gcpe-help kbd {
+  font-family: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* A term reached by a link from a "?" explanation: the browser's focus ring, plus a tint. */
+.gcpe-help__glossary dt:focus {
+  background: var(--surface-color-background-light-blue, #f1f8fe);
+}
+
+/* Help's shortcuts table on a phone: each shortcut as a stacked card, each cell named by its
+ * column (the header row stays for screen readers, visually hidden). */
+@media (max-width: 40rem) {
+  .gcpe-help__shortcuts thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .gcpe-help__shortcuts,
+  .gcpe-help__shortcuts tbody,
+  .gcpe-help__shortcuts tr,
+  .gcpe-help__shortcuts td {
+    display: block;
+    width: auto;
+  }
+  .gcpe-help__shortcuts tr {
+    padding-block: 0.75rem;
+    border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+  }
+  .gcpe-help__shortcuts td {
+    border: 0;
+    padding: 0.125rem 0;
+  }
+  .gcpe-help__shortcuts td::before {
+    content: attr(data-label) ": ";
+    font-weight: 700;
+  }
 }

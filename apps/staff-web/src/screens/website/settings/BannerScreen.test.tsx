@@ -92,6 +92,26 @@ describe("BannerScreen", () => {
     expect(screen.getByLabelText(/Hide after/)).toHaveValue("");
   });
 
+  it("Ctrl+S (⌘S on a Mac) from a field is Save draft (never Publish); the button shows the keys", async () => {
+    let state = NOTHING_LIVE;
+    const calls = stub(["NRMS.SiteEditor"], (c) => {
+      if (c.url === "/nrms/api/site/settings/draft" && c.method === "PUT") {
+        state = withBanner({ ...state, draft: { baseRevision: null, updatedAt: "2026-10-27T18:00:00.000Z" } }, { enabled: true, message: "Roads closed" });
+        return jsonResponse(200, state);
+      }
+      return undefined;
+    });
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("radio", { name: "Information" }));
+    const message = screen.getByLabelText("Message");
+    await user.type(message, "Roads closed");
+    expect(screen.getByRole("button", { name: "Save draft" })).toHaveAttribute("aria-keyshortcuts", "Control+S");
+    fireEvent.keyDown(message, { key: "s", ctrlKey: true });
+    expect(await screen.findByText("Draft saved. It isn't live until you publish.")).toBeInTheDocument();
+    expect(calls.filter((c) => c.method === "PUT" || c.method === "POST").map((c) => c.url)).toEqual(["/nrms/api/site/settings/draft"]);
+  });
+
   it("Save draft PUTs only the banner section, with BC wall-clock times, and says it isn't live", async () => {
     let state = NOTHING_LIVE;
     const calls = stub(["NRMS.SiteEditor"], (c) => {

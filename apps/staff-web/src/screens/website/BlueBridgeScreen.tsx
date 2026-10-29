@@ -5,6 +5,7 @@ import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { HelpToggle } from "../../shared/HelpToggle";
 import { canManageWebsite } from "./access";
 import { useIsTestSite } from "./useIsTestSite";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
@@ -88,6 +89,10 @@ export function BlueBridgeScreen(): React.JSX.Element {
   return (
     <div className="gcpe-blue-bridge">
       <h1>Project Blue Bridge</h1>
+      <div className="gcpe-label-row">
+        <p className="gcpe-label-row__text">What this switch does</p>
+        <HelpToggle entry="project-blue-bridge" />
+      </div>
 
       {isTestSite && <InlineAlert variant="warning" description="This is a TEST site." />}
       <p>{state.warning}</p>

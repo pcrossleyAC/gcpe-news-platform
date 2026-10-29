@@ -8,6 +8,7 @@ import { useUnsavedChangesGuard } from "../useUnsavedChanges";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { ActionsSection } from "./ActionsSection";
+import { useEscapeClosesPanels } from "../../../shared/escapeClosesPanels";
 import type { DirtySection } from "../useUnsavedChanges";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -287,7 +288,7 @@ describe("ActionsSection", () => {
     expect(within(dialog).getByRole("button", { name: "Publish now" })).toBeEnabled();
     rerender(
       <MemoryRouter>
-        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "settings", label: "Save settings", save: () => {} }]} />
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "settings", label: "Save settings", save: async () => true }]} />
       </MemoryRouter>,
     );
     expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Publish now" })).toBeDisabled();
@@ -337,7 +338,7 @@ describe("ActionsSection", () => {
     const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
     const { rerender } = render(
       <MemoryRouter>
-        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "page-details", label: "Save page details", save: () => {} }]} />
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "page-details", label: "Save page details", save: async () => true }]} />
       </MemoryRouter>,
     );
     expect(screen.getByRole("button", { name: "Publish now" })).toBeDisabled();
@@ -359,7 +360,7 @@ describe("ActionsSection", () => {
   it("Approve is disabled while a document has unsaved edits, and the blocker links to that document", () => {
     const v = releaseView({ status: "draft", ministries: ["health"], leadMinistryKey: "health" });
     const docId = v.documents[0]!.id;
-    renderActions(v, () => {}, [{ key: `document-${docId}-1`, label: "Save English content (Document 1)", save: () => {} }]);
+    renderActions(v, () => {}, [{ key: `document-${docId}-1`, label: "Save English content (Document 1)", save: async () => true }]);
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Save your changes to English content (Document 1) first." })).toHaveAttribute("href", `#doc-${docId}-panel-1`);
   });
@@ -387,6 +388,7 @@ describe("ActionsSection", () => {
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
     fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
     await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Schedule" }));
 
     await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
     const scheduleCall = calls.find((c) => c.url.endsWith("/schedule"));
@@ -557,8 +559,77 @@ describe("ActionsSection", () => {
     expect(screen.getByLabelText("Date")).toHaveValue("2031-06-15");
     expect(screen.getByLabelText("Time (BC time)")).toHaveValue("14:30");
     await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Schedule" }));
     await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
     expect(posts).toEqual([{ url: `/nrms/api/releases/${v.id}/schedule`, body: { version: 2, publishAtLocal: "2031-06-15T14:30" } }]);
+  });
+
+  // Owner decision 2026-10-29: Confirm schedule commits a future send to the same audience as
+  // Publish now, so it asks first in the same way — when (the BC wall-clock time exactly as the
+  // server will read it) and who is emailed — and only the dialog's own Schedule sends it.
+  it("Confirm schedule asks first: the dialog says when it goes out (Pacific time) and who is emailed; nothing is sent until its Schedule", async () => {
+    const v = releaseView({
+      status: "approved", key: "k1", reference: "NEWS-00001", version: 2,
+      ministries: ["health"], leadMinistryKey: "health", sectors: ["seniors"], themes: [], tags: [],
+      mediaListKeys: ["regional"], publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: true },
+    });
+    const posts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", publishFetch(posts, releaseView({ status: "scheduled", version: 3 })));
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Schedule" }));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
+    fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
+    await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Schedule this release for Sunday, June 15, 2031 at 2:30 PM Pacific time?");
+    await waitFor(() => expect(dialog).toHaveTextContent("Publishes to news.example.test on Sunday, June 15, 2031 at 2:30 PM Pacific time."));
+    await waitFor(() => expect(dialog).toHaveTextContent("Sends to media distribution lists: Regional newspapers."));
+    expect(dialog).toHaveTextContent("Emails News on Demand subscribers who follow any of: Health; Seniors — and everyone subscribed to all news.");
+    expect(posts).toEqual([]);
+
+    await user.click(within(dialog).getByRole("button", { name: "Schedule" }));
+    await waitFor(() => expect(posts).toEqual([{ url: `/nrms/api/releases/${v.id}/schedule`, body: { version: 2, publishAtLocal: "2031-06-15T14:30" } }]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("cancelling the schedule dialog sends nothing, keeps the chosen time, and returns focus to Confirm schedule", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const posts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", publishFetch(posts, v));
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Schedule" }));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
+    fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
+    const confirm = screen.getByRole("button", { name: "Confirm schedule" });
+    await user.click(confirm);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(posts).toEqual([]);
+    expect(screen.getByLabelText("Time (BC time)")).toHaveValue("14:30");
+    await waitFor(() => expect(confirm).toHaveFocus());
+  });
+
+  it("Confirm schedule is unavailable while a section has unsaved edits, so the dialog can't open", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: "2031-06-15T21:30:00.000Z" });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    const unsaved = [{ key: "page-details", label: "Save page details", save: async () => true }];
+    const { rerender } = render(
+      <MemoryRouter>
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" />
+      </MemoryRouter>,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Schedule" }));
+    rerender(
+      <MemoryRouter>
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={unsaved} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Confirm schedule" })).toBeDisabled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("the Schedule toggle says whether its panel is open, and which panel it controls", async () => {
@@ -571,6 +642,35 @@ describe("ActionsSection", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     const panel = document.getElementById(toggle.getAttribute("aria-controls")!);
     expect(panel).toContainElement(screen.getByLabelText("Date"));
+  });
+
+  // Review (LOW): Esc used to close the Schedule panel even with a time typed in, and reopening
+  // started over — the typed time was lost without a word.
+  it("Esc closes the Schedule panel when nothing in it changed, but not once a date or time is typed", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: null });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    function WithEsc(): React.JSX.Element {
+      useEscapeClosesPanels();
+      return <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" />;
+    }
+    render(
+      <MemoryRouter>
+        <WithEsc />
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup();
+    const toggle = screen.getByRole("button", { name: "Schedule" });
+    await user.click(toggle);
+    screen.getByLabelText("Date").focus();
+    await user.keyboard("{Escape}");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
+    screen.getByLabelText("Date").focus();
+    await user.keyboard("{Escape}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Date")).toHaveValue("2031-06-15");
   });
 
   it("an open Schedule panel counts as unsaved only once its date or time is changed from what it opened with", async () => {

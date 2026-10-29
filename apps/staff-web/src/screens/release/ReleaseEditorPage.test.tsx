@@ -8,6 +8,7 @@ import type { ReleaseView } from "@gcpe/nrms-contract";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { SignIn } from "../SignIn";
+import { AnnouncerProvider } from "../../shared/Announcer";
 import { ReleaseEditorPage, SETTLING_REFRESH_MS, settlingDelay } from "./ReleaseEditorPage";
 import { RELOAD_MESSAGE } from "./useReleaseSection";
 
@@ -114,7 +115,10 @@ describe("ReleaseEditorPage", () => {
   // Section saves are queued: each one waits for the save before it and then sends the version
   // that save returned, so saving a second section (or the same one again) while a save is
   // still in flight never 409s against our own earlier save.
-  describe("queued section saves", () => {
+  // Owner decision 2026-10-29: one Save for the page. It saves every changed section to its own
+  // endpoint, one after another — each waits for the one before and sends the version it
+  // returned — and stops at the first that doesn't save, so nothing is lost or overwritten.
+  describe("one Save for every changed section", () => {
     interface HeldWrite {
       url: string;
       method?: string;
@@ -147,124 +151,119 @@ describe("ReleaseEditorPage", () => {
       );
       const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${initial.id}`] });
       render(
-        <SessionProvider>
-          <RouterProvider router={router} />
-        </SessionProvider>,
+        <AnnouncerProvider>
+          <SessionProvider>
+            <RouterProvider router={router} />
+          </SessionProvider>
+        </AnnouncerProvider>,
       );
       return { writes, user: userEvent.setup() };
     }
 
-    /** Ticks Sector One (dirtying Categories) and saves Categories from its own inline button;
-     * resolves once that PUT is in flight. */
-    async function startCategoriesSave(writes: HeldWrite[], user: ReturnType<typeof userEvent.setup>) {
-      // The checkbox list comes from its own GET /categories, which can land after the section's
-      // heading has already rendered.
-      // The lists sit behind the card's disclosure (closed by default): open it as a user would.
-      await user.click(await screen.findByRole("button", { name: "Edit categories" }));
-      await user.click(await screen.findByLabelText("Sector One"));
-      // Checking that box also dirties the sticky save bar, which gets its own "Save categories"
-      // button — scope to the Categories section itself for its inline one.
-      await screen.findByRole("region", { name: "Unsaved changes" });
-      await user.click(within(screen.getByRole("region", { name: "Categories" })).getByRole("button", { name: "Save categories" }));
-      await waitFor(() => expect(writes).toHaveLength(1));
-    }
-
     const categoriesRegion = () => screen.getByRole("region", { name: "Categories" });
     const settingsRegion = () => screen.getByRole("region", { name: "Publish settings" });
+    const bar = () => screen.getByRole("region", { name: "Unsaved changes" });
 
-    it("a second section saved while the first is in flight waits, then sends the version the first returned", async () => {
+    /** Ticks Sector One (Categories) and the News On Demand box (Publish settings): two changed
+     * sections, saved to two endpoints. */
+    async function editCategoriesAndSettings(user: ReturnType<typeof userEvent.setup>) {
+      // The lists sit behind the card's disclosure (closed by default): open it as a user would.
+      // The checkbox list comes from its own GET /categories, which can land after the heading.
+      await user.click(await screen.findByRole("button", { name: "Edit categories" }));
+      await user.click(await screen.findByLabelText("Sector One"));
+      await user.click(within(settingsRegion()).getByLabelText("Send to News On Demand subscribers"));
+      await screen.findByRole("region", { name: "Unsaved changes" });
+    }
+
+    it("has no Save per section: one Save changes in the bar, and an Unsaved marker on each changed section's heading", async () => {
+      const { user } = renderWithHeldWrites();
+      await editCategoriesAndSettings(user);
+      expect(screen.queryByRole("button", { name: /^Save (categories|settings|page details|media asset|English content)/ })).not.toBeInTheDocument();
+      expect(within(bar()).getAllByRole("button")).toHaveLength(1);
+      expect(within(bar()).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+      expect(within(categoriesRegion()).getByRole("heading", { level: 2, name: "Categories, unsaved changes" })).toHaveTextContent(/Unsaved$/);
+      expect(within(settingsRegion()).getByRole("heading", { level: 2, name: "Publish settings, unsaved changes" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Page details" })).not.toHaveTextContent("Unsaved");
+    });
+
+    it("Save changes saves every changed section, each sent once the one before has saved, with the version it returned; one \"Saved\" is announced", async () => {
       const { writes, user } = renderWithHeldWrites();
-      await startCategoriesSave(writes, user);
-      // The button's own label changed to "Saving…" too (busy-button wording) — scope to the
-      // status span so this still checks SaveStatus specifically, not the button.
-      expect(within(categoriesRegion()).getByText("Saving…", { selector: "span" })).toBeInTheDocument();
-
-      await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
-      expect(await within(settingsRegion()).findByText("Waiting to save…")).toBeInTheDocument();
-      const saveSettings = within(settingsRegion()).getByRole("button", { name: "Saving…" });
-      expect(saveSettings).toHaveAttribute("aria-disabled", "true");
-      expect(saveSettings).not.toHaveAttribute("disabled");
-      expect(writes).toHaveLength(1); // held: Settings has not gone out yet
+      await editCategoriesAndSettings(user);
+      // The app's one polite announcer (other parts of the page have role=status too).
+      const status = screen.getAllByRole("status").find((el) => el.getAttribute("aria-live") === "polite")!;
+      await user.click(within(bar()).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(writes).toHaveLength(1));
+      expect(within(bar()).getByRole("button", { name: "Saving…" })).toHaveAttribute("aria-disabled", "true");
+      expect(writes[0]!.url).toMatch(/\/categories$/);
+      expect(writes[0]!.body.version).toBe(1);
 
       writes[0]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] })));
       await waitFor(() => expect(writes).toHaveLength(2));
-      expect(writes[0]!.url).toMatch(/\/categories$/);
-      expect(writes[0]!.body.version).toBe(1);
       expect(writes[1]!.url).toMatch(/\/settings$/);
       expect(writes[1]!.body.version).toBe(2); // the version /categories returned, not the stale 1
-      expect(await within(settingsRegion()).findByText("Saving…", { selector: "span" })).toBeInTheDocument();
+      expect(status).not.toHaveTextContent(/^Saved/);
 
-      writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 3, sectors: ["sector1"] })));
-      await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).not.toHaveAttribute("aria-disabled"));
-      expect(within(settingsRegion()).queryByText(/Saving…|Waiting to save…/)).not.toBeInTheDocument();
-      expect(within(categoriesRegion()).queryByText(/Saving…|Waiting to save…/)).not.toBeInTheDocument();
-      expect(within(settingsRegion()).queryByRole("alert")).not.toBeInTheDocument();
-      expect(within(categoriesRegion()).queryByRole("alert")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Sector One")).toBeChecked(); // the user's edit survived
+      writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 3, sectors: ["sector1"], publishOptions: { ...initial.publishOptions, toSubscribers: !initial.publishOptions.toSubscribers } })));
+      expect(await screen.findByRole("region", { name: "Save status" })).toHaveTextContent("All changes saved.");
+      await waitFor(() => expect(status).toHaveTextContent(/^Saved/));
+      expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Sector One")).toBeChecked();
       expect(writes).toHaveLength(2);
     });
 
-    it("the same section saved twice in quick succession runs both saves, in order", async () => {
+    it("a conflict stops the save: that section shows the reload message, the bar names it, and the sections after it are not sent and keep their edits", async () => {
       const { writes, user } = renderWithHeldWrites();
-      await startCategoriesSave(writes, user);
-
-      // The sticky bar's button is a second way to reach the same section's save.
-      const bar = screen.getByRole("region", { name: "Unsaved changes" });
-      await user.click(within(bar).getByRole("button", { name: "Save categories" }));
-      expect(writes).toHaveLength(1); // the second save waits for the first
-
-      writes[0]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] })));
-      await waitFor(() => expect(writes).toHaveLength(2));
-      expect(within(categoriesRegion()).getByText("Saving…", { selector: "span" })).toBeInTheDocument(); // still busy with the second
-      writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 3, sectors: ["sector1"] })));
-
-      await waitFor(() => expect(within(categoriesRegion()).queryByText("Saving…")).not.toBeInTheDocument());
-      expect(writes.map((w) => [w.url.replace(/^.*\//, ""), w.body.version])).toEqual([
-        ["categories", 1],
-        ["categories", 2],
-      ]);
-      expect(writes[1]!.body.sectors).toEqual(["sector1"]);
-      expect(within(categoriesRegion()).queryByRole("alert")).not.toBeInTheDocument();
+      await editCategoriesAndSettings(user);
+      await user.click(within(bar()).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(writes).toHaveLength(1));
+      // Someone else saved the release in between.
+      writes[0]!.respond(jsonResponse(409, { error: "version conflict", code: "version_conflict" }));
+      expect(await within(categoriesRegion()).findByText(RELOAD_MESSAGE)).toBeInTheDocument();
+      const problem = await within(bar()).findByRole("alert");
+      expect(problem).toHaveTextContent("Couldn’t save categories. See why in that section. Not saved yet: settings.");
+      expect(within(problem).getByRole("link", { name: "See why in that section" })).toHaveAttribute("href", "#section-categories");
+      await new Promise((r) => setTimeout(r, 20));
+      expect(writes).toHaveLength(1); // Publish settings was never sent
+      expect(screen.getByLabelText("Sector One")).toBeChecked();
+      expect(within(settingsRegion()).getByLabelText("Send to News On Demand subscribers")).toHaveProperty("checked", !initial.publishOptions.toSubscribers);
+      expect(bar()).toHaveTextContent("You have unsaved changes in: categories, settings");
     });
 
-    it("a genuine conflict (someone else moved the version) still shows the reload message", async () => {
+    it("a failed save stops it too, and that section keeps its edits and says why", async () => {
       const { writes, user } = renderWithHeldWrites();
-      await startCategoriesSave(writes, user);
-      await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
-      writes[0]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] })));
-      await waitFor(() => expect(writes).toHaveLength(2));
-      expect(writes[1]!.body.version).toBe(2);
-
-      // The server is already past version 2 — someone else saved in between.
-      writes[1]!.respond(jsonResponse(409, { error: "version conflict", code: "version_conflict" }));
-      expect(await within(settingsRegion()).findByRole("alert")).toHaveTextContent(RELOAD_MESSAGE);
-      expect(within(categoriesRegion()).queryByRole("alert")).not.toBeInTheDocument();
-      expect(within(settingsRegion()).queryByText(/Saving…|Waiting to save…/)).not.toBeInTheDocument();
-    });
-
-    it("a failed save shows its own error and the queue carries on with the last good version", async () => {
-      const { writes, user } = renderWithHeldWrites();
-      await startCategoriesSave(writes, user);
-      await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
-      expect(await within(settingsRegion()).findByText("Waiting to save…")).toBeInTheDocument();
-
+      await editCategoriesAndSettings(user);
+      await user.click(within(bar()).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(writes).toHaveLength(1));
       writes[0]!.respond(jsonResponse(500, { error: "Something went wrong saving categories." }));
+      expect(await within(categoriesRegion()).findByText("Something went wrong saving categories.")).toBeInTheDocument();
+      expect(await within(bar()).findByRole("alert")).toHaveTextContent("Couldn’t save categories.");
+      expect(writes).toHaveLength(1);
+      expect(screen.getByLabelText("Sector One")).toBeChecked();
+      // Saving again picks up where it stopped.
+      await user.click(within(bar()).getByRole("button", { name: "Save changes" }));
       await waitFor(() => expect(writes).toHaveLength(2));
-      expect(writes[1]!.url).toMatch(/\/settings$/);
+      expect(writes[1]!.url).toMatch(/\/categories$/);
       expect(writes[1]!.body.version).toBe(1); // the failed save moved nothing
-      writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2 })));
-
-      expect(await within(categoriesRegion()).findByRole("alert")).toHaveTextContent("Something went wrong saving categories.");
-      await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).not.toHaveAttribute("aria-disabled"));
-      expect(within(settingsRegion()).queryByRole("alert")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Sector One")).toBeChecked(); // the failed section keeps its edit
     });
 
-    it("has no serious/critical axe violations while a save is waiting", async () => {
+    it("Ctrl+S (⌘S on a Mac), even from inside a text field, is the same one Save; the button shows the keys", async () => {
       const { writes, user } = renderWithHeldWrites();
-      await startCategoriesSave(writes, user);
-      await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
-      await within(settingsRegion()).findByText("Waiting to save…");
+      await editCategoriesAndSettings(user);
+      const button = within(bar()).getByRole("button", { name: "Save changes" });
+      expect(button).toHaveAttribute("aria-keyshortcuts", "Control+S");
+      expect(button).toHaveTextContent("Ctrl+S");
+      await user.click(screen.getByLabelText("Location"));
+      const notCancelled = fireEvent.keyDown(screen.getByLabelText("Location"), { key: "s", ctrlKey: true });
+      expect(notCancelled).toBe(false); // the browser's Save page is kept away
+      await waitFor(() => expect(writes).toHaveLength(1));
+      expect(writes[0]!.url).toMatch(/\/categories$/);
+    });
+
+    it("has no serious/critical axe violations while saving", async () => {
+      const { writes, user } = renderWithHeldWrites();
+      await editCategoriesAndSettings(user);
+      await user.click(within(bar()).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(writes).toHaveLength(1));
       const results = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
       const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
       expect(serious).toEqual([]);
@@ -360,7 +359,7 @@ describe("ReleaseEditorPage", () => {
     const headline = await screen.findByLabelText("Headline");
     await user.clear(headline);
     await user.type(headline, "Unsaved after 401");
-    await user.click(screen.getByRole("button", { name: "Save English content" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     // The 401 above signs the user out; RequireAuth sends them to /sign-in?return=...
     await screen.findByRole("heading", { name: "Sign in" });
@@ -471,7 +470,7 @@ describe("ReleaseEditorPage", () => {
 
   // Hand-check feedback: a long document body pushed its own Save button far down the page —
   // this bar is always visible, and its button is the same save (same request/409/422 handling).
-  it("the sticky save bar is hidden while clean, appears with the right label once dirty, and its button saves and makes it disappear", async () => {
+  it("the sticky save bar is hidden while clean, appears naming the section once dirty, and its Save changes saves it and makes it go", async () => {
     const v = releaseView({ version: 1 });
     const calls: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal(
@@ -503,13 +502,14 @@ describe("ReleaseEditorPage", () => {
     await user.type(headline, " more");
     const bar = await screen.findByRole("region", { name: "Unsaved changes" });
     expect(bar).toHaveTextContent("You have unsaved changes in: English content (Document 1)");
-    const barButton = within(bar).getByRole("button", { name: "Save English content (Document 1)" });
+    const barButton = within(bar).getByRole("button", { name: "Save changes" });
 
     await user.click(barButton);
     await waitFor(() => expect(calls).toHaveLength(1));
     const body = JSON.parse(calls[0]!.init!.body as string);
     expect(body).toMatchObject({ version: 1, headline: "Clinics open more" });
     await waitFor(() => expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument());
+    expect(screen.getByRole("region", { name: "Save status" })).toHaveTextContent("All changes saved.");
   });
 
   // Owner decision 2026-10-29: Publish now/Schedule act on the release as saved, so they wait
@@ -546,7 +546,7 @@ describe("ReleaseEditorPage", () => {
     expect(screen.getByRole("button", { name: "Schedule" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Save your changes to page details first." })).toHaveAttribute("href", "#section-page-details");
 
-    await user.click(within(screen.getByRole("region", { name: "Page details" })).getByRole("button", { name: "Save page details" }));
+    await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Publish now" })).toBeEnabled());
     expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
   });
@@ -620,6 +620,7 @@ describe("ReleaseEditorPage", () => {
       fireEvent.change(within(actions).getByLabelText("Date"), { target: { value: "2031-06-11" } });
       fireEvent.change(within(actions).getByLabelText("Time (BC time)"), { target: { value: "10:00" } });
       await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Schedule" }));
       await user.click(await screen.findByRole("button", { name: "Cancel schedule" }));
       const publish = await screen.findByRole("button", { name: "Publish now" });
       await waitFor(() => expect(publish).toBeEnabled());
@@ -639,19 +640,26 @@ describe("ReleaseEditorPage", () => {
       expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
     });
 
-    it("reverting an edit after the release changed underneath shows the release's new value, not the old one", async () => {
-      const v = releaseView({ status: "draft", version: 1 });
-      renderLive(v, {
-        // Saving the media asset brings back a release someone else has also edited: a new location.
-        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt", languages: [{ ...cur.languages[0]!, location: "KAMLOOPS" }] }),
-      });
+    /** Location typed into (Page details) and the headline (Document 1) edited; then someone
+     * else's save makes the release `next`; Save changes stops at the document's 409, and its
+     * Reload brings `next` in — under Page details' still-unsaved edit. */
+    async function editThenReloadUnder(v: ReleaseView, next: ReleaseView, meta: (cur: ReleaseView, body: Record<string, unknown>) => Response | ReleaseView) {
+      const live = renderLive(v, { "/4105": () => jsonResponse(409, { error: "version conflict", code: "version_conflict" }), "/meta": meta });
       const user = userEvent.setup();
       const location = await screen.findByLabelText("Location");
       await user.type(location, "X");
-      const asset = screen.getByRole("region", { name: "Media asset" });
-      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
-      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
-      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
+      await user.type(screen.getByLabelText("Headline"), " more");
+      live.setCurrent(next);
+      await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
+      const documents = screen.getByRole("region", { name: "Documents" });
+      await user.click(await within(documents).findByRole("button", { name: "Reload" }));
+      await waitFor(() => expect(screen.getByLabelText("Headline")).toHaveValue(next.documents[0]!.languages[0]!.headline));
+      return { user, location };
+    }
+
+    it("reverting an edit after the release changed underneath shows the release's new value, not the old one", async () => {
+      const v = releaseView({ status: "draft", version: 1 });
+      const { user, location } = await editThenReloadUnder(v, { ...v, version: 3, languages: [{ ...v.languages[0]!, location: "KAMLOOPS" }] }, (cur) => cur);
       await waitFor(() => expect(screen.getByRole("region", { name: "Unsaved changes" })).toHaveTextContent("page details"));
       // The user takes their own edit back out: the form now matches what they started from,
       // which is stale — it shows the release's current location instead.
@@ -663,21 +671,12 @@ describe("ReleaseEditorPage", () => {
     it("saving an edit whose fields changed underneath it sends the version it started from, so the server answers 409 instead of overwriting", async () => {
       const v = releaseView({ status: "draft", version: 1 });
       const metaVersions: unknown[] = [];
-      renderLive(v, {
-        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt", languages: [{ ...cur.languages[0]!, location: "KAMLOOPS" }] }),
-        "/meta": (cur, body) => {
-          metaVersions.push(body.version);
-          return body.version === cur.version ? { ...cur, version: cur.version + 1 } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
-        },
+      const { user } = await editThenReloadUnder(v, { ...v, version: 3, languages: [{ ...v.languages[0]!, location: "KAMLOOPS" }] }, (cur, body) => {
+        metaVersions.push(body.version);
+        return body.version === cur.version ? { ...cur, version: cur.version + 1 } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
       });
-      const user = userEvent.setup();
-      await user.type(await screen.findByLabelText("Location"), "X");
-      const asset = screen.getByRole("region", { name: "Media asset" });
-      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
-      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
-      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
+      await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
       const pageDetails = screen.getByRole("region", { name: "Page details" });
-      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
       expect(await within(pageDetails).findByText(/someone else changed this/i)).toBeInTheDocument();
       expect(metaVersions).toEqual([1]);
     });
@@ -685,23 +684,63 @@ describe("ReleaseEditorPage", () => {
     it("an edit whose fields did not change underneath still saves with the latest version", async () => {
       const v = releaseView({ status: "draft", version: 1 });
       const metaVersions: unknown[] = [];
+      const { user } = await editThenReloadUnder(v, { ...v, version: 3 }, (cur, body) => {
+        metaVersions.push(body.version);
+        return body.version === cur.version ? { ...cur, version: cur.version + 1 } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+      });
+      await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(metaVersions).toEqual([3]));
+      expect(within(screen.getByRole("region", { name: "Page details" })).queryByText(/someone else changed this/i)).not.toBeInTheDocument();
+    });
+
+    // Review (HIGH): saving Document 1's English regenerates the release's summary (never hand-
+    // edited) and, for a story, its key — fields Page details shows. That's this page's own save,
+    // so Page details must not then 409 as if someone else had changed them.
+    it("the document and Page details saved together: the document's regenerated summary is taken in, and Page details saves with the new version", async () => {
+      const v = releaseView({ status: "draft", type: "release", version: 1 });
+      const metaBodies: Record<string, unknown>[] = [];
       renderLive(v, {
-        "/asset": (cur) => ({ ...cur, version: 3, assetAltText: "Alt" }),
+        "/4105": (cur, body) => ({
+          ...cur, version: cur.version + 1,
+          languages: [{ ...cur.languages[0]!, summary: "Regenerated from the new body" }],
+          documents: [{ ...cur.documents[0]!, languages: [{ ...cur.documents[0]!.languages[0]!, headline: String(body.headline) }] }],
+        }),
         "/meta": (cur, body) => {
-          metaVersions.push(body.version);
-          return body.version === cur.version ? { ...cur, version: cur.version + 1 } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+          metaBodies.push(body);
+          return body.version === cur.version ? { ...cur, version: cur.version + 1, languages: [{ ...cur.languages[0]!, location: String(body.location) }] } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
         },
       });
       const user = userEvent.setup();
-      await user.type(await screen.findByLabelText("Location"), "X");
-      const asset = screen.getByRole("region", { name: "Media asset" });
-      await user.type(within(asset).getByLabelText("Alt text"), "Alt");
-      await user.click(within(asset).getByRole("button", { name: "Save media asset" }));
-      await waitFor(() => expect(within(asset).getByLabelText("Alt text")).toHaveValue("Alt"));
-      const pageDetails = screen.getByRole("region", { name: "Page details" });
-      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
-      await waitFor(() => expect(metaVersions).toEqual([3]));
-      expect(within(pageDetails).queryByText(/someone else changed this/i)).not.toBeInTheDocument();
+      await user.type(await screen.findByLabelText("Headline"), " this weekend");
+      await user.type(screen.getByLabelText("Location"), "X");
+      await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(metaBodies).toHaveLength(1));
+      expect(metaBodies[0]).toMatchObject({ version: 2, summary: "Regenerated from the new body" });
+      expect(String(metaBodies[0]!.location)).toMatch(/X$/);
+      expect(await screen.findByRole("region", { name: "Save status" })).toHaveTextContent("All changes saved.");
+      expect(screen.queryByText(/someone else changed this/i)).not.toBeInTheDocument();
+    });
+
+    it("a story's typed URL key wins over the key its headline change regenerated (the user's later, explicit edit)", async () => {
+      const v = releaseView({ status: "draft", type: "story", key: "clinics-open", version: 1 });
+      const metaBodies: Record<string, unknown>[] = [];
+      renderLive(v, {
+        "/4105": (cur) => ({ ...cur, version: cur.version + 1, key: "clinics-open-this-weekend" }),
+        "/meta": (cur, body) => {
+          metaBodies.push(body);
+          return body.version === cur.version ? { ...cur, version: cur.version + 1, key: String(body.key) } : jsonResponse(409, { error: "version conflict", code: "version_conflict" });
+        },
+      });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Headline"), " this weekend");
+      const key = screen.getByLabelText("URL key");
+      await user.clear(key);
+      await user.type(key, "weekend-clinics");
+      await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(metaBodies).toHaveLength(1));
+      expect(metaBodies[0]).toMatchObject({ version: 2, key: "weekend-clinics" });
+      expect(await screen.findByRole("region", { name: "Save status" })).toHaveTextContent("All changes saved.");
+      expect(screen.getByLabelText("URL key")).toHaveValue("weekend-clinics");
     });
 
     it("a 409 Reload in one section brings in someone else's changes without making other sections dirty", async () => {
@@ -710,7 +749,7 @@ describe("ReleaseEditorPage", () => {
       const user = userEvent.setup();
       await user.type(await screen.findByLabelText("Location"), "X");
       const pageDetails = screen.getByRole("region", { name: "Page details" });
-      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
+      await user.click(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save changes" }));
       // Meanwhile someone else changed the sectors, the NoD option and the headline.
       live.setCurrent({
         ...v, version: 5, sectors: ["health", "sector1"], publishOptions: { ...v.publishOptions, toSubscribers: false },
@@ -738,7 +777,9 @@ describe("ReleaseEditorPage", () => {
     expect(within(screen.getByRole("tabpanel")).getByLabelText("Headline")).toHaveValue("Clinics open");
     expect(screen.getByRole("button", { name: "Publish now" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Save your changes to French content (Document 1) first." })).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save French content (Document 1)" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Unsaved changes" })).toHaveTextContent("You have unsaved changes in: French content (Document 1)");
+    // The document's heading says it holds unsaved edits.
+    expect(screen.getByRole("heading", { level: 3, name: "Document 1, unsaved changes" })).toBeInTheDocument();
   });
 
   it("the 'save French first' blocker link shows the French tab and focuses its panel", async () => {
@@ -759,14 +800,15 @@ describe("ReleaseEditorPage", () => {
     expect(within(panel).getByLabelText("Headline")).toHaveValue("Cliniques ouvertes le samedi");
   });
 
-  it("two dirty sections show two buttons in the bar", async () => {
+  it("two dirty sections are both named in the bar, which still has one Save", async () => {
     renderPage("11111111-1111-1111-1111-111111111111");
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Headline"), " more");
     await user.type(await screen.findByLabelText("Location"), "V");
     const bar = await screen.findByRole("region", { name: "Unsaved changes" });
-    expect(within(bar).getByRole("button", { name: "Save English content (Document 1)" })).toBeInTheDocument();
-    expect(within(bar).getByRole("button", { name: "Save page details" })).toBeInTheDocument();
+    expect(bar).toHaveTextContent("You have unsaved changes in: English content (Document 1), page details");
+    expect(within(bar).getAllByRole("button")).toHaveLength(1);
+    expect(within(bar).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
   it("a read-only Viewer never sees the sticky save bar", async () => {

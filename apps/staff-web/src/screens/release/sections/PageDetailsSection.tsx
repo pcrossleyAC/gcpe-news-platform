@@ -3,8 +3,8 @@ import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-rea
 import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
-import { SaveStatus } from "../SaveStatus";
-import { useRegisterDirty } from "../useUnsavedChanges";
+import { UnsavedMarker } from "../UnsavedMarker";
+import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
 import { releaseLanguageOf } from "../viewHelpers";
 
@@ -62,20 +62,25 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
         summary: showSummaryFields ? form.summary : "",
         socialMediaSummary: showSummaryFields ? form.socialMediaSummary.trim() || null : null,
         keywords: showSummaryFields ? form.keywords.trim() || null : null,
-      }, "PUT", staleVersion)
+      }, "PUT", staleVersion, { quiet: true })
       .then((next) => {
         if (next) reseed(fromView(next), next.version);
+        return next !== null;
       });
   useRegisterDirty("page-details", dirty, !readOnly ? { label: "Save page details", save: doSave } : undefined);
 
+  // Enter in a field saves the page, the same as its one Save.
+  const saveAll = useSaveAll();
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    void doSave();
+    saveAll();
   };
 
   return (
     <section className="gcpe-release-editor__page-details" aria-label="Page details" id="section-page-details" tabIndex={-1}>
-      <h2>Page details</h2>
+      <h2>
+        Page details<UnsavedMarker show={dirty} />
+      </h2>
 
       {section.conflict && (
         <InlineAlert
@@ -121,12 +126,6 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
         )}
         {!showSummaryFields && <p>A {TYPE_LABEL[view.type]} has no summary, keywords or social media summary.</p>}
 
-        {!readOnly && (
-          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
-            Save page details
-          </Button>
-        )}
-        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </section>
   );

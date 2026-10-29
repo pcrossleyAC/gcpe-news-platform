@@ -6,6 +6,7 @@ import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { TableScroll } from "../../../shared/TableScroll";
+import { useShortcut } from "../../../shared/shortcuts";
 
 type Kind = "sector" | "theme" | "tag";
 const KINDS: { kind: Kind; plural: string; singular: string }[] = [
@@ -54,20 +55,64 @@ export function CategoriesScreen(): React.JSX.Element {
   return <CategoriesEditor />;
 }
 
+type RowField = "order" | "name" | "form";
+type RowError = { field: RowField; text: string };
+/** A row's three editable values, as typed. */
+interface Draft {
+  name: string;
+  order: string;
+  active: boolean;
+}
+/** An edited row: the record as loaded (it goes back whole, so `social` is kept) and what's typed. */
+interface Edit {
+  record: TermRecord;
+  draft: Draft;
+}
+
+const idOf = (r: TermRecord) => `${r.kind}/${r.key}`;
+const draftOf = (r: TermRecord): Draft => ({ name: r.displayName ?? "", order: String(r.sortOrder), active: r.isActive });
+const sameDraft = (a: Draft, b: Draft) => a.name === b.name && a.order === b.order && a.active === b.active;
+const rowsText = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`;
+
+/** Sectors, then themes, then tags; each in the order the table lists them. */
+const inTableOrder = (list: Edit[]) =>
+  [...list].sort(
+    (a, b) =>
+      KINDS.findIndex((k) => k.kind === a.record.kind) - KINDS.findIndex((k) => k.kind === b.record.kind) ||
+      a.record.sortOrder - b.record.sortOrder ||
+      a.record.key.localeCompare(b.record.key),
+  );
+
+/** What's wrong with a row as typed, checked before anything is sent. `Number("")` is 0, so an
+ * emptied Order field is caught as empty, not saved as 0. */
+function problemOf(d: Draft): RowError | null {
+  if (d.order.trim() === "" || !Number.isInteger(Number(d.order))) return { field: "order", text: "Order must be a whole number." };
+  if (!d.name.trim()) return { field: "name", text: NAME_REQUIRED };
+  return null;
+}
+
+/**
+ * The grid has one Save (owner decision 2026-10-29), not one per row. Edits live here, by row
+ * (kind/key), so they survive switching Show; each edited row is marked Unsaved. "Save changes"
+ * checks every edited row first (a typing mistake is shown on its row and nothing is sent), asks
+ * once before retiring any, then sends each row's PUT in turn. Core's term writes are one row
+ * each with no version, so a row that fails doesn't stop the others: it keeps its edit and shows
+ * why; the rows that saved are cleared and the table reloads.
+ */
 function CategoriesEditor(): React.JSX.Element {
   const [kind, setKind] = useState<Kind>("sector");
   const [rows, setRows] = useState<TermRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [edits, setEdits] = useState<ReadonlyMap<string, Edit>>(new Map());
+  const [errors, setErrors] = useState<ReadonlyMap<string, RowError>>(new Map());
+  const [saving, setSaving] = useState(false);
+  const [retiring, setRetiring] = useState<Edit[] | null>(null);
+  const savingRef = useRef(false);
+  const fields = useRef(new Map<string, { name: HTMLInputElement | null; order: HTMLInputElement | null }>());
   const labels = KINDS.find((k) => k.kind === kind)!;
   const kindRef = useRef(kind);
   kindRef.current = kind;
-  // A save that finishes after the user switched Show must not reload (or announce on) the other kind's table.
-  const afterSave = (savedKind: Kind, text: string) => {
-    if (savedKind !== kindRef.current) return;
-    setMessage(text);
-    reload(savedKind);
-  };
 
   // Only the latest load may land: a slow earlier load (or another kind's) must not put back stale rows.
   const latest = useRef(0);
@@ -90,6 +135,104 @@ function CategoriesEditor(): React.JSX.Element {
     setMessage(null);
     reload(kind);
   }, [kind, reload]);
+
+  const change = (record: TermRecord, draft: Draft) => {
+    const id = idOf(record);
+    setEdits((prev) => {
+      const next = new Map(prev);
+      if (sameDraft(draft, draftOf(record))) next.delete(id);
+      else next.set(id, { record: prev.get(id)?.record ?? record, draft });
+      return next;
+    });
+  };
+
+  const focusField = (id: string, field: RowField) => {
+    const f = fields.current.get(id);
+    if (field === "order") f?.order?.focus();
+    else if (field === "name") f?.name?.focus();
+  };
+
+  const send = async (pending: Edit[]) => {
+    savingRef.current = true;
+    setSaving(true);
+    const failed = new Map<string, RowError>();
+    // Each saved row with the draft that was sent: a row typed into while saving keeps its newer edit.
+    const saved: { id: string; draft: Draft }[] = [];
+    for (const { record, draft } of pending) {
+      try {
+        await apiFetch(`/core/api/terms/${record.kind}/${encodeURIComponent(record.key)}`, {
+          method: "PUT",
+          body: { ...record, displayName: draft.name.trim(), sortOrder: Number(draft.order), isActive: draft.active },
+        });
+        saved.push({ id: idOf(record), draft });
+      } catch (err) {
+        const e = explain(err);
+        failed.set(idOf(record), { field: e.field === "key" ? "form" : e.field, text: e.text });
+      }
+    }
+    setEdits((prev) => {
+      const next = new Map(prev);
+      for (const { id, draft } of saved) {
+        const now = next.get(id);
+        if (now && sameDraft(now.draft, draft)) next.delete(id);
+      }
+      return next;
+    });
+    setErrors(failed);
+    setMessage(
+      [saved.length > 0 ? `Saved ${saved.length} ${saved.length === 1 ? "change" : "changes"}.` : "", failed.size > 0 ? `${rowsText(failed.size)} couldn't be saved — see the message on ${failed.size === 1 ? "that row" : "those rows"}.` : ""]
+        .filter(Boolean)
+        .join(" "),
+    );
+    savingRef.current = false;
+    setSaving(false);
+    if (saved.length > 0) reload(kindRef.current);
+    const first = [...failed.entries()].find(([id]) => id.startsWith(`${kindRef.current}/`));
+    if (first) focusField(first[0], first[1].field);
+  };
+
+  const saveChanges = () => {
+    if (savingRef.current) return;
+    const pending = inTableOrder([...edits.values()]);
+    if (pending.length === 0) {
+      setMessage("No changes to save.");
+      return;
+    }
+    const invalid = new Map<string, RowError>();
+    for (const e of pending) {
+      const problem = problemOf(e.draft);
+      if (problem) invalid.set(idOf(e.record), problem);
+    }
+    setErrors(invalid);
+    if (invalid.size > 0) {
+      setMessage(null);
+      const first = [...invalid.entries()].find(([id]) => id.startsWith(`${kind}/`)) ?? [...invalid.entries()][0]!;
+      focusField(first[0], first[1].field);
+      return;
+    }
+    const toRetire = pending.filter((e) => e.record.isActive && !e.draft.active);
+    if (toRetire.length > 0) {
+      setRetiring(toRetire);
+      return;
+    }
+    void send(pending);
+  };
+  // ⌘/Ctrl+S is the grid's Save changes, from anywhere on the screen (not while the retire dialog asks).
+  useShortcut("save", saveChanges);
+
+  const confirmRetire = () => {
+    setRetiring(null);
+    void send(inTableOrder([...edits.values()]));
+  };
+
+  const elsewhere = KINDS.filter((k) => k.kind !== kind)
+    .map((k) => ({ plural: k.plural, n: [...edits.keys()].filter((id) => id.startsWith(`${k.kind}/`)).length }))
+    .filter((k) => k.n > 0);
+  const unsavedText =
+    edits.size === 0
+      ? null
+      : `${rowsText(edits.size)} ${edits.size === 1 ? "has" : "have"} unsaved changes${elsewhere.length > 0 ? ` (${elsewhere.map((k) => `${k.n} in ${k.plural}`).join(", ")})` : ""}.`;
+  const retireName = (e: Edit) => e.draft.name.trim() || e.record.key;
 
   return (
     <div className="gcpe-admin__categories">
@@ -114,20 +257,63 @@ function CategoriesEditor(): React.JSX.Element {
                 <th scope="col">Name</th>
                 <th scope="col">Order</th>
                 <th scope="col">Active</th>
-                <th scope="col">Save</th>
+                <th scope="col">Changes</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <TermRow
-                  key={`${kind}/${r.key}`}
-                  record={r}
-                  onSaved={(text) => afterSave(r.kind as Kind, text)}
-                />
-              ))}
+              {rows.map((r) => {
+                const id = idOf(r);
+                const edit = edits.get(id);
+                return (
+                  <TermRow
+                    key={`${kind}/${r.key}`}
+                    record={r}
+                    draft={edit?.draft ?? draftOf(r)}
+                    dirty={edit !== undefined}
+                    error={errors.get(id) ?? null}
+                    onChange={(d) => change(r, d)}
+                    fieldRefs={(f) => {
+                      fields.current.set(id, f);
+                    }}
+                  />
+                );
+              })}
             </tbody>
           </table>
         </TableScroll>
+      )}
+      <div className="gcpe-admin__save-row">
+        <Button onPress={saveChanges} isPending={saving} pendingLabel="Saving…" shortcut="save">
+          Save changes
+        </Button>
+        {unsavedText && <p className="gcpe-hint">{unsavedText}</p>}
+      </div>
+      {retiring && (
+        <Modal isOpen onOpenChange={(open) => { if (!open) setRetiring(null); }} isDismissable>
+          <AlertDialog
+            role="alertdialog"
+            variant="warning"
+            title={retiring.length === 1 ? `Retire ${retireName(retiring[0]!)}?` : `Retire ${retiring.length} entries?`}
+            buttons={
+              <>
+                <Button onPress={() => setRetiring(null)}>Cancel</Button>
+                <Button onPress={confirmRetire}>Retire</Button>
+              </>
+            }
+          >
+            {retiring.length > 1 && (
+              <ul>
+                {retiring.map((e) => (
+                  <li key={idOf(e.record)}>{retireName(e)}</li>
+                ))}
+              </ul>
+            )}
+            <p>
+              {retiring.length === 1 ? "It leaves" : "They leave"} the public site's lists, the subscribe page and the release editor's choices. Releases already tagged keep {retiring.length === 1 ? "it" : "them"}.
+            </p>
+            <p>Your other changes are saved with {retiring.length === 1 ? "it" : "them"}.</p>
+          </AlertDialog>
+        </Modal>
       )}
       <AddForm
         key={kind}
@@ -135,69 +321,33 @@ function CategoriesEditor(): React.JSX.Element {
         singular={labels.singular}
         nextOrder={Math.max(0, ...(rows ?? []).map((r) => r.sortOrder)) + 1}
         ready={rows !== null}
-        onAdded={(text) => afterSave(kind, text)}
+        onAdded={(text) => {
+          if (kindRef.current !== kind) return;
+          setMessage(text);
+          reload(kind);
+        }}
       />
     </div>
   );
 }
 
-function TermRow({ record, onSaved }: { record: TermRecord; onSaved(text: string): void }): React.JSX.Element {
-  const [name, setName] = useState(record.displayName ?? "");
-  const [order, setOrder] = useState(String(record.sortOrder));
-  const [active, setActive] = useState(record.isActive);
-  const [confirmRetire, setConfirmRetire] = useState(false);
-  const [error, setError] = useState<{ field: "order" | "name" | "key" | "form"; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+interface TermRowProps {
+  record: TermRecord;
+  draft: Draft;
+  dirty: boolean;
+  error: RowError | null;
+  onChange(draft: Draft): void;
+  fieldRefs(fields: { name: HTMLInputElement | null; order: HTMLInputElement | null }): void;
+}
+
+function TermRow({ record, draft, dirty, error, onChange, fieldRefs }: TermRowProps): React.JSX.Element {
   const nameCell = useRef<HTMLTableCellElement>(null);
   const orderRef = useRef<HTMLInputElement>(null);
   const errorId = `term-error-${useId()}`;
-
-  // Checked before the retire dialog opens, so a typing mistake never surfaces behind it.
-  // `Number("")` is 0, so an emptied Order field is caught as empty, not saved as 0.
-  const problem = (): typeof error => {
-    if (order.trim() === "" || !Number.isInteger(Number(order))) return { field: "order", text: "Order must be a whole number." };
-    if (!name.trim()) return { field: "name", text: NAME_REQUIRED };
-    return null;
-  };
-  const show = (e: NonNullable<typeof error>) => {
-    setError(e);
-    if (e.field === "order") orderRef.current?.focus();
-    else if (e.field === "name") nameCell.current?.querySelector("input")?.focus();
-  };
-
-  const save = async () => {
-    const invalid = problem();
-    if (invalid) return show(invalid);
-    setBusy(true);
-    setError(null);
-    try {
-      // The loaded record goes back whole so `social` is kept as loaded.
-      await apiFetch(`/core/api/terms/${record.kind}/${encodeURIComponent(record.key)}`, {
-        method: "PUT",
-        body: { ...record, displayName: name.trim(), sortOrder: Number(order), isActive: active },
-      });
-      setConfirmRetire(false);
-      onSaved(`${record.key} saved.`);
-    } catch (err) {
-      const e = explain(err);
-      show(e);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onSave = () => {
-    if (!(record.isActive && !active)) return void save();
-    const invalid = problem();
-    if (invalid) return show(invalid);
-    setError(null);
-    setConfirmRetire(true);
-  };
-  const closeRetire = () => {
-    setConfirmRetire(false);
-    setError(null);
-  };
-  const described = (field: string) => (error?.field === field && !confirmRetire ? errorId : undefined);
+  useEffect(() => {
+    fieldRefs({ name: nameCell.current?.querySelector("input") ?? null, order: orderRef.current });
+  });
+  const described = (field: RowField) => (error?.field === field ? errorId : undefined);
 
   return (
     <tr>
@@ -205,8 +355,8 @@ function TermRow({ record, onSaved }: { record: TermRecord; onSaved(text: string
       <td ref={nameCell}>
         <TextField
           aria-label={`Name for ${record.key}`}
-          value={name}
-          onChange={setName}
+          value={draft.name}
+          onChange={(name) => onChange({ ...draft, name })}
           isInvalid={error?.field === "name"}
           aria-describedby={described("name")}
         />
@@ -217,8 +367,8 @@ function TermRow({ record, onSaved }: { record: TermRecord; onSaved(text: string
           <input
             ref={orderRef}
             type="number"
-            value={order}
-            onChange={(e) => setOrder(e.target.value)}
+            value={draft.order}
+            onChange={(e) => onChange({ ...draft, order: e.target.value })}
             aria-invalid={error?.field === "order" || undefined}
             aria-describedby={described("order")}
           />
@@ -226,42 +376,16 @@ function TermRow({ record, onSaved }: { record: TermRecord; onSaved(text: string
       </td>
       <td>
         <label className="gcpe-check">
-          <input type="checkbox" checked={active} onChange={() => setActive(!active)} />
+          <input type="checkbox" checked={draft.active} onChange={() => onChange({ ...draft, active: !draft.active })} />
           <span className="gcpe-visually-hidden">{`${record.key} active`}</span>
         </label>
       </td>
       <td>
-        <Button variant="secondary" isPending={busy} onPress={onSave}>
-          <span>
-            Save <span className="gcpe-visually-hidden">{record.key}</span>
-          </span>
-        </Button>
-        {error && !confirmRetire && (
+        {dirty && <span className="gcpe-unsaved-marker">Unsaved</span>}
+        {error && (
           <p role="alert" id={errorId}>
             {error.text}
           </p>
-        )}
-        {confirmRetire && (
-          <Modal isOpen onOpenChange={(open) => { if (!open) closeRetire(); }} isDismissable>
-            <AlertDialog
-              role="alertdialog"
-              variant="warning"
-              title={`Retire ${name.trim() || record.key}?`}
-              buttons={
-                <>
-                  <Button onPress={closeRetire} isPending={busy}>
-                    Cancel
-                  </Button>
-                  <Button onPress={() => void save()} isPending={busy}>
-                    Retire
-                  </Button>
-                </>
-              }
-            >
-              <p>It leaves the public site's lists, the subscribe page and the release editor's choices. Releases already tagged keep it.</p>
-              {error && <p role="alert">{error.text}</p>}
-            </AlertDialog>
-          </Modal>
         )}
       </td>
     </tr>

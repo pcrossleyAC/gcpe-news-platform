@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
@@ -48,6 +48,15 @@ describe("LiveFeedScreen", () => {
     await waitFor(() => expect(document.title).toBe("Live Feed — GCPE News Staff"));
   });
 
+  it("explains Manifest URL and M3U URL with ? buttons", async () => {
+    stub(["NRMS.SiteEditor"], OFF, []);
+    render(withAuth(<LiveFeedScreen />));
+    await screen.findByRole("heading", { name: "Live Feed", level: 1 });
+    expect(screen.getByText("What is Manifest URL?").closest("details")!.open).toBe(false);
+    await userEvent.setup().click(screen.getByText("What is M3U URL?").closest("summary")!);
+    expect(screen.getByText(/shows its Live Webcast button only while Live Feed is on/)).toBeVisible();
+  });
+
   it("refuses to enable with no M3U URL, client-side, without calling the server", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(["NRMS.SiteEditor"], OFF, calls);
@@ -79,7 +88,9 @@ describe("LiveFeedScreen", () => {
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("M3U URL"), "https://example.invalid/feed.m3u8");
     await user.click(screen.getByRole("switch", { name: "Live Feed on" }));
-    await user.click(screen.getByRole("button", { name: "Save Live Feed" }));
+    // Ctrl+S (⌘S on a Mac) from a field does what Save Live Feed does.
+    expect(screen.getByRole("button", { name: "Save Live Feed" })).toHaveAttribute("aria-keyshortcuts", "Control+S");
+    fireEvent.keyDown(screen.getByLabelText("M3U URL"), { key: "s", ctrlKey: true });
 
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/live-feed" && c.init?.method === "PUT")).toBe(true));
     const call = calls.find((c) => c.url === "/nrms/api/site/live-feed" && c.init?.method === "PUT")!;

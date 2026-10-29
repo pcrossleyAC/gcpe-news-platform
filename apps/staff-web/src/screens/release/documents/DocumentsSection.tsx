@@ -11,6 +11,8 @@ import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { documentsInOrder } from "./documentHelpers";
 import { orderedIds } from "./reorder";
 import { DocumentTabs } from "./DocumentTabs";
+import { useDirtyKeys } from "../useUnsavedChanges";
+import { UnsavedMarker } from "../UnsavedMarker";
 
 export interface DocumentsSectionProps {
   view: ReleaseView;
@@ -27,6 +29,8 @@ export interface DocumentsSectionProps {
  */
 export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
+  const dirtyKeys = useDirtyKeys();
+  const docDirty = (id: string) => [...dirtyKeys].some((k) => k.startsWith(`document-${id}-`));
   const docs = documentsInOrder(view);
   const [adding, setAdding] = useState(false);
   const [newPageTitle, setNewPageTitle] = useState("");
@@ -106,7 +110,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
           <div className="gcpe-documents__item-header">
             {!readOnly && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder document ${index + 1}`} />}
             <h3 id={`document-${index + 1}-heading`} tabIndex={-1}>
-              Document {index + 1}
+              Document {index + 1}<UnsavedMarker show={docDirty(doc.id)} />
             </h3>
             {!readOnly && (
               <div className="gcpe-documents__item-actions">

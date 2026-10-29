@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { MemoryRouter } from "react-router";
+import { renderWithSaveBar } from "../saveBarHarness";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { SettingsSection } from "./SettingsSection";
@@ -30,11 +30,7 @@ function stubFetch(handlers: { mediaLists?: unknown; onPut?: (url: string, body:
 }
 
 function renderSettings(view: ReleaseView, setView: (v: ReleaseView) => void = () => {}, readOnly = false) {
-  return render(
-    <MemoryRouter>
-      <SettingsSection view={view} setView={setView} timeZone="America/Vancouver" readOnly={readOnly} />
-    </MemoryRouter>,
-  );
+  return renderWithSaveBar(<SettingsSection view={view} setView={setView} timeZone="America/Vancouver" readOnly={readOnly} />);
 }
 
 describe("SettingsSection", () => {
@@ -84,7 +80,7 @@ describe("SettingsSection", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("List One"));
-    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["old-desk", "list1"] }));
   });
 
@@ -114,7 +110,7 @@ describe("SettingsSection", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("List One"));
-    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(setView).toHaveBeenCalledWith(saved));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
@@ -134,7 +130,7 @@ describe("SettingsSection", () => {
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-12-15" } });
     fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
@@ -150,7 +146,9 @@ describe("SettingsSection", () => {
     await screen.findByLabelText("Date");
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    // Some other edit, so there is something to save.
+    await user.click(screen.getByLabelText("Send to News On Demand subscribers"));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
@@ -162,7 +160,7 @@ describe("SettingsSection", () => {
     stubFetch({ mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }] });
     renderSettings(releaseView({ type: "release" }), () => {}, true);
     expect(await screen.findByLabelText("List One")).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Save settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
 
   // I2: re-sending a minute-truncated local time for a date the user never touched caused a
@@ -177,7 +175,8 @@ describe("SettingsSection", () => {
     await screen.findByLabelText("Date");
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await user.click(screen.getByLabelText("Send to News On Demand subscribers"));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
@@ -192,7 +191,8 @@ describe("SettingsSection", () => {
     const v = releaseView({ type: "release", version: 1 });
     renderSettings(v);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await user.click(screen.getByLabelText("Send to News On Demand subscribers"));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText("Only a draft can have its planned date changed.")).toBeInTheDocument();
     expect(screen.queryByText(/someone else changed this/i)).toBeNull();
@@ -215,7 +215,7 @@ describe("SettingsSection", () => {
     await user.click(screen.getByLabelText("Send to News On Demand subscribers")); // uncheck it
     expect(screen.getByLabelText("Send to News On Demand subscribers")).not.toBeChecked();
 
-    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
 
     // The user's edit is still showing, untouched — never silently reverted or retried.

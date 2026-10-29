@@ -5,6 +5,7 @@ import type { ReleaseListItem, ReleasePage } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { useSearchShortcut } from "../../shared/shortcuts";
 import { ReleaseRow } from "../releases/ReleaseRow";
 import { Pagination } from "../releases/Pagination";
 
@@ -27,6 +28,7 @@ export function SearchScreen(): React.JSX.Element {
   const navigate = useNavigate();
   const timeZone = useTenantTimeZone();
   useDocumentTitle("Search");
+  useSearchShortcut("search-q");
 
   const q = searchParams.get("q") ?? "";
   const ministry = searchParams.get("ministry") ?? "";
@@ -150,7 +152,7 @@ export function SearchScreen(): React.JSX.Element {
 
       <Form onSubmit={onSubmit} className="gcpe-search__form">
         <div className="gcpe-search__row">
-          <TextField label="Search" name="q" value={qInput} onChange={setQInput} className="bcds-react-aria-TextField gcpe-search__q" />
+          <TextField id="search-q" label="Search" name="q" value={qInput} onChange={setQInput} className="bcds-react-aria-TextField gcpe-search__q" />
           <div className="gcpe-field">
             <label htmlFor="search-ministry-filter">Ministry</label>
             <select id="search-ministry-filter" value={ministry} onChange={(e) => updateFilter("ministry", e.target.value)}>

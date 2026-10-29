@@ -1,4 +1,7 @@
+import { useCallback, type Ref } from "react";
 import { Button as DesignSystemButton } from "@bcgov/design-system-react-components";
+import { Button as RefButton } from "./Button";
+import { ariaKeyShortcuts, ShortcutHint, type ShortcutId } from "./shortcuts";
 
 type DesignSystemButtonProps = React.ComponentProps<typeof DesignSystemButton>;
 
@@ -11,17 +14,47 @@ interface BusyButtonProps extends DesignSystemButtonProps {
    * a ring.
    */
   pendingLabel?: string;
+  /** The keyboard shortcut(s) that press this button (shared/shortcuts.tsx): shows the (first
+   * one's) hint and sets `aria-keyshortcuts`. The screen registers the shortcut itself (useShortcut). */
+  shortcut?: ShortcutId | ShortcutId[];
+  ref?: Ref<HTMLButtonElement>;
 }
 
 /**
  * Thin wrapper around the design system's `Button`: everything passes through unchanged except
- * that, while pending, `pendingLabel` (when given) replaces the children. Buttons with no
- * `pendingLabel` keep today's ring-only behaviour.
+ * that, while pending, `pendingLabel` (when given) replaces the children, and `shortcut` adds the
+ * key hint. Buttons with no `pendingLabel` keep today's ring-only behaviour.
  */
-export function Button({ isPending, pendingLabel, children, ...props }: BusyButtonProps): React.JSX.Element {
+export function Button({ isPending, pendingLabel, shortcut, children, ref, ...props }: BusyButtonProps): React.JSX.Element {
+  // React Aria's Button doesn't pass `aria-keyshortcuts` through to the <button>, so it's set on
+  // the element directly.
+  const ids = shortcut === undefined ? [] : Array.isArray(shortcut) ? shortcut : [shortcut];
+  const keys = ids.length > 0 ? ids.map((id) => ariaKeyShortcuts(id)).join(" ") : null;
+  const setRef = useCallback(
+    (el: HTMLButtonElement | null) => {
+      if (el) {
+        if (keys) el.setAttribute("aria-keyshortcuts", keys);
+        else el.removeAttribute("aria-keyshortcuts");
+      }
+      if (typeof ref === "function") ref(el);
+      else if (ref) ref.current = el;
+    },
+    [keys, ref],
+  );
+  const content =
+    isPending && pendingLabel ? (
+      pendingLabel
+    ) : ids.length > 0 && typeof children !== "function" ? (
+      <>
+        {children}
+        <ShortcutHint id={ids[0]!} />
+      </>
+    ) : (
+      children
+    );
   return (
-    <DesignSystemButton isPending={isPending} {...props}>
-      {isPending && pendingLabel ? pendingLabel : children}
-    </DesignSystemButton>
+    <RefButton isPending={isPending} {...props} ref={setRef}>
+      {content}
+    </RefButton>
   );
 }

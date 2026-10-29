@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { TableScroll } from "../../../shared/TableScroll";
-import { Button } from "../../../shared/Button";
+import { Button } from "../../../shared/BusyButton";
+import { useFormShortcut } from "../../../shared/shortcuts";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { formatLongDate, type GovernmentTermList, type GovernmentTermPatch, type GovernmentTermView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
@@ -384,8 +385,10 @@ function TermEditForm({
     }
   };
 
+  // ⌘/Ctrl+S saves the term being edited, as its Save does.
+  const formRef = useFormShortcut("save", true, true);
   return (
-    <form onSubmit={save} aria-label={`Edit ${nameOf(term)}`} className="gcpe-stack" noValidate>
+    <form ref={formRef} onSubmit={save} aria-label={`Edit ${nameOf(term)}`} className="gcpe-stack" noValidate>
       <h2 ref={headingRef} tabIndex={-1}>
         Edit {nameOf(term)}
       </h2>
@@ -416,7 +419,7 @@ function TermEditForm({
         <p id={`${uid}-url-hint`}>Optional. Must start with https://. Leave empty for none.</p>
       </div>
       <div className="gcpe-button-row">
-        <Button type="submit" ref={saveRef} isPending={busy} isDisabled={confirmingMove}>
+        <Button type="submit" ref={saveRef} isPending={busy} isDisabled={confirmingMove} shortcut="save">
           Save
         </Button>
         <Button variant="secondary" onPress={onCancel}>

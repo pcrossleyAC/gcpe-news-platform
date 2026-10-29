@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { Button } from "../../../shared/BusyButton";
+import { useShortcut } from "../../../shared/shortcuts";
 import { formatPublishedAt } from "./format";
 import type { SettingsEditor } from "./useSettingsEditor";
 
@@ -18,6 +19,8 @@ interface PublishBarProps {
 export function PublishBar({ editor, canEdit, timeZone }: PublishBarProps): React.JSX.Element | null {
   const [note, setNote] = useState("");
   const { state, pending, busy } = editor;
+  // ⌘/Ctrl+S is Save draft — never Publish, which changes the live site and keeps its own button.
+  useShortcut("save", canEdit && state ? () => void (busy ? undefined : editor.saveDraft()) : null);
   if (!state) return null;
 
   const publish = () => {
@@ -43,7 +46,7 @@ export function PublishBar({ editor, canEdit, timeZone }: PublishBarProps): Reac
                 Discard draft
               </Button>
             )}
-            <Button variant="secondary" onPress={() => void editor.saveDraft()} isPending={busy} pendingLabel={pending === "save" ? "Saving…" : undefined}>
+            <Button variant="secondary" onPress={() => void editor.saveDraft()} isPending={busy} pendingLabel={pending === "save" ? "Saving…" : undefined} shortcut="save">
               Save draft
             </Button>
             <Button onPress={publish} isPending={busy} pendingLabel={pending === "publish" ? "Publishing…" : undefined}>

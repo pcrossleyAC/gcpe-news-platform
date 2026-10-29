@@ -7,7 +7,9 @@ import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useAnnouncer } from "../../shared/Announcer";
-import { useUnsavedChangesGuard } from "./useUnsavedChanges";
+import { useShortcut } from "../../shared/shortcuts";
+import { DirtyKeysProvider, useUnsavedChangesGuard } from "./useUnsavedChanges";
+import { unsavedTarget } from "./unsavedTarget";
 import { UnsavedChangesBar } from "./UnsavedChangesBar";
 import { HeaderSection } from "./sections/HeaderSection";
 import { ActionsSection } from "./sections/ActionsSection";
@@ -23,10 +25,11 @@ import { SaveQueueContext, useSaveQueueController } from "./saveQueue";
 
 /**
  * `/hub/releases/:id` (task-3-brief.md): loads the view once, holds it in one piece of state
- * (`view`/`setView`), and renders every section in spec order. Each section saves
- * independently (via its own {@link useReleaseSection} call) and, on success, replaces the
- * *whole* `view` with the server's response — so every other section's `version` field stays
- * current too, even though only one section's fields actually changed.
+ * (`view`/`setView`), and renders every section in spec order. Each section saves to its own
+ * endpoint (via its own {@link useReleaseSection} call) and, on success, replaces the *whole*
+ * `view` with the server's response — so every other section's `version` field stays current
+ * too. The page has one Save (the sticky bar, Enter in a field, Ctrl/⌘+S): it saves every
+ * changed section in turn (useUnsavedChanges' saveAll).
  *
  * Section saves never overlap: they go through one page-wide queue (saveQueue.tsx), so a save
  * requested while another is still in flight waits for it and then sends the version it
@@ -80,6 +83,18 @@ export function ReleaseEditorPage(): React.JSX.Element {
   // though `view` didn't change.
   const [retry, setRetry] = useState(0);
   const lastStatus = useRef<string | null>(null);
+  // ⌘/Ctrl+S: the page's one Save, from anywhere on the page (text fields included) — for an
+  // editor; a viewer has nothing to save.
+  const canEdit = session.has("NRMS.Editor");
+  useShortcut(
+    "save",
+    view && canEdit
+      ? () => {
+          if (guard.dirtySections.length === 0) announce("No unsaved changes.");
+          else void guard.saveAll();
+        }
+      : null,
+  );
   // The happy-path title (the release's own headline) is HeaderSection's job, below — this
   // only owns it for the error state, whose h1 ("Release") HeaderSection never renders.
   useDocumentTitle(error ? "Release" : null);
@@ -156,59 +171,60 @@ export function ReleaseEditorPage(): React.JSX.Element {
   // constraints.md: a viewer (no NRMS.Editor) sees the page read-only — every section still
   // shows the release's data, just with no inputs enabled and no Actions at all (every action
   // is an Editor-only write).
-  const canEdit = session.has("NRMS.Editor");
   const settling = settlingDelay(view, Date.now()) === SETTLING_REFRESH_MS;
 
   return (
     <SaveQueueContext.Provider value={saveQueue.queue}>
       <guard.Provider>
-        <div className={`gcpe-release-editor${guard.dirtySections.length > 0 ? " gcpe-release-editor--save-bar-open" : ""}`}>
-          <div className="gcpe-release-editor__top">
-            <HeaderSection view={view} />
-            {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
-          </div>
+        <DirtyKeysProvider keys={guard.dirtyKeys}>
+          <div className={`gcpe-release-editor${guard.dirtySections.length > 0 || guard.saveState.status === "saved" ? " gcpe-release-editor--save-bar-open" : ""}`}>
+            <div className="gcpe-release-editor__top">
+              <HeaderSection view={view} />
+              {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
+            </div>
 
-          {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
-           * focus, restores it on close, and closes on Escape (treated the same as "Stay": the
-           * blocker is simply left blocked, so the in-app navigation stays cancelled). */}
-          <Modal isOpen={guard.blocker.state === "blocked"} onOpenChange={(open) => { if (!open) guard.blocker.reset?.(); }} isDismissable>
-            <AlertDialog
-              variant="warning"
-              title="Unsaved changes"
-              buttons={
-                <>
-                  <Button onPress={() => guard.blocker.reset?.()}>Stay</Button>
-                  <Button danger onPress={() => guard.blocker.proceed?.()}>
-                    Leave
-                  </Button>
-                </>
-              }
-            >
-              <p>You have unsaved changes on this page. Leave anyway and discard them?</p>
-            </AlertDialog>
-          </Modal>
+            {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
+             * focus, restores it on close, and closes on Escape (treated the same as "Stay": the
+             * blocker is simply left blocked, so the in-app navigation stays cancelled). */}
+            <Modal isOpen={guard.blocker.state === "blocked"} onOpenChange={(open) => { if (!open) guard.blocker.reset?.(); }} isDismissable>
+              <AlertDialog
+                variant="warning"
+                title="Unsaved changes"
+                buttons={
+                  <>
+                    <Button onPress={() => guard.blocker.reset?.()}>Stay</Button>
+                    <Button danger onPress={() => guard.blocker.proceed?.()}>
+                      Leave
+                    </Button>
+                  </>
+                }
+              >
+                <p>You have unsaved changes on this page. Leave anyway and discard them?</p>
+              </AlertDialog>
+            </Modal>
 
-          {/* One column below 80rem, in reading order: Actions, the release itself (Documents
-           * first), then Publish settings and the release's facts. From 80rem, two columns: the
-           * release on the left; Actions and, under it, a sticky rail with Publish settings and
-           * the facts on the right (styles/global.css). The DOM order is the same at every width,
-           * so keyboard order always matches what's on screen, and no section is ever remounted
-           * (losing its unsaved edits) when the window crosses the breakpoint. */}
-          {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} unsaved={guard.dirtySections} />}
-          <div className="gcpe-release-editor__main">
-            <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
-            <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
-            <CategoriesSection view={view} setView={setView} readOnly={!canEdit} />
-            <AssetSection view={view} setView={setView} readOnly={!canEdit} />
-            <FilesSection view={view} setView={setView} readOnly={!canEdit} />
-            {canEdit && <SimilarReleasesPanel view={view} timeZone={timeZone} />}
+            {/* One column below 80rem, in reading order: Actions, the release itself (Documents
+             * first), then Publish settings and the release's facts. From 80rem, two columns: the
+             * release on the left; Actions and, under it, a sticky rail with Publish settings and
+             * the facts on the right (styles/global.css). The DOM order is the same at every width,
+             * so keyboard order always matches what's on screen, and no section is ever remounted
+             * (losing its unsaved edits) when the window crosses the breakpoint. */}
+            {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} unsaved={guard.dirtySections} />}
+            <div className="gcpe-release-editor__main">
+              <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
+              <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
+              <CategoriesSection view={view} setView={setView} readOnly={!canEdit} />
+              <AssetSection view={view} setView={setView} readOnly={!canEdit} />
+              <FilesSection view={view} setView={setView} readOnly={!canEdit} />
+              {canEdit && <SimilarReleasesPanel view={view} timeZone={timeZone} />}
+            </div>
+            <div className="gcpe-release-editor__rail">
+              <SettingsSection view={view} setView={setView} timeZone={timeZone} readOnly={!canEdit} />
+              <SideBar view={view} timeZone={timeZone} />
+            </div>
           </div>
-          <div className="gcpe-release-editor__rail">
-            <SettingsSection view={view} setView={setView} timeZone={timeZone} readOnly={!canEdit} />
-            <SideBar view={view} timeZone={timeZone} />
-          </div>
-        </div>
-        <UnsavedChangesBar sections={guard.dirtySections} />
+          <UnsavedChangesBar sections={guard.dirtySections} state={guard.saveState} onSave={() => void guard.saveAll()} targetOf={(key) => unsavedTarget(key, view)} />
+        </DirtyKeysProvider>
       </guard.Provider>
     </SaveQueueContext.Provider>
   );

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
+import { useSearchShortcut } from "../../../shared/shortcuts";
 import { Button } from "@bcgov/design-system-react-components";
 import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateQuery, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
 
@@ -104,6 +106,8 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
   const parts = activeFilterParts(query, options);
   // Open, the panel is most of a screen (three on a phone) before the first activity: closed until asked for.
   const [open, setOpen] = useState<boolean>(() => storedOpen() ?? false);
+  // ⌘/Ctrl+K: opens Filters (if closed) and goes to Search for.
+  useSearchShortcut("list-search", () => flushSync(() => setOpen(true)));
   // Every HQ tag, then any the filter still names after its tag went away (shown so it can be cleared).
   const tagChoices = [...options.keywords.map((k) => ({ id: k.id, name: k.name })), ...filter.keywordIds.filter((id) => !options.keywords.some((k) => k.id === id)).map((id) => ({ id, name: GONE }))];
   const set = <K extends keyof ListFilter>(k: K, v: ListFilter[K]) => setFilter((f) => ({ ...f, [k]: v }));

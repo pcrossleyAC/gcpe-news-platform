@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { AlertDialog, DialogTrigger, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
+import { Form } from "../../shared/Form";
+import { useFormShortcut } from "../../shared/shortcuts";
 import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canAdminSubscribers } from "./access";
@@ -171,6 +173,8 @@ function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceS
   const staffAddress = value.from === "setting" ? (value.address ?? "") : "";
   const [address, setAddress] = useState(staffAddress);
   const [busy, setBusy] = useState(false);
+  // ⌘/Ctrl+S saves this form while you're in it (the screen has two).
+  const bounceForm = useFormShortcut("save", !busy, true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setAddress(staffAddress), [staffAddress]);
   const put = async (next: string | null, text: string) => {
@@ -195,9 +199,9 @@ function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceS
       <p>A daily email at 8:00 listing bounced subscribers, sent only when there were bounces.</p>
       {value.from === "server" && <p>{value.address ? `Using the server default: ${value.address}` : "Using the server default."}</p>}
       {value.from === null && <p>No address is set, so no summary is sent.</p>}
-      <Form onSubmit={onSubmit} aria-label="Bounce summary address">
+      <Form ref={bounceForm} onSubmit={onSubmit} aria-label="Bounce summary address" className="gcpe-shortcut-scope">
         <TextField label="Bounce summary email" name="address" value={address} onChange={setAddress} />
-        <Button type="submit" isPending={busy}>
+        <Button type="submit" isPending={busy} shortcut="save">
           Save address
         </Button>
         {value.from === "setting" && (
@@ -215,6 +219,8 @@ function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string
   const saved = value.join(", ");
   const [codes, setCodes] = useState(saved);
   const [busy, setBusy] = useState(false);
+  // ⌘/Ctrl+S saves this form while you're in it (the screen has two).
+  const codesForm = useFormShortcut("save", !busy, true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setCodes(saved), [saved]);
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -238,9 +244,9 @@ function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string
         Soft bounces (codes starting with 4) never count toward disabling a subscriber, except the codes listed here. They then count like a hard
         bounce, from the next bounce on. Leave empty to count none.
       </p>
-      <Form onSubmit={(e) => void onSubmit(e)} aria-label="Soft bounce codes">
+      <Form ref={codesForm} onSubmit={(e) => void onSubmit(e)} aria-label="Soft bounce codes" className="gcpe-shortcut-scope">
         <TextField label="Soft codes counted as hard" name="codes" value={codes} onChange={setCodes} />
-        <Button type="submit" isPending={busy} pendingLabel="Saving…">
+        <Button type="submit" isPending={busy} pendingLabel="Saving…" shortcut="save">
           Save codes
         </Button>
       </Form>
