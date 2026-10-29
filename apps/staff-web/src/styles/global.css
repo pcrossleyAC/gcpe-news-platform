@@ -2781,3 +2781,110 @@ fieldset.gcpe-org-contact {
 html:has(.gcpe-activity form > .gcpe-actions) {
   scroll-padding-bottom: 5rem;
 }
+
+/* Batch 4 -------------------------------------------------------------------------------- */
+
+/* Every plain link is a BC link: the link blue, underlined, a brighter blue and a heavier
+ * underline on hover (the design system's Link hover), the focus ring the buttons use. Zero specificity (:where), so the side
+ * menu, the tabs, the button-styled links and the design system's own links keep their looks.
+ * Visited links stay the link blue: staff revisit the same records all day, and purple would
+ * only say "you opened this before". */
+:where(a) {
+  color: var(--typography-color-link, #255a90);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+:where(a):visited {
+  color: var(--typography-color-link, #255a90);
+}
+:where(a):hover {
+  color: var(--surface-color-border-active, #2e5dd7);
+  text-decoration-thickness: 2px;
+}
+:where(a):focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+  border-radius: 2px;
+}
+
+/* A table whose rows become cards of "Label: value" lines on a phone (as the Calendar's do):
+ * the first cell (.gcpe-table__primary) leads each card, a select-box column keeps only its
+ * "select all" box above the cards. */
+@media (max-width: 40rem) {
+  .gcpe-table--reflow,
+  .gcpe-table--reflow tbody,
+  .gcpe-table--reflow tr,
+  .gcpe-table--reflow td {
+    display: block;
+    width: auto;
+    min-width: 0;
+  }
+  .gcpe-table--reflow thead,
+  .gcpe-table--reflow thead tr {
+    display: flex;
+    align-items: center;
+  }
+  .gcpe-table--reflow thead th:not(.gcpe-table__select) {
+    display: none;
+  }
+  .gcpe-table--reflow thead th.gcpe-table__select {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 0;
+    padding: 0 0 0.25rem;
+  }
+  .gcpe-table--reflow thead th.gcpe-table__select::after {
+    content: "Select all on this page";
+    content: "Select all on this page" / "";
+    font-weight: 400;
+  }
+  .gcpe-table--reflow tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.125rem 0.75rem;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+  }
+  .gcpe-table--reflow tbody tr:first-child {
+    border-top: 2px solid var(--surface-color-border-default, #d8d8d8);
+  }
+  .gcpe-table--reflow tbody tr:has(> td.gcpe-table__select) {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .gcpe-table--reflow tbody td {
+    grid-column: -2 / -1;
+    border: 0;
+    padding: 0;
+  }
+  .gcpe-table--reflow tbody td.gcpe-table__select {
+    grid-column: 1;
+    grid-row: 1 / span 4;
+    padding-top: 0.125rem;
+  }
+  .gcpe-table--reflow tbody td.gcpe-table__primary {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+  .gcpe-table--reflow tbody td[data-label]::before {
+    content: attr(data-label) ": ";
+    content: attr(data-label) ": " / "";
+    color: var(--typography-color-secondary, #474543);
+  }
+}
+.gcpe-table__select input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  vertical-align: middle;
+}
+
+/* The filled danger button, for a native <button> kept for aria-busy (organization Deactivate). */
+.gcpe-native-button--danger {
+  background: var(--surface-color-primary-danger-button-default, #ce3e39);
+  box-shadow: none;
+  color: var(--typography-color-primary-invert, #fff);
+}
+.gcpe-native-button--danger:hover {
+  background: var(--surface-color-primary-danger-button-hover, #a2312d);
+}

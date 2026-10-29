@@ -4,6 +4,7 @@ import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
+import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { actorLabel, historyLabel } from "./labels";
 import type { HistoryEntry } from "./types";
@@ -74,7 +75,8 @@ export function HistoryScreen(): React.JSX.Element {
       {truncated && <p>{`Showing the most recent ${HISTORY_LIMIT} entries.`}</p>}
       {items !== null && items.length === 0 && <p>No history yet.</p>}
       {items !== null && items.length > 0 && (
-        <table aria-label="Subscriber history">
+        <TableScroll label="Subscriber history">
+        <table aria-label="Subscriber history" className="gcpe-table">
           <thead>
             <tr>
               <th scope="col">When</th>
@@ -94,6 +96,7 @@ export function HistoryScreen(): React.JSX.Element {
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
     </div>
   );

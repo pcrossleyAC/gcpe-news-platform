@@ -142,12 +142,14 @@ export function AppShell(): React.JSX.Element {
         <main id="main-content" tabIndex={-1} className="gcpe-shell__main" ref={mainRef}>
           {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
           {/* Fix round 1, finding 3: persistent — not closeable — since it stays true for the
-           * whole session; the only real fix is updating the browser. */}
+           * whole session; the only real fix is updating the browser. The title is what the design
+           * system's alert names itself by (its aria-labelledby always points at a title). */}
           {tzMismatch && (
             <InlineAlert
               variant="warning"
               role="alert"
               isCloseable={false}
+              title="Check the times shown"
               description="Your browser's time-zone information is out of date, so times shown here may be off by an hour. Update your browser."
             />
           )}

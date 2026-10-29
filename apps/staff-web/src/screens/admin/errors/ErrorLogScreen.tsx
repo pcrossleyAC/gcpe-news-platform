@@ -4,6 +4,7 @@ import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { formatWhen } from "../../../format/dates";
+import { TableScroll } from "../../../shared/TableScroll";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 
 export interface ErrorEntry {
@@ -59,7 +60,8 @@ export function ErrorLogScreen(): React.JSX.Element {
       {entries === null && !loadError && <p>Loading…</p>}
       {entries?.length === 0 && <p>No errors logged.</p>}
       {entries && entries.length > 0 && (
-        <table>
+        <TableScroll label="Error log">
+        <table className="gcpe-table">
           <caption>Error log, newest first</caption>
           <thead>
             <tr>
@@ -80,6 +82,7 @@ export function ErrorLogScreen(): React.JSX.Element {
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
     </div>
   );

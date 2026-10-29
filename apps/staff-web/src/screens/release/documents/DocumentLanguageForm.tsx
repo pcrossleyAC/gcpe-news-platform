@@ -135,7 +135,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   const reload = () => void section.reload().then((next) => reseed(fromView(next, documentId, languageId), next.version));
 
   return (
-    <div className="gcpe-document-language" aria-label={`${languageLabel} document content`}>
+    <div className="gcpe-document-language" role="group" aria-label={`${languageLabel} document content`}>
       {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
       {section.problems && (
         <ul role="alert" className="gcpe-release-editor__problems">
