@@ -10,8 +10,14 @@ export interface SeededForm<T> {
   dirty: boolean;
   /** The value the form was last seeded from. */
   baseline: T;
-  /** Seeds form and baseline from this value (after this section's own save or a Reload). */
-  reseed(next: T): void;
+  /** Seeds form and baseline from this value, at this release version (after this section's
+   * own save, or a Reload). */
+  reseed(next: T, version: number): void;
+  /** The release version to save with when this section's own fields changed on the server
+   * while the user was editing them: the last version at which the server still held what they
+   * started from. Saving with it gets a 409 (someone else changed this — reload) instead of
+   * silently overwriting the other change. Null otherwise: save with the latest version. */
+  staleVersion: number | null;
 }
 
 /**
@@ -21,41 +27,52 @@ export interface SeededForm<T> {
  * reference, Publish now or Schedule setting `publishAt`, another section's 409 Reload bringing
  * in someone else's edits. Compared against `view`, each of those would read as an unsaved edit
  * here (blocking Publish now with "Save your changes…", and a save would send stale values
- * back). Instead: whenever the value derived from `view` (`seed`) changes and the form still
- * equals its old baseline (the user hasn't touched it), the form is re-seeded from the new
- * value; if the user has edited it, their edits and the baseline they started from are kept.
+ * back).
  *
- * The re-seed happens during render (React's "adjust state when a prop changes" pattern), not
- * in an effect, so no render ever sees a stale form as dirty — the unsaved-changes guard never
+ * Instead, `seed` (this section's values derived from the current `view`) is checked on every
+ * render:
+ *  - The form equals its baseline (untouched, or the user took their edits back out) but the
+ *    release now holds something else: the form re-seeds from the release.
+ *  - The user has edits: they stay, measured against what they started from. If the release's
+ *    values for this section are still that baseline, saving uses the latest version as usual;
+ *    if they've changed underneath, {@link SeededForm.staleVersion} makes the save a conflict.
+ *
+ * The re-seed happens during render (React's "adjust state when a prop changes" pattern), not in
+ * an effect, so no render ever sees a stale form as dirty — the unsaved-changes guard never
  * flickers, announces or blocks for it.
  *
  * `initialForm` (optional) seeds the form with something other than `seed` — a restored
  * session-expiry draft — while the baseline stays `seed`, so the restored draft counts as dirty.
  */
-export function useSeededForm<T>(seed: T, initialForm?: () => T): SeededForm<T> {
+export function useSeededForm<T>(seed: T, version: number, initialForm?: () => T): SeededForm<T> {
   const [form, setForm] = useState<T>(() => (initialForm ? initialForm() : seed));
   const [baseline, setBaseline] = useState<T>(seed);
-  const [lastSeed, setLastSeed] = useState<T>(seed);
+  // The latest version at which the release's values for this section still equal `baseline`.
+  const [baselineVersion, setBaselineVersion] = useState(version);
 
   let current = form;
   let base = baseline;
-  if (!same(seed, lastSeed)) {
-    setLastSeed(seed);
-    // Clean: follow the new value. Edited: keep the user's edits, measured against what they
-    // started from.
-    if (same(form, baseline)) {
-      setForm(seed);
-      setBaseline(seed);
-      current = seed;
-      base = seed;
+  let baseVersion = baselineVersion;
+  if (same(seed, baseline)) {
+    if (version !== baselineVersion) {
+      setBaselineVersion(version);
+      baseVersion = version;
     }
+  } else if (same(form, baseline)) {
+    setForm(seed);
+    setBaseline(seed);
+    setBaselineVersion(version);
+    current = seed;
+    base = seed;
+    baseVersion = version;
   }
 
-  const reseed = (next: T) => {
+  const reseed = (next: T, nextVersion: number) => {
     setForm(next);
     setBaseline(next);
-    setLastSeed(next);
+    setBaselineVersion(nextVersion);
   };
 
-  return { form: current, setForm, dirty: !same(current, base), baseline: base, reseed };
+  const dirty = !same(current, base);
+  return { form: current, setForm, dirty, baseline: base, reseed, staleVersion: dirty && !same(seed, base) ? baseVersion : null };
 }

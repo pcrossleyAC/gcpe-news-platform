@@ -45,7 +45,7 @@ function fromView(view: ReleaseView): FormState {
 export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSectionProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
-  const { form, setForm, dirty: edited, reseed } = useSeededForm<FormState>(fromView(view));
+  const { form, setForm, dirty: edited, reseed, staleVersion } = useSeededForm<FormState>(fromView(view), view.version);
 
   const dirty = !readOnly && edited;
 
@@ -62,9 +62,9 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
         summary: showSummaryFields ? form.summary : "",
         socialMediaSummary: showSummaryFields ? form.socialMediaSummary.trim() || null : null,
         keywords: showSummaryFields ? form.keywords.trim() || null : null,
-      })
+      }, "PUT", staleVersion)
       .then((next) => {
-        if (next) reseed(fromView(next));
+        if (next) reseed(fromView(next), next.version);
       });
   useRegisterDirty("page-details", dirty, !readOnly ? { label: "Save page details", save: doSave } : undefined);
 
@@ -82,7 +82,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
           variant="danger"
           role="alert"
           description={RELOAD_MESSAGE}
-          buttons={<Button onPress={() => void section.reload().then((next) => reseed(fromView(next)))}>Reload</Button>}
+          buttons={<Button onPress={() => void section.reload().then((next) => reseed(fromView(next), next.version))}>Reload</Button>}
         />
       )}
       {section.problems && (

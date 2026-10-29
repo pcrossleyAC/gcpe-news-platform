@@ -60,7 +60,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   // Compared against what it was seeded from, not the live view (useSeededForm.ts): Publish now,
   // Schedule and Approve change `publishAt` and the rest of the view server-side, and that must
   // never read as an unsaved edit here.
-  const { form, setForm, dirty: edited, baseline, reseed } = useSeededForm<FormState>(fromView(view, timeZone));
+  const { form, setForm, dirty: edited, baseline, reseed, staleVersion } = useSeededForm<FormState>(fromView(view, timeZone), view.version);
   const typedActivityId = form.activityText === "" ? null : Number(form.activityText);
   // The id the activity lookup runs for: the typed id once the field loses focus (as the number
   // stepper this replaced committed it), so it isn't looked up on every keystroke.
@@ -80,7 +80,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   }, []);
 
   const resetFrom = (next: ReleaseView) => {
-    reseed(fromView(next, timeZone));
+    reseed(fromView(next, timeZone), next.version);
     setLookupId(next.activityId);
   };
 
@@ -114,7 +114,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
         toSubscribers: form.toSubscribers,
         toMediaLists: form.toMediaLists,
         mediaListKeys: form.mediaListKeys,
-      })
+      }, "PUT", staleVersion)
       .then((next) => {
         if (next) resetFrom(next);
       });

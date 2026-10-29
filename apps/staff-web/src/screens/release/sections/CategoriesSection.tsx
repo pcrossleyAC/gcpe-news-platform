@@ -44,7 +44,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
   const [categories, setCategories] = useState<Categories>(EMPTY_CATEGORIES);
-  const { form, setForm, dirty: edited, reseed } = useSeededForm<FormState>(fromView(view));
+  const { form, setForm, dirty: edited, reseed, staleVersion } = useSeededForm<FormState>(fromView(view), view.version);
 
   useEffect(() => {
     apiFetch<Categories>("/nrms/api/categories").then(setCategories, () => {
@@ -63,8 +63,8 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
     });
 
   const doSave = () =>
-    section.save("/categories", { version: view.version, ...form }).then((next) => {
-      if (next) reseed(fromView(next));
+    section.save("/categories", { version: view.version, ...form }, "PUT", staleVersion).then((next) => {
+      if (next) reseed(fromView(next), next.version);
     });
   useRegisterDirty("categories", dirty, !readOnly ? { label: "Save categories", save: doSave } : undefined);
 
@@ -126,7 +126,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
             buttons={
               <Button
                 onPress={() =>
-                  void section.reload().then((next) => reseed(fromView(next)))
+                  void section.reload().then((next) => reseed(fromView(next), next.version))
                 }
               >
                 Reload

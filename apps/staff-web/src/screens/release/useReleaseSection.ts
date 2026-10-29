@@ -36,8 +36,11 @@ export interface ReleaseSection extends ReleaseSectionState {
    * stays current, not just this section's own slice) and returns it. On failure, `view` is
    * left untouched and the caller's own form state is never touched either way — only the
    * caller decides whether to keep or discard what the user typed.
+   *
+   * `pinVersion` (useSeededForm's `staleVersion`) overrides that: the body is sent with exactly
+   * this version, so a section whose own fields changed on the server mid-edit gets a 409.
    */
-  save(path: string, body: unknown, method?: "PUT" | "POST"): Promise<ReleaseView | null>;
+  save(path: string, body: unknown, method?: "PUT" | "POST", pinVersion?: number | null): Promise<ReleaseView | null>;
   /** Re-fetches the release, replaces the page's `view` with it, and returns it — the 409
    * "Reload" button. Returning the fresh value (not just `void`) lets a section re-seed its own
    * local form state from exactly what was reloaded, rather than reacting to `view` prop changes
@@ -73,7 +76,7 @@ export function useReleaseSection(view: ReleaseView, setView: (v: ReleaseView) =
   );
 
   const save = useCallback(
-    async (path: string, body: unknown, method: "PUT" | "POST" = "PUT"): Promise<ReleaseView | null> => {
+    async (path: string, body: unknown, method: "PUT" | "POST" = "PUT", pinVersion: number | null = null): Promise<ReleaseView | null> => {
       pending.current += 1;
       setState({ ...busy(), problems: null, conflict: false, error: null });
       try {
@@ -81,7 +84,10 @@ export function useReleaseSection(view: ReleaseView, setView: (v: ReleaseView) =
           sending.current = true;
           setState((s) => ({ ...s, ...busy() }));
           try {
-            return await apiFetch<ReleaseView>(`/nrms/api/releases/${id}${path}`, { method, body: withVersion(body, version) });
+            // A pinned version (useSeededForm's staleVersion: this section's own fields changed on
+            // the server while the user was editing them) is sent as is, so the server answers
+            // 409 rather than letting the edit overwrite the other change.
+            return await apiFetch<ReleaseView>(`/nrms/api/releases/${id}${path}`, { method, body: pinVersion !== null ? withVersion(body, pinVersion) : withVersion(body, version) });
           } finally {
             sending.current = false;
           }

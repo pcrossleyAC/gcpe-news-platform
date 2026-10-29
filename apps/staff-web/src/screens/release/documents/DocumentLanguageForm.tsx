@@ -70,7 +70,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   // Compared against what it was seeded from, not the live view (useSeededForm.ts), so a change
   // made elsewhere (another section's Reload, a background refresh) never reads as an edit here.
   // A restored session-expiry draft seeds the form but not the baseline, so it counts as dirty.
-  const { form, setForm, dirty: edited, reseed } = useSeededForm<FormState>(fromView(view, documentId, languageId), () => {
+  const { form, setForm, dirty: edited, reseed, staleVersion } = useSeededForm<FormState>(fromView(view, documentId, languageId), view.version, () => {
     if (!canPersistDraft || !draftKey) return fromView(view, documentId, languageId);
     return loadDraft<FormState>(draftKey) ?? fromView(view, documentId, languageId);
   });
@@ -98,11 +98,12 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
           contacts: form.contacts.map((c) => c.trim()).filter((c) => c !== ""),
         },
         "PUT",
+        staleVersion,
       )
       .then((next) => {
         if (!next) return;
         if (draftKey) clearDraft(draftKey);
-        reseed(fromView(next, documentId, languageId));
+        reseed(fromView(next, documentId, languageId), next.version);
       });
   };
   // "Save English content (Document 1)" — the sticky save bar's own copy of this section's
@@ -131,7 +132,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
     void doSave();
   };
 
-  const reload = () => void section.reload().then((next) => reseed(fromView(next, documentId, languageId)));
+  const reload = () => void section.reload().then((next) => reseed(fromView(next, documentId, languageId), next.version));
 
   return (
     <div className="gcpe-document-language" aria-label={`${languageLabel} document content`}>
