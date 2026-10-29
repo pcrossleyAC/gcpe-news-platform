@@ -80,4 +80,28 @@ describe("Esc closes the panel you're in", () => {
     esc();
     expect(screen.getByRole("button", { name: "Schedule" })).toHaveAttribute("aria-expanded", "true");
   });
+
+  it("leaves open a panel marked as holding unsaved input (data-unsaved): closing it would throw that input away", () => {
+    function Dirty(): React.JSX.Element {
+      useEscapeClosesPanels();
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button aria-expanded={open} aria-controls="sched" onClick={() => setOpen((o) => !o)}>
+            Schedule
+          </button>
+          {open && (
+            <div id="sched" data-unsaved="true">
+              <input aria-label="Time" />
+            </div>
+          )}
+        </>
+      );
+    }
+    render(<Dirty />);
+    screen.getByLabelText("Time").focus();
+    expect(esc()).toBe(true); // not handled: nothing closed
+    expect(screen.getByRole("button", { name: "Schedule" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Time")).toHaveFocus();
+  });
 });

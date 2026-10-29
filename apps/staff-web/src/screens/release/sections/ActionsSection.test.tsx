@@ -8,6 +8,7 @@ import { useUnsavedChangesGuard } from "../useUnsavedChanges";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { ActionsSection } from "./ActionsSection";
+import { useEscapeClosesPanels } from "../../../shared/escapeClosesPanels";
 import type { DirtySection } from "../useUnsavedChanges";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -641,6 +642,35 @@ describe("ActionsSection", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     const panel = document.getElementById(toggle.getAttribute("aria-controls")!);
     expect(panel).toContainElement(screen.getByLabelText("Date"));
+  });
+
+  // Review (LOW): Esc used to close the Schedule panel even with a time typed in, and reopening
+  // started over — the typed time was lost without a word.
+  it("Esc closes the Schedule panel when nothing in it changed, but not once a date or time is typed", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: null });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    function WithEsc(): React.JSX.Element {
+      useEscapeClosesPanels();
+      return <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" />;
+    }
+    render(
+      <MemoryRouter>
+        <WithEsc />
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup();
+    const toggle = screen.getByRole("button", { name: "Schedule" });
+    await user.click(toggle);
+    screen.getByLabelText("Date").focus();
+    await user.keyboard("{Escape}");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
+    screen.getByLabelText("Date").focus();
+    await user.keyboard("{Escape}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Date")).toHaveValue("2031-06-15");
   });
 
   it("an open Schedule panel counts as unsaved only once its date or time is changed from what it opened with", async () => {

@@ -28,7 +28,11 @@ function toggleFor(active: Element): HTMLElement | null {
  *    presses that toggle, so the screen's own close logic runs;
  *  - an open `<details>` (Calendar Filters, Saved views) — closed, focus to its summary.
  * Anything that already handled Esc (the section menu, a dialog, a date picker) is left alone, as
- * is a search box with text in it (Esc clears it).
+ * is a search box with text in it (Esc clears it). So is a panel marked `data-unsaved` — one that
+ * holds typed input it would lose on closing (Schedule's date and time): it stays open, as the
+ * page's own unsaved-changes guard would keep the user there too. Panels that only hide their
+ * contents when closed (the Calendar list's tools and Filters, a release card's disclosure) keep
+ * what was typed, so they close as usual.
  */
 export function useEscapeClosesPanels(): void {
   useEffect(() => {
@@ -42,12 +46,15 @@ export function useEscapeClosesPanels(): void {
       const details = active.closest("details[open]");
       // The innermost wins: a toggle inside an open <details>, or a <details> inside a panel.
       if (toggle && (!details || details.contains(toggle))) {
+        const panel = document.getElementById(toggle.getAttribute("aria-controls")?.split(/\s+/)[0] ?? "");
+        if (panel?.hasAttribute("data-unsaved")) return;
         e.preventDefault();
         toggle.click();
         toggle.focus();
         return;
       }
       if (details instanceof HTMLDetailsElement) {
+        if (details.hasAttribute("data-unsaved")) return;
         e.preventDefault();
         details.open = false;
         details.querySelector<HTMLElement>(":scope > summary")?.focus();

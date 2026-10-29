@@ -5,6 +5,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { onUnauthorized } from "../../../api/client";
 import { DEFAULT_LIST_QUERY } from "@gcpe/calendar-contract";
 import { downloadExport } from "./api";
+import { useEscapeClosesPanels } from "../../../shared/escapeClosesPanels";
 import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, listCalls, openListTool, qOf, renderList, row, stubFetch, type Call } from "./fixtures";
 import { REVIEW_SELECTED_MAX, ReviewSelected } from "./HqTools";
 
@@ -95,6 +96,26 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     await openListTool("LA status");
     await user.click((await screen.findByText("What is LA Status?")).closest("summary")!);
     expect(screen.getByText(/HQ's New or Changed flag on an activity/)).toBeVisible();
+  });
+
+  it("Esc closes the LA status panel and focus goes back to its toggle; what was typed in it is still there on reopening", async () => {
+    hq([], () => undefined);
+    renderList();
+    function Esc(): null {
+      useEscapeClosesPanels();
+      return null;
+    }
+    render(<Esc />);
+    const user = userEvent.setup();
+    await openListTool("LA status");
+    const days = await screen.findByLabelText("Days ahead (Clear LA Status)");
+    await user.clear(days);
+    await user.type(days, "14{Escape}");
+    const toggle = screen.getByRole("button", { name: "LA status" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveFocus();
+    await user.click(toggle);
+    expect(screen.getByLabelText("Days ahead (Clear LA Status)")).toHaveValue(14);
   });
 
   // Owner decision 2026-10-29: it asks first, saying how many activities it will change.

@@ -458,7 +458,8 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
       {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead="Publish now and Schedule are unavailable until:" items={publishBlockers} />}
 
       {schedulerOpen && canPublish && (
-        <div id="actions-scheduler" className="gcpe-release-editor__scheduler">
+        // data-unsaved: Esc leaves it open once a date or time is typed (shared/escapeClosesPanels.ts).
+        <div id="actions-scheduler" className="gcpe-release-editor__scheduler" data-unsaved={scheduleTyped !== scheduleOpenedWith || undefined}>
           <SchedulePicker
             timeZone={timeZone}
             legend="Schedule for"
