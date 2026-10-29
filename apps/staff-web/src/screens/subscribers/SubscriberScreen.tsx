@@ -483,7 +483,7 @@ export function SubscriberScreen(): React.JSX.Element {
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       <p>{detail.email}</p>
 
-      <dl>
+      <dl className="gcpe-facts">
         <dt>Status</dt>
         <dd>{statusText(detail)}</dd>
         <dt>Source</dt>

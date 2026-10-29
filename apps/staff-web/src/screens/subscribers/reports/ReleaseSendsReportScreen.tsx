@@ -48,7 +48,7 @@ export function ReleaseSendsReportScreen(): React.JSX.Element {
           <CsvLink href={csvHref("/nod/api/reports/release-sends.csv")}>Download (CSV)</CsvLink>
           {d.items.length > 0 ? (
             <TableScroll label="Sends per release">
-              <table aria-label="Sends per release">
+              <table className="gcpe-table" aria-label="Sends per release">
                 <thead>
                   <tr>
                     <th scope="col" rowSpan={2}>Published</th>

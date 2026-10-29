@@ -42,7 +42,7 @@ export function UnsubscribesReportScreen(): React.JSX.Element {
           <CsvLink href="/nod/api/reports/unsubscribes/daily.csv">Download daily counts (CSV)</CsvLink>
           {canExport && <CsvLink href="/nod/api/reports/unsubscribes.csv">Download list with addresses (CSV)</CsvLink>}
           {d.items.length > 0 ? (
-            <table aria-label="Recent unsubscribes">
+            <table className="gcpe-table" aria-label="Recent unsubscribes">
               <thead>
                 <tr>
                   <th scope="col">Email</th>

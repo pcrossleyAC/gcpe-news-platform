@@ -42,6 +42,21 @@ export function SearchScreen(): React.JSX.Element {
   // ordinary typing: it only runs when the URL's own q changes.
   useEffect(() => setQInput(q), [q]);
 
+  // Before any search: the five most recently published releases, under the hint. Nothing at
+  // all if they can't be loaded; the hint and the search box still work.
+  const [recent, setRecent] = useState<ReleaseListItem[] | null>(null);
+  useEffect(() => {
+    if (q || recent) return;
+    let active = true;
+    apiFetch<ReleasePage<ReleaseListItem>>("/nrms/api/releases?folder=published&type=all&page=1&pageSize=5").then(
+      (data) => active && setRecent(data.items),
+      () => undefined,
+    );
+    return () => {
+      active = false;
+    };
+  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     apiFetch<Categories>("/nrms/api/categories").then(setCategories, () => {
       // Filters just won't be offered; the search box itself still works.
@@ -133,32 +148,52 @@ export function SearchScreen(): React.JSX.Element {
     <div className="gcpe-search">
       <h1>Search</h1>
 
-      <Form onSubmit={onSubmit}>
-        <TextField label="Search" name="q" value={qInput} onChange={setQInput} />
-        <Button type="submit">Search</Button>
+      <Form onSubmit={onSubmit} className="gcpe-search__form">
+        <div className="gcpe-search__row">
+          <TextField label="Search" name="q" value={qInput} onChange={setQInput} className="gcpe-search__q" />
+          <div className="gcpe-field">
+            <label htmlFor="search-ministry-filter">Ministry</label>
+            <select id="search-ministry-filter" value={ministry} onChange={(e) => updateFilter("ministry", e.target.value)}>
+              <option value="">All ministries</option>
+              {categories?.ministries.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="gcpe-field">
+            <label htmlFor="search-sector-filter">Sector</label>
+            <select id="search-sector-filter" value={sector} onChange={(e) => updateFilter("sector", e.target.value)}>
+              <option value="">All sectors</option>
+              {categories?.sectors.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button type="submit">Search</Button>
+        </div>
       </Form>
 
-      <div className="gcpe-search__filters">
-        <label htmlFor="search-ministry-filter">Ministry</label>
-        <select id="search-ministry-filter" value={ministry} onChange={(e) => updateFilter("ministry", e.target.value)}>
-          <option value="">All ministries</option>
-          {categories?.ministries.map((m) => (
-            <option key={m.key} value={m.key}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-
-        <label htmlFor="search-sector-filter">Sector</label>
-        <select id="search-sector-filter" value={sector} onChange={(e) => updateFilter("sector", e.target.value)}>
-          <option value="">All sectors</option>
-          {categories?.sectors.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {!q && (
+        <>
+          <p className="gcpe-search__hint">Search releases by words in the headline, summary or body; filter by ministry or sector.</p>
+          {recent && recent.length > 0 && (
+            <section aria-labelledby="search-recent-heading">
+              <h2 id="search-recent-heading" className="gcpe-search__recent-heading">
+                Recently published
+              </h2>
+              <ul className="gcpe-release-list__rows">
+                {recent.map((item) => (
+                  <ReleaseRow key={item.id} item={item} now={now} timeZone={timeZone} />
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
+      )}
 
       {error && <p role="alert">{error}</p>}
       {!error && q && result && result.items.length === 0 && <p>No results.</p>}

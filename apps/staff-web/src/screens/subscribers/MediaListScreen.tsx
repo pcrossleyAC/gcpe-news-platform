@@ -132,7 +132,7 @@ export function MediaListScreen(): React.JSX.Element {
       {members && members.length === 0 && <p>No members yet.</p>}
       {members && members.length > 0 && (
         <TableScroll label="Members">
-          <table aria-label="Members">
+          <table className="gcpe-table" aria-label="Members">
             <thead>
               <tr>
                 <th scope="col">Email</th>
@@ -197,7 +197,7 @@ export function MediaListScreen(): React.JSX.Element {
         {optOuts && optOuts.items.length === 0 && <p>Nobody has.</p>}
         {optOuts && optOuts.items.length > 0 && (
           <TableScroll label="Left this list by unsubscribing">
-            <table aria-label="Left this list by unsubscribing">
+            <table className="gcpe-table" aria-label="Left this list by unsubscribing">
               <thead>
                 <tr>
                   <th scope="col">Email</th>

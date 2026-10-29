@@ -39,7 +39,7 @@ function CountsRow({ listKey, name, counts }: { listKey: string; name: string; c
 
 function CountsTable({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return (
-    <table aria-label={label}>
+    <table className="gcpe-table" aria-label={label}>
       <thead>
         <tr>
           <th scope="col">List</th>
@@ -116,7 +116,7 @@ export function SubscribersByListReportScreen(): React.JSX.Element {
                 <CsvLink href={reportUrl("/nod/api/reports/subscribers-by-list/members.csv", { list, timing })}>Download members (CSV)</CsvLink>
               )}
               {members.data.items.length > 0 && (
-                <table aria-label="Members">
+                <table className="gcpe-table" aria-label="Members">
                   <thead>
                     <tr>
                       <th scope="col">Email</th>

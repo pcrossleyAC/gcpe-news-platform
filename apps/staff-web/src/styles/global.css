@@ -2607,3 +2607,164 @@ fieldset.gcpe-org-contact {
 .gcpe-carousel__slide-fields > .gcpe-field > label {
   font: var(--typography-regular-small-body);
 }
+
+/* Search: the box, both filters and the button on one row, labels on top, button on the inputs' line. */
+.gcpe-search__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin: 0 0 1rem;
+}
+.gcpe-search__row > .gcpe-search__q {
+  flex: 1 1 18rem;
+  max-width: 32rem;
+}
+.gcpe-search__row > .gcpe-field select {
+  max-width: 16rem;
+}
+.gcpe-search__hint {
+  color: var(--typography-color-secondary, #474543);
+  max-width: 65ch;
+}
+.gcpe-search__recent-heading {
+  font: var(--typography-bold-h5);
+  margin: 1.5rem 0 0.5rem;
+}
+
+/* Phone header: logo, title and Sign out on one line; who is signed in is shown in the Menu panel. */
+.gcpe-shell__menu-user {
+  display: none;
+}
+@media (max-width: 40rem) {
+  .gcpe-shell > .bcds-header > .bcds-header--container {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 0;
+    padding-block: 0.5rem;
+  }
+  .gcpe-shell > .bcds-header > .bcds-header--container svg#bcgov-logo-header {
+    min-width: 96px;
+    width: 96px;
+    height: auto;
+  }
+  .gcpe-shell > .bcds-header > .bcds-header--container > .bcds-header--line {
+    display: none;
+  }
+  .gcpe-shell > .bcds-header > .bcds-header--container > .bcds-header--title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: var(--typography-bold-body);
+  }
+  .gcpe-shell__user {
+    flex: none;
+  }
+  .gcpe-shell__user > span {
+    display: none;
+  }
+  .gcpe-shell__menu-user {
+    display: block;
+    margin: 0 0 0.5rem;
+    padding: 0 var(--layout-padding-medium, 1rem) 0.5rem;
+    border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+    font: var(--typography-regular-small-body);
+    overflow-wrap: anywhere;
+  }
+  .gcpe-shell__menu-user > span {
+    color: var(--typography-color-secondary, #474543);
+  }
+}
+
+/* Release page titles: each row's fields wrap onto two lines when the table can't fit across,
+ * each with its column's name above it, instead of the table scrolling sideways in its box. */
+.gcpe-page-titles__table input[type="number"] {
+  width: 5rem;
+}
+@media (max-width: 90rem) {
+  .gcpe-page-titles__table {
+    width: 100%;
+  }
+  .gcpe-page-titles__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .gcpe-page-titles__table,
+  .gcpe-page-titles__table tbody {
+    display: block;
+  }
+  .gcpe-page-titles__table tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #d8d8d8;
+  }
+  .gcpe-page-titles__table tbody td {
+    display: block;
+    border: 0;
+    padding: 0;
+  }
+  .gcpe-page-titles__table tbody td:first-child {
+    flex: 1 1 14rem;
+  }
+  .gcpe-page-titles__table tbody td:is([data-label="Language"], [data-label="Order"], [data-label="Layout"], [data-label="Page image"])::before {
+    content: attr(data-label);
+    content: attr(data-label) / "";
+    display: block;
+    font: var(--typography-regular-small-body);
+    margin-bottom: 0.25rem;
+  }
+  .gcpe-page-titles__table tbody td:first-child::before {
+    content: attr(data-label);
+    content: attr(data-label) / "";
+    display: block;
+    font: var(--typography-regular-small-body);
+    margin-bottom: 0.25rem;
+  }
+}
+@media (max-width: 90rem) {
+  .gcpe-page-titles__table td:first-child :is(.bcds-react-aria-TextField, .bcds-react-aria-TextField--container, input) {
+    width: 100%;
+  }
+}
+
+/* A record's facts (subscriber Status, Source, Registered, ...): label and value on one line
+ * each, the same as the release's facts in the editor rail. */
+.gcpe-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.375rem 1.25rem;
+  margin: 0 0 1.25rem;
+  max-width: 48rem;
+}
+.gcpe-facts dt {
+  color: var(--typography-color-secondary, #474543);
+}
+.gcpe-facts dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.gcpe-facts dd ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.gcpe-facts dd p {
+  margin: 0.25rem 0 0;
+  font-weight: 400;
+}
+
+/* Cabinet change: an empty status or messages container stays in the page (a live region must be
+ * there before its text arrives) but takes no room: out of the stack's flow, so no gap either. */
+.gcpe-cabinet-change > :is([role="status"], [role="alert"], div[tabindex="-1"]):empty {
+  position: absolute;
+  margin: 0;
+}
+.gcpe-cabinet-change > h1 {
+  margin-bottom: 0;
+}

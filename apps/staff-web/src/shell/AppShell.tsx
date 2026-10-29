@@ -117,6 +117,12 @@ export function AppShell(): React.JSX.Element {
             </Button>
           </div>
           <div id={`${uid}-menu`} className="gcpe-shell__menu" data-open={menuOpen || undefined} onClick={onMenuClick}>
+            {/* Phones only: the header has room for the title and Sign out, so who is signed in moves here. */}
+            {session.user && (
+              <p className="gcpe-shell__menu-user">
+                <span>Signed in</span> <strong>{session.user.name}</strong>
+              </p>
+            )}
             {groups.map((group) => (
               <div key={group.label} className="gcpe-shell__nav-group">
                 <p id={`${uid}-${group.label}`} className="gcpe-shell__nav-heading">
