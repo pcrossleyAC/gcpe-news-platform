@@ -8,6 +8,11 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import { HandOverPanel } from "./HandOverPanel";
 
+/** Unavailable to the user: natively disabled, or a BC button that is busy (aria-disabled, still focusable). */
+function expectUnavailable(el: HTMLElement): void {
+  expect(el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true").toBe(true);
+}
+
 const base = {
   isHq: false,
   isPublic: true,
@@ -354,7 +359,7 @@ describe("HandOverPanel", () => {
     await user.click(submit);
     expect(submit).toHaveAttribute("aria-busy", "true");
     expect(submit).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expectUnavailable(screen.getByRole("button", { name: "Cancel" }));
     expect(onBusyChange).toHaveBeenLastCalledWith(true);
     release();
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
