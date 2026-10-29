@@ -7,7 +7,8 @@ import { buildFixtureSite, FIXTURE_PAGES, serveStatic } from "../scripts/fixture
 
 const fileOf = (path: string) => (path.endsWith("/") ? `${path}index.html` : path).replace(/^\//, "");
 
-describe("the fixture site (6e exit checks)", () => {
+// Each test builds the whole fixture site; on the Windows CI runner one build has taken 14–20s+.
+describe("the fixture site (6e exit checks)", { timeout: 60_000 }, () => {
   it("every compressible file the builder wrote has stored .br and .gz copies that decompress to it, and nothing else does", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
     try {
