@@ -275,6 +275,16 @@ jobs:
           C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName gcpe-proxy-ci.example.test -Upstream https://localhost -UpstreamCertificateThumbprint $appCert.Thumbprint -HttpsPort 8443 -HttpPort 8080 -Environment Test
           # Safe to re-run.
           C:\pkg-proxy\gcpe-proxy\Install-GcpeProxy.ps1 -HostName gcpe-proxy-ci.example.test -Upstream https://localhost -HttpsPort 8443 -HttpPort 8080
+      - name: DIAG log fields
+        continue-on-error: true
+        run: |
+          $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
+          foreach ($s in @('GCPE', 'GCPE-Proxy')) {
+            & $appcmd set config -section:system.applicationHost/sites "/+[name='$s'].logFile.customFields.[logFieldName='AE',sourceName='Accept-Encoding',sourceType='RequestHeader']" /commit:apphost
+            & $appcmd set config -section:system.applicationHost/sites "/+[name='$s'].logFile.customFields.[logFieldName='CE',sourceName='Content-Encoding',sourceType='ResponseHeader']" /commit:apphost
+            & $appcmd set config -section:system.applicationHost/sites "/+[name='$s'].logFile.customFields.[logFieldName='VARY',sourceName='Vary',sourceType='ResponseHeader']" /commit:apphost
+          }
+          & $appcmd list site GCPE /config:* | Select-String -Pattern 'customField|logFile'
       - name: The proxy forwards only the public paths
         run: |
           $ErrorActionPreference = 'Stop'
@@ -314,6 +324,53 @@ jobs:
           Check "/site/... redirects to the root ($site)" ($site -like '301 */archive/')
           $redirect = curl.exe -s @res -o NUL -w '%{http_code} %{redirect_url}' "http://$($h):8080/archive/"
           Check "http redirects to https ($redirect)" ($redirect -eq "301 $base/archive/")
+      - name: DIAG probes
+        continue-on-error: true
+        run: |
+          $h = 'gcpe-proxy-ci.example.test'
+          $base = "https://$($h):8443"
+          $res = @('--resolve', "$($h):8443:127.0.0.1")
+          $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
+          function Hdr([string]$label, [string[]]$a) {
+            Write-Host "--- $label  $(Get-Date -Format 'HH:mm:ss.fff')"
+            $out = & curl.exe -k -s -D - -o NUL @a
+            $out | Where-Object { $_ -match '^(HTTP/|content-encoding|vary|cache-control|content-length|content-type|age|etag|last-modified|x-)' } | ForEach-Object { Write-Host "    $_" }
+          }
+          Hdr 'node direct, br' @('-H', 'Accept-Encoding: br', 'http://127.0.0.1:3000/')
+          Hdr 'app IIS direct, br' @('-H', 'Accept-Encoding: br', 'https://localhost/')
+          Hdr 'app IIS direct, gzip' @('-H', 'Accept-Encoding: gzip', 'https://localhost/')
+          Hdr 'app IIS direct, none' @('https://localhost/')
+          Hdr 'proxy uncached /?diag=1, br' ($res + @('-H', 'Accept-Encoding: br', "$base/?diag=1"))
+          Hdr 'proxy uncached /?diag=2, gzip' ($res + @('-H', 'Accept-Encoding: gzip', "$base/?diag=2"))
+          Hdr 'proxy uncached /?diag=3, none' ($res + @("$base/?diag=3"))
+          foreach ($p in @('/archive/', '/feed')) {
+            Hdr "proxy $p #1 br" ($res + @('-H', 'Accept-Encoding: br', "$base$p"))
+            Hdr "proxy $p #2 br (immediately)" ($res + @('-H', 'Accept-Encoding: br', "$base$p"))
+            Hdr "proxy $p #3 none (immediately)" ($res + @("$base$p"))
+            Start-Sleep -Seconds 7
+            Hdr "proxy $p #4 none (7 s later)" ($res + @("$base$p"))
+            Hdr "proxy $p #5 gzip" ($res + @('-H', 'Accept-Encoding: gzip', "$base$p"))
+            Hdr "proxy $p #6 br" ($res + @('-H', 'Accept-Encoding: br', "$base$p"))
+          }
+          Hdr 'proxy / br (now)' ($res + @('-H', 'Accept-Encoding: br', "$base/"))
+          Write-Host '=== http.sys cache state'
+          & netsh.exe http show cachestate
+          & netsh.exe http flush logbuffer | Out-Null
+          Start-Sleep -Seconds 3
+          foreach ($s in @('GCPE', 'GCPE-Proxy')) {
+            $id = (& $appcmd list site $s /text:id)
+            Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$id" -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "=== $s $($_.FullName)"; Get-Content $_.FullName | Select-Object -Last 120 }
+          }
+          Write-Host '=== cache folder'
+          Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName) $($_.Length)" }
+          Write-Host '=== proxy config'
+          & $appcmd list config -section:system.webServer/proxy
+          & $appcmd list config GCPE-Proxy -section:system.webServer/caching
+          & $appcmd list config GCPE -section:system.webServer/caching
+          & $appcmd list config GCPE-Proxy -section:system.webServer/urlCompression
+          Write-Host '=== arr schema'
+          Get-ChildItem "$env:windir\System32\inetsrv\config\schema" | ForEach-Object { Write-Host "  $($_.Name)" }
+          Get-ChildItem "$env:windir\System32\inetsrv\config\schema\arr*.xml" | ForEach-Object { Write-Host "=== $($_.Name)"; Get-Content $_.FullName }
       - name: The proxy caches public pages only, per encoding
         run: |
           $ErrorActionPreference = 'Stop'
