@@ -1564,6 +1564,25 @@ In semantic mode, `GET /api/v2/search` embeds the query (each distinct query onc
 | `NEWSAPI_SEARCH_SEMANTIC_THRESHOLD` | Cosine distance at or below which a post counts as a semantic match. Default `0.6`; 0–2. Lower is stricter. |
 | `NEWSAPI_SEARCH_RATE_LIMIT_PER_MIN` | Search requests a minute per client IP (Q74). Default `60`. A client over it gets `429 {"error":"too many requests"}`. Uses `NEWSAPI_SUBSCRIBE_CLIENT_IP_HEADER` to find the client's address, as Subscribe does. |
 
+#### Search result cache and semantic cap
+
+Two protections keep public search from being the platform's bottleneck (an exact vector scan costs about 200 ms of database CPU per query at 35,000 posts).
+
+- **Result cache.** `GET /api/v2/search` keeps each answer in the process's memory for `NEWSAPI_SEARCH_CACHE_TTL_SECONDS` (default 60, the public site's max-age). The key is the query text (whitespace collapsed, case kept), ministry, sector, type, from, to, page, page size and facets, so every distinct combination is its own entry. It is a least-recently-used cache bounded by entry count and by bytes. Identical queries arriving together share one database read. Errors, and degraded answers (see below), are never kept. The route is public and anonymous, so nothing staff-only is ever cached. The API still sends `Cache-Control: no-store`: this cache lives only inside the process, and the proxy must not cache `/api`.
+- **No invalidation on publish.** A publish or unpublish shows in search results within the TTL. That staleness is already accepted for pages, a purge hook would need cross-app wiring for no gain at 60 s, and per-process caches could not be purged consistently anyway. Set the TTL to `0` to turn the cache off.
+- **Semantic cap.** At most `NEWSAPI_SEARCH_SEMANTIC_MAX_CONCURRENT` vector queries run at once (default `max(2, CPU cores - 1)`). Up to `NEWSAPI_SEARCH_SEMANTIC_QUEUE` more (default 8) wait up to `NEWSAPI_SEARCH_SEMANTIC_QUEUE_WAIT_MS` (default 250) for a slot. Beyond that the request is answered in text mode (`"mode": "text"`) with the response header `X-Search-Fallback: capacity`, so visitors still get results and an overloaded database sheds the expensive work first. A degraded answer is not cached. Filter-only searches and text-only deployments never take a slot. Text search has no cap of its own: it uses the database index and is bounded by the connection pool.
+
+| Variable | Meaning |
+|---|---|
+| `NEWSAPI_SEARCH_CACHE_TTL_SECONDS` | Default `60`; 0–3600. `0` turns the cache off. |
+| `NEWSAPI_SEARCH_CACHE_MAX_ENTRIES` | Default `500`. |
+| `NEWSAPI_SEARCH_CACHE_MAX_MB` | Default `32`. Serialised size of what is cached, estimated. |
+| `NEWSAPI_SEARCH_SEMANTIC_MAX_CONCURRENT` | Vector queries at once. Default `max(2, CPU cores - 1)`. |
+| `NEWSAPI_SEARCH_SEMANTIC_QUEUE` | Semantic queries allowed to wait for a slot. Default `8`; `0` means none wait. |
+| `NEWSAPI_SEARCH_SEMANTIC_QUEUE_WAIT_MS` | Longest wait for a slot. Default `250`; 0–5000. |
+
+Each running process has its own cache and its own cap, so with N processes behind a farm the totals are N times these numbers.
+
 **Cost:** an uncached semantic query compares the query with every published post's vector that the filters allow: 120–170 ms at 20,000 posts on a laptop, growing in proportion (Q79).
 
 **Hand check on boxs.ca** (text mode there): after 61 quick `curl -s -o /dev/null -w '%{http_code}\n' 'https://boxs.ca/api/v2/search?q=x'` calls from one machine within a minute, the last is `429`.
