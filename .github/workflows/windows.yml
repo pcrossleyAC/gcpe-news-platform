@@ -63,7 +63,7 @@ jobs:
       matrix:
         os: [windows-2022, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         shell: powershell
@@ -109,10 +109,62 @@ jobs:
           Check "service runs as NT SERVICE\gcpe-stack ($account)" ($account -eq 'NT SERVICE\gcpe-stack')
           $direct = Test-NetConnection -ComputerName $env:COMPUTERNAME -Port 3000 -WarningAction SilentlyContinue
           Write-Host "port 3000 from the machine's own name: $($direct.TcpTestSucceeded) (loopback isn't firewalled; the rule blocks other machines)"
-      - name: Install-Gcpe.ps1 again (safe to re-run; deploys a second release)
+      - name: X-Forwarded-For without ports, private IIS logs, log retention
         run: |
-          C:\pkg\gcpe-windows\Install-Gcpe.ps1 -HostName gcpe-ci.example.test
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
+          $proxyCfg = (& $appcmd list config -section:system.webServer/proxy) -join "`n"
+          Check 'ARR leaves the client port out of X-Forwarded-For' ($proxyCfg -match 'includePortInXForwardedFor="false"')
+          foreach ($p in @('api/Subscribe', 'nod/Subscribe', 'subscribe', 'news-subscribe', 'newsletters', 'enewsletters')) {
+            $cfg = (& $appcmd list config "GCPE/$p" -section:system.webServer/httpLogging) -join "`n"
+            Check "/$p is never logged (httpLogging dontLog)" ($cfg -match 'dontLog="true"')
+          }
+          $siteId = (& $appcmd list site GCPE /text:id)
+          $logDir = "C:\inetpub\logs\LogFiles\W3SVC$siteId"
+          curl.exe -k -s -o NUL 'https://localhost/subscribe/manage/?token=ci-secret-token-1'
+          curl.exe -k -s -o NUL 'https://localhost/Subscribe/?token=ci-secret-token-2'
+          curl.exe -k -s -o NUL 'https://localhost/api/Subscribe/CheckEmailActivationToken/ci-secret-token-3?api-version=1.0'
+          curl.exe -k -s -o NUL 'https://localhost/nod/Subscribe/SubscriberInformation?emailAddress=ci-secret@example.test'
+          curl.exe -k -s -o NUL -H 'Referer: https://localhost/subscribe/manage/?token=ci-secret-token-4' 'https://localhost/?ci-log-control=1'
+          & netsh.exe http flush logbuffer | Out-Null
+          Start-Sleep -Seconds 2
+          $log = (Get-ChildItem "$logDir\*.log" | Get-Content) -join "`n"
+          Check 'the control request is logged (logging works)' ($log -match 'ci-log-control=1')
+          Check 'no subscribe URL, token or e-mail address in the IIS log' ($log -notmatch 'ci-secret')
+          $fields = @(($log -split "`n") | Where-Object { $_ -like '#Fields:*' })[-1]
+          Check "no Referer field ($fields)" ($fields -notmatch 'Referer')
+          $task = 'GCPE IIS log cleanup (GCPE)'
+          Check 'the log cleanup task exists' ([bool](Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue))
+          Set-Content "$logDir\u_ex000101.log" 'old'
+          (Get-Item "$logDir\u_ex000101.log").LastWriteTime = (Get-Date).AddDays(-40)
+          Set-Content "$logDir\ci-fresh.log" 'fresh'
+          $started = (Get-Date).AddSeconds(-2)
+          Start-ScheduledTask -TaskName $task
+          $deadline = (Get-Date).AddMinutes(3)
+          do { Start-Sleep -Seconds 3; $t = Get-ScheduledTask -TaskName $task; $i = $t | Get-ScheduledTaskInfo } while (($t.State -eq 'Running' -or $i.LastRunTime -lt $started) -and (Get-Date) -lt $deadline)
+          Check "the cleanup task ran (result $($i.LastTaskResult))" ($i.LastTaskResult -eq 0)
+          Check 'a log older than 30 days is deleted' (-not (Test-Path "$logDir\u_ex000101.log"))
+          Check 'a recent log is kept' (Test-Path "$logDir\ci-fresh.log")
+          Remove-Item "$logDir\ci-fresh.log"
+      # Windows Firewall never filters loopback, so the runner still reaches its own IIS; what is
+      # checked is the rule set (no second machine here to be refused).
+      - name: Install-Gcpe.ps1 again with -AllowedClientRanges (safe to re-run; deploys a second release)
+        run: |
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          C:\pkg\gcpe-windows\Install-Gcpe.ps1 -HostName gcpe-ci.example.test -AllowedClientRanges 192.0.2.0/24, 198.51.100.7/32
           if (@(Get-ChildItem C:\gcpe\releases -Directory).Count -ne 2) { throw 'expected two releases' }
+          $rule = Get-NetFirewallRule -DisplayName 'GCPE web: allowed client ranges only' -ErrorAction SilentlyContinue
+          Check 'the allow rule exists and is enabled' ($rule -and $rule.Enabled -eq 'True' -and $rule.Action -eq 'Allow')
+          $remote = @(($rule | Get-NetFirewallAddressFilter).RemoteAddress)
+          Write-Host "remote addresses: $($remote -join ', ')"
+          Check 'it names exactly the two ranges' ($remote.Count -eq 2 -and ($remote -join ' ') -match '192\.0\.2\.0' -and ($remote -join ' ') -match '198\.51\.100\.7')
+          $ports = @(($rule | Get-NetFirewallPortFilter).LocalPort)
+          Check "it covers 443 and 80 ($($ports -join ', '))" ($ports -contains '443' -and $ports -contains '80')
+          $iis = @(Get-NetFirewallRule -Name 'IIS-WebServerRole-HTTP*-In-TCP' -ErrorAction SilentlyContinue)
+          Check "IIS's own web rules exist ($($iis.Count)) and are all off" ($iis.Count -gt 0 -and @($iis | Where-Object { $_.Enabled -eq 'True' }).Count -eq 0)
+          $health = curl.exe -k -sS -f https://localhost/stack/health | ConvertFrom-Json
+          Check 'the site still answers on loopback' ($health.status -eq 'ok')
       - name: A release that never becomes healthy is rolled back
         run: |
           $before = (Get-Item C:\gcpe\current).Target
@@ -125,6 +177,59 @@ jobs:
           $health = curl.exe -k -sS -f https://localhost/stack/health | ConvertFrom-Json
           if ($health.status -ne 'ok') { throw 'the site is not healthy after the rollback' }
           Write-Host 'ok: rolled back and healthy'
+      - name: The firewall restriction is kept on a re-run and removed by -AllowAllClients
+        run: |
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          C:\pkg\gcpe-windows\Install-Gcpe.ps1 -HostName gcpe-ci.example.test
+          Check 'a re-run without -AllowedClientRanges keeps it' ([bool](Get-NetFirewallRule -DisplayName 'GCPE web: allowed client ranges only' -ErrorAction SilentlyContinue))
+          Check "IIS's own web rules stay off" (@(Get-NetFirewallRule -Name 'IIS-WebServerRole-HTTP*-In-TCP' | Where-Object { $_.Enabled -eq 'True' }).Count -eq 0)
+          C:\pkg\gcpe-windows\Install-Gcpe.ps1 -HostName gcpe-ci.example.test -AllowAllClients
+          Check '-AllowAllClients removes it' (-not (Get-NetFirewallRule -DisplayName 'GCPE web: allowed client ranges only' -ErrorAction SilentlyContinue))
+          Check "and turns IIS's own web rules back on" (@(Get-NetFirewallRule -Name 'IIS-WebServerRole-HTTP*-In-TCP' | Where-Object { $_.Enabled -ne 'True' }).Count -eq 0)
+      - name: Register-GcpeBackup.ps1 (nightly backup task, first run, retention, a dump restores)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          New-Item -ItemType Directory -Force C:\gcpe\data\storage | Out-Null
+          Set-Content C:\gcpe\data\storage\ci-backup-probe.txt 'probe'
+          $machine = "C:\gcpe-backups\$env:COMPUTERNAME"
+          New-Item -ItemType Directory -Force "$machine\20000101-000000", "$machine\keep-me" | Out-Null
+          Set-Content "$machine\20000101-000000\COMPLETE.txt" 'old'
+          C:\pkg\gcpe-windows\Register-GcpeBackup.ps1 -BackupPath C:\gcpe-backups -WaitMinutes 20
+          $info = Get-ScheduledTask -TaskName 'GCPE nightly backup' | Get-ScheduledTaskInfo
+          Check "the task ran as SYSTEM and succeeded (result $($info.LastTaskResult))" ($info.LastTaskResult -eq 0)
+          $run = Get-ChildItem $machine -Directory | Where-Object { $_.Name -match '^\d{8}-\d{6}$' } | Sort-Object Name -Descending | Select-Object -First 1
+          Write-Host "backup: $($run.FullName)"
+          Get-ChildItem $run.FullName -Recurse | ForEach-Object { Write-Host "  $($_.FullName.Substring($run.FullName.Length)) $(if (-not $_.PSIsContainer) { $_.Length })" }
+          $dumps = @(Get-ChildItem "$($run.FullName)\db\gcpe_*.dump")
+          Check "one dump per database ($($dumps.Count))" ($dumps.Count -eq 7)
+          Check 'the run is marked complete' (Test-Path "$($run.FullName)\COMPLETE.txt")
+          Check 'release files copied' (Test-Path "$($run.FullName)\files\storage\ci-backup-probe.txt")
+          Check 'settings copied' (Test-Path "$($run.FullName)\config\gcpe.env")
+          Check 'a backup older than 14 days is deleted' (-not (Test-Path "$machine\20000101-000000"))
+          Check 'a folder the script did not make is kept' (Test-Path "$machine\keep-me")
+          foreach ($dir in @($machine, $run.FullName)) {
+            $acl = Get-Acl -LiteralPath $dir
+            $who = @($acl.Access | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique)
+            Check "$dir inherits nothing ($($acl.AreAccessRulesProtected))" ($acl.AreAccessRulesProtected)
+            Check "$dir is for Administrators and SYSTEM only ($($who -join ', '))" (($who -join ',') -eq 'BUILTIN\Administrators,NT AUTHORITY\SYSTEM')
+          }
+          $envAcl = Get-Acl -LiteralPath "$($run.FullName)\config\gcpe.env"
+          Check "the copied gcpe.env is Administrators and SYSTEM only ($(@($envAcl.Access | ForEach-Object { $_.IdentityReference.Value }) -join ', '))" (@($envAcl.Access | Where-Object { @('BUILTIN\Administrators', 'NT AUTHORITY\SYSTEM') -notcontains $_.IdentityReference.Value }).Count -eq 0)
+          # The dump restores: into a scratch database, as the restore runbook does.
+          $bin = "$env:ProgramFiles\PostgreSQL\17\bin"
+          $env:PGPASSWORD = (Get-Content -Raw C:\gcpe\config\postgres-superuser.txt).Trim()
+          function Run([string]$exe, [string[]]$argv) {
+            $p = Start-Process -FilePath "$bin\$exe" -ArgumentList $argv -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:RUNNER_TEMP\out.txt" -RedirectStandardError "$env:RUNNER_TEMP\err.txt"
+            Get-Content "$env:RUNNER_TEMP\err.txt" | ForEach-Object { Write-Host "  $($exe): $_" }
+            [pscustomobject]@{ Code = $p.ExitCode; Out = (Get-Content -Raw "$env:RUNNER_TEMP\out.txt") }
+          }
+          $core = ($dumps | Where-Object { $_.Name -eq 'gcpe_core.dump' }).FullName
+          Check 'createdb' ((Run 'createdb.exe' @('-h', 'localhost', '-U', 'postgres', 'gcpe_restore_check')).Code -eq 0)
+          Check 'pg_restore of gcpe_core' ((Run 'pg_restore.exe' @('-h', 'localhost', '-U', 'postgres', '-d', 'gcpe_restore_check', '--no-owner', '--exit-on-error', "`"$core`"")).Code -eq 0)
+          $tables = (Run 'psql.exe' @('-h', 'localhost', '-U', 'postgres', '-d', 'gcpe_restore_check', '-At', '-c', '"SELECT count(*) FROM pg_tables WHERE schemaname NOT IN (''pg_catalog'', ''information_schema'')"')).Out.Trim()
+          Check "the restored database has tables ($tables)" ([int]$tables -gt 0)
+          Run 'dropdb.exe' @('-h', 'localhost', '-U', 'postgres', 'gcpe_restore_check') | Out-Null
       - name: The importers load and reach for SQL Server
         run: |
           $sqlpw = ConvertTo-SecureString 'not-a-real-password' -AsPlainText -Force
@@ -228,8 +333,9 @@ jobs:
           Check "a gzip-only client never gets br ($($gzip.Status) '$($gzip.Encoding)')" ($gzip.Status -eq '200' -and ($gzip.Encoding -eq 'gzip' -or $gzip.Encoding -eq ''))
           $plain = Fetch '/' ''
           Check "a client without Accept-Encoding gets an unencoded body ($($plain.Status) '$($plain.Encoding)')" ($plain.Status -eq '200' -and $plain.Encoding -eq '')
-          # Never cached: the API, the subscribe pages, anything with a query string.
-          foreach ($t in @(@('/api/v2/ministries', '', ''), @('/subscribe/', '', ''), @('/', 'ci=1', '?ci=1'))) {
+          # Never cached: the API and anything with a query string (counted in the app server's log).
+          # The subscribe pages are never logged at all, so for them the cache-folder check below decides.
+          foreach ($t in @(@('/api/v2/ministries', '', ''), @('/', 'ci=1', '?ci=1'))) {
             $before = Logged $appSite $t[0] $t[1]
             Fetch "$($t[0])$($t[2])" 'gzip' | Out-Null
             Start-Sleep -Seconds 7
@@ -244,6 +350,29 @@ jobs:
           $files | ForEach-Object { Write-Host "  cached: $_" }
           Check "the cache folder holds something ($($files.Count) files)" ($files.Count -gt 0)
           Check "nothing staff, API or subscribe in the cache folder" (@($files | Where-Object { $_ -match '\\(hub|core|nrms|nod|stack|api|subscribe)(\\|\.|$)' }).Count -eq 0)
+      - name: The proxy never logs subscribe URLs
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          $h = 'gcpe-proxy-ci.example.test'
+          $base = "https://$($h):8443"
+          $res = @('--resolve', "$($h):8443:127.0.0.1")
+          $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
+          foreach ($p in @('api/Subscribe', 'subscribe', 'news-subscribe', 'newsletters', 'enewsletters')) {
+            $cfg = (& $appcmd list config "GCPE-Proxy/$p" -section:system.webServer/httpLogging) -join "`n"
+            Check "/$p is never logged at the proxy" ($cfg -match 'dontLog="true"')
+          }
+          curl.exe -k -s @res -o NUL "$base/subscribe/manage/?token=ci-proxy-secret-1"
+          curl.exe -k -s @res -o NUL "$base/api/Subscribe/CheckEmailActivationToken/ci-proxy-secret-2?api-version=1.0"
+          curl.exe -k -s @res -o NUL -H 'Referer: https://x/subscribe/?token=ci-proxy-secret-3' "$base/?ci-proxy-control=1"
+          & netsh.exe http flush logbuffer | Out-Null
+          Start-Sleep -Seconds 2
+          $proxyLog = (Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$(& $appcmd list site GCPE-Proxy /text:id)\*.log" | Get-Content) -join "`n"
+          $appLog = (Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$(& $appcmd list site GCPE /text:id)\*.log" | Get-Content) -join "`n"
+          Check 'the control request is logged at the proxy' ($proxyLog -match 'ci-proxy-control=1')
+          Check 'no subscribe token in the proxy log' ($proxyLog -notmatch 'ci-proxy-secret')
+          Check 'no subscribe token in the app server log' ($appLog -notmatch 'ci-proxy-secret')
+          Check 'the proxy log cleanup task exists' ([bool](Get-ScheduledTask -TaskName 'GCPE IIS log cleanup (GCPE-Proxy)' -ErrorAction SilentlyContinue))
       - name: The proxy's client address restriction
         run: |
           $ErrorActionPreference = 'Stop'

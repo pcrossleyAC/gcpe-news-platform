@@ -13,13 +13,22 @@
   3. Creates the PostgreSQL login and the seven databases, and enables pgvector.
   4. Installs the gcpe-stack Windows service (WinSW running node.exe as NT SERVICE\gcpe-stack).
   5. Creates the IIS site "GCPE": https on 443 (and http on 80 redirecting to it), forwarding
-     everything to the stack on 127.0.0.1:<Port>.
+     everything to the stack on 127.0.0.1:<Port> (X-Forwarded-For without the client's port).
+     With -AllowedClientRanges, Windows Firewall lets only those ranges reach 443 and 80.
+     IIS never logs the subscribe pages or /api/Subscribe (their URLs carry e-mail addresses and
+     tokens), logs no Referer, and a nightly task deletes its logs older than -LogRetentionDays.
   6. Deploys the release in this package (Deploy-GcpeRelease.ps1) and checks it's healthy.
 
 .EXAMPLE
   # Dev, everything on this server, a self-signed certificate, mail redirected to one inbox:
   .\Install-Gcpe.ps1 -HostName news-dev.example.gov.bc.ca -SmtpHost apps.smtp.gov.bc.ca `
       -MailFrom noreply-dev@gov.bc.ca -MailRedirectTo you@gov.bc.ca
+
+.EXAMPLE
+  # Test's app server, behind the DMZ proxy 10.40.1.10, reachable from it and two staff ranges only:
+  .\Install-Gcpe.ps1 -HostName news-test.example.gov.bc.ca -CertificateThumbprint <thumbprint> `
+      -ProxyHops 2 -AllowedClientRanges 10.40.1.10/32, 142.22.0.0/16, 142.34.0.0/16 `
+      -SmtpHost apps.smtp.gov.bc.ca -MailFrom noreply-test@gov.bc.ca -MailRedirectTo you@gov.bc.ca
 #>
 [CmdletBinding()]
 param(
@@ -51,13 +60,24 @@ param(
     [string]$GoogleSiteVerification,
     # How many reverse proxies sit in front of this server (TRUST_PROXY_HOPS): 1 (default) when
     # clients reach IIS directly; 2 when a DMZ reverse proxy sits in front of this server.
-    [ValidateRange(1, 5)][int]$ProxyHops = 1
+    [ValidateRange(1, 5)][int]$ProxyHops = 1,
+    # Only these client IPv4 ranges (CIDR) may reach this server's IIS ports (443 and 80) through
+    # Windows Firewall: the DMZ proxy's address and the named staff ranges. A re-run keeps the
+    # ranges already set unless you pass new ones, or -AllowAllClients to remove the restriction.
+    [string[]]$AllowedClientRanges,
+    [switch]$AllowAllClients,
+    # IIS log files (and http.sys's HTTPERR logs) older than this many days are deleted every night.
+    [ValidateRange(1, 3650)][int]$LogRetentionDays = 30
 )
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'lib\Gcpe.psm1') -Force
 
 Assert-GcpeAdministrator
+if ($AllowedClientRanges -and $AllowAllClients) { throw 'Pass -AllowedClientRanges or -AllowAllClients, not both.' }
+# Checked before anything is installed: a typo must never become a wider (or empty) allow-list.
+$clientRanges = @()
+foreach ($r in @($AllowedClientRanges)) { if ($r) { ConvertFrom-GcpeCidr -Cidr $r.Trim() | Out-Null; $clientRanges += $r.Trim() } }
 if (-not (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue)) { throw 'This script needs Windows Server (Install-WindowsFeature is missing).' }
 if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'app\stack.js'))) { throw "Run this from the extracted package: $PSScriptRoot\app\stack.js is missing." }
 
@@ -266,13 +286,48 @@ $ruleName = "GCPE stack port $Port (loopback only)"
 if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
     New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol TCP -LocalPort $Port -Action Block | Out-Null
 }
-Enable-NetFirewallRule -DisplayGroup 'World Wide Web Services (HTTP)' -ErrorAction SilentlyContinue
-Write-GcpeOk 'inbound connections to the stack''s port are blocked; IIS (80/443) is open'
+Write-GcpeOk 'inbound connections to the stack''s port are blocked'
+
+Write-GcpeStep 'Firewall: who may reach IIS (443, 80)'
+# Windows Firewall blocks inbound by default and an Allow rule opens a port to the addresses it
+# names, so "only these ranges" is: our one Allow rule scoped to the ranges, and no other enabled
+# Allow rule for 443 or 80. IIS's own rules (IIS-WebServerRole-HTTP-In-TCP, -HTTPS-In-TCP) open
+# them to everyone; they are turned off while the restriction is on and back on without it.
+# Loopback traffic is never filtered, so this server always reaches its own IIS.
+$webRule = 'GCPE web: allowed client ranges only'
+function Get-OtherWebAllowRules {
+    # ActiveStore: the rules in force, Group Policy's included, not only this server's own.
+    @(Get-NetFirewallPortFilter -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.Protocol -eq 'TCP' -and @(@($_.LocalPort) | Where-Object { $_ -eq '443' -or $_ -eq '80' }).Count -gt 0 } |
+        Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' -and $_.DisplayName -ne $webRule })
+}
+$iisRules = @(Get-NetFirewallRule -Name 'IIS-WebServerRole-HTTP*-In-TCP' -ErrorAction SilentlyContinue)
+if ($clientRanges.Count -gt 0) {
+    Get-NetFirewallRule -DisplayName $webRule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    New-NetFirewallRule -DisplayName $webRule -Direction Inbound -Protocol TCP -LocalPort 443, 80 -RemoteAddress $clientRanges -Action Allow | Out-Null
+    foreach ($r in $iisRules) { Disable-NetFirewallRule -Name $r.Name }
+    $others = Get-OtherWebAllowRules
+    if ($others.Count -gt 0) {
+        throw "These enabled firewall rules also open port 443 or 80 to other addresses, so the restriction would not hold: $(($others | ForEach-Object { "'$($_.DisplayName)' ($($_.Name))" }) -join ', '). Disable them (or ask whoever manages them), then re-run."
+    }
+    Write-GcpeOk "443 and 80 accept only $($clientRanges -join ', ') (and this server itself)"
+} elseif ($AllowAllClients) {
+    Get-NetFirewallRule -DisplayName $webRule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    foreach ($r in $iisRules) { Enable-NetFirewallRule -Name $r.Name }
+    Write-GcpeOk 'restriction removed: 443 and 80 are open to every client'
+} elseif (Get-NetFirewallRule -DisplayName $webRule -ErrorAction SilentlyContinue) {
+    $kept = @((Get-NetFirewallRule -DisplayName $webRule | Get-NetFirewallAddressFilter).RemoteAddress)
+    Write-GcpeOk "keeping the restriction already set: $($kept -join ', ') (-AllowAllClients removes it)"
+} else {
+    foreach ($r in $iisRules) { Enable-NetFirewallRule -Name $r.Name }
+    Write-GcpeOk '443 and 80 are open to every client (no -AllowedClientRanges)'
+}
 
 # --- 5. IIS -----------------------------------------------------------------------------------
 Write-GcpeStep "IIS site $siteName"
 $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'
-& $appcmd set config -section:system.webServer/proxy /enabled:"True" /preserveHostHeader:"True" /reverseRewriteHostInResponseHeaders:"False" /responseBufferLimit:"0" /timeout:"00:05:00" /commit:apphost | Out-Null
+# includePortInXForwardedFor off: the app reads X-Forwarded-For as plain addresses, so per-visitor
+# limits key on the client's address, not address:port (a new key for every connection).
+& $appcmd set config -section:system.webServer/proxy /enabled:"True" /preserveHostHeader:"True" /reverseRewriteHostInResponseHeaders:"False" /includePortInXForwardedFor:"False" /responseBufferLimit:"0" /timeout:"00:05:00" /commit:apphost | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'could not enable the ARR proxy' }
 $allowed = (& $appcmd list config -section:system.webServer/rewrite/allowedServerVariables) -join "`n"
 foreach ($var in @('HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST')) {
@@ -350,6 +405,11 @@ $webConfig = @"
 Invoke-GcpeQuiet -FilePath $appcmd -Arguments @('start', 'site', $siteName)
 Write-GcpeOk "https://$HostName/ forwards to 127.0.0.1:$Port"
 
+Write-GcpeStep "IIS logs: subscribe URLs never logged, $LogRetentionDays days kept"
+# The paths whose URLs carry e-mail addresses or tokens (docs/deploy/windows.md, "Logs").
+$iisLogDir = Set-GcpeIisLogging -SiteName $siteName -RetentionDays $LogRetentionDays -PrivatePaths @('api/Subscribe', 'nod/Subscribe', 'subscribe', 'news-subscribe', 'newsletters', 'enewsletters')
+Write-GcpeOk "no entries for /api/Subscribe, /nod/Subscribe or the subscribe pages; no Referer field; $iisLogDir keeps $LogRetentionDays days"
+
 # --- 6. Deploy --------------------------------------------------------------------------------
 Write-GcpeStep 'Deploying the release in this package'
 & (Join-Path $PSScriptRoot 'Deploy-GcpeRelease.ps1') -Package $PSScriptRoot -Root $Root
@@ -362,7 +422,8 @@ Write-Host "  Health:            https://$HostName/stack/health"
 Write-Host "  Settings:          $($paths.EnvFile)"
 Write-Host "  Stack logs:        $($paths.ServiceLogs)"
 Write-Host "  This install log:  $transcript"
-Write-Host '  Next: import the legacy data with .\Import-GcpeLegacy.ps1 (docs/deploy/windows.md, step 6).'
+Write-Host "  IIS logs:          $iisLogDir ($LogRetentionDays days)"
+Write-Host '  Next: import the legacy data with .\Import-GcpeLegacy.ps1, then schedule backups with .\Register-GcpeBackup.ps1 (docs/deploy/windows.md).'
 
 } finally {
     Stop-Transcript | Out-Null

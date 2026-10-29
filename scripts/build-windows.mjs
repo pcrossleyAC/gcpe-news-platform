@@ -32,6 +32,7 @@ export const TOOLS = [
   "apps/nrms/src/cli/replay-to-news-api.ts",
   "apps/nrms/src/cli/release-holds.ts",
   "apps/public-site/src/cli/rebuild-all.ts",
+  "apps/public-site/src/cli/precompress.ts",
   "apps/news-api/src/cli/search-backfill.ts",
   "scripts/windows-env.ts",
   "scripts/windows-db-setup.ts",

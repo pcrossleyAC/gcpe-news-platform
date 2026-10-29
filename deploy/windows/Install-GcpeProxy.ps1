@@ -25,6 +25,8 @@
      Everything else answers 404 here and never reaches the app server: /hub, /core, /nrms,
      /nod, /calendar, /distribution, /site-builder, /stack, /events, /health and the test fakes.
   5. -Environment Test adds "X-Robots-Tag: noindex, nofollow" to every response.
+  6. IIS never logs the subscribe pages or /api/Subscribe (their URLs carry e-mail addresses and
+     tokens), logs no Referer, and a nightly task deletes its logs older than -LogRetentionDays.
 
   The app server behind it needs Install-Gcpe.ps1 -ProxyHops 2, and its port 443 must accept
   connections only from this server (and the staff network): anything else that can reach it
@@ -65,7 +67,9 @@ param(
     [ValidateRange(1, 1000)][int]$CacheMaxSizeGB = 5,
     [ValidateRange(1, 65535)][int]$HttpsPort = 443,
     [ValidateRange(1, 65535)][int]$HttpPort = 80,
-    [string]$Root = 'C:\gcpe-proxy'
+    [string]$Root = 'C:\gcpe-proxy',
+    # IIS log files (and http.sys's HTTPERR logs) older than this many days are deleted every night.
+    [ValidateRange(1, 3650)][int]$LogRetentionDays = 30
 )
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
@@ -374,6 +378,10 @@ $robots
 Invoke-GcpeQuiet -FilePath $appcmd -Arguments @('start', 'site', $siteName)
 Write-GcpeOk "https://$httpsAuthority/ forwards the public paths to $upstreamBase"
 
+Write-GcpeStep "IIS logs: subscribe URLs never logged, $LogRetentionDays days kept"
+$iisLogDir = Set-GcpeIisLogging -SiteName $siteName -RetentionDays $LogRetentionDays -PrivatePaths (@('api/Subscribe') + $NeverCachedPaths)
+Write-GcpeOk "no entries for /api/Subscribe or the subscribe pages; no Referer field; $iisLogDir keeps $LogRetentionDays days"
+
 # --- 5. Check it through the proxy --------------------------------------------------------------
 Write-GcpeStep 'Checking through the proxy'
 $resolve = "$($HostName):$($HttpsPort):127.0.0.1"
@@ -400,7 +408,8 @@ Write-Host "  Forwards to:       $upstreamBase"
 Write-Host "  Cache:             $cacheDir (at most $CacheMaxSizeGB GB)"
 Write-Host "  Rules:             $(Join-Path $siteDir 'web.config')"
 Write-Host "  This install log:  $transcript"
-Write-Host '  The app server needs Install-Gcpe.ps1 -ProxyHops 2, and its port 443 open only to this server and the staff network (docs/deploy/windows.md, "DMZ reverse proxy").'
+Write-Host "  IIS logs:          $iisLogDir ($LogRetentionDays days)"
+Write-Host '  The app server needs Install-Gcpe.ps1 -ProxyHops 2 -AllowedClientRanges <this server>/32, <staff ranges> (docs/deploy/windows.md, "Test").'
 
 } finally {
     Stop-Transcript | Out-Null
