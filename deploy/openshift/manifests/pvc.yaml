@@ -1,0 +1,15 @@
+# DATA_DIR (/data): everything the stack writes — the rendered public site (site-output/),
+# uploaded files (storage/), Calendar files (calendar-files/), logs/errors.jsonl. Back it up.
+# ReadWriteOnce with one replica (deployment.yaml); more replicas need ReadWriteMany storage
+# (BC Gov: a file storage class) — see docs/deploy/openshift.md, "Scaling".
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gcpe-stack-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  # BC Gov OpenShift (assumption — check your cluster's `oc get storageclass`): netapp-file-standard.
+  storageClassName: "<storage class>"
+  resources:
+    requests:
+      storage: 10Gi

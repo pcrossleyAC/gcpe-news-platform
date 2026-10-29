@@ -9,3 +9,11 @@ docs
 .env
 .env.*
 **/*.log
+# Local test and tool output (deploy/openshift/Dockerfile copies the whole context).
+test-results
+playwright-report
+blob-report
+parity-out
+.impeccable
+data
+apps/calendar/import-reports

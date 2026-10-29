@@ -414,6 +414,16 @@ Without Docker, `brew install mailpit && mailpit` gives the same SMTP/UI pair di
 
 Point Distribution at it with `SMTP_HOST=localhost SMTP_PORT=1025` (no `SMTP_USER`/`SMTP_PASS` — Mailpit accepts unauthenticated SMTP) and open http://localhost:8025 to watch messages arrive instead of hitting a real mail server. Remember Distribution still needs `MAIL_REDIRECT_TO` or `MAIL_ALLOW_REAL_RECIPIENTS=true` set regardless (see the mail-redirect rule above) — Mailpit being a sink doesn't exempt it from that check.
 
+## Deploying
+
+Every deployment runs the same release, built by `scripts/build-siteground.mjs`: the whole platform (`apps/stack`) in one Node process.
+
+- [docs/deploy/windows.md](docs/deploy/windows.md) — Windows Server + IIS: **production** (Dev, Test, Prod).
+- [docs/deploy/siteground.md](docs/deploy/siteground.md) — SiteGround: the boxs.ca test host; also the reference for every environment variable.
+- [docs/deploy/openshift.md](docs/deploy/openshift.md) — a Linux container image (`deploy/openshift/Dockerfile`) for a possible later move to BC Gov OpenShift. **Not used in production**; CI builds and smoke-tests it on every change.
+
+The per-app `apps/*/Dockerfile` images predate the single-stack design and are not a deployment target.
+
 ## Known limitations
 
 Deferred by the Phase 2 final-review controller rulings (P2-R22, P2-R25) — tracked here rather than fixed in this pass:
