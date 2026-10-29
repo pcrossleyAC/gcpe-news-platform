@@ -573,7 +573,8 @@ body {
   margin: 1rem 0;
 }
 
-/* The list's h1 with its New release button on the same line; the folder tabs under them. */
+/* The list's h1 with its New release button on the same line, under the folder tabs (the
+ * section tabs sit above the page heading in every section). */
 .gcpe-release-list__head {
   display: flex;
   flex-wrap: wrap;
@@ -587,9 +588,6 @@ body {
 }
 .gcpe-release-list > h1 {
   margin-bottom: 0.75rem;
-}
-.gcpe-release-list .gcpe-section-tabs ul {
-  margin-bottom: 0;
 }
 
 .gcpe-release-list__rows {

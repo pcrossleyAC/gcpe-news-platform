@@ -125,6 +125,13 @@ describe("ForecastScreen (spec addendum §11; Releases.aspx's Forecast folder)",
     expect(tabs.map((t) => t.textContent)).toEqual(["Forecast", "Drafts", "Scheduled", "Published"]);
   });
 
+  it("puts the folder tabs above the h1, as every section does", async () => {
+    renderForecast();
+    const tabs = await screen.findByRole("navigation", { name: "Release folders" });
+    const h1 = screen.getByRole("heading", { level: 1, name: "Forecast" });
+    expect(tabs.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("has no serious or critical axe violations: listed, Editor, no Calendar access, empty, failed", async () => {
     for (const opts of [{}, { roles: ["NRMS.Editor"] }, { forecast: page({ items: [ITEMS[0]!], total: 1, calendarActivities: false }) }, { forecast: page({ items: [], total: 0 }) }, { forecast: "error" as const }]) {
       const { container } = renderForecast(opts);

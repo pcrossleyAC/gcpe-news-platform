@@ -89,6 +89,14 @@ describe("ReleaseListScreen", () => {
     expect(releasesCall).toBe("/nrms/api/releases?folder=drafts&type=all&page=1&pageSize=25");
   });
 
+  // The section tabs sit above the page heading, as on Website, Subscribers and Calendar.
+  it("puts the folder tabs above the h1", async () => {
+    renderScreen("drafts", "/releases/drafts");
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Releases" });
+    const tabs = screen.getByRole("navigation", { name: "Release folders" });
+    expect(tabs.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("has exactly one h1", async () => {
     renderScreen("drafts", "/releases/drafts");
     await screen.findByText("A headline");
