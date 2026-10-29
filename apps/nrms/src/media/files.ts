@@ -1,5 +1,5 @@
-import { and, eq, sql } from "drizzle-orm";
-import type { Db, Tx } from "@gcpe/db-kit";
+import { and, eq, ne, sql } from "drizzle-orm";
+import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
 import { appendMatchingExtension, randomFileKey, sniff, type ObjectStore, type SniffedType } from "@gcpe/storage";
 import { newsReleases, releaseFiles } from "../db/schema";
@@ -90,6 +90,45 @@ export async function removeReleaseFile(db: Db, store: ObjectStore, id: string, 
   });
   if (removedKey) await deleteQuietly(store, removedKey, "stored file", "file removed");
   return view;
+}
+
+/**
+ * Q17 (owner decision 2026-10-28): whether the public `/files/<storageKey>` may serve this file
+ * right now. True only while the file's release is on the public site — `live`, which the
+ * publisher sets in the same transaction as `release.published` (so only once the go-live /
+ * embargo time has passed) and clears when an unpublish completes — and not while an unpublish
+ * staff have already asked for is waiting for the publisher's next run (`unpublishing`), so a
+ * takedown doesn't wait up to PUBLISH_INTERVAL_MS for the files. A hidden (`deleted`) release is
+ * never live (deleteRelease refuses a live one); the status check is belt and braces. A
+ * hard-deleted release's rows are gone, so its keys, like unknown ones, are simply not found.
+ *
+ * One indexed lookup (`release_files.storage_key` is UNIQUE, `news_releases.id` the primary key).
+ */
+export async function isReleaseFilePublic(db: DbOrTx, storageKey: string): Promise<boolean> {
+  if (!storageKey) return false;
+  const [row] = await db
+    .select({ live: newsReleases.live, status: newsReleases.status })
+    .from(releaseFiles)
+    .innerJoin(newsReleases, eq(newsReleases.id, releaseFiles.releaseId))
+    .where(eq(releaseFiles.storageKey, storageKey))
+    .limit(1);
+  return !!row && row.live && row.status !== "unpublishing" && row.status !== "deleted";
+}
+
+/** A release's own file, for the staff route — null when either id is unknown, the file belongs
+ * to another release, or the release is deleted (hidden), exactly as `GET /releases/:id` 404s. */
+export async function releaseFileForStaff(
+  db: DbOrTx,
+  releaseId: string,
+  fileId: string,
+): Promise<{ storageKey: string; contentType: string; label: string } | null> {
+  if (!UUID.test(releaseId) || !UUID.test(fileId)) return null;
+  const [row] = await db
+    .select({ storageKey: releaseFiles.storageKey, contentType: releaseFiles.contentType, label: releaseFiles.label })
+    .from(releaseFiles)
+    .innerJoin(newsReleases, eq(newsReleases.id, releaseFiles.releaseId))
+    .where(and(eq(releaseFiles.id, fileId), eq(releaseFiles.releaseId, releaseId), ne(newsReleases.status, "deleted")));
+  return row ?? null;
 }
 
 /** Best-effort removal of a hard-deleted release's stored files (its rows are already gone). */

@@ -201,6 +201,53 @@ describe("NRMS media routes", () => {
       expect(res.body.files[0].label).not.toContain(ctrl);
     },
   );
+
+  describe("GET /api/releases/:id/files/:fileId (Q17: staff see a release's files through the Hub, not /files)", () => {
+    const uploaded = async () => {
+      const { id, version } = await create();
+      const res = await upload(filesPath(id, version), editorCookie, PDF, "Budget FR.pdf");
+      expect(res.status).toBe(201);
+      return { id, version: res.body.version as number, fileId: res.body.files[0].id as string };
+    };
+    const get = (path: string, cookie?: string) => (cookie ? request(app).get(path).set("cookie", cookie) : request(app).get(path));
+
+    it("an editor, a viewer and a site editor each get a draft's file: 200, its bytes and type, inline, nosniff, never cached", async () => {
+      const { id, fileId } = await uploaded();
+      for (const cookie of [editorCookie, viewerCookie, siteEditorCookie]) {
+        const res = await get(`/api/releases/${id}/files/${fileId}`, cookie).buffer(true).parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on("data", (c: Buffer) => chunks.push(c));
+          r.on("end", () => cb(null, Buffer.concat(chunks)));
+        });
+        expect(res.status).toBe(200);
+        expect((res.body as Buffer).equals(PDF)).toBe(true);
+        expect(res.headers["content-type"]).toBe("application/pdf");
+        expect(res.headers["x-content-type-options"]).toBe("nosniff");
+        expect(res.headers["cache-control"]).toBe("private, no-store");
+        expect(res.headers["content-disposition"]).toMatch(/^inline; filename="[0-9a-f]{16}-budget-fr\.pdf"$/);
+      }
+    });
+
+    it("an anonymous caller is 401; a signed-in user without an NRMS role is 403", async () => {
+      const { id, fileId } = await uploaded();
+      expect((await get(`/api/releases/${id}/files/${fileId}`)).status).toBe(401);
+      const outsider = await cookieFor(["NoD.Viewer"]);
+      expect((await get(`/api/releases/${id}/files/${fileId}`, outsider)).status).toBe(403);
+      const admin = await cookieFor(["Core.Admin"]);
+      expect((await get(`/api/releases/${id}/files/${fileId}`, admin)).status).toBe(403);
+    });
+
+    it("404s a file under another release, an unknown or malformed id, and a deleted release's file", async () => {
+      const { id, fileId, version } = await uploaded();
+      const other = await create();
+      expect((await get(`/api/releases/${other.id}/files/${fileId}`, viewerCookie)).status).toBe(404);
+      expect((await get(`/api/releases/${id}/files/00000000-0000-4000-8000-000000000000`, viewerCookie)).status).toBe(404);
+      expect((await get(`/api/releases/${id}/files/not-a-uuid`, viewerCookie)).status).toBe(404);
+      const del = await request(app).post(`/api/releases/${id}/delete`).set("cookie", editorCookie).set("x-gcpe-request", "1").send({ version });
+      expect(del.status).toBe(200);
+      expect((await get(`/api/releases/${id}/files/${fileId}`, viewerCookie)).status).toBe(404);
+    });
+  });
 });
 
 describe("GET /api/releases/:id/asset-status", () => {

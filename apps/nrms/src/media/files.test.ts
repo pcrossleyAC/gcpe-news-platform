@@ -12,7 +12,8 @@ import { createRelease, deleteRelease } from "../releases/service";
 import { loadView } from "../releases/store";
 import { releaseLog } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { addReleaseFile, removeReleaseFile } from "./files";
+import { addReleaseFile, isReleaseFilePublic, releaseFileForStaff, removeReleaseFile } from "./files";
+import { unpublish } from "../releases/workflow";
 import { addPageImage, pageImageBytes, updatePageImage } from "./page-images";
 
 const PDF = Buffer.from("%PDF-1.7\n% test\n");
@@ -136,6 +137,67 @@ describe("release files", () => {
     expect(await stored(v.id)).toHaveLength(1);
     expect(await deleteRelease(db(), v.id, a.version, editor, store)).toBe("deleted");
     expect(await stored(v.id)).toEqual([]);
+  });
+
+  describe("isReleaseFilePublic (Q17: a release's files are public only while the release is live)", () => {
+    const keyOf = (v: { files: { url: string }[] }) => decodeURIComponent(v.files[0]!.url.replace(/^\/files\//, ""));
+    const withFile = async (id: string, version: number) =>
+      addReleaseFile(db(), store, id, { version, kind: "translation", fileName: "fr.pdf", bytes: PDF }, editor);
+
+    it("a draft release's files are not public", async () => {
+      const v = await draft();
+      const a = await withFile(v.id, v.version);
+      expect(await isReleaseFilePublic(db(), keyOf(a))).toBe(false);
+    });
+
+    it("a scheduled release whose go-live (embargo) time is still in the future is not public, even after a publisher run", async () => {
+      const s = await createScheduledRelease(db(), {}, new Date(Date.now() + 3_600_000));
+      const a = await withFile(s.id, s.version);
+      await publishDue({ db: db(), subscribers: [] });
+      expect((await loadView(db(), s.id))!.status).toBe("scheduled");
+      expect(await isReleaseFilePublic(db(), keyOf(a))).toBe(false);
+    });
+
+    it("is public once the publisher has put it live; not public from the moment it is unpublished, and after; not public once hidden", async () => {
+      const s = await createScheduledRelease(db());
+      const a = await withFile(s.id, s.version);
+      const key = keyOf(a);
+      expect(await isReleaseFilePublic(db(), key)).toBe(false); // due but not yet published
+      await publishDue({ db: db(), subscribers: [] });
+      const live = (await loadView(db(), s.id))!;
+      expect(live.status).toBe("published");
+      expect(await isReleaseFilePublic(db(), key)).toBe(true);
+      // Staff pressed Unpublish: still `live` until the publisher's next run, but the files go now.
+      const u = await unpublish(db(), s.id, live.version, editor);
+      expect(u.status).toBe("unpublishing");
+      expect(await isReleaseFilePublic(db(), key)).toBe(false);
+      await publishDue({ db: db(), subscribers: [] });
+      const off = (await loadView(db(), s.id))!;
+      expect(off.status).toBe("approved");
+      expect(await isReleaseFilePublic(db(), key)).toBe(false);
+      expect(await deleteRelease(db(), s.id, off.version, editor, store)).toBe("hidden");
+      expect(await isReleaseFilePublic(db(), key)).toBe(false);
+    });
+
+    it("a hard-deleted release's keys and unknown keys are not public", async () => {
+      const v = await draft();
+      const a = await withFile(v.id, v.version);
+      await deleteRelease(db(), v.id, a.version, editor, store);
+      expect(await isReleaseFilePublic(db(), keyOf(a))).toBe(false);
+      expect(await isReleaseFilePublic(db(), "releases/nope.pdf")).toBe(false);
+      expect(await isReleaseFilePublic(db(), "")).toBe(false);
+    });
+
+    it("releaseFileForStaff finds a file only under its own, visible release", async () => {
+      const v = await draft();
+      const a = await withFile(v.id, v.version);
+      const other = await draft();
+      const f = a.files[0]!;
+      expect(await releaseFileForStaff(db(), v.id, f.id)).toMatchObject({ storageKey: keyOf(a), contentType: "application/pdf", label: "fr.pdf" });
+      expect(await releaseFileForStaff(db(), other.id, f.id)).toBeNull();
+      expect(await deleteRelease(db(), v.id, a.version, editor, store)).toBe("deleted");
+      expect(await releaseFileForStaff(db(), v.id, f.id)).toBeNull();
+    });
   });
 
   it("toReleaseRecord lists translations and assets with absolute URLs under PUBLIC_FILES_BASE", async () => {

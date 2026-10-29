@@ -18,6 +18,7 @@ import { publishDue, startPublisher } from "./publisher";
 import { startSiteLoop, switchCarousels } from "./website/carousel";
 import { seedGovernmentTerms, syncGovernmentTerms } from "./government-terms";
 import { ensureSlideImageFiles } from "./website/slide-images";
+import { isReleaseFilePublic } from "./media/files";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
 const optionalSetting = z
@@ -246,6 +247,9 @@ export interface AppHandle {
   workers: Record<string, () => Promise<unknown>>;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
+  /** Q17: whether the stack's public `/files/<storageKey>` may serve this release file right now
+   * (media/files.ts `isReleaseFilePublic`: its release is live and not being unpublished). */
+  releaseFileIsPublic(storageKey: string): Promise<boolean>;
   /** Closers that must run *before* the http server closes. NRMS has none — always empty —
    * but the field exists on every app's AppHandle so main.ts (and the stack) can build the
    * shutdown order uniformly: `[...closeBeforeServer, httpServer, ...closers]`, with no
@@ -380,6 +384,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       dispatch: () => dispatchOnce({ db, subscribers }),
       needsCalendarViewers: () => needsCalendarViewers(db),
     },
+    releaseFileIsPublic: (storageKey) => isReleaseFilePublic(db, storageKey),
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });

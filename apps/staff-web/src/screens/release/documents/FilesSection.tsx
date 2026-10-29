@@ -103,7 +103,9 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
         <ul>
           {files.map((f) => (
             <li key={f.id}>
-              <a href={f.url}>{f.label}</a>
+              {/* Q17: f.url (/files/...) is the public address, served only while the release is
+                  live; staff open the file through the API at any status. */}
+              <a href={`/nrms/api/releases/${view.id}/files/${f.id}`}>{f.label}</a>
               {!readOnly && (
                 <DialogTrigger isOpen={removeTarget?.file.id === f.id} onOpenChange={(open) => setRemoveTarget(open ? { kind, file: f } : null)}>
                   <Button variant="secondary" danger isPending={s.busy}>
