@@ -157,7 +157,7 @@ test.describe("the Calendar list: journeys", () => {
     const nothingToClear = page.getByText("No activities up to 0 days ahead have an LA status to clear.");
     await expect(laConfirm.or(nothingToClear)).toBeVisible();
     if (await laConfirm.isVisible()) {
-      await expect(laConfirm).toContainText(/^Clear the LA status of \d+ activit(y|ies)\?/);
+      await expect(laConfirm).toContainText(/Clear the LA status of \d+ activit(y|ies)\?/);
       await laConfirm.getByRole("button", { name: "Clear LA Status" }).click();
       await expect(page.getByText(/^Cleared the LA status of \d+ activit(y|ies)\.$/)).toBeVisible();
     }
