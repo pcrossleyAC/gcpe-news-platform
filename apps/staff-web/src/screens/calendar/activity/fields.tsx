@@ -38,11 +38,16 @@ function Notes({ id, p }: { id: string; p: Pick<Common, "error" | "review" | "hi
   );
 }
 
+/**
+ * The design system's required marker: "(required)" after the label, as its own TextField and
+ * Select show it. Hidden from the accessible name here because the control itself carries
+ * aria-required, so a screen reader says "required" once, not twice.
+ */
 function Label({ id, label, required }: { id: string; label: string; required?: boolean }) {
   return (
     <label htmlFor={id}>
       {label}
-      {required && <span aria-hidden="true"> *</span>}
+      {required && <span aria-hidden="true"> (required)</span>}
     </label>
   );
 }
@@ -108,7 +113,8 @@ export function CheckList(p: Common & { values: readonly string[]; onChange: (v:
     <fieldset id={p.id} className={wrap(p, p.readOnly ? "gcpe-checklist gcpe-checklist--read" : "gcpe-checklist")} aria-describedby={describedBy(p.id, p)}>
       <legend>
         {p.label}
-        {p.required && <span aria-hidden="true"> *</span>}
+        {/* A fieldset can't carry aria-required, so here the marker stays in the group's name. */}
+        {p.required && " (required)"}
       </legend>
       {p.readOnly ? (
         chosen.length === 0 ? (

@@ -32,6 +32,15 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(screen.queryByRole("textbox", { name: "Other City" })).toBeNull();
   });
 
+  it("marks required fields \"(required)\", the design system's way, without changing their names", async () => {
+    stubActivity([]);
+    const { container } = renderActivity("/calendar/activities/20001");
+    const t = await title();
+    expect(t).toHaveAttribute("aria-required", "true");
+    expect(container.querySelector(`label[for="${t.id}"]`)?.textContent).toBe("Title (required)");
+    expect(container.textContent).not.toContain(" *");
+  });
+
   it("Save sends the fields with the change, the version and this tab's id, and no Look Ahead fields, then goes back where the user came from (C149)", async () => {
     const calls: Call[] = [];
     stubActivity(calls, { other: savedOk });
