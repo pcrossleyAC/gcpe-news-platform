@@ -104,7 +104,7 @@ async function termWindows(tx: Tx, timeZone: string): Promise<TermWindow[]> {
 /** The cache key: every field that changes the answer. Whitespace is collapsed, case is kept
  * (websearch syntax reads an upper-case OR as an operator). */
 export function searchCacheKey(q: SearchQuery): string {
-  return JSON.stringify([q.q.replace(/\s+/gu, " ").trim(), q.ministry ?? null, q.sector ?? null, q.type ?? null, q.from?.getTime() ?? null, q.toExclusive?.getTime() ?? null, q.page, q.pageSize, q.facets === true]);
+  return JSON.stringify([q.q.replace(/\s+/gu, " ").trim(), q.ministry?.toLowerCase() ?? null, q.sector?.toLowerCase() ?? null, q.type ?? null, q.from?.getTime() ?? null, q.toExclusive?.getTime() ?? null, q.page, q.pageSize, q.facets === true]);
 }
 
 export function createSearchService(o: SearchServiceOptions): SearchService {
@@ -162,7 +162,7 @@ export function createSearchService(o: SearchServiceOptions): SearchService {
       const entry = { controller, waiters: 0, promise: undefined as unknown as Promise<SearchResponse> };
       entry.promise = compute(query, controller.signal)
         .then(({ response, complete }) => {
-          if (complete && cache) cache.set(key, response, 2 * JSON.stringify(response).length);
+          if (complete && cache) cache.set(key, Object.freeze(response), 2 * JSON.stringify(response).length);
           return response;
         })
         .finally(() => {
@@ -174,7 +174,11 @@ export function createSearchService(o: SearchServiceOptions): SearchService {
     const flight = f;
     flight.waiters++;
     const onAbort = () => {
-      if (--flight.waiters === 0) flight.controller.abort();
+      if (--flight.waiters === 0) {
+        flight.controller.abort();
+        // An aborted flight may finish degraded: a new identical request starts its own.
+        if (inflight.get(key) === flight) inflight.delete(key);
+      }
     };
     if (signal?.aborted) onAbort();
     else signal?.addEventListener("abort", onAbort, { once: true });

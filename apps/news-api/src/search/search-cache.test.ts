@@ -138,6 +138,36 @@ describe("search service: result cache and semantic cap", () => {
     expect(spy).toHaveBeenCalledTimes(variants.length);
   });
 
+  it("ministry and sector case does not split entries", async () => {
+    const spy = vi.spyOn(tdb.db, "transaction");
+    const s = svc({ cache: CACHE });
+    await s.search(q({ ministry: "Health", sector: "Economy" }));
+    await s.search(q({ ministry: "health", sector: "economy" }));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a request arriving after the only caller aborted starts a fresh flight with a full answer", async () => {
+    let calls = 0;
+    const semantic: SemanticSearch = {
+      search: vi.fn(async (_q, signal) => {
+        if (++calls === 1) {
+          await new Promise((r) => signal?.addEventListener("abort", r, { once: true }));
+          return null;
+        }
+        return { total: 0, rows: [] } satisfies SearchPage;
+      }),
+    };
+    const s = svc({ cache: CACHE, semantic });
+    const ac = new AbortController();
+    const first = s.search(q(), ac.signal).catch(() => null);
+    await vi.waitFor(() => expect(calls).toBe(1));
+    ac.abort();
+    const second = await s.search(q());
+    expect(second.mode).toBe("semantic");
+    expect(second.fallback).toBeUndefined();
+    await first;
+  });
+
   it("collapses internal whitespace but keeps case (OR is an operator)", async () => {
     const spy = vi.spyOn(tdb.db, "transaction");
     const s = svc({ cache: CACHE });
