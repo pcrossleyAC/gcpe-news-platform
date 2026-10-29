@@ -256,7 +256,7 @@ you configure that service):
 | your Azure OpenAI endpoint host | TCP 443 | semantic search turned on | `AZURE_OPENAI_ENDPOINT` |
 | `www.emergencyinfobc.gov.bc.ca` | TCP 443 | emergency alerts feed configured | `NOD_EMERGENCY_FEED_URL` |
 | legacy SQL Server | TCP 1433 (a named instance: also UDP 1434, the SQL Browser, or its fixed port) | import period only | `Import-GcpeLegacy.ps1 -SqlServer` |
-| `api.news.gov.bc.ca`, `bcgovnews-etg7c8etapa6btfr.z03.azurefd.net` (legacy files on Azure) | TCP 443 | import period only (`news-api-import-files.mjs`) | defaults in `apps/news-api/src/import/public-fetch.ts`, `public-files.ts` |
+| `api.news.gov.bc.ca`, `bcgovnews-etg7c8etapa6btfr.z03.azurefd.net` (legacy files on Azure) | TCP 443 | import period only (`news-api-import-files.mjs`, `legacy-files-copy.mjs`) | defaults in `apps/news-api/src/import/public-fetch.ts`, `public-files.ts`, `apps/stack/src/legacy-files/options.ts` |
 | backup share server | TCP 445 (SMB) | always | `Register-GcpeBackup.ps1 -BackupPath` |
 | `github.com`, `api.github.com`, `codeload.github.com`, `*.actions.githubusercontent.com`, `results-receiver.actions.githubusercontent.com`, `*.blob.core.windows.net` (job logs and artifacts) | TCP 443 | **Dev only** (deploy runner) | `Install-GcpeRunner.ps1`; GitHub's own list of runner hosts is authoritative |
 | `nodejs.org`, `download.microsoft.com`, `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com` (WinSW and the runner download redirect there), `get.enterprisedb.com` | TCP 443 | install time only, and not at all if you copy the installers in with `Get-GcpePrereqs.ps1` | `lib\prereqs.psd1` |
@@ -461,6 +461,42 @@ Remove-Item Env:DATABASE_URL
 
 Options and its 429 handling: [siteground.md](siteground.md), "Legacy translations and media
 assets". Not yet run on Windows.
+
+**Legacy `/files` import.** `https://news.gov.bc.ca/files/<name>` are the files staff uploaded in
+the legacy Hub's Website > Files screen (Azure container `files`). `legacy-files-copy.mjs` imports
+them as NRMS site files, so they appear in the Hub under **Website > Files** and the stack serves
+them at `/files/<name>` in any letter case. A `/files/<path>` that is neither an NRMS file nor a
+site file gets a `302` to legacy's Azure front door: **on by owner decision (2026-10-29)**, relying
+on Azure staying up after cutover. `LEGACY_FILES_FALLBACK=false` in `gcpe.env` turns the 302 off
+(the site's 404 instead); `LEGACY_FILES_ORIGIN` moves it. Release files (`/files/releases/…`) are
+never looked up or redirected: Q17 still decides them. Get a **read + list SAS URL** for the legacy
+`files` container from whoever holds the legacy Azure storage account. It is a secret: type it in,
+don't store it in `gcpe.env`. Run the import after the last legacy import and before DNS moves, then
+once more as a catch-up (URL cutover runbook, "Legacy /files"). It writes NRMS's database and
+`<DATA_DIR>\storage`, nothing else:
+
+```powershell
+$cfg = Get-Content C:\gcpe\config\gcpe.env
+foreach ($name in 'NRMS_DATABASE_URL', 'DATA_DIR') {
+  # gcpe.env quotes a value with a backslash (DATA_DIR): the quotes are not part of it.
+  $value = (($cfg | Where-Object { $_ -like "$name=*" }) -split '=', 2)[1]
+  Set-Item "Env:$name" $value.Trim([char]39, [char]34)
+}
+$env:LEGACY_FILES_SAS_URL = Read-Host 'LEGACY_FILES_SAS_URL'
+node.exe C:\gcpe\current\tools\legacy-files-copy.mjs --dry-run           # files, total bytes; downloads nothing
+node.exe C:\gcpe\current\tools\legacy-files-copy.mjs --concurrency 2
+node.exe C:\gcpe\current\tools\legacy-files-copy.mjs                     # catch-up: only what is new
+Remove-Item Env:LEGACY_FILES_SAS_URL, Env:NRMS_DATABASE_URL, Env:DATA_DIR
+```
+
+Without a SAS, set `NEWSAPI_DATABASE_URL` (and `CORE_DATABASE_URL`) the same way instead: the tool
+then imports the files our content links to, through the front door, plus any `--paths-file` /
+`--scan-file` (an IIS log). Check: the files are listed in the Hub under Website > Files, and
+`/files/News_Footage_License_British_Columbia.pdf` answers 200 `application/pdf`, not a 302. They
+are backed up with the other site files (`files\storage` and the `gcpe_nrms` dump, D4). Options,
+limits (30 s headers, 60 s idle, `--max-file-mb` 512; imports may exceed the Hub's 25 MB upload
+limit), report and 429 handling: [siteground.md](siteground.md), "Legacy /files import". Not yet
+run on Windows.
 
 **Cutover only, never on Dev or Test while legacy is live:** turning legacy's publisher off and
 handing scheduling to NRMS (`replay-to-news-api`, `release-holds`) is in siteground.md, "Cutover

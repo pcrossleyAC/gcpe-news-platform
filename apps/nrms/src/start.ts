@@ -19,6 +19,7 @@ import { startSiteLoop, switchCarousels } from "./website/carousel";
 import { seedGovernmentTerms, syncGovernmentTerms } from "./government-terms";
 import { ensureSlideImageFiles } from "./website/slide-images";
 import { isReleaseFilePublic } from "./media/files";
+import { findSiteFileByName } from "./website/files";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
 const optionalSetting = z
@@ -250,6 +251,9 @@ export interface AppHandle {
   /** Q17: whether the stack's public `/files/<storageKey>` may serve this release file right now
    * (media/files.ts `isReleaseFilePublic`: its release is live and not being unpublished). */
   releaseFileIsPublic(storageKey: string): Promise<boolean>;
+  /** The site file `/files/<name>` names, case-insensitively (website/files.ts `findSiteFileByName`):
+   * how the stack serves an imported legacy file whose name isn't its storage key. */
+  siteFileByName(name: string): Promise<{ name: string; storageKey: string } | null>;
   /** Closers that must run *before* the http server closes. NRMS has none — always empty —
    * but the field exists on every app's AppHandle so main.ts (and the stack) can build the
    * shutdown order uniformly: `[...closeBeforeServer, httpServer, ...closers]`, with no
@@ -386,6 +390,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       needsCalendarViewers: () => needsCalendarViewers(db),
     },
     releaseFileIsPublic: (storageKey) => isReleaseFilePublic(db, storageKey),
+    siteFileByName: (name) => findSiteFileByName(db, name),
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });

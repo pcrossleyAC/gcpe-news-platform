@@ -389,7 +389,23 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // as before. Content-Type comes from the key's extension, which NRMS forces to match the
   // sniffed bytes (PDF/PNG/JPEG only); nosniff stops a browser second-guessing it. Mounted
   // before the no-store default so the 60 s public cache stands. See files-gate.ts.
-  app.use("/files", ...filesHandlers({ storageDir: nrmsEnv.STORAGE_DIR!, outputDir, isPublic: (key) => nrms.releaseFileIsPublic(key) }));
+  //
+  // Legacy news.gov.bc.ca /files/<name>: the legacy Hub's uploads, imported as NRMS site files by
+  // legacy-files/cli.ts, are found by name in any letter case (siteFileByName); a path nothing
+  // answers is 302'd to legacy's Azure origin (LEGACY_FILES_FALLBACK, on by default) — never for
+  // releases/ or slides/ (any case): a release file that isn't live stays the plain 404 (Q17).
+  // Every /files answer gets files-policy.ts's type, disposition and sandbox CSP.
+  app.use(
+    "/files",
+    ...filesHandlers({
+      storageDir: nrmsEnv.STORAGE_DIR!,
+      outputDir,
+      isPublic: (key) => nrms.releaseFileIsPublic(key),
+      siteFileByName: (name) => nrms.siteFileByName(name),
+      fallbackOrigin: stackEnv.LEGACY_FILES_FALLBACK ? stackEnv.LEGACY_FILES_ORIGIN : null,
+    }),
+  );
+
 
   // The staff app, hosted at /hub — mounted here (before the no-store
   // default) so /hub/assets' own long-lived Cache-Control isn't overridden by it, same

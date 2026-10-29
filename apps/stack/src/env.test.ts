@@ -271,6 +271,19 @@ describe("stackEnvSchema", () => {
     expect(result.UPDATES_HUB_ENABLED).toBe(true);
   });
 
+  it("legacy /files: the 302 safety net is on by default (owner decision 2026-10-29), to legacy's Azure front door; both overridable", () => {
+    const d = stackEnvSchema.parse({ TICK_TOKEN: "t".repeat(32) });
+    expect(d.LEGACY_FILES_FALLBACK).toBe(true);
+    expect(d.LEGACY_FILES_ORIGIN).toBe("https://bcgovnews-etg7c8etapa6btfr.z03.azurefd.net");
+    const o = stackEnvSchema.parse({ TICK_TOKEN: "t".repeat(32), LEGACY_FILES_FALLBACK: "false", LEGACY_FILES_ORIGIN: "https://files.example:8443/" });
+    expect(o.LEGACY_FILES_FALLBACK).toBe(false);
+    expect(o.LEGACY_FILES_ORIGIN).toBe("https://files.example:8443");
+    for (const bad of ["http://files.example", "https://files.example/sub", "not a url", "https://u:p@files.example"]) {
+      expect(stackEnvSchema.safeParse({ TICK_TOKEN: "t".repeat(32), LEGACY_FILES_ORIGIN: bad }).success, bad).toBe(false);
+    }
+    expect(stackEnvSchema.safeParse({ TICK_TOKEN: "t".repeat(32), LEGACY_FILES_FALLBACK: "yes" }).success).toBe(false);
+  });
+
   it("Task 1 (staff-web): defaults STAFF_WEB_DIR to an existing on-disk path, overridable", () => {
     const result = stackEnvSchema.parse({ TICK_TOKEN: "t".repeat(32) });
     expect(result.STAFF_WEB_DIR.length).toBeGreaterThan(0);
