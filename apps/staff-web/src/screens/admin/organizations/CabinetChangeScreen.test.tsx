@@ -299,10 +299,17 @@ describe("CabinetChangeScreen", () => {
     expect(await screen.findByText(/it is being published now/, {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.queryByText(/^Publishes on/)).toBeNull();
     stored = null;
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
-    expect(await screen.findByText("The scheduled cabinet change has been published.", {}, { timeout: 5000 })).toBeInTheDocument();
+    // The focus listener is attached by an effect that runs after the render above; on a slow runner
+    // a single focus can fire before it exists (the 15 s poll is past the timeout). Refocus until it lands.
+    await waitFor(
+      () => {
+        act(() => {
+          window.dispatchEvent(new Event("focus"));
+        });
+        expect(screen.getByText("The scheduled cabinet change has been published.")).toBeInTheDocument();
+      },
+      { timeout: 5000, interval: 100 },
+    );
   });
 
   it("an already-scheduled change shows its time, and one that failed at its time says why", async () => {
