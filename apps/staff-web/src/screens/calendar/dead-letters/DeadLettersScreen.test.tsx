@@ -136,4 +136,27 @@ describe("DeadLettersScreen", () => {
     renderScreen();
     expect(await screen.findByText("Only the 200 most recent are listed.")).toBeInTheDocument();
   });
+
+  const failing = (status: number) =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, SESSION);
+        if (url === "/calendar/api/dead-letters") return jsonResponse(status, { error: status === 403 ? "forbidden" : "boom" });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+
+  it("keeps its h1 in every state: a 403 is the app's usual permission message, anything else a load failure", async () => {
+    failing(403);
+    renderScreen();
+    expect(await screen.findByText("You don’t have permission to view undelivered events.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Undelivered events" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    cleanup();
+    failing(503);
+    renderScreen();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load undelivered events.");
+    expect(screen.getByRole("heading", { level: 1, name: "Undelivered events" })).toBeInTheDocument();
+  });
 });

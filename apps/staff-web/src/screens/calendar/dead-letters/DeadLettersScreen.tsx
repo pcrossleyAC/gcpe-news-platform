@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { InlineAlert } from "@bcgov/design-system-react-components";
-import { apiFetch } from "../../../api/client";
+import { ApiError, apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { TableScroll } from "../../../shared/TableScroll";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -32,7 +32,7 @@ export function DeadLettersScreen(): React.JSX.Element {
   useDocumentTitle("Undelivered events");
   const [rows, setRows] = useState<DeadLetter[] | null>(null);
   const [truncated, setTruncated] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"forbidden" | "failed" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
   /** The deliveries whose retry is in flight, by `keyOf`. */
@@ -48,7 +48,7 @@ export function DeadLettersScreen(): React.JSX.Element {
         setTruncated(r.truncated);
         after?.(r.items);
       },
-      () => call === latest.current && setError("Couldn't load undelivered events."),
+      (caught: unknown) => call === latest.current && setError(caught instanceof ApiError && caught.status === 403 ? "forbidden" : "failed"),
     );
   }, []);
   useEffect(() => reload(), [reload]);
@@ -72,7 +72,18 @@ export function DeadLettersScreen(): React.JSX.Element {
     }
   };
 
-  if (error) return <InlineAlert variant="danger" role="alert" description={error} />;
+  if (error) {
+    return (
+      <div>
+        <h1>Undelivered events</h1>
+        {error === "forbidden" ? (
+          <p>You don&rsquo;t have permission to view undelivered events.</p>
+        ) : (
+          <InlineAlert variant="danger" role="alert" description="Couldn't load undelivered events." />
+        )}
+      </div>
+    );
+  }
   return (
     <div>
       <h1>Undelivered events</h1>
