@@ -346,7 +346,7 @@ $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'
 & $appcmd set config -section:system.webServer/proxy /enabled:"True" /preserveHostHeader:"True" /reverseRewriteHostInResponseHeaders:"False" /includePortInXForwardedFor:"False" /responseBufferLimit:"0" /timeout:"00:05:00" /commit:apphost | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'could not enable the ARR proxy' }
 $allowed = (& $appcmd list config -section:system.webServer/rewrite/allowedServerVariables) -join "`n"
-foreach ($var in @('HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST', 'ARR_CACHE_CONTROL_OVERRIDE')) {
+foreach ($var in @('HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST')) {
     if ($allowed -notmatch $var) { & $appcmd set config -section:system.webServer/rewrite/allowedServerVariables /+"[name='$var']" /commit:apphost | Out-Null }
 }
 
@@ -403,7 +403,6 @@ $webConfig = @"
           <serverVariables>
             <set name="HTTP_X_FORWARDED_PROTO" value="https" />
             <set name="HTTP_X_FORWARDED_HOST" value="{HTTP_HOST}" />
-            <set name="ARR_CACHE_CONTROL_OVERRIDE" value="1,no-cache" />
           </serverVariables>
           <action type="Rewrite" url="http://127.0.0.1:$Port{UNENCODED_URL}" appendQueryString="false" />
         </rule>
