@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -255,6 +256,79 @@ describe("ActionsSection", () => {
     expect(dialog).toHaveTextContent("News on Demand subscribers will not be emailed.");
   });
 
+  // Review P2: NoD and media sends happen once per release (keys are insert-or-ignore), so a
+  // release published before (corrected, or unpublished and republished) emails nobody again.
+  it("for a release that was published before, the dialog says nobody is emailed again", async () => {
+    const v = releaseView({
+      status: "approved", key: "k1", reference: "NEWS-00001", releasedAt: "2026-10-01T17:00:00.000Z",
+      mediaListKeys: ["regional"], publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: true },
+    });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Publish now" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Subscribers and media lists already received this when it was first published; they won’t be emailed again.");
+    expect(dialog).not.toHaveTextContent("Emails News on Demand");
+    expect(dialog).not.toHaveTextContent("Sends to media distribution lists");
+  });
+
+  // Review P3: a blocker can appear while the dialog is open (a background refresh, an edit in
+  // another tab's section); the dialog's own Publish now follows it.
+  it("the dialog's Publish now is disabled while there are blockers", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    const { rerender } = renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Publish now" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Publish now" })).toBeEnabled();
+    rerender(
+      <MemoryRouter>
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "settings", label: "Save settings", save: () => {} }]} />
+      </MemoryRouter>,
+    );
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Publish now" })).toBeDisabled();
+  });
+
+  it("a 409 from the dialog's Publish now offers Reload in the dialog", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const fetchMock = publishFetch([], v);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => (url.endsWith("/schedule") ? jsonResponse(409, { error: "version conflict" }) : fetchMock(url, init))),
+    );
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Publish now" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Publish now" }));
+    expect(await within(dialog).findByText(/someone else changed this/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Reload" })).toBeInTheDocument();
+  });
+
+  // Review P3: the Publish now button leaves the page once the release is publishing, so focus
+  // goes to the Actions heading instead of falling to <body>.
+  it("after a successful Publish now, focus moves to the Actions heading", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 2 });
+    const next = releaseView({ status: "publishing", key: "k1", reference: "NEWS-00001", version: 3 });
+    vi.stubGlobal("fetch", publishFetch([], next));
+    function Live() {
+      const [view, setView] = useState(v);
+      return <ActionsSection view={view} setView={setView} timeZone="America/Vancouver" unsaved={[]} />;
+    }
+    render(
+      <MemoryRouter>
+        <Live />
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Publish now" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Publish now" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Actions" })).toHaveFocus());
+  });
+
   // Owner decision 2026-10-29: publishing (or approving) a release while edits on the page are
   // still unsaved publishes the old text — blocked, with the reason next to the buttons.
   it("Publish now and Schedule are disabled while a section has unsaved edits, with a blocker linking to it; enabled once saved", () => {
@@ -308,13 +382,29 @@ describe("ActionsSection", () => {
     renderActions(v, setView);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Schedule" }));
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-15" } });
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
     fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
     await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
 
     await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
     const scheduleCall = calls.find((c) => c.url.endsWith("/schedule"));
-    expect(scheduleCall?.body).toEqual({ version: 2, publishAtLocal: "2026-06-15T14:30" });
+    expect(scheduleCall?.body).toEqual({ version: 2, publishAtLocal: "2031-06-15T14:30" });
+  });
+
+  // Review P3: the server publishes a schedule at or before now immediately — with no dialog —
+  // so Schedule only accepts a time in the future.
+  it("Schedule refuses a time at or before now, pointing to Publish now", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
+    const fetchMock = vi.fn(async () => jsonResponse(200, v));
+    vi.stubGlobal("fetch", fetchMock);
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Schedule" }));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2020-01-01" } });
+    fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "09:00" } });
+    expect(await screen.findByText("Choose a time in the future, or use Publish now.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm schedule" })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("a 409 on an action shows the reload message with a Reload button, and never auto-retries", async () => {

@@ -26,6 +26,9 @@ export interface SchedulePickerProps {
   /** Called with `{ local, instant }` once both fields hold a valid date and time, or `null`
    * while incomplete/invalid. */
   onChange(value: ScheduleValue | null): void;
+  /** Only a time after now is valid (Schedule: the server publishes a time at or before now
+   * straight away, which is Publish now without its confirmation). */
+  futureOnly?: boolean;
 }
 
 /**
@@ -34,7 +37,7 @@ export interface SchedulePickerProps {
  * type="time">` rather than the design system's DatePicker/TimeField (which take
  * `CalendarDate`/`Time` objects) — simpler to wire to BC local time and to drive from tests.
  */
-export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange }: SchedulePickerProps): React.JSX.Element {
+export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange, futureOnly = false }: SchedulePickerProps): React.JSX.Element {
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState(initialTime);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +52,11 @@ export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", i
     }
     try {
       const instant = bcLocalToInstant(nextDate, nextTime, timeZone);
+      if (futureOnly && Date.parse(instant) <= Date.now()) {
+        onChange(null);
+        setError("Choose a time in the future, or use Publish now.");
+        return;
+      }
       onChange({ local: `${nextDate}T${nextTime}`, instant });
       setError(null);
     } catch {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { approveProblems, publishProblems, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
@@ -76,6 +76,25 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
   const [unpublishOpen, setUnpublishOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  // After a successful Publish now its button leaves the page (the release is publishing), so
+  // focus goes to the Actions heading rather than falling to <body>.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [focusHeading, setFocusHeading] = useState(false);
+  useEffect(() => {
+    if (!focusHeading) return;
+    // After React Aria's own focus restore (a frame after the dialog unmounts).
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        headingRef.current?.focus();
+        setFocusHeading(false);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [focusHeading]);
 
   const canApprove = view.status === "draft";
   const canPublish = (view.status === "approved" || view.status === "failed") && view.key !== null;
@@ -93,7 +112,9 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const approve = () => void section.save("/approve", { version: view.version }, "POST");
   const publishNow = () =>
     void section.save("/schedule", { version: view.version, publishAt: "now" }, "POST").then((next) => {
-      if (next) setPublishOpen(false);
+      if (!next) return;
+      setPublishOpen(false);
+      setFocusHeading(true);
     });
   const cancelSchedule = () => void section.save("/cancel", { version: view.version }, "POST");
   const unpublish = () =>
@@ -129,7 +150,9 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
   return (
     <section className="gcpe-release-editor__actions" aria-label="Actions">
-      <h2>Actions</h2>
+      <h2 ref={headingRef} tabIndex={-1}>
+        Actions
+      </h2>
 
       {section.conflict && (
         <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => void section.reload()}>Reload</Button>} />
@@ -167,14 +190,16 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                       <Button variant="secondary" onPress={() => setPublishOpen(false)} isPending={section.saving}>
                         Cancel
                       </Button>
-                      <Button onPress={publishNow} isPending={section.saving} pendingLabel="Publishing…">
+                      <Button onPress={publishNow} isPending={section.saving} isDisabled={publishBlockers.length > 0} pendingLabel="Publishing…">
                         Publish now
                       </Button>
                     </>
                   }
                 >
                   <PublishConsequences view={view} />
-                  {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} />}
+                  {section.conflict && (
+                    <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => void section.reload()}>Reload</Button>} />
+                  )}
                   {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
                   {section.problems && (
                     <ul role="alert" className="gcpe-release-editor__problems">
@@ -275,7 +300,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
       {schedulerOpen && canPublish && (
         <div className="gcpe-release-editor__scheduler">
-          <SchedulePicker timeZone={timeZone} legend="Schedule for" idPrefix="schedule" onChange={setScheduleValue} />
+          <SchedulePicker timeZone={timeZone} legend="Schedule for" idPrefix="schedule" onChange={setScheduleValue} futureOnly />
           <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue || unsavedBlockers.length > 0} isPending={section.saving}>
             Confirm schedule
           </Button>
@@ -347,8 +372,12 @@ function PublishConsequences({ view }: { view: ReleaseView }): React.JSX.Element
   const [lists, setLists] = useState<MediaListName[] | null>(null);
   const [categories, setCategories] = useState<Categories | null>(null);
 
-  const toLists = rules.mediaListsAllowed && view.publishOptions.toMediaLists && view.mediaListKeys.length > 0;
-  const toSubscribers = rules.nodAllowed && view.publishOptions.toSubscribers;
+  // NoD and media sends go out once per release (apps/nrms/src/releases/workflow.ts: the send
+  // keys are insert-or-ignore), so a release published before (a correction, or one unpublished
+  // and published again) emails nobody this time.
+  const alreadySent = view.releasedAt !== null;
+  const toLists = !alreadySent && rules.mediaListsAllowed && view.publishOptions.toMediaLists && view.mediaListKeys.length > 0;
+  const toSubscribers = !alreadySent && rules.nodAllowed && view.publishOptions.toSubscribers;
 
   useEffect(() => {
     let active = true;
@@ -377,12 +406,18 @@ function PublishConsequences({ view }: { view: ReleaseView }): React.JSX.Element
   return (
     <ul className="gcpe-publish-consequences">
       <li>{view.publishOptions.toWeb ? `Publishes to ${host || "the public news site"} now.` : "Doesn't go on the public news site."}</li>
-      <li>{toLists ? `Sends to media distribution lists: ${listText(listNames)}.` : "No media distribution lists."}</li>
-      <li>
-        {toSubscribers
-          ? `Emails News on Demand subscribers who follow ${followed.length > 0 ? `any of: ${listText([...new Set(followed)])}` : "this release's categories"}${view.ministries.length > 0 ? " — and everyone subscribed to all news" : ""}.`
-          : "News on Demand subscribers will not be emailed."}
-      </li>
+      {alreadySent ? (
+        <li>Subscribers and media lists already received this when it was first published; they won&rsquo;t be emailed again.</li>
+      ) : (
+        <>
+          <li>{toLists ? `Sends to media distribution lists: ${listText(listNames)}.` : "No media distribution lists."}</li>
+          <li>
+            {toSubscribers
+              ? `Emails News on Demand subscribers who follow ${followed.length > 0 ? `any of: ${listText([...new Set(followed)])}` : "this release's categories"}${view.ministries.length > 0 ? " — and everyone subscribed to all news" : ""}.`
+              : "News on Demand subscribers will not be emailed."}
+          </li>
+        </>
+      )}
     </ul>
   );
 }

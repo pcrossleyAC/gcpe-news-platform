@@ -840,10 +840,10 @@ body {
 
 /* A section's id target takes focus from the "why is this unavailable" links: a ring, not the
  * browser's default box, and only for keyboard-visible focus. */
-.gcpe-release-editor :is(section, h3)[tabindex="-1"]:focus {
+.gcpe-release-editor :is(section, h2, h3)[tabindex="-1"]:focus {
   outline: none;
 }
-.gcpe-release-editor :is(section, h3)[tabindex="-1"]:focus-visible {
+.gcpe-release-editor :is(section, h2, h3)[tabindex="-1"]:focus-visible {
   outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
   outline-offset: var(--layout-margin-hair, 2px);
 }
