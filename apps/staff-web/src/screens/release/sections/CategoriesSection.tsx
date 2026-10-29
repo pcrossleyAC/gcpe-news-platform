@@ -4,8 +4,8 @@ import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
-import { SaveStatus } from "../SaveStatus";
-import { useRegisterDirty } from "../useUnsavedChanges";
+import { UnsavedMarker } from "../UnsavedMarker";
+import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
 import type { Categories, Term } from "../categories";
 import { SectionDisclosure } from "../../../shared/SectionDisclosure";
@@ -63,14 +63,17 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
     });
 
   const doSave = () =>
-    section.save("/categories", { version: view.version, ...form }, "PUT", staleVersion).then((next) => {
+    section.save("/categories", { version: view.version, ...form }, "PUT", staleVersion, { quiet: true }).then((next) => {
       if (next) reseed(fromView(next), next.version);
+      return next !== null;
     });
   useRegisterDirty("categories", dirty, !readOnly ? { label: "Save categories", save: doSave } : undefined);
 
+  // Enter in a field saves the page, the same as its one Save.
+  const saveAll = useSaveAll();
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    void doSave();
+    saveAll();
   };
 
   const places: FeaturePlace[] = [
@@ -116,7 +119,9 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
   return (
     <>
       <section className="gcpe-release-editor__categories" aria-label="Categories" id="section-categories" tabIndex={-1}>
-        <h2>Categories</h2>
+        <h2>
+          Categories<UnsavedMarker show={dirty} />
+        </h2>
 
         {section.conflict && (
           <InlineAlert
@@ -168,13 +173,6 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
                 {categoryList("tags", "Tags", categories.tags)}
               </>
             )}
-
-            {!readOnly && (
-              <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
-                Save categories
-              </Button>
-            )}
-            {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
           </Form>
         </SectionDisclosure>
       </section>

@@ -4,8 +4,8 @@ import { assetUrlProblem, typeRules, TYPE_LABEL, type AssetStatus, type ReleaseV
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
-import { SaveStatus } from "../SaveStatus";
-import { useRegisterDirty } from "../useUnsavedChanges";
+import { UnsavedMarker } from "../UnsavedMarker";
+import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
 
 export interface AssetSectionProps {
@@ -61,16 +61,17 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
   const urlProblem = trimmedUrl ? assetUrlProblem(trimmedUrl) : null;
 
   const doSave = () => {
-    if (urlProblem) return Promise.resolve();
+    if (urlProblem) return Promise.resolve(false);
     return section
       .save("/asset", {
         version: view.version,
         assetUrl: trimmedUrl || null,
         assetAltText: form.assetAltText.trim() || null,
         hasMediaAssets: form.hasMediaAssets,
-      }, "PUT", staleVersion)
+      }, "PUT", staleVersion, { quiet: true })
       .then((next) => {
         if (next) reseed(fromView(next), next.version);
+        return next !== null;
       });
   };
   useRegisterDirty("asset", dirty, !readOnly ? { label: "Save media asset", save: doSave } : undefined);
@@ -84,14 +85,18 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
     );
   }
 
+  // Enter in a field saves the page, the same as its one Save.
+  const saveAll = useSaveAll();
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    void doSave();
+    saveAll();
   };
 
   return (
     <section className="gcpe-release-editor__asset" aria-label="Media asset" id="section-asset" tabIndex={-1}>
-      <h2>Media asset</h2>
+      <h2>
+        Media asset<UnsavedMarker show={dirty} />
+      </h2>
 
       {status && <p className="gcpe-release-editor__asset-status">{statusMessage(status)}</p>}
 
@@ -126,12 +131,6 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
           <input type="checkbox" checked={form.hasMediaAssets} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, hasMediaAssets: e.target.checked }))} />
           Includes additional media assets
         </label>
-        {!readOnly && (
-          <Button type="submit" isPending={section.saving} isDisabled={urlProblem !== null} pendingLabel="Saving…">
-            Save media asset
-          </Button>
-        )}
-        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </section>
   );

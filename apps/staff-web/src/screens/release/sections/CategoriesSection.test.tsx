@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { CategoriesSection } from "./CategoriesSection";
+import { renderWithSaveBar } from "../saveBarHarness";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -35,7 +36,7 @@ function stubFetch(onPut?: (body: unknown) => Response) {
 }
 
 function renderSection(view: ReleaseView, setView: (v: ReleaseView) => void = () => {}, readOnly = false) {
-  const result = render(<CategoriesSection view={view} setView={setView} readOnly={readOnly} />);
+  const result = renderWithSaveBar(<CategoriesSection view={view} setView={setView} readOnly={readOnly} />);
   // The checkbox lists and the Top/Feature switches sit behind their cards' disclosures (closed
   // by default); open both, as a user would.
   fireEvent.click(screen.getByRole("button", { name: /(Edit|Show) categories/ }));
@@ -84,7 +85,7 @@ describe("CategoriesSection", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Sector One"));
-    await user.click(screen.getByRole("button", { name: "Save categories" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(setView).toHaveBeenCalledWith(saved));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/categories`);
@@ -105,7 +106,7 @@ describe("CategoriesSection", () => {
     stubFetch();
     renderSection(releaseView({ type: "release", status: "published", releasedAt: "2026-01-01T00:00:00.000Z" }), () => {}, true);
     expect(await screen.findByLabelText("Health")).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Save categories" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
     for (const sw of screen.getAllByRole("switch")) expect(sw).toBeDisabled();
   });
 });

@@ -287,7 +287,7 @@ describe("ActionsSection", () => {
     expect(within(dialog).getByRole("button", { name: "Publish now" })).toBeEnabled();
     rerender(
       <MemoryRouter>
-        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "settings", label: "Save settings", save: () => {} }]} />
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "settings", label: "Save settings", save: async () => true }]} />
       </MemoryRouter>,
     );
     expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Publish now" })).toBeDisabled();
@@ -337,7 +337,7 @@ describe("ActionsSection", () => {
     const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" });
     const { rerender } = render(
       <MemoryRouter>
-        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "page-details", label: "Save page details", save: () => {} }]} />
+        <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" unsaved={[{ key: "page-details", label: "Save page details", save: async () => true }]} />
       </MemoryRouter>,
     );
     expect(screen.getByRole("button", { name: "Publish now" })).toBeDisabled();
@@ -359,7 +359,7 @@ describe("ActionsSection", () => {
   it("Approve is disabled while a document has unsaved edits, and the blocker links to that document", () => {
     const v = releaseView({ status: "draft", ministries: ["health"], leadMinistryKey: "health" });
     const docId = v.documents[0]!.id;
-    renderActions(v, () => {}, [{ key: `document-${docId}-1`, label: "Save English content (Document 1)", save: () => {} }]);
+    renderActions(v, () => {}, [{ key: `document-${docId}-1`, label: "Save English content (Document 1)", save: async () => true }]);
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Save your changes to English content (Document 1) first." })).toHaveAttribute("href", `#doc-${docId}-panel-1`);
   });
@@ -615,7 +615,7 @@ describe("ActionsSection", () => {
   it("Confirm schedule is unavailable while a section has unsaved edits, so the dialog can't open", async () => {
     const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: "2031-06-15T21:30:00.000Z" });
     vi.stubGlobal("fetch", publishFetch([], v));
-    const unsaved = [{ key: "page-details", label: "Save page details", save: () => {} }];
+    const unsaved = [{ key: "page-details", label: "Save page details", save: async () => true }];
     const { rerender } = render(
       <MemoryRouter>
         <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" />

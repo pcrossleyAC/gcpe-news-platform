@@ -1196,6 +1196,51 @@ body {
   gap: 0.5rem;
 }
 
+.gcpe-save-bar__text {
+  display: grid;
+  gap: 0.25rem;
+  flex: 1 1 20rem;
+}
+
+.gcpe-save-bar__problem {
+  margin: 0;
+  /* Darker than the danger token: it sits on the bar's yellow, not white. */
+  color: #a12622;
+  font-weight: 700;
+}
+
+/* After the page's one Save: "All changes saved" for a moment, in the success colours. */
+.gcpe-save-bar--saved {
+  background: var(--support-surface-color-success, #f6fff8);
+  border-top-color: var(--support-border-color-success, #42814a);
+}
+
+/* "Unsaved" beside a release-editor section's heading while it has edits to save. */
+.gcpe-unsaved-marker {
+  display: inline-block;
+  margin-inline-start: 0.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--support-border-color-warning, #f8bb47);
+  border-radius: 1rem;
+  background: var(--support-surface-color-warning, #fef1d8);
+  color: var(--typography-color-primary, #2d2d2d);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+/* A language tab whose fields hold unsaved edits (the document heading says so in words). */
+.gcpe-unsaved-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-start: 0.375rem;
+  border-radius: 50%;
+  background: #c08200;
+  vertical-align: middle;
+}
+
 /* The Calendar's activity list (spec addendum §8.1). Every control is at least 24px (WCAG 2.5.8). */
 .gcpe-calendar-list .gcpe-calendar-filter {
   display: grid;
@@ -3310,4 +3355,17 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 /* Deactivate (and Activate) sit apart from Save preferences: a different act. */
 .gcpe-subscriber__status-actions {
   margin: 1rem 0;
+}
+
+/* Sectors, themes and tags: the grid's one Save, with how many rows it would save beside it. */
+.gcpe-admin__save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0 2rem;
+}
+
+.gcpe-admin__save-row .gcpe-hint {
+  margin: 0;
 }

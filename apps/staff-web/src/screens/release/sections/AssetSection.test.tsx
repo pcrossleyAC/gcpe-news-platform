@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { AssetStatus, ReleaseView } from "@gcpe/nrms-contract";
 import { AssetSection } from "./AssetSection";
+import { renderWithSaveBar } from "../saveBarHarness";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -25,7 +26,7 @@ function stubFetch(assetStatus: AssetStatus = { kind: "none" }, onPut?: (body: u
 }
 
 function renderSection(view: ReleaseView, setView: (v: ReleaseView) => void = () => {}, readOnly = false) {
-  return render(<AssetSection view={view} setView={setView} readOnly={readOnly} />);
+  return renderWithSaveBar(<AssetSection view={view} setView={setView} readOnly={readOnly} />);
 }
 
 describe("AssetSection (acceptance: asset URL validation messages)", () => {
@@ -38,16 +39,17 @@ describe("AssetSection (acceptance: asset URL validation messages)", () => {
     stubFetch();
     renderSection(releaseView({ type: "release", assetUrl: null }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save media asset" })).toBeEnabled();
   });
 
-  it("flags a Facebook URL with the exact legacy rule message, and disables Save", async () => {
-    stubFetch();
+  it("flags a Facebook URL with the exact legacy rule message, and Save changes doesn't send it", async () => {
+    const calls = stubFetch();
     renderSection(releaseView({ type: "release", assetUrl: null }));
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Asset URL"), "https://facebook.com/x");
     expect(screen.getByText("Facebook is no longer supported due to privacy concerns. Use YouTube or Flickr URLs instead.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save media asset" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText(/Couldn.t save media asset/)).toBeInTheDocument();
+    expect(calls.filter((c) => !c.url.endsWith("/asset-status"))).toEqual([]);
   });
 
   it("accepts a Flickr URL with no error", async () => {
@@ -56,7 +58,7 @@ describe("AssetSection (acceptance: asset URL validation messages)", () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Asset URL"), "https://flickr.com/photos/bcgov/123");
     expect(screen.queryByText(/use a youtube or flickr url/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save media asset" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
   });
 
   it("flags a non-http URL", async () => {
@@ -89,7 +91,7 @@ describe("AssetSection (acceptance: asset URL validation messages)", () => {
 
     const user = userEvent.setup();
     await user.clear(screen.getByLabelText("Asset URL"));
-    await user.click(screen.getByRole("button", { name: "Save media asset" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(setView).toHaveBeenCalledWith(saved));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/asset`);
@@ -101,7 +103,7 @@ describe("AssetSection (acceptance: asset URL validation messages)", () => {
     renderSection(releaseView({ type: "release", version: 1, assetUrl: null }));
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Asset URL"), "https://flickr.com/photos/bcgov/999");
-    await user.click(screen.getByRole("button", { name: "Save media asset" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Asset URL")).toHaveValue("https://flickr.com/photos/bcgov/999");
@@ -112,6 +114,6 @@ describe("AssetSection (acceptance: asset URL validation messages)", () => {
     stubFetch();
     renderSection(releaseView({ type: "release" }), () => {}, true);
     expect(screen.getByLabelText("Asset URL")).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Save media asset" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
 });

@@ -85,7 +85,7 @@ test.describe("item 2: per-type required/allowed fields", () => {
     await settings.getByRole("checkbox", { name: /Regional media/ }).check();
     await Promise.all([
       page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/settings")),
-      settings.getByRole("button", { name: "Save settings" }).click(),
+      page.getByRole("region", { name: "Unsaved changes" }).getByRole("button", { name: "Save changes" }).click(),
     ]);
     await expect(page.getByText("Choose at least one media distribution list.")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Publish now" })).toBeEnabled();

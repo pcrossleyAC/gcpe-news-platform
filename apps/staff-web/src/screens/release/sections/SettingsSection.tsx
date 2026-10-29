@@ -4,8 +4,8 @@ import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
-import { SaveStatus } from "../SaveStatus";
-import { useRegisterDirty } from "../useUnsavedChanges";
+import { UnsavedMarker } from "../UnsavedMarker";
+import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
 import { instantToBcLocal } from "../timezone";
 import { ActivityLookupPanel, useActivityLookup } from "../ActivityLookupPanel";
@@ -114,22 +114,27 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
         toSubscribers: form.toSubscribers,
         toMediaLists: form.toMediaLists,
         mediaListKeys: form.mediaListKeys,
-      }, "PUT", staleVersion)
+      }, "PUT", staleVersion, { quiet: true })
       .then((next) => {
         if (next) resetFrom(next);
+        return next !== null;
       });
   useRegisterDirty("settings", dirty, !readOnly ? { label: "Save settings", save: doSave } : undefined);
 
+  // Enter in a field saves the page, the same as its one Save.
+  const saveAll = useSaveAll();
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    void doSave();
+    saveAll();
   };
 
   const initialPlanned = plannedValue ? instantToBcLocal(plannedValue.instant, timeZone) : null;
 
   return (
     <section className="gcpe-release-editor__settings" aria-label="Publish settings" id="section-settings" tabIndex={-1}>
-      <h2>Publish settings</h2>
+      <h2>
+        Publish settings<UnsavedMarker show={dirty} />
+      </h2>
 
       {section.conflict && (
         <InlineAlert
@@ -212,12 +217,6 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           </fieldset>
         )}
 
-        {!readOnly && (
-          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
-            Save settings
-          </Button>
-        )}
-        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </section>
   );

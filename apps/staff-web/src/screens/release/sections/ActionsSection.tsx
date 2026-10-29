@@ -7,7 +7,7 @@ import { Button } from "../../../shared/BusyButton";
 import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty, type DirtySection } from "../useUnsavedChanges";
-import { documentsInOrder } from "../documents/documentHelpers";
+import { unsavedTarget } from "../unsavedTarget";
 import { usePublicSiteUrl } from "../sidebar/usePublicSiteUrl";
 import type { Categories } from "../categories";
 import { useSaveQueue, withVersion } from "../saveQueue";
@@ -75,17 +75,6 @@ export interface ActionsSectionProps {
 interface Blocker {
   text: string;
   target: string | null;
-}
-
-/** Where a dirty section lives on the page, by its {@link useRegisterDirty} key. */
-function unsavedTarget(key: string, view: ReleaseView): string | null {
-  const fixed: Record<string, string> = { settings: "section-settings", "page-details": "section-page-details", categories: "section-categories", asset: "section-asset" };
-  if (fixed[key]) return fixed[key];
-  // A document language: its own tab panel (DocumentTabs shows that tab when the link is
-  // followed — the edited language may not be the one showing).
-  const doc = /^document-(.+)-(\d+)$/.exec(key);
-  if (doc) return documentsInOrder(view).some((d) => d.id === doc[1]) ? `doc-${doc[1]}-panel-${doc[2]}` : "section-documents";
-  return null;
 }
 
 /** "Save page details" → "page details": the bar's button text as the words a sentence names it by. */

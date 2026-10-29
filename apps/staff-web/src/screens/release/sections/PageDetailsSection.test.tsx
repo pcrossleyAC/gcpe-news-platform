@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { PageDetailsSection } from "./PageDetailsSection";
+import { renderWithSaveBar } from "../saveBarHarness";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -23,7 +24,7 @@ function stubPut(onPut: (body: unknown) => Response) {
 }
 
 function renderSection(view: ReleaseView, setView: (v: ReleaseView) => void = () => {}, readOnly = false) {
-  return render(<PageDetailsSection view={view} setView={setView} readOnly={readOnly} />);
+  return renderWithSaveBar(<PageDetailsSection view={view} setView={setView} readOnly={readOnly} />);
 }
 
 describe("PageDetailsSection", () => {
@@ -72,7 +73,7 @@ describe("PageDetailsSection", () => {
     const user = userEvent.setup();
     await user.clear(screen.getByLabelText("Summary"));
     await user.type(screen.getByLabelText("Summary"), "New summary.");
-    await user.click(screen.getByRole("button", { name: "Save page details" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(setView).toHaveBeenCalledWith(saved));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/meta`);
@@ -85,7 +86,7 @@ describe("PageDetailsSection", () => {
     const user = userEvent.setup();
     await user.clear(screen.getByLabelText("Location"));
     await user.type(screen.getByLabelText("Location"), "VANCOUVER");
-    await user.click(screen.getByRole("button", { name: "Save page details" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Location")).toHaveValue("VANCOUVER");
@@ -95,6 +96,6 @@ describe("PageDetailsSection", () => {
     renderSection(releaseView({ type: "story", status: "draft" }), () => {}, true);
     expect(screen.getByLabelText("URL key")).toBeDisabled();
     expect(screen.getByLabelText("Location")).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Save page details" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
 });

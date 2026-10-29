@@ -8,6 +8,7 @@ import { MemoryRouter } from "react-router";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { DocumentLanguageForm } from "./DocumentLanguageForm";
+import { renderWithSaveBar } from "../saveBarHarness";
 import { loadDraft } from "./unsavedDocumentStorage";
 
 const BASE = releaseView({
@@ -45,14 +46,11 @@ function draftKeyFor(userId = "user-a") {
 // DocumentLanguageForm is never mounted with a not-yet-known `session.user`, the way it would
 // be if this test rendered the bare component straight inside SessionProvider.
 function renderForm(view: ReleaseView, setView = (_v: ReleaseView) => {}, readOnly = false) {
-  return render(
-    <SessionProvider>
-      <MemoryRouter>
-        <RequireAuth>
-          <DocumentLanguageForm view={view} setView={setView} documentId="doc-1" languageId={LANG_EN} readOnly={readOnly} />
-        </RequireAuth>
-      </MemoryRouter>
-    </SessionProvider>,
+  return renderWithSaveBar(
+    <RequireAuth>
+      <DocumentLanguageForm view={view} setView={setView} documentId="doc-1" languageId={LANG_EN} readOnly={readOnly} />
+    </RequireAuth>,
+    (router) => <SessionProvider>{router}</SessionProvider>,
   );
 }
 
@@ -83,7 +81,7 @@ describe("DocumentLanguageForm", () => {
     stubFetch(() => jsonResponse(200, {}));
     renderForm(BASE, () => {}, true);
     expect(await screen.findByLabelText("Headline")).toBeDisabled();
-    expect(screen.queryByRole("button", { name: /Save .* content/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
 
   it("saves the edited fields to PUT .../documents/:docId/:lang", async () => {
@@ -99,7 +97,7 @@ describe("DocumentLanguageForm", () => {
     const user = userEvent.setup();
     await user.clear(await screen.findByLabelText("Headline"));
     await user.type(screen.getByLabelText("Headline"), "New headline");
-    await user.click(screen.getByRole("button", { name: "Save English content" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]!.url).toBe(`/nrms/api/releases/${BASE.id}/documents/doc-1/${LANG_EN}`);
@@ -116,18 +114,19 @@ describe("DocumentLanguageForm", () => {
     });
     renderForm(BASE);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Save English content" }));
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/someone else changed this/i);
+    await user.type(await screen.findByLabelText("Headline"), " more");
+    await user.click(await screen.findByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reload" }));
-    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/someone else changed this/i)).not.toBeInTheDocument());
   });
 
   it("422 shows the server's problems", async () => {
     stubFetch(() => jsonResponse(422, { error: "bad", problems: ["Headline is required."] }));
     renderForm(BASE);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Save English content" }));
+    await user.type(await screen.findByLabelText("Headline"), " more");
+    await user.click(await screen.findByRole("button", { name: "Save changes" }));
     expect(await screen.findByText("Headline is required.")).toBeInTheDocument();
   });
 
@@ -161,7 +160,7 @@ describe("DocumentLanguageForm", () => {
     await user.clear(await screen.findByLabelText("Headline"));
     await user.type(screen.getByLabelText("Headline"), "Changed");
     await waitFor(() => expect(loadDraft(draftKeyFor())).not.toBeNull());
-    await user.click(screen.getByRole("button", { name: "Save English content" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(loadDraft(draftKeyFor())).toBeNull());
   });
 

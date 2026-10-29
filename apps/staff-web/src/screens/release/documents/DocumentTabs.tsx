@@ -7,6 +7,7 @@ import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { findDocument } from "./documentHelpers";
 import { DocumentLanguageForm } from "./DocumentLanguageForm";
+import { useDirtyKeys } from "../useUnsavedChanges";
 
 export interface DocumentTabsProps {
   view: ReleaseView;
@@ -25,6 +26,7 @@ const BOTH_LANGUAGES: LanguageId[] = [LANG_EN, LANG_FR];
  */
 export function DocumentTabs({ view, setView, documentId, readOnly }: DocumentTabsProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
+  const dirtyKeys = useDirtyKeys();
   const doc = findDocument(view, documentId);
   const present = BOTH_LANGUAGES.filter((l) => doc?.languages.some((dl) => dl.languageId === l));
   const missing = BOTH_LANGUAGES.filter((l) => !present.includes(l));
@@ -86,6 +88,9 @@ export function DocumentTabs({ view, setView, documentId, readOnly }: DocumentTa
         {present.map((l) => (
           <button key={l} type="button" role="tab" aria-selected={l === activeLanguage} aria-controls={`doc-${documentId}-panel-${l}`} id={`doc-${documentId}-tab-${l}`} onClick={() => setActive(l)}>
             {LANGUAGE_NAME[l]}
+            {/* Which language holds the edits, for sighted users; the document heading's marker
+             * and the save bar say so in words. */}
+            {dirtyKeys.has(`document-${documentId}-${l}`) && <span className="gcpe-unsaved-dot" aria-hidden="true" />}
           </button>
         ))}
       </div>

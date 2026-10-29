@@ -2,8 +2,7 @@ import { useEffect, type FormEvent } from "react";
 import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
-import { SaveStatus } from "../SaveStatus";
-import { useRegisterDirty } from "../useUnsavedChanges";
+import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
@@ -80,8 +79,8 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   const doc = findDocument(view, documentId);
   const lang = findLanguage(doc, languageId);
 
-  const doSave = (): Promise<void> => {
-    if (!doc || !lang) return Promise.resolve();
+  const doSave = (): Promise<boolean> => {
+    if (!doc || !lang) return Promise.resolve(false);
     return section
       .save(
         `/documents/${documentId}/${languageId}`,
@@ -99,16 +98,17 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
         },
         "PUT",
         staleVersion,
+        { quiet: true },
       )
       .then((next) => {
-        if (!next) return;
+        if (!next) return false;
         if (draftKey) clearDraft(draftKey);
         reseed(fromView(next, documentId, languageId), next.version);
+        return true;
       });
   };
-  // "Save English content (Document 1)" — the sticky save bar's own copy of this section's
-  // button, with the document number added since (unlike the inline button, seen in the
-  // context of one specific document) the bar needs to disambiguate among several documents.
+  // "Save English content (Document 1)": the bar lists every dirty section, so it says which
+  // document.
   const barLabel = `Save ${languageLabel} content${doc ? ` (Document ${doc.sortIndex + 1})` : ""}`;
   useRegisterDirty(`document-${documentId}-${languageId}`, dirty, !readOnly && doc && lang ? { label: barLabel, save: doSave } : undefined);
 
@@ -127,9 +127,11 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   const removeContact = (index: number) => setForm((f) => ({ ...f, contacts: f.contacts.filter((_, i) => i !== index) }));
   const addContact = () => setForm((f) => ({ ...f, contacts: [...f.contacts, ""] }));
 
+  // Enter in a field saves the page, the same as its one Save.
+  const saveAll = useSaveAll();
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    void doSave();
+    saveAll();
   };
 
   const reload = () => void section.reload().then((next) => reseed(fromView(next, documentId, languageId), next.version));
@@ -178,14 +180,6 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
           )}
         </fieldset>
 
-        {!readOnly && (
-          <div className="gcpe-button-row">
-            <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
-              Save {languageLabel} content
-            </Button>
-            <SaveStatus saving={section.saving} waiting={section.waiting} />
-          </div>
-        )}
       </Form>
     </div>
   );
