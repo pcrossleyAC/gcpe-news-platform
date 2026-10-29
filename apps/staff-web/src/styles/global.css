@@ -3064,3 +3064,65 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 .gcpe-calendar-list > .bcds-Inline-Alert {
   margin-bottom: 1rem;
 }
+
+/* A number in a row of fields (an order) needs a few digits, not a full field's width. */
+.gcpe-field-row > .gcpe-field:has(> input[type="number"]) {
+  flex: 0 0 7rem;
+  min-width: 0;
+}
+
+/* Release editor: the planned date and the Schedule panel each say how they relate. */
+.gcpe-release-editor__planned-note {
+  margin: 0.25rem 0 0;
+  max-width: 65ch;
+}
+.gcpe-release-editor__scheduler > .gcpe-release-editor__planned-note {
+  margin: 0.5rem 0 0.75rem;
+}
+
+/* New release: the error summary is a heading and a list of links, set off from the form. */
+.gcpe-error-summary > h2 {
+  margin: 0 0 0.5rem;
+  font: var(--typography-bold-h5);
+}
+.gcpe-error-summary > ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.gcpe-error-summary:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+}
+
+/* Search: an empty result says what was searched, and the way out of the filters. */
+.gcpe-search__empty > p {
+  margin: 0.5rem 0;
+  max-width: 65ch;
+}
+.gcpe-search .gcpe-release-row__headline {
+  max-width: 75ch;
+}
+/* New release: a field's own error under it, in the design system's field-error size, and a
+ * native select marked invalid gets the error border its text fields get. */
+.gcpe-new-release .gcpe-field-error {
+  margin: -0.5rem 0 0;
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-danger, #ce3e39);
+}
+.gcpe-shell__main select[aria-invalid="true"] {
+  border-color: var(--support-border-color-danger, #ce3e39);
+}
+
+/* Inside a card (a release editor part, a .gcpe-card, a user's editor), a group of fields is a
+ * headed list, not a box in the box: no border, the legend a small heading, space around it. */
+:is(.gcpe-release-editor section, .gcpe-release-editor aside, .gcpe-card, .gcpe-users__editor) :is(.gcpe-fieldset, .gcpe-options) {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0.5rem 0 1rem;
+}
+:is(.gcpe-release-editor section, .gcpe-release-editor aside, .gcpe-card, .gcpe-users__editor) :is(.gcpe-fieldset, .gcpe-options) > legend {
+  padding: 0;
+  margin-bottom: 0.5rem;
+  font: var(--typography-bold-small-body);
+}

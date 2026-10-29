@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Button, Form, TextField } from "@bcgov/design-system-react-components";
 import type { ReleaseListItem, ReleasePage } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
@@ -197,7 +197,16 @@ export function SearchScreen(): React.JSX.Element {
       )}
 
       {error && <p role="alert">{error}</p>}
-      {!error && q && result && result.items.length === 0 && <p>No results.</p>}
+      {!error && q && result && result.items.length === 0 && (
+        <div className="gcpe-search__empty">
+          <p>{`No releases match “${q}”.`}</p>
+          {(ministry || sector) && (
+            <p>
+              <Link to={`?${new URLSearchParams({ q })}`}>Clear ministry and sector filters</Link>
+            </p>
+          )}
+        </div>
+      )}
 
       {!error && result && result.items.length > 0 && (
         <ul className="gcpe-release-list__rows">

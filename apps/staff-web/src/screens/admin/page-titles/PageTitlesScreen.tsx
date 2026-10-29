@@ -464,7 +464,7 @@ function AddForm({
     <>
       <h2>Add a page title</h2>
       <Form onSubmit={(e) => void onSubmit(e)} aria-label="Add a page title" className="gcpe-field-row">
-        <div>
+        <div className="gcpe-field">
           <label htmlFor={`${ids}-type`}>Type</label>
           <select id={`${ids}-type`} value={type} onChange={(e) => setType(e.target.value as ReleaseType)}>
             {RELEASE_TYPES.map((t) => (
@@ -483,13 +483,13 @@ function AddForm({
           isInvalid={error !== null && error.field !== "order"}
           aria-describedby={describedTitle}
         />
-        <div>
+        <div className="gcpe-field">
           <label htmlFor={`${ids}-language`}>Language</label>
           <select id={`${ids}-language`} value={f.languageId} onChange={(e) => set({ languageId: Number(e.target.value) })}>
             <LanguageOptions current={f.languageId} />
           </select>
         </div>
-        <div>
+        <div className="gcpe-field">
           <label htmlFor={`${ids}-order`}>Order</label>
           <input
             id={`${ids}-order`}
@@ -503,13 +503,13 @@ function AddForm({
             aria-describedby={error?.field === "order" ? errorId : undefined}
           />
         </div>
-        <div>
+        <div className="gcpe-field">
           <label htmlFor={`${ids}-layout`}>Layout</label>
           <select id={`${ids}-layout`} value={f.layout} onChange={(e) => set({ layout: e.target.value as Layout })}>
             <LayoutOptions />
           </select>
         </div>
-        <div>
+        <div className="gcpe-field">
           <label htmlFor={`${ids}-image`}>Page image</label>
           <select id={`${ids}-image`} value={f.pageImageId} onChange={(e) => set({ pageImageId: e.target.value })}>
             <ImageOptions images={images} current={f.pageImageId} />

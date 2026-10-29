@@ -170,6 +170,18 @@ describe("SearchScreen", () => {
     expect(searchCalls).toEqual(["/nrms/api/search?q=schools+funding&page=1"]);
   });
 
+  it("says what matched nothing, and offers to clear the ministry and sector filters when any are set", async () => {
+    const searchCalls: string[] = [];
+    stubFetch({ searchCalls, searchResult: searchPage([]) });
+    renderSearch("/search?q=ferries&ministry=educ");
+    expect(await screen.findByText("No releases match “ferries”.")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "Clear ministry and sector filters" }));
+    await waitFor(() => expect(searchCalls.at(-1)).toBe("/nrms/api/search?q=ferries&page=1"));
+    expect(await screen.findByText("No releases match “ferries”.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Clear ministry and sector filters" })).toBeNull();
+  });
+
   it("combines the ministry and sector filters with the query (AND)", async () => {
     const searchCalls: string[] = [];
     stubFetch({ gotoHit: null, searchCalls, searchResult: searchPage([item()]) });

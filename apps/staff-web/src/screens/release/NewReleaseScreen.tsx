@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import {
@@ -63,10 +63,83 @@ function groupByField(problems: string[]): Record<string, string[]> {
   return grouped;
 }
 
+/** Where each field is, for the error summary's links (the field itself, or its group). */
+const FIELD_IDS: Record<string, string> = {
+  type: "new-release-type",
+  pageTitle: "new-release-page-title",
+  layout: "new-release-layout",
+  pageImageId: "new-release-page-image",
+  headline: "new-release-headline",
+  activityId: "new-release-activity-id",
+  location: "new-release-location",
+  ministries: "new-release-ministries",
+  leadMinistryKey: "new-release-lead-ministry",
+  sectors: "new-release-sectors",
+  themes: "new-release-themes",
+  tags: "new-release-tags",
+  mediaListKeys: "new-release-media-lists",
+};
+
+/** The form's own checks, said the way the Calendar says them: what to do, not what the schema saw. */
+function issueText(field: string, issue: ZodIssue): string {
+  const tooLong = issue.code === "too_big" && "maximum" in issue ? Number(issue.maximum) : null;
+  switch (field) {
+    case "type":
+      return "Choose a release type.";
+    case "pageTitle":
+      return tooLong !== null ? `Shorten the page title to ${tooLong} characters or fewer.` : "Choose a page title.";
+    case "layout":
+      return "Choose a layout.";
+    case "pageImageId":
+      return "Choose a page image from the list, or none.";
+    case "headline":
+      return tooLong !== null ? `Shorten the headline to ${tooLong} characters or fewer.` : "Enter a headline.";
+    case "location":
+      return tooLong !== null ? `Shorten the location to ${tooLong} characters or fewer.` : "Check the location.";
+    case "activityId":
+      // Its own messages are already plain ("Activity ID must be numeric").
+      return /^(String|Number|Expected|Invalid)\b/.test(issue.message) ? "Enter the Calendar activity's number, such as 1234." : issue.message;
+    case "ministries":
+    case "leadMinistryKey":
+      return "Check the ministries chosen.";
+    case "sectors":
+    case "themes":
+    case "tags":
+      return `Check the ${field} chosen.`;
+    case "mediaListKeys":
+      return "Check the media distribution lists chosen.";
+    default:
+      return issue.message;
+  }
+}
+
 /** A typed activity id as a number, or null while it isn't one the Calendar could have. */
 function activityIdOf(text: string): number | null {
   const t = text.trim();
   return /^\d{1,10}$/.test(t) && Number(t) >= 1 && Number(t) <= MAX_ACTIVITY_ID ? Number(t) : null;
+}
+
+/**
+ * "Fix these to create": every problem, each a link to its field, as the Calendar's activity form
+ * does. It takes focus when it appears, so a keyboard or screen-reader user lands on it.
+ */
+function ErrorSummary({ problems }: { problems: { field: string; message: string }[] }): React.JSX.Element | null {
+  const ref = useRef<HTMLDivElement>(null);
+  const key = problems.map((p) => `${p.field}:${p.message}`).join("|");
+  useEffect(() => {
+    if (key) ref.current?.focus();
+  }, [key]);
+  if (problems.length === 0) return null;
+  return (
+    <div ref={ref} tabIndex={-1} role="alert" className="gcpe-error-summary" aria-labelledby="new-release-errors-heading">
+      <h2 id="new-release-errors-heading">Fix these to create</h2>
+      <ul>
+        {problems.map((p, i) => (
+          <li key={`${p.field}-${i}`}>{FIELD_IDS[p.field] ? <a href={`#${FIELD_IDS[p.field]}`}>{p.message}</a> : p.message}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /**
@@ -265,7 +338,8 @@ export function NewReleaseScreen(): React.JSX.Element {
       const grouped: Record<string, string[]> = {};
       for (const i of parsed.error.issues as ZodIssue[]) {
         const field = typeof i.path[0] === "string" ? i.path[0] : "general";
-        (grouped[field] ??= []).push(i.message);
+        const text = issueText(field, i);
+        if (!grouped[field]?.includes(text)) (grouped[field] ??= []).push(text);
       }
       setProblems(grouped);
       return;
@@ -287,20 +361,19 @@ export function NewReleaseScreen(): React.JSX.Element {
   };
 
   const fieldProblem = (field: string): string | undefined => problems[field]?.join(" ");
+  const problemList = Object.entries(problems).flatMap(([field, list]) => list.map((message) => ({ field, message })));
 
   return (
     <div className="gcpe-new-release">
       <h1>New release</h1>
 
-      {problems.general && (
-        <InlineAlert variant="danger" role="alert" description={problems.general.join(" ")} />
-      )}
+      <ErrorSummary problems={problemList} />
 
       <Form onSubmit={onSubmit} validationBehavior="aria" className="gcpe-stack">
         <div className="gcpe-field-row">
           <label className="gcpe-field">
             Type
-            <select value={type} onChange={(e) => onTypeChange(e.target.value as CreatableType)}>
+            <select id={FIELD_IDS.type} value={type} onChange={(e) => onTypeChange(e.target.value as CreatableType)}>
               {CREATABLE_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {TYPE_LABEL[t]}
@@ -311,7 +384,7 @@ export function NewReleaseScreen(): React.JSX.Element {
 
           <label className="gcpe-field">
             Page title
-            <select value={pageTitle} onChange={(e) => onPageTitleChange(e.target.value)}>
+            <select id={FIELD_IDS.pageTitle} value={pageTitle} aria-invalid={!!fieldProblem("pageTitle") || undefined} onChange={(e) => onPageTitleChange(e.target.value)}>
               <option value="">(choose one)</option>
               {pageTitleOptions.map((pt) => (
                 <option key={pt.pageTitle} value={pt.pageTitle}>
@@ -322,7 +395,7 @@ export function NewReleaseScreen(): React.JSX.Element {
           </label>
           <label className="gcpe-field">
             Layout
-            <select value={layout} onChange={(e) => setLayout(e.target.value as Layout)}>
+            <select id={FIELD_IDS.layout} value={layout} onChange={(e) => setLayout(e.target.value as Layout)}>
               {LAYOUTS.map((l) => (
                 <option key={l} value={l}>
                   {l === "formal" ? "Formal" : "Informal"}
@@ -333,12 +406,12 @@ export function NewReleaseScreen(): React.JSX.Element {
         </div>
         {pageTypesError && <InlineAlert variant="danger" role="alert" description={pageTypesError} />}
         {!pageTypesError && pageTypesLoaded && pageTypes.length === 0 && (
-          <InlineAlert variant="warning" role="alert" description="No page types are set up — run the importer or add them." />
+          <InlineAlert variant="warning" role="alert" description="No page titles are set up yet. An administrator adds them under Release page titles." />
         )}
-        {fieldProblem("pageTitle") && <p role="alert">{fieldProblem("pageTitle")}</p>}
+        {fieldProblem("pageTitle") && <p className="gcpe-field-error">{fieldProblem("pageTitle")}</p>}
 
         {rules.pageImageAllowed && (
-          <fieldset className="gcpe-options">
+          <fieldset className="gcpe-options" id={FIELD_IDS.pageImageId} tabIndex={-1}>
             <legend>Page image</legend>
             <label>
               <input type="radio" name="pageImage" checked={pageImageId === null} onChange={() => setPageImageId(null)} />
@@ -353,11 +426,12 @@ export function NewReleaseScreen(): React.JSX.Element {
             ))}
           </fieldset>
         )}
-        {fieldProblem("pageImageId") && <p role="alert">{fieldProblem("pageImageId")}</p>}
+        {fieldProblem("pageImageId") && <p className="gcpe-field-error">{fieldProblem("pageImageId")}</p>}
 
-        <TextField label="Headline" value={headline} onChange={setHeadline} isRequired errorMessage={fieldProblem("headline")} isInvalid={!!fieldProblem("headline")} />
+        <TextField id={FIELD_IDS.headline} label="Headline" value={headline} onChange={setHeadline} isRequired errorMessage={fieldProblem("headline")} isInvalid={!!fieldProblem("headline")} />
 
         <TextField
+          id={FIELD_IDS.activityId}
           label="Activity ID"
           value={activityText}
           onChange={setActivityText}
@@ -374,6 +448,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         )}
 
         <TextField
+          id={FIELD_IDS.location}
           label="Location"
           value={location}
           onChange={(v) => {
@@ -384,7 +459,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         />
         {publishAt && <p>Planned publish date: {dateTimeText(publishAt, timeZone)}, from the activity. Change it in Publish settings.</p>}
 
-        <fieldset className="gcpe-options">
+        <fieldset className="gcpe-options" id={FIELD_IDS.ministries} tabIndex={-1}>
           <legend>Ministries</legend>
           {categories.ministries.map((m) => (
             <label key={m.key}>
@@ -393,12 +468,13 @@ export function NewReleaseScreen(): React.JSX.Element {
             </label>
           ))}
         </fieldset>
-        {fieldProblem("ministries") && <p role="alert">{fieldProblem("ministries")}</p>}
+        {fieldProblem("ministries") && <p className="gcpe-field-error">{fieldProblem("ministries")}</p>}
 
         {ministries.length > 1 && (
           <label className="gcpe-field">
             Lead ministry
             <select
+              id={FIELD_IDS.leadMinistryKey}
               value={leadMinistryKey ?? ""}
               onChange={(e) => {
                 touch("ministries");
@@ -417,7 +493,7 @@ export function NewReleaseScreen(): React.JSX.Element {
 
         {rules.categoriesBeyondMinistries && (
           <>
-            <fieldset className="gcpe-options">
+            <fieldset className="gcpe-options" id={FIELD_IDS.sectors} tabIndex={-1}>
               <legend>Sectors</legend>
               {categories.sectors.map((s) => (
                 <label key={s.key}>
@@ -426,7 +502,7 @@ export function NewReleaseScreen(): React.JSX.Element {
                 </label>
               ))}
             </fieldset>
-            <fieldset className="gcpe-options">
+            <fieldset className="gcpe-options" id={FIELD_IDS.themes} tabIndex={-1}>
               <legend>Themes</legend>
               {categories.themes.map((t) => (
                 <label key={t.key}>
@@ -435,7 +511,7 @@ export function NewReleaseScreen(): React.JSX.Element {
                 </label>
               ))}
             </fieldset>
-            <fieldset className="gcpe-options">
+            <fieldset className="gcpe-options" id={FIELD_IDS.tags} tabIndex={-1}>
               <legend>Tags</legend>
               {categories.tags.map((t) => (
                 <label key={t.key}>
@@ -448,7 +524,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         )}
 
         {rules.mediaListsAllowed && (
-          <fieldset className="gcpe-options">
+          <fieldset className="gcpe-options" id={FIELD_IDS.mediaListKeys} tabIndex={-1}>
             <legend>
               Media distribution lists{rules.mediaListRequired ? " (required)" : ""}
             </legend>
@@ -460,7 +536,7 @@ export function NewReleaseScreen(): React.JSX.Element {
             ))}
           </fieldset>
         )}
-        {fieldProblem("mediaListKeys") && <p role="alert">{fieldProblem("mediaListKeys")}</p>}
+        {fieldProblem("mediaListKeys") && <p className="gcpe-field-error">{fieldProblem("mediaListKeys")}</p>}
 
         <Button type="submit" isPending={submitting} pendingLabel="Creating…">
           Create release
