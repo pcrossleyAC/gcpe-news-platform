@@ -8,7 +8,7 @@
   inbound is opened. It runs as a Windows service under LocalSystem, because a deploy stops
   and starts the gcpe-stack service and switches <Root>\current: anyone who can change the
   deploy workflow on the deploy branch can therefore run commands on this server. Protect that
-  branch and the "dev" environment in the repository settings (docs/deploy/windows.md, step 7).
+  branch and the "dev" environment in the repository settings (docs/deploy/windows.md, D5 and D6).
 
   Get -Token from the repository: Settings > Actions > Runners > New self-hosted runner
   (it is valid for one hour).

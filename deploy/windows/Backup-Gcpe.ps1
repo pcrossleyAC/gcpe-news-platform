@@ -60,7 +60,7 @@ function Quote([string]$Value) { '"' + $Value + '"' }
 # A backup holds gcpe.env (every secret) and the subscribers' e-mail addresses: each folder this
 # script makes is locked to Administrators and SYSTEM (the account the task runs as) before
 # anything is written into it. On a share the folder ACL is only half of it: the share's own
-# permissions must be as narrow (docs/deploy/windows.md, "Backups").
+# permissions must be as narrow (docs/deploy/windows.md, 7.1 "Backups and the restore drill").
 function New-PrivateDirectory([string]$Path) {
     $isNew = -not (Test-Path -LiteralPath $Path)
     if ($isNew) { New-Item -ItemType Directory -Force -Path $Path | Out-Null }

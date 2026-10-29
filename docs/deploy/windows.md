@@ -1,211 +1,372 @@
 # Deploying to Windows Server + IIS
 
-This is the runbook for running the GCPE News Platform on government Windows Servers: a Dev
-server first, then Test and Production. It is written for the developer doing the setup. Every
-step is a PowerShell command from the package in `deploy/windows/`; what each one does is listed
-under it, so nothing happens that this page doesn't describe.
+This is the runbook for running the GCPE News Platform (the replacement for news.gov.bc.ca and the
+staff Hub) on government Windows Servers. It is written for a Windows/IIS technician who has not
+seen the project before. It goes server by server: **Dev**, then **Test**, then **Prod**. Every
+step is a command from the package (`deploy/windows/` in the repository), followed by a **Check
+it** block: the exact command to run and what it must print. Do not go to the next step until the
+check passes.
 
 boxs.ca (SiteGround) stays as it is; [siteground.md](siteground.md) covers it and remains the
-reference for what every setting means.
+reference for what every setting in `gcpe.env` means.
 
-## How it fits together
+Contents:
+
+1. [Overview](#1-overview)
+2. [Before you start](#2-before-you-start)
+3. [Dev server](#3-dev-server)
+4. [Test: app server, then DMZ proxy](#4-test-app-server-then-dmz-proxy)
+5. [Prod (later)](#5-prod-later)
+6. [After every deploy](#6-after-every-deploy)
+7. [Operations](#7-operations)
+8. [DMZ proxy reference](#8-dmz-proxy-reference)
+9. [Not yet verified](#9-not-yet-verified)
+
+Conventions:
+
+- Every command runs in an **elevated** PowerShell (**Run as administrator**). Windows
+  PowerShell 5.1, which comes with Windows Server, is enough.
+- `<…>` is a value you fill in. `news-test.example.gov.bc.ca` and the `10.40.x.x` addresses are
+  examples only.
+- **Public host** means the name the public types (for example `news-test.example.gov.bc.ca`).
+  **Internal host** means the app server's own name on the government network (for example
+  `gcpe-test-app.<internal domain>`), which staff use for the Hub.
+
+## 1. Overview
+
+### What runs where
 
 ```
-                 ┌──────────────────────── app server ────────────────────────┐
- browser ──443──▶│ IIS (TLS, URL Rewrite + ARR) ──▶ 127.0.0.1:3000             │
-                 │                                   gcpe-stack Windows service │
-                 │                                   node.exe stack.js          │
-                 │                                   (Core, NRMS, News API,     │
-                 │                                    public site, NoD,         │
-                 │                                    Distribution, Calendar)   │
-                 │                                   C:\gcpe\data (files)       │
-                 └────────────┬──────────────────────────┬──────────────────────┘
-                              │ 5432                     │ 1433 (import only)
-                 ┌────────────▼─────────────┐   ┌────────▼─────────────────────┐
-                 │ PostgreSQL 17 + pgvector │   │ legacy SQL Server            │
-                 │ 7 databases (gcpe_*)     │   │ Gcpe.Hub, Gcpe.NewsOnDemand  │
-                 └──────────────────────────┘   └──────────────────────────────┘
+ DEV (internal only, never public)
+   staff ──443──▶ [ Dev app server ]  IIS "GCPE" ─▶ 127.0.0.1:3000 gcpe-stack service ─▶ PostgreSQL 17 (same server)
+
+ TEST (now)
+   internet ──443/80──▶ [ DMZ proxy #1 ]  IIS "GCPE-Proxy": public paths only, 404 for the rest
+                              │ 443 only
+                              ▼
+   staff ───────443──▶ [ Test app server ]  IIS "GCPE" ─▶ gcpe-stack ─▶ PostgreSQL 17 (same server)
+
+ PROD (later)
+   internet ──443/80──▶ [ DMZ proxy #2 ]  (+ planned: static copy of the public site for patch reboots)
+                              │ 443 only
+                              ▼
+   staff ───────443──▶ [ Prod app server ]  IIS "GCPE" ─▶ gcpe-stack
+                              │ 5432 only
+                              ▼
+                        [ Prod database server ]  PostgreSQL 17 + pgvector
 ```
 
-- **The seven apps that replace the legacy Hub's applications run as one Node.js process**, one
-  Windows service. There is no server per application any more.
-- **The data is seven PostgreSQL databases on one PostgreSQL server**, the same shape as legacy's
-  single SQL Server.
-- **Dev:** the app and PostgreSQL on one server. **Test and Production:** PostgreSQL on its own
-  server, owned and backed up like legacy's SQL Server.
-- **The stack compresses its own text responses** (HTML, CSS, JS, JSON, SVG, XML: brotli, else
-  gzip, from 1 KB up; `apps/stack/src/compress.ts`). IIS forwards them through ARR as they are, so
-  the install needs no IIS dynamic compression (`Web-Dyn-Compression` is not installed, and must
-  not be turned on for this site: it would only add CPU). Fonts and images are sent as they are.
-  Check with `curl.exe -sI -H "Accept-Encoding: br" https://<host>/assets/legacy/Content/legacy.bundle.css`:
-  expect one `content-encoding: br` and `vary: Accept-Encoding`.
-- Run **one** app server per environment. Uploaded files, the generated public site and Calendar
-  attachments live on its disk (`C:\gcpe\data`), and the background work (publishing, sending
-  mail) runs inside the process; a second app server would need shared storage and has not been
-  tested.
+| Server | Windows | Installed with | Holds |
+|---|---|---|---|
+| Dev app server (internal) | Server 2025 | `Install-Gcpe.ps1` | the app, PostgreSQL, uploaded files, every secret |
+| Test app server (internal) | Server 2025 | `Install-Gcpe.ps1 -ProxyHops 2 -AllowedClientRanges …` | the same |
+| DMZ proxy #1 (Test) | Server 2025 | `Install-GcpeProxy.ps1 -Environment Test` | IIS only, the public TLS certificate, a page cache |
+| DMZ proxy #2 (Prod) | Server 2025 | `Install-GcpeProxy.ps1 -Environment Prod`, once Prod's app server exists | the same |
+| Prod app server (later) | Server 2025 | `Install-Gcpe.ps1 -PostgresAdminUrl … -ProxyHops 2 -AllowedClientRanges …` | the app, uploaded files, every secret |
+| Prod database server (later) | Server 2025 | `Install-GcpeDatabaseServer.ps1` | PostgreSQL |
 
-| | App server | Database server |
-|---|---|---|
-| Dev | `Install-Gcpe.ps1` (installs PostgreSQL too) | the same server |
-| Test, Prod | `Install-Gcpe.ps1 -PostgresAdminUrl …` | `Install-GcpeDatabaseServer.ps1` |
+- **One app server per environment runs everything** as one Windows service, `gcpe-stack`
+  (`node.exe stack.js`): the staff Hub (Core, NRMS, NoD, Distribution, Calendar), the News API and
+  the public site. There is no server per application.
+- **The data is seven PostgreSQL databases** (`gcpe_core`, `gcpe_nrms`, `gcpe_news_api`,
+  `gcpe_site`, `gcpe_nod`, `gcpe_distribution`, `gcpe_calendar`) plus files on the app server's
+  disk under `C:\gcpe\data`. There is no separate database team: **backups are this team's job**
+  ([7.1](#71-backups-and-the-restore-drill)).
+- **Run only one app server per environment.** Uploaded files, the generated public site and the
+  Calendar attachments live on its disk, and the background work (publishing, sending mail) runs
+  inside the process. A second app server would need shared storage and has not been tested.
+- **The stack compresses its own responses** (brotli or gzip). IIS forwards them as they are, so
+  IIS dynamic compression (`Web-Dyn-Compression`) is not installed and must not be turned on.
 
-## What the package contains
+### Why only IIS is in the DMZ
 
-`gcpe-windows-<commit>.zip`, built by GitHub Actions (artifact **gcpe-windows** of the
-`windows` and `deploy-windows-dev` workflows) or locally with `npm run build:windows`:
+The DMZ server is the one the internet can reach. If it were broken into, the attacker should find
+nothing worth having: no app code, no database, no database password, no `gcpe.env` secrets, no
+staff sessions. So it runs IIS with URL Rewrite and ARR only. It forwards the public paths (the
+news site, its files, the public News API and the subscribe API) to the internal app server over
+HTTPS, and answers every other path, including the whole Hub, with its own 404
+([8.1](#81-what-the-proxy-forwards)). Staff never go through the DMZ: they use the Hub on the app
+server's internal host name (over VPN when they are off the network).
+
+The app server's IIS accepts port 443 only from the DMZ proxy and the named staff ranges
+(`-AllowedClientRanges`, Windows Firewall), and it never reaches into the DMZ.
+
+### What the package contains
+
+`gcpe-windows-<commit>.zip`, built by GitHub Actions (artifact **gcpe-windows** of the `windows`
+and `deploy-windows-dev` workflows) or locally with `npm run build:windows`:
 
 | | |
 |---|---|
-| `Install-Gcpe.ps1` | Sets up the app server and deploys the release. Safe to re-run. |
+| `Install-Gcpe.ps1` | Sets up an app server and deploys the release. Safe to re-run. |
 | `Deploy-GcpeRelease.ps1` | Deploys a new package; rolls back on its own if the new release isn't healthy. |
 | `Import-GcpeLegacy.ps1` | Copies the legacy data from SQL Server, in the right order. Safe to re-run. |
-| `Install-GcpeDatabaseServer.ps1` | Sets up a separate PostgreSQL server (Test, Prod). |
-| `Install-GcpeRunner.ps1` | Installs the GitHub Actions runner that deploys pushes automatically. |
-| `Install-GcpeProxy.ps1` | Sets up a DMZ server as the public reverse proxy (Test, Prod); see "DMZ reverse proxy". |
+| `Install-GcpeDatabaseServer.ps1` | Sets up a separate PostgreSQL server (Prod). |
+| `Install-GcpeProxy.ps1` | Sets up a DMZ server as the public reverse proxy (Test, Prod). |
+| `Register-GcpeBackup.ps1` | Schedules the nightly backup and runs it once. |
+| `Backup-Gcpe.ps1` | One backup run (what the nightly task runs; also by hand). |
+| `Install-GcpeRunner.ps1` | Installs the GitHub Actions runner that deploys pushes to Dev. |
 | `Get-GcpePrereqs.ps1` | Downloads every installer, for a server without internet access. |
-| `app\` | The release: `stack.js`, the staff app, migrations, the bundled importers. |
+| `app\` | The release: `stack.js`, the staff app, migrations, the bundled command-line tools. |
 | `prereqs\pgvector\` | pgvector compiled for PostgreSQL 17 on Windows (by CI). |
 | `lib\` | Shared PowerShell, and the pinned installer list with SHA-256 hashes. |
 
-Installers it pins (`lib\prereqs.psd1`): Node.js 24.21.0, IIS URL Rewrite 2.1, Application
-Request Routing 3.0, WinSW 2.12.0, PostgreSQL 17.11 (EDB). Each is checked against its SHA-256
-before it runs.
+Installers it pins (`lib\prereqs.psd1`): Node.js 24.21.0, IIS URL Rewrite 2.1, Application Request
+Routing 3.0, WinSW 2.12.0, PostgreSQL 17.11 (EDB). Each is checked against its SHA-256 before it
+runs. `Get-Help .\<script>.ps1 -Full` describes every script and every parameter.
 
-## Before you start
+## 2. Before you start
 
-You need:
+### 2.1 Checklist per environment
 
-- [ ] **Windows Server 2019 or later**, 64-bit, 4+ cores, 8+ GB RAM, 50+ GB free on the system
-      drive. The install is tested automatically on Server 2022 and 2025; GitHub has no 2019
-      machines, so the first Dev install is the first run on 2019 (see "Not yet verified").
-- [ ] A local **Administrator** account on it, and an elevated PowerShell (**Run as
-      administrator**). Windows PowerShell 5.1, which comes with the server, is enough.
-- [ ] **A DNS name** for the site, e.g. `news-dev.<ministry>.gov.bc.ca`, pointing at the server.
-- [ ] **A TLS certificate** for that name in `Cert:\LocalMachine\My`, or nothing for Dev (the
-      installer makes a self-signed one; browsers will warn).
-- [ ] **An SMTP relay** the server may send through, a From address, and **a test inbox**: on Dev
-      every outgoing email is redirected to that inbox, whoever it was addressed to.
-- [ ] **A SQL Server login** (user name and password, not Windows authentication) with read
-      access to the legacy `Gcpe.Hub` and `Gcpe.NewsOnDemand` databases. The importers only read.
-- [ ] **Firewall openings from the app server:** to the legacy SQL Server on 1433, to the SMTP
-      relay, to `github.com:443` (the deploy runner), and to the internet for the installers
-      (or use `Get-GcpePrereqs.ps1` elsewhere and copy them over). Into the app server: 443 and
-      80 from users.
+Every server: **Windows Server 2025**, 64-bit, joined to the domain (internal servers), a local
+Administrator account, time synchronised to the government NTP source (embargo times depend on the
+clock: `w32tm /query /status` shows the source).
 
-Later, not needed for the first install: an **Entra app registration** for staff sign-in
-(step 8), the **Media Hub** and **emergency alerts feed** addresses, **Flickr** keys, and
-**Azure OpenAI** for semantic search (step 9).
+| | Dev | Test | Prod (later) |
+|---|---|---|---|
+| Servers | 1 internal: app + PostgreSQL | 1 internal (app + PostgreSQL), 1 DMZ (proxy #1) | 2 internal (app; database), 1 DMZ (proxy #2) |
+| Size (app server) | 4+ cores, 8+ GB RAM, 50+ GB free | the same; add the legacy data and files (measure `C:\gcpe\data` on Dev after the import) | the same; database server sized like the Test app server |
+| Size (DMZ) | — | 2 cores, 4 GB, 20 GB free (5 GB cache by default) | the same |
+| Public host | none | e.g. `news-test.<domain>` (DMZ proxy) | `news.gov.bc.ca` and the other names in the URL cutover runbook (`docs/parity/url-cutover-runbook.md` §4) |
+| Internal host | e.g. `gcpe-dev-app.<internal domain>` | e.g. `gcpe-test-app.<internal domain>` | e.g. `gcpe-prod-app.<internal domain>`, and the database server's name |
+| Certificates | none needed (self-signed is made) or one for the internal host | app server: internal host; DMZ: public host (see 2.2) | the same, publicly trusted on the DMZ |
+| Entra app registration | optional (break-glass `admin` works without it) | yes | yes |
+| SMTP relay | yes, all mail redirected to a test inbox | yes, all mail redirected | yes, real mail |
+| Backup share | a share on another server (or a local folder) | a share on another server | a share on another server; WAL archive share too |
+| Legacy SQL Server login | yes (import) | yes (import) | yes (final import) |
 
-## Step 1 — Get the package onto the server
+Collect before the first install:
 
-1. In the GitHub repository, open **Actions → windows** (or **deploy-windows-dev**), pick the
-   latest green run, and download the **gcpe-windows** artifact. It downloads as a zip
-   containing `gcpe-windows-<commit>.zip`.
+- [ ] **The IPv4 addresses** of every server, and the **staff ranges** (CIDR, for example
+      `142.22.0.0/16`) that may use the Hub.
+- [ ] **A SQL Server login** (user name and password; Windows authentication is not supported)
+      with read access to the legacy `Gcpe.Hub` and `Gcpe.NewsOnDemand` databases. The importers
+      only read.
+- [ ] **The SMTP relay**: host, port (25 by default), whether it needs TLS (`-SmtpSecure`) or a
+      login, the From address, and **a test inbox**: Dev and Test redirect every outgoing email to
+      it, whoever it was addressed to.
+- [ ] **A password manager entry** for the break-glass `admin` login of each environment (12+
+      characters).
+- [ ] **A backup share** (`\\<backup server>\<share>`), on a different server, whose share and
+      folder permissions allow only the backup administrators and the computer accounts of the
+      servers that write to it (`<DOMAIN>\<server>$`). Backups contain `gcpe.env` (every secret)
+      and the subscribers' e-mail addresses.
+- [ ] Later (step D7 and D8): the **Entra app registration**, the **Media Hub** address and client
+      credentials, the **emergency alerts feed** address, **Flickr** keys, and **Azure OpenAI** for
+      semantic search (only after the privacy impact assessment allows it).
+
+Service accounts: none to request. The app runs as the virtual account `NT SERVICE\gcpe-stack`
+(created by the installer). The scheduled tasks (backup, log cleanup) run as `SYSTEM`, which
+reaches the backup share as the server's computer account. The Dev deploy runner runs as
+`LocalSystem`.
+
+### 2.2 Certificates
+
+| Server | The certificate must carry | Store | Notes |
+|---|---|---|---|
+| App server (all environments) | its **internal host** name | `Cert:\LocalMachine\My`, with private key | Staff browse to it; the DMZ proxy connects to it by that name. Internal CA is fine (the DMZ server must trust that CA, or you hand it the `.cer`). |
+| DMZ proxy | the **public host** name (and any other public names) | `Cert:\LocalMachine\My`, with private key | Publicly trusted for Prod (the script refuses a self-signed one with `-Environment Prod`). Test may use a self-signed one while it is IP-restricted. |
+| Prod database server | none | | PostgreSQL connections are not encrypted (see [9](#9-not-yet-verified)). |
+
+**The public host name does not need to be on the app server's certificate**, even though the
+proxy passes the visitor's `Host` header (the public name) on to the app server. Two reasons:
+
+- the app server's IIS binds its certificate to `0.0.0.0:443` with no host name (no SNI), so it
+  presents the same certificate whatever `Host` says; and
+- ARR checks the app server's certificate against the name in `-Upstream`, not against `Host`.
+
+Verified on Windows Server 2022 and 2025 GitHub runners (workflow `windows`, run 40796381759): the
+proxy was installed with public host `gcpe-proxy-ci.example.test`, which is not on the app's
+certificate (it carries `gcpe-ci.example.test` and `localhost`), and `-Upstream https://localhost`;
+public pages came back 200 through the proxy over verified TLS.
+
+**Alternative when the app server only has the installer's self-signed certificate** (it carries
+the `-HostName` you gave `Install-Gcpe.ps1`, which for Test is the public host, plus `localhost`):
+give the proxy `-Upstream https://<public host>`, add `<app server IP> <public host>` to the DMZ
+server's `C:\Windows\System32\drivers\etc\hosts`, and `-UpstreamCertificateFile` the exported
+self-signed certificate. Staff then get a browser warning on the internal host, so prefer a real
+internal-CA certificate.
+
+### 2.3 Entra (staff sign-in) per environment
+
+Staff sign in on the **internal host**, so each environment needs its own redirect URI on that
+host. Ask the Entra administrators for one app registration per environment (or one with every
+redirect URI):
+
+| Environment | Redirect URI (platform **Web**) |
+|---|---|
+| Dev | `https://<Dev internal host>/core/auth/entra/callback` |
+| Test | `https://<Test internal host>/core/auth/entra/callback` |
+| Prod | `https://<Prod internal host>/core/auth/entra/callback` |
+
+Single tenant, a client secret, delegated permissions `openid`, `profile`, `email`; the manifest
+needs `"accessTokenAcceptedVersion": 2`. Roles stay in the Hub, not in Entra. The callback is
+under `/core`, which the DMZ proxy never forwards, so it must be the internal host.
+
+### 2.4 Firewall requests
+
+Inbound:
+
+| Source | Destination | Port | Purpose |
+|---|---|---|---|
+| internet | DMZ proxy (Test, Prod) | TCP 443 | the public site |
+| internet | DMZ proxy | TCP 80 | redirects to 443 only |
+| DMZ proxy | its environment's app server | TCP 443 | the only way in from the DMZ |
+| staff ranges (named) | app server (Dev, Test, Prod) | TCP 443 (and 80, which redirects) | the Hub, on the internal host |
+| Prod app server | Prod database server | TCP 5432 | PostgreSQL (`Install-GcpeDatabaseServer.ps1` opens it to that address only) |
+| your admin workstations | every server | RDP / WinRM per your standard | administration |
+| anything else | app server 443 | — | **closed** ([8.3](#83-why-the-app-servers-443-must-be-closed-to-everyone-else)) |
+| DMZ proxy | anything internal other than its app server's 443 | any | **closed**: the DMZ never reaches a database or SQL Server |
+
+Outbound from the app server (verified against the code and settings named; open each only when
+you configure that service):
+
+| Destination | Port | When | Setting |
+|---|---|---|---|
+| SMTP relay | TCP 25 (or your `-SmtpPort`) | always | `DIST_SMTP_HOST`, `DIST_SMTP_PORT` |
+| `login.microsoftonline.com` | TCP 443 | Entra sign-in configured | `ENTRA_TENANT_ID` (sign-in and token keys) |
+| `graph.microsoft.com` (and `login.microsoftonline.com`) | TCP 443 | only if bounce reading via Microsoft Graph is turned on | `DIST_BOUNCE_SOURCE=graph` |
+| Media Hub host(s) | TCP 443 | Media Hub configured | `NOD_MEDIA_HUB_URL`, `NOD_MEDIA_HUB_TOKEN_URL` |
+| `api.flickr.com`, `www.flickr.com` | TCP 443 | Flickr configured | NRMS `FLICKR_REST_URL`, `FLICKR_OEMBED_URL`, `FLICKR_OAUTH_URL` defaults |
+| your Azure OpenAI endpoint host | TCP 443 | semantic search turned on | `AZURE_OPENAI_ENDPOINT` |
+| `www.emergencyinfobc.gov.bc.ca` | TCP 443 | emergency alerts feed configured | `NOD_EMERGENCY_FEED_URL` |
+| legacy SQL Server | TCP 1433 | import period only | `Import-GcpeLegacy.ps1 -SqlServer` |
+| `api.news.gov.bc.ca`, `bcgovnews-etg7c8etapa6btfr.z03.azurefd.net` (legacy files on Azure) | TCP 443 | import period only (`news-api-import-files.mjs`) | defaults in `apps/news-api/src/import/public-fetch.ts`, `public-files.ts` |
+| backup share server | TCP 445 (SMB) | always | `Register-GcpeBackup.ps1 -BackupPath` |
+| `github.com` and the GitHub Actions service hosts | TCP 443 | **Dev only** (deploy runner) | `Install-GcpeRunner.ps1` |
+| `nodejs.org`, `download.microsoft.com`, `github.com`, `get.enterprisedb.com` | TCP 443 | install time only, and not at all if you copy the installers in with `Get-GcpePrereqs.ps1` | `lib\prereqs.psd1` |
+
+Not needed at runtime: the npm registry (the package is self-contained), any internet access for
+the public site's pages (browsers fetch YouTube thumbnails and the like themselves). Windows
+Update, DNS and NTP follow your server standard. Node.js does not use the Windows proxy settings
+by default: if outbound HTTPS must go through a proxy, say so before go-live (not tested).
+
+Outbound from the Prod database server: the backup share (TCP 445) and the WAL archive share
+(TCP 445). Outbound from a DMZ proxy: its app server's 443 only (plus Windows Update per your
+standard). **DMZ → anything else: closed.**
+
+## 3. Dev server
+
+Dev is one internal server with the app and PostgreSQL. It is never public.
+
+### D1. Get the package onto the server
+
+1. In the GitHub repository open **Actions → windows** (or **deploy-windows-dev**), pick the latest
+   green run, and download the **gcpe-windows** artifact. It downloads as a zip containing
+   `gcpe-windows-<commit>.zip`.
 2. Copy `gcpe-windows-<commit>.zip` to the server, e.g. `C:\install\`.
-3. On the server, in an elevated PowerShell:
+3. On the server:
 
    ```powershell
    cd C:\install
+   Get-FileHash .\gcpe-windows-*.zip      # write the hash in the change record
    Unblock-File .\gcpe-windows-*.zip
    Expand-Archive .\gcpe-windows-*.zip -DestinationPath .
    cd .\gcpe-windows
    ```
 
    `Unblock-File` stops Windows refusing to run scripts that came from the internet. If the
-   execution policy still blocks them, run `Set-ExecutionPolicy -Scope Process RemoteSigned`
-   in this window.
+   execution policy still blocks them: `Set-ExecutionPolicy -Scope Process RemoteSigned`.
 
-**No internet on the server?** Run `.\Get-GcpePrereqs.ps1` in the extracted folder on any
-Windows machine that has internet access, then copy the whole `gcpe-windows` folder, now with
-its `prereqs\` filled, to the server.
+**No internet on the server?** Run `.\Get-GcpePrereqs.ps1` in the extracted folder on any Windows
+machine that has internet access, then copy the whole `gcpe-windows` folder, now with its
+`prereqs\` filled, to the server.
 
-## Step 2 — (Test and Prod only) the database server
-
-On the database server, from the same package:
+**Check it**
 
 ```powershell
-.\Install-GcpeDatabaseServer.ps1 -AppServerAddress <app server IP>
+Get-ChildItem C:\install\gcpe-windows | Select-Object Name
+Get-Content C:\install\gcpe-windows\app\VERSION.json
 ```
 
-It installs PostgreSQL 17 (service `postgresql-x64-17`, data in `C:\gcpe\pgdata`) with a
-generated superuser password saved to `C:\gcpe\config\postgres-superuser.txt` (Administrators
-only), installs pgvector, allows connections from the app server's address only (`pg_hba.conf`
-and Windows Firewall), and prints the `-PostgresAdminUrl` to use in step 3. Skip this step on Dev.
+Expect the scripts in the table in [1](#what-the-package-contains), `app`, `lib`, `prereqs`, and a
+`VERSION.json` with the `commit` you downloaded. With `Get-GcpePrereqs.ps1`: `prereqs\` holds five
+installers and `prereqs\pgvector\vector.dll`.
 
-## Step 3 — Install on the app server
-
-Dev (PostgreSQL on the same server, self-signed certificate):
+### D2. Install
 
 ```powershell
-.\Install-Gcpe.ps1 -HostName news-dev.example.gov.bc.ca `
-    -SmtpHost apps.smtp.gov.bc.ca -MailFrom noreply-dev@gov.bc.ca -MailRedirectTo you@gov.bc.ca
+.\Install-Gcpe.ps1 -HostName <Dev internal host> `
+    -SmtpHost <relay> -MailFrom <noreply-dev@…> -MailRedirectTo <test inbox> `
+    -AllowedClientRanges <staff range 1>, <staff range 2>
 ```
 
-It asks for a password for the break-glass `admin` login (12+ characters). Keep it in the team's
-password manager.
+It asks for the password of the break-glass `admin` login (12+ characters); put it in the
+password manager. Every parameter:
 
-Test/Prod add `-PostgresAdminUrl postgres://postgres@<database server>:5432/postgres` (it asks
-for the superuser password, from step 2's `postgres-superuser.txt`) and
-`-CertificateThumbprint <thumbprint>`.
-Add `-ProxyHops 2` when a DMZ reverse proxy sits in front of this server (default 1; it sets
-`TRUST_PROXY_HOPS` so visitors are not all logged as the proxy; a re-run changes it only if you pass it).
-All the options: `Get-Help .\Install-Gcpe.ps1 -Full`.
-
-What it does, in order (a full log goes to `C:\gcpe\logs\install-<time>.log`):
-
-1. Installs IIS with WebSockets, URL Rewrite, ARR, Node.js and (Dev) PostgreSQL 17 with pgvector.
-   PostgreSQL's superuser password is generated and saved to `C:\gcpe\config\postgres-superuser.txt`.
-2. Writes `C:\gcpe\config\gcpe.env`: every setting, with fresh random internal secrets and the
-   admin password stored only as a hash. Only Administrators and the service can read it. On a
-   re-run the file is kept as it is.
-3. Creates the PostgreSQL login `gcpe_app` and the databases `gcpe_core`, `gcpe_nrms`,
-   `gcpe_news_api`, `gcpe_site`, `gcpe_nod`, `gcpe_distribution`, `gcpe_calendar`, and enables
-   pgvector in `gcpe_news_api`. The tables are created by the app itself when it starts.
-4. Installs the **gcpe-stack** Windows service: `node.exe --env-file=C:\gcpe\config\gcpe.env
-   C:\gcpe\current\stack.js`, running as the virtual account `NT SERVICE\gcpe-stack`, which can
-   change only `C:\gcpe\data` and its own logs. Automatic start; restarted by Windows if it stops.
-5. Blocks inbound connections to port 3000 (only IIS on the same server talks to it).
-6. Creates the IIS site **GCPE**: https on 443 with the certificate, http on 80 redirecting to
-   https, forwarding every request to `127.0.0.1:3000` and telling the app it came in over https.
-   If the **Default Web Site** was using port 80 or 443, it is stopped.
-7. Deploys the release (step 10's script) and checks `/stack/health` directly and through IIS.
-
-Re-running `Install-Gcpe.ps1` is safe; use it to repair a setup or to apply a new package's
-server changes. A re-run keeps `gcpe.env` (it says which options it ignored because of that),
-keeps the certificate already bound to port 443 unless you pass `-CertificateThumbprint`, and
-refuses to run without `-PostgresAdminUrl` when the databases are on another server.
-
-### Check it
-
-| | |
+| Parameter | Meaning |
 |---|---|
-| `https://<host>/stack/health` | `{"status":"ok", "apps": {… all true}}` |
-| `https://<host>/hub/` | The staff app. Sign in as `admin`. |
-| `https://<host>/` | The public news site (nearly empty until step 4). `/site/…` URLs 301 here. |
+| `-HostName` (required) | The name the site is configured for (`SITE_PUBLIC_SITE_URL`, mail links) and the self-signed certificate's name. Dev: its internal host. Test/Prod: the **public** host. |
+| `-Root` | Install folder, default `C:\gcpe`. |
+| `-Port` | The stack's local port, default 3000 (blocked from other machines). |
+| `-CertificateThumbprint` | A certificate already in `Cert:\LocalMachine\My` for 443. Omit on Dev for a self-signed one. A re-run keeps the bound certificate unless you pass this. |
+| `-PostgresAdminUrl`, `-PostgresAdminPassword` | Prod only: `postgres://postgres@<database server>:5432/postgres`; the password is asked for. Omit to install PostgreSQL 17 on this server. |
+| `-PostgresDataDir` | PostgreSQL's data folder when installed here, default `C:\gcpe\pgdata`. |
+| `-SmtpHost`, `-SmtpPort` (25), `-SmtpSecure`, `-SmtpUser`, `-SmtpPassword` | The relay. Asked for if `-SmtpHost` is missing. |
+| `-MailFrom` | From address. |
+| `-MailRedirectTo` | Every outgoing message goes to these inboxes instead (required: this package writes a test-site configuration). |
+| `-AdminUsername` (`admin`), `-AdminPassword` | The break-glass login; asked for if missing. |
+| `-EntraTenantId`, `-EntraClientId`, `-EntraClientSecret`, `-EntraAudience` | Staff sign-in, all four together (or later, D7). |
+| `-GoogleVerificationFile`, `-GoogleSiteVerification` | Google Search Console tokens (Prod go-live). |
+| `-ProxyHops` | Reverse proxies in front of this server: 1 (Dev), 2 behind the DMZ proxy (Test, Prod). Sets `TRUST_PROXY_HOPS`. A re-run changes it only when passed. |
+| `-AllowedClientRanges` | IPv4 CIDR ranges that may reach IIS on 443 and 80 (Windows Firewall); everything else is refused. A re-run keeps them unless you pass new ones. |
+| `-AllowAllClients` | Removes that restriction. |
+| `-LogRetentionDays` | IIS logs older than this are deleted nightly, default 30. |
 
-**Upgrading an existing install.** A re-run keeps `gcpe.env`, so an install made before the
-public site moved to the root still has `SITE_PUBLIC_SITE_URL` and `NOD_PUBLIC_SITE_URL` ending
-in `/site`. It keeps working — the site answers at both `/site/…` and `/…` — until you change
-them. To move to the root, set both to the origin (`https://<host>`, no `/site`) in `gcpe.env`
-and restart the `gcpe-stack` service. The site-state marker records the base URL, so the
-change queues one rebuild-all, which the next ticks drain; `/site/…` then 301s to `/…`.
+Settings are written only on the first install: `gcpe.env` is kept on every re-run (the script
+says which options it ignored because of that). To change a setting later, edit
+`C:\gcpe\config\gcpe.env` and `Restart-Service gcpe-stack`.
 
-**Upgrading to a release that changes the page chrome** (`RENDER_CHROME_VERSION` in
-`apps/public-site/src/rebuild.ts`, such as parity plan 1's new header and footer): the first start
-queues one rebuild-all, and `theme.css` and the shared assets change at once. Until the ticks
-have rewritten a page, that page still has the old markup under the new stylesheets, so its
-header and footer can look unstyled. On a site with the full legacy import (tens of thousands of
-releases) the drain takes much longer than on a test site: deploy outside busy hours, and watch
-the queue drain in `/hub/error-log` and on a few old release pages.
+What it does, in order (full log: `C:\gcpe\logs\install-<time>.log`):
 
-**The public site stops publishing when the ministry list can't be read.** Each sync turn reads
-the News API's ministries for the header's menu; if that call fails, the whole turn is retried
-on the next tick and no page is published until it succeeds (this keeps a page from going out
-with an empty News menu). If releases stop appearing on the site, check `/hub/error-log` for a
-failed site sync step (`[stack] tick step failed` naming the public site's sync, with the News
-API's ministries call or "returned no ministries" as the cause) before anything else.
+1. Installs IIS with WebSockets, URL Rewrite, ARR, Node.js and PostgreSQL 17 with pgvector.
+   PostgreSQL's superuser password is generated and saved to
+   `C:\gcpe\config\postgres-superuser.txt` (Administrators only).
+2. Writes `C:\gcpe\config\gcpe.env`: every setting, fresh random internal secrets, the admin
+   password only as a hash. Readable only by Administrators, SYSTEM and the service.
+3. Creates the PostgreSQL login `gcpe_app` and the seven databases, and enables pgvector in
+   `gcpe_news_api`. The app creates its tables when it starts.
+4. Installs the **gcpe-stack** service: `node.exe --env-file=C:\gcpe\config\gcpe.env
+   C:\gcpe\current\stack.js` as `NT SERVICE\gcpe-stack`, which may change only `C:\gcpe\data` and
+   its own logs. Automatic (delayed) start; restarted by Windows if it stops.
+5. Firewall: blocks port 3000 from other machines; with `-AllowedClientRanges`, allows 443 and 80
+   only from those ranges (rule **GCPE web: allowed client ranges only**) and turns off IIS's own
+   rules that open them to everyone. If any other enabled rule (including one from Group Policy)
+   opens 443 or 80, it stops and names it.
+6. Creates the IIS site **GCPE**: https on 443, http on 80 redirecting to https, forwarding
+   everything to `127.0.0.1:3000`. ARR passes `Host` on and writes `X-Forwarded-For` **without the
+   client's port**. Default Web Site is stopped if it held port 80 or 443.
+7. IIS logging: no log entry at all for `/api/Subscribe`, `/nod/Subscribe`, `/subscribe`,
+   `/news-subscribe`, `/newsletters`, `/enewsletters` (their URLs carry e-mail addresses and
+   tokens); no `Referer` field; scheduled task **GCPE IIS log cleanup (GCPE)** deletes logs older
+   than `-LogRetentionDays` every night at 03:15.
+8. Deploys the release (`Deploy-GcpeRelease.ps1`) and checks `/stack/health` directly and through
+   IIS.
 
-## Step 4 — Import the legacy data
+**Check it**
+
+```powershell
+curl.exe -k -s https://localhost/stack/health
+Get-CimInstance Win32_Service -Filter "Name='gcpe-stack'" | Select-Object State, StartName
+& "$env:windir\System32\inetsrv\appcmd.exe" list config -section:system.webServer/proxy
+Get-NetFirewallRule -DisplayName 'GCPE web: allowed client ranges only' | Get-NetFirewallAddressFilter
+Get-ScheduledTask -TaskName 'GCPE IIS log cleanup (GCPE)'
+```
+
+| Expect | |
+|---|---|
+| `{"status":"ok","apps":{…}}` with every app `true` | the stack is up and IIS forwards to it |
+| `State: Running`, `StartName: NT SERVICE\gcpe-stack` | the service |
+| the `<proxy …>` line contains `includePortInXForwardedFor="false"` and `preserveHostHeader="true"` | ARR settings |
+| `RemoteAddress` lists your staff ranges (Windows may show them as address/mask) | the restriction |
+| the task, state `Ready` | log retention |
+
+From a staff workstation: `https://<Dev internal host>/hub/` shows the Hub sign-in (a certificate
+warning with the self-signed certificate is expected); sign in as `admin`. From a machine outside
+the staff ranges the connection times out.
+
+### D3. Import the legacy data
 
 With the site running:
 
@@ -220,47 +381,83 @@ It asks for the SQL login's password and the `admin` password, then runs, in ord
 3. **NRMS**: users (as inactive accounts, matched by email), media lists, every release in every
    status, the website settings. Nothing is published and nobody is emailed: imported scheduled
    releases are put on hold.
-4. Signs in as `admin`, asks Core and NRMS to send their data to the other apps, and waits for
-   NoD to receive every media list.
+4. Signs in as `admin`, asks Core and NRMS to send their data to the other apps, and waits for NoD
+   to receive every media list.
 5. **NoD**: subscribers, lists and the last 30 days of sends (from `Gcpe.NewsOnDemand`).
 6. **Calendar**: a **dry run** that changes nothing. Read `calendar-import.txt`, then run it for
-   real: `.\Import-GcpeLegacy.ps1 … -Only Calendar -CalendarCutoff 2025-11-01 -ConfirmCalendar`.
+   real: `.\Import-GcpeLegacy.ps1 -SqlServer … -SqlUser … -Only Calendar -CalendarCutoff 2025-11-01 -ConfirmCalendar`.
 
-Reports and logs land in `C:\gcpe\import-reports\<time>\`. Each report lists, per legacy table,
-the rows seen, imported and skipped (with the reason); `balanced` means nothing went missing. A
-step whose report doesn't balance is flagged and the run carries on; a step that fails stops the
-run, and re-running is safe (nothing is duplicated, and anything staff changed in the new system
-since the last import is kept and listed).
+Other parameters: `-SqlPassword`, `-TrustServerCertificate` (a legacy server with a self-signed
+certificate), `-HubDatabase` (`Gcpe.Hub`), `-NodDatabase` (`Gcpe.NewsOnDemand`), `-Only Core|NewsApi|Nrms|Nod|Calendar`,
+`-NodSinceDays` (30, at most 92), `-AdminPassword`, `-Root`.
 
-Run one step on its own with `-Only Core` (or `NewsApi`, `Nrms`, `Nod`, `Calendar`). What each
-importer reads and how it treats a re-run is in [siteground.md](siteground.md), "Importing legacy
-NRMS / NoD / Calendar data".
+Every importer is safe to re-run: nothing is duplicated, and anything staff changed in the new
+system since the last import is kept and listed. A step that fails stops the run; fix the cause and
+re-run. What each importer reads: [siteground.md](siteground.md), "Importing legacy NRMS / NoD /
+Calendar data".
 
-**Translations and media assets.** The News API step copies posts from SQL, but legacy keeps
-their translation PDFs and media assets in Azure, which stays up. `import:files` fills in each
-legacy post's links from the public legacy API (`api.news.gov.bc.ca`); this server needs
-outbound HTTPS to it. It is not part of `Import-GcpeLegacy.ps1`: run it by hand after the News
-API step, days before cutover; then, after the last legacy import and before
-`api.news.gov.bc.ca` is repointed, a plain run (picks up flagged posts not filled yet; it never
-revisits filled ones) and a `--refresh --since <full-run date minus 30 days>` run (asks again for
-recent posts). See the URL cutover runbook, section 3. From the live release:
+**Translations and media assets.** Legacy keeps translation PDFs and media assets in Azure, which
+stays up. `news-api-import-files.mjs` fills in each legacy post's links from the public legacy API
+(`api.news.gov.bc.ca`); this needs the outbound openings in [2.4](#24-firewall-requests). It is not
+part of `Import-GcpeLegacy.ps1`: run it by hand after the News API step, days before cutover; then,
+after the last legacy import and before `api.news.gov.bc.ca` is repointed, a plain run and a
+`--refresh --since <full-run date minus 30 days>` run (URL cutover runbook, section 3):
 
 ```powershell
 $env:DATABASE_URL = ((Get-Content C:\gcpe\config\gcpe.env | Where-Object { $_ -like 'NEWSAPI_DATABASE_URL=*' }) -split '=', 2)[1]
 node.exe C:\gcpe\current\tools\news-api-import-files.mjs --dry-run         # real count and hours; sends nothing
 node.exe C:\gcpe\current\tools\news-api-import-files.mjs --concurrency 2
-node.exe C:\gcpe\current\tools\news-api-import-files.mjs                                 # catch-up
+node.exe C:\gcpe\current\tools\news-api-import-files.mjs                   # catch-up
 node.exe C:\gcpe\current\tools\news-api-import-files.mjs --refresh --since 2026-10-01
 Remove-Item Env:DATABASE_URL
 ```
 
-What it reads, its options, and how it stops on a 429 are in [siteground.md](siteground.md),
-"Legacy translations and media assets". Not run on Windows from here.
+Options and its 429 handling: [siteground.md](siteground.md), "Legacy translations and media
+assets". Not yet run on Windows.
 
-**Cutover only, never on Dev while legacy is live:** turning legacy's publisher off and handing
-scheduling to NRMS (`replay-to-news-api`, `release-holds`) is in siteground.md, "Cutover order".
+**Cutover only, never on Dev or Test while legacy is live:** turning legacy's publisher off and
+handing scheduling to NRMS (`replay-to-news-api`, `release-holds`) is in siteground.md, "Cutover
+order".
 
-## Step 5 — Move the repository to bcgov-c
+**Check it**
+
+```powershell
+Get-ChildItem C:\gcpe\import-reports | Sort-Object Name | Select-Object -Last 1 | Get-ChildItem
+```
+
+The newest folder holds one `.log` per step and the JSON/text reports. The summary table the
+script printed says `ok` for every step (`done, report does not balance` means: read that report
+before relying on the data). In the Hub, **Releases** lists the legacy releases, and
+`https://<Dev internal host>/` shows the public site filling in over the next minutes (the
+background ticks render it).
+
+### D4. Schedule the backup
+
+```powershell
+.\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>
+```
+
+On Dev and Test the app server holds both the databases and the files, so this one run covers
+both. Parameters: `-BackupPath` (required), `-BackupRetentionDays` (14), `-At` (`01:30`),
+`-Databases` / `-Files` (force what is backed up; normally detected), `-Root`, `-SkipFirstRun`,
+`-WaitMinutes` (120). Details, contents and restore: [7.1](#71-backups-and-the-restore-drill).
+
+The share must let this server's computer account (`<DOMAIN>\<server>$`) create folders: the
+nightly task runs as SYSTEM.
+
+**Check it**
+
+The script ends with `OK  done: \\<backup server>\<share>\<SERVER>\<yyyyMMdd-HHmmss>`. Then:
+
+```powershell
+Get-ScheduledTask -TaskName 'GCPE nightly backup' | Get-ScheduledTaskInfo | Select-Object LastRunTime, LastTaskResult, NextRunTime
+Get-ChildItem \\<backup server>\<share>\$env:COMPUTERNAME | Sort-Object Name | Select-Object -Last 1 | Get-ChildItem -Recurse -Depth 1
+```
+
+Expect `LastTaskResult 0`, and in the newest folder: `db\` with seven `gcpe_*.dump` files,
+`files\storage`, `files\calendar-files`, `config\gcpe.env`, `manifest.json`, `COMPLETE.txt`.
+
+### D5. Move the repository to bcgov-c (once)
 
 1. Create a **private** repository in the `bcgov-c` organization (an org owner may need to do it),
    e.g. `bcgov-c/gcpe-news-platform`.
@@ -275,72 +472,58 @@ scheduling to NRMS (`replay-to-news-api`, `release-holds`) is in siteground.md, 
    ```
 
 4. In the new repository's **Settings**:
-   - **Branches:** protect `main` and `develop` (pull request with an approving review, the
-     `ci` and `windows` checks passing).
-   - **Environments → New environment `dev`:** add yourself (and the team lead) as required
-     reviewers if Dev deploys should wait for a click; restrict it to the `develop` branch.
+   - **Branches:** protect `main` and `develop` (pull request with an approving review, the `ci`
+     and `windows` checks passing).
+   - **Environments → New environment `dev`:** add required reviewers if Dev deploys should wait
+     for a click; restrict it to the `develop` branch.
 
-## Step 6 — Install the deploy runner on the Dev server
+### D6. The deploy runner (Dev only)
 
-GitHub can't reach into the government network, so the Dev server reaches out instead: a
-GitHub Actions *self-hosted runner* on it connects to `github.com` over HTTPS and waits for
-deploy jobs. Nothing inbound is opened.
+GitHub can't reach into the government network, so the Dev server reaches out: a GitHub Actions
+self-hosted runner connects to `github.com` over HTTPS and waits for deploy jobs. Nothing inbound is
+opened. Test and Prod have no runner: they are deployed by hand ([6](#6-after-every-deploy)).
 
-1. In the repository: **Settings → Actions → Runners → New self-hosted runner → Windows**. Copy
-   the token from the `config.cmd` line (valid for one hour).
+1. In the repository: **Settings → Actions → Runners → New self-hosted runner → Windows**. Copy the
+   token from the `config.cmd` line (valid for one hour).
 2. On the Dev server, from the package folder:
 
    ```powershell
    .\Install-GcpeRunner.ps1 -RepositoryUrl https://github.com/bcgov-c/gcpe-news-platform -Token <token> -Labels gcpe-dev
    ```
 
-3. Back in **Settings → Actions → Runners**, the server shows as **Idle**.
+   Other parameters: `-RunnerDir` (`C:\actions-runner`), `-Version` and `-Sha256` (the pinned
+   runner).
 
-The runner runs as a Windows service under LocalSystem, because a deploy stops and starts the
-gcpe-stack service. Anyone who can change `.github/workflows/deploy-windows-dev.yml` on
-`develop` can therefore run commands on the Dev server, which is why step 5 protects `develop`.
-If the server needs an outbound proxy for github.com, set it first:
-`[Environment]::SetEnvironmentVariable('https_proxy','http://proxy:port','Machine')`, then
-restart the runner service.
+The runner runs as `LocalSystem`, because a deploy stops and starts the gcpe-stack service. Anyone
+who can change `.github/workflows/deploy-windows-dev.yml` on `develop` can therefore run commands on
+the Dev server, which is why D5 protects `develop`. If the server needs an outbound proxy for
+github.com: `[Environment]::SetEnvironmentVariable('https_proxy','http://proxy:port','Machine')`,
+then restart the runner service.
 
-## Step 7 — From your code to Dev
+Day to day: merge a pull request into `develop`; **deploy-windows-dev** runs the tests, builds the
+package, waits for the `dev` environment's approval if set, and runs `Deploy-GcpeRelease.ps1` on
+this runner (rolls back by itself if the new release isn't healthy). Start one by hand with
+**Actions → deploy-windows-dev → Run workflow**. No secrets are stored in GitHub.
 
-Day to day:
+**Check it**
 
-1. Branch from `develop`, commit, push, and open a pull request into `develop`. The `ci` (Linux)
-   and `windows` checks run on it; `windows` also installs the whole package on a clean Windows
-   Server and checks it.
-2. Merge the pull request. The **deploy-windows-dev** workflow then runs by itself:
-   1. runs the tests,
-   2. builds the package (`gcpe-windows` artifact),
-   3. waits for the `dev` environment's approval, if you set one,
-   4. on the Dev server's runner, runs `Deploy-GcpeRelease.ps1`, which copies the release,
-      checks it against the server's settings, switches the site to it, applies any database
-      migrations, checks health directly and through IIS, and **rolls back to the previous
-      release by itself** if the new one isn't healthy.
-3. Watch it under **Actions → deploy-windows-dev**. A red deploy job means the site is still on
-   the previous release; the job log says why.
+**Settings → Actions → Runners** shows the server as **Idle**. Then **Run workflow** once: the
+deploy job is green and `Get-Content C:\gcpe\current\VERSION.json` shows its commit.
 
-You can also start a deploy by hand: **Actions → deploy-windows-dev → Run workflow**. Your own
-GitHub login is only used to push and to approve; the server never sees it, and no secrets are
-stored in GitHub (they're in `gcpe.env` on the server).
+### D7. Staff sign-in with Microsoft Entra
 
-## Step 8 — Staff sign-in with Microsoft Entra
+Until this is done, staff sign in with passwords set in the Hub's **Users** screen, and `admin` is
+the way in.
 
-Until this is done, staff sign in with passwords set in the Hub's **Users** screen, and `admin`
-is the way in.
-
-1. Ask the Entra administrators for an app registration: platform **Web**, redirect URI
-   `https://<host>/core/auth/entra/callback`, single tenant, a client secret, delegated
-   permissions `openid`, `profile`, `email`. Roles stay in the Hub, not in Entra. Its manifest
-   needs `"accessTokenAcceptedVersion": 2`.
-2. Add to `C:\gcpe\config\gcpe.env` (Notepad, as Administrator):
+1. Get the registration from [2.3](#23-entra-staff-sign-in-per-environment).
+2. Add to `C:\gcpe\config\gcpe.env` (Notepad, as Administrator). `CORE_PUBLIC_BASE_URL` is the
+   **internal host** (on Test and Prod too: the callback must not go through the DMZ):
 
    ```
    ENTRA_TENANT_ID=<tenant id>
    CORE_ENTRA_CLIENT_ID=<client id>
    CORE_ENTRA_CLIENT_SECRET='<client secret>'
-   CORE_PUBLIC_BASE_URL=https://<host>
+   CORE_PUBLIC_BASE_URL=https://<internal host>
    CORE_AUTH_AUDIENCE=api://<client id>
    NRMS_AUTH_AUDIENCE=api://<client id>
    NEWSAPI_AUTH_AUDIENCE=api://<client id>
@@ -351,15 +534,23 @@ is the way in.
    ```
 
    (On a fresh server, `Install-Gcpe.ps1 -EntraTenantId … -EntraClientId … -EntraClientSecret …
-   -EntraAudience …` writes the same lines.)
-3. `Restart-Service gcpe-stack`, then check `https://<host>/stack/health`.
+   -EntraAudience …` writes the same lines, with `CORE_PUBLIC_BASE_URL=https://<-HostName>`: on Test
+   and Prod change that one line to the internal host afterwards.)
+3. `Restart-Service gcpe-stack`.
 4. Each person signs in with Microsoft once their Hub user exists with their government email.
    Details: siteground.md, "Staff sign-in with Microsoft Entra".
 
-## Step 9 — Connect the outside services
+**Check it**
 
-Until these are set, the stack uses built-in fakes and says so in its log. Add each to
-`gcpe.env`, then `Restart-Service gcpe-stack`:
+`curl.exe -k -s https://localhost/stack/health` is `ok` (a wrong Entra setting stops the stack
+from starting; the reason is in `C:\gcpe\service\logs\gcpe-stack.err.log`). On
+`https://<internal host>/hub/`, **Sign in with Microsoft** returns you to the Hub signed in.
+
+### D8. Connect the outside services
+
+Until these are set, the stack uses built-in fakes and says so in its log. Add each to `gcpe.env`,
+then `Restart-Service gcpe-stack`, and open its outbound firewall rule first
+([2.4](#24-firewall-requests)):
 
 | Service | Settings | Notes |
 |---|---|---|
@@ -367,21 +558,572 @@ Until these are set, the stack uses built-in fakes and says so in its log. Add e
 | Emergency alerts feed | `NOD_EMERGENCY_FEED_URL=https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true` | Must be the final URL, no redirect. |
 | Flickr (NRMS) | `NRMS_FLICKR_API_KEY`, `NRMS_FLICKR_API_SECRET`, `NRMS_FLICKR_ACCESS_TOKEN`, `NRMS_FLICKR_ACCESS_SECRET`, `NRMS_FLICKR_ALERT_EMAILS` | siteground.md, "Flickr". |
 | Semantic search | `NEWSAPI_EMBEDDINGS_PROVIDER=azure-openai`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, and `"semanticSearch": true` in `config\tenants\bc.json` | pgvector is already on. `/stack/health` then says `"newsApiSearch": "semantic"`. Never turn on `staffAi` before the privacy impact assessment approves it. |
-| Google Search Console (public site) | `SITE_GOOGLE_VERIFICATION_FILE`, `SITE_GOOGLE_SITE_VERIFICATION` | Optional. On first install pass `-GoogleVerificationFile` and `-GoogleSiteVerification` to `Install-Gcpe.ps1`, which writes them to `gcpe.env` (formats are checked, so a bad value is refused); on an existing install add them to `gcpe.env` and restart. Windows Server is the production host: while `SITE_ENVIRONMENT=test` is set the site is noindex and `robots.txt` is `Disallow: /`, so at go-live remove that line and set the values Search Console issues for the live domain. Details: siteground.md, "Robots and Google Search Console verification". |
-| Real mail | remove `DIST_MAIL_REDIRECT_TO` | Only when this server should email real people. |
+| Google Search Console | `SITE_GOOGLE_VERIFICATION_FILE`, `SITE_GOOGLE_SITE_VERIFICATION` | Prod go-live only ([5](#5-prod-later)). |
+| Real mail | remove `DIST_MAIL_REDIRECT_TO` | Prod only. |
 
-## Step 10 — Running it
+**Check it**
+
+After each restart, `curl.exe -k -s https://localhost/stack/health` is `ok` and the stack's log no
+longer names that service's fake:
+
+```powershell
+Select-String -Path C:\gcpe\service\logs\gcpe-stack.out.log -Pattern 'fake' | Select-Object -Last 10
+```
+
+## 4. Test: app server, then DMZ proxy
+
+Test is one internal app server (app + PostgreSQL) and DMZ proxy #1. It may face the public only to
+test the proxy; it is never indexed (noindex header at the proxy, `robots.txt Disallow: /` and
+noindex pages from the app while `SITE_ENVIRONMENT=test`), and it can be restricted to some
+networks (T5).
+
+### T0. Prerequisites for Test
+
+- [ ] Everything in [2](#2-before-you-start) for Test: both servers, the DMZ firewall openings,
+      both certificates, the Entra redirect URI on the Test internal host.
+- [ ] Before Test is **opened to the public** (T5): the **release-files gate** must be deployed.
+      Today a release's attachments (`/files/…`) can be downloaded as soon as they are uploaded,
+      before the release is published, by anyone who has the link; the gate makes them 404 until
+      publish. It is a separate pull request (branch `feat/release-files-gate`), not in this
+      package yet. Check after deploying it: create a draft release in the Hub with an attachment,
+      copy the attachment's `/files/…` link, and through the proxy
+      `curl.exe -s -o NUL -w '%{http_code}' "https://<public host>/files/<rest of the link>"`
+      must print `404`. Publish the release: within about a minute (the proxy caches files for 60
+      seconds) the same command prints `200`.
+
+### T1. The Test app server
+
+Follow D1 to get the package on the server. Then install with the **public host** as `-HostName`,
+two proxy hops, and IIS reachable only from the DMZ proxy and the staff ranges:
+
+```powershell
+.\Install-Gcpe.ps1 -HostName <public host> -CertificateThumbprint <app server certificate thumbprint> `
+    -ProxyHops 2 -AllowedClientRanges <DMZ proxy IP>/32, <staff range 1>, <staff range 2> `
+    -SmtpHost <relay> -MailFrom <noreply-test@…> -MailRedirectTo <test inbox>
+```
+
+- `-HostName` is the public host because the site's links, feeds and e-mail links must use the
+  name the public sees. Staff still use the internal host for the Hub.
+- `-ProxyHops 2`: the visitor's address is the second-last entry of `X-Forwarded-For` (the DMZ's
+  IIS appends the visitor, this server's IIS appends the DMZ server). Without it every visitor
+  looks like the DMZ server and shares one set of per-address limits.
+- `-AllowedClientRanges`: why it matters is in [8.3](#83-why-the-app-servers-443-must-be-closed-to-everyone-else).
+- Every other parameter as in D2.
+
+Then D3 (import), D4 (backup), D7 (Entra, with `CORE_PUBLIC_BASE_URL=https://<Test internal host>`)
+and D8 as on Dev.
+
+**Check it** (on the app server)
+
+```powershell
+curl.exe -k -s https://localhost/stack/health
+Select-String -Path C:\gcpe\config\gcpe.env -Pattern '^TRUST_PROXY_HOPS=', '^SITE_PUBLIC_SITE_URL=', '^SITE_ENVIRONMENT='
+Get-NetFirewallRule -DisplayName 'GCPE web: allowed client ranges only' -PolicyStore ActiveStore | Get-NetFirewallAddressFilter
+Get-NetFirewallRule -Name 'IIS-WebServerRole-HTTP*-In-TCP' | Select-Object Name, Enabled
+```
+
+Expect: health `ok`; `TRUST_PROXY_HOPS=2`, `SITE_PUBLIC_SITE_URL=https://<public host>`,
+`SITE_ENVIRONMENT=test`; the rule in the **active** store (if it is missing there, Group Policy
+does not merge local firewall rules: ask the GPO owner, or every client including the DMZ is
+refused) with the DMZ address and staff ranges; IIS's own rules `Enabled False`.
+
+From a staff workstation, `https://<Test internal host>/hub/` signs in. From any other internal
+machine, the connection times out.
+
+### T2. Hand the DMZ server the app server's certificate
+
+Skip this if the DMZ server already trusts the CA that issued the app server's certificate (a
+domain-distributed root; DMZ servers often are not domain members). Otherwise, on the app server:
+`certlm.msc` → Personal → Certificates → the certificate → All Tasks → Export → **No, do not export
+the private key** → DER `.cer`. Or get the internal CA's root certificate. Copy the `.cer` (never a
+`.pfx`) to the DMZ server, e.g. `C:\install\gcpe-test-app.cer`.
+
+### T3. The DMZ proxy
+
+Copy the package to the DMZ server (D1; run `Get-GcpePrereqs.ps1` elsewhere if it has no internet;
+only URL Rewrite and ARR are used there). If the DMZ's DNS doesn't resolve the internal host, add
+`<app server IP> <internal host>` to `C:\Windows\System32\drivers\etc\hosts`. Then:
+
+```powershell
+.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<Test internal host> `
+    -CertificateThumbprint <public certificate thumbprint> -UpstreamCertificateFile C:\install\gcpe-test-app.cer `
+    -Environment Test
+```
+
+Every parameter:
+
+| Parameter | Meaning |
+|---|---|
+| `-HostName` (required) | The public host. |
+| `-Upstream` (required) | `https://<name>[:port]` of the app server, no path. The name must be on the app server's certificate. |
+| `-UpstreamCertificateFile` | A `.cer` to trust for the upstream (imported into `LocalMachine\Root`). Refused if it holds a private key. |
+| `-UpstreamCertificateThumbprint` | Or: a certificate already in a LocalMachine store here to trust. With the file: must match it. |
+| `-CertificateThumbprint` | The public certificate in `Cert:\LocalMachine\My`. Omit on Test for a self-signed one (refused with `-Environment Prod`). A re-run keeps the bound certificate. |
+| `-AllowedClientRanges` | Only these IPv4 CIDR ranges may use the site; everyone else gets 403 (IIS IP and Domain Restrictions). Kept on re-run. |
+| `-AllowAllClients` | Removes that restriction. |
+| `-Environment` | `Test` (default: adds `X-Robots-Tag: noindex, nofollow`) or `Prod`. |
+| `-CacheMaxSizeGB` | ARR disk cache cap, default 5. |
+| `-HttpsPort`, `-HttpPort` | 443 and 80 by default. |
+| `-Root` | Default `C:\gcpe-proxy` (site rules, cache, install logs). |
+| `-LogRetentionDays` | IIS logs older than this are deleted nightly, default 30. |
+
+What it does (log: `C:\gcpe-proxy\logs\install-proxy-<time>.log`):
+
+1. Installs IIS, URL Rewrite 2.1 and ARR 3.0 (the same pinned installers), and IIS IP and Domain
+   Restrictions when `-AllowedClientRanges` is given.
+2. Turns on the ARR proxy: `Host` passed on, `X-Forwarded-For` gets the visitor's address (no
+   port), `X-Forwarded-Proto: https`, 2-minute upstream timeout, responses streamed.
+3. Turns on the ARR disk cache in `C:\gcpe-proxy\cache`, at most `-CacheMaxSizeGB`.
+4. Trusts the upstream certificate, then checks the app server answers over **verified** TLS. It
+   never turns certificate checks off; it stops if the check fails.
+5. Creates the IIS site **GCPE-Proxy** (https with the certificate, http → 301 to https) and writes
+   its rules to `C:\gcpe-proxy\site\web.config` ([8.1](#81-what-the-proxy-forwards)). Request
+   bodies are capped at 1 MB.
+6. Opens 443 and 80 in Windows Firewall (rule **GCPE proxy: inbound web**).
+7. IIS logging: no entries for `/api/Subscribe`, `/subscribe`, `/news-subscribe`, `/newsletters`,
+   `/enewsletters`; no `Referer` field; task **GCPE IIS log cleanup (GCPE-Proxy)**.
+8. Checks through itself that `/hub/` is 404 and `/` comes back from the app server.
+
+**Check it**
+
+The script ends with `OK  / is 200 (from the app server), /hub/ is 404`. A `502` note instead
+means the app server refused the DMZ (its `-AllowedClientRanges`), the network firewall is closed,
+or the upstream certificate is not trusted or not for the `-Upstream` name (the proxy's IIS log
+substatus, e.g. `502.3`, says which).
+
+### T4. End-to-end checks through the proxy
+
+The same checks CI makes. Run them from a machine outside the government network, or on the DMZ
+server itself with `--resolve <public host>:443:127.0.0.1` added to each `curl.exe` (and `-k` while
+the certificate is self-signed):
+
+| Command | Expect |
+|---|---|
+| `curl.exe -s -o NUL -w '%{http_code}' https://<public host>/` | `200` |
+| `curl.exe -s -o NUL -w '%{http_code}' https://<public host>/feed` | `200` |
+| `curl.exe -s -o NUL -w '%{http_code}' https://<public host>/api/v2/ministries` | `200` (public News API) |
+| `curl.exe -s https://<public host>/robots.txt` | ends with `Disallow: /` (test site) |
+| `curl.exe -sI https://<public host>/` | contains `X-Robots-Tag: noindex, nofollow` |
+| `curl.exe -s -o NUL -w '%{http_code}' https://<public host>/hub/` | `404`; the same for `/stack/health`, `/core/api/organizations`, `/core/auth/login`, `/nod/`, `/calendar/`, `/distribution/`, `/site-builder/`, `/events`, `/health/ready`, `/api/v2/changes`, `/api/v2/internal/similar` |
+| `curl.exe -s --path-as-is -o NUL -w '%{http_code}' "https://<public host>/releases/../hub/"` | `404` or `400` (never the Hub) |
+| `curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' https://<public host>/contact` | `301 https://forms.gov.bc.ca/` (an old news.gov address) |
+| `curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' http://<public host>/archive/` | `301 https://<public host>/archive/` |
+| `curl.exe -sI -H 'Accept-Encoding: br' https://<public host>/` | `content-encoding: br` |
+| `curl.exe -sI -H 'Accept-Encoding: gzip' https://<public host>/` | `content-encoding: gzip` or none, never `br` |
+| `curl.exe -sI https://<public host>/` | no `content-encoding` |
+
+**The cache works.** Request `/` twice, more than 5 and less than 60 seconds apart. In the proxy's
+IIS log (`C:\inetpub\logs\LogFiles\W3SVC<id of GCPE-Proxy>\`, after `netsh http flush logbuffer`)
+the second `GET /` line has `X-ARR-CACHE-HIT=1` in its query field, and the app server's IIS log
+has no line for it. `/api/…`, the subscribe pages and any URL with a query string never show a
+cache hit.
+
+**The visitor's address reaches the app.** The stack doesn't log client addresses, but
+`/api/v2/search` counts requests per address and reports what is left in its `RateLimit` header.
+From two machines with different outside addresses, run `curl.exe -sI "https://<public host>/api/v2/search?q=test"`
+a few times each: each machine's remaining count (`r=`) goes down on its own. If the second
+machine's count carries on from the first's, the app sees every visitor as the DMZ server:
+`-ProxyHops 2` is missing on the app server. (The app server's IIS log always shows the DMZ server
+as the client; that is expected.)
+
+**The app server refuses everyone else.** From an internal machine that is neither the DMZ server
+nor in a staff range: `curl.exe -k -s -o NUL --max-time 10 -w '%{http_code}' https://<Test internal host>/`
+prints `000` (timed out).
+
+### T5. Restrict Test by IP, or open it
+
+Restrict (everyone else gets 403 at the proxy):
+
+```powershell
+.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<Test internal host> -AllowedClientRanges 142.22.0.0/16, 142.34.0.0/16
+```
+
+IPv4 CIDR ranges only; a range with host bits set is refused. A re-run keeps the ranges;
+`-AllowAllClients` removes them (**only after T0's release-files gate is deployed**). If a load
+balancer or NAT sits in front of the DMZ server, IIS sees its address, not the visitor's, and the
+restriction cannot tell visitors apart.
+
+**Check it**: from an address outside the ranges, `curl.exe -s -o NUL -w '%{http_code}' https://<public host>/`
+prints `403`; from inside, `200`.
+
+## 5. Prod (later)
+
+Not built yet. The order is: database server, app server, DMZ proxy #2, go-live switches. Prod
+uses the same scripts; what differs is below.
+
+### P1. The database server
+
+On the Prod database server, from the package:
+
+```powershell
+.\Install-GcpeDatabaseServer.ps1 -AppServerAddress <Prod app server IP>
+```
+
+Parameters: `-AppServerAddress` (required; only it may connect), `-Root` (`C:\gcpe`),
+`-PostgresDataDir` (`C:\gcpe\pgdata`). It installs PostgreSQL 17 (service `postgresql-x64-17`) with
+a generated superuser password in `C:\gcpe\config\postgres-superuser.txt` (Administrators only),
+installs pgvector, adds the app server to `pg_hba.conf` (scram-sha-256), opens TCP 5432 to that
+address only, and prints the `-PostgresAdminUrl` for P2.
+
+Then schedule its backup (databases only; it detects that) and set up WAL archiving
+([7.2](#72-prod-point-in-time-recovery-to-set-up-when-prods-database-server-arrives)):
+
+```powershell
+.\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>
+```
+
+Recommended: exclude the data folder from Defender real-time scanning
+(`Add-MpPreference -ExclusionPath C:\gcpe\pgdata`) per your security standard.
+
+**Check it**
+
+```powershell
+Get-Service postgresql-x64-17
+Get-NetFirewallRule -DisplayName 'GCPE PostgreSQL from the app server' | Get-NetFirewallAddressFilter
+Select-String -Path C:\gcpe\pgdata\pg_hba.conf -Pattern 'GCPE app server'
+Select-String -Path C:\gcpe\pgdata\postgresql.conf -Pattern '^listen_addresses'
+```
+
+Expect `Running`, the app server's address, one `pg_hba` line for it, and `listen_addresses = '*'`
+(the EDB installer's default; assumed, not yet seen on a real server: if it says `localhost`,
+change it to `'*'` and `Restart-Service postgresql-x64-17`). From the app server:
+`Test-NetConnection <database server> -Port 5432` is `TcpTestSucceeded : True`.
+
+### P2. The app server
+
+```powershell
+.\Install-Gcpe.ps1 -HostName <public host> -CertificateThumbprint <thumbprint> `
+    -PostgresAdminUrl postgres://postgres@<database server>:5432/postgres `
+    -ProxyHops 2 -AllowedClientRanges <DMZ proxy #2 IP>/32, <staff ranges> `
+    -SmtpHost <relay> -MailFrom <…> -MailRedirectTo <test inbox>
+```
+
+It asks for the superuser password (copy it from `postgres-superuser.txt` on the database server)
+and does not install PostgreSQL here. `-MailRedirectTo` is still required: the package writes a
+test-site configuration, switched to real mail at go-live (P4). Then D3 (final import, at cutover),
+D7 (Entra, internal host), D8, and the backup for the files:
+
+```powershell
+.\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>
+```
+
+Set `NEWSAPI_SEARCH_SEMANTIC_MAX_CONCURRENT` explicitly in `gcpe.env` (its default counts this
+server's cores, but the vector queries run on the database server's).
+
+**Check it**: as T1, plus `Select-String C:\gcpe\config\gcpe.env -Pattern '^CORE_DATABASE_URL='`
+names the database server.
+
+### P3. DMZ proxy #2
+
+As T2 and T3, with `-Environment Prod`, a publicly trusted certificate (`-CertificateThumbprint`
+is required), and `-Upstream https://<Prod internal host>`. Then T4's checks; with Prod there is
+no `X-Robots-Tag` and, after P4, `robots.txt` allows crawling.
+
+### P4. Go-live switches
+
+In `C:\gcpe\config\gcpe.env` on the Prod app server, then `Restart-Service gcpe-stack`:
+
+1. Remove `SITE_ENVIRONMENT=test` (the site stops being noindex; `robots.txt` stops disallowing).
+2. Set `SITE_GOOGLE_VERIFICATION_FILE` and/or `SITE_GOOGLE_SITE_VERIFICATION` to the values Search
+   Console issues for the live domain (formats: siteground.md, "Robots and Google Search Console
+   verification").
+3. Remove `DIST_MAIL_REDIRECT_TO`: from now on mail reaches real people.
+4. **Not built yet:** a production configuration with Entra for the apps' calls to each other and
+   the break-glass local admin off (`LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION`). This
+   must exist before Prod goes live ([9](#9-not-yet-verified)).
+
+**Check it**: `curl.exe -s https://<public host>/robots.txt` no longer ends with `Disallow: /`;
+`curl.exe -sI https://<public host>/` has no `X-Robots-Tag`.
+
+### P5. Static fallback for patch reboots (planned, not built)
+
+The plan is a copy of the public site's pages on DMZ proxy #2, served while the app server is
+rebooted for patches, so the public site stays up. It is not built and has no steps yet; until it
+exists, every app server reboot takes the public site down ([7.4](#74-patching)).
+
+## 6. After every deploy
+
+**Dev** deploys itself on every merge to `develop` (D6). **Test and Prod** are deployed by hand,
+with the same package Dev ran:
+
+```powershell
+Get-FileHash C:\install\gcpe-windows-<commit>.zip     # must match the hash recorded when it was downloaded
+.\Deploy-GcpeRelease.ps1 -Package C:\install\gcpe-windows-<commit>.zip
+```
+
+Parameters: `-Package` (a zip, or a folder containing `app\`; default the package the script is
+in), `-Root` (`C:\gcpe`), `-Keep` (releases kept, 5), `-HealthTimeoutSec` (240). It copies the
+release to `C:\gcpe\releases\<time>-<commit>`, checks it against `gcpe.env` (`stack.js --check`)
+before touching the running site, switches `C:\gcpe\current`, lets the stack apply database
+migrations as it starts, waits for `/stack/health` directly and through IIS, and **rolls back by
+itself** if either doesn't become healthy. Nothing is needed on the DMZ proxy for a deploy; it may
+serve a page up to 60 seconds old.
+
+**Check it**
+
+```powershell
+Get-Content C:\gcpe\current\VERSION.json
+curl.exe -k -s https://localhost/stack/health
+```
+
+Expect the new commit and `"status":"ok"`. Then, for Test and Prod, from outside:
+`curl.exe -s -o NUL -w '%{http_code}' https://<public host>/` is `200` and `/hub/` is `404`.
+
+**Precompressed pages.** The public site writes a `.br` and `.gz` copy next to each page as it
+renders it. Pages written by an older release have none and are compressed per request instead
+(they still work). After the **first** deploy of a release with precompression, write the missing
+copies once (safe while the site is serving; later deploys don't need it, but it is harmless):
+
+```powershell
+$env:OUTPUT_DIR = 'C:\gcpe\data\site-output'
+node.exe C:\gcpe\current\apps\public-site\src\cli\precompress.js
+Remove-Item Env:OUTPUT_DIR
+```
+
+It prints `[public-site] precompressed <n> files, <n> already current, <n> orphans removed, 0 failed`.
+It is in packages built from this commit on; an older package has no
+`apps\public-site\src\cli\precompress.js` (there, the copies appear as pages are rewritten).
+
+**Releases that change the page chrome** (`RENDER_CHROME_VERSION` in
+`apps/public-site/src/rebuild.ts`): the first start queues one rebuild-all, and the stylesheets
+change at once. Until the ticks have rewritten a page, its header and footer can look unstyled. On
+a site with the full legacy import the drain takes much longer: deploy outside busy hours, and
+watch the queue drain in `/hub/error-log` and on a few old release pages.
+
+**Upgrading an install whose site URLs end in `/site`** (made before the public site moved to the
+root): it keeps working at both `/site/…` and `/…`. To move to the root, set `SITE_PUBLIC_SITE_URL`
+and `NOD_PUBLIC_SITE_URL` to the origin (`https://<host>`, no `/site`) in `gcpe.env` and restart;
+one rebuild-all follows and `/site/…` then 301s to `/…`.
+
+**If releases stop appearing on the public site**, check `/hub/error-log` for a failed site sync
+step (`[stack] tick step failed` naming the public site's sync, with the News API's ministries call
+or "returned no ministries" as the cause): no page is published while the ministry list can't be
+read.
+
+## 7. Operations
+
+### 7.1 Backups and the restore drill
+
+**What is backed up, nightly at 01:30** (`Register-GcpeBackup.ps1`, task **GCPE nightly backup**,
+running `C:\gcpe\backup\Backup-Gcpe.ps1` as SYSTEM), into
+`<BackupPath>\<COMPUTERNAME>\<yyyyMMdd-HHmmss>\`:
+
+| | From | Which server |
+|---|---|---|
+| `db\gcpe_*.dump` | `pg_dump -Fc` of every database whose name starts with `gcpe_`, each checked with `pg_restore --list` | where PostgreSQL runs (Dev/Test app server; Prod database server) |
+| `files\storage` | `C:\gcpe\data\storage`: release attachments (`/files`). Cannot be rebuilt. | app server |
+| `files\calendar-files` | `C:\gcpe\data\calendar-files`: Calendar attachments. Cannot be rebuilt. | app server |
+| `config\` | `C:\gcpe\config`: `gcpe.env` (every secret), and on Dev/Test the PostgreSQL superuser password | app server |
+| `manifest.json`, `COMPLETE.txt` | sizes, file counts, the release's commit; written last | both |
+
+Not backed up: `C:\gcpe\data\site-output` (the public site; rebuilt from the databases),
+`C:\gcpe\releases` (redeploy the package), logs. The files are copied after the dumps, so every file
+a dumped row points at is in the backup.
+
+- **Retention:** after a run completes, it deletes this computer's run folders older than
+  `-BackupRetentionDays` (14). Only folders it made (named `yyyyMMdd-HHmmss`); a failed run deletes
+  nothing, so failures never eat the last good backup.
+- **Permissions:** every folder the backup makes is created with inheritance off and
+  **FullControl for Administrators and SYSTEM only**, before anything is written into it; the
+  copied `gcpe.env` inherits that, not its source ACL (`robocopy /COPY:DAT`). On a share this is
+  only half: the script warns if it cannot set the folder ACL there, and the **share's own
+  permissions and its root folder's NTFS permissions must be restricted the same way** (backup
+  administrators and the writing servers' computer accounts only) by whoever owns the share.
+- **Recovery point:** up to 24 hours of changes for Dev and Test. Prod adds point-in-time recovery
+  (7.2).
+- **Failures:** the task's `LastTaskResult` is non-zero and the reason is in the newest
+  `C:\gcpe\logs\backup-<time>.log`. Check weekly (or have monitoring read it):
+
+  ```powershell
+  Get-ScheduledTask -TaskName 'GCPE nightly backup' | Get-ScheduledTaskInfo | Select-Object LastRunTime, LastTaskResult
+  ```
+
+- **A backup now:** `C:\gcpe\backup\Backup-Gcpe.ps1 -BackupPath \\<server>\<share> -Databases -Files`
+  (whichever this server holds).
+
+#### Restore (same server, or a rebuilt one)
+
+Pick the run folder(s): `$db` the run with `db\` (Dev/Test: the app server's; Prod: the database
+server's), `$files` the app server's run from the same night.
+
+1. **A rebuilt server only:** install it first exactly as before (D2/T1/P1+P2, same `-HostName`),
+   so PostgreSQL, the `gcpe_app` login and the service exist.
+2. Stop the app (on the app server):
+
+   ```powershell
+   Stop-Service gcpe-stack
+   ```
+
+3. Restore the databases (where PostgreSQL runs; on Prod, on the database server):
+
+   ```powershell
+   $bin = 'C:\Program Files\PostgreSQL\17\bin'
+   $db = '\\<backup server>\<share>\<SERVER>\<yyyyMMdd-HHmmss>'
+   $env:PGPASSWORD = (Get-Content -Raw C:\gcpe\config\postgres-superuser.txt).Trim()
+   foreach ($dump in Get-ChildItem "$db\db\gcpe_*.dump") {
+       & "$bin\dropdb.exe" -h localhost -U postgres --if-exists --force $dump.BaseName
+       & "$bin\pg_restore.exe" -h localhost -U postgres -d postgres --create --exit-on-error $dump.FullName
+       if ($LASTEXITCODE -ne 0) { throw "restore of $($dump.BaseName) failed" }
+   }
+   Remove-Item Env:PGPASSWORD
+   ```
+
+   `--create` recreates each database with its own name and owner (`gcpe_app`, which the install
+   created) and pgvector.
+4. Restore the files (app server). `/MIR` makes the folder exactly the backup's:
+
+   ```powershell
+   $files = '\\<backup server>\<share>\<APP SERVER>\<yyyyMMdd-HHmmss>'
+   robocopy "$files\files\storage" C:\gcpe\data\storage /MIR /COPY:DAT /R:2 /W:5
+   robocopy "$files\files\calendar-files" C:\gcpe\data\calendar-files /MIR /COPY:DAT /R:2 /W:5
+   ```
+
+   The copies inherit `C:\gcpe\data`'s permissions, which let the service change them.
+5. **A rebuilt server only:** put the old settings back, lock the file down again with the
+   installer's own ACL helper, and re-run the installer, which resets `gcpe_app`'s password to the
+   one in the restored `gcpe.env`:
+
+   ```powershell
+   Copy-Item "$files\config\gcpe.env" C:\gcpe\config\gcpe.env -Force
+   Import-Module C:\install\gcpe-windows\lib\Gcpe.psm1
+   Set-GcpeSecretFileAcl -Path C:\gcpe\config\gcpe.env -ReaderAccount 'NT SERVICE\gcpe-stack'
+   .\Install-Gcpe.ps1 -HostName <same host>      # Prod: plus -PostgresAdminUrl …
+   ```
+
+   Do not copy `postgres-superuser.txt` back: a reinstalled PostgreSQL has a new superuser password.
+6. Start and rebuild the public site:
+
+   ```powershell
+   Remove-Item C:\gcpe\data\site-output\* -Recurse -Force
+   Start-Service gcpe-stack
+   $e = Get-Content C:\gcpe\config\gcpe.env
+   $env:DATABASE_URL = (($e | Where-Object { $_ -like 'SITE_DATABASE_URL=*' }) -split '=', 2)[1]
+   $env:PUBLIC_SITE_URL = (($e | Where-Object { $_ -like 'SITE_PUBLIC_SITE_URL=*' }) -split '=', 2)[1]
+   $env:NEWS_API_URL = 'http://127.0.0.1:3000/'
+   $env:OUTPUT_DIR = 'C:\gcpe\data\site-output'
+   node.exe C:\gcpe\current\apps\public-site\src\cli\rebuild-all.js
+   Remove-Item Env:DATABASE_URL, Env:PUBLIC_SITE_URL, Env:NEWS_API_URL, Env:OUTPUT_DIR
+   ```
+
+   It prints `[public-site] queued <n> pages; they render over the next ticks`.
+
+**Check it**: `curl.exe -k -s https://localhost/stack/health` is `ok`; the Hub lists the releases
+from the night of the backup; a release with an attachment downloads it; the public site's home
+page fills in as the queue drains (`/hub/error-log` shows no failed site sync).
+
+#### The restore drill (onto Test)
+
+Restore a Prod backup (Dev's, until Prod exists) onto Test at least every quarter, and **time it**:
+that time is the recovery time you can promise.
+
+- Follow steps 2, 3, 4 and 6 on the Test app server, with the Prod run folders.
+- **Never step 5**: Test keeps its own `gcpe.env`. Prod's would point Test at real mail and
+  production secrets. Test's `DIST_MAIL_REDIRECT_TO` keeps the restored subscribers from being
+  emailed.
+- Restrict Test's proxy to staff ranges while it holds production data (T5): drafts and embargoed
+  releases come with it.
+- Because Test's site URL differs from Prod's, the site queues a rebuild-all by itself; step 6 is
+  still safe.
+- Record: the backup's date, the time each step took, and the check results.
+
+### 7.2 Prod point-in-time recovery (to set up when Prod's database server arrives)
+
+The nightly dump can lose up to 24 hours. For Prod, add continuous WAL archiving and a weekly base
+backup, so the database can be restored to any moment (recovery point about 5 minutes). Not built
+or tested here; these are the settings to apply on the Prod database server.
+
+1. A share for the WAL archive, e.g. `\\<backup server>\gcpe-wal`, writable by the database
+   server's computer account (PostgreSQL's service runs as Network Service, which reaches shares
+   as the computer account).
+2. In `C:\gcpe\pgdata\postgresql.conf` (backslashes doubled, as PostgreSQL requires), then
+   `Restart-Service postgresql-x64-17`:
+
+   ```
+   wal_level = replica
+   archive_mode = on
+   archive_command = 'copy "%p" "\\\\<backup server>\\gcpe-wal\\%f"'
+   archive_timeout = 300
+   ```
+
+3. A weekly base backup (a scheduled task, Sundays), e.g.:
+
+   ```powershell
+   $env:PGPASSWORD = (Get-Content -Raw C:\gcpe\config\postgres-superuser.txt).Trim()
+   & 'C:\Program Files\PostgreSQL\17\bin\pg_basebackup.exe' -h localhost -U postgres `
+       -D "\\<backup server>\gcpe-base\$(Get-Date -Format yyyyMMdd)" -Ft -z -X none -c fast
+   ```
+
+   Keep the base backups and the WAL files since the oldest one you keep.
+4. Check: `SELECT archived_count, failed_count, last_archived_time FROM pg_stat_archiver;` (in
+   `psql`) shows `archived_count` rising and `failed_count` 0.
+5. Restore to a moment: stop PostgreSQL, move `C:\gcpe\pgdata` aside, extract the newest base
+   backup before that moment into `C:\gcpe\pgdata`, add to `postgresql.conf`
+   `restore_command = 'copy "\\\\<backup server>\\gcpe-wal\\%f" "%p"'` and
+   `recovery_target_time = '<yyyy-mm-dd hh:mm:ss-08>'`, create an empty `recovery.signal` in the
+   data folder, and start PostgreSQL. Rehearse this on Test before relying on it.
+
+### 7.3 Logs and retention
+
+| Log | Where | Kept |
+|---|---|---|
+| IIS, app server | `C:\inetpub\logs\LogFiles\W3SVC<id of GCPE>\` | `-LogRetentionDays` (30), task **GCPE IIS log cleanup (GCPE)** |
+| IIS, DMZ proxy | `C:\inetpub\logs\LogFiles\W3SVC<id of GCPE-Proxy>\` | `-LogRetentionDays` (30), task **GCPE IIS log cleanup (GCPE-Proxy)** |
+| http.sys errors | `C:\Windows\System32\LogFiles\HTTPERR\` | the same tasks delete files older than the same limit |
+| The stack | `C:\gcpe\service\logs\gcpe-stack.out.log`, `.err.log` | rolled at 10 MB, 10 files kept |
+| Errors staff saw | `/hub/error-log` (`C:\gcpe\data\logs\errors.jsonl`) | managed by the app |
+| Install, proxy install, backup | `C:\gcpe\logs\`, `C:\gcpe-proxy\logs\` | install logs kept; backup logs as long as the backups |
+
+**What IIS still logs**, per request, on both tiers: date and time, the server's address and port,
+method, path, query string, user name (none), the client's address, user agent, status, substatus,
+Windows status, time taken. On the app server the client is the DMZ proxy for public traffic and
+the staff member's address for the Hub; on the proxy it is the visitor. **Not logged:** any request
+under `/api/Subscribe`, `/subscribe`, `/news-subscribe`, `/newsletters`, `/enewsletters` (and
+`/nod/Subscribe` on the app server), and the `Referer` header anywhere (a subscribe page's own
+requests for its stylesheet would carry its token-bearing URL in it). Still logged and worth
+knowing: search terms (`/api/v2/search?q=…` query strings).
+
+To see a site's id: `& "$env:windir\System32\inetsrv\appcmd.exe" list site`. To flush buffered
+lines before reading: `netsh http flush logbuffer`.
+
+### 7.4 Patching
+
+Patch one tier at a time, in this order, and check after each:
+
+1. **DMZ proxy.** The public site is down while it reboots (the app server and the Hub are not
+   affected). Check T4's first rows afterwards.
+2. **App server.** Everything is down while it reboots: the public site through the proxy answers
+   `502`, and the Hub is unavailable. The service starts by itself (delayed start: about two
+   minutes after boot). Check `curl.exe -k -s https://localhost/stack/health`.
+3. **Prod database server** (later). The app's database calls fail while it reboots; the site's
+   pages already on disk keep being served. Afterwards check health on the app server; if it is
+   not `ok` within five minutes, `Restart-Service gcpe-stack`.
+
+Expected public downtime: the length of each reboot of the proxy and of the app server (minutes;
+not measured), until the static fallback (P5) exists. Patch outside busy hours, and not during a
+scheduled release's embargo time (publishing waits until the stack is back, then catches up).
+
+### 7.5 Certificate renewal
+
+| Certificate | How |
+|---|---|
+| App server | Import the new certificate (with key) into `Cert:\LocalMachine\My`, then from the package of the release that is running: `.\Install-Gcpe.ps1 -HostName <same -HostName> -CertificateThumbprint <new>` (a re-run keeps every other setting; it redeploys the same release). Then, if the new certificate is self-signed or from a different CA, on the DMZ proxy re-run `Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<internal host> -UpstreamCertificateFile <new .cer>`. |
+| DMZ proxy (public) | Import it into `Cert:\LocalMachine\My`, then `.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<internal host> -CertificateThumbprint <new>`. |
+
+**Check it**: `netsh http show sslcert ipport=0.0.0.0:443` shows the new thumbprint (`Certificate
+Hash`) on each server; T4's first row still prints `200`. To see expiry dates:
+`Get-ChildItem Cert:\LocalMachine\My | Select-Object Subject, NotAfter, Thumbprint`.
+
+### 7.6 Day to day
 
 | Task | How |
 |---|---|
-| Deploy a package by hand | `.\Deploy-GcpeRelease.ps1 -Package C:\drops\gcpe-windows-<commit>.zip` |
-| Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, point the junction at an older folder with `cmd /c rmdir C:\gcpe\current` and `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. |
+| Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, `cmd /c rmdir C:\gcpe\current`, `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. |
 | Change a setting | Edit `C:\gcpe\config\gcpe.env` as Administrator, then `Restart-Service gcpe-stack`. |
 | Restart | `Restart-Service gcpe-stack` (IIS doesn't need restarting). |
-| Logs | The stack: `C:\gcpe\service\logs\gcpe-stack.out.log` and `.err.log`. Errors staff saw: `/hub/error-log`. IIS: `C:\inetpub\logs\LogFiles`. |
-| Health | `https://<host>/stack/health`; `curl.exe http://127.0.0.1:3000/stack/health` on the server skips IIS. |
-| Back up the databases | `pg_dump -Fc` each `gcpe_*` database (in `C:\Program Files\PostgreSQL\17\bin`), plus `C:\gcpe\data` and `C:\gcpe\config`. On Test/Prod the DBAs' usual PostgreSQL backups replace this. |
-| Renew the certificate | Import the new one into `LocalMachine\My`, then re-run `Install-Gcpe.ps1 -HostName <host> -CertificateThumbprint <new>`. |
+| Health | `https://<internal host>/stack/health`; `curl.exe http://127.0.0.1:3000/stack/health` on the server skips IIS. |
+| Empty the proxy cache | On the DMZ server: `iisreset /stop`, delete `C:\gcpe-proxy\cache\*`, `iisreset /start`. |
+| Scheduled tasks | `Get-ScheduledTask -TaskName 'GCPE*' \| Get-ScheduledTaskInfo \| Format-Table TaskName, LastRunTime, LastTaskResult, NextRunTime` |
+| Settings reference | [siteground.md](siteground.md): `TRUST_PROXY_HOPS` (how many proxies are trusted), "Search result cache and semantic cap" (`NEWSAPI_SEARCH_CACHE_TTL_SECONDS`, `NEWSAPI_SEARCH_CACHE_MAX_ENTRIES`, `NEWSAPI_SEARCH_CACHE_MAX_MB`, `NEWSAPI_SEARCH_SEMANTIC_MAX_CONCURRENT`, `NEWSAPI_SEARCH_SEMANTIC_QUEUE`, `NEWSAPI_SEARCH_SEMANTIC_QUEUE_WAIT_MS`, `NEWSAPI_SEARCH_RATE_LIMIT_PER_MIN`), and every other variable. |
 
 What is where on the app server:
 
@@ -389,101 +1131,26 @@ What is where on the app server:
 C:\gcpe\
   current\            → junction to the live release
   releases\<time>-<commit>\
-  config\gcpe.env     every setting and secret (Administrators + the service only)
-  config\postgres-superuser.txt   (Dev: PostgreSQL superuser password, Administrators only)
-  data\               uploaded files, the generated public site, Calendar files, error log
-  pgdata\             (Dev) PostgreSQL's data
+  config\gcpe.env     every setting and secret (Administrators, SYSTEM and the service only)
+  config\postgres-superuser.txt   PostgreSQL superuser password, where PostgreSQL runs (Administrators only)
+  data\storage\       release attachments (/files)           ← backed up
+  data\calendar-files\  Calendar attachments                 ← backed up
+  data\site-output\   the generated public site (rebuilt from the databases)
+  data\logs\          errors staff saw
+  pgdata\             PostgreSQL's data (Dev, Test; Prod: on the database server)
   service\            the WinSW service wrapper and the stack's logs
   site\web.config     the IIS site: forwarding rules only
+  backup\             Backup-Gcpe.ps1 and lib\, run by the nightly task
   import-reports\     one folder per import run
-  logs\               install logs
+  logs\               install and backup logs
 ```
 
-## DMZ reverse proxy (Test, Prod)
+On the DMZ proxy: `C:\gcpe-proxy\site\web.config` (the rules), `C:\gcpe-proxy\cache\` (the ARR
+cache), `C:\gcpe-proxy\logs\` (install logs).
 
-Test and Production are reached from the internet through a server in the DMZ that holds no app,
-no database and no secret except its TLS certificate. It runs IIS only (TLS, URL Rewrite, ARR),
-forwards the public paths to the internal app server over HTTPS, and answers everything else
-with a 404 itself.
+## 8. DMZ proxy reference
 
-```
- internet ──443/80──▶ DMZ server: IIS "GCPE-Proxy" ──443 only──▶ internal app server: IIS "GCPE" ──▶ 127.0.0.1:3000 (stack)
-                      (Install-GcpeProxy.ps1)                    (Install-Gcpe.ps1 -ProxyHops 2)        │ 5432
- staff network ─────────────────────────────────────443────────▶ (the same IIS, for /hub)    PostgreSQL server
-```
-
-| | Internal (app + PostgreSQL) | DMZ |
-|---|---|---|
-| Dev | app server (PostgreSQL on it) | none |
-| Test | app server + database server | DMZ server 1: `Install-GcpeProxy.ps1 -Environment Test` |
-| Prod | later | DMZ server 2: ready for `Install-GcpeProxy.ps1 -Environment Prod` once Prod's app server exists |
-
-### Firewall openings to request
-
-| From | To | Port | Why |
-|---|---|---|---|
-| internet | DMZ server | 443, 80 | the public site (80 only redirects to 443) |
-| DMZ server | internal app server | 443 | the only way in from the DMZ |
-| staff network (named ranges) | internal app server | 443 | staff use the Hub on the internal server, never through the DMZ |
-| anything else | internal app server | 443 | **closed** (see "Why the app server's 443 must be closed to everyone else") |
-| DMZ server | PostgreSQL, SQL Server, anything else internal | any | **closed**: the DMZ never reaches a database |
-| internal | DMZ server | any | nothing needed beyond your remote-admin access |
-
-On the app server, Windows Firewall should say the same: allow 443 from the DMZ server's address
-and the staff ranges only, e.g.
-
-```powershell
-Disable-NetFirewallRule -DisplayGroup 'World Wide Web Services (HTTPS)' -ErrorAction SilentlyContinue
-Disable-NetFirewallRule -DisplayGroup 'World Wide Web Services (HTTP)' -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName 'GCPE: 443 from the DMZ proxy and staff only' -Direction Inbound -Protocol TCP -LocalPort 443 `
-    -RemoteAddress <DMZ server IP>, <staff range 1>, <staff range 2> -Action Allow
-```
-
-### Install
-
-1. On the **app server**, re-run `Install-Gcpe.ps1 -HostName <public host name> -ProxyHops 2`
-   (with its usual options), so the app counts two proxies (the DMZ server's IIS and its own)
-   when it reads the visitor's address from `X-Forwarded-For`.
-2. Export the app server's certificate **without its private key** (`certlm.msc` → Personal →
-   the certificate → All Tasks → Export → "No, do not export the private key", DER `.cer`), or get
-   the internal CA's root certificate. Skip this if the DMZ server already trusts the CA that
-   issued it (domain-distributed root).
-3. Copy the package to the DMZ server (step 1; `Get-GcpePrereqs.ps1` if it has no internet; only
-   URL Rewrite and ARR are used there) and the `.cer`, then in an elevated PowerShell:
-
-   ```powershell
-   .\Install-GcpeProxy.ps1 -HostName news-test.example.gov.bc.ca -Upstream https://<app server name> `
-       -CertificateThumbprint <public certificate thumbprint> -UpstreamCertificateFile C:\install\app-server.cer
-   ```
-
-   `-Upstream` must use a name on the app server's certificate; if DNS in the DMZ doesn't resolve
-   it, add it to `C:\Windows\System32\drivers\etc\hosts`. Prod adds `-Environment Prod` (no
-   `X-Robots-Tag`; a self-signed certificate is refused). All the options: `Get-Help
-   .\Install-GcpeProxy.ps1 -Full`.
-
-What it does (log in `C:\gcpe-proxy\logs\install-proxy-<time>.log`):
-
-1. Installs IIS, URL Rewrite 2.1 and ARR 3.0 (the same pinned installers as the app server), and
-   IIS IP and Domain Restrictions (a Windows Server feature) when `-AllowedClientRanges` is given.
-2. Turns on the ARR proxy: the visitor's `Host` is passed on, `X-Forwarded-For` gets the visitor's
-   address appended (without its port), `X-Forwarded-Proto: https` is set, 2-minute upstream
-   timeout, responses streamed.
-3. Turns on the ARR disk cache in `C:\gcpe-proxy\cache`, at most `-CacheMaxSizeGB` (default 5).
-4. Trusts `-UpstreamCertificateFile` (imported into `LocalMachine\Root`) or
-   `-UpstreamCertificateThumbprint`, then checks the app server answers over verified TLS. It
-   never turns certificate checks off; it stops if the check fails.
-5. Creates the IIS site **GCPE-Proxy** (https on 443 with the certificate, http on 80 → 301 to
-   https; Default Web Site is stopped if it holds those ports) and writes its rules to
-   `C:\gcpe-proxy\site\web.config` (the allow-list below). Request bodies are capped at 1 MB (the
-   largest public body is a subscribe form; the app accepts 100 KB).
-6. `-Environment Test` adds `X-Robots-Tag: noindex, nofollow` to every response, a second guard
-   next to the app's own noindex and `robots.txt Disallow: /` while `SITE_ENVIRONMENT=test`.
-7. Checks `/hub/` answers 404 and `/` comes back from the app server through the proxy.
-
-Re-running is safe. A re-run keeps the bound certificate unless `-CertificateThumbprint` is given,
-and keeps the client restriction unless `-AllowedClientRanges` or `-AllowAllClients` is given.
-
-### What it forwards
+### 8.1 What the proxy forwards
 
 Derived from the code at commit `6421522`. The stack answers a fixed list of first path segments
 itself (`STACK_OWNED_PREFIXES`, `apps/stack/src/stack.ts:133`; `tests/stack-owned-prefixes.test.ts`
@@ -504,118 +1171,101 @@ prefix the proxy doesn't classify. First match wins, in this order:
 | `/stack` | all | **404** | `/stack/health`, `/stack/errors`, `/stack/tick` (`stack.ts:533`-`:535`); Windows runs its own loops, no outside scheduler |
 | `/events` | all | **404** | signed app-to-app events (`packages/events/src/receiver.ts:33`, News API's at `apps/news-api/src/app.ts:56`) |
 | `/health` | all | **404** | News API's readiness probes (`apps/news-api/src/app.ts:53`) |
-| `/fake-flickr`, `/fake-media-hub`, `/fake-emergency-feed`, `/fake-entra` | all | **404** | test fakes (`stack.ts:475`, `:493`, `:503`, `:521`); see open questions |
+| `/fake-flickr`, `/fake-media-hub`, `/fake-emergency-feed`, `/fake-entra` | all | **404** | test fakes (`stack.ts:475`, `:493`, `:503`, `:521`) |
 | `/api/v2/changes` | all | **404** | the site builder's change feed, bearer only, read in-process (`apps/news-api/src/http/v2/changes.ts:36`) |
 | `/api/v2/internal/…` | all | **404** | NRMS's similar-releases call, service token only (`apps/news-api/src/http/v2/routes.ts:135`) |
-| `/api/…` | GET, HEAD, POST | forwarded, **never cached** | the public News API other BC systems read (v1 `apps/news-api/src/app.ts:80`; v2 `routes.ts:42`-`:96`, search used by the site's search page, `apps/public-site/src/pages/search.ts:189`) and the subscribe API (`apps/news-api/src/http/v1/subscribe.ts:38`-`:44`, one-click unsubscribe POST `:133`). The app sends `no-store` (`routes.ts:37`; v1's `no-cache` at `app.ts:68` becomes `no-store`, `apps/stack/src/cache-control.ts:22`). |
+| `/api/…` | GET, HEAD, POST | forwarded, **never cached** | the public News API other BC systems read (v1 `apps/news-api/src/app.ts:80`; v2 `routes.ts:42`-`:96`, search used by the site's search page, `apps/public-site/src/pages/search.ts:189`) and the subscribe API (`apps/news-api/src/http/v1/subscribe.ts:38`-`:44`, one-click unsubscribe POST `:133`). The app sends `no-store`. |
 | `/api/…` | anything else | **404** | no public route takes it |
-| `/subscribe…`, `/news-subscribe…`, `/newsletters…`, `/enewsletters…` | GET, HEAD | forwarded, **never cached** | subscribe, manage and unsubscribe pages and their old addresses; tokens travel in the query string |
+| `/subscribe…`, `/news-subscribe…`, `/newsletters…`, `/enewsletters…` | GET, HEAD | forwarded, **never cached**, **never logged** | subscribe, manage and unsubscribe pages and their old addresses; tokens travel in the query string |
 | any URL with a query string | GET, HEAD | forwarded, **never cached** | search terms and tokens never land on the DMZ disk |
-| `/files/…` | GET, HEAD | forwarded, cached as the app says | release attachments (`stack.ts:397`), `public, max-age=60`. Note: a file is downloadable from upload, before the release is published, behind a 16-hex random key (`stack.ts:385`-`:392`, open question Q17). |
+| `/files/…` | GET, HEAD | forwarded, cached as the app says | release attachments (`stack.ts:397`), `public, max-age=60`. Until the release-files gate (T0) is deployed, a file is downloadable from upload, before the release is published, behind a 16-hex random key (`stack.ts:385`-`:392`). |
 | `/updates/…` | GET, HEAD | forwarded, cached as the app says | the site's Updates pages (`SITE_PASS_THROUGH`, `stack.ts:161`) |
 | everything else (`/`, pages, feeds, assets, `robots.txt`, `/site/…`, old news.gov addresses) | GET, HEAD | forwarded, cached as the app says | the public site (`site-mount.ts:113`-`:145`), `public, max-age=60` |
-| everything else | other methods | **404** | includes `POST /updates/negotiate`, the live-updates hub (`apps/news-api/src/updates/hub.ts:102`); see open questions |
+| everything else | other methods | **404** | includes `POST /updates/negotiate`, the live-updates hub (`apps/news-api/src/updates/hub.ts:102`) |
 
-### Caching at the proxy
+### 8.2 Caching at the proxy
 
-The ARR disk cache takes load off the app server for the public pages:
-
-- It keeps what the app allows and for no longer: the site's pages, feeds, assets and `/files/`
-  are `Cache-Control: public, max-age=60`. **After a release is published, the public sees it within
-  about a minute** (the old page may be served for up to 60 seconds); nothing purges the cache on
-  publish.
+- It keeps what the app allows and for no longer: the site's pages, feeds, assets and `/files/` are
+  `Cache-Control: public, max-age=60`. **After a release is published, the public sees it within
+  about a minute**; nothing purges the cache on publish.
 - A response without `Cache-Control`, or with `no-store`/`private`/`no-cache`, is not kept (every
   app response after the static mounts is `no-store`, `apps/stack/src/cache-control.ts:22`).
 - Never kept, whatever the response says: `/api/…`, the subscribe pages, any URL with a query
-  string, and every blocked path (those are answered at the proxy and never fetched).
+  string, and every blocked path.
 - `Set-Cookie`: no forwarded path sets a cookie (only `/core`, which is blocked).
-- Encodings: the app sends brotli or gzip with `Vary: Accept-Encoding`; CI checks that a
-  gzip-only client never gets a brotli body and a client without `Accept-Encoding` gets a plain one.
-- Only GET and HEAD can be cached; the size cap is `-CacheMaxSizeGB` (re-run to change it).
+- Encodings: the app sends brotli or gzip with `Vary: Accept-Encoding`; a gzip-only client must
+  never get a brotli body (T4).
+- Size cap: `-CacheMaxSizeGB` (re-run to change it). To see hits: `X-ARR-CACHE-HIT=1` in the query
+  field of the proxy's IIS log.
 
-To empty it: `iisreset /stop`, delete `C:\gcpe-proxy\cache\*`, `iisreset /start`. To see hits: the
-site's IIS log (`C:\inetpub\logs\LogFiles\W3SVC<id>\`) shows `X-ARR-CACHE-HIT=1` in the query
-field of a request served from the cache.
-
-### Why the app server's 443 must be closed to everyone else
+### 8.3 Why the app server's 443 must be closed to everyone else
 
 With `-ProxyHops 2` the app takes the visitor's address from the second-last entry of
 `X-Forwarded-For`. Through the DMZ that is the visitor. A client that reaches the app server
 directly controls that entry: it can send `X-Forwarded-For: <any address>` and be counted as that
-address by every per-address limit (sign-in, subscribe, search). Hence the firewall above: the app server's 443 accepts the DMZ
-server and the staff ranges only.
+address by every per-address limit (sign-in, subscribe, search). Hence `-AllowedClientRanges` on the
+app server: its 443 accepts the DMZ proxy and the staff ranges only.
 
-Staff need that same IIS for the Hub, which the DMZ never forwards. The simplest sound setup is
-the one above: staff reach the app server directly, by its internal name, from named staff ranges.
 **Residual risk:** a person on a staff range can choose the address the app records for their own
 requests (per-address limits such as the 10-a-minute sign-in limit). They are already on the
-internal network. To close it later, the app server's IIS can clear `X-Forwarded-For` on requests whose `REMOTE_ADDR`
-is not the DMZ server (an `Install-Gcpe.ps1` change, not made yet).
+internal network. To close it later, the app server's IIS could clear `X-Forwarded-For` on requests
+whose `REMOTE_ADDR` is not the DMZ proxy, or the app could trust a list of proxy addresses instead
+of a count (not built).
 
-### Restrict Test to some networks
+## 9. Not yet verified
 
-```powershell
-.\Install-GcpeProxy.ps1 -HostName news-test.example.gov.bc.ca -Upstream https://<app server name> -AllowedClientRanges 142.22.0.0/16, 142.34.0.0/16
-```
+**Checked automatically** by the `windows` workflow on GitHub's Windows Server 2022 and 2025
+runners (not on government servers, and not on a domain-joined machine):
 
-Everyone else gets 403 (IIS IP and Domain Restrictions, a Windows Server feature the script
-installs). IPv4 CIDR ranges only; a range with host bits set is refused. A re-run keeps the
-ranges; `-AllowAllClients` removes them. If a load balancer or NAT sits in front of the DMZ server,
-IIS sees its address, not the visitor's, and the restriction cannot tell visitors apart.
+- On every pull request until now (green runs on `main`): the full test suite; a clean
+  `Install-Gcpe.ps1` (IIS, ARR, Node.js, PostgreSQL 17 + pgvector, the service); the site, staff
+  app, https redirect and admin sign-in through IIS (on `https://localhost`, a host name different
+  from `-HostName`); a re-run; the automatic rollback of a broken release; the bundled importers
+  starting and connecting out.
+- The DMZ proxy, first run (run 40796381759, commit `14e6e04`): `Install-GcpeProxy.ps1` in front
+  of the app install on the same runner, public host not on the app's certificate; public pages,
+  feed, News API and `robots.txt` through the proxy; every staff/internal path and every
+  dot-segment or encoded trick answered 404. **That run then failed** at "POST /stack/tick is 404",
+  so the proxy's later CI checks (POST handling, caching per encoding, the client restriction)
+  have **not yet passed on Windows**.
+- Added in this branch and **not yet run on Windows at all**: ARR without the client port on the
+  app server, `-AllowedClientRanges` on the app server (only the rule set is checked: CI has no
+  second machine to be refused, and Windows never filters loopback), the IIS log privacy and
+  retention on both tiers, the nightly backup (task run as SYSTEM, seven dumps, folder ACLs,
+  retention, a dump restored into a scratch database), and the packaged `precompress.js`
+  (bundled and run on macOS against a sample folder).
 
-### Check it
+**Checked by hand** on a Mac, from the built package against a copy of `Gcpe.Hub`: the Core, News
+API (34,895 releases, under 2 minutes) and NRMS (balanced, about 3 minutes) imports, and the
+Calendar dry run.
 
-From outside (or from the DMZ server with `--resolve <host>:443:127.0.0.1`):
+**Never run anywhere yet:**
 
-| Command | Expect |
+- Any of this on a real government server, Windows Server 2025 from government media, a
+  domain-joined server, or behind Group Policy firewall settings.
+- A real DMZ: the network firewall, the proxy on its own server, a public certificate, a load
+  balancer or NAT in front of it.
+- The restore procedure in 7.1 end to end, the restore drill, and backups to a real UNC share
+  (computer-account access, SMB signing, the share's permissions).
+- WAL archiving and point-in-time recovery (7.2): settings only.
+- `Install-GcpeDatabaseServer.ps1` and the app server using a separate database server (Prod).
+- The legacy import on Windows against the real legacy SQL Server, and how long it takes; the NoD
+  import against real data; SQL Server with Windows authentication only (not supported).
+- Entra sign-in end to end on a government tenant, with the internal host as the callback.
+- WebSockets through IIS for the News API's live-updates hub (`UPDATES_HUB_ENABLED=true`).
+- Uploads refused as too large (over 25 MB on the Calendar): on Windows the browser may see a
+  dropped connection instead of the "file too large" message.
+- A GitHub runner behind the government proxy; Node.js outbound calls through a proxy.
+- The patch-reboot downtime (7.4): not measured.
+
+**Built vs planned:**
+
+| Built (in this package) | Planned / not built |
 |---|---|
-| `curl.exe -sI https://<host>/` | `200`, and on Test `X-Robots-Tag: noindex, nofollow` |
-| `curl.exe -s -o NUL -w '%{http_code}' https://<host>/hub/` | `404` (also `/stack/health`, `/core/api/organizations`) |
-| `curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' https://<host>/contact` | `301 https://forms.gov.bc.ca/` (an old news.gov address) |
-| `curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' http://<host>/` | `301 https://<host>/` |
-
-**The visitor's address reaches the app.** The stack doesn't log client addresses, but its
-per-address limits show which address it sees. `/api/v2/search` counts requests per address and
-says how many are left in its `RateLimit` header. From two machines with different outside
-addresses, run `curl.exe -sI "https://<host>/api/v2/search?q=test"` a few times each: each machine's
-remaining count (`r=`) goes down on its own. If the second machine's count carries on from the
-first's, the app sees every visitor as the DMZ server: `-ProxyHops 2` is missing on the app server.
-(The app server's IIS log always shows the DMZ server as the client; that is expected.)
-
-`502` through the proxy: the app server is down, its firewall refuses the DMZ server, or its
-certificate is not trusted or not for the `-Upstream` name (the proxy's IIS log substatus, e.g.
-502.3, and the install log say which). Re-run with `-UpstreamCertificateFile`.
-
-**Renew the certificates.** Public: import it, re-run with `-CertificateThumbprint <new>`. App
-server's: if it is self-signed or its issuer changes, re-run with `-UpstreamCertificateFile` for the
-new one.
-
-**Not yet verified:** a real DMZ server or firewall; the proxy is installed and checked
-automatically only on a GitHub runner, in front of an app install on the same machine (the
-`windows` workflow), using a public host name that is not on the app's certificate, as in Test.
-
-## Not yet verified
-
-Checked automatically on every pull request (`windows` workflow, Windows Server 2022 and 2025):
-the full test suite; a clean install with `Install-Gcpe.ps1`; the site, staff app, https redirect
-and admin sign-in through IIS; a second run of the installer; the automatic rollback of a broken
-release; the bundled importers starting and connecting out. Checked by hand on a Mac, from the
-built package against a copy of `Gcpe.Hub`: the Core, News API (34,895 releases, under 2 minutes)
-and NRMS (balanced, about 3 minutes) imports, and the Calendar dry run.
-
-Not yet checked anywhere:
-
-- **Windows Server 2019** itself (GitHub has no 2019 machines). Everything used is supported on
-  2019, but the first Dev install is the first real run.
-- **The legacy import on Windows against the real legacy SQL Server**, and how long it takes.
-- **The NoD import against real data**: the copy used for the check above has no
-  `Gcpe.NewsOnDemand` database (the importer's own tests cover it).
-- **SQL Server with Windows authentication only**: the importers need a SQL login.
-- **Entra sign-in** end to end on a government tenant.
-- **WebSockets through IIS** for the News API's live-updates hub (`UPDATES_HUB_ENABLED=true`).
-- **Uploads refused as too large** (over 25 MB on the Calendar): on Windows the browser may see
-  a dropped connection instead of the "file too large" message.
-- **A GitHub runner behind the government proxy.**
-- **Production settings:** this package writes a *test site* configuration (break-glass local
-  admin on, mail redirected). Production needs Entra for the apps' calls to each other and local
-  admin off; that comes before the first Production install.
+| Dev and Test app server install, DMZ proxy, database server script | Static fallback copy of the public site on the DMZ proxy (P5) |
+| `-ProxyHops`, `-AllowedClientRanges`, no port in `X-Forwarded-For` | Clearing `X-Forwarded-For` from non-DMZ clients, or trusting proxy addresses instead of a count (8.3) |
+| Private IIS logs and retention, nightly backups with retention | WAL archiving and point-in-time recovery for Prod (7.2), a deploy path for Test/Prod other than by hand |
+| Test-site configuration (local admin on, mail redirected) | **Production configuration**: Entra for the apps' calls to each other and local admin off, required before Prod goes live |
+| | Release attachments blocked until publish: separate branch `feat/release-files-gate` (T0) |
+| | Encrypted PostgreSQL connections between the Prod app and database servers |
+| | Monitoring and alerting (health, disk, certificate expiry, backup task result) |

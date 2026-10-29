@@ -54,8 +54,7 @@ jobs:
   # Installs the package on a Windows Server 2025 runner exactly as docs/deploy/windows.md tells the
   # developer to (one Install-Gcpe.ps1 run: IIS, ARR, Node, PostgreSQL 17 + pgvector, the service),
   # then checks the site through IIS, a re-run, and the deploy script's rollback.
-  # GitHub no longer offers Windows Server 2019 runners (the target servers are 2019): 2022 is the
-  # nearest, and 2025 the newest.
+  # The target servers are Windows Server 2025; 2022 is kept as the previous release.
   install:
     needs: package
     strategy:
@@ -243,7 +242,7 @@ jobs:
           Write-Host 'ok: the bundled importer started and tried to connect'
           # The step's result would otherwise be the importer's expected exit code 1.
           exit 0
-      # The DMZ reverse proxy (docs/deploy/windows.md, "DMZ reverse proxy"), as a second IIS site on
+      # The DMZ reverse proxy (docs/deploy/windows.md, 8 "DMZ proxy reference"), as a second IIS site on
       # this runner in front of the install above: its own host name and ports, the app's
       # self-signed certificate trusted by thumbprint. Every request uses the proxy's host name,
       # which is NOT on the app's certificate, as in Test/Prod (public name != app server name).

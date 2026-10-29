@@ -20,7 +20,7 @@
      write access to the share. A first run that fails says so here.
   Every folder the backup makes is locked to Administrators and SYSTEM before anything is
   written into it; on a share, the share's own permissions must be restricted as well
-  (docs/deploy/windows.md, "Backups").
+  (docs/deploy/windows.md, 7.1 "Backups and the restore drill").
 
 .EXAMPLE
   .\Register-GcpeBackup.ps1 -BackupPath \\backup01\gcpe-backups

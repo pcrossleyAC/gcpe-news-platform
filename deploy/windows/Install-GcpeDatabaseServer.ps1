@@ -41,7 +41,7 @@ $pgPrefix = Join-Path $env:ProgramFiles "PostgreSQL\$($pg.Item.Major)"
 
 Write-GcpeStep "PostgreSQL $($pg.Version)"
 if (Get-Service -Name $pgServiceName -ErrorAction SilentlyContinue) {
-    if (-not (Test-Path -LiteralPath $paths.PgSuperuser)) { throw "PostgreSQL ($pgServiceName) is already installed, but not by this script; set it up by hand (docs/deploy/windows.md, separate database server)." }
+    if (-not (Test-Path -LiteralPath $paths.PgSuperuser)) { throw "PostgreSQL ($pgServiceName) is already installed, but not by this script; set it up by hand (docs/deploy/windows.md, P1)." }
     Write-GcpeOk 'already installed'
 } else {
     $superPassword = New-GcpeSecret -Bytes 24

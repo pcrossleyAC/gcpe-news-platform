@@ -406,7 +406,7 @@ Invoke-GcpeQuiet -FilePath $appcmd -Arguments @('start', 'site', $siteName)
 Write-GcpeOk "https://$HostName/ forwards to 127.0.0.1:$Port"
 
 Write-GcpeStep "IIS logs: subscribe URLs never logged, $LogRetentionDays days kept"
-# The paths whose URLs carry e-mail addresses or tokens (docs/deploy/windows.md, "Logs").
+# The paths whose URLs carry e-mail addresses or tokens (docs/deploy/windows.md, 7.3 "Logs and retention").
 $iisLogDir = Set-GcpeIisLogging -SiteName $siteName -RetentionDays $LogRetentionDays -PrivatePaths @('api/Subscribe', 'nod/Subscribe', 'subscribe', 'news-subscribe', 'newsletters', 'enewsletters')
 Write-GcpeOk "no entries for /api/Subscribe, /nod/Subscribe or the subscribe pages; no Referer field; $iisLogDir keeps $LogRetentionDays days"
 

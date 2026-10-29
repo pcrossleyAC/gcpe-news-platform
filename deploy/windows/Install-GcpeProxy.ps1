@@ -16,7 +16,7 @@
   3. Checks that this server trusts the app server's certificate (-Upstream is never reached
      with certificate checks turned off).
   4. Creates the IIS site "GCPE-Proxy": https on -HttpsPort (443) with the certificate, http on
-     -HttpPort (80) redirecting to https. Its rules (docs/deploy/windows.md, "DMZ reverse proxy")
+     -HttpPort (80) redirecting to https. Its rules (docs/deploy/windows.md, 8 "DMZ proxy reference")
      forward only:
        - GET/HEAD of the public site and old news.gov addresses (everything outside the stack's
          own prefixes), /files/ and /updates/;
@@ -75,7 +75,7 @@ Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'lib\Gcpe.psm1') -Force
 
-# --- The allow-list (docs/deploy/windows.md, "DMZ reverse proxy"). ----------------------------
+# --- The allow-list (docs/deploy/windows.md, 8 "DMZ proxy reference"). ----------------------------
 # Every first path segment the stack answers itself (STACK_OWNED_PREFIXES in
 # apps/stack/src/stack.ts) must be in exactly one of these lists; anything else is the public
 # site. tests/dmz-proxy-allow-list.test.ts fails when the stack gains a prefix that isn't here.
@@ -306,7 +306,7 @@ $target = "$upstreamBase{UNENCODED_URL}"
 $webConfig = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Written by Install-GcpeProxy.ps1 ($Environment). Forwards only the public paths to $upstreamBase.
-     The allow-list and why: docs/deploy/windows.md, "DMZ reverse proxy". Re-run the script to change it. -->
+     The allow-list and why: docs/deploy/windows.md, 8 "DMZ proxy reference". Re-run the script to change it. -->
 <configuration>
   <system.webServer>
     <rewrite>
@@ -409,7 +409,7 @@ Write-Host "  Cache:             $cacheDir (at most $CacheMaxSizeGB GB)"
 Write-Host "  Rules:             $(Join-Path $siteDir 'web.config')"
 Write-Host "  This install log:  $transcript"
 Write-Host "  IIS logs:          $iisLogDir ($LogRetentionDays days)"
-Write-Host '  The app server needs Install-Gcpe.ps1 -ProxyHops 2 -AllowedClientRanges <this server>/32, <staff ranges> (docs/deploy/windows.md, "Test").'
+Write-Host '  The app server needs Install-Gcpe.ps1 -ProxyHops 2 -AllowedClientRanges <this server>/32, <staff ranges> (docs/deploy/windows.md, 4 "Test").'
 
 } finally {
     Stop-Transcript | Out-Null
