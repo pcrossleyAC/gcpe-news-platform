@@ -6,6 +6,7 @@ import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import { useSeededForm } from "../useSeededForm";
 
 export interface AssetSectionProps {
   view: ReleaseView;
@@ -43,7 +44,7 @@ function statusMessage(status: AssetStatus): string {
 export function AssetSection({ view, setView, readOnly }: AssetSectionProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
-  const [form, setForm] = useState<FormState>(() => fromView(view));
+  const { form, setForm, dirty: edited, reseed } = useSeededForm<FormState>(fromView(view));
   const [status, setStatus] = useState<AssetStatus | null>(null);
 
   useEffect(() => {
@@ -55,7 +56,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
     // version (e.g. a Flickr job completing elsewhere could change the status text).
   }, [view.id, view.assetUrl, view.version]);
 
-  const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(fromView(view));
+  const dirty = !readOnly && edited;
   const trimmedUrl = form.assetUrl.trim();
   const urlProblem = trimmedUrl ? assetUrlProblem(trimmedUrl) : null;
 
@@ -69,7 +70,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
         hasMediaAssets: form.hasMediaAssets,
       })
       .then((next) => {
-        if (next) setForm(fromView(next));
+        if (next) reseed(fromView(next));
       });
   };
   useRegisterDirty("asset", dirty, !readOnly ? { label: "Save media asset", save: doSave } : undefined);
@@ -99,7 +100,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
           variant="danger"
           role="alert"
           description={RELOAD_MESSAGE}
-          buttons={<Button onPress={() => void section.reload().then((next) => setForm(fromView(next)))}>Reload</Button>}
+          buttons={<Button onPress={() => void section.reload().then((next) => reseed(fromView(next)))}>Reload</Button>}
         />
       )}
       {section.problems && (

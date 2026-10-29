@@ -164,7 +164,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                   title="Publish this release now?"
                   buttons={
                     <>
-                      <Button variant="secondary" onPress={() => setPublishOpen(false)} isDisabled={section.saving}>
+                      <Button variant="secondary" onPress={() => setPublishOpen(false)} isPending={section.saving}>
                         Cancel
                       </Button>
                       <Button onPress={publishNow} isPending={section.saving} pendingLabel="Publishing…">

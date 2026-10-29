@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from "react";
+import type { FormEvent } from "react";
 import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import { useSeededForm } from "../useSeededForm";
 import { releaseLanguageOf } from "../viewHelpers";
 
 export interface PageDetailsSectionProps {
@@ -44,9 +45,9 @@ function fromView(view: ReleaseView): FormState {
 export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSectionProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
-  const [form, setForm] = useState<FormState>(() => fromView(view));
+  const { form, setForm, dirty: edited, reseed } = useSeededForm<FormState>(fromView(view));
 
-  const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(fromView(view));
+  const dirty = !readOnly && edited;
 
   const keyEditable = rules.keyEditable && EDITABLE_KEY_STATUSES.has(view.status);
   const showSummaryFields = rules.categoriesBeyondMinistries;
@@ -63,7 +64,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
         keywords: showSummaryFields ? form.keywords.trim() || null : null,
       })
       .then((next) => {
-        if (next) setForm(fromView(next));
+        if (next) reseed(fromView(next));
       });
   useRegisterDirty("page-details", dirty, !readOnly ? { label: "Save page details", save: doSave } : undefined);
 
@@ -81,7 +82,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
           variant="danger"
           role="alert"
           description={RELOAD_MESSAGE}
-          buttons={<Button onPress={() => void section.reload().then((next) => setForm(fromView(next)))}>Reload</Button>}
+          buttons={<Button onPress={() => void section.reload().then((next) => reseed(fromView(next)))}>Reload</Button>}
         />
       )}
       {section.problems && (

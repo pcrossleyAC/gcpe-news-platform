@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, type FormEvent } from "react";
 import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import { useSeededForm } from "../useSeededForm";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { BodyEditor } from "../../../editor/BodyEditor";
@@ -66,13 +67,14 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   const userId = session.user?.id ?? null;
   const canPersistDraft = !readOnly && userId !== null;
   const draftKey = userId !== null ? { userId, releaseId: view.id, documentId, languageId } : null;
-  const [form, setForm] = useState<FormState>(() => {
+  // Compared against what it was seeded from, not the live view (useSeededForm.ts), so a change
+  // made elsewhere (another section's Reload, a background refresh) never reads as an edit here.
+  // A restored session-expiry draft seeds the form but not the baseline, so it counts as dirty.
+  const { form, setForm, dirty: edited, reseed } = useSeededForm<FormState>(fromView(view, documentId, languageId), () => {
     if (!canPersistDraft || !draftKey) return fromView(view, documentId, languageId);
     return loadDraft<FormState>(draftKey) ?? fromView(view, documentId, languageId);
   });
-
-  const serverForm = fromView(view, documentId, languageId);
-  const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(serverForm);
+  const dirty = !readOnly && edited;
   const languageLabel = LANGUAGE_NAME[languageId];
 
   const doc = findDocument(view, documentId);
@@ -100,7 +102,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
       .then((next) => {
         if (!next) return;
         if (draftKey) clearDraft(draftKey);
-        setForm(fromView(next, documentId, languageId));
+        reseed(fromView(next, documentId, languageId));
       });
   };
   // "Save English content (Document 1)" — the sticky save bar's own copy of this section's
@@ -129,7 +131,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
     void doSave();
   };
 
-  const reload = () => void section.reload().then((next) => setForm(fromView(next, documentId, languageId)));
+  const reload = () => void section.reload().then((next) => reseed(fromView(next, documentId, languageId)));
 
   return (
     <div className="gcpe-document-language" aria-label={`${languageLabel} document content`}>

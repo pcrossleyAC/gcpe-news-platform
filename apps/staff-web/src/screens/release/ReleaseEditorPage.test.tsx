@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import axe from "axe-core";
@@ -559,6 +559,101 @@ describe("ReleaseEditorPage", () => {
     await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "true"));
     expect(screen.getByRole("region", { name: "Categories" })).toHaveFocus();
     expect(screen.getByRole("group", { name: "Ministries" })).toBeVisible();
+  });
+
+  // Review P1: every section compares its form with what it was seeded from, so a change the
+  // server makes (Approve's key/reference, Publish now/Schedule's publishAt) or a Reload in
+  // another section never reads as an unsaved edit that blocks publishing.
+  describe("server-side changes are never unsaved edits", () => {
+    /** The editor over a live `current` view: GET returns it; each listed write replaces it. */
+    function renderLive(initial: ReleaseView, writes: Record<string, (v: ReleaseView, body: Record<string, unknown>) => Response | ReleaseView>) {
+      let current = initial;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+          if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+          if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "health", name: "Health" }, { key: "sector1", name: "Sector One" }], themes: [], tags: [] });
+          if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+          if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+          const write = Object.entries(writes).find(([suffix]) => url.endsWith(suffix));
+          if (write && init?.method && init.method !== "GET") {
+            const result = write[1](current, init.body ? JSON.parse(init.body as string) : {});
+            if (result instanceof Response) return result;
+            current = result;
+            return jsonResponse(200, current);
+          }
+          if (/\/nrms\/api\/releases\/[^/]+$/.test(url)) return jsonResponse(200, current);
+          throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+        }),
+      );
+      const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${initial.id}`] });
+      render(
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>,
+      );
+      return { setCurrent: (v: ReleaseView) => (current = v) };
+    }
+
+    it("Approve (which assigns the key and reference) leaves Publish now enabled", async () => {
+      const v = releaseView({ status: "draft", key: null, reference: null, version: 1 });
+      renderLive(v, { "/approve": (cur) => ({ ...cur, status: "approved", key: "2026HLTH0001-000001", reference: "NEWS-00001", version: cur.version + 1 }) });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Approve" }));
+      const publish = await screen.findByRole("button", { name: "Publish now" });
+      await waitFor(() => expect(publish).toBeEnabled());
+      expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    });
+
+    it("Schedule, then Cancel schedule (publishAt stays set): Publish now is enabled again", async () => {
+      const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 1 });
+      renderLive(v, {
+        "/schedule": (cur, body) => ({ ...cur, status: "scheduled", publishAt: body.publishAtLocal ? "2031-06-11T17:00:00.000Z" : cur.publishAt, version: cur.version + 1 }),
+        "/cancel": (cur) => ({ ...cur, status: "approved", version: cur.version + 1 }),
+      });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Schedule" }));
+      const actions = screen.getByRole("region", { name: "Actions" });
+      fireEvent.change(within(actions).getByLabelText("Date"), { target: { value: "2031-06-11" } });
+      fireEvent.change(within(actions).getByLabelText("Time (BC time)"), { target: { value: "10:00" } });
+      await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+      await user.click(await screen.findByRole("button", { name: "Cancel schedule" }));
+      const publish = await screen.findByRole("button", { name: "Publish now" });
+      await waitFor(() => expect(publish).toBeEnabled());
+      expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+      // And Publish settings now shows the date the release holds.
+      expect(within(screen.getByRole("region", { name: "Publish settings" })).getByLabelText("Date")).toHaveValue("2031-06-11");
+    });
+
+    it("a publish that failed (publishAt set by the attempt) leaves Publish now enabled", async () => {
+      const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 1 });
+      renderLive(v, { "/schedule": (cur) => ({ ...cur, status: "failed", publishAt: "2026-10-29T08:00:00.000Z", lastError: "The News API was unavailable.", version: cur.version + 1 }) });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Publish now" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Publish now" }));
+      await screen.findByText("The News API was unavailable.");
+      await waitFor(() => expect(screen.getByRole("button", { name: "Publish now" })).toBeEnabled());
+      expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+    });
+
+    it("a 409 Reload in one section brings in someone else's changes without making other sections dirty", async () => {
+      const v = releaseView({ status: "draft", version: 1, sectors: ["health"] });
+      const live = renderLive(v, { "/meta": () => jsonResponse(409, { error: "version conflict" }) });
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Location"), "X");
+      const pageDetails = screen.getByRole("region", { name: "Page details" });
+      await user.click(within(pageDetails).getByRole("button", { name: "Save page details" }));
+      // Meanwhile someone else changed the sectors, the NoD option and the headline.
+      live.setCurrent({
+        ...v, version: 5, sectors: ["health", "sector1"], publishOptions: { ...v.publishOptions, toSubscribers: false },
+        documents: [{ ...v.documents[0]!, languages: [{ ...v.documents[0]!.languages[0]!, headline: "Someone else's headline" }] }],
+      });
+      await user.click(await within(pageDetails).findByRole("button", { name: "Reload" }));
+      await waitFor(() => expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument());
+      expect(screen.getByLabelText("Headline")).toHaveValue("Someone else's headline");
+    });
   });
 
   it("two dirty sections show two buttons in the bar", async () => {

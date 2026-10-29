@@ -6,6 +6,7 @@ import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import { useSeededForm } from "../useSeededForm";
 import type { Categories, Term } from "../categories";
 import { SectionDisclosure } from "../../../shared/SectionDisclosure";
 import { FeatureSwitches, type FeaturePlace } from "./FeatureSwitches";
@@ -43,7 +44,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
   const [categories, setCategories] = useState<Categories>(EMPTY_CATEGORIES);
-  const [form, setForm] = useState<FormState>(() => fromView(view));
+  const { form, setForm, dirty: edited, reseed } = useSeededForm<FormState>(fromView(view));
 
   useEffect(() => {
     apiFetch<Categories>("/nrms/api/categories").then(setCategories, () => {
@@ -51,7 +52,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
     });
   }, []);
 
-  const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(fromView(view));
+  const dirty = !readOnly && edited;
 
   const toggle = (kind: CategoryKind, key: string) =>
     setForm((f) => {
@@ -63,7 +64,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
 
   const doSave = () =>
     section.save("/categories", { version: view.version, ...form }).then((next) => {
-      if (next) setForm(fromView(next));
+      if (next) reseed(fromView(next));
     });
   useRegisterDirty("categories", dirty, !readOnly ? { label: "Save categories", save: doSave } : undefined);
 
@@ -125,7 +126,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
             buttons={
               <Button
                 onPress={() =>
-                  void section.reload().then((next) => setForm(fromView(next)))
+                  void section.reload().then((next) => reseed(fromView(next)))
                 }
               >
                 Reload
