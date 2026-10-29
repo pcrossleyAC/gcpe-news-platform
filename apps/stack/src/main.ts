@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { applyServerTimeouts } from "./server-timeouts";
 import { fileURLToPath } from "node:url";
 import { closeServer, createShutdown } from "@gcpe/http-kit";
-import { checkStack, startStack } from "./stack";
+import { checkStack, migrateStack, startStack } from "./stack";
 
 /**
  * Task 15: when main.ts is bundled by `scripts/build-siteground.mjs` into one flat
@@ -104,6 +104,23 @@ if (process.argv.includes("--check")) {
     process.exit(result.ok ? 0 : 1);
   } catch (e) {
     console.error("[stack] --check failed:", e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+}
+
+/**
+ * `node stack.js --migrate`: applies every configured app's database migrations and exits (0 when
+ * all succeeded) — no server, no background loop. For an orchestrator that migrates before a
+ * rollout (an OpenShift Job/initContainer: docs/deploy/openshift.md); a normal start still
+ * migrates by itself, so nothing else needs it.
+ */
+if (process.argv.includes("--migrate")) {
+  try {
+    const result = await migrateStack(process.env);
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(result.ok ? 0 : 1);
+  } catch (e) {
+    console.error("[stack] --migrate failed:", e instanceof Error ? e.message : e);
     process.exit(1);
   }
 }

@@ -1,0 +1,46 @@
+name: openshift-image
+# Keeps the OpenShift image (deploy/openshift/Dockerfile, docs/deploy/openshift.md) in step with the
+# code: every PR and every push to main builds it and runs it the way OpenShift would (an arbitrary
+# UID in group 0, a read-only root filesystem, a writable /data volume) against pgvector:pg16 —
+# migrations, /stack/health, / and /hub/, graceful SIGTERM. Build and test only: the image is never
+# pushed to a registry (publishing it is the owner's decision).
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Layers cached in the GitHub Actions cache: with no dependency change, `npm ci` is reused
+      # and only the build itself reruns.
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/openshift/Dockerfile
+          tags: gcpe-stack:ci
+          build-args: GIT_COMMIT=${{ github.sha }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=openshift-image
+          cache-to: type=gha,mode=max,scope=openshift-image
+      - name: Image size
+        run: docker image ls gcpe-stack:ci
+      # Starts its own pgvector/pgvector:pg16 (the same image as ci.yml's service) on a private
+      # Docker network the stack's container joins; tests/openshift-image.test.ts keeps the two in step.
+      - name: Smoke test (arbitrary UID, GID 0, read-only root filesystem, /data volume)
+        run: KEEP_LOGS=stack.log deploy/openshift/smoke-test.sh gcpe-stack:ci
+      - name: Upload the stack's log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openshift-image-stack-log
+          path: stack.log
+          retention-days: 7
+          if-no-files-found: ignore

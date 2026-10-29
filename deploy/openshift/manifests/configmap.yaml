@@ -1,0 +1,34 @@
+# Non-secret settings, read by the stack as environment variables (envFrom). Every variable is
+# described in docs/deploy/openshift.md ("Environment"); docs/deploy/windows.md's gcpe.env and
+# scripts/windows-env.ts are the reference for a full, working set.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gcpe-stack-config
+data:
+  # Set by the image already (shown for reference): NODE_ENV=production, PORT=8080, DATA_DIR=/data.
+  # "test" for any deployment that is not the real production site (marks it, keeps fakes allowed).
+  SITE_ENVIRONMENT: "test"
+  # One hop: the OpenShift router. 2 if another proxy sits in front of the router.
+  TRUST_PROXY_HOPS: "1"
+  STACK_LOOPS: "true"
+  # The News API's live-updates hub (WebSockets); OpenShift routes pass WebSocket upgrades.
+  UPDATES_HUB_ENABLED: "true"
+
+  SITE_NEWS_API_URL: "self:/"
+  SITE_OUTPUT_DIR: "./site-output"
+  SITE_PUBLIC_SITE_URL: "https://<public host>"
+  NOD_DISTRIBUTION_URL: "self:/distribution"
+  NOD_PUBLIC_SITE_URL: "https://<public host>"
+
+  DIST_SMTP_HOST: "<smtp host>"
+  DIST_SMTP_PORT: "25"
+  DIST_SMTP_SECURE: "false"
+  DIST_MAIL_FROM: "<noreply@example.gov.bc.ca>"
+  # Test sites: every message goes here instead of its real recipients. Remove only for production.
+  DIST_MAIL_REDIRECT_TO: "<ops@example.gov.bc.ca>"
+
+  LOCAL_ADMIN_ENABLED: "true"
+  # Required alongside NODE_ENV=production for the local admin (break-glass) login on a test site.
+  LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true"
+  LOCAL_ADMIN_USERNAME: "<admin username>"
