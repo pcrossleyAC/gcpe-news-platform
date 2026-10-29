@@ -448,8 +448,123 @@ describe("ActionsSection", () => {
     renderActions(v);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Approve" }));
+    expect(await within(dialog).findByText(/someone else changed this/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Reload" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Owner decision 2026-10-29: Approve asks first; only the dialog's own Approve sends it.
+  it("Approve opens a confirm dialog; only its own Approve POSTs /approve", async () => {
+    const v = releaseView({ status: "draft", ministries: ["health"], leadMinistryKey: "health", version: 4 });
+    const next = releaseView({ status: "approved", reference: "NEWS-00009", version: 5 });
+    const posts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", publishFetch(posts, next));
+    const setView = vi.fn();
+    renderActions(v, setView);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Approve this release?");
+    expect(dialog).not.toHaveTextContent(/placeholder/i);
+    expect(posts).toHaveLength(0);
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(posts).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
+    expect(posts).toEqual([{ url: `/nrms/api/releases/${v.id}/approve`, body: { version: 4 } }]);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("the Approve dialog warns about placeholder text and lists where it is, but still lets it be approved", async () => {
+    const base = releaseView({ status: "draft", ministries: ["health"], leadMinistryKey: "health" });
+    const doc = base.documents[0]!;
+    const v = releaseView({
+      ...base,
+      documents: [{ ...doc, languages: [{ ...doc.languages[0]!, headline: "Clinic opening TBD", bodyHtml: "<p>Quote to come.</p>" }] }],
+    });
+    const posts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", publishFetch(posts, releaseView({ status: "approved", reference: "NEWS-00010" })));
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("This release still has placeholder text:");
+    const items = within(dialog).getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["Document 1 (English) headline: “Clinic opening TBD”", "Document 1 (English) body: “Quote to come.”"]);
+    const approveButton = within(dialog).getByRole("button", { name: "Approve anyway" });
+    expect(approveButton).toBeEnabled();
+    await user.click(approveButton);
+    await waitFor(() => expect(posts.map((p) => p.url)).toEqual([`/nrms/api/releases/${v.id}/approve`]));
+  });
+
+  // Owner decision 2026-10-29: an approved release that hasn't gone out can go back to draft.
+  it("Return to draft shows for an approved or scheduled release that has never been published, and not otherwise", () => {
+    renderActions(releaseView({ status: "approved", reference: "NEWS-00001", key: "k" }));
+    expect(screen.getByRole("button", { name: "Return to draft" })).toBeInTheDocument();
+    cleanup();
+    renderActions(releaseView({ status: "scheduled", reference: "NEWS-00001", key: "k", publishAt: "2031-01-01T18:00:00.000Z" }));
+    expect(screen.getByRole("button", { name: "Return to draft" })).toBeInTheDocument();
+    cleanup();
+    renderActions(releaseView({ status: "approved", reference: "NEWS-00001", key: "k", releasedAt: "2026-10-01T17:00:00.000Z" }));
+    expect(screen.queryByRole("button", { name: "Return to draft" })).not.toBeInTheDocument();
+    cleanup();
+    renderActions(releaseView({ status: "draft" }));
+    expect(screen.queryByRole("button", { name: "Return to draft" })).not.toBeInTheDocument();
+  });
+
+  it("Return to draft confirms first, saying the numbers are given up and the schedule is dropped; then POSTs /return-to-draft", async () => {
+    const v = releaseView({ status: "scheduled", reference: "NEWS-00007", key: "2026HLTH0007-000070", publishAt: "2031-01-15T18:30:00.000Z", version: 6 });
+    const next = releaseView({ status: "draft", version: 7 });
+    const posts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", publishFetch(posts, next));
+    const setView = vi.fn();
+    renderActions(v, setView);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Return to draft" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Return this release to draft?");
+    expect(dialog).toHaveTextContent("NEWS-00007");
+    expect(dialog).toHaveTextContent("2026HLTH0007-000070");
+    expect(dialog).toHaveTextContent("It will no longer be published on Jan 15, 2031");
+    expect(posts).toHaveLength(0);
+    await user.click(within(dialog).getByRole("button", { name: "Return to draft" }));
+    await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
+    expect(posts).toEqual([{ url: `/nrms/api/releases/${v.id}/return-to-draft`, body: { version: 6 } }]);
+  });
+
+  // Owner decision 2026-10-29: Schedule starts from the planned publish date when it's still ahead.
+  it("Schedule is prefilled from a future planned publish date, and Confirm sends it as is", async () => {
+    // 2031-06-15 21:30Z is 14:30 in BC (UTC-7).
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 2, publishAt: "2031-06-15T21:30:00.000Z" });
+    const next = releaseView({ status: "scheduled" });
+    const posts: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", publishFetch(posts, next));
+    const setView = vi.fn();
+    renderActions(v, setView);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Schedule" }));
+    expect(screen.getByLabelText("Date")).toHaveValue("2031-06-15");
+    expect(screen.getByLabelText("Time (BC time)")).toHaveValue("14:30");
+    await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+    await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
+    expect(posts).toEqual([{ url: `/nrms/api/releases/${v.id}/schedule`, body: { version: 2, publishAtLocal: "2031-06-15T14:30" } }]);
+  });
+
+  it("Schedule starts empty when the planned publish date has passed", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: "2020-06-15T21:30:00.000Z" });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    renderActions(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Schedule" }));
+    expect(screen.getByLabelText("Date")).toHaveValue("");
+    expect(screen.getByLabelText("Time (BC time)")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Confirm schedule" })).toBeDisabled();
   });
 
   // Hand-check feedback: say why Approve/Publish are unavailable next to the buttons, not only

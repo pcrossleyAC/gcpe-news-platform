@@ -601,6 +601,7 @@ describe("ReleaseEditorPage", () => {
       renderLive(v, { "/approve": (cur) => ({ ...cur, status: "approved", key: "2026HLTH0001-000001", reference: "NEWS-00001", version: cur.version + 1 }) });
       const user = userEvent.setup();
       await user.click(await screen.findByRole("button", { name: "Approve" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Approve" }));
       const publish = await screen.findByRole("button", { name: "Publish now" });
       await waitFor(() => expect(publish).toBeEnabled());
       expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();

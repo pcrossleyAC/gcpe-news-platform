@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
-import { approveProblems, publishProblems, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
+import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { scrollToAndFocus } from "../../../shared/scrollToSection";
@@ -13,7 +13,8 @@ import type { Categories } from "../categories";
 import { useSaveQueue, withVersion } from "../saveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
-import { wallClockNowMinute } from "../timezone";
+import { instantToBcLocal, wallClockNowMinute } from "../timezone";
+import { placeholderHits } from "../placeholders";
 import { dateTimeText } from "../../calendar/list/dates";
 
 /** Schedule's field error for a time that isn't in the future. */
@@ -40,6 +41,8 @@ function useServerZoneOffset(enabled: boolean): number | null {
 
 /** apps/nrms/src/releases/service.ts's DELETABLE_STATUSES. */
 const DELETABLE_STATUSES = new Set(["draft", "approved", "failed"]);
+/** apps/nrms/src/releases/workflow.ts's RETURNABLE_STATUSES (plus: has a reference, never released). */
+const RETURNABLE_STATUSES = new Set(["approved", "scheduled"]);
 /** apps/nrms/src/releases/workflow.ts's UNPUBLISHABLE_STATUSES. */
 const UNPUBLISHABLE_STATUSES = new Set(["published", "publishing", "failed", "scheduled"]);
 
@@ -75,7 +78,7 @@ const unsavedName = (label: string) => label.replace(/^save\s+/i, "");
 
 /**
  * Editors-only (the caller gates this whole section on `NRMS.Editor`): Approve, Publish
- * now/Schedule, Cancel schedule, Unpublish (hidden when the type isn't unpublishable — e.g.
+ * now/Schedule, Return to draft, Cancel schedule, Unpublish (hidden when the type isn't unpublishable — e.g.
  * Advisory), Delete. Button visibility mirrors apps/nrms/src/releases/workflow.ts's status
  * preconditions; the server remains the authority (constraints.md) — these are convenience
  * gates, not the enforcement.
@@ -104,8 +107,10 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
   const [unpublishOpen, setUnpublishOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
-  // After a successful Publish now its button leaves the page (the release is publishing), so
-  // focus goes to the Actions heading rather than falling to <body>.
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  // After a successful Publish now, Approve or Return to draft its button leaves the page (the
+  // release moved on), so focus goes to the Actions heading rather than falling to <body>.
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [focusHeading, setFocusHeading] = useState(false);
   useEffect(() => {
@@ -128,6 +133,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const canPublish = (view.status === "approved" || view.status === "failed") && view.key !== null;
   const needsKeyFirst = (view.status === "approved" || view.status === "failed") && view.key === null;
   const canCancel = view.status === "scheduled";
+  const canReturnToDraft = view.reference !== null && view.releasedAt === null && RETURNABLE_STATUSES.has(view.status);
   const canUnpublish = rules.unpublishable && view.releasedAt !== null && UNPUBLISHABLE_STATUSES.has(view.status);
   const canDelete = DELETABLE_STATUSES.has(view.status);
   // Why Approve/Publish are greyed out, said next to the buttons themselves (the header's
@@ -137,7 +143,40 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const approveBlockers = canApprove ? [...unsavedBlockers, ...asBlockers(approveProblems(view))] : [];
   const publishBlockers = canPublish ? [...unsavedBlockers, ...asBlockers(publishProblems(view))] : [];
 
-  const approve = () => void section.save("/approve", { version: view.version }, "POST");
+  // Owner decision 2026-10-29: Approve confirms first, and warns (never blocks) about
+  // placeholder text left in the release — "TBD", "to come", "[insert" and the like.
+  const placeholders = approveOpen ? placeholderHits(view) : [];
+  const approve = () =>
+    void section.save("/approve", { version: view.version }, "POST").then((next) => {
+      if (!next) return;
+      setApproveOpen(false);
+      setFocusHeading(true);
+    });
+  const returnToDraft = () =>
+    void section.save("/return-to-draft", { version: view.version }, "POST").then((next) => {
+      if (!next) return;
+      setReturnOpen(false);
+      setFocusHeading(true);
+    });
+  const typeName = TYPE_LABEL[view.type].toLowerCase();
+  // Owner decision 2026-10-29: Schedule starts from the planned publish date (Publish
+  // settings) when there is one still ahead; the editor can change it.
+  const openScheduler = () => {
+    if (schedulerOpen) {
+      setSchedulerOpen(false);
+      return;
+    }
+    const planned = view.status === "approved" && view.publishAt && Date.parse(view.publishAt) > Date.now() ? view.publishAt : null;
+    if (planned) {
+      const { date, time } = instantToBcLocal(planned, timeZone);
+      setScheduleValue({ local: `${date}T${time}`, instant: planned });
+    } else {
+      setScheduleValue(null);
+    }
+    setScheduleError(null);
+    setSchedulerOpen(true);
+  };
+  const prefilled = scheduleValue !== null && view.publishAt !== null && scheduleValue.instant === view.publishAt;
   const publishNow = () =>
     void section.save("/schedule", { version: view.version, publishAt: "now" }, "POST").then((next) => {
       if (!next) return;
@@ -202,9 +241,45 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
       <div className="gcpe-release-editor__action-buttons">
         {canApprove && (
-          <Button onPress={approve} isPending={section.saving} isDisabled={approveBlockers.length > 0} aria-describedby={approveBlockers.length > 0 ? "actions-approve-why" : undefined}>
-            Approve
-          </Button>
+          <DialogTrigger isOpen={approveOpen} onOpenChange={setApproveOpen}>
+            <Button isPending={section.saving} isDisabled={approveBlockers.length > 0} aria-describedby={approveBlockers.length > 0 ? "actions-approve-why" : undefined}>
+              Approve
+            </Button>
+            <Modal isDismissable>
+              <AlertDialog
+                variant={placeholders.length > 0 ? "warning" : undefined}
+                title={`Approve this ${typeName}?`}
+                buttons={
+                  <>
+                    <Button variant="secondary" onPress={() => setApproveOpen(false)} isPending={section.saving}>
+                      Cancel
+                    </Button>
+                    <Button onPress={approve} isPending={section.saving} isDisabled={approveBlockers.length > 0} pendingLabel="Approving…">
+                      {placeholders.length > 0 ? "Approve anyway" : "Approve"}
+                    </Button>
+                  </>
+                }
+              >
+                <p>
+                  Approving gives it a reference number{rules.generatesKey ? " and a release number" : ""}. After that it can be published or scheduled.
+                </p>
+                {placeholders.length > 0 && (
+                  <>
+                    <p>This {typeName} still has placeholder text:</p>
+                    <ul>
+                      {placeholders.map((h, i) => (
+                        <li key={i}>
+                          {h.where}: &ldquo;{h.context}&rdquo;
+                        </li>
+                      ))}
+                    </ul>
+                    <p>Check these before approving, or approve anyway if they&rsquo;re meant to be there.</p>
+                  </>
+                )}
+                <ActionErrors section={section} />
+              </AlertDialog>
+            </Modal>
+          </DialogTrigger>
         )}
 
         {canPublish && (
@@ -230,23 +305,13 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                   }
                 >
                   <PublishConsequences view={view} />
-                  {section.conflict && (
-                    <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => void section.reload()}>Reload</Button>} />
-                  )}
-                  {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
-                  {section.problems && (
-                    <ul role="alert" className="gcpe-release-editor__problems">
-                      {section.problems.map((p) => (
-                        <li key={p}>{p}</li>
-                      ))}
-                    </ul>
-                  )}
+                  <ActionErrors section={section} />
                 </AlertDialog>
               </Modal>
             </DialogTrigger>
             <Button
               variant="secondary"
-              onPress={() => setSchedulerOpen((o) => !o)}
+              onPress={openScheduler}
               isDisabled={publishBlockers.length > 0}
               aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}
             >
@@ -255,6 +320,37 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
           </>
         )}
         {needsKeyFirst && <p>Set a URL key in Page details before this can be published.</p>}
+
+        {canReturnToDraft && (
+          <DialogTrigger isOpen={returnOpen} onOpenChange={setReturnOpen}>
+            <Button variant="secondary" isPending={section.saving}>
+              Return to draft
+            </Button>
+            <Modal isDismissable>
+              <AlertDialog
+                title={`Return this ${typeName} to draft?`}
+                buttons={
+                  <>
+                    <Button variant="secondary" onPress={() => setReturnOpen(false)} isPending={section.saving}>
+                      Cancel
+                    </Button>
+                    <Button onPress={returnToDraft} isPending={section.saving} pendingLabel="Returning…">
+                      Return to draft
+                    </Button>
+                  </>
+                }
+              >
+                {view.status === "scheduled" && view.publishAt && <p>It will no longer be published on {dateTimeText(view.publishAt, timeZone)}.</p>}
+                <p>
+                  {rules.generatesKey && view.key
+                    ? `It gives up its reference number (${view.reference}) and release number (${view.key}); it gets new ones when it's approved again.`
+                    : `It gives up its reference number (${view.reference}); it gets a new one when it's approved again.`}
+                </p>
+                <ActionErrors section={section} />
+              </AlertDialog>
+            </Modal>
+          </DialogTrigger>
+        )}
 
         {canCancel && (
           <Button variant="secondary" onPress={cancelSchedule} isPending={section.saving}>
@@ -337,6 +433,8 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
             timeZone={timeZone}
             legend="Schedule for"
             idPrefix="schedule"
+            initialDate={prefilled ? instantToBcLocal(view.publishAt!, timeZone).date : undefined}
+            initialTime={prefilled ? instantToBcLocal(view.publishAt!, timeZone).time : undefined}
             onChange={(value) => {
               setScheduleError(null);
               setScheduleValue(value);
@@ -345,7 +443,9 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
             error={scheduleError}
           />
           <p className="gcpe-hint gcpe-release-editor__planned-note">
-            {view.publishAt && view.status === "approved"
+            {prefilled
+              ? "Filled in from the planned publish date in Publish settings — change it if you need to. The time you confirm here is the one that's committed."
+              : view.publishAt && view.status === "approved"
               ? `Planned in Publish settings: ${dateTimeText(view.publishAt, timeZone)}. That's only a plan; the time you confirm here is the one that's committed.`
               : "The time you confirm here is the one that's committed. (A planned publish date in Publish settings is only a plan.)"}
           </p>
@@ -355,6 +455,25 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
         </div>
       )}
     </section>
+  );
+}
+
+/** A dialog's own copy of the section's errors (the page's copy is hidden behind the modal). */
+function ActionErrors({ section }: { section: ReturnType<typeof useReleaseSection> }): React.JSX.Element {
+  return (
+    <>
+      {section.conflict && (
+        <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => void section.reload()}>Reload</Button>} />
+      )}
+      {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
+      {section.problems && (
+        <ul role="alert" className="gcpe-release-editor__problems">
+          {section.problems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 
