@@ -92,13 +92,18 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const [schedulerOpen, setSchedulerOpen] = useState(false);
   const [scheduleValue, setScheduleValue] = useState<ScheduleValue | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+  // The panel's date and time as it opened (prefilled or empty), and as they are now: it holds
+  // something to lose only once the editor changes them.
+  const [scheduleOpenedWith, setScheduleOpenedWith] = useState("T");
+  const [scheduleTyped, setScheduleTyped] = useState("T");
   const serverOffset = useServerZoneOffset(schedulerOpen);
   // The server publishes a time up to 5 minutes in the past at once (no dialog), so a time must
   // be after the current BC minute — checked as it's typed, and again at Confirm.
   const futureProblem = (local: string) => (local <= wallClockNowMinute(Date.now(), timeZone, serverOffset) ? PAST_SCHEDULE : null);
-  // Just blocks navigation while open (no save of its own to offer the sticky bar — Schedule's
-  // own "Confirm schedule" below is the only way to act on it).
-  useRegisterDirty("actions-scheduler", schedulerOpen);
+  // Just blocks navigation while a changed date or time is open (no save of its own to offer the
+  // sticky bar — Schedule's own "Confirm schedule" below is the only way to act on it). Opening the
+  // panel, prefilled or empty, isn't a change.
+  useRegisterDirty("actions-scheduler", schedulerOpen && scheduleTyped !== scheduleOpenedWith);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -170,8 +175,12 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
     if (planned) {
       const { date, time } = instantToBcLocal(planned, timeZone);
       setScheduleValue({ local: `${date}T${time}`, instant: planned });
+      setScheduleOpenedWith(`${date}T${time}`);
+      setScheduleTyped(`${date}T${time}`);
     } else {
       setScheduleValue(null);
+      setScheduleOpenedWith("T");
+      setScheduleTyped("T");
     }
     setScheduleError(null);
     setSchedulerOpen(true);
@@ -312,6 +321,8 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
             <Button
               variant="secondary"
               onPress={openScheduler}
+              aria-expanded={schedulerOpen && canPublish}
+              aria-controls="actions-scheduler"
               isDisabled={publishBlockers.length > 0}
               aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}
             >
@@ -428,7 +439,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
       {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead="Publish now and Schedule are unavailable until:" items={publishBlockers} />}
 
       {schedulerOpen && canPublish && (
-        <div className="gcpe-release-editor__scheduler">
+        <div id="actions-scheduler" className="gcpe-release-editor__scheduler">
           <SchedulePicker
             timeZone={timeZone}
             legend="Schedule for"
@@ -439,6 +450,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
               setScheduleError(null);
               setScheduleValue(value);
             }}
+            onEdit={(date, time) => setScheduleTyped(`${date}T${time}`)}
             validate={futureProblem}
             error={scheduleError}
           />
