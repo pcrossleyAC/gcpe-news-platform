@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { TableScroll } from "../../shared/TableScroll";
 import { Link, useParams } from "react-router";
 import { AlertDialog, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
@@ -130,47 +131,49 @@ export function MediaListScreen(): React.JSX.Element {
       {!members && !loadError && <p>Loading…</p>}
       {members && members.length === 0 && <p>No members yet.</p>}
       {members && members.length > 0 && (
-        <table aria-label="Members">
-          <thead>
-            <tr>
-              <th scope="col">Email</th>
-              <th scope="col">Source</th>
-              <th scope="col">Needs attention</th>
-              {canEdit && <th scope="col">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((m) => (
-              <tr key={m.subscriberId}>
-                <td>
-                  <Link to={`/subscribers/${m.subscriberId}`}>{m.email}</Link>
-                </td>
-                <td>{memberSourceLabel(m.source)}</td>
-                <td>{m.needsAttention ? attentionLabel(m.needsAttention) : ""}</td>
-                {canEdit && (
-                  <td>
-                    {m.needsAttention && (
-                      <Button variant="secondary" isPending={busy} onPress={() => setResolving(m)}>
-                        {`Resolve ${m.email}`}
-                      </Button>
-                    )}
-                    <Button
-                      variant="secondary"
-                      danger
-                      isPending={busy}
-                      onPress={() => {
-                        setActionError(null);
-                        setRemoving(m);
-                      }}
-                    >
-                      {`Remove ${m.email}`}
-                    </Button>
-                  </td>
-                )}
+        <TableScroll label="Members">
+          <table aria-label="Members">
+            <thead>
+              <tr>
+                <th scope="col">Email</th>
+                <th scope="col">Source</th>
+                <th scope="col">Needs attention</th>
+                {canEdit && <th scope="col">Actions</th>}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {members.map((m) => (
+                <tr key={m.subscriberId}>
+                  <td>
+                    <Link to={`/subscribers/${m.subscriberId}`}>{m.email}</Link>
+                  </td>
+                  <td>{memberSourceLabel(m.source)}</td>
+                  <td>{m.needsAttention ? attentionLabel(m.needsAttention) : ""}</td>
+                  {canEdit && (
+                    <td>
+                      {m.needsAttention && (
+                        <Button variant="secondary" isPending={busy} onPress={() => setResolving(m)}>
+                          {`Resolve ${m.email}`}
+                        </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        danger
+                        isPending={busy}
+                        onPress={() => {
+                          setActionError(null);
+                          setRemoving(m);
+                        }}
+                      >
+                        {`Remove ${m.email}`}
+                      </Button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
 
       {canEdit && members && (
@@ -193,26 +196,28 @@ export function MediaListScreen(): React.JSX.Element {
         <h2 id="opted-out-heading">Left this list by unsubscribing</h2>
         {optOuts && optOuts.items.length === 0 && <p>Nobody has.</p>}
         {optOuts && optOuts.items.length > 0 && (
-          <table aria-label="Left this list by unsubscribing">
-            <thead>
-              <tr>
-                <th scope="col">Email</th>
-                <th scope="col">Left</th>
-                <th scope="col">Back on the list</th>
-              </tr>
-            </thead>
-            <tbody>
-              {optOuts.items.map((o) => (
-                <tr key={o.subscriberId}>
-                  <td>
-                    <Link to={`/subscribers/${o.subscriberId}`}>{o.email}</Link>
-                  </td>
-                  <td>{formatWhen(o.at, new Date(), timeZone)}</td>
-                  <td>{o.member ? "Yes" : "No"}</td>
+          <TableScroll label="Left this list by unsubscribing">
+            <table aria-label="Left this list by unsubscribing">
+              <thead>
+                <tr>
+                  <th scope="col">Email</th>
+                  <th scope="col">Left</th>
+                  <th scope="col">Back on the list</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {optOuts.items.map((o) => (
+                  <tr key={o.subscriberId}>
+                    <td>
+                      <Link to={`/subscribers/${o.subscriberId}`}>{o.email}</Link>
+                    </td>
+                    <td>{formatWhen(o.at, new Date(), timeZone)}</td>
+                    <td>{o.member ? "Yes" : "No"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
         )}
         {optOuts?.truncated && <p>Showing the most recent 200.</p>}
       </section>

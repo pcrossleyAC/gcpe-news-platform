@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { TableScroll } from "../../../shared/TableScroll";
+import { Button } from "../../../shared/Button";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { formatLongDate, type GovernmentTermList, type GovernmentTermPatch, type GovernmentTermView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
@@ -139,7 +141,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
         <>
           <InlineAlert variant="danger" role="alert" description={loadError} />
           <p>
-            <button type="button" onClick={reload} disabled={loading} aria-busy={loading}>
+            <button type="button" className="gcpe-native-button" onClick={reload} disabled={loading} aria-busy={loading}>
               {loading ? "Trying again…" : "Try again"}
             </button>
           </p>
@@ -154,10 +156,10 @@ export function GovernmentTermsScreen(): React.JSX.Element {
       {terms === null && !loadError && <p>Loading…</p>}
       {terms && !starting && (
         <p>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             ref={startButton}
-            onClick={() => {
+            onPress={() => {
               setStatus(null);
               setMessages([]);
               setEditingId(null);
@@ -166,7 +168,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
             }}
           >
             Start new government term
-          </button>
+          </Button>
         </p>
       )}
       {terms && starting && (
@@ -208,105 +210,112 @@ export function GovernmentTermsScreen(): React.JSX.Element {
         />
       )}
       {terms && (
-        <table className="gcpe-table">
-          <caption>Government terms, newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col">Term</th>
-              <th scope="col">Dates</th>
-              <th scope="col">Status</th>
-              <th scope="col">Releases</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {terms.map((t) => (
-              <tr key={t.id}>
-                <td>{nameOf(t)}</td>
-                <td>{rangeOf(t)}</td>
-                <td>{STATUS_WORDS[t.status]}</td>
-                <td>{t.releaseCount}</td>
-                <td>
-                  <button
-                    type="button"
-                    ref={(el) => {
-                      if (el) editButtons.current.set(t.id, el);
-                      else editButtons.current.delete(t.id);
-                    }}
-                    aria-label={`Edit ${nameOf(t)}`}
-                    onClick={() => {
-                      setStatus(null);
-                      setMessages([]);
-                      setStarting(false);
-                      setDeletingId(null);
-                      setEditingId(t.id);
-                    }}
-                  >
-                    Edit
-                  </button>
-                  {t.status === "scheduled" && t.releaseCount === 0 && deletingId !== t.id && (
-                    <>
-                      {" "}
-                      <button
-                        type="button"
+        <TableScroll label="Government terms">
+          <table className="gcpe-table">
+            <caption>Government terms, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col">Term</th>
+                <th scope="col">Dates</th>
+                <th scope="col">Status</th>
+                <th scope="col">Releases</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {terms.map((t) => (
+                <tr key={t.id}>
+                  <td>{nameOf(t)}</td>
+                  <td>{rangeOf(t)}</td>
+                  <td>{STATUS_WORDS[t.status]}</td>
+                  <td>{t.releaseCount}</td>
+                  <td>
+                    <div className="gcpe-button-row">
+                      <Button
+                        size="small"
+                        variant="secondary"
                         ref={(el) => {
-                          if (el) deleteButtons.current.set(t.id, el);
-                          else deleteButtons.current.delete(t.id);
+                          if (el) editButtons.current.set(t.id, el);
+                          else editButtons.current.delete(t.id);
                         }}
-                        aria-label={`Delete ${nameOf(t)}`}
-                        disabled={busy}
-                        onClick={() => {
+                        aria-label={`Edit ${nameOf(t)}`}
+                        onPress={() => {
                           setStatus(null);
                           setMessages([]);
-                          setDeleteError([]);
-                          focusNext.current = { kind: "confirm", id: t.id };
-                          setDeletingId(t.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                  {deletingId === t.id && (
-                    <div
-                      role="group"
-                      tabIndex={-1}
-                      ref={(el) => {
-                        if (el) confirmGroups.current.set(t.id, el);
-                        else confirmGroups.current.delete(t.id);
-                      }}
-                      aria-label={`Delete ${nameOf(t)}`}
-                      aria-describedby={`delete-${t.id}`}
-                    >
-                      <p id={`delete-${t.id}`}>
-                        Delete the term starting {t.startDate ? formatLongDate(t.startDate) : "on no date"}? Nothing is
-                        listed under it yet, and the current term stays as it is.
-                      </p>
-                      {deleteError.map((m) => (
-                        <p role="alert" key={m}>
-                          {m}
-                        </p>
-                      ))}
-                      <button type="button" disabled={busy} onClick={() => void remove(t)}>
-                        Confirm
-                      </button>{" "}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          focusNext.current = { kind: "delete", id: t.id };
-                          setDeleteError([]);
+                          setStarting(false);
                           setDeletingId(null);
+                          setEditingId(t.id);
                         }}
                       >
-                        Cancel
-                      </button>
+                        Edit
+                      </Button>
+                      {t.status === "scheduled" && t.releaseCount === 0 && deletingId !== t.id && (
+                        <Button
+                          size="small"
+                          variant="secondary"
+                          danger
+                          ref={(el) => {
+                            if (el) deleteButtons.current.set(t.id, el);
+                            else deleteButtons.current.delete(t.id);
+                          }}
+                          aria-label={`Delete ${nameOf(t)}`}
+                          isPending={busy}
+                          onPress={() => {
+                            setStatus(null);
+                            setMessages([]);
+                            setDeleteError([]);
+                            focusNext.current = { kind: "confirm", id: t.id };
+                            setDeletingId(t.id);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    {deletingId === t.id && (
+                      <div
+                        role="group"
+                        tabIndex={-1}
+                        ref={(el) => {
+                          if (el) confirmGroups.current.set(t.id, el);
+                          else confirmGroups.current.delete(t.id);
+                        }}
+                        aria-label={`Delete ${nameOf(t)}`}
+                        aria-describedby={`delete-${t.id}`}
+                      >
+                        <p id={`delete-${t.id}`}>
+                          Delete the term starting {t.startDate ? formatLongDate(t.startDate) : "on no date"}? Nothing is
+                          listed under it yet, and the current term stays as it is.
+                        </p>
+                        {deleteError.map((m) => (
+                          <p role="alert" key={m}>
+                            {m}
+                          </p>
+                        ))}
+                        <div className="gcpe-button-row">
+                          <Button size="small" danger isPending={busy} onPress={() => void remove(t)}>
+                            Confirm
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="secondary"
+                            onPress={() => {
+                              focusNext.current = { kind: "delete", id: t.id };
+                              setDeleteError([]);
+                              setDeletingId(null);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </div>
   );
@@ -406,13 +415,13 @@ function TermEditForm({
         />
         <p id={`${uid}-url-hint`}>Optional. Must start with https://. Leave empty for none.</p>
       </div>
-      <div>
-        <button type="submit" ref={saveRef} disabled={busy || confirmingMove}>
+      <div className="gcpe-button-row">
+        <Button type="submit" ref={saveRef} isPending={busy} isDisabled={confirmingMove}>
           Save
-        </button>{" "}
-        <button type="button" onClick={onCancel}>
+        </Button>
+        <Button variant="secondary" onPress={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
       {confirmingMove && (
         <div role="group" tabIndex={-1} ref={confirmRef} aria-label="Confirm the new start date" aria-describedby={`${uid}-move`}>
@@ -424,20 +433,22 @@ function TermEditForm({
               {m}
             </p>
           ))}
-          <button type="submit" disabled={busy}>
-            Confirm
-          </button>{" "}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setConfirmingMove(false);
-              setMessages([]);
-              setTimeout(() => saveRef.current?.focus(), 0);
-            }}
-          >
-            Go back
-          </button>
+          <div className="gcpe-button-row">
+            <Button type="submit" isPending={busy}>
+              Confirm
+            </Button>
+            <Button
+              variant="secondary"
+              isPending={busy}
+              onPress={() => {
+                setConfirmingMove(false);
+                setMessages([]);
+                setTimeout(() => saveRef.current?.focus(), 0);
+              }}
+            >
+              Go back
+            </Button>
+          </div>
         </div>
       )}
     </form>

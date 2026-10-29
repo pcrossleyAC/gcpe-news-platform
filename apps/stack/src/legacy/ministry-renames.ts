@@ -1,7 +1,7 @@
 import { CATEGORY_KEY, type CategoryKind } from "../../../public-site/src/site-paths";
 import { exactPagePath } from "./site-files";
 import { resolveMinistrySuccessor } from "../ministry-successors";
-import renamesJson from "./ministry-renames.json";
+import renamesJson from "./ministry-renames.json" with { type: "json" };
 
 /**
  * news.gov's ministry (and sector) rename redirects as data (parity plan 3, url-compat T4):

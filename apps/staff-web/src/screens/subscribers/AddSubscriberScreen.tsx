@@ -138,12 +138,14 @@ export function AddSubscriberScreen(): React.JSX.Element {
           disabled={submitting}
         />
 
-        <label>
-          <input type="checkbox" checked={asItHappens} onChange={(e) => setAsItHappens(e.target.checked)} disabled={submitting} /> As it happens
-        </label>
-        <label>
-          <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} disabled={submitting} /> Daily digest
-        </label>
+        <div className="gcpe-check-row">
+          <label className="gcpe-check">
+            <input type="checkbox" checked={asItHappens} onChange={(e) => setAsItHappens(e.target.checked)} disabled={submitting} /> As it happens
+          </label>
+          <label className="gcpe-check">
+            <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} disabled={submitting} /> Daily digest
+          </label>
+        </div>
 
         <Button type="submit" isPending={submitting} pendingLabel="Adding…">
           Add subscriber

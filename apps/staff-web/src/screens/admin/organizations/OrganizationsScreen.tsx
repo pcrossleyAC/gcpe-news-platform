@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { TableScroll } from "../../../shared/TableScroll";
+import { Button } from "../../../shared/Button";
 import { Link } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
@@ -246,18 +248,18 @@ export function OrganizationsScreen(): React.JSX.Element {
       {orgs === null && !loadError && <p>Loading…</p>}
       {isAdmin && orgs && !adding && (
         <p>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             ref={addButton}
-            disabled={panelBusy}
-            onClick={() => {
+            isDisabled={panelBusy}
+            onPress={() => {
               setStatus(null);
               setEditingKey(null);
               setAdding(true);
             }}
           >
             Add ministry
-          </button>
+          </Button>
         </p>
       )}
       {isAdmin && adding && (
@@ -334,124 +336,125 @@ export function OrganizationsScreen(): React.JSX.Element {
         </p>
       )}
       {orgs && (
-        <table className="gcpe-table">
-          <caption>Organizations and their ministers</caption>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Abbreviation</th>
-              <th scope="col">Minister</th>
-              <th scope="col">Active</th>
-              {isAdmin && <th scope="col">HQ</th>}
-              {isAdmin && <th scope="col">Public</th>}
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((o) => (
-              <tr key={o.key}>
-                <td>
-                  {o.displayName}
-                  {!o.isPublic && (
-                    <>
-                      {" "}
-                      <span className="gcpe-badge">Not public</span>
-                    </>
-                  )}
-                </td>
-                <td>{o.abbreviation ?? ""}</td>
-                <td>{o.minister.name ?? ""}</td>
-                <td>{o.isActive ? "Yes" : "No"}</td>
-                {isAdmin && (
-                  <td>
-                    <input
-                      type="checkbox"
-                      aria-label={`${o.displayName} is an HQ organization`}
-                      checked={o.isHq}
-                      disabled={busy || panelBusy}
-                      onChange={(e) => void setFlag(o, "hq", e.target.checked)}
-                    />
-                  </td>
-                )}
-                {isAdmin && (
-                  <td>
-                    <input
-                      type="checkbox"
-                      aria-label={`${o.displayName} is listed publicly`}
-                      checked={o.isPublic}
-                      disabled={busy || panelBusy}
-                      onChange={(e) =>
-                        void setFlag(o, "public", e.target.checked)
-                      }
-                    />
-                  </td>
-                )}
-                <td>
-                  <button
-                    type="button"
-                    ref={(el) => {
-                      if (el) editButtons.current.set(o.key, el);
-                      else editButtons.current.delete(o.key);
-                    }}
-                    aria-label={`Edit ${o.displayName}`}
-                    disabled={panelBusy}
-                    onClick={() => {
-                      setStatus(null);
-                      setEditingKey(o.key);
-                    }}
-                  >
-                    Edit
-                  </button>
-                  {isAdmin && (
-                    <>
-                      {" "}
-                      <button
-                        type="button"
-                        ref={(el) => {
-                          if (el) handOverButtons.current.set(o.key, el);
-                          else handOverButtons.current.delete(o.key);
-                        }}
-                        aria-label={
-                          o.isActive
-                            ? `Deactivate ${o.displayName}`
-                            : `Set successor for ${o.displayName}`
-                        }
-                        aria-expanded={handOverKey === o.key}
-                        disabled={busy || panelBusy}
-                        onClick={() => {
-                          setStatus(null);
-                          setRowError(null);
-                          setHandOverKey(o.key);
-                        }}
-                      >
-                        {o.isActive ? "Deactivate" : "Set successor…"}
-                      </button>
-                    </>
-                  )}
-                  {isAdmin && !o.isActive && (
-                    <>
-                      {" "}
-                      <button
-                        type="button"
-                        aria-label={`Reactivate ${o.displayName}`}
-                        disabled={panelBusy}
-                        onClick={() => void reactivate(o)}
-                      >
-                        Reactivate
-                      </button>
-                    </>
-                  )}
-                  {rowError?.key === o.key &&
-                    rowError.messages.map((m) => (
-                      <p role="alert" key={m}>
-                        {m}
-                      </p>
-                    ))}
-                </td>
+        <TableScroll label="Organizations and their ministers">
+          <table className="gcpe-table">
+            <caption>Organizations and their ministers</caption>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Abbreviation</th>
+                <th scope="col">Minister</th>
+                <th scope="col">Active</th>
+                {isAdmin && <th scope="col">HQ</th>}
+                {isAdmin && <th scope="col">Public</th>}
+                <th scope="col">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((o) => (
+                <tr key={o.key}>
+                  <td>
+                    {o.displayName}
+                    {!o.isPublic && (
+                      <>
+                        {" "}
+                        <span className="gcpe-badge">Not public</span>
+                      </>
+                    )}
+                  </td>
+                  <td>{o.abbreviation ?? ""}</td>
+                  <td>{o.minister.name ?? ""}</td>
+                  <td>{o.isActive ? "Yes" : "No"}</td>
+                  {isAdmin && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`${o.displayName} is an HQ organization`}
+                        checked={o.isHq}
+                        disabled={busy || panelBusy}
+                        onChange={(e) => void setFlag(o, "hq", e.target.checked)}
+                      />
+                    </td>
+                  )}
+                  {isAdmin && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`${o.displayName} is listed publicly`}
+                        checked={o.isPublic}
+                        disabled={busy || panelBusy}
+                        onChange={(e) =>
+                          void setFlag(o, "public", e.target.checked)
+                        }
+                      />
+                    </td>
+                  )}
+                  <td>
+                    <div className="gcpe-button-row">
+                      <Button
+                        size="small"
+                        variant="secondary"
+                        ref={(el) => {
+                          if (el) editButtons.current.set(o.key, el);
+                          else editButtons.current.delete(o.key);
+                        }}
+                        aria-label={`Edit ${o.displayName}`}
+                        isDisabled={panelBusy}
+                        onPress={() => {
+                          setStatus(null);
+                          setEditingKey(o.key);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      {isAdmin && (
+                        <Button
+                          size="small"
+                          variant="secondary"
+                          ref={(el) => {
+                            if (el) handOverButtons.current.set(o.key, el);
+                            else handOverButtons.current.delete(o.key);
+                          }}
+                          aria-label={
+                            o.isActive
+                              ? `Deactivate ${o.displayName}`
+                              : `Set successor for ${o.displayName}`
+                          }
+                          aria-expanded={handOverKey === o.key}
+                          isPending={busy} isDisabled={panelBusy}
+                          onPress={() => {
+                            setStatus(null);
+                            setRowError(null);
+                            setHandOverKey(o.key);
+                          }}
+                        >
+                          {o.isActive ? "Deactivate" : "Set successor…"}
+                        </Button>
+                      )}
+                      {isAdmin && !o.isActive && (
+                        <Button
+                          size="small"
+                          variant="secondary"
+                          aria-label={`Reactivate ${o.displayName}`}
+                          isDisabled={panelBusy}
+                          onPress={() => void reactivate(o)}
+                        >
+                          Reactivate
+                        </Button>
+                      )}
+                    </div>
+                    {rowError?.key === o.key &&
+                      rowError.messages.map((m) => (
+                        <p role="alert" key={m}>
+                          {m}
+                        </p>
+                      ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </div>
   );

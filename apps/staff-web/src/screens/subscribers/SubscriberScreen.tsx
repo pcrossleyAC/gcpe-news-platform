@@ -101,30 +101,32 @@ function PreferencesForm({ detail, options, onSaved }: { detail: SubscriberDetai
       ))}
       {saved && <p role="status">Preferences saved.</p>}
 
-      <label>
-        <input
-          type="checkbox"
-          checked={asItHappens}
-          onChange={(e) => {
-            setAsItHappens(e.target.checked);
-            setSaved(false);
-          }}
-          disabled={saving}
-        />{" "}
-        As it happens
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={digest}
-          onChange={(e) => {
-            setDigest(e.target.checked);
-            setSaved(false);
-          }}
-          disabled={saving}
-        />{" "}
-        Daily digest
-      </label>
+      <div className="gcpe-check-row">
+        <label className="gcpe-check">
+          <input
+            type="checkbox"
+            checked={asItHappens}
+            onChange={(e) => {
+              setAsItHappens(e.target.checked);
+              setSaved(false);
+            }}
+            disabled={saving}
+          />{" "}
+          As it happens
+        </label>
+        <label className="gcpe-check">
+          <input
+            type="checkbox"
+            checked={digest}
+            onChange={(e) => {
+              setDigest(e.target.checked);
+              setSaved(false);
+            }}
+            disabled={saving}
+          />{" "}
+          Daily digest
+        </label>
+      </div>
 
       <ListPicker
         categories={options?.categories ?? []}

@@ -137,7 +137,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       {slides.map((slide, index) => (
         <div key={slide.clientKey} className="gcpe-carousel__slide" {...dragReorder.dropZoneProps(index)}>
           {canEdit && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder slide ${index + 1}`} />}
-          <h4>Slide {index + 1}</h4>
+          <h3>Slide {index + 1}</h3>
           <TextField label={`Slide ${index + 1} headline`} value={slide.headline} onChange={(v) => update(index, { headline: v })} isDisabled={!canEdit} />
           <TextField label={`Slide ${index + 1} summary`} value={slide.summary} onChange={(v) => update(index, { summary: v })} isDisabled={!canEdit} />
           <TextField label={`Slide ${index + 1} action URL`} value={slide.actionUrl} onChange={(v) => update(index, { actionUrl: v })} isDisabled={!canEdit} />
