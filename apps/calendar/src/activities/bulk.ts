@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, lte } from "drizzle-orm";
+import { and, asc, count, eq, isNotNull, lte } from "drizzle-orm";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import type { CalendarActor } from "../actor";
 import { can } from "../capabilities";
@@ -72,6 +72,26 @@ export async function reviewSelected(deps: ApiDeps, actor: CalendarActor, items:
   return { reviewed, skipped: byOriginalOrder(skipped) };
 }
 
+/** 00:00 BC on today + `days`: Clear LA Status takes activities starting by then. */
+function laCutoff(deps: ApiDeps, now: Date, days: number): Date {
+  return bcMidnight(addDays(wallClock(now, deps.rules.timeZone).date, days), deps.rules.timeZone);
+}
+
+/** What Clear LA Status clears: visible to the caller, with an LA status, starting by the cutoff. */
+const laCandidates = (actor: CalendarActor, cutoff: Date) => and(visibleSql(actor), isNotNull(activities.hqStatus), lte(activities.startAt, cutoff));
+
+/**
+ * How many activities {@link clearLaStatus} would clear for `days` right now — for the Hub's
+ * confirmation (owner decision 2026-10-29). Same rule and permission; a count, not a promise
+ * (the list can change before the clear runs).
+ */
+export async function countLaStatus(deps: ApiDeps, actor: CalendarActor, days: number): Promise<number> {
+  if (!can.clearLaStatus(actor)) throw new ActivityForbiddenError("HQ clears the LA status");
+  const now = await dbNow(deps.db, deps.now);
+  const [row] = await deps.db.select({ n: count() }).from(activities).where(laCandidates(actor, laCutoff(deps, now, days)));
+  return row?.n ?? 0;
+}
+
 export interface ClearLaStatusResult {
   cleared: number;
   /** As with `ReviewSelectedResult.failed`: a later batch failed after earlier ones committed. */
@@ -85,11 +105,11 @@ export interface ClearLaStatusResult {
 export async function clearLaStatus(deps: ApiDeps, actor: CalendarActor, days: number): Promise<ClearLaStatusResult> {
   if (!can.clearLaStatus(actor)) throw new ActivityForbiddenError("HQ clears the LA status");
   const now = await dbNow(deps.db, deps.now);
-  const cutoff = bcMidnight(addDays(wallClock(now, deps.rules.timeZone).date, days), deps.rules.timeZone);
+  const cutoff = laCutoff(deps, now, days);
   const candidates = await deps.db
     .select({ id: activities.id })
     .from(activities)
-    .where(and(visibleSql(actor), isNotNull(activities.hqStatus), lte(activities.startAt, cutoff)))
+    .where(laCandidates(actor, cutoff))
     .orderBy(asc(activities.id));
   let cleared = 0;
   for (const [n, batch] of batchesOf(candidates.map((c) => c.id)).entries()) {
