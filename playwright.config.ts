@@ -20,7 +20,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [["list"]],
+  forbidOnly: !!process.env.CI,
+  // In CI the HTML report is uploaded as an artifact on failure (.github/workflows/ci.yml, job `e2e`).
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
   globalSetup: "./tests/e2e/global-setup.ts",
   use: {
     trace: "retain-on-failure",
