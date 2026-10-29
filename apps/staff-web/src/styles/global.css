@@ -2242,3 +2242,240 @@ fieldset.gcpe-org-contact {
   margin: 0.25rem 0 0;
   color: #b00020;
 }
+
+/* Calendar list, batch 3 ------------------------------------------------------------------- */
+
+/* Closed Filters shows the running filter on one line beside its name. */
+.gcpe-calendar-filters > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+.gcpe-calendar-filters__summary {
+  font-weight: 400;
+  color: var(--typography-color-secondary, #474543);
+  overflow-wrap: anywhere;
+}
+.gcpe-calendar-filters[open] .gcpe-calendar-filters__summary {
+  display: none;
+}
+
+/* The Excel export and the PDF reports read as one set. */
+.gcpe-calendar-toolbar .gcpe-actions > .gcpe-toolbar-group {
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-background-light-gray, #faf9f8);
+}
+.gcpe-toolbar-group > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gcpe-toolbar-group > div > p {
+  margin: 0;
+  flex-basis: 100%;
+}
+.gcpe-toolbar-group__label {
+  font: var(--typography-bold-small-body);
+  color: var(--typography-color-secondary, #474543);
+}
+
+/* List / Month / Week: one segmented control (each is still a toggle button, aria-pressed). */
+.gcpe-segmented {
+  display: inline-flex;
+  border: 1px solid var(--surface-color-border-dark, #353433);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  overflow: hidden;
+}
+.gcpe-segmented > .gcpe-view-button {
+  border: 0;
+  border-radius: 0;
+  background: var(--surface-color-forms-default, #fff);
+  color: var(--typography-color-primary, #2d2d2d);
+  min-height: 40px;
+  padding: 0 1rem;
+}
+.gcpe-segmented > .gcpe-view-button + .gcpe-view-button {
+  border-left: 1px solid var(--surface-color-border-dark, #353433);
+}
+.gcpe-segmented > .gcpe-view-button:hover {
+  background: var(--surface-color-secondary-button-hover, #edebe9);
+}
+.gcpe-segmented > .gcpe-view-button[aria-pressed="true"] {
+  background: var(--surface-color-primary-button-default, #013366);
+  color: var(--typography-color-primary-invert, #fff);
+}
+.gcpe-segmented > .gcpe-view-button:focus-visible {
+  outline: 2px solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: -4px;
+}
+
+/* The activity table: roomier cells; headers wrap between words, never inside one. */
+.gcpe-calendar-table th,
+.gcpe-calendar-table td {
+  padding: 0.5rem 0.625rem;
+}
+.gcpe-calendar-table thead th {
+  background: var(--surface-color-background-light-gray, #faf9f8);
+  vertical-align: bottom;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+.gcpe-calendar-table .gcpe-sort {
+  padding: 0.2rem 0;
+}
+.gcpe-calendar-table .gcpe-col-title {
+  min-width: 14rem;
+}
+.gcpe-calendar-table .gcpe-col-dateTime {
+  min-width: 7.5rem;
+}
+.gcpe-activity-meta {
+  display: block;
+  margin-top: 0.25rem;
+}
+.gcpe-activity-title + div {
+  margin-top: 0.125rem;
+}
+
+/* Phone: each activity is a card of "Label: value" lines; the sort buttons stay as a row above. */
+@media (max-width: 40rem) {
+  .gcpe-calendar-table,
+  .gcpe-calendar-table tbody,
+  .gcpe-calendar-table tr,
+  .gcpe-calendar-table td {
+    display: block;
+    width: auto;
+  }
+  .gcpe-calendar-table thead,
+  .gcpe-calendar-table thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+  }
+  .gcpe-calendar-table thead::before {
+    content: "Sort by";
+    font-weight: 700;
+    align-self: center;
+  }
+  .gcpe-calendar-table thead th {
+    border: 0;
+    padding: 0;
+    background: none;
+  }
+  .gcpe-calendar-table thead th:not(:has(button)) {
+    display: none;
+  }
+  .gcpe-calendar-table thead th[aria-sort] .gcpe-sort::after {
+    content: " (sorted)";
+    font-weight: 400;
+  }
+  .gcpe-calendar-table tbody tr {
+    margin: 0.75rem 0;
+    border: 1px solid #d8d8d8;
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+  }
+  .gcpe-calendar-table tbody td {
+    border: 0;
+    padding: 0.2rem 0;
+  }
+  .gcpe-calendar-table tbody td:is(:empty, :has(> span:only-child:empty)) {
+    display: none;
+  }
+  .gcpe-calendar-table tbody td:not(.gcpe-col-activity):not(.gcpe-col-title)::before {
+    content: attr(data-label) ": ";
+    content: attr(data-label) ": " / "";
+    font-weight: 700;
+  }
+  .gcpe-calendar-table .gcpe-col-title {
+    min-width: 0;
+  }
+  .gcpe-calendar-table tbody .gcpe-col-title {
+    font-size: 1rem;
+  }
+  .gcpe-calendar-table .gcpe-activity-cell {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+  }
+}
+
+/* Every Save / Cancel pair (and other button rows marked as actions) sits apart, side by side. */
+:where(.gcpe-shell__main) :where(.gcpe-actions) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+/* Calendar activity: Save / Cancel ride along at the bottom of the screen while the form scrolls. */
+.gcpe-activity form > .gcpe-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 1rem -0.5rem 0;
+  padding: 0.75rem 0.5rem;
+  background: var(--surface-color-forms-default, #fff);
+  border-top: 1px solid var(--surface-color-border-default, #d8d8d8);
+  box-shadow: 0 -4px 8px -4px rgba(0, 0, 0, 0.12);
+}
+/* The Activity Id cell: checkbox and star side by side, the id never broken at its hyphen. */
+.gcpe-calendar-table .gcpe-activity-cell {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.375rem;
+}
+.gcpe-calendar-table .gcpe-activity-cell > strong {
+  flex-basis: 100%;
+  white-space: nowrap;
+}
+.gcpe-calendar-table .gcpe-activity-cell > span:empty {
+  display: none;
+}
+@media (max-width: 40rem) {
+  .gcpe-calendar-table .gcpe-activity-cell > strong {
+    flex-basis: auto;
+  }
+}
+
+/* Calendar activity: the small in-form buttons (Add tag, Use the inferred section) drawn as the
+ * design system's small secondary button, apart from the field they follow. */
+.gcpe-tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gcpe-small-button {
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border: none;
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-secondary-button-default, #fff);
+  box-shadow: inset 0 0 0 1px var(--surface-color-border-dark, #353433);
+  color: var(--typography-color-primary, #2d2d2d);
+  font: var(--typography-regular-small-body);
+  cursor: pointer;
+}
+.gcpe-small-button:hover {
+  background: var(--surface-color-secondary-button-hover, #edebe9);
+}
+.gcpe-small-button:focus-visible {
+  outline: 2px solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: 2px;
+}
+/* A tag's remove button stays compact inside its chip (still at least 24px). */
+.gcpe-activity .gcpe-tags li .gcpe-small-button {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0 0.25rem;
+  box-shadow: none;
+}

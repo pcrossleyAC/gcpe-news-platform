@@ -179,14 +179,20 @@ export function ActivityListScreen(): React.JSX.Element {
       <div className="gcpe-calendar-toolbar">
         <section aria-label="List actions" className="gcpe-actions">
           {config.editor.create && !config.freeze.appliesToYou && (
-            <Link className="gcpe-button-link" to={activityPath("new", `${here.pathname}${here.search}`)}>
+            <Link className="gcpe-button-link gcpe-button-link--primary" to={activityPath("new", `${here.pathname}${here.search}`)}>
               New activity
             </Link>
           )}
           {config.list.reviewSelected && <ReviewSelected selected={selected} onDone={reload} />}
           {config.list.clearLaStatus && <ClearLaStatus onDone={reload} />}
-          <ExportButton query={query} />
-          <ReportButtons query={query} execLookAhead={config.list.execLookAhead} />
+          {/* One visibly grouped set: the Excel export and the PDF reports of the current list. */}
+          <div role="group" aria-labelledby="list-export-heading" className="gcpe-toolbar-group">
+            <span id="list-export-heading" className="gcpe-toolbar-group__label">
+              Export and reports
+            </span>
+            <ExportButton query={query} />
+            <ReportButtons query={query} execLookAhead={config.list.execLookAhead} />
+          </div>
         </section>
         <ViewSwitch view={view} onChange={(v) => setParam("view", v === "list" ? null : v)} />
       </div>

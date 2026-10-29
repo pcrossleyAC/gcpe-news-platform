@@ -28,7 +28,18 @@ export interface TableTools {
   renderStar?: (row: ListRow, update: (patch: Partial<ListRow>) => void) => React.ReactNode;
 }
 
-export function CellContent({ column, row: r, today, timeZone, tools, update }: { column: ListColumn; row: ListRow; today: string; timeZone: string; tools?: TableTools; update: (patch: Partial<ListRow>) => void }): React.JSX.Element {
+/** "updated 3 days ago by Pat · created Oct 29, 2026": under the title, or in the Activity Id cell when Title is hidden. */
+function UpdatedLine({ r, timeZone }: { r: ListRow; timeZone: string }) {
+  return (
+    <span className="gcpe-hint gcpe-activity-meta">
+      {`updated ${friendlySpan(new Date(r.lastUpdatedAt), new Date(), timeZone)} ago${r.lastUpdatedByName ? ` by ${r.lastUpdatedByName}` : ""}`}
+      {" · "}
+      {`created ${shortDate(r.createdAt, timeZone)}`}
+    </span>
+  );
+}
+
+export function CellContent({ column, row: r, today, timeZone, tools, update, metaUnderTitle = false }: { column: ListColumn; row: ListRow; today: string; timeZone: string; tools?: TableTools; update: (patch: Partial<ListRow>) => void; metaUnderTitle?: boolean }): React.JSX.Element {
   switch (column) {
     case "activity": {
       // Legacy's eye icon: reviewed and live, or a deletion already reviewed.
@@ -45,8 +56,7 @@ export function CellContent({ column, row: r, today, timeZone, tools, update }: 
             {r.hasRelease && <span className="gcpe-badge">Release</span>}
           </span>
           <strong>{minId(r)}</strong>
-          <span className="gcpe-hint">{`updated ${friendlySpan(new Date(r.lastUpdatedAt), new Date(), timeZone)} ago${r.lastUpdatedByName ? ` by ${r.lastUpdatedByName}` : ""}`}</span>
-          <span className="gcpe-hint">{`created ${shortDate(r.createdAt, timeZone)}`}</span>
+          {!metaUnderTitle && <UpdatedLine r={r} timeZone={timeZone} />}
         </div>
       );
     }
@@ -75,6 +85,7 @@ export function CellContent({ column, row: r, today, timeZone, tools, update }: 
             <TitleLink id={r.id}>{r.title}</TitleLink>
           </strong>
           {r.details && <div>{r.details}</div>}
+          {metaUnderTitle && <UpdatedLine r={r} timeZone={timeZone} />}
         </div>
       );
     case "categories":

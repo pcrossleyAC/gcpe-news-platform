@@ -16,7 +16,7 @@ const fullDate = (d: string) => `${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d
 /** List, Month or Week (replacing legacy's FullCalendar toggle, Default.aspx:191-262). */
 export function ViewSwitch({ view, onChange }: { view: ListView; onChange: (v: ListView) => void }): React.JSX.Element {
   return (
-    <div role="group" aria-label="View" className="gcpe-actions">
+    <div role="group" aria-label="View" className="gcpe-segmented">
       {(Object.keys(VIEW_LABELS) as ListView[]).map((v) => (
         <button key={v} type="button" className="gcpe-view-button" aria-pressed={view === v} onClick={() => onChange(v)}>
           {VIEW_LABELS[v]}
