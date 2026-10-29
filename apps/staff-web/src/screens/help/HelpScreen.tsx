@@ -161,7 +161,7 @@ export function HelpScreen(): React.JSX.Element {
           screen readers: NVDA and JAWS use Insert or Caps Lock for their own commands, and VoiceOver uses Control+Option.
         </p>
         <TableScroll label="Keyboard shortcuts">
-          <table className="gcpe-table" aria-label="Keyboard shortcuts">
+          <table className="gcpe-table gcpe-help__shortcuts" aria-label="Keyboard shortcuts">
             <thead>
               <tr>
                 <th scope="col">Keys</th>
@@ -172,12 +172,12 @@ export function HelpScreen(): React.JSX.Element {
             <tbody>
               {SHORTCUTS.map((s) => (
                 <tr key={s.id}>
-                  <td>
+                  <td data-label="Keys">
                     <kbd>{shortcutWords(s.id, apple)}</kbd>
                     {s.modifier && apple && <span className="gcpe-help__keys-short"> ({shortcutText(s.id, apple)})</span>}
                   </td>
-                  <td>{s.does}</td>
-                  <td>{s.where}</td>
+                  <td data-label="What it does">{s.does}</td>
+                  <td data-label="Where">{s.where}</td>
                 </tr>
               ))}
             </tbody>

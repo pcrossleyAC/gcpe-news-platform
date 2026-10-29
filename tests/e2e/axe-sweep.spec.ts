@@ -119,7 +119,7 @@ test.describe("item 16: axe across every staff screen", () => {
 
     await signInAs(context, "siteEditor");
     await gotoAndWaitForH1(page, "/hub/website/live-feed");
-    await page.getByText("What is M3U URL?").click();
+    await page.locator("summary", { hasText: "What is M3U URL?" }).click();
     await expect(page.getByRole("link", { name: "More in Help" })).toBeVisible();
     await expectNoSeriousA11yViolations(page, "/hub/website/live-feed: M3U URL explained");
   });

@@ -3552,3 +3552,35 @@ html:has(.gcpe-activity form > .gcpe-actions) {
 .gcpe-help__glossary dt:focus {
   background: var(--surface-color-background-light-blue, #f1f8fe);
 }
+
+/* Help's shortcuts table on a phone: each shortcut as a stacked card, each cell named by its
+ * column (the header row stays for screen readers, visually hidden). */
+@media (max-width: 40rem) {
+  .gcpe-help__shortcuts thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .gcpe-help__shortcuts,
+  .gcpe-help__shortcuts tbody,
+  .gcpe-help__shortcuts tr,
+  .gcpe-help__shortcuts td {
+    display: block;
+    width: auto;
+  }
+  .gcpe-help__shortcuts tr {
+    padding-block: 0.75rem;
+    border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+  }
+  .gcpe-help__shortcuts td {
+    border: 0;
+    padding: 0.125rem 0;
+  }
+  .gcpe-help__shortcuts td::before {
+    content: attr(data-label) ": ";
+    font-weight: 700;
+  }
+}
