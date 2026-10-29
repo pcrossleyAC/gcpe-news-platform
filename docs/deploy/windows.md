@@ -779,7 +779,9 @@ What it does (log: `C:\gcpe-proxy\logs\install-proxy-<time>.log`):
    Restrictions when `-AllowedClientRanges` is given.
 2. Turns on the ARR proxy: `Host` passed on, `X-Forwarded-For` gets the visitor's address (no
    port), `X-Forwarded-Proto: https`, 2-minute upstream timeout, responses streamed.
-3. Turns on the ARR disk cache in `C:\gcpe-proxy\cache`, at most `-CacheMaxSizeGB`.
+3. Turns on the ARR disk cache in `C:\gcpe-proxy\cache`, at most `-CacheMaxSizeGB`: brotli and
+   gzip copies only, never one it compressed itself, never a URL with a query string
+   ([8.2](#82-caching-at-the-proxy)).
 4. Trusts the upstream certificate chain, then checks the app server answers over **verified**
    TLS. It never turns certificate checks off; it stops if the check fails.
 5. Creates the IIS site **GCPE-Proxy** (https with the certificate, http → 301 to https) and writes
@@ -829,7 +831,9 @@ allowed egress ranges** (and `-k` while the certificate is self-signed):
 **It is closed to everyone else.** From a machine outside the allowed ranges (a phone off Wi-Fi,
 or a home connection): `curl.exe -s -o NUL -w '%{http_code}' https://<public host>/` prints `403`.
 
-**The cache works.** Request `/` twice, more than 5 and less than 60 seconds apart. In the proxy's
+**The cache works.** Request `/` twice with `curl.exe -s -o NUL -H 'Accept-Encoding: br' https://<public host>/`,
+more than 5 and less than 60 seconds apart (without `Accept-Encoding` nothing is stored,
+[8.2](#82-caching-at-the-proxy)). In the proxy's
 IIS log (`C:\inetpub\logs\LogFiles\W3SVC<id of GCPE-Proxy>\`, after `netsh http flush logbuffer`)
 the second `GET /` line has `X-ARR-CACHE-HIT=1` in its query field, and the app server's IIS log
 has no line for it. `/api/…`, the subscribe pages and any URL with a query string never show a
@@ -1355,7 +1359,25 @@ prefix the proxy doesn't classify. First match wins, in this order:
   string, and every blocked path.
 - `Set-Cookie`: no forwarded path sets a cookie (only `/core`, which is blocked).
 - Encodings: the app sends brotli or gzip with `Vary: Accept-Encoding`; a gzip-only client must
-  never get a brotli body (T4).
+  never get a brotli body (T4). **ARR's cache ignores `Vary`.** Per URL it keeps one unencoded copy
+  (`full`) and encoded ones (`full.br`, `full.gzip`, in the cache folder). With its defaults it
+  served the unencoded copy to every brotli client once that copy was stored, made its own gzip of
+  it (with the unencoded copy's ETag) for gzip clients, and never served a stored brotli copy.
+  So the script sets the disk cache to keep and serve the app's own brotli and gzip copies only
+  (`allowedAcceptEncoding="br,gzip"`, its compression off), and a request whose `Accept-Encoding`
+  names neither `br` nor `gzip` (curl, some bots) is forwarded and never stored, so no unencoded
+  copy ever exists. Measured on the CI runner: brotli clients get the stored brotli copy, gzip
+  clients the stored gzip copy, browsers (`gzip, deflate, br`) one of the two, and clients without
+  `Accept-Encoding` an unencoded body straight from the app server. **Trade-off:** those
+  unencoded requests always reach the app server.
+- The never-kept rules make ARR send `Cache-Control: no-store` in place of the app's own header
+  (ARR's override replaces the header the client sees, not only its own caching decision).
+  Unencoded answers to a client that takes neither brotli nor gzip carry `no-store` too.
+- A URL with a query string is neither stored nor looked up (`queryStringHandling="NoCaching"`):
+  ARR's default ignored the query string and answered `/?q=x` with the stored `/`.
+- The app server's IIS (`Install-Gcpe.ps1`) uses ARR as well. It has no disk cache of its own,
+  but it gets the same never-store rule for unencoded answers, because where both share one
+  server (CI) they share one cache, keyed on the public host name.
 - Size cap: `-CacheMaxSizeGB` (re-run to change it). To see hits: `X-ARR-CACHE-HIT=1` in the query
   field of the proxy's IIS log.
 

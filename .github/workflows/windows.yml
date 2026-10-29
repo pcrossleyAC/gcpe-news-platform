@@ -314,58 +314,6 @@ jobs:
           Check "/site/... redirects to the root ($site)" ($site -like '301 */archive/')
           $redirect = curl.exe -s @res -o NUL -w '%{http_code} %{redirect_url}' "http://$($h):8080/archive/"
           Check "http redirects to https ($redirect)" ($redirect -eq "301 $base/archive/")
-      - name: DIAG fix check
-        continue-on-error: true
-        run: |
-          $h = 'gcpe-proxy-ci.example.test'
-          $base = "https://$($h):8443"
-          $res = @('--resolve', "$($h):8443:127.0.0.1")
-          $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
-          $proxyId = (& $appcmd list site GCPE-Proxy /text:id)
-          $appId = (& $appcmd list site GCPE /text:id)
-          & $appcmd list config -section:system.webServer/proxy
-          & $appcmd list config GCPE -section:system.webServer/proxy
-          & $appcmd list config -section:system.webServer/diskCache
-          function One([string]$url, [string]$enc, [string[]]$extra) {
-            $a = @('-k', '-s', '-D', '-', '-o', 'NUL') + $extra
-            if ($enc) { $a += @('-H', "Accept-Encoding: $enc") }
-            $out = (& curl.exe @a $url) -join "`n"
-            $ce = [regex]::Match($out, '(?im)^content-encoding:\s*(\S+)').Groups[1].Value
-            $len = [regex]::Match($out, '(?im)^content-length:\s*(\S+)').Groups[1].Value
-            $cc = [regex]::Match($out, '(?im)^cache-control:\s*(.+)$').Groups[1].Value.Trim()
-            $bad = ''
-            if ($enc -eq '' -and $ce) { $bad = 'VIOLATION' }
-            if ($enc -eq 'gzip' -and $ce -eq 'br') { $bad = 'VIOLATION' }
-            if ($enc -eq 'br' -and $ce -eq 'gzip') { $bad = 'VIOLATION' }
-            if ($enc -match 'br' -and $ce -ne 'br') { $bad += ' not-br' }
-            Write-Host ("    {0,-8} {1,-20} -> CE={2,-5} len={3,-6} cc={4} {5}" -f (Get-Date -Format 'ss.fff'), "'$enc'", $ce, $len, $cc, $bad)
-          }
-          function Seq([string]$path, [object[]]$steps) {
-            Write-Host "  -- $path"
-            foreach ($s in $steps) { if ($s -is [int]) { Start-Sleep -Seconds $s } else { One "$base$path" $s $res } }
-          }
-          function Count([string]$id, [string]$path) {
-            $l = @(Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$id\*.log" | Get-Content | Where-Object { $_ -match " GET $([regex]::Escape($path)) " })
-            "$($l.Count) lines, $(@($l | Where-Object { $_ -match 'X-ARR-CACHE-HIT=1' }).Count) hits"
-          }
-          function Hits([string]$path) {
-            & netsh.exe http flush logbuffer | Out-Null
-            Start-Sleep -Seconds 3
-            Write-Host "  $path proxy log: $(Count $proxyId $path); app log: $(Count $appId $path)"
-            Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $($_.FullName) $($_.Length)" }
-          }
-          function Lines([string]$path) {
-            & netsh.exe http flush logbuffer | Out-Null
-            Start-Sleep -Seconds 3
-            foreach ($site in @(@('proxy', $proxyId), @('app', $appId))) {
-              Get-ChildItem "C:\inetpub\logs\LogFiles\W3SVC$($site[1])\*.log" | Get-Content | Where-Object { $_ -match " GET $([regex]::Escape($path)) " } | ForEach-Object { $f = $_ -split ' '; Write-Host "    $($site[0]) $($f[1]) $($f[5].Substring(0, [Math]::Min(18, $f[5].Length))) $($f[10]) $($f[13])" }
-            }
-            Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($path.Trim('/')) } | ForEach-Object { Write-Host "    $($_.FullName) $($_.Length) $($_.LastWriteTime.ToString('HH:mm:ss'))" }
-          }
-          Seq '/live/' @('br', 7, 'br', 'gzip', 7, 'gzip', 'gzip, deflate, br', 7, 'gzip, deflate, br', '', 'br', 'gzip', '')
-          Lines '/live/'
-          Seq '/ministries/' @('gzip, deflate, br', 7, 'gzip', 'br', 'gzip, deflate, br', '', 'gzip')
-          Lines '/ministries/'
       - name: The proxy caches public pages only, per encoding
         run: |
           $ErrorActionPreference = 'Stop'
