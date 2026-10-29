@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { EditorContent, ReactNodeViewRenderer, useEditor, useEditorState } from "@tiptap/react";
 import { Button, ToggleButton } from "@bcgov/design-system-react-components";
 import { Asset, bodyExtensions } from "./schema";
@@ -51,6 +51,10 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
   // useEditor(…, []) creates the editor once but re-applies these options after every render
   // (@tiptap/react's setOptions on render), so a description that comes and goes (a note, a
   // server error) reaches the editing area's attributes without an effect of its own.
+  // The editor's HTML as of the last time it and `value` agreed: set on every edit it reports
+  // and every external value it takes. While the editor's HTML still equals it, the editor holds
+  // nothing the parent hasn't seen, so a new `value` can replace it even while focused.
+  const synced = useRef<string | null>(null);
   const editor = useEditor(
     {
       extensions: bodyExtensions(allowAssets ? AssetWithView : null, { italic: allowItalic }),
@@ -60,7 +64,11 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
         attributes: attributes(),
         transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, (allowAssets ? BODY_TAGS : BIO_TAGS).filter((t) => allowItalic || t !== "em")),
       },
-      onUpdate: ({ editor: e }) => onChange(e.getHTML()),
+      onUpdate: ({ editor: e }) => {
+        const html = e.getHTML();
+        synced.current = html;
+        onChange(html);
+      },
     },
     [],
   );
@@ -84,14 +92,26 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
     editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
 
-  // Resyncs when `value` changes from outside (a reload after a 409, or the session-expiry
-  // restore) — never while the user is actively focused in the editor, so an external replace
-  // (e.g. the whole page's `view` being swapped by an unrelated section's save) can't clobber
-  // what they're mid-typing.
+  // Resyncs when `value` changes from outside (a reload after a 409, the session-expiry restore,
+  // an untouched release form re-seeding from a changed release). While focused, only when the
+  // editor holds no edit the parent hasn't been told about — so an external replace can't
+  // clobber what the user is mid-typing, yet a focused, untouched editor still takes the new
+  // value (otherwise the next keystroke would send the old text back over it). Anything skipped
+  // while focused is applied on blur.
   useEffect(() => {
-    if (!editor || editor.isFocused) return;
-    if (editor.getHTML() === value) return;
-    editor.commands.setContent(value, { emitUpdate: false });
+    if (!editor) return;
+    if (synced.current === null) synced.current = editor.getHTML();
+    const apply = () => {
+      if (editor.getHTML() === value) return;
+      if (editor.isFocused && editor.getHTML() !== synced.current) return;
+      editor.commands.setContent(value, { emitUpdate: false });
+      synced.current = editor.getHTML();
+    };
+    apply();
+    editor.on("blur", apply);
+    return () => {
+      editor.off("blur", apply);
+    };
   }, [editor, value]);
 
   const insertAsset = () => {
