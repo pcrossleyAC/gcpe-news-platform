@@ -114,3 +114,13 @@ export function utcOffsetMinutes(at: string, timeZone: string): number {
   const sign = m[1] === "-" ? -1 : 1;
   return sign * (Number(m[2]) * 60 + Number(m[3]));
 }
+
+/** A fixed, arbitrary instant well after BC's permanent UTC-7 switch (2026-11-01): the server
+ * reports what offset its own tzdata resolves this to, so a browser (whose tzdata might be
+ * stale) can tell. */
+export const TZ_CHECK_AT = "2026-12-15T20:00:00Z";
+
+/** The (instant, server offset) pair `GET /core/api/time-zone-check` and `GET /nrms/api/config` return. */
+export function tzCheckFor(timeZone: string): { at: string; offsetMinutes: number } {
+  return { at: TZ_CHECK_AT, offsetMinutes: utcOffsetMinutes(TZ_CHECK_AT, timeZone) };
+}

@@ -88,4 +88,14 @@ describe("the month and week views (spec addendum §8.1)", () => {
     const own = document.querySelector('td[data-date="2026-11-10"]') as HTMLElement;
     expect(own.querySelector(".gcpe-day")).toHaveTextContent(/^10$/);
   });
+
+  it("marks today (BC date) and only today with aria-current=date", async () => {
+    stubFetch([], { calendar: { items: [], truncated: false } });
+    const today = todayIn(CONFIG.timeZone);
+    renderList(`/calendar?view=month&on=${today}`);
+    await screen.findByRole("heading", { level: 2, name: todayHeading() });
+    const current = document.querySelectorAll('td[aria-current="date"]');
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAttribute("data-date", today);
+  });
 });
