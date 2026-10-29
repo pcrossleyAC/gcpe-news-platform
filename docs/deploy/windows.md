@@ -462,6 +462,22 @@ Remove-Item Env:DATABASE_URL
 Options and its 429 handling: [siteground.md](siteground.md), "Legacy translations and media
 assets". Not yet run on Windows.
 
+**Website > Files: any type, up to 512 MB** (owner decision 2026-10-29, like the legacy Hub). Every
+layer lets that through: NRMS streams the upload to `<DATA_DIR>\storage` (cap `MAX_SITE_FILE_BYTES`,
+`apps/nrms/src/website/files.ts`); the stack lets a request take 20 minutes to arrive
+(`apps/stack/src/server-timeouts.ts`; Node's default is 5) but closes any connection that sends
+nothing for 2 minutes, so a stalled upload is cut off early; the app server's IIS `web.config`
+allows a 520 MiB body (`maxAllowedContentLength="545259520"`) and ARR waits 20 minutes
+(`system.webServer/proxy` `timeout`), both written by `Install-Gcpe.ps1`. A server installed before
+this change keeps 200 MB and 5 minutes until `Install-Gcpe.ps1` is run again (it keeps `gcpe.env`
+and rewrites `web.config` and the proxy settings); `Deploy-GcpeRelease.ps1` does not change them.
+The DMZ proxy keeps its 1 MB limit: staff upload on the app server's internal name, never through
+it. Release translations and media assets (25 MB) and carousel/pin images keep their own limits.
+An uploaded `.html`, `.svg`, `.js` or `.exe` is served only as a sandboxed download; a Windows
+device name (`CON`, `nul.txt`, `COM1`, `LPT¹`, `CONIN$` …) is refused. Replacing a file a reader
+has open is retried for about 3 seconds; if Windows still holds it, the Hub says "The file is in
+use; try again in a minute." (503).
+
 **Legacy `/files` import.** `https://news.gov.bc.ca/files/<name>` are the files staff uploaded in
 the legacy Hub's Website > Files screen (Azure container `files`). `legacy-files-copy.mjs` imports
 them as NRMS site files, so they appear in the Hub under **Website > Files** and the stack serves
@@ -494,8 +510,8 @@ then imports the files our content links to, through the front door, plus any `-
 `--scan-file` (an IIS log). Check: the files are listed in the Hub under Website > Files, and
 `/files/News_Footage_License_British_Columbia.pdf` answers 200 `application/pdf`, not a 302. They
 are backed up with the other site files (`files\storage` and the `gcpe_nrms` dump, D4). Options,
-limits (30 s headers, 60 s idle, `--max-file-mb` 512; imports may exceed the Hub's 25 MB upload
-limit), report and 429 handling: [siteground.md](siteground.md), "Legacy /files import". Not yet
+limits (30 s headers, 60 s idle, `--max-file-mb` 512, the same 512 MB as a Hub upload), report and
+429 handling: [siteground.md](siteground.md), "Legacy /files import". Not yet
 run on Windows.
 
 **Cutover only, never on Dev or Test while legacy is live:** turning legacy's publisher off and
@@ -1478,8 +1494,10 @@ Calendar dry run.
   import against real data; SQL Server with Windows authentication only (not supported).
 - Entra sign-in end to end on a government tenant, with the internal host as the callback.
 - WebSockets through IIS for the News API's live-updates hub (`UPDATES_HUB_ENABLED=true`).
-- Uploads refused as too large (over 25 MB on the Calendar): on Windows the browser may see a
-  dropped connection instead of the "file too large" message.
+- Uploads refused as too large (over 25 MB on the Calendar, over 512 MB for Website > Files): on
+  Windows the browser may see a dropped connection instead of the "file too large" message.
+- A 512 MB Website > Files upload end to end through IIS/ARR (the limits below are set, not
+  measured).
 - A GitHub runner behind the government proxy; Node.js outbound calls through a proxy.
 - The patch-reboot downtime (7.4): not measured.
 

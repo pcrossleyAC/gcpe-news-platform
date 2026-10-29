@@ -1,3 +1,4 @@
+import { ObjectBusyError } from "@gcpe/storage";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { Response } from "express";
@@ -708,6 +709,13 @@ describe("handleError", () => {
     } as unknown as Response;
     return { res, get status() { return captured.status; }, get body() { return captured.body; } };
   };
+
+  it("maps ObjectBusyError (a Windows rename onto an open file, after retries) to 503 'in use', not 500", () => {
+    const captured = fakeRes();
+    expect(handleError(new ObjectBusyError("x.pdf"), captured.res)).toBe(true);
+    expect(captured.status).toBe(503);
+    expect(captured.body).toEqual({ error: "The file is in use; try again in a minute." });
+  });
 
   it("maps EventTooLargeError to 413", () => {
     const captured = fakeRes();

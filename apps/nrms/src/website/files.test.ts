@@ -1,9 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { localStore, type ObjectStore } from "@gcpe/storage";
+import { localStore, ObjectTooLargeError, type ObjectStore } from "@gcpe/storage";
 import { createNrmsTestDb, editor } from "../../test/helpers";
 import { siteFiles } from "../db/schema";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
@@ -85,9 +85,64 @@ describe("website/files — general file uploads", () => {
     expect(view.contentType).toBe("image/png");
   });
 
-  it("bytes that don't match a PDF, PNG or JPEG are refused with a SiteRuleError; nothing is stored", async () => {
-    await expect(uploadFile(tdb.db, store, { name: "page.pdf", bytes: HTML }, editor)).rejects.toThrow(SiteRuleError);
+  it("any type is accepted, like legacy (owner decision 2026-10-29); the stored type is never one a browser would run", async () => {
+    const cases: [string, Buffer, string, string][] = [
+      ["Page.html", HTML, "page.html", "application/octet-stream"],
+      ["pic.svg", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'), "pic.svg", "application/octet-stream"],
+      ["app.js", Buffer.from("alert(1)"), "app.js", "application/octet-stream"],
+      ["setup.exe", Buffer.from("MZ\u0090\u0000"), "setup.exe", "application/octet-stream"],
+      ["Report Q1.docx", Buffer.from("PK\u0003\u0004 [Content_Types].xml"), "report-q1.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+      ["notes.txt", Buffer.from("hello"), "notes.txt", "text/plain"],
+      ["noext", Buffer.from("?"), "noext", "application/octet-stream"],
+      // A name claiming PDF over bytes that aren't one keeps its name, never a PDF type.
+      ["page.pdf", HTML, "page.pdf", "application/octet-stream"],
+    ];
+    for (const [name, bytes, expectName, expectType] of cases) {
+      const view = await uploadFile(tdb.db, store, { name, bytes }, editor);
+      expect(view, name).toMatchObject({ name: expectName, contentType: expectType, size: bytes.length });
+      expect((await store.get(expectName))!.bytes.equals(bytes), name).toBe(true);
+    }
+  });
+
+  it("streams the upload (any size up to the cap); over the cap is ObjectTooLargeError and nothing is stored, not even a temp file", async () => {
+    async function* parts() {
+      yield Buffer.from("%PDF-1.7 ");
+      yield Buffer.alloc(100, 0x41);
+    }
+    const view = await uploadFile(tdb.db, store, { name: "streamed.pdf", source: parts() }, editor);
+    expect(view).toMatchObject({ name: "streamed.pdf", contentType: "application/pdf", size: 109 });
+    await expect(uploadFile(tdb.db, store, { name: "big.pdf", source: parts(), maxBytes: 50 }, editor)).rejects.toThrow(ObjectTooLargeError);
+    expect((await listFiles(tdb.db)).files.map((f) => f.name)).toEqual(["streamed.pdf"]);
+    expect((await readdir(root)).filter((n) => n.startsWith("tmp-") || n.includes("big"))).toEqual([]);
+  });
+
+  it("a Windows device name (CON, nul, aux, com1, LPT¹, CONIN$ …, any case, with or without extension) is refused before anything is read", async () => {
+    for (const name of ["CON", "nul.txt", "Aux.pdf", "com1", "COM9.docx", "lpt3.log", "LPT\u00b9", "com\u00b2.txt", "CONIN$", "conout$.txt", "prn.html"]) {
+      const putStream = vi.spyOn(store, "putStream");
+      await expect(uploadFile(tdb.db, store, { name, bytes: PDF }, editor), name).rejects.toThrow(SiteRuleError);
+      expect(putStream, name).not.toHaveBeenCalled();
+      putStream.mockRestore();
+    }
     expect(await listFiles(tdb.db)).toEqual({ total: 0, files: [] });
+  });
+
+  it("a new upload whose name doesn't depend on its bytes conflicts before the body is read (409, no streaming); PDF/PNG/JPEG names wait for the bytes", async () => {
+    await uploadFile(tdb.db, store, { name: "minutes.docx", bytes: Buffer.from("PK\u0003\u0004 docx") }, editor);
+    await importSiteFile(tdb.db, store, { name: "Plan Summary.docx", bytes: Buffer.from("PK"), contentType: "application/octet-stream", createdAt: new Date(), replace: false }, { id: "legacy-import", name: "Legacy import" });
+    const putStream = vi.spyOn(store, "putStream");
+    for (const name of ["minutes.docx", "MINUTES.DOCX", "Plan Summary.docx"]) {
+      await expect(uploadFile(tdb.db, store, { name, source: (async function* () { throw new Error("the body must not be read"); })() }, editor), name).rejects.toThrow(SiteConflictError);
+    }
+    expect(putStream).not.toHaveBeenCalled();
+    // A PDF's final name depends on its bytes: it is read, then the post-stream check decides.
+    await uploadFile(tdb.db, store, { name: "budget.pdf", bytes: PDF }, editor);
+    await expect(uploadFile(tdb.db, store, { name: "budget.pdf", bytes: PDF }, editor)).rejects.toThrow(SiteConflictError);
+    expect(putStream).toHaveBeenCalled();
+    putStream.mockRestore();
+  });
+
+  it("the site-file cap is 512 MiB, the copy tool's default", () => {
+    expect(MAX_SITE_FILE_BYTES).toBe(512 * 1024 * 1024);
   });
 
   it("an empty upload is refused with a SiteRuleError", async () => {
@@ -171,14 +226,15 @@ describe("website/files — general file uploads", () => {
     const gate = new Promise<void>((resolve) => { releaseGate = resolve; });
     let signalReachedPut!: () => void;
     const reachedPut = new Promise<void>((resolve) => { signalReachedPut = resolve; });
+    // The real key is written by moving the streamed upload onto it (any-type uploads, 2026-10-29).
     const gatedStore: ObjectStore = {
       ...store,
-      async put(key, bytes, contentType) {
-        if (key === name) {
+      async move(from, to) {
+        if (to === name) {
           signalReachedPut();
           await gate;
         }
-        return store.put(key, bytes, contentType);
+        return store.move(from, to);
       },
     };
 
@@ -329,6 +385,16 @@ describe("website/files — legacy import and name lookup", () => {
     const v = await uploadFile(tdb.db, store, { name: "Chart.pdf", bytes: PNG }, editor);
     expect(v.name).toBe("chart.png");
     expect(await tdb.db.select().from(siteFiles)).toHaveLength(2);
+  });
+
+  it("an imported .docx can be replaced from the Hub: same name, URL and storage key, new bytes", async () => {
+    const DOCX2 = Buffer.from("PK\u0003\u0004 [Content_Types].xml newer");
+    await importSiteFile(tdb.db, store, { name: "Plan Summary.docx", bytes: DOCX, contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: at, replace: false }, LEGACY);
+    const [before] = await tdb.db.select().from(siteFiles);
+    await expect(uploadFile(tdb.db, store, { name: "Plan Summary.docx", bytes: DOCX2 }, editor)).rejects.toThrow(SiteConflictError);
+    const view = await uploadFile(tdb.db, store, { name: "Plan Summary.docx", bytes: DOCX2, replace: true }, editor);
+    expect(view).toMatchObject({ id: before!.id, name: "Plan Summary.docx", url: "/files/Plan%20Summary.docx" });
+    expect((await store.get(before!.storageKey))!.bytes.equals(DOCX2)).toBe(true);
   });
 
   it("findSiteFileByName: case-insensitive (legacy parity), the exact spelling preferred; null when none", async () => {

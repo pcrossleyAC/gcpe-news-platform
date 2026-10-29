@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
+import { applyServerTimeouts } from "./server-timeouts";
 import { fileURLToPath } from "node:url";
 import { closeServer, createShutdown } from "@gcpe/http-kit";
 import { checkStack, startStack } from "./stack";
@@ -109,6 +110,7 @@ if (process.argv.includes("--check")) {
 
 const handle = await startStack(process.env);
 const server = createServer(handle.app);
+applyServerTimeouts(server);
 handle.attach?.(server);
 handle.startLoops();
 server.listen(handle.port, () => console.log(`[stack] listening on ${handle.port}`));

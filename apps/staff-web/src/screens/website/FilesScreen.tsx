@@ -14,6 +14,8 @@ interface UploadState {
   replacePrompt: File | null;
 }
 const INITIAL_UPLOAD: UploadState = { busy: false, error: null, replacePrompt: null };
+/** Any type, up to 512 MiB (owner decision 2026-10-29, like the legacy Hub's Files screen). */
+const MAX_FILE_BYTES = 512 * 1024 * 1024;
 
 /**
  * `/hub/website/files` (task-5-brief.md): general files served at `/files/<name>`. Writes need
@@ -75,7 +77,10 @@ export function FilesScreen(): React.JSX.Element {
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (file) void doUpload(file, false);
+    if (!file) return;
+    // The server's cap (apps/nrms/src/website/files.ts MAX_SITE_FILE_BYTES): refused here without sending half a gigabyte first.
+    if (file.size > MAX_FILE_BYTES) return void setUpload({ busy: false, error: `${file.name}: A file can be at most 512 MB.`, replacePrompt: null });
+    void doUpload(file, false);
   };
 
   const confirmRemove = async () => {
@@ -147,9 +152,13 @@ export function FilesScreen(): React.JSX.Element {
       {canEdit && (
         <>
           <label>
-            Upload a file (PDF, PNG or JPEG)
-            <input type="file" accept="application/pdf,image/png,image/jpeg" onChange={onPick} disabled={upload.busy} />
+            Upload a file (any type, up to 512 MB)
+            <input type="file" onChange={onPick} disabled={upload.busy} />
           </label>
+          <p className="gcpe-hint">
+            Any file type, like the old Hub. PDFs, images, Office documents, audio, video and text open in the browser; anything else (a web page, an SVG, a program) is
+            downloaded, never shown on the site.
+          </p>
 
           <Modal isOpen={upload.replacePrompt !== null} onOpenChange={(open) => { if (!open) setUpload(INITIAL_UPLOAD); }} isDismissable>
             <AlertDialog
