@@ -157,10 +157,15 @@ async function subscriberStatus(email: string): Promise<string | null> {
  * `runBounceSummaryIfDue` call below is claimed fresh, regardless of whether some earlier,
  * unrelated tick elsewhere in this suite already checked today's cutoff for real (see this
  * file's own header comment). */
-async function resetBounceSummaryGate(): Promise<void> {
+/** `windowStart` pins the summary window's start (`bounce_summary_at`). Left null, the next run's
+ * window starts 24h before ITS clock -- which, for a test clock a day ahead, lands after a bounce
+ * this test just made whenever the suite runs before 08:00 BC (the window then starts at
+ * "today 08:05", later than the real "now"). A fixed start just before the test began makes the
+ * window independent of the time of day the suite runs at. */
+async function resetBounceSummaryGate(windowStart: Date | null = null): Promise<void> {
   await nodDb().execute(sql`
     UPDATE nod_settings
-       SET bounce_summary_at = NULL, bounce_summary_checked_at = NULL, bounce_summary_lease = NULL, bounce_summary_lease_until = NULL
+       SET bounce_summary_at = ${windowStart}, bounce_summary_checked_at = NULL, bounce_summary_lease = NULL, bounce_summary_lease_until = NULL
      WHERE id = 1
   `);
 }
@@ -187,12 +192,9 @@ function pastBounceSummaryCutoff(): Date {
  * cutoff on a different day, or it is silently deduped against the batch the first test
  * already sent, with none of this test's own content in it.
  *
- * Unlike {@link pastBounceSummaryCutoff}, this has no real-clock fallback branch: the window's
- * own start (`dbNow` minus 24h, when `bounce_summary_at` is reset to null — see
- * `resetBounceSummaryGate`) must still land before this test's own bounce was processed, which
- * only holds when the suite runs after today's cutoff hour (08:00 BC) — true for any normal
- * working-hours run, the same assumption `pastBounceSummaryCutoff`'s own comment already
- * documents for the opposite direction. */
+ * Unlike {@link pastBounceSummaryCutoff}, this has no real-clock fallback branch; the caller
+ * pins the window's start with `resetBounceSummaryGate(windowStart)` so the window still
+ * covers the test's own bounce at any time of day. */
 function pastNextBounceSummaryCutoff(): Date {
   const tomorrow = new Date(Date.now() + 24 * 3_600_000);
   return new Date(todaysCutoff(tomorrow, TENANT_TIME_ZONE, BOUNCE_SUMMARY_HOUR).getTime() + 5 * 60_000);
@@ -271,6 +273,7 @@ test.describe("item 9: bounces end to end", () => {
     try {
       const adminCookie = await loginForCookie(ADMIN_USERNAME, ADMIN_PASSWORD);
       const editorCookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
+      const testStartedAt = new Date(Date.now() - 60_000);
       email = `soft-${Date.now()}@example.test`;
       await subscribeAndConfirm(request, email);
 
@@ -286,7 +289,7 @@ test.describe("item 9: bounces end to end", () => {
       await uploadBounce(adminCookie, email, mail.headers["message-id"]!, "4.2.2");
       await tickTwice();
 
-      await resetBounceSummaryGate();
+      await resetBounceSummaryGate(testStartedAt);
       const clock = pastNextBounceSummaryCutoff();
       const result = await runBounceSummaryIfDue(nodDb(), await distributionClientForSummary(), TENANT_TIME_ZONE, BOUNCE_SUMMARY_EMAIL, () => clock);
       expect(result.sent).toBe(true);
