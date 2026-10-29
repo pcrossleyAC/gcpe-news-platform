@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { TYPE_LABEL, type ReleaseListItem } from "@gcpe/nrms-contract";
+import { TYPE_LABEL, type ReleaseListItem, type ReleaseType } from "@gcpe/nrms-contract";
 import { formatWhen } from "../../format/dates";
 
 /** The Drafts folder's statuses (apps/nrms/src/releases/queries.ts's FOLDER_STATUSES.drafts) —
@@ -30,11 +30,22 @@ export function datelineText(location: string, summary: string): string {
   return [location, summary].filter((part) => part !== "").join(" – ");
 }
 
-/** The page title, unless it only restates the type ("News Release" on a Release). */
-function pageTitleShown(pageTitle: string, typeLabel: string): boolean {
+/** Each type's own name and its standard page title (the legacy page-title list's wording): a
+ * page title that is exactly one of these only restates the type already shown. */
+const TYPE_RESTATEMENTS: Record<ReleaseType, string[]> = {
+  release: ["News Release"],
+  story: ["News Story"],
+  factsheet: ["Fact Sheet", "Factsheet"],
+  update: ["Update"],
+  advisory: ["Media Advisory"],
+};
+
+/** The page title, unless it's exactly a restatement of the type ("News Release" on a
+ * Release). Anything more ("Joint News Release") says something the type doesn't. */
+function pageTitleShown(pageTitle: string, type: ReleaseType): boolean {
   if (!pageTitle) return false;
-  const t = words(pageTitle).replace(/ /g, "");
-  return !t.endsWith(words(typeLabel).replace(/ /g, ""));
+  const t = words(pageTitle);
+  return ![TYPE_LABEL[type], ...TYPE_RESTATEMENTS[type]].some((r) => words(r) === t);
 }
 
 /** One row of a Drafts/Scheduled/Published list or a search result (spec §5/§8): colour bar,
@@ -66,7 +77,7 @@ export function ReleaseRow({ item, now, timeZone }: ReleaseRowProps): React.JSX.
       <div className="gcpe-release-row__body">
         <p className="gcpe-release-row__meta">
           <span className="gcpe-release-row__type">{typeLabel}</span>
-          {pageTitleShown(item.pageTitle, typeLabel) && (
+          {pageTitleShown(item.pageTitle, item.type) && (
             <>
               {sep}
               <span className="gcpe-release-row__page-title">{item.pageTitle}</span>

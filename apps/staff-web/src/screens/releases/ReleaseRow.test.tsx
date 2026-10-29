@@ -115,9 +115,22 @@ describe("ReleaseRow", () => {
     expect(screen.getByText("VICTORIA – Victorians will see new buses.")).toBeInTheDocument();
   });
 
-  it("leaves out a page title that only restates the type", () => {
+  it("leaves out a page title that only restates the type, and keeps any other", () => {
     renderRow({ ...BASE, type: "release", pageTitle: "News Release" });
     expect(screen.queryByText("News Release")).not.toBeInTheDocument();
+
+    cleanup();
+    renderRow({ ...BASE, type: "advisory", pageTitle: "Media Advisory" });
+    expect(screen.queryByText("Media Advisory")).not.toBeInTheDocument();
+
+    cleanup();
+    // Review P2: a title that merely ends with the type's word says something more.
+    renderRow({ ...BASE, type: "release", pageTitle: "Joint News Release" });
+    expect(screen.getByText("Joint News Release")).toBeInTheDocument();
+
+    cleanup();
+    renderRow({ ...BASE, type: "story", pageTitle: "Backgrounder Story" });
+    expect(screen.getByText("Backgrounder Story")).toBeInTheDocument();
   });
 
   it("the headline is a heading, so a screen-reader user can move release to release", () => {
