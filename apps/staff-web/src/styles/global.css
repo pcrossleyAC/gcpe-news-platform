@@ -341,6 +341,15 @@ body {
   min-width: 12rem;
 }
 
+/* A row of native fields that may show an error under one of them: tops aligned, so the error
+ * adds height below its own field and the boxes stay on one line. */
+.gcpe-field-row--top {
+  align-items: flex-start;
+}
+.gcpe-field-row .gcpe-field > .gcpe-field-error {
+  margin: 0.25rem 0 0;
+}
+
 /* The design system stretches its text fields to the row's height; in a row they sit at the
  * bottom with everything else. */
 .gcpe-field-row > .bcds-react-aria-TextField {

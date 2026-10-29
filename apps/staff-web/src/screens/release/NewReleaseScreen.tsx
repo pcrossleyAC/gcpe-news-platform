@@ -372,9 +372,11 @@ export function NewReleaseScreen(): React.JSX.Element {
       <ErrorSummary problems={problemList} />
 
       <Form onSubmit={onSubmit} validationBehavior="aria" className="gcpe-stack">
-        <div className="gcpe-field-row">
-          <label className="gcpe-field">
-            Type
+        {/* Top-aligned: the page title's error sits under its own field without pushing that
+            field's box out of line with the others. */}
+        <div className="gcpe-field-row gcpe-field-row--top">
+          <div className="gcpe-field">
+            <label htmlFor={FIELD_IDS.type}>Type</label>
             <select id={FIELD_IDS.type} value={type} onChange={(e) => onTypeChange(e.target.value as CreatableType)}>
               {CREATABLE_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -382,11 +384,17 @@ export function NewReleaseScreen(): React.JSX.Element {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
-          <label className="gcpe-field">
-            Page title
-            <select id={FIELD_IDS.pageTitle} value={pageTitle} aria-invalid={!!fieldProblem("pageTitle") || undefined} onChange={(e) => onPageTitleChange(e.target.value)}>
+          <div className="gcpe-field">
+            <label htmlFor={FIELD_IDS.pageTitle}>Page title</label>
+            <select
+              id={FIELD_IDS.pageTitle}
+              value={pageTitle}
+              aria-invalid={!!fieldProblem("pageTitle") || undefined}
+              aria-describedby={fieldProblem("pageTitle") ? `${FIELD_IDS.pageTitle}-error` : undefined}
+              onChange={(e) => onPageTitleChange(e.target.value)}
+            >
               <option value="">(choose one)</option>
               {pageTitleOptions.map((pt) => (
                 <option key={pt.pageTitle} value={pt.pageTitle}>
@@ -394,9 +402,14 @@ export function NewReleaseScreen(): React.JSX.Element {
                 </option>
               ))}
             </select>
-          </label>
-          <label className="gcpe-field">
-            Layout
+            {fieldProblem("pageTitle") && (
+              <p id={`${FIELD_IDS.pageTitle}-error`} className="gcpe-field-error">
+                {fieldProblem("pageTitle")}
+              </p>
+            )}
+          </div>
+          <div className="gcpe-field">
+            <label htmlFor={FIELD_IDS.layout}>Layout</label>
             <select id={FIELD_IDS.layout} value={layout} onChange={(e) => setLayout(e.target.value as Layout)}>
               {LAYOUTS.map((l) => (
                 <option key={l} value={l}>
@@ -404,13 +417,12 @@ export function NewReleaseScreen(): React.JSX.Element {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
         </div>
         {pageTypesError && <InlineAlert variant="danger" role="alert" description={pageTypesError} />}
         {!pageTypesError && pageTypesLoaded && pageTypes.length === 0 && (
           <InlineAlert variant="warning" role="alert" description="No page titles are set up yet. An administrator adds them under Release page titles." />
         )}
-        {fieldProblem("pageTitle") && <p className="gcpe-field-error">{fieldProblem("pageTitle")}</p>}
 
         {rules.pageImageAllowed && (
           <fieldset className="gcpe-options" id={FIELD_IDS.pageImageId} tabIndex={-1}>
