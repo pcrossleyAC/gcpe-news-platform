@@ -119,24 +119,32 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
       </span>
       {!readOnly && editor && (
         <div className="gcpe-body-editor__toolbar" role="toolbar" aria-label={`${label} formatting`}>
-          <ToggleButton isSelected={active.bold} onChange={() => editor.chain().focus().toggleBold().run()}>
-            Bold
-          </ToggleButton>
-          {allowItalic && (
-            <ToggleButton isSelected={active.italic} onChange={() => editor.chain().focus().toggleItalic().run()}>
-              Italic
+          {/* One visual group of formatting toggles (the design system's toggle-group look);
+           * Insert asset, an action rather than a format, sits apart as a secondary button. */}
+          <div className="gcpe-body-editor__toggles">
+            <ToggleButton size="small" isSelected={active.bold} onChange={() => editor.chain().focus().toggleBold().run()}>
+              Bold
             </ToggleButton>
+            {allowItalic && (
+              <ToggleButton size="small" isSelected={active.italic} onChange={() => editor.chain().focus().toggleItalic().run()}>
+                Italic
+              </ToggleButton>
+            )}
+            <ToggleButton size="small" isSelected={active.bullet} onChange={() => editor.chain().focus().toggleBulletList().run()}>
+              Bulleted list
+            </ToggleButton>
+            <ToggleButton size="small" isSelected={active.ordered} onChange={() => editor.chain().focus().toggleOrderedList().run()}>
+              Numbered list
+            </ToggleButton>
+            <ToggleButton size="small" isSelected={active.link} onChange={toggleLink}>
+              Link
+            </ToggleButton>
+          </div>
+          {allowAssets && (
+            <Button size="small" variant="secondary" onPress={insertAsset}>
+              Insert asset
+            </Button>
           )}
-          <ToggleButton isSelected={active.bullet} onChange={() => editor.chain().focus().toggleBulletList().run()}>
-            Bulleted list
-          </ToggleButton>
-          <ToggleButton isSelected={active.ordered} onChange={() => editor.chain().focus().toggleOrderedList().run()}>
-            Numbered list
-          </ToggleButton>
-          <ToggleButton isSelected={active.link} onChange={toggleLink}>
-            Link
-          </ToggleButton>
-          {allowAssets && <Button onPress={insertAsset}>Insert asset</Button>}
         </div>
       )}
       <EditorContent editor={editor} className="gcpe-body-editor__area" />

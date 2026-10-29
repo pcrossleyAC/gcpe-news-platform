@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Form, InlineAlert, NumberField } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
@@ -54,6 +54,11 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
   const [form, setForm] = useState<FormState>(() => fromView(view));
+  // The Calendar activity ID as typed (digits only). It becomes `form.activityId` when the field
+  // loses focus or the form is saved, as the number stepper it replaces did, so the activity
+  // lookup runs once per entered id rather than on every keystroke.
+  const [activityText, setActivityText] = useState(() => (view.activityId === null ? "" : String(view.activityId)));
+  const typedActivityId = activityText === "" ? null : Number(activityText);
   const [plannedValue, setPlannedValue] = useState<ScheduleValue | null>(view.publishAt ? scheduleValueFromInstant(view.publishAt, timeZone) : null);
   const [lists, setLists] = useState<MediaListOption[]>([]);
   const { lookup, error: lookupError } = useActivityLookup(form.activityId);
@@ -71,10 +76,11 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
 
   const resetFrom = (next: ReleaseView) => {
     setForm(fromView(next));
+    setActivityText(next.activityId === null ? "" : String(next.activityId));
     setPlannedValue(next.publishAt ? scheduleValueFromInstant(next.publishAt, timeZone) : null);
   };
 
-  const dirty = !readOnly && (JSON.stringify(form) !== JSON.stringify(fromView(view)) || (plannedValue?.instant ?? null) !== view.publishAt);
+  const dirty = !readOnly && (JSON.stringify({ ...form, activityId: typedActivityId }) !== JSON.stringify(fromView(view)) || (plannedValue?.instant ?? null) !== view.publishAt);
 
   const toggleMediaList = (key: string) =>
     setForm((f) => ({ ...f, mediaListKeys: f.mediaListKeys.includes(key) ? f.mediaListKeys.filter((k) => k !== key) : [...f.mediaListKeys, key] }));
@@ -93,7 +99,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
     section
       .save("/settings", {
         version: view.version,
-        activityId: form.activityId,
+        activityId: typedActivityId,
         ...(plannedUnchanged
           ? { plannedPublishAt: view.publishAt }
           : plannedValue
@@ -136,11 +142,14 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-      <Form onSubmit={onSubmit}>
-        <NumberField
+      <Form onSubmit={onSubmit} className="gcpe-stack">
+        <TextField
           label="Calendar activity ID"
-          value={form.activityId ?? undefined}
-          onChange={(v) => setForm((f) => ({ ...f, activityId: Number.isFinite(v) ? v : null }))}
+          inputMode="numeric"
+          maxLength={9}
+          value={activityText}
+          onChange={(v) => setActivityText(v.replace(/\D/g, ""))}
+          onBlur={() => setForm((f) => ({ ...f, activityId: typedActivityId }))}
           isDisabled={readOnly}
         />
         <ActivityLookupPanel lookup={lookup} error={lookupError} storedId={view.activityId} timeZone={timeZone} />
@@ -154,9 +163,9 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           onChange={setPlannedValue}
         />
         {plannedValue && !readOnly && (
-          <button type="button" onClick={() => setPlannedValue(null)}>
+          <Button size="small" variant="secondary" onPress={() => setPlannedValue(null)}>
             Clear planned date
-          </button>
+          </Button>
         )}
 
         <label className="gcpe-check">
@@ -168,7 +177,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
         {rules.mediaListsAllowed && (
           <fieldset className="gcpe-options">
             <legend>Media distribution lists</legend>
-            <label className="gcpe-options__wide">
+            <label className="gcpe-options__wide gcpe-check">
               <input type="checkbox" checked={form.toMediaLists} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, toMediaLists: e.target.checked }))} />
               Send to media distribution lists
             </label>

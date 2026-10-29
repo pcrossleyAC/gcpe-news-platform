@@ -16,6 +16,7 @@ export interface SideBarProps {
 export function SideBar({ view, timeZone }: SideBarProps): React.JSX.Element {
   return (
     <aside className="gcpe-release-editor__sidebar" aria-label="Release info">
+      <h2>Release info</h2>
       <ReferenceBlock view={view} />
       <ViewLinks view={view} />
       <EmailCopy view={view} />

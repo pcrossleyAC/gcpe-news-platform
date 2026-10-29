@@ -1,6 +1,7 @@
 import { Switch } from "@bcgov/design-system-react-components";
 import { FEATURE_SLOTS, type FeatureKind, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
+import { SectionDisclosure } from "../../../shared/SectionDisclosure";
 
 export interface FeaturePlace {
   kind: FeatureKind;
@@ -36,23 +37,27 @@ export function FeatureSwitches({ view, setView, places, readOnly }: FeatureSwit
     void section.save("/features", { kind: place.kind, key: place.key, slot, on }, "POST");
   };
 
+  const on = places.flatMap((place) => FEATURE_SLOTS.filter((slot) => isOn(place, slot)).map((slot) => `${SLOT_LABEL[slot]} on ${place.label}`));
+  const summary = view.status !== "published" ? "Feature switches are only available once this release is published." : on.length > 0 ? on.join(", ") : "Not in a Top or Feature slot anywhere.";
+
   return (
-    <div className="gcpe-release-editor__features">
-      <h3>Top / Feature</h3>
-      {!readOnly && view.status !== "published" && <p>Feature switches are only available once this release is published.</p>}
+    <section className="gcpe-release-editor__features" aria-label="Top / Feature" id="section-features" tabIndex={-1}>
+      <h2>Top / Feature</h2>
       {section.conflict && <p role="alert">{RELOAD_MESSAGE}</p>}
       {section.error && <p role="alert">{section.error}</p>}
 
-      {places.map((place) => (
-        <fieldset key={`${place.kind}:${place.key}`} className="gcpe-release-editor__feature-place">
-          <legend>{place.label}</legend>
-          {FEATURE_SLOTS.map((slot) => (
-            <Switch key={slot} isSelected={isOn(place, slot)} isDisabled={!enabled} isReadOnly={section.saving} onChange={(on) => toggle(place, slot, on)}>
-              {SLOT_LABEL[slot]}
-            </Switch>
-          ))}
-        </fieldset>
-      ))}
-    </div>
+      <SectionDisclosure label={enabled ? "Change Top / Feature" : "Show Top / Feature"} summary={summary}>
+        {places.map((place) => (
+          <fieldset key={`${place.kind}:${place.key}`} className="gcpe-release-editor__feature-place">
+            <legend>{place.label}</legend>
+            {FEATURE_SLOTS.map((slot) => (
+              <Switch key={slot} isSelected={isOn(place, slot)} isDisabled={!enabled} isReadOnly={section.saving} onChange={(on) => toggle(place, slot, on)}>
+                {SLOT_LABEL[slot]}
+              </Switch>
+            ))}
+          </fieldset>
+        ))}
+      </SectionDisclosure>
+    </section>
   );
 }

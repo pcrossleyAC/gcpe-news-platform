@@ -93,16 +93,18 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-      <Form onSubmit={onSubmit}>
-        <TextField
-          label="URL key"
-          value={form.key}
-          onChange={(v) => setForm((f) => ({ ...f, key: v }))}
-          isDisabled={readOnly || !keyEditable}
-          description={!rules.keyEditable ? `A ${TYPE_LABEL[view.type]}'s URL key is generated automatically.` : !keyEditable ? "The URL key can no longer be changed." : undefined}
-        />
-        <TextField label="Redirect URL" value={form.redirectUrl} onChange={(v) => setForm((f) => ({ ...f, redirectUrl: v }))} isDisabled={readOnly} />
-        <TextField label="Location" value={form.location} onChange={(v) => setForm((f) => ({ ...f, location: v }))} isDisabled={readOnly} maxLength={50} />
+      <Form onSubmit={onSubmit} className="gcpe-stack">
+        <div className="gcpe-form-grid">
+          <TextField
+            label="URL key"
+            value={form.key}
+            onChange={(v) => setForm((f) => ({ ...f, key: v }))}
+            isDisabled={readOnly || !keyEditable}
+            description={!rules.keyEditable ? `A ${TYPE_LABEL[view.type]}'s URL key is generated automatically.` : !keyEditable ? "The URL key can no longer be changed." : undefined}
+          />
+          <TextField label="Redirect URL" value={form.redirectUrl} onChange={(v) => setForm((f) => ({ ...f, redirectUrl: v }))} isDisabled={readOnly} />
+          <TextField label="Location" value={form.location} onChange={(v) => setForm((f) => ({ ...f, location: v }))} isDisabled={readOnly} maxLength={50} />
+        </div>
 
         {showSummaryFields && (
           <>

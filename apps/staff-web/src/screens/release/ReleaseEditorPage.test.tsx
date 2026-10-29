@@ -159,6 +159,8 @@ describe("ReleaseEditorPage", () => {
     async function startCategoriesSave(writes: HeldWrite[], user: ReturnType<typeof userEvent.setup>) {
       // The checkbox list comes from its own GET /categories, which can land after the section's
       // heading has already rendered.
+      // The lists sit behind the card's disclosure (closed by default): open it as a user would.
+      await user.click(await screen.findByRole("button", { name: "Edit categories" }));
       await user.click(await screen.findByLabelText("Sector One"));
       // Checking that box also dirties the sticky save bar, which gets its own "Save categories"
       // button — scope to the Categories section itself for its inline one.
@@ -547,6 +549,16 @@ describe("ReleaseEditorPage", () => {
     await user.click(within(screen.getByRole("region", { name: "Page details" })).getByRole("button", { name: "Save page details" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Publish now" })).toBeEnabled());
     expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();
+  });
+
+  it("a blocker link to Categories opens its closed disclosure and focuses the section", async () => {
+    renderPage("11111111-1111-1111-1111-111111111111", { view: releaseView({ status: "draft", ministries: [], leadMinistryKey: null }) });
+    const toggle = await screen.findByRole("button", { name: "Edit categories" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.setup().click(screen.getByRole("link", { name: "Choose at least one ministry." }));
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "true"));
+    expect(screen.getByRole("region", { name: "Categories" })).toHaveFocus();
+    expect(screen.getByRole("group", { name: "Ministries" })).toBeVisible();
   });
 
   it("two dirty sections show two buttons in the bar", async () => {

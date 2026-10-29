@@ -143,32 +143,46 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-      <Form onSubmit={onSubmit}>
-        <TextField label="Page title" value={form.pageTitle} onChange={(v) => setForm((f) => ({ ...f, pageTitle: v }))} isDisabled={readOnly} isRequired maxLength={50} />
-        <TextField label="Organizations" value={form.organizations} onChange={(v) => setForm((f) => ({ ...f, organizations: v }))} isDisabled={readOnly} />
+      <Form onSubmit={onSubmit} className="gcpe-doc-form">
+        <div className="gcpe-form-grid">
+          <TextField label="Page title" value={form.pageTitle} onChange={(v) => setForm((f) => ({ ...f, pageTitle: v }))} isDisabled={readOnly} isRequired maxLength={50} />
+          <TextField label="Organizations" value={form.organizations} onChange={(v) => setForm((f) => ({ ...f, organizations: v }))} isDisabled={readOnly} />
+        </div>
         <TextField label="Headline" value={form.headline} onChange={(v) => setForm((f) => ({ ...f, headline: v }))} isDisabled={readOnly} maxLength={255} />
         <TextField label="Subheadline" value={form.subheadline} onChange={(v) => setForm((f) => ({ ...f, subheadline: v }))} isDisabled={readOnly} maxLength={100} />
-        <TextField label="Byline" value={form.byline} onChange={(v) => setForm((f) => ({ ...f, byline: v }))} isDisabled={readOnly} maxLength={250} />
+        <div className="gcpe-form-grid">
+          <TextField label="Byline" value={form.byline} onChange={(v) => setForm((f) => ({ ...f, byline: v }))} isDisabled={readOnly} maxLength={250} />
+        </div>
 
         <BodyEditor id={`${idBase}-body`} label="Body" value={form.bodyHtml} onChange={(html) => setForm((f) => ({ ...f, bodyHtml: html }))} readOnly={readOnly} allowItalic />
 
-        <fieldset>
+        <fieldset className="gcpe-fieldset">
           <legend>Contacts</legend>
           {form.contacts.map((contact, i) => (
             <div key={i} className="gcpe-document-language__contact">
               <TextArea label={`Contact ${i + 1}`} value={contact} onChange={(v) => setContact(i, v)} isDisabled={readOnly} maxLength={250} />
-              {!readOnly && <Button variant="secondary" onPress={() => removeContact(i)}>Remove contact {i + 1}</Button>}
+              {!readOnly && (
+                <Button size="small" variant="secondary" onPress={() => removeContact(i)}>
+                  Remove contact {i + 1}
+                </Button>
+              )}
             </div>
           ))}
-          {!readOnly && form.contacts.length < 20 && <Button variant="secondary" onPress={addContact}>Add contact</Button>}
+          {!readOnly && form.contacts.length < 20 && (
+            <Button size="small" variant="secondary" onPress={addContact}>
+              Add contact
+            </Button>
+          )}
         </fieldset>
 
         {!readOnly && (
-          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
-            Save {languageLabel} content
-          </Button>
+          <div className="gcpe-button-row">
+            <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
+              Save {languageLabel} content
+            </Button>
+            <SaveStatus saving={section.saving} waiting={section.waiting} />
+          </div>
         )}
-        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </div>
   );

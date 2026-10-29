@@ -146,9 +146,57 @@ body {
   gap: 0.25rem;
 }
 
+/* A document's English/French switcher as tabs: a rule under the row, the selected tab marked by
+ * weight and a 3px bar (same look as the section tabs). */
 .gcpe-document-tabs [role="tablist"] {
   display: flex;
   gap: 0.25rem;
+  border-bottom: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+  margin-bottom: 0.75rem;
+}
+.gcpe-document-tabs [role="tab"] {
+  padding: 0.5rem 0.875rem;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font: var(--typography-regular-body);
+  color: var(--typography-color-link, #255a90);
+  cursor: pointer;
+}
+.gcpe-document-tabs [role="tab"]:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.gcpe-document-tabs [role="tab"][aria-selected="true"] {
+  font: var(--typography-bold-body);
+  color: var(--typography-color-primary, #2d2d2d);
+  border-bottom-color: var(--surface-color-primary-default, #013366);
+}
+.gcpe-document-tabs [role="tab"]:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: calc(-1 * var(--layout-border-width-medium, 2px));
+}
+.gcpe-document-tabs__translation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.gcpe-document-tabs__translation-actions:empty {
+  display: none;
+}
+.gcpe-documents__item + .gcpe-documents__item {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+}
+.gcpe-documents__summary-note {
+  margin: 0 0 1rem;
+  color: var(--typography-color-secondary, #474543);
+}
+.gcpe-documents__add {
+  margin-top: 1rem;
 }
 
 .gcpe-shell__main {
@@ -616,22 +664,277 @@ body {
 
 /* Task 3 (staff-web): new release and the release editor. */
 
+/* One column below 80rem: the header, Actions, the release itself, then Publish settings and the
+ * release's facts. */
 .gcpe-release-editor {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-width: 48rem;
+  max-width: 90rem;
 }
 
+.gcpe-release-editor__top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.gcpe-release-editor__main,
+.gcpe-release-editor__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+/* From 80rem: the release on the left; on the right, Actions and under it the rail (Publish
+ * settings, the facts), which sticks while the release scrolls and scrolls on its own when it's
+ * taller than the screen (above the save bar while that is open). */
+@media (min-width: 80rem) {
+  .gcpe-release-editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24rem;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "top top"
+      "main actions"
+      "main rail";
+    align-items: start;
+    column-gap: 2rem;
+    row-gap: 1.5rem;
+  }
+
+  .gcpe-release-editor__top {
+    grid-area: top;
+  }
+
+  .gcpe-release-editor__main {
+    grid-area: main;
+  }
+
+  .gcpe-release-editor__actions {
+    grid-area: actions;
+  }
+
+  .gcpe-release-editor__rail {
+    grid-area: rail;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* Room for focus rings, which the scroller would otherwise clip. */
+    padding: 0.25rem;
+    margin: -0.25rem;
+    gap: 1rem;
+  }
+
+  .gcpe-release-editor--save-bar-open .gcpe-release-editor__rail {
+    max-height: calc(100vh - 8rem);
+  }
+}
+
+/* Every part of the editor is the same card: a 1px border, 4px corners, its h2 on top. */
 .gcpe-release-editor__header,
 .gcpe-release-editor__actions,
 .gcpe-release-editor__settings,
 .gcpe-release-editor__categories,
+.gcpe-release-editor__features,
 .gcpe-release-editor__asset,
-.gcpe-release-editor__page-details {
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 1rem;
+.gcpe-release-editor__page-details,
+.gcpe-release-editor__documents,
+.gcpe-release-editor__files,
+.gcpe-release-editor__similar,
+.gcpe-release-editor__sidebar {
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-forms-default, #fff);
+  padding: 1rem 1.25rem 1.25rem;
+  min-width: 0;
+}
+
+.gcpe-release-editor__header {
+  padding-block: 1rem;
+}
+
+.gcpe-release-editor__header h1 {
+  margin: 0;
+  font: var(--typography-bold-h2);
+  text-wrap: balance;
+}
+
+.gcpe-release-editor :is(section, aside) > h2 {
+  margin: 0 0 0.75rem;
+  font: var(--typography-bold-h5);
+}
+
+.gcpe-release-editor__actions,
+.gcpe-release-editor__rail :is(section, aside) {
+  padding: 0.875rem 1rem 1rem;
+}
+
+/* A section's id target takes focus from the "why is this unavailable" links: a ring, not the
+ * browser's default box, and only for keyboard-visible focus. */
+.gcpe-release-editor :is(section, h3)[tabindex="-1"]:focus {
+  outline: none;
+}
+.gcpe-release-editor :is(section, h3)[tabindex="-1"]:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+}
+
+/* A closed long list: what is picked, then the design system's disclosure. Its panel stacks its
+ * own content (the design system lays it out as a row). */
+.gcpe-section-disclosure__summary {
+  margin: 0 0 0.75rem;
+  color: var(--typography-color-secondary, #474543);
+  overflow-wrap: anywhere;
+}
+.gcpe-section-disclosure .bcds-react-aria-Disclosure--Button {
+  width: 100%;
+  min-height: 40px;
+}
+.gcpe-section-disclosure .bcds-react-aria-Disclosure[data-expanded] > .bcds-react-aria-Disclosure--Panel {
+  display: block;
+}
+.gcpe-section-disclosure .bcds-react-aria-Disclosure--Panel > .gcpe-stack > .gcpe-options:last-of-type {
+  margin-bottom: 0;
+}
+
+/* Fields side by side on the form grid, wrapping one under another when narrow. */
+.gcpe-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem 1rem;
+  align-items: start;
+  align-self: stretch;
+}
+
+/* A document's language form: headline and subheadline the full width, groups spaced evenly. */
+.gcpe-doc-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.gcpe-doc-form > .bcds-react-aria-TextField {
+  align-self: stretch;
+  max-width: none;
+}
+.gcpe-doc-form .gcpe-body-editor {
+  margin-block: 0;
+}
+
+/* A bordered group of fields with its legend, the design system's form look. */
+.gcpe-fieldset {
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-default, #d8d8d8);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.gcpe-fieldset > legend {
+  padding: 0 0.25rem;
+  font: var(--typography-bold-small-body);
+}
+.gcpe-document-language__contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+  align-self: stretch;
+}
+.gcpe-document-language__contact > .bcds-react-aria-TextArea {
+  flex: 1 1 18rem;
+}
+
+/* A native file picker as a labelled field: its button drawn as the design system's small
+ * secondary button. */
+.gcpe-file-input {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-primary, #2d2d2d);
+}
+.gcpe-file-input input[type="file"] {
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-secondary, #474543);
+  max-width: 100%;
+}
+.gcpe-file-input input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border: var(--layout-border-width-small, 1px) solid var(--surface-color-border-dark, #353433);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-secondary-default, #fff);
+  color: var(--typography-color-primary, #2d2d2d);
+  font: var(--typography-regular-small-body);
+  cursor: pointer;
+}
+.gcpe-file-input input[type="file"]::file-selector-button:hover {
+  background: var(--surface-color-secondary-hover, #edebe9);
+}
+.gcpe-file-input input[type="file"]:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+}
+.gcpe-files-section__group + .gcpe-files-section__group {
+  margin-top: 1.25rem;
+}
+.gcpe-files-section__group > h3 {
+  margin: 0 0 0.25rem;
+  font: var(--typography-bold-body);
+}
+.gcpe-files-section__group > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The release's facts in the rail: label and value on one line each. */
+.gcpe-sidebar__reference {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.375rem 1rem;
+  margin: 0 0 0.75rem;
+}
+.gcpe-sidebar__reference > div {
+  display: contents;
+}
+.gcpe-sidebar__reference dt {
+  color: var(--typography-color-secondary, #474543);
+  font: var(--typography-regular-small-body);
+}
+.gcpe-sidebar__reference dd {
+  margin: 0;
+  font: var(--typography-bold-small-body);
+  overflow-wrap: anywhere;
+}
+.gcpe-sidebar__email-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+.gcpe-sidebar__history h3 {
+  margin: 1rem 0 0.25rem;
+  font: var(--typography-bold-body);
+}
+.gcpe-sidebar__history ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  font: var(--typography-regular-small-body);
+}
+.gcpe-sidebar__history li + li {
+  margin-top: 0.25rem;
 }
 
 .gcpe-release-editor__meta {
@@ -720,7 +1023,17 @@ body {
 .gcpe-body-editor__toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+/* The formatting toggles as one group: the design system's toggle-group track. */
+.gcpe-body-editor__toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--layout-margin-xsmall, 0.25rem);
+  padding: var(--layout-padding-xsmall, 0.25rem);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-secondary-button-disabled, #edebe9);
 }
 .gcpe-body-editor__area .ProseMirror {
   min-height: 12rem;

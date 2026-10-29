@@ -111,7 +111,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-      <Form onSubmit={onSubmit}>
+      <Form onSubmit={onSubmit} className="gcpe-stack">
         <TextField
           label="Asset URL"
           value={form.assetUrl}
@@ -121,7 +121,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
           errorMessage={urlProblem ?? undefined}
         />
         <TextField label="Alt text" value={form.assetAltText} onChange={(v) => setForm((f) => ({ ...f, assetAltText: v }))} isDisabled={readOnly} maxLength={149} />
-        <label>
+        <label className="gcpe-check">
           <input type="checkbox" checked={form.hasMediaAssets} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, hasMediaAssets: e.target.checked }))} />
           Includes additional media assets
         </label>

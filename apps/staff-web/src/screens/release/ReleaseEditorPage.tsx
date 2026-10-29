@@ -163,8 +163,10 @@ export function ReleaseEditorPage(): React.JSX.Element {
     <SaveQueueContext.Provider value={saveQueue.queue}>
       <guard.Provider>
         <div className={`gcpe-release-editor${guard.dirtySections.length > 0 ? " gcpe-release-editor--save-bar-open" : ""}`}>
-          <HeaderSection view={view} />
-          {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
+          <div className="gcpe-release-editor__top">
+            <HeaderSection view={view} />
+            {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
+          </div>
 
           {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
            * focus, restores it on close, and closes on Escape (treated the same as "Stay": the
@@ -186,15 +188,25 @@ export function ReleaseEditorPage(): React.JSX.Element {
             </AlertDialog>
           </Modal>
 
+          {/* One column below 80rem, in reading order: Actions, the release itself (Documents
+           * first), then Publish settings and the release's facts. From 80rem, two columns: the
+           * release on the left; Actions and, under it, a sticky rail with Publish settings and
+           * the facts on the right (styles/global.css). The DOM order is the same at every width,
+           * so keyboard order always matches what's on screen, and no section is ever remounted
+           * (losing its unsaved edits) when the window crosses the breakpoint. */}
           {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} unsaved={guard.dirtySections} />}
-          <SettingsSection view={view} setView={setView} timeZone={timeZone} readOnly={!canEdit} />
-          <CategoriesSection view={view} setView={setView} readOnly={!canEdit} />
-          <AssetSection view={view} setView={setView} readOnly={!canEdit} />
-          <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
-          <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
-          <FilesSection view={view} setView={setView} readOnly={!canEdit} />
-          {canEdit && <SimilarReleasesPanel view={view} timeZone={timeZone} />}
-          <SideBar view={view} timeZone={timeZone} />
+          <div className="gcpe-release-editor__main">
+            <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
+            <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
+            <CategoriesSection view={view} setView={setView} readOnly={!canEdit} />
+            <AssetSection view={view} setView={setView} readOnly={!canEdit} />
+            <FilesSection view={view} setView={setView} readOnly={!canEdit} />
+            {canEdit && <SimilarReleasesPanel view={view} timeZone={timeZone} />}
+          </div>
+          <div className="gcpe-release-editor__rail">
+            <SettingsSection view={view} setView={setView} timeZone={timeZone} readOnly={!canEdit} />
+            <SideBar view={view} timeZone={timeZone} />
+          </div>
         </div>
         <UnsavedChangesBar sections={guard.dirtySections} />
       </guard.Provider>

@@ -100,7 +100,7 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
           </ul>
         )}
         {s.error && <InlineAlert variant="danger" role="alert" description={s.error} />}
-        <ul>
+        <ul className="gcpe-files">
           {files.map((f) => (
             <li key={f.id}>
               {/* Q17: f.url (/files/...) is the public address, served only while the release is
@@ -108,7 +108,7 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
               <a href={`/nrms/api/releases/${view.id}/files/${f.id}`}>{f.label}</a>
               {!readOnly && (
                 <DialogTrigger isOpen={removeTarget?.file.id === f.id} onOpenChange={(open) => setRemoveTarget(open ? { kind, file: f } : null)}>
-                  <Button variant="secondary" danger isPending={s.busy}>
+                  <Button size="small" variant="secondary" danger isPending={s.busy}>
                     Remove {f.label}
                   </Button>
                   <Modal isDismissable>
@@ -136,8 +136,8 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
           {files.length === 0 && <li>No files yet.</li>}
         </ul>
         {!readOnly && (
-          <label>
-            {inputLabel}
+          <label className="gcpe-file-input">
+            <span>{inputLabel}</span>
             <input type="file" accept={accept} onChange={onPick(kind)} disabled={s.busy} />
           </label>
         )}
@@ -147,7 +147,7 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
   };
 
   return (
-    <section className="gcpe-release-editor__files" aria-label="Files">
+    <section className="gcpe-release-editor__files" aria-label="Files" id="section-files" tabIndex={-1}>
       <h2>Files</h2>
       {group("translation", "Translations", "application/pdf", "Upload a translation (PDF)")}
       {group("asset", "Media files", undefined, "Upload a media file")}

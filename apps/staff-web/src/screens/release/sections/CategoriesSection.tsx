@@ -7,6 +7,7 @@ import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import type { Categories, Term } from "../categories";
+import { SectionDisclosure } from "../../../shared/SectionDisclosure";
 import { FeatureSwitches, type FeaturePlace } from "./FeatureSwitches";
 
 export interface CategoriesSectionProps {
@@ -78,6 +79,27 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
     ...view.themes.map((key) => ({ kind: "themes" as const, key, label: nameOf(categories.themes, key) })),
   ];
 
+  // The closed disclosure's one line: what's picked right now (unsaved picks included).
+  const pickedText = (kind: CategoryKind, terms: Term[]) => {
+    const names = form[kind].map((k) => (kind === "ministries" && k === form.leadMinistryKey && form.ministries.length > 1 ? `${nameOf(terms, k)} (lead)` : nameOf(terms, k)));
+    return names.length > 0 ? names.join(", ") : "none";
+  };
+  const summary = (
+    <>
+      <strong>Ministries:</strong> {pickedText("ministries", categories.ministries)}
+      {rules.categoriesBeyondMinistries && (
+        <>
+          {" · "}
+          <strong>Sectors:</strong> {pickedText("sectors", categories.sectors)}
+          {" · "}
+          <strong>Themes:</strong> {pickedText("themes", categories.themes)}
+          {" · "}
+          <strong>Tags:</strong> {pickedText("tags", categories.tags)}
+        </>
+      )}
+    </>
+  );
+
   const categoryList = (kind: CategoryKind, legend: string, terms: Term[]) => (
     <fieldset className="gcpe-options">
       <legend>{legend}</legend>
@@ -91,68 +113,73 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
   );
 
   return (
-    <section className="gcpe-release-editor__categories" aria-label="Categories" id="section-categories" tabIndex={-1}>
-      <h2>Categories</h2>
+    <>
+      <section className="gcpe-release-editor__categories" aria-label="Categories" id="section-categories" tabIndex={-1}>
+        <h2>Categories</h2>
 
-      {section.conflict && (
-        <InlineAlert
-          variant="danger"
-          role="alert"
-          description={RELOAD_MESSAGE}
-          buttons={
-            <Button
-              onPress={() =>
-                void section.reload().then((next) => setForm(fromView(next)))
-              }
-            >
-              Reload
-            </Button>
-          }
-        />
-      )}
-      {section.problems && (
-        <ul role="alert" className="gcpe-release-editor__problems">
-          {section.problems.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      )}
-      {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
-
-      <Form onSubmit={onSubmit} className="gcpe-stack">
-        {categoryList("ministries", "Ministries", categories.ministries)}
-
-        {form.ministries.length > 1 && (
-          <label className="gcpe-field">
-            Lead ministry
-            <select value={form.leadMinistryKey ?? ""} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, leadMinistryKey: e.target.value || null }))}>
-              <option value="">(none)</option>
-              {form.ministries.map((key) => (
-                <option key={key} value={key}>
-                  {nameOf(categories.ministries, key)}
-                </option>
-              ))}
-            </select>
-          </label>
+        {section.conflict && (
+          <InlineAlert
+            variant="danger"
+            role="alert"
+            description={RELOAD_MESSAGE}
+            buttons={
+              <Button
+                onPress={() =>
+                  void section.reload().then((next) => setForm(fromView(next)))
+                }
+              >
+                Reload
+              </Button>
+            }
+          />
         )}
-
-        {rules.categoriesBeyondMinistries && (
-          <>
-            {categoryList("sectors", "Sectors", categories.sectors)}
-            {categoryList("themes", "Themes", categories.themes)}
-            {categoryList("tags", "Tags", categories.tags)}
-          </>
+        {section.problems && (
+          <ul role="alert" className="gcpe-release-editor__problems">
+            {section.problems.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
         )}
+        {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-        {!readOnly && (
-          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
-            Save categories
-          </Button>
-        )}
-        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
-      </Form>
+        <SectionDisclosure label={readOnly ? "Show categories" : "Edit categories"} summary={summary}>
+          <Form onSubmit={onSubmit} className="gcpe-stack">
+            {categoryList("ministries", "Ministries", categories.ministries)}
 
+            {form.ministries.length > 1 && (
+              <label className="gcpe-field">
+                Lead ministry
+                <select value={form.leadMinistryKey ?? ""} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, leadMinistryKey: e.target.value || null }))}>
+                  <option value="">(none)</option>
+                  {form.ministries.map((key) => (
+                    <option key={key} value={key}>
+                      {nameOf(categories.ministries, key)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {rules.categoriesBeyondMinistries && (
+              <>
+                {categoryList("sectors", "Sectors", categories.sectors)}
+                {categoryList("themes", "Themes", categories.themes)}
+                {categoryList("tags", "Tags", categories.tags)}
+              </>
+            )}
+
+            {!readOnly && (
+              <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
+                Save categories
+              </Button>
+            )}
+            {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
+          </Form>
+        </SectionDisclosure>
+      </section>
+
+      {/* Its own card: the switches act on the release as saved, not on this form's picks. */}
       <FeatureSwitches view={view} setView={setView} places={places} readOnly={readOnly} />
-    </section>
+    </>
   );
 }
