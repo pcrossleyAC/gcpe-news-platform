@@ -179,13 +179,15 @@ if ($drives -match [regex]::Escape("path=`"$cacheDir`"")) {
 }
 if ($LASTEXITCODE -ne 0) { throw "could not configure the ARR disk cache in $cacheDir" }
 # ARR's cache ignores Vary. Per URL it keeps an unencoded copy ("full") and encoded ones
-# ("full.br", "full.gzip"), and once it has the unencoded copy it answers a brotli client with
-# it, and a gzip client with its own gzip of it (docs/deploy/windows.md, 8.2). So: no copies of
-# ARR's own making (compression off: only the app's bytes and ETags are served), and the rules
-# below never let it store an unencoded copy. A URL with a query string is neither stored nor
-# looked up (the default, Ignore, answers "/?q=x" with the stored "/").
-& $appcmd set config -section:system.webServer/diskCache /compression.enabled:"False" /commit:apphost | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'could not turn off ARR''s own compression of cached copies' }
+# ("full.br", "full.gzip"); once it has the unencoded copy it answers a brotli client with it, and
+# a gzip client with its own gzip of it. It serves an encoded copy only for an encoding listed in
+# allowedAcceptEncoding (default "gzip": every brotli request went to the app). So: brotli and
+# gzip copies, served in that order of preference; none of ARR's own making (compression off:
+# only the app's bytes and ETags go out); and the rules below never let it store an unencoded
+# copy (docs/deploy/windows.md, 8.2). A URL with a query string is neither stored nor looked up
+# (the default, Ignore, answered "/?q=x" with the stored "/").
+& $appcmd set config -section:system.webServer/diskCache /allowedAcceptEncoding:"br,gzip" /compression.enabled:"False" /commit:apphost | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'could not set the encodings ARR''s cache keeps' }
 & $appcmd set config -section:system.webServer/proxy /cache.queryStringHandling:"NoCaching" /commit:apphost | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'could not stop ARR caching URLs with a query string' }
 Write-GcpeOk 'on; it follows the app''s Cache-Control, keeps only brotli and gzip copies, and never stores /api, the subscribe pages, a URL with a query string or an unencoded response'

@@ -362,20 +362,10 @@ jobs:
             }
             Get-ChildItem C:\gcpe-proxy\cache -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($path.Trim('/')) } | ForEach-Object { Write-Host "    $($_.FullName) $($_.Length) $($_.LastWriteTime.ToString('HH:mm:ss'))" }
           }
-          $i = 0
-          foreach ($ae in @('gzip', 'gzip,br')) {
-            foreach ($p in @(@('/live/', '/ministries/'), @('/search/', '/connect/'))[$i]) {
-              Write-Host "=== allowedAcceptEncoding=$ae"
-              & $appcmd set config -section:system.webServer/diskCache "/allowedAcceptEncoding:$ae" /commit:apphost | Out-Null
-              & $appcmd recycle apppool GCPE-Proxy | Out-Null
-              Start-Sleep -Seconds 2
-              Seq $p @('br', 7, 'br', 'br', 7, 'gzip', 7, 'gzip', 'gzip, deflate, br', 7, 'gzip, deflate, br', '', 'br')
-              Lines $p
-            }
-            $i++
-          }
-          & $appcmd set config -section:system.webServer/diskCache /allowedAcceptEncoding:gzip /commit:apphost | Out-Null
-          & $appcmd recycle apppool GCPE-Proxy | Out-Null
+          Seq '/live/' @('br', 7, 'br', 'gzip', 7, 'gzip', 'gzip, deflate, br', 7, 'gzip, deflate, br', '', 'br', 'gzip', '')
+          Lines '/live/'
+          Seq '/ministries/' @('gzip, deflate, br', 7, 'gzip', 'br', 'gzip, deflate, br', '', 'gzip')
+          Lines '/ministries/'
       - name: The proxy caches public pages only, per encoding
         run: |
           $ErrorActionPreference = 'Stop'
