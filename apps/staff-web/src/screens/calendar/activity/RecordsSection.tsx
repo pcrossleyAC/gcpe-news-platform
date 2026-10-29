@@ -152,7 +152,7 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
         </ul>
       )}
       {canChange && (
-        <div className="gcpe-field">
+        <div className="gcpe-file-input">
           <label htmlFor="activity-files">Add files</label>
           <input
             ref={input}

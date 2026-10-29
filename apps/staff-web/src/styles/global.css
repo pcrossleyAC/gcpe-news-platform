@@ -3126,3 +3126,36 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   margin-bottom: 0.5rem;
   font: var(--typography-bold-small-body);
 }
+
+/* Users: a Calendar role, read from Calendar access, under the staff roles. */
+.gcpe-users__calendar {
+  margin: 0.25rem 0 0;
+  font: var(--typography-regular-small-body);
+}
+.gcpe-badge-list + .gcpe-users__calendar {
+  margin-top: 0.375rem;
+}
+
+/* Subscriber preferences: the lists under their categories, each category a small heading with
+ * its lists in columns, inside the one Lists box (not a box per category). */
+.gcpe-list-picker > .gcpe-options {
+  border: 0;
+  border-radius: 0;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.gcpe-list-picker > .gcpe-options > legend {
+  padding: 0;
+  margin-bottom: 0.375rem;
+  font: var(--typography-bold-small-body);
+}
+.gcpe-list-picker > .gcpe-options + .gcpe-options {
+  margin-top: 1rem;
+}
+.gcpe-check-row + .gcpe-list-picker {
+  margin-top: 0.75rem;
+}
+/* Deactivate (and Activate) sit apart from Save preferences: a different act. */
+.gcpe-subscriber__status-actions {
+  margin: 1rem 0;
+}

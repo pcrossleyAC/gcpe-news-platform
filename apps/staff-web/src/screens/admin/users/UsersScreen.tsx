@@ -11,6 +11,23 @@ import { useSeededValue } from "../../../shared/useSeededValue";
 import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { STAFF_ROLES } from "./roles";
 import { TableScroll } from "../../../shared/TableScroll";
+import { Link } from "react-router";
+import { calendarRoleLabel } from "../calendar-access/calendar-roles";
+import type { CalendarAccessUser, OrgOption } from "../calendar-access/CalendarAccessScreen";
+
+/** Each user's Calendar role and ministries, as Calendar access keeps them: "Editor (HLTH)". */
+type CalendarLines = ReadonlyMap<string, string>;
+
+function calendarLines(access: CalendarAccessUser[], orgs: OrgOption[]): CalendarLines {
+  const abbr = new Map(orgs.map((o) => [o.key, o.abbreviation ?? o.displayName]));
+  const lines = new Map<string, string>();
+  for (const u of access) {
+    if (!u.calendarRole) continue;
+    const ministries = u.organizationKeys.map((k) => abbr.get(k) ?? k).join(", ");
+    lines.set(u.id, `${calendarRoleLabel(u.calendarRole)}${ministries ? ` (${ministries})` : ""}`);
+  }
+  return lines;
+}
 
 export interface UserView {
   id: string;
@@ -289,7 +306,7 @@ const roleBadge = (role: string) => {
  * Every user as one table row (name, email, sign-in, roles, active), filtered as you type; Edit
  * opens that user's editor in a row underneath, with every field and save it always had.
  */
-function UsersTable({ users, onChanged }: { users: UserView[]; onChanged(): void }): React.JSX.Element {
+function UsersTable({ users, calendar, onChanged }: { users: UserView[]; calendar: CalendarLines; onChanged(): void }): React.JSX.Element {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   // Editors once opened stay mounted (hidden when closed or filtered out), so typed but unsaved
@@ -299,7 +316,7 @@ function UsersTable({ users, onChanged }: { users: UserView[]; onChanged(): void
   // Name, email and roles match on any part; the status only as a whole word, so "active"
   // never finds an inactive user.
   const matches = (u: UserView) =>
-    !q || [u.displayName, u.email ?? "", ...u.roles].some((t) => t.toLowerCase().includes(q)) || q === (u.isActive ? "active" : "inactive");
+    !q || [u.displayName, u.email ?? "", ...u.roles, calendar.has(u.id) ? `Calendar ${calendar.get(u.id)}` : ""].some((t) => t.toLowerCase().includes(q)) || q === (u.isActive ? "active" : "inactive");
   const shownCount = users.filter(matches).length;
   // The count is announced once typing pauses, not on every keystroke.
   const [countText, setCountText] = useState(`${users.length} users`);
@@ -359,9 +376,8 @@ function UsersTable({ users, onChanged }: { users: UserView[]; onChanged(): void
                     <td className="gcpe-users__email">{u.email ?? <span className="gcpe-hint">No email</span>}</td>
                     <td>{signInLabel(u)}</td>
                     <td>
-                      {u.roles.length === 0 ? (
-                        <span className="gcpe-hint">None</span>
-                      ) : (
+                      {u.roles.length === 0 && !calendar.has(u.id) && <span className="gcpe-hint">None</span>}
+                      {u.roles.length > 0 && (
                         <ul className="gcpe-badge-list">
                           {u.roles.map((r) => (
                             <li key={r} className="gcpe-badge" title={r}>
@@ -369,6 +385,12 @@ function UsersTable({ users, onChanged }: { users: UserView[]; onChanged(): void
                             </li>
                           ))}
                         </ul>
+                      )}
+                      {/* Calendar roles live in Calendar access; shown here read-only, with the way there. */}
+                      {calendar.has(u.id) && (
+                        <p className="gcpe-users__calendar">
+                          {`Calendar: ${calendar.get(u.id)}`} <span aria-hidden="true">·</span> <Link to="/calendar-access">manage in Calendar access</Link>
+                        </p>
                       )}
                     </td>
                     <td>{u.isActive ? "Active" : <span className="gcpe-badge gcpe-badge--alert">Inactive</span>}</td>
@@ -441,6 +463,7 @@ export function UsersScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Users");
   const [users, setUsers] = useState<UserView[] | null>(null);
+  const [calendar, setCalendar] = useState<CalendarLines>(() => new Map());
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
@@ -455,6 +478,11 @@ export function UsersScreen(): React.JSX.Element {
 
   const reload = useCallback(() => {
     apiFetch<UserView[]>("/core/api/users").then(setUsers, () => setLoadError("Couldn't load users."));
+    // Read only, for the Roles column; if it can't load, the column just shows the staff roles.
+    Promise.all([apiFetch<CalendarAccessUser[]>("/core/api/calendar-access"), apiFetch<OrgOption[]>("/core/api/organizations")]).then(
+      ([access, orgs]) => setCalendar(calendarLines(access, orgs)),
+      () => undefined,
+    );
   }, []);
 
   // Never fetched for anyone who can't see this page — AppShell already hides the nav item;
@@ -502,7 +530,7 @@ export function UsersScreen(): React.JSX.Element {
 
       <h2>All users</h2>
       {users === null && !loadError && <p>Loading…</p>}
-      {users && <UsersTable users={users} onChanged={reload} />}
+      {users && <UsersTable users={users} calendar={calendar} onChanged={reload} />}
 
       <section className="gcpe-card" aria-labelledby="add-user-heading">
       <h2 id="add-user-heading">Add a user</h2>
