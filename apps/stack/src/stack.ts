@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import type { ZodTypeAny } from "zod";
 import { authFromEnv, requireBearer, requireRole } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createFakeEmergencyFeed } from "@gcpe/emergency-feed-fake";
 import { createFakeFlickr } from "@gcpe/flickr-fake";
 import { createFakeMediaHub } from "@gcpe/media-hub-fake";
@@ -707,6 +708,20 @@ export interface StackCheckResult {
   calendarDbTimeZone?: DbTimeZoneStatus;
 }
 
+/** Every app the stack runs, with the env schema its start<App>() parses — the Calendar only when
+ * it is configured (calendarConfigured). Shared by checkStack and migrateStack. */
+function appEnvSchemas(env: NodeJS.ProcessEnv, tenant: ReturnType<typeof loadTenantConfig>): { label: string; prefix: AppPrefix; schema: ZodTypeAny }[] {
+  return [
+    { label: "core", prefix: "CORE", schema: coreEnvSchema },
+    { label: "nrms", prefix: "NRMS", schema: nrmsEnvSchema },
+    { label: "news-api", prefix: "NEWSAPI", schema: newsApiEnvSchema },
+    { label: "public-site", prefix: "SITE", schema: publicSiteEnvSchema(tenant) },
+    { label: "nod", prefix: "NOD", schema: nodEnvSchema },
+    { label: "distribution", prefix: "DIST", schema: distributionEnvSchema },
+    ...(calendarConfigured(env) ? [{ label: "calendar", prefix: "CALENDAR" as const, schema: calendarEnvSchema }] : []),
+  ];
+}
+
 /**
  * `node stack.js --check`: validates the stack's configuration — the stack-level
  * env (TICK_TOKEN, tenant config + its P2-R17 time-zone self-check), then every one of the
@@ -752,15 +767,7 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
     }
   }
 
-  const checks: { label: string; prefix: AppPrefix; schema: ZodTypeAny }[] = [
-    { label: "core", prefix: "CORE", schema: coreEnvSchema },
-    { label: "nrms", prefix: "NRMS", schema: nrmsEnvSchema },
-    { label: "news-api", prefix: "NEWSAPI", schema: newsApiEnvSchema },
-    { label: "public-site", prefix: "SITE", schema: publicSiteEnvSchema(tenant) },
-    { label: "nod", prefix: "NOD", schema: nodEnvSchema },
-    { label: "distribution", prefix: "DIST", schema: distributionEnvSchema },
-    ...(calendarConfigured(env) ? [{ label: "calendar", prefix: "CALENDAR" as const, schema: calendarEnvSchema }] : []),
-  ];
+  const checks = appEnvSchemas(env, tenant);
 
   const apps: Record<string, StackCheckAppResult> = {};
   if (!calendarConfigured(env)) apps.calendar = { ok: true, skipped: "CALENDAR_DATABASE_URL is not set" };
@@ -834,4 +841,61 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   // bounded by queryOnce's timeout, that can't fail the check.
   const calendarDbTimeZone = calendarConfigured(env) ? await checkCalendarDbTimeZone(tenant, pgOffsetOf(resolvedEnvFor(env, "CALENDAR", dataDir).DATABASE_URL!)) : undefined;
   return { ok, tenantId: tenant.tenantId, timeZone: tenant.timeZone, apps, ...(calendarDbTimeZone ? { calendarDbTimeZone } : {}) };
+}
+
+export interface StackMigrateResult {
+  ok: boolean;
+  apps: Record<string, StackCheckAppResult>;
+}
+
+/**
+ * `node stack.js --migrate`: applies every configured app's migrations to its own database and
+ * returns — no app started, no server, no background loop, nothing written under DATA_DIR. For an
+ * orchestrator that migrates before a rollout (an OpenShift Job or initContainer running the same
+ * image with the same env as the Deployment: docs/deploy/openshift.md). startStack still migrates
+ * on start, exactly as before; both use db-kit's advisory-locked runMigrations, so running both,
+ * or several at once, is safe and the later one finds nothing to apply.
+ *
+ * Each app's env is parsed with the same schema its start<App>() uses (a Job given incomplete
+ * settings fails here, as the Deployment would), its failure is reported under its own label and
+ * prefix, and the remaining apps are still migrated: their databases are independent.
+ */
+export async function migrateStack(env: NodeJS.ProcessEnv): Promise<StackMigrateResult> {
+  const { TENANT_CONFIG } = parseEnv(stackEnvSchema.pick({ TENANT_CONFIG: true }), env);
+  const tenant = loadTenantConfig(TENANT_CONFIG);
+  const dataDir = resolveDataDir(env);
+
+  const apps: Record<string, StackCheckAppResult> = {};
+  if (!calendarConfigured(env)) apps.calendar = { ok: true, skipped: "CALENDAR_DATABASE_URL is not set" };
+  let ok = true;
+  for (const c of appEnvSchemas(env, tenant)) {
+    const fail = (e: unknown) => {
+      ok = false;
+      apps[c.label] = { ok: false, error: `(its variables are ${c.prefix}_*): ${e instanceof Error ? e.message : String(e)}` };
+    };
+    let parsed: { DATABASE_URL: string; MIGRATIONS_FOLDER: string };
+    try {
+      const result = c.schema.safeParse(resolvedEnvFor(env, c.prefix, dataDir));
+      if (!result.success) {
+        fail(result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+        continue;
+      }
+      parsed = result.data as typeof parsed;
+    } catch (e) {
+      fail(e);
+      continue;
+    }
+    const startedAt = Date.now();
+    const { db, pool } = createDb(parsed.DATABASE_URL, { max: 1, connectionTimeoutMillis: 10_000 });
+    try {
+      await runMigrations(db, parsed.MIGRATIONS_FOLDER);
+      apps[c.label] = { ok: true, migrationsFolder: parsed.MIGRATIONS_FOLDER };
+      console.log(`[stack] --migrate: ${c.label} up to date (${Date.now() - startedAt}ms)`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      await pool.end().catch(() => {});
+    }
+  }
+  return { ok, apps };
 }

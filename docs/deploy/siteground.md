@@ -1075,8 +1075,8 @@ allowlist of inert types (`apps/stack/src/files-policy.ts`): PDF; PNG, JPEG, GIF
 extension) is `application/octet-stream` with `Content-Disposition: attachment` and
 `Content-Security-Policy: sandbox; default-src 'none'`, so it downloads instead of running on
 news.gov.bc.ca. Inline types get no CSP (a sandboxed top-level PDF can break Firefox's and Safari's
-viewers). Every `/files` answer carries `X-Content-Type-Options: nosniff`. Hub uploads are PDF, PNG
-or JPEG only, so nothing they serve changes.
+viewers). Every `/files` answer carries `X-Content-Type-Options: nosniff`. The same policy covers Hub
+uploads, which take any type (above), so an uploaded `.html` or `.svg` is a sandboxed download too.
 
 **The command.** `tools/legacy-files-copy.mjs` (from a checkout, `npm run legacy-files:copy --`).
 It writes NRMS's database (`NRMS_DATABASE_URL`) and object store (`NRMS_STORAGE_DIR`, else

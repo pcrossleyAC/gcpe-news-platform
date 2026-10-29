@@ -1,0 +1,22 @@
+# Example manifests for the GCPE stack image on OpenShift (docs/deploy/openshift.md). Placeholders
+# only: copy, fill in, then `oc apply -k .`. NOT used in production today.
+# secret.example.yaml is deliberately NOT listed: create the real Secret yourself (oc create secret,
+# or a sealed/external secret), never by committing values.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/name: gcpe-stack
+      app.kubernetes.io/part-of: gcpe-news-platform
+    includeSelectors: false
+resources:
+  - configmap.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - route.yaml
+# Point every manifest at the image you built and pushed (by digest, so a rollout is reproducible).
+images:
+  - name: gcpe-stack
+    newName: image-registry.openshift-image-registry.svc:5000/<namespace>/gcpe-stack
+    digest: sha256:<digest>

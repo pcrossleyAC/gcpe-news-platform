@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gcpe-stack
+spec:
+  # One replica on a ReadWriteOnce volume; Recreate so the old pod lets go of it before the new
+  # one starts (a rolling update would wait forever for the volume on another node).
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gcpe-stack
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gcpe-stack
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        # No runAsUser/fsGroup: OpenShift's restricted-v2 SCC assigns both from the namespace's range.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: stack
+          image: gcpe-stack
+          # The image's default command is `node stack.js`, which applies pending migrations as it
+          # starts (advisory-locked). The migrate Job (migrate-job.yaml) can run them beforehand.
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: gcpe-stack-config
+            - secretRef:
+                name: gcpe-stack-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          # Start: the server listens only after every app has migrated and started; the first
+          # start on an empty database migrates everything, so allow up to 5 minutes.
+          startupProbe:
+            httpGet:
+              path: /core/health/live
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          # Ready: every app answers its own readiness check, databases included (503 otherwise).
+          # Ready: the process serves HTTP. Not /stack/health (every app's database): with one replica,
+          # a Calendar or NoD database blip would take the pod out of the Service and the Route would
+          # answer 503 for everything, the public site included. Watch /stack/health from monitoring.
+          readinessProbe:
+            httpGet:
+              path: /core/health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Alive: the process still serves HTTP. Deliberately not /stack/health, which also fails
+          # while a database is down: restarting the pod cannot fix that, and would drop requests the
+          # public site could still serve from DATA_DIR.
+          livenessProbe:
+            httpGet:
+              path: /core/health/live
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Measured idle at ~165 MiB with empty databases (docs/deploy/openshift.md); a full site
+          # rebuild and Calendar PDF reports use more. Tune from real usage.
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1536Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: gcpe-stack-data

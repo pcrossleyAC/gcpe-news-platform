@@ -1,0 +1,48 @@
+# Optional: apply database migrations before a rollout, with the same image and settings as the
+# Deployment (`node stack.js --migrate` exits 0 when every app's database is up to date). The
+# Deployment migrates on start anyway; this only moves a failing migration ahead of the rollout.
+# Not in kustomization.yaml: run it per release, e.g.
+#   oc create -f migrate-job.yaml && oc wait --for=condition=complete job -l app.kubernetes.io/name=gcpe-stack-migrate --timeout=10m
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: gcpe-stack-migrate-
+  labels:
+    app.kubernetes.io/name: gcpe-stack-migrate
+spec:
+  backoffLimit: 0
+  # A migration waiting on a held advisory lock fails here instead of hanging the rollout.
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gcpe-stack-migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          # The same image (by digest) as the Deployment's.
+          image: image-registry.openshift-image-registry.svc:5000/<namespace>/gcpe-stack@sha256:<digest>
+          command: ["node", "stack.js", "--migrate"]
+          envFrom:
+            - configMapRef:
+                name: gcpe-stack-config
+            - secretRef:
+                name: gcpe-stack-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gcpe-stack
+spec:
+  selector:
+    app.kubernetes.io/name: gcpe-stack
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

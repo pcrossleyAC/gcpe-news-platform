@@ -1,0 +1,20 @@
+# One Route to the whole stack. It exposes everything the stack serves, the Hub (/hub) and every
+# app's API included: on Windows the DMZ proxy's allow list (deploy/windows/Install-GcpeProxy.ps1)
+# decides what the internet sees. Restrict this Route to staff networks (the annotation below) until
+# a public front with the same allow list exists — see docs/deploy/openshift.md, "Exposure".
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: gcpe-stack
+  annotations:
+    haproxy.router.openshift.io/ip_whitelist: "<staff CIDR ranges, space-separated>"
+spec:
+  host: "<host>"
+  to:
+    kind: Service
+    name: gcpe-stack
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
