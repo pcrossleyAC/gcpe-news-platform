@@ -176,4 +176,28 @@ describe("AppShell navigation structure", () => {
     expect(menu).toHaveAttribute("aria-expanded", "true");
     expect(document.getElementById(menu.getAttribute("aria-controls")!)).toContainElement(screen.getByRole("link", { name: "Releases" }));
   });
+
+  it("closes the menu when any link in it is followed, the current page's own included", async () => {
+    await renderShell(["NRMS.Viewer"]);
+    const menu = screen.getByRole("button", { name: "Menu" });
+    fireEvent.click(menu);
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("link", { name: "Search" }));
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(menu);
+    // The current page: following it changes no path, and still closes the menu.
+    fireEvent.click(screen.getByRole("link", { name: "Search" }));
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the menu on Escape and puts focus back on the Menu button", async () => {
+    await renderShell(["NRMS.Viewer"]);
+    const menu = screen.getByRole("button", { name: "Menu" });
+    fireEvent.click(menu);
+    const link = screen.getByRole("link", { name: "Releases" });
+    link.focus();
+    fireEvent.keyDown(link, { key: "Escape" });
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    expect(menu).toHaveFocus();
+  });
 });

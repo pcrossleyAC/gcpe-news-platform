@@ -45,7 +45,7 @@ export function CellContent({ column, row: r, today, timeZone, tools, update }: 
             {r.hasRelease && <span className="gcpe-badge">Release</span>}
           </span>
           <strong>{minId(r)}</strong>
-          <span className="gcpe-hint">{`updated ${friendlySpan(new Date(r.lastUpdatedAt), new Date(), timeZone).toLowerCase()} ago${r.lastUpdatedByName ? ` by ${r.lastUpdatedByName}` : ""}`}</span>
+          <span className="gcpe-hint">{`updated ${friendlySpan(new Date(r.lastUpdatedAt), new Date(), timeZone)} ago${r.lastUpdatedByName ? ` by ${r.lastUpdatedByName}` : ""}`}</span>
           <span className="gcpe-hint">{`created ${shortDate(r.createdAt, timeZone)}`}</span>
         </div>
       );

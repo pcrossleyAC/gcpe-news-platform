@@ -370,7 +370,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
 
   const stamp =
     view &&
-    `${view.isDeleted ? "Deleted" : STATUS[view.status]} · updated ${friendlySpan(new Date(view.lastUpdatedAt), new Date(), config.timeZone).toLowerCase()} ago${view.lastUpdatedByName ? ` by ${view.lastUpdatedByName}` : ""}`;
+    `${view.isDeleted ? "Deleted" : STATUS[view.status]} · updated ${friendlySpan(new Date(view.lastUpdatedAt), new Date(), config.timeZone)} ago${view.lastUpdatedByName ? ` by ${view.lastUpdatedByName}` : ""}`;
   const contact = view?.fields.contactMinistryKey ?? null;
   const shared = !!view && me.ministryKeys.some((k) => view.fields.sharedWithKeys.includes(k)) && contact !== null && !me.ministryKeys.includes(contact);
   const viewOnly = !canEdit && !view?.isDeleted ? (shared && me.level >= 2 ? "Your ministry is shared on this activity: you can view it but not change it." : "You can view this activity but not change it.") : null;

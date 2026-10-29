@@ -1,6 +1,7 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
-import { Button, Header, InlineAlert } from "@bcgov/design-system-react-components";
+import { Header, InlineAlert } from "@bcgov/design-system-react-components";
+import { Button } from "../shared/Button";
 import { useSession, type SessionValue } from "../session/SessionContext";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
 import { AnnouncerProvider } from "../shared/Announcer";
@@ -76,6 +77,18 @@ export function AppShell(): React.JSX.Element {
   // button, and shows the menu regardless, on wider ones). Choosing a section closes it again.
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => setMenuOpen(false), [pathname]);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  // Following any link in the open menu closes it, the current page's own link included (which
+  // changes no pathname). Escape closes it too and puts focus back on the Menu button.
+  const onMenuClick = (e: React.MouseEvent) => {
+    if (e.target instanceof Element && e.target.closest("a")) setMenuOpen(false);
+  };
+  const onNavKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "Escape" || !menuOpen) return;
+    e.preventDefault();
+    setMenuOpen(false);
+    menuButton.current?.focus();
+  };
   const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => item.show(session)) })).filter((g) => g.items.length > 0);
 
   const onSignOut = async () => {
@@ -97,13 +110,13 @@ export function AppShell(): React.JSX.Element {
             </Button>
           </div>
         </Header>
-        <nav className="gcpe-shell__nav" aria-label="Sections">
+        <nav className="gcpe-shell__nav" aria-label="Sections" onKeyDown={onNavKeyDown}>
           <div className="gcpe-shell__menu-toggle">
-            <Button size="small" variant="secondary" aria-expanded={menuOpen} aria-controls={`${uid}-menu`} onPress={() => setMenuOpen((open) => !open)}>
+            <Button ref={menuButton} size="small" variant="secondary" aria-expanded={menuOpen} aria-controls={`${uid}-menu`} onPress={() => setMenuOpen((open) => !open)}>
               Menu
             </Button>
           </div>
-          <div id={`${uid}-menu`} className="gcpe-shell__menu" data-open={menuOpen || undefined}>
+          <div id={`${uid}-menu`} className="gcpe-shell__menu" data-open={menuOpen || undefined} onClick={onMenuClick}>
             {groups.map((group) => (
               <div key={group.label} className="gcpe-shell__nav-group">
                 <p id={`${uid}-${group.label}`} className="gcpe-shell__nav-heading">
