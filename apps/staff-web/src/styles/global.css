@@ -1167,6 +1167,57 @@ body {
   gap: 0.5rem;
 }
 
+/* The few native <button>s kept where the design system's Button can't carry an attribute the
+ * screen needs (aria-busy): drawn with the same tokens as its medium buttons, so they read as one
+ * family. The outlined (secondary) look by default; --primary for the filled one. */
+.gcpe-native-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  min-width: 24px;
+  padding: 0 var(--layout-padding-medium, 1rem);
+  border: none;
+  border-radius: var(--layout-border-radius-medium, 4px);
+  font: var(--typography-regular-body);
+  cursor: pointer;
+  background: var(--surface-color-secondary-button-default, #fff);
+  box-shadow: inset 0 0 0 var(--layout-border-width-small, 1px) var(--surface-color-border-dark, #353433);
+  color: var(--typography-color-primary, #2d2d2d);
+}
+.gcpe-native-button:hover {
+  background: var(--surface-color-secondary-button-hover, #edebe9);
+}
+.gcpe-native-button--primary {
+  background: var(--surface-color-primary-button-default, #013366);
+  box-shadow: none;
+  color: var(--typography-color-primary-invert, #fff);
+}
+.gcpe-native-button--primary:hover {
+  background: var(--surface-color-primary-button-hover, #1e5189);
+}
+.gcpe-native-button:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: var(--layout-margin-hair, 2px);
+}
+.gcpe-native-button:disabled {
+  cursor: not-allowed;
+  background: var(--surface-color-secondary-button-disabled, #edebe9);
+  box-shadow: inset 0 0 0 var(--layout-border-width-small, 1px) var(--surface-color-border-default, #d8d8d8);
+  color: var(--typography-color-disabled, #9f9d9c);
+}
+
+/* Two or three checkboxes in a row (delivery choices), wrapping when narrow. */
+.gcpe-check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+/* Subscriber lists: "All news", then one boxed group per category. */
+.gcpe-list-picker > .gcpe-options {
+  margin: 0;
+}
+
 /* Calendar access: the editor opens in a row under the user it edits. */
 .gcpe-calendar-access__table {
   width: 100%;

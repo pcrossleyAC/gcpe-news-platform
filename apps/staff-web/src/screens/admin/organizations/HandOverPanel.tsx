@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Button } from "../../../shared/Button";
 import { Link } from "react-router";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { apiFetch } from "../../../api/client";
@@ -365,16 +366,17 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
             {index > 0 && (
               <>
                 {" "}
-                <button
-                  type="button"
+                <Button
+                  size="small"
+                  variant="secondary"
                   aria-label={`Remove successor ${index + 1}`}
-                  onClick={() => {
+                  onPress={() => {
                     focusPicker.current = index - 1;
                     setSuccessors((s) => s.filter((_, i) => i !== index));
                   }}
                 >
                   Remove
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -382,15 +384,16 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
       })}
       {chosen.length > 0 && successors.length < candidates.length && successors.every((k) => k !== "") && (
         <p>
-          <button
-            type="button"
-            onClick={() => {
+          <Button
+            size="small"
+            variant="secondary"
+            onPress={() => {
               focusPicker.current = successors.length;
               setSuccessors((s) => [...s, ""]);
             }}
           >
             Add another successor
-          </button>
+          </Button>
         </p>
       )}
 
@@ -428,14 +431,15 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
           {m}
         </p>
       ))}
-      <div>
-        {/* aria-disabled, not disabled, while saving: focus stays on the button, so an error leaves it there. */}
-        <button type="submit" aria-disabled={busy || undefined} aria-busy={busy || undefined}>
+      <div className="gcpe-button-row">
+        {/* aria-disabled, not disabled, while saving: focus stays on the button, so an error leaves it there.
+         * A native button styled as the design system's primary one: its Button drops aria-busy. */}
+        <button type="submit" className="gcpe-native-button gcpe-native-button--primary" aria-disabled={busy || undefined} aria-busy={busy || undefined}>
           {!deactivating ? "Set successor" : chosen.length ? "Deactivate and hand over" : "Deactivate"}
-        </button>{" "}
-        <button type="button" disabled={busy} onClick={onCancel}>
-          Cancel
         </button>
+        <Button variant="secondary" isDisabled={busy} onPress={onCancel}>
+          Cancel
+        </Button>
       </div>
     </form>
   );

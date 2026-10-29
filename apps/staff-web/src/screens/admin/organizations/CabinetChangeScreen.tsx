@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Button } from "../../../shared/Button";
 import { Link } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import type { OrgRecord } from "@gcpe/events/catalogue";
@@ -445,22 +446,22 @@ export function CabinetChangeScreen(): React.JSX.Element {
   const loading = !loadError && (orgs === null || change === undefined);
 
   const opener = (kind: "update" | "create" | "succeed", label: string) => (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
       ref={(el) => {
         if (el) addButtons.current.set(kind, el);
         else addButtons.current.delete(kind);
       }}
       aria-expanded={adding === kind}
-      disabled={busy}
-      onClick={() => {
+      isDisabled={busy}
+      onPress={() => {
         setStatus(null);
         setMessages([]);
         setAdding(kind);
       }}
     >
       {label}
-    </button>
+    </Button>
   );
   const cancelAdd = () => {
     const kind = adding;
@@ -538,14 +539,14 @@ export function CabinetChangeScreen(): React.JSX.Element {
                         <strong>Changed by someone else since you added this.</strong> Check{" "}
                         {nameOf((op as UpdateOp | SucceedOp).key)} on the Organizations page, then keep this change or remove
                         it.{" "}
-                        <button type="button" disabled={busy} aria-label={`Keep change ${i + 1}`} onClick={() => void keep(i)}>
+                        <Button size="small" variant="secondary" isDisabled={busy} aria-label={`Keep change ${i + 1}`} onPress={() => void keep(i)}>
                           Keep this change
-                        </button>
+                        </Button>
                       </p>
                     )}
-                    <button type="button" disabled={busy} aria-label={`Remove change ${i + 1}`} onClick={() => void remove(i)}>
+                    <Button size="small" variant="secondary" isDisabled={busy} aria-label={`Remove change ${i + 1}`} onPress={() => void remove(i)}>
                       Remove
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ol>
@@ -588,9 +589,9 @@ export function CabinetChangeScreen(): React.JSX.Element {
               <h2 id={`${uid}-preview`}>Preview</h2>
               <p>Preview runs the whole change without saving it, so you can see the result before anyone else does.</p>
               <p>
-                <button type="button" disabled={busy} onClick={() => void runPreview()}>
+                <Button variant="secondary" isDisabled={busy} onPress={() => void runPreview()}>
                   {preview ? "Preview again" : "Preview"}
-                </button>
+                </Button>
               </p>
               {preview && <PreviewResult preview={preview} ops={ops} byKey={byKey} headingRef={previewHeading} uid={uid} />}
             </section>
@@ -601,9 +602,9 @@ export function CabinetChangeScreen(): React.JSX.Element {
               <h2 id={`${uid}-publish`}>Publish</h2>
               {scheduled && (
                 <p>
-                  <button type="button" disabled={busy} onClick={() => void unschedule()}>
+                  <Button variant="secondary" isDisabled={busy} onPress={() => void unschedule()}>
                     Don&rsquo;t publish at that time (keep it as a draft)
-                  </button>
+                  </Button>
                 </p>
               )}
               {!cleanPreview ? (
@@ -621,37 +622,38 @@ export function CabinetChangeScreen(): React.JSX.Element {
                         Publish {ops.length === 1 ? "this change" : `these ${ops.length} changes`} now? This can&rsquo;t be
                         undone in one step.
                       </p>
-                      <button type="button" disabled={busy} onClick={() => void publish()}>
-                        Yes, publish now
-                      </button>{" "}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirm(null);
-                          focusNext.current = () => publishButton.current;
-                        }}
-                      >
-                        Not yet
-                      </button>
+                      <div className="gcpe-button-row">
+                        <Button isDisabled={busy} onPress={() => void publish()}>
+                          Yes, publish now
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onPress={() => {
+                            setConfirm(null);
+                            focusNext.current = () => publishButton.current;
+                          }}
+                        >
+                          Not yet
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <p className="gcpe-button-row">
-                      <button
-                        type="button"
+                      <Button
                         ref={publishButton}
-                        disabled={busy}
-                        onClick={() => {
+                        isDisabled={busy}
+                        onPress={() => {
                           setScheduling(false);
                           setConfirm("publish");
                           focusNext.current = () => confirmGroup.current;
                         }}
                       >
                         Publish now…
-                      </button>{" "}
+                      </Button>
                       {!scheduling && (
-                        <button type="button" ref={scheduleButton} disabled={busy} onClick={openSchedule}>
+                        <Button variant="secondary" ref={scheduleButton} isDisabled={busy} onPress={openSchedule}>
                           Schedule…
-                        </button>
+                        </Button>
                       )}
                     </p>
                   )}
@@ -668,12 +670,14 @@ export function CabinetChangeScreen(): React.JSX.Element {
                     >
                       <SchedulePicker timeZone={timeZone} legend="Publish at (BC time)" idPrefix={`${uid}-when`} onChange={setWhen} />
                       <p>Usually the swearing-in time. It publishes by itself then; nobody needs to be here.</p>
-                      <button type="submit" disabled={busy}>
-                        Schedule
-                      </button>{" "}
-                      <button type="button" onClick={closeSchedule}>
-                        Cancel
-                      </button>
+                      <div className="gcpe-button-row">
+                        <Button type="submit" isDisabled={busy}>
+                          Schedule
+                        </Button>
+                        <Button variant="secondary" onPress={closeSchedule}>
+                          Cancel
+                        </Button>
+                      </div>
                     </form>
                   )}
                 </>
@@ -687,33 +691,36 @@ export function CabinetChangeScreen(): React.JSX.Element {
               {confirm === "discard" ? (
                 <div role="group" aria-labelledby={`${uid}-confirm-discard`} ref={confirmGroup} tabIndex={-1}>
                   <p id={`${uid}-confirm-discard`}>Discard every change in this cabinet change? Nothing has been published.</p>
-                  <button type="button" disabled={busy} onClick={() => void discard()}>
-                    Yes, discard it
-                  </button>{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConfirm(null);
-                      focusNext.current = () => discardButton.current;
-                    }}
-                  >
-                    Keep it
-                  </button>
+                  <div className="gcpe-button-row">
+                    <Button danger isDisabled={busy} onPress={() => void discard()}>
+                      Yes, discard it
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onPress={() => {
+                        setConfirm(null);
+                        focusNext.current = () => discardButton.current;
+                      }}
+                    >
+                      Keep it
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <p>
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    danger
                     ref={discardButton}
-                    disabled={busy}
-                    onClick={() => {
+                    isDisabled={busy}
+                    onPress={() => {
                       setScheduling(false);
                       setConfirm("discard");
                       focusNext.current = () => confirmGroup.current;
                     }}
                   >
                     Discard this cabinet change…
-                  </button>
+                  </Button>
                 </p>
               )}
             </section>
@@ -945,13 +952,13 @@ function AddForm({ title, busy, onCancel, onSubmit, children }: { title: string;
         {title}
       </h4>
       {children}
-      <div>
-        <button type="submit" disabled={busy}>
+      <div className="gcpe-button-row">
+        <Button type="submit" isDisabled={busy}>
           Add this change
-        </button>{" "}
-        <button type="button" onClick={onCancel}>
+        </Button>
+        <Button variant="secondary" onPress={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -1237,9 +1244,9 @@ function SucceedForm({
               {index > 0 && (
                 <>
                   {" "}
-                  <button type="button" aria-label={`Remove successor ${index + 1}`} onClick={() => setSuccessors((s) => s.filter((_, i) => i !== index))}>
+                  <Button size="small" variant="secondary" aria-label={`Remove successor ${index + 1}`} onPress={() => setSuccessors((s) => s.filter((_, i) => i !== index))}>
                     Remove
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -1247,9 +1254,9 @@ function SucceedForm({
         })}
       {org && chosen.length > 0 && successors.every((s) => s !== "") && successors.length < options.length && (
         <p>
-          <button type="button" onClick={() => setSuccessors((s) => [...s, ""])}>
+          <Button size="small" variant="secondary" onPress={() => setSuccessors((s) => [...s, ""])}>
             Add another successor
-          </button>
+          </Button>
         </p>
       )}
       {org && !first && <p>{deactivateWarning(org.displayName)}</p>}

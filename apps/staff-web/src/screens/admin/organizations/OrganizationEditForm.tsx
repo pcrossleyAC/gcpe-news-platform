@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Button } from "../../../shared/Button";
 import { apiFetch } from "../../../api/client";
 import type { LinkSetting } from "@gcpe/site-settings";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
@@ -501,9 +502,9 @@ export function OrganizationEditForm({
         )}
         {bioPatch !== null && (
           <div>
-            <button type="button" onClick={clearBio}>
+            <Button size="small" variant="secondary" onPress={clearBio}>
               Clear the biography
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -662,13 +663,13 @@ export function OrganizationEditForm({
         </>
       )}
 
-      <div>
-        <button type="submit" disabled={busy || nameBlank || sortInvalid}>
+      <div className="gcpe-button-row">
+        <Button type="submit" isDisabled={busy || nameBlank || sortInvalid}>
           Save
-        </button>{" "}
-        <button type="button" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button variant="secondary" onPress={onCancel} isDisabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

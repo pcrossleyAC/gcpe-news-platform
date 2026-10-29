@@ -17,25 +17,25 @@ export function ListPicker(props: {
   const extra = (props.heldKeys ?? []).filter((k) => !offered.has(k));
   const toggle = (k: string) => onChange({ allNews, listKeys: listKeys.includes(k) ? listKeys.filter((x) => x !== k) : [...listKeys, k] });
   const box = (k: string, label: string) => (
-    <label key={k}>
+    <label key={k} className="gcpe-check">
       <input type="checkbox" checked={listKeys.includes(k)} onChange={() => toggle(k)} disabled={disabled} /> {label}
     </label>
   );
   return (
-    <fieldset>
+    <fieldset className="gcpe-options gcpe-options--stacked gcpe-list-picker">
       <legend>Lists</legend>
-      <label>
+      <label className="gcpe-check">
         <input type="checkbox" checked={allNews} onChange={() => onChange({ allNews: !allNews, listKeys })} disabled={disabled} /> All news
       </label>
       {!allNews &&
         categories.map((c) => (
-          <fieldset key={c.key}>
+          <fieldset key={c.key} className="gcpe-options">
             <legend>{c.name}</legend>
             {c.lists.map((l) => box(l.listKey, l.name))}
           </fieldset>
         ))}
       {!allNews && extra.length > 0 && (
-        <fieldset>
+        <fieldset className="gcpe-options">
           <legend>No longer offered</legend>
           {extra.map((k) => box(k, k))}
         </fieldset>

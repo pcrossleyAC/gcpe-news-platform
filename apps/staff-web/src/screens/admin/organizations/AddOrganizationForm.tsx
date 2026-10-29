@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Button } from "../../../shared/Button";
 import { apiFetch, ApiError } from "../../../api/client";
 import { FIX_BELOW, fieldErrorsOf, messagesOf } from "../messages";
 import {
@@ -131,13 +132,13 @@ export function AddOrganizationForm({
         onChange={setAbbreviation}
         error={abbreviationError}
       />
-      <div>
-        <button type="submit" disabled={nameBlank || keyEmpty}>
+      <div className="gcpe-button-row">
+        <Button type="submit" isDisabled={nameBlank || keyEmpty}>
           Create ministry
-        </button>{" "}
-        <button type="button" onClick={onCancel}>
+        </Button>
+        <Button variant="secondary" onPress={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

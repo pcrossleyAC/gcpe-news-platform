@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Button } from "../../../shared/Button";
 import { formatLongDate, type GovernmentTermView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { messagesOf } from "../messages";
@@ -91,13 +92,13 @@ export function StartTermForm({ scheduledStart = null, onStarted, onCancel }: St
         <input id={`${uid}-label`} type="text" maxLength={255} value={label} disabled={confirming} onChange={(e) => setLabel(e.target.value)} />
       </div>
       {!confirming && (
-        <div>
-          <button type="submit" ref={continueRef} disabled={!dateOk}>
+        <div className="gcpe-button-row">
+          <Button type="submit" ref={continueRef} isDisabled={!dateOk}>
             Continue
-          </button>{" "}
-          <button type="button" onClick={onCancel}>
+          </Button>
+          <Button variant="secondary" onPress={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       )}
       {confirming && (
@@ -112,20 +113,22 @@ export function StartTermForm({ scheduledStart = null, onStarted, onCancel }: St
               {m}
             </p>
           ))}
-          <button type="button" disabled={busy} onClick={() => void confirm()}>
-            Confirm
-          </button>{" "}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setConfirming(false);
-              setMessages([]);
-              setTimeout(() => continueRef.current?.focus(), 0);
-            }}
-          >
-            Go back
-          </button>
+          <div className="gcpe-button-row">
+            <Button isDisabled={busy} onPress={() => void confirm()}>
+              Confirm
+            </Button>
+            <Button
+              variant="secondary"
+              isDisabled={busy}
+              onPress={() => {
+                setConfirming(false);
+                setMessages([]);
+                setTimeout(() => continueRef.current?.focus(), 0);
+              }}
+            >
+              Go back
+            </Button>
+          </div>
         </div>
       )}
     </form>
