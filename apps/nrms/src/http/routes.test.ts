@@ -159,6 +159,31 @@ describe("NRMS HTTP API", () => {
     expect(c.body.status).toBe("approved");
   });
 
+  // Owner decision 2026-10-29: Return to draft — editors only (same role as Approve); a viewer is
+  // refused; a due scheduled release returned to draft is never published by the next run.
+  it("return-to-draft: an editor sends an approved or scheduled release back to draft; a viewer can't; the publisher skips it", async () => {
+    const { id } = await create();
+    const a = await post(`/api/releases/${id}/approve`, editorCookie, { version: 1 });
+    expect((await post(`/api/releases/${id}/return-to-draft`, viewerCookie, { version: a.body.version })).status).toBe(403);
+    const d = await post(`/api/releases/${id}/return-to-draft`, editorCookie, { version: a.body.version });
+    expect(d.status).toBe(200);
+    expect(d.body).toMatchObject({ status: "draft", statusText: "Draft", reference: null, key: null });
+    const again = await post(`/api/releases/${id}/return-to-draft`, editorCookie, { version: d.body.version });
+    expect(again.status).toBe(409);
+    expect(again.body).toEqual({ error: "Only an approved release that hasn't been published can go back to draft.", code: "state" });
+
+    const due = await createScheduledRelease(tdb.db, { headline: "Due but returned to draft" });
+    const back = await post(`/api/releases/${due.id}/return-to-draft`, editorCookie, { version: due.version });
+    expect(back.status).toBe(200);
+    expect(back.body.status).toBe("draft");
+    await publishDue({ db: tdb.db, subscribers: [] });
+    const after = await get(`/api/releases/${due.id}`);
+    expect(after.body.status).toBe("draft");
+    expect(after.body.releasedAt).toBeNull();
+    const log = await get(`/api/releases/${due.id}/log`);
+    expect(log.body.map((e: { text: string }) => e.text)).toContain(`Returned to Draft (was ${due.reference}, ${due.key})`);
+  });
+
   it("an unknown sector is a 422 with the problem list", async () => {
     const res = await post("/api/releases", editorCookie, { ...sampleCreate, sectors: ["nope"] });
     expect(res.status).toBe(422);

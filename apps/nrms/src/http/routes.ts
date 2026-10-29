@@ -37,7 +37,7 @@ import { buildEmailCopy } from "../renditions/email";
 import { buildRenditionModel } from "../renditions/model";
 import { renderPdf } from "../renditions/pdf";
 import { renderText } from "../renditions/text";
-import { approve, cancel, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
+import { approve, cancel, returnToDraft, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
 import { listCategories } from "../taxonomy";
 import { openReleasesOf } from "../succession";
 import { setFeature } from "../website/features";
@@ -300,6 +300,8 @@ export function apiRoutes(deps: RouteDeps): Router {
 
   r.post("/releases/:id/approve", edit, run(async (req, res) => void res.json(withStatus(await approve(db, req.params.id, version(req), actorOf(req), workflow)))));
   r.post("/releases/:id/schedule", edit, run(async (req, res) => void res.json(withStatus(await schedule(db, req.params.id, scheduleSchema.parse(req.body), actorOf(req), workflow)))));
+  // Same role as Approve (owner decision 2026-10-29).
+  r.post("/releases/:id/return-to-draft", edit, run(async (req, res) => void res.json(withStatus(await returnToDraft(db, req.params.id, version(req), actorOf(req), subscribers)))));
   r.post("/releases/:id/cancel", edit, run(async (req, res) => void res.json(withStatus(await cancel(db, req.params.id, version(req), actorOf(req), subscribers)))));
   r.post("/releases/:id/unpublish", edit, run(async (req, res) => void res.json(withStatus(await unpublish(db, req.params.id, version(req), actorOf(req))))));
   r.post(
