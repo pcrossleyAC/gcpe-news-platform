@@ -121,13 +121,57 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     expect(t).toBeGreaterThan(REPORT_WAIT_MAX_MS);
   });
 
+  // The tools' panels hide when closed; their messages must not hide with them.
+  it("a report's and the export's results show and are announced after their panel is closed", async () => {
+    let finishReport!: (r: Response) => void;
+    let finishExport!: (r: Response) => void;
+    stubFetch([], {
+      other: (url) =>
+        url === "/calendar/api/reports/look-ahead"
+          ? new Promise<Response>((res) => (finishReport = res))
+          : url === "/calendar/api/reports/planning"
+            ? jsonResponse(201, job({ report: "planning" }))
+            : url === `/calendar/api/reports/jobs/${ID}/pdf`
+              ? pdf()
+              : url.startsWith("/calendar/api/list/export.xlsx")
+                ? new Promise<Response>((res) => (finishExport = res))
+                : undefined,
+    });
+    renderList();
+    await screen.findByText("Sample listed");
+    const user = userEvent.setup();
+    await openListTool("Export and reports");
+    await user.click(screen.getByRole("button", { name: "Excel export" }));
+    await user.click(screen.getByRole("button", { name: "Look Ahead" }));
+    await openListTool("Columns");
+    expect(screen.queryByRole("button", { name: "Look Ahead" })).toBeNull();
+    // Still being prepared: said, with the panel closed.
+    const preparing = screen.getByText("Preparing your Look Ahead report…");
+    expect(preparing).toHaveAttribute("role", "status");
+    expect(preparing).toBeVisible();
+    finishReport(jsonResponse(201, job({ status: "failed", error: "The report is too large to prepare: narrow the filter and run it again." })));
+    finishExport(jsonResponse(503, { error: "Other exports are running: try again in a few seconds" }));
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts.map((a) => a.textContent)).toEqual(expect.arrayContaining(["The report is too large to prepare: narrow the filter and run it again.", "Other exports are running: try again in a few seconds"]));
+    for (const a of alerts) expect(a).toBeVisible();
+    // A success, too.
+    await openListTool("Export and reports");
+    await user.click(screen.getByRole("button", { name: "Planning" }));
+    await openListTool("Columns");
+    const done = await screen.findByText("The Planning report has downloaded.");
+    expect(done).toHaveAttribute("role", "status");
+    expect(done).toBeVisible();
+  });
+
   it("a report still starting shows the same message, for screen readers too", async () => {
     stubFetch([], { other: (url) => (url === "/calendar/api/reports/look-ahead" ? never() : undefined) });
     const { container } = renderList();
     await screen.findByText("Sample listed");
     await openListTool("Export and reports");
     await userEvent.setup().click(screen.getByRole("button", { name: "Look Ahead" }));
-    expect(await reports(container).findByRole("status")).toHaveTextContent("Preparing your Look Ahead report…");
+    // The status sits in the list's message area, outside the Reports group, so it stays shown when the panel closes.
+    expect(reports(container).queryByRole("status")).toBeNull();
+    expect(await screen.findByText("Preparing your Look Ahead report…")).toHaveAttribute("role", "status");
   });
 });
 

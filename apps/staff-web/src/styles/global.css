@@ -3097,6 +3097,10 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   margin: 0;
   flex-basis: 100%;
 }
+/* The tools' results (report, export, Clear LA Status), outside the panels so they stay shown. */
+.gcpe-list-tool-messages > p {
+  margin: 0 0 0.5rem;
+}
 .gcpe-list-tool-panel #la-days {
   width: 5.5rem;
 }

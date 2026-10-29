@@ -6,6 +6,7 @@ import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { messagesOf } from "../../admin/messages";
 import { downloadExport, listApi } from "./api";
 import { corporateSummary } from "./FilterPanel";
+import { ToolMessages } from "./ToolMessages";
 
 /** POST /activities/review-selected takes at most this many. */
 export const REVIEW_SELECTED_MAX = 500;
@@ -122,7 +123,9 @@ export function ClearLaStatus({ onDone }: { onDone: () => void }): React.JSX.Ele
       <Button variant="secondary" isPending={counting || busy} isDisabled={!valid} pendingLabel={busy ? "Clearing…" : "Checking…"} onPress={() => void ask()}>
         Clear LA Status
       </Button>
-      <Result status={status} error={error} />
+      <ToolMessages>
+        <Result status={status} error={error} />
+      </ToolMessages>
       <Modal
         isOpen={confirm !== null}
         onOpenChange={(open) => {
@@ -264,7 +267,7 @@ export function ExportButton({ query }: { query: ListQuery }): React.JSX.Element
       <Button variant="secondary" isPending={busy} pendingLabel="Exporting…" onPress={() => void run()}>
         Excel export
       </Button>
-      {error && <p role="alert">{error}</p>}
+      <ToolMessages>{error && <p role="alert">{error}</p>}</ToolMessages>
     </div>
   );
 }

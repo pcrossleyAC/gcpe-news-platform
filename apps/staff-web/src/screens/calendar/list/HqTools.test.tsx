@@ -128,6 +128,18 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     expect(calls.some((c) => c.url === "/calendar/api/activities/clear-la-status")).toBe(false);
   });
 
+  it("Clear LA Status's result stays shown with its panel closed", async () => {
+    hq([], (url) => (url === "/calendar/api/activities/clear-la-status?days=8" ? jsonResponse(200, { count: 0 }) : undefined));
+    renderList();
+    const user = userEvent.setup();
+    await openListTool("LA status");
+    await user.click(await screen.findByRole("button", { name: "Clear LA Status" }));
+    await openListTool("Columns");
+    const said = await screen.findByText("No activities up to 8 days ahead have an LA status to clear.");
+    expect(said).toHaveAttribute("role", "status");
+    expect(said).toBeVisible();
+  });
+
   it("with nothing to clear, says so and asks nothing", async () => {
     const calls: Call[] = [];
     hq(calls, (url) => (url === "/calendar/api/activities/clear-la-status?days=8" ? jsonResponse(200, { count: 0 }) : undefined));

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { REPORT_KINDS, REPORT_LABELS, type ListQuery, type ReportKind } from "@gcpe/calendar-contract";
 import { Button } from "../../../shared/BusyButton";
 import { runReport, type ReportCancellation } from "./api";
+import { ToolMessages } from "./ToolMessages";
 
 /**
  * The list toolbar's reports (spec addendum §8.1, §10): Look Ahead, Exec Look Ahead (HQ
@@ -44,9 +45,11 @@ export function ReportButtons({ query, execLookAhead }: { query: ListQuery; exec
           {REPORT_LABELS[k]}
         </Button>
       ))}
-      {busy && <p role="status">{`Preparing your ${REPORT_LABELS[busy]} report…`}</p>}
-      {!busy && status && <p role="status">{status}</p>}
-      {error && <p role="alert">{error}</p>}
+      <ToolMessages>
+        {busy && <p role="status">{`Preparing your ${REPORT_LABELS[busy]} report…`}</p>}
+        {!busy && status && <p role="status">{status}</p>}
+        {error && <p role="alert">{error}</p>}
+      </ToolMessages>
     </div>
   );
 }

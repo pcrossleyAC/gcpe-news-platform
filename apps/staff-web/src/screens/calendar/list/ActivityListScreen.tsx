@@ -18,6 +18,7 @@ import { ClearLaStatus, CorporateBanner, CorporateQueries, ExportButton, LookAhe
 import { MyQueries } from "./MyQueries";
 import { ReportButtons } from "./Reports";
 import type { CalendarConfigView, ListView } from "./types";
+import { ToolMessageSlot } from "./ToolMessages";
 import { WatchStar } from "./WatchStar";
 
 /** The list query, from `?q=`. Anything that no longer parses gives way to the defaults. */
@@ -71,8 +72,11 @@ type ListTool = "columns" | "export" | "la";
  */
 function ListTools({ lookAhead, panels }: { lookAhead: React.ReactNode; panels: { id: ListTool; label: string; content: React.ReactNode }[] }): React.JSX.Element {
   const [open, setOpen] = useState<ListTool | null>(null);
+  // The panels' status and error lines render here, outside the panels, so closing a panel never
+  // hides or silences a result still to come (ToolMessages).
+  const [messages, setMessages] = useState<HTMLElement | null>(null);
   return (
-    <>
+    <ToolMessageSlot.Provider value={messages}>
       <div className="gcpe-calendar-viewbar">
         {lookAhead}
         <div className="gcpe-list-tools">
@@ -96,7 +100,8 @@ function ListTools({ lookAhead, panels }: { lookAhead: React.ReactNode; panels: 
           {p.content}
         </div>
       ))}
-    </>
+      <div ref={setMessages} className="gcpe-list-tool-messages" />
+    </ToolMessageSlot.Provider>
   );
 }
 
