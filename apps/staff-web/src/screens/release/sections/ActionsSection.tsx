@@ -345,7 +345,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
             error={scheduleError}
           />
           <p className="gcpe-hint gcpe-release-editor__planned-note">
-            {view.publishAt
+            {view.publishAt && view.status === "approved"
               ? `Planned in Publish settings: ${dateTimeText(view.publishAt, timeZone)}. That's only a plan; the time you confirm here is the one that's committed.`
               : "The time you confirm here is the one that's committed. (A planned publish date in Publish settings is only a plan.)"}
           </p>

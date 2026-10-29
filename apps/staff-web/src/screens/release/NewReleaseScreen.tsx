@@ -108,6 +108,8 @@ function issueText(field: string, issue: ZodIssue): string {
       return `Check the ${field} chosen.`;
     case "mediaListKeys":
       return "Check the media distribution lists chosen.";
+    case "publishAt":
+      return "The planned publish date from the activity isn't valid. Fill in from the activity again.";
     default:
       return issue.message;
   }

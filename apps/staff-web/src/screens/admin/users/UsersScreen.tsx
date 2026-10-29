@@ -479,10 +479,11 @@ export function UsersScreen(): React.JSX.Element {
   const reload = useCallback(() => {
     apiFetch<UserView[]>("/core/api/users").then(setUsers, () => setLoadError("Couldn't load users."));
     // Read only, for the Roles column; if it can't load, the column just shows the staff roles.
-    Promise.all([apiFetch<CalendarAccessUser[]>("/core/api/calendar-access"), apiFetch<OrgOption[]>("/core/api/organizations")]).then(
-      ([access, orgs]) => setCalendar(calendarLines(access, orgs)),
-      () => undefined,
-    );
+    Promise.all([apiFetch<CalendarAccessUser[]>("/core/api/calendar-access"), apiFetch<OrgOption[]>("/core/api/organizations")])
+      .then(([access, orgs]) => {
+        if (Array.isArray(access) && Array.isArray(orgs)) setCalendar(calendarLines(access, orgs));
+      })
+      .catch(() => undefined);
   }, []);
 
   // Never fetched for anyone who can't see this page — AppShell already hides the nav item;
