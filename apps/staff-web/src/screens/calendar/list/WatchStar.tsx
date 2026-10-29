@@ -6,6 +6,21 @@ export interface WatchState {
   watcherNames: string[];
 }
 
+/** A drawn star, outlined or filled; the button's name and aria-pressed carry its meaning. */
+function StarIcon({ filled }: { filled: boolean }): React.JSX.Element {
+  return (
+    <svg className="gcpe-star__icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M12 2.75l2.86 5.8 6.4.93-4.63 4.51 1.09 6.37L12 17.35l-5.72 3.01 1.09-6.37-4.63-4.51 6.4-.93z"
+        fill={filled ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** The watchlist star (Activity.aspx.cs:1519-1535; C176): a toggle naming who watches, on the activity page and the list. Not frozen. */
 export function WatchStar({ id, label, watch, myName, onChange }: { id: number; label: string; watch: WatchState; myName: string; onChange: (w: WatchState) => void }): React.JSX.Element {
   const [busy, setBusy] = useState(false);
@@ -28,7 +43,7 @@ export function WatchStar({ id, label, watch, myName, onChange }: { id: number; 
   return (
     <span>
       <button type="button" className="gcpe-star" aria-label={`Watch ${label}`} aria-pressed={watch.isWatched} aria-describedby={`watchers-${id}`} title={tip} disabled={busy} onClick={() => void toggle()}>
-        {watch.isWatched ? "★" : "☆"}
+        <StarIcon filled={watch.isWatched} />
       </button>
       <span id={`watchers-${id}`} className="gcpe-visually-hidden">
         {tip}

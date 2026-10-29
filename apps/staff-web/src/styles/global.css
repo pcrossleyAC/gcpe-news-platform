@@ -1238,6 +1238,32 @@ body {
   font: inherit;
   cursor: pointer;
 }
+/* The watch toggle: a quiet bordered icon button (border 3.6:1 on white), the star in the
+ * primary colour and filled while watched. */
+.gcpe-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0.25rem;
+  color: var(--typography-color-primary, #2d2d2d);
+  background: var(--surface-color-forms-default, #fff);
+  border: 1px solid var(--surface-color-border-medium, #898785);
+  border-radius: var(--layout-border-radius-medium, 4px);
+}
+.gcpe-star:hover {
+  background: var(--surface-color-background-light-gray, #faf9f8);
+}
+.gcpe-star[aria-pressed="true"] {
+  color: var(--surface-color-primary-default, #013366);
+}
+.gcpe-star:disabled {
+  cursor: progress;
+}
+.gcpe-star__icon {
+  display: block;
+}
 .gcpe-sort {
   background: none;
   border: none;
