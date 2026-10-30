@@ -137,6 +137,8 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
   const first = posts.get(FIRST_KEY)!;
   posts.set(FIRST_KEY, {
     ...first,
+    // news.gov's short link (/<n>) shows as the print URL and the permalink box.
+    reference: "NEWS-34332",
     hasMediaAssets: true,
     hasTranslations: true,
     // A YouTube lead: the page shows a link with the vendored placeholder (no third-party load),
