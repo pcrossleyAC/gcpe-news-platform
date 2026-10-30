@@ -20,11 +20,16 @@ jobs:
       TEST_DATABASE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the manuals check compares this branch with the base branch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Manuals are up to date with the screens
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-manuals-current.mjs --base origin/${{ github.base_ref }}
       - run: npm run check
       - run: npm test
       - name: Build Core bundle
