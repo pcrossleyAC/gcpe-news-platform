@@ -54,6 +54,15 @@ describe("ManualScreen", () => {
     ]);
   });
 
+  it("offers the manual as a Word download to a reader who can see it, and to nobody else", async () => {
+    renderManual(["NRMS.Editor"], "/help/manuals/nrms-editor");
+    expect(await screen.findByRole("link", { name: "Download as Word" })).toHaveAttribute("href", "/hub/manuals/nrms-editor.docx");
+    cleanup();
+    renderManual(["NRMS.Viewer"], "/help/manuals/nrms-editor");
+    expect(await screen.findByText(NOT_AVAILABLE)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Download as Word" })).toBeNull();
+  });
+
   it("shows a page: its title, its contents, who it is for and a long 'Last changed' date", async () => {
     renderManual(["Core.Admin"], "/help/manuals/core-admin/government-terms");
     expect(await screen.findByRole("heading", { level: 1, name: "Government terms" })).toBeInTheDocument();

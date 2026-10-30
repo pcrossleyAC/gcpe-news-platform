@@ -420,6 +420,13 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   if (existsSync(staffWebAssetsDir)) {
     app.use("/hub/assets", express.static(staffWebAssetsDir, { immutable: true, maxAge: "1y", fallthrough: false }));
   }
+  // The manuals' "Download as Word" files (/hub/manuals/<manualId>.docx), written by the staff app's
+  // build. Not content-hashed, so no long cache: the default revalidating headers apply. A miss 404s
+  // here rather than reaching the extension check below, which would 404 it anyway.
+  const staffWebManualsDir = join(staffWebDir, "manuals");
+  if (existsSync(staffWebManualsDir)) {
+    app.use("/hub/manuals", express.static(staffWebManualsDir, { index: false, fallthrough: false }));
+  }
   // Deep links (e.g. /hub/releases/<id>) and a plain browser refresh must all resolve to the
   // shell's index.html, which then does its own client-side routing — matched here by "the
   // last path segment has no extension", so a genuinely missing file (anything that looks like

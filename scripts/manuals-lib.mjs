@@ -97,7 +97,7 @@ function decodeRefs(raw) {
   });
 }
 
-function safeTarget(href) {
+export function safeTarget(href) {
   const decoded = decodeRefs(href).replace(/[\u0000-\u0020\u007f-\u009f\u00a0\u1680\u2000-\u200f\u2028\u2029\u202f\u205f\u3000\ufeff]/g, "");
   if (/^[/\\]{2}/.test(decoded) || decoded.startsWith("/\\") || decoded.startsWith("\\")) return false;
   const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(decoded);

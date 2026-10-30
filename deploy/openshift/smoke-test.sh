@@ -3,7 +3,7 @@
 # arbitrary non-root UID in group 0, a read-only root filesystem, and one writable volume at
 # /data. Starts its own pgvector/pgvector:pg16 (the same Postgres as .github/workflows/ci.yml) on a
 # private Docker network, runs `node stack.js --migrate` as a one-off container (what the migration
-# Job does), starts the stack, waits for /stack/health, checks / and /hub/ answer 200, then stops
+# Job does), starts the stack, waits for /stack/health, checks /, /hub/ and a manual's Word file answer 200, then stops
 # it with SIGTERM and checks it exits 0. Used by .github/workflows/openshift-image.yml; runs the
 # same on a developer machine. Everything it creates is removed on exit.
 #
@@ -117,6 +117,8 @@ wait_for "$BASE/" 200 120
 log "/: 200"
 wait_for "$BASE/hub/" 200 30
 log "/hub/: 200"
+wait_for "$BASE/hub/manuals/core-admin.docx" 200 30
+log "/hub/manuals/core-admin.docx: 200"
 
 log "stopping with SIGTERM (graceful shutdown must exit 0)"
 docker stop -t 30 "$APP" >/dev/null

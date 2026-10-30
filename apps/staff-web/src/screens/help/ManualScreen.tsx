@@ -69,6 +69,12 @@ export function ManualScreen({ data = MANUALS_DATA }: { data?: ManualsData }): R
       </p>
       <h1>{manual!.title}</h1>
       <p>For: {manual!.forRoles}</p>
+      <p>
+        {/* A file at a fixed address under /hub/ (written by the build), not a Hub screen: a plain link. */}
+        <a href={`${HUB_PREFIX}/manuals/${manual!.id}.docx`} download>
+          Download as Word
+        </a>
+      </p>
       {manualPages!.length === 0 ? (
         <p>This manual has no pages yet.</p>
       ) : (

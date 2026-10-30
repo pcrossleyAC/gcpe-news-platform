@@ -58,7 +58,7 @@ deploy/openshift/smoke-test.sh gcpe-stack
 It starts `pgvector/pgvector:pg16` on a private Docker network, creates the seven databases, runs
 `node stack.js --migrate` twice (the second must find nothing to do), starts the stack as a random
 UID in group 0 with `--read-only`, `--cap-drop ALL`, `no-new-privileges` and a volume at `/data`,
-waits for `/stack/health` to be `ok`, checks `/` and `/hub/` answer 200, then stops it with SIGTERM
+waits for `/stack/health` to be `ok`, checks `/`, `/hub/` and `/hub/manuals/core-admin.docx` (a manual's Word file) answer 200, then stops it with SIGTERM
 and requires exit code 0.
 
 By hand, against a Postgres of your own (the container must reach it by name or address, so put
@@ -237,7 +237,7 @@ removed: they predated the single-stack design and nothing deployed them):
 - **CI** (`.github/workflows/openshift-image.yml`) runs on every pull request and every push to
   `main`: builds the image with BuildKit (layers cached in the GitHub Actions cache) and runs
   `deploy/openshift/smoke-test.sh` on it. A change that breaks the image, the build, migrations,
-  startup on a read-only filesystem as an arbitrary UID, `/stack/health`, `/`, `/hub/` or a clean
+  startup on a read-only filesystem as an arbitrary UID, `/stack/health`, `/`, `/hub/`, a manual's Word file or a clean
   SIGTERM fails the check. The image is **never pushed** to a registry; publishing is a separate,
   deliberate decision.
 - **`tests/openshift-image.test.ts`** (in the normal `npm test`) fails when the Dockerfile, the
