@@ -237,6 +237,15 @@ describe("search page", () => {
     expect(doc.getElementById("search-status")!.textContent).toBe("No results found.");
   });
 
+  it("ministry, sector and content entries are ordered by count, largest first, as legacy's facets; dates keep their order", async () => {
+    const facets = { ministries: [{ key: "health", count: 2 }, { key: "finance", count: 9 }], sectors: [], types: [{ key: "releases", count: 1 }, { key: "stories", count: 5 }], terms: [] };
+    const { doc, settled } = open("?q=x", { ...EMPTY, total: 3, results: [result()], facets });
+    await settled();
+    const shown = (facet: string) => [...doc.querySelectorAll(`#facet-${facet} li[data-key]`)].filter((li) => !(li as HTMLElement).hidden).map((li) => li.textContent);
+    expect(shown("ministry")).toEqual(["Finance: 9", "Health & <Care>: 2"]);
+    expect(shown("content")).toEqual(["Story: 5", "Release: 1"]);
+  });
+
   it("facet counts reduce the lists; facets null keeps the baked lists", async () => {
     const facets = { ministries: [{ key: "health", count: 1234 }], sectors: [], types: [{ key: "releases", count: 2 }, { key: "stories", count: 1 }], terms: [{ slug: "2024-2028", count: 3 }] };
     const { doc, settled } = open("?q=x", { ...EMPTY, total: 3, results: [result()], facets });

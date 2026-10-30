@@ -271,6 +271,11 @@ export const SEARCH_SCRIPT = `(() => {
             if (n > 0) li.appendChild(el("span", "", ": " + count(n)));
             else li.hidden = true;
           }
+          // Legacy lists an entry facet by count, largest first (the sort is stable); dates keep their order.
+          if (facet !== "date") {
+            const byCount = items(facet).slice().sort((a, b) => (counts.get(b.dataset.key) || 0) - (counts.get(a.dataset.key) || 0));
+            for (const li of byCount) li.parentNode.appendChild(li);
+          }
         }
       })
       .catch((err) => { status.textContent = ""; alertEl.textContent = err && typeof err.userMessage === "string" ? err.userMessage : GENERIC; });
