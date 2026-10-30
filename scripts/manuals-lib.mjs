@@ -104,11 +104,37 @@ function safeTarget(href) {
   if (scheme) return ["http", "https", "mailto", "manual", "topic"].includes(scheme[1].toLowerCase());
   return !href.includes(":") && !/&(?:#|[A-Za-z][A-Za-z0-9]*;)/.test(href);
 }
+// Set by compile() while it renders one page: turns a manual:/topic: target into a Hub route
+// (or throws). Without one (renderMarkdown on its own) such targets are left as written.
+let resolveInternal = null;
+
+const INTERNAL = /^(manual|topic):([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+
+/** The Hub address for a `manual:` or `topic:` target; the Hub is mounted at /hub/. Throws if it points nowhere. */
+function internalRoute(target, headers) {
+  const m = INTERNAL.exec(target);
+  if (!m) throw new Error(`link "${target}" is not valid: write manual:<page id>, manual:<manual id> or topic:<topic id>`);
+  const [, kind, id] = m;
+  const page = headers.find((h) => h.id === id);
+  if (kind === "topic") {
+    if (!page || page.manual !== "topic") throw new Error(`link "${target}" does not match a topic page`);
+    return `/hub/help/manuals/topic/${id}`;
+  }
+  if (page && page.manual !== "topic") return `/hub/help/manuals/${page.manual}/${id}`;
+  if (MANUAL_IDS.includes(id)) return `/hub/help/manuals/${id}`;
+  throw new Error(`link "${target}" does not match a manual page or a manual`);
+}
+
 const marked = new Marked({
   renderer: {
     html: ({ text }) => escapeHtml(text),
     link(token) {
-      return safeTarget(token.href) ? false : this.parser.parseInline(token.tokens);
+      if (!safeTarget(token.href)) return this.parser.parseInline(token.tokens);
+      if (resolveInternal) {
+        const target = decodeRefs(token.href).trim();
+        if (/^(manual|topic):/i.test(target)) token.href = resolveInternal(target);
+      }
+      return false;
     },
     image(token) {
       return safeTarget(token.href) ? false : escapeHtml(token.text);
@@ -116,8 +142,13 @@ const marked = new Marked({
   },
 });
 
-export function renderMarkdown(markdown) {
-  return marked.parse(markdown, { async: false });
+export function renderMarkdown(markdown, resolve = null) {
+  resolveInternal = resolve;
+  try {
+    return marked.parse(markdown, { async: false });
+  } finally {
+    resolveInternal = null;
+  }
 }
 
 const hashOf = (header, body) =>
@@ -133,13 +164,24 @@ const hashOf = (header, body) =>
 export function compile(pages, previousData, today) {
   const old = new Map((previousData?.pages ?? []).map((p) => [p.id, p]));
   const seen = new Map();
-  const out = [];
+  const parsed = [];
   for (const { path, text } of pages) {
     const { header, body } = parsePage(path, text);
     if (seen.has(header.id)) fail(path, `duplicate id "${header.id}", already used by ${seen.get(header.id)}`);
     seen.set(header.id, path);
+    parsed.push({ path, header, body });
+  }
+  const headers = parsed.map((p) => p.header);
+  const out = [];
+  for (const { path, header, body } of parsed) {
     const hash = hashOf(header, body);
-    const html = renderMarkdown(body);
+    const html = renderMarkdown(body, (target) => {
+      try {
+        return internalRoute(target, headers);
+      } catch (e) {
+        return fail(path, e.message);
+      }
+    });
     const prev = old.get(header.id);
     let changed = today;
     let previous = null;

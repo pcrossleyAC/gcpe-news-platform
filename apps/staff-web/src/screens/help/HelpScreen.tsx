@@ -6,6 +6,7 @@ import { TableScroll } from "../../shared/TableScroll";
 import { GLOSSARY, type GlossaryArea } from "../../shared/glossary";
 import { isApplePlatform, SHORTCUTS, shortcutText, shortcutWords } from "../../shared/shortcuts";
 import { hasAnyReadRole } from "../../shell/nav";
+import { MANUALS, visibleManuals } from "../../manuals/catalog";
 import { canReadWebsite } from "../website/access";
 import { canReadSubscribers } from "../subscribers/access";
 import { hasCalendarRole } from "../calendar/access";
@@ -96,7 +97,7 @@ const HOW_TO: HowTo[] = [
 const AREAS: GlossaryArea[] = ["Releases", "Website", "Subscribers", "Calendar"];
 
 /**
- * `/hub/help`: for every signed-in user, linked from the header. How do I (pointers for the areas
+ * `/hub/help`: for every signed-in user, linked from the header. The manuals for this user's roles, How do I (pointers for the areas
  * this user can open), the keyboard shortcuts (from shared/shortcuts.tsx, the registry the keys
  * themselves use) and the glossary (shared/glossary.ts, which the "?" explanations also use).
  */
@@ -118,6 +119,7 @@ export function HelpScreen(): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [hash]);
 
+  const manuals = visibleManuals(session).map((id) => MANUALS.find((m) => m.id === id)!);
   const howTo = HOW_TO.filter((h) => h.show(session));
 
   return (
@@ -126,6 +128,9 @@ export function HelpScreen(): React.JSX.Element {
       <p>What the Hub&rsquo;s screens are for, its keyboard shortcuts, and what its terms mean. Some tasks need an editor&rsquo;s role.</p>
       <nav aria-label="On this page">
         <ul>
+          <li>
+            <a href="#manuals">Manuals</a>
+          </li>
           <li>
             <a href="#how-do-i">How do I…</a>
           </li>
@@ -137,6 +142,23 @@ export function HelpScreen(): React.JSX.Element {
           </li>
         </ul>
       </nav>
+
+      <section aria-labelledby="manuals">
+        <h2 id="manuals" tabIndex={-1}>
+          Manuals
+        </h2>
+        {manuals.length === 0 && <p>No manuals for your roles yet.</p>}
+        {manuals.length > 0 && (
+          <ul className="gcpe-help__list">
+            {manuals.map((m) => (
+              <li key={m.id}>
+                <Link to={`/help/manuals/${m.id}`}>{m.title}</Link>
+                <span className="gcpe-help__aka"> For {m.forRoles}.</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section aria-labelledby="how-do-i">
         <h2 id="how-do-i" tabIndex={-1}>

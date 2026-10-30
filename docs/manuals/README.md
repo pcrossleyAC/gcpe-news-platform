@@ -39,7 +39,7 @@ The readers are staff, not developers. Write for someone looking at the screen.
 - Name screens and buttons exactly as they appear on screen.
 - No filler introductions, and do not restate a heading as the first sentence under it. A test rejects a first sentence that begins with its own heading.
 - Describe only what the reader can see and do.
-- Raw HTML in a page is shown as text, not rendered. Use Markdown only. Links may go to http, https, mailto, a relative address, or a `manual:` or `topic:` target; any other link is shown as plain text.
+- Raw HTML in a page is shown as text, not rendered. Use Markdown only. Links may go to http, https, mailto, a relative address, or a `manual:` or `topic:` target; any other link is shown as plain text. Write `[text](manual:<page id>)` to link to a page of any manual, `[text](manual:<manual id>)` to link to a manual's list of pages, and `[text](topic:<topic page id>)` to link to a topic page. The build turns them into Hub addresses and stops with an error if the target does not exist.
 
 ## The up-to-date test
 

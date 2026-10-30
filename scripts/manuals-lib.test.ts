@@ -113,10 +113,37 @@ describe("links and images", () => {
     expect(h).not.toContain("<img");
     expect(h).toContain("alt text");
   });
-  it("keeps http, https, mailto, manual:, topic: and relative links", () => {
-    for (const t of ["http://a.example/", "https://a.example/", "mailto:a@b.example", "manual:core-admin", "topic:signing-in", "/government-terms", "#top", "other-page"]) {
+  it("keeps http, https, mailto and relative links", () => {
+    for (const t of ["http://a.example/", "https://a.example/", "mailto:a@b.example", "/government-terms", "#top", "other-page"]) {
       expect(html(`[go](${t})\n`)).toContain(`<a href="${t}">go</a>`);
     }
+  });
+});
+
+describe("manual: and topic: links", () => {
+  const pages = (body: string) => [
+    src("docs/manuals/core-admin/terms.md", page({ id: "terms", manual: "core-admin" }, body)),
+    src("docs/manuals/nrms-editor/release.md", page({ id: "release", manual: "nrms-editor" })),
+    src("docs/manuals/topic/signing-in.md", page({ id: "signing-in", manual: "topic" })),
+  ];
+  const html = (body: string) => compile(pages(body), null, "2026-10-30").pages.find((p) => p.id === "terms")!.html;
+  it("turns manual:<page id> into that page's Hub route, under /hub/", () => {
+    expect(html("[go](manual:release)\n")).toContain('<a href="/hub/help/manuals/nrms-editor/release">go</a>');
+  });
+  it("turns manual:<manual id> into the manual's contents route", () => {
+    expect(html("[go](manual:nrms-editor)\n")).toContain('<a href="/hub/help/manuals/nrms-editor">go</a>');
+  });
+  it("turns topic:<id> into the topic route", () => {
+    expect(html("[go](topic:signing-in)\n")).toContain('<a href="/hub/help/manuals/topic/signing-in">go</a>');
+  });
+  it("fails, naming the file, for a target that does not exist or is the wrong kind", () => {
+    expect(() => html("[go](manual:nope)\n")).toThrow(/terms\.md.*manual:nope/);
+    expect(() => html("[go](topic:nope)\n")).toThrow(/terms\.md.*topic:nope/);
+    expect(() => html("[go](topic:release)\n")).toThrow(/terms\.md.*topic:release/);
+    expect(() => html("[go](manual:signing-in)\n")).toThrow(/terms\.md.*manual:signing-in/);
+  });
+  it("fails for a malformed target", () => {
+    expect(() => html("[go](manual:Bad_Id)\n")).toThrow(/terms\.md/);
   });
 });
 

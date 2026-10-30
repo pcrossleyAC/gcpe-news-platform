@@ -36,12 +36,12 @@ describe("HelpScreen", () => {
     vi.unstubAllGlobals();
   });
 
-  it("has one h1, a title, and the three parts in its contents: How do I, Keyboard shortcuts, Glossary", async () => {
+  it("has one h1, a title, and the four parts in its contents: Manuals, How do I, Keyboard shortcuts, Glossary", async () => {
     renderHelp(["NRMS.Editor"]);
     expect(await screen.findByRole("heading", { level: 1, name: "Help" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     const contents = screen.getByRole("navigation", { name: "On this page" });
-    expect(within(contents).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["#how-do-i", "#shortcuts", "#glossary"]);
+    expect(within(contents).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["#manuals", "#how-do-i", "#shortcuts", "#glossary"]);
     await waitFor(() => expect(document.title).toBe("Help — GCPE News Staff"));
   });
 
@@ -78,6 +78,35 @@ describe("HelpScreen", () => {
     renderHelp(["Calendar.ReadOnly"], "/help#glossary-la-status");
     const term = await screen.findByText("LA Status", { selector: "dt" });
     await waitFor(() => expect(term).toHaveFocus());
+  });
+
+  it("lists the manuals for the reader's roles, own first (Review Focus 2)", async () => {
+    renderHelp(["NRMS.Editor", "Calendar.ReadOnly"]);
+    const manuals = (await screen.findByRole("heading", { level: 2, name: "Manuals" })).closest("section")!;
+    const links = within(manuals).getAllByRole("link");
+    expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Releases editor manual", "/help/manuals/nrms-editor"],
+      ["Calendar read-only manual", "/help/manuals/calendar-readonly"],
+      ["Releases viewer manual", "/help/manuals/nrms-viewer"],
+    ]);
+    expect(within(manuals).queryByText(/Site editor manual|Calendar administrator manual/)).toBeNull();
+  });
+
+  it("lists every manual for a Core administrator, Core administrator manual first", async () => {
+    renderHelp(["Core.Admin"]);
+    const manuals = (await screen.findByRole("heading", { level: 2, name: "Manuals" })).closest("section")!;
+    const links = within(manuals).getAllByRole("link");
+    expect(links).toHaveLength(11);
+    expect(links[0]).toHaveTextContent("Core administrator manual");
+  });
+
+  it("says there are no manuals, and still shows shortcuts and glossary, for a user with no app role (Review Focus 1)", async () => {
+    renderHelp(["Core.Read"]);
+    const manuals = (await screen.findByRole("heading", { level: 2, name: "Manuals" })).closest("section")!;
+    expect(within(manuals).getByText("No manuals for your roles yet.")).toBeInTheDocument();
+    expect(within(manuals).queryAllByRole("link")).toHaveLength(0);
+    expect(screen.getByRole("heading", { level: 2, name: "Keyboard shortcuts" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Glossary" })).toBeInTheDocument();
   });
 
   it("has no serious/critical axe violations", async () => {

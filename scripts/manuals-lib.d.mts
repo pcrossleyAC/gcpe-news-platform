@@ -24,7 +24,7 @@ export interface PageSource {
 }
 export declare const MANUAL_IDS: string[];
 export declare function parsePage(path: string, text: string): { header: ManualHeader; body: string };
-export declare function renderMarkdown(markdown: string): string;
+export declare function renderMarkdown(markdown: string, resolve?: ((target: string) => string) | null): string;
 export declare function compile(pages: PageSource[], previousData: ManualsData | null, today: string): ManualsData;
 export declare function readManualPages(dir?: string): PageSource[];
 export declare function vancouverToday(now?: Date): string;
