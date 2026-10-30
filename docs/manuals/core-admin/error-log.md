@@ -17,7 +17,7 @@ topics: []
 2. Choose **Refresh** to load newer entries.
 3. Each entry shows **When** it happened, a **Process ID** and the **Message**.
 
-When you report a problem, copy the time and the whole message. The **Process ID** tells the support team which run of the system logged it: a new number means the system restarted.
+When you report a problem, copy the time and the whole message. The **Process ID** tells the support team which run of the system logged it.
 
 ## What to know
 

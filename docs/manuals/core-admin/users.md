@@ -15,7 +15,7 @@ The table lists every staff account with its **Name**, **Email**, **Sign-in** (*
 
 ## Find someone
 
-1. Type part of a name, email address or role in **Filter users**.
+1. Type part of a name or email address in **Filter users**. You can also type a single word of a role, such as Editor or Admin. Full badge names such as "NRMS Site editor" don't match.
 2. The table narrows as you type, and the count shows "Showing 3 of 24 users". Type **active** or **inactive** to list people by status.
 
 ## Add a user
@@ -32,9 +32,9 @@ Nobody is emailed. Tell the person their account is ready.
 
 ### What each role allows
 
-The table shows roles as short badges. The boxes write the same names joined by a dot instead of a space.
+The table shows roles as short badges. Each box starts with the role's system name: the area, a dot, then the role's words run together with no spaces (so **NRMS Site editor** appears as NRMS, a dot and SiteEditor). Then it says what the role allows.
 
-| Badge | What the box says it allows |
+| Badge | What it allows |
 |---|---|
 | **Core Admin** | Manage staff users, Project Blue Bridge, and the error log. It also opens every screen under **Administration**. |
 | **NRMS Editor** | Create, edit, and publish news releases. |

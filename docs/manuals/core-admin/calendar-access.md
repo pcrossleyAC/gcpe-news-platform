@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Core administrators (Core.Admin).
 
-**Calendar access** gives staff a Calendar role and the ministries they work for. Calendar administrators and Calendar system administrators use this screen too, with limits; you have none.
+**Calendar access** gives staff a Calendar role and the ministries they work for. Calendar administrators use this screen too, but with limits that don't apply to you.
 
 The table shows each person's **Name**, **Email**, **Calendar role** and **Ministries**. Inactive people are hidden until you tick **Show inactive users, including those with no email**.
 

@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Core administrators (Core.Admin), with one part for site editors (NRMS.SiteEditor).
 
-A new government used to take about twenty manual steps, some of them by developers. Now the Hub dates the archive, builds its pages and sends old ministry addresses to the new ones by itself. You enter one date and, where ministries change, prepare one cabinet change.
+The Hub dates the archive, builds its pages and sends old ministry addresses to the new ones by itself. You enter one date and, where ministries change, prepare one cabinet change.
 
 ## At a glance
 
@@ -54,7 +54,3 @@ Nobody needs to do anything.
 1. On **Organizations**, choose **Edit** on each ministry and update the **Minister name**, **Minister photo URL** and **Minister biography**. Upload photos under **Website** > **Files** first.
 2. Take down or change any election notice on **Website** > **Site settings** > **Banner**, and publish.
 3. Update the ministers' contact records in Media Hub. The Hub does not change them.
-
-## What no longer needs doing
-
-No archive pages are made by hand, Corporate Search needs no change, and no developer is needed.

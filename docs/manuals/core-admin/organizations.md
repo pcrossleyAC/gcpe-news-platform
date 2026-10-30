@@ -31,7 +31,7 @@ The public page shows the alternate contact only when there is a primary contact
 
 ### The abbreviation
 
-Every release number starts with the lead ministry's abbreviation, as in 2026HLTH0001. Use 2 to 10 capital letters or digits. No two active ministries may share one. A release can't be approved until its lead ministry has an abbreviation: release editors see "The lead ministry has no abbreviation in Core; add one before approving." Changing it affects only releases approved from then on.
+Every release number contains the lead ministry's abbreviation, as in 2026HLTH0001. Use 2 to 10 capital letters or digits. No two active ministries may share one. A release can't be approved until its lead ministry has an abbreviation: release editors see "The lead ministry has no abbreviation in Core; add one before approving." Changing it affects only releases approved from then on.
 
 ## Add a ministry
 
@@ -52,7 +52,7 @@ Tick or untick the boxes on the ministry's row. Each change saves at once and sh
 Use a hand-over when a ministry is replaced: merged, split or renamed into a new one. A plain rename needs no hand-over: change the name with **Edit**. The web address, subscribers and history stay.
 
 1. Choose **Deactivate** on the ministry's row. A panel titled "Deactivate {ministry}" opens.
-2. In **Has a successor?**, choose the ministry that takes over its work. For a split, choose **Add another successor** and pick the next one.
+2. In **Has a successor?**, choose the ministry that takes over its work. For a split, choose **Add another successor** and pick the next one. Staff, Calendar activities and draft releases go to the first successor.
 3. Under "What moves to {successor}", untick anything that should stay behind. Each box shows how many it moves:
    - "Send {ministry}'s web pages to {successor}" is always on.
    - "Move {n} subscribers to {successors}." Subscribers are added to every successor.

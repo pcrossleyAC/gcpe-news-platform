@@ -35,7 +35,7 @@ The banner's wording is on **Site settings** > **Site identity**, which site edi
 
 ## What happens next
 
-- The public site changes to its mourning theme, with a black banner announcing the King's death. The home page changes within a few minutes; older pages follow over the next while, newest first.
+- The public site changes to its mourning theme, with a black banner announcing the King's death. The home page changes within a few minutes; older pages follow over the following minutes, newest first.
 - Every active Core administrator gets an email such as "Project Blue Bridge turned ON on {site}", saying who changed it and when.
 - The change is listed in **Website log**.
 - Turning it off puts the site back the same way.
@@ -44,6 +44,4 @@ The banner's wording is on **Site settings** > **Site identity**, which site edi
 
 | Message | What it means |
 |---|---|
-| "Type KING CHARLES III to confirm." | The phrase was not typed exactly, in capitals. |
-| "Confirm that IGRS has approved this change." | Tick **IGRS has approved this change**. |
 | "Someone else changed this — reload to see their changes." | Someone else changed the switch while you had the page open. Choose **Reload** and check its state. |

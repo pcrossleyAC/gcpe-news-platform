@@ -3659,6 +3659,18 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   overflow-wrap: anywhere;
 }
 
+/* Manual tables keep words whole: a narrow screen scrolls the table inside its own box
+ * (.gcpe-table-scroll) instead of breaking "Calendar" into "Calen dar". */
+.gcpe-manual__content table {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.gcpe-manual__content :is(th, td) {
+  min-inline-size: 8rem;
+}
+
 .gcpe-manual__content :is(h2, h3, h4) {
   margin-block-start: 1.5rem;
 }

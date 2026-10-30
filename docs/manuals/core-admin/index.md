@@ -9,7 +9,7 @@ topics: [new-government]
 ---
 **Who this is for:** Core administrators (Core.Admin).
 
-You run the screens under **Administration** in the side menu. Most of them did not exist on the old news platform: these jobs used to need a developer. This map lists each screen, what it controls and who else notices when you change it.
+You run the screens under **Administration** in the side menu. This map lists each screen, what it controls and who else notices when you change it.
 
 ## The admin map
 
