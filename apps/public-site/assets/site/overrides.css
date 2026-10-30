@@ -190,6 +190,10 @@ html:not(.js) #btnCloseBannerBridge{display:none}
 .home-body .article h3{font-size:20px;font-weight:600;color:var(--color-primary)}
 /* A kind listing's title (pages/listing.ts) is the page's h1 where legacy's was an h3: legacy's .fact-sheets .home-body h3 metrics. */
 .home-body .listing-title{font-size:36px;font-weight:600;color:var(--color-text);line-height:1.2;border-bottom:1px solid var(--color-border);margin-top:35px;padding-bottom:10px;margin-bottom:40px}
+/* Live news.gov's kind listings (/factsheets, /stories, ...) render that h3 without the fact-sheets
+ * class, so it shows at 28px/500 with no rule; the h1 matches what readers see. Ministry factsheets
+ * (an h2) keep the rule above, as live. */
+.home-body h1.listing-title{font-size:28px;font-weight:500;line-height:1.2;border-bottom:0;margin:0 0 8px;padding-bottom:0}
 .listing-empty{margin:0 0 20px}
 /* Legacy's "Load More News" was a link (a.load-more.link-button); ours is a button. */
 .home-body .news-control button.load-more{height:auto;min-height:28px;cursor:pointer}
