@@ -90,10 +90,13 @@ describe("ReleaseListScreen", () => {
     expect(releasesCall).toBe("/nrms/api/releases?folder=drafts&type=all&page=1&pageSize=25");
   });
 
-  it("has no ⌘K of its own: the key goes to Find a release in the side menu (no text search here)", async () => {
+  it("Ctrl+K (⌘K on a Mac) goes to the Type filter, which says so", async () => {
     renderScreen("drafts", "/releases/drafts", { releasesPage: page([item({ headline: "First headline" })]) });
     await screen.findByText("First headline");
-    expect(screen.getByLabelText("Type", { exact: false })).not.toHaveAttribute("aria-keyshortcuts");
+    const type = screen.getByLabelText("Type", { exact: false });
+    expect(type).toHaveAttribute("aria-keyshortcuts", "Control+K");
+    expect(fireEvent.keyDown(document.body, { key: "k", ctrlKey: true })).toBe(false);
+    expect(type).toHaveFocus();
   });
 
   describe("the Type filter is remembered for this user", () => {

@@ -42,7 +42,7 @@ const HOW_TO: HowTo[] = [
         <strong>Correct a published release:</strong> edit it and save; it republishes. Subscribers and media lists aren&rsquo;t emailed again.
       </>,
       <>
-        <strong>Find a release:</strong> type its number (NEWS-00007) or some of its words into Find a release, at the top of the side menu ({mod("K")} goes there). A number opens the release; words open <Link to="/search">Search</Link>, where you can narrow by ministry or sector.
+        <strong>Find a release:</strong> type its number (NEWS-00007) or some of its words into Find a release, at the top of the side menu ({mod("K")} goes there on screens without a search or filter box of their own). A number opens the release; words open <Link to="/search">Search</Link>, where you can narrow by ministry or sector.
       </>,
     ],
   },

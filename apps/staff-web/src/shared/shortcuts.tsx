@@ -45,7 +45,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     key: "k",
     modifier: true,
     does: "Go to the search or filter box",
-    where: "Search, the Calendar list (opens Filters), Subscribers and Users go to their own box; every other screen with Releases goes to Find a release in the side menu.",
+    where: "Release lists (the Type filter), Search, the Calendar list (opens Filters), Subscribers and Users. On other screens, Find a release in the side menu (for anyone with Releases).",
   },
   {
     id: "escape",

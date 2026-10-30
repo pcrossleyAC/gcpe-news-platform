@@ -6,6 +6,7 @@ import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { readRememberedView, rememberView } from "../../shared/rememberedView";
+import { useSearchShortcut } from "../../shared/shortcuts";
 import { ReleaseRow } from "./ReleaseRow";
 import { Pagination } from "./Pagination";
 import { ReleaseFolderTabs } from "./ReleaseFolderTabs";
@@ -28,7 +29,8 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
   const [searchParams, setSearchParams] = useSearchParams();
   const session = useSession();
   const timeZone = useTenantTimeZone();
-  // ⌘/Ctrl+K goes to "Find a release" in the side menu: the list has no text search of its own.
+  // ⌘/Ctrl+K: the list's one filter (it has no text search).
+  useSearchShortcut("release-type-filter");
   useDocumentTitle("Releases");
   const [result, setResult] = useState<ReleasePage<ReleaseListItem> | null>(null);
   const [error, setError] = useState<string | null>(null);
