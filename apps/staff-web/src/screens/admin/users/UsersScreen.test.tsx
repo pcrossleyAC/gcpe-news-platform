@@ -74,8 +74,33 @@ describe("UsersScreen", () => {
     const name = within(row).getByRole("textbox", { name: "self@x.invalid display name" });
     expect(visibleText(row.querySelector(`label[for="${name.id}"]`)!)).toBe("display name");
     expect(visibleText(within(row).getByRole("switch", { name: "self@x.invalid is active" }).closest("label")!)).toBe("Active");
-    const admin = within(row).getByLabelText(/^Core\.Admin — Manage staff users/);
-    expect(admin.closest("label")!.querySelector("strong")).toHaveTextContent("Core.Admin");
+    const admin = within(row).getByLabelText(/^Core Admin — Manage staff users/);
+    expect(admin.closest("label")!.querySelector("strong")).toHaveTextContent("Core Admin");
+    // Every box is named by the badge name staff see in the table, and the names are all different.
+    const names = within(row).getAllByRole("checkbox").filter((c) => c.id.startsWith("roles-")).map((c) => c.closest("label")!.querySelector("strong")!.textContent);
+    expect(names).toEqual(["Core Admin", "NRMS Editor", "NRMS Site editor", "NRMS Viewer", "NoD Viewer", "NoD Editor", "NoD Admin", "Distribution Send"]);
+  });
+
+  it("filters by the role names shown on the badges, and still by the role id", async () => {
+    const EDITOR: UserView = { id: "se-1", email: "se@x.invalid", displayName: "Sam", isActive: true, signInMethod: "local", roles: ["NRMS.SiteEditor"] };
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, EDITOR]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    const table = await screen.findByRole("table", { name: "Staff users" });
+    const filter = screen.getByRole("searchbox", { name: /Filter users/ });
+    await user.type(filter, "Site editor");
+    expect(within(table).getByRole("rowheader", { name: "Sam" })).toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: "Self" })).toBeNull();
+    await user.clear(filter);
+    await user.type(filter, "Core Admin");
+    expect(within(table).getByRole("rowheader", { name: "Self" })).toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: "Sam" })).toBeNull();
+    await user.clear(filter);
+    await user.type(filter, "NRMS.SiteEditor");
+    expect(within(table).getByRole("rowheader", { name: "Sam" })).toBeInTheDocument();
   });
 
   it("shows a Calendar role read-only in the Roles column, with the way to Calendar access", async () => {
@@ -194,7 +219,7 @@ describe("UsersScreen", () => {
 
     await user.type(within(form).getByLabelText(/^Email/), "new@x.invalid");
     await user.type(within(form).getByLabelText(/^Display name/), "New Person");
-    await user.click(within(form).getByLabelText("NRMS.Editor — Create, edit, and publish news releases."));
+    await user.click(within(form).getByLabelText("NRMS Editor — Create, edit, and publish news releases."));
     await user.click(within(form).getByLabelText("Set a password now"));
     await user.type(within(form).getByLabelText("Password (at least 12 characters)"), "correct-horse-battery");
     await user.click(within(form).getByRole("button", { name: "Add user" }));
@@ -306,7 +331,7 @@ describe("UsersScreen", () => {
     await openEditor("self@x.invalid");
     const user = userEvent.setup();
     const row = (await screen.findByRole("heading", { name: "self@x.invalid" })).closest<HTMLElement>(".gcpe-users__editor")!;
-    await user.click(within(row).getByLabelText(/^Core\.Admin —/));
+    await user.click(within(row).getByLabelText(/^Core Admin —/));
     await user.click(within(row).getByRole("button", { name: "Save roles" }));
 
     expect(await screen.findByText("you can't remove your own admin access")).toBeInTheDocument();

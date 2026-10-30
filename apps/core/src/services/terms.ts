@@ -19,11 +19,24 @@ export class TermRuleError extends Error {
   }
 }
 
-/** Staff-edit rules for PUT /terms. Not applied by upsertTerm, so the legacy importer keeps its legacy keys and null names. */
-export async function checkTermWrite(db: Db, input: TermInput): Promise<void> {
+/** A create found the key already in use (exact, or differing only in letters' case). Its message is shown to staff as written. */
+export class TermExistsError extends Error {
+  constructor(readonly existing: TermRecord) {
+    super(`A ${existing.kind} with the key ${existing.key} already exists: ${existing.displayName ?? existing.key}.`);
+    this.name = "TermExistsError";
+  }
+}
+
+function checkTermName(input: TermInput): string {
   const name = input.displayName?.trim() ?? "";
   if (name === "") throw new TermRuleError("name-required");
   if (name.length > TERM_NAME_MAX) throw new TermRuleError("name-too-long");
+  return name;
+}
+
+/** Staff-edit rules for PUT /terms. Not applied by upsertTerm, so the legacy importer keeps its legacy keys and null names. */
+export async function checkTermWrite(db: Db, input: TermInput): Promise<void> {
+  checkTermName(input);
   const [exact] = await db
     .select({ key: terms.key })
     .from(terms)
@@ -106,6 +119,42 @@ export async function upsertTerm(
       subscribers,
     );
     return { record, changed: true };
+  });
+}
+
+/**
+ * Staff "Add": creates a term and never changes an existing one. Refuses a key already in use (or
+ * differing only in case) with TermExistsError. The insert is ON CONFLICT DO NOTHING under the
+ * aggregate lock, so two adds of one key cannot overwrite each other. Emits the same upserted event
+ * upsertTerm does, so subscribers need no change.
+ */
+export async function createTerm(db: Db, input: TermInput, subscribers: SubscriberConfig[]): Promise<{ record: TermRecord }> {
+  const data = termInputSchema.parse(input);
+  const displayName = checkTermName(data);
+  if (!NEW_TERM_KEY.test(data.key)) throw new TermRuleError("key-format");
+  return db.transaction(async (tx) => {
+    await lockAggregate(tx, termAggregateId(data.kind, data.key));
+    const [variant] = await tx
+      .select()
+      .from(terms)
+      .where(and(eq(terms.kind, data.kind), sql`lower(${terms.key}) = lower(${data.key})`));
+    if (variant) throw new TermExistsError(toTermRecord(variant));
+    const [row] = await tx
+      .insert(terms)
+      .values({ ...data, displayName, legacyId: null, updatedAt: new Date() })
+      .onConflictDoNothing({ target: [terms.kind, terms.key] })
+      .returning();
+    if (!row) {
+      const [existing] = await tx.select().from(terms).where(and(eq(terms.kind, data.kind), eq(terms.key, data.key)));
+      throw new TermExistsError(toTermRecord(existing!));
+    }
+    const record = toTermRecord(row);
+    await enqueueEvent(
+      tx,
+      { type: termEventType(record.kind, "upserted"), source: CORE_SOURCE, aggregateId: termAggregateId(record.kind, record.key), data: record },
+      subscribers,
+    );
+    return { record };
   });
 }
 

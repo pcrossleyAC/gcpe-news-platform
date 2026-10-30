@@ -148,10 +148,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   Mail Distribution classified `ignored` (not recognisable as a bounce at all — an auto-reply, a
   calendar response, anything else that landed in the inbox) never does; a window with only
   ignored mail sends no summary.
-- **Administrator** — Staff roles for subscribers: **NoD Viewer** finds subscribers and reads
-  their details and history; **NoD Editor** also adds, edits, deactivates, reactivates, deletes
-  and changes email; **NoD Admin** can do everything an Editor can. Grant them on the Users
-  screen.
 - **Editor** — Bulk actions apply to the rows ticked on the current page only, always after a
   confirmation. Skipped rows (already in that state, or a deleted subscriber you tried to
   activate) are counted in the message, not treated as errors.
@@ -180,9 +176,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   NoD Admins can stop offering a list or a whole category (existing subscribers keep it and
   still get its releases) and set the order the public sees. Names come from Core, and media
   lists from NRMS.
-- **Administrator** — "Media list names" (Core Admins) adds, renames, orders and retires media
-  lists. Retiring stops releases going to a list but keeps its members. Changes reach News On
-  Demand within a minute.
 - **Editor** — Media lists: add a reporter from Media Hub (choose which of their emails) or type
   an address for someone not in Media Hub. If they unsubscribed, you'll be asked to confirm, and
   you'll see when they left; add them only if they've asked to come back.
@@ -329,24 +322,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Phase 5a — Calendar roles, ministries and HQ organizations
 
-- **Administrator** — Calendar access (Hub → Calendar access) gives a person one Calendar role (Read
-  Only, Editor, Advanced, Administrator, System Administrator) and their ministries. A role needs at
-  least one ministry. Saving replaces the person's whole ministry list.
-- **Administrator** — A Calendar Administrator can grant up to Administrator. Only a System
-  Administrator or a Core admin can grant System Administrator, or change a System Administrator's
-  access. Nobody but a Core admin can change their own access: ask another administrator.
-- **Administrator** — Members of an HQ organization see every ministry. GCPE Headquarters, GCPE
-  Media Relations and the Office of the Premier are HQ. Only an HQ Administrator, a System Administrator or a Core admin can add an
-  HQ ministry to someone.
-- **Administrator** — Only a Core admin adds users. A Calendar Administrator gives existing users
-  Calendar access.
-- **Administrator** — Core admins set which organizations are HQ on Hub → Organizations. Turning HQ off
-  for an organization takes the all-ministry view away from every member at once.
-- **Administrator** — A user with no email (imported from the legacy Calendar) is inactive and can't
-  sign in. On Hub → Users, "Link and activate" sets their email and lets them sign in once they
-  have a password.
-- **Administrator** — A ministry that has been deactivated can't be added to anyone, but people who
-  already have it keep it when their access is saved.
 - **Developer** — Core emits `user.upserted` for every user change and on republish. Nothing consumes
   it until the Calendar app (5b) subscribes. Ministries are named by organization key.
 - **Operations** — After deploying 5a, re-run `scripts/seed-core-from-public-api.ts` on test sites to
@@ -355,12 +330,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   flag of an organization that already exists, in either direction, so a re-seed or re-import never
   undoes a Core admin's choice. Where the Office of the Premier already existed (as on boxs.ca), tick
   it HQ on Hub → Organizations by hand once.
-- **Administrator** — On Calendar access, a Calendar Administrator who is not in an HQ organization
-  isn't offered HQ ministries, and has no Edit button on someone who holds an HQ ministry: only an HQ
-  Administrator, a System Administrator or a Core admin can change those. The server checks again on
-  every save and shows its refusal in the form.
-- **Administrator** — If a save names a ministry that doesn't exist or has been deactivated, the error
-  lists which of the ministries you chose it refused.
 
 ## Phase 5b — Calendar mounted in the stack
 
@@ -381,11 +350,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   Administrator and are read-only for everyone else.
 - **Administrator** — Lookup rows are never deleted. Untick Active to stop offering a row; it stays on
   old activities. Two active rows in one lookup can't share a name.
-- **Administrator** — Calendar access changes reach the Calendar within a minute (one background
-  tick). A person whose role was removed sees "You don't have Calendar access" on their next click,
-  without signing out.
-- **Administrator** — Core admins choose on Hub → Organizations whether an organization is listed
-  publicly. GCPE Headquarters and GCPE Media Relations are not; the Office of the Premier is HQ and public.
 - **Operations** — The break-glass admin and service tokens have no Calendar access: the Calendar knows
   only users Core has sent it. Sign in as a real user with a Calendar role to use it.
 - **Operations** — The Calendar needs its own database. Until `CALENDAR_DATABASE_URL` is set the stack
@@ -657,9 +621,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Site editor** — Theme colours that are too faint to read are flagged, and the theme can't be published until they are fixed. Reset to defaults only fills in the form; nothing changes until you publish.
 - **Site editor** — Changes show on the public site within a few minutes. Colours and the banner are quickest; a footer change updates every page over the following ticks.
 - **Viewer** — The public site has a new Connect page (`/connect/`) listing the government's social accounts, and a footer and banner that staff can change. Ministry pages now have a side column: media contacts, the ministry's website, photos and videos, and its featured topics and services.
-- **Administrator** — On Organizations, each ministry's edit form has "Ministry page links" (website, Photos, Videos, Featured Topics, Featured Services). Site editors and administrators can edit these.
-- **Administrator** — Only Core administrators set a ministry's **Abbreviation** (2–10 capital letters or digits, no two ministries alike). It's used in release numbers. A release can't be approved until its lead ministry has one. Changing it affects only releases approved afterwards.
-- **Administrator** — A "Not public" badge now shows beside a non-public ministry. Deactivating and reactivating don't change Public, so tick Public after reactivating if the ministry should be listed.
 - **Operations** — Until the first publish, the site uses `config/tenants/<tenant>.site-settings.json` (the bc tenant's file carries news.gov.bc.ca's footer and social links, banner off). Edit that file and redeploy to change the starting point.
 - **Operations** — A theme or banner publish never rebuilds pages. A Connect change rebuilds the Connect page; a ministry-heading change rebuilds the ministry pages; a footer change rebuilds every page, and so does the new year each January.
 - **Operations** — If the News API can't be reached for settings, the site keeps the last settings it applied (saved in `.site-settings.json`, which isn't served) and still handles Project Blue Bridge and deploys as normal.
@@ -668,8 +629,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 ## Entra staff sign-in
 
 - **Editor**, **Site editor**, **Viewer** — "Sign in with Microsoft" signs you in with your government Microsoft account. You need a Core account first: if the screen says "Your account hasn't been set up", ask an administrator to create you. Signing out of the staff app doesn't sign you out of Microsoft.
-- **Administrator** — Create the user in Users with their Microsoft sign-in name (their UPN, usually their government email) before they first sign in with Microsoft. Matching tries that address first and falls back to the token's `email` claim only when the sign-in name is missing. Their first Microsoft sign-in links the account (Users then shows "Sign-in: Microsoft (Entra)") and their password stops working.
-- **Administrator** — "Unlink Microsoft sign-in" on a user forgets their Microsoft account and returns them to "Local password": their previous password works again, if one was set. Their next Microsoft sign-in links them again by email. Use it when someone's Microsoft account was replaced, or when sign-in says "Your account needs an administrator to check it" (the email is linked to a different Microsoft account): unlink, then have them sign in again.
 - **Administrator** — Switching on Entra sign-in also switches on Entra token checks in every app (`ENTRA_TENANT_ID` is a shared, stack-wide setting), so each app's `<PREFIX>_AUTH_AUDIENCE` must be filled in too, or the site won't start.
 - **Operations** — In *real* production with Entra sign-in on, user passwords are refused unless `CORE_LOCAL_PASSWORDS_ALLOWED=true`. A test site run with `NODE_ENV=production` (`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` or `SITE_ENVIRONMENT=test`, e.g. boxs.ca) is unaffected either way. The break-glass administrator (`LOCAL_ADMIN_*`) is unaffected too.
 - **Developer** — `FAKE_ENTRA_ENABLED=true` (tests and test sites only) mounts a fake Microsoft sign-in at `/fake-entra` with two made-up identities, `entra-staff@example.test` and `entra-unknown@example.test`. It needs `CORE_PUBLIC_BASE_URL` and is refused in real production and alongside real Entra settings, by the same test-site rule as `CORE_LOCAL_PASSWORDS_ALLOWED` above.

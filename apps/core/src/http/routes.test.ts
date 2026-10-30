@@ -171,6 +171,35 @@ describe("Core HTTP API", () => {
       }
     });
 
+    const post = (body: unknown, token = () => admin) => request(staffApp).post("/api/terms/tag").set(auth(token())).send(body as object);
+
+    it("POST /api/terms/tag creates a new tag: 201, and enqueues tag.upserted", async () => {
+      const res = await post(term("new-tag", { displayName: " New tag " }));
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ key: "new-tag", displayName: "New tag" });
+      expect((await eventsFor("new-tag")).map((e) => e.type)).toEqual(["tag.upserted"]);
+    });
+
+    it("POST with a key already in use answers 409 with a plain message and changes nothing", async () => {
+      const own = { twitterUsername: "@x", flickrUrl: null, youtubeUrl: null, audioUrl: null };
+      await post(term("new-tag", { displayName: "Original", sortOrder: 4, social: own })).expect(201);
+      const res = await post(term("new-tag", { displayName: "Replacement", sortOrder: 9, isActive: false }));
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "A tag with the key new-tag already exists: Original.", code: "key-exists" });
+      const kept = await request(staffApp).get("/api/terms/tag/new-tag").set(auth(reader));
+      expect(kept.body).toMatchObject({ displayName: "Original", sortOrder: 4, isActive: true, social: own });
+      expect(await eventsFor("new-tag")).toHaveLength(1);
+    });
+
+    it("POST answers 400 for a bad key or name, an unknown field, or a kind that differs from the path; 403 for non-admins", async () => {
+      expect((await post(term("New-Tag"))).body).toEqual({ error: "key-format" });
+      expect((await post(term("blank-tag", { displayName: " " }))).body).toEqual({ error: "name-required" });
+      expect((await post(term("new-tag", { extra: 1 }))).status).toBe(400);
+      expect((await post(term("new-tag", { kind: "sector" }))).status).toBe(400);
+      expect((await post(term("nope"), () => reader)).status).toBe(403);
+      expect((await post(term("nope"), () => siteEditor)).status).toBe(403);
+    });
+
     it("PUT by a non-Core.Admin answers 403", async () => {
       expect((await put("nope", term("nope"), () => reader)).status).toBe(403);
       expect((await put("nope", term("nope"), () => siteEditor)).status).toBe(403);
