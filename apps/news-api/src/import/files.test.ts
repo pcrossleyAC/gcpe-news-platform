@@ -180,6 +180,29 @@ describe("createFilesApiClient", () => {
     expect(client.requests).toBe(2);
   });
 
+  // Windows CI saw starts 84-86 ms apart for a 100 ms gap: a timer fires up to the clock's
+  // granularity (about 15 ms there) early. A fake clock whose sleep wakes 15 ms early: no request
+  // may start before its slot.
+  it("a timer that fires early never starts a request before its slot", async () => {
+    let clock = 0;
+    const starts: number[] = [];
+    const client = createFilesApiClient({
+      base: "http://files.example",
+      concurrency: 1,
+      intervalMs: 100,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += Math.max(1, ms - 15);
+      },
+      fetchImpl: (async () => {
+        starts.push(clock);
+        return new Response(null, { status: 404 });
+      }) as typeof fetch,
+    });
+    for (let i = 0; i < 3; i++) expect(await client.getPost("K1", 0)).toEqual({ status: "not-found", httpStatus: 404 });
+    expect(starts).toEqual([0, 100, 200]);
+  });
+
   it("concurrency: never more requests in flight than workers, and starts spaced interval/concurrency apart", async () => {
     stub.log.length = 0;
     stub.maxInFlight = 0;
