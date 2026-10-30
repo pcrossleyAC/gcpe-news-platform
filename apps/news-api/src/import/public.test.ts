@@ -164,6 +164,26 @@ describe("createPublicApiClient", () => {
     expect(stub.log.every((l) => l.ua === PUBLIC_IMPORT_USER_AGENT)).toBe(true);
   });
 
+  // A timer fires up to the clock's granularity early (about 15 ms on Windows): a fake clock whose
+  // sleep wakes 15 ms early must still never start a request before minIntervalMs has passed.
+  it("a timer that fires early never starts a request before minIntervalMs has passed", async () => {
+    let clock = 0;
+    const starts: number[] = [];
+    const client = createPublicApiClient({
+      base: "http://public.example",
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += Math.max(1, ms - 15);
+      },
+      fetchImpl: (async () => {
+        starts.push(clock);
+        return new Response("[]", { status: 200 });
+      }) as typeof fetch,
+    });
+    for (let i = 0; i < 3; i++) await client.get("/api/Sectors?api-version=1.0");
+    expect(starts).toEqual([0, 1000, 2000]);
+  });
+
   it("retries a 5xx exactly once", async () => {
     stub.failNext.push({ match: "Sectors", status: 503, times: 1 });
     const client = fastClient(stub.base);

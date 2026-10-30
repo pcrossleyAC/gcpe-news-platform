@@ -114,8 +114,10 @@ export function createFilesApiClient(opts: FilesApiClientOptions): FilesApiClien
     // Budget and slot are taken synchronously, so concurrent workers can't overshoot either.
     if (max > 0 && reserved >= max) throw new RequestBudgetExhaustedError(max);
     reserved++;
-    const wait = limiter.reserve(worker) - now();
-    if (wait > 0) await sleep(wait);
+    // Until the clock really reaches the slot, not one sleep: a timer may fire early by the clock's
+    // granularity (about 15 ms on Windows), which started requests ~85 ms apart instead of 100.
+    const slot = limiter.reserve(worker);
+    for (let wait = slot - now(); wait > 0; wait = slot - now()) await sleep(wait);
     // Another worker met a 429 while this one waited: send nothing more.
     if (rateLimited) throw new FilesRateLimitedError(path);
     requests++;

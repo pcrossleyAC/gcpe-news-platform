@@ -103,6 +103,9 @@ do {
     $info = $task | Get-ScheduledTaskInfo
 } while (($task.State -eq 'Running' -or $info.LastRunTime -lt $started) -and (Get-Date) -lt $deadline)
 if ($task.State -eq 'Running') { throw "The first backup is still running after $WaitMinutes minutes; check it later with Get-ScheduledTaskInfo -TaskName '$taskName'." }
+# The backup itself takes seconds on a small install, yet on Windows Server 2022 CI this wait
+# often runs to the limit: say what the task reported, so the cause can be found.
+if ((Get-Date) -ge $deadline) { Write-GcpeNote "waited the full $WaitMinutes minutes: state $($task.State), last run $($info.LastRunTime) (this run was started after $started), result $($info.LastTaskResult)" }
 if ($info.LastTaskResult -ne 0) {
     throw "The first backup failed (result $($info.LastTaskResult)). Its log is the newest $($paths.Logs)\backup-*.log. If it could not write to $BackupPath, give $env:USERDOMAIN\$env:COMPUTERNAME`$ write access to the share."
 }

@@ -307,15 +307,34 @@ function Invoke-GcpeQuiet {
 }
 
 # Runs a native command and returns its exit code, stdout and stderr without letting stderr stop
-# the script (see Invoke-GcpeQuiet for why it goes through temporary files).
+# the script (stderr is read here, never piped back into Windows PowerShell 5.1).
+# System.Diagnostics.Process, not Start-Process -Wait -PassThru: Windows PowerShell 5.1's
+# Start-Process closes its own handle to the process before -Wait first checks it, so a command
+# that has already exited by then (pg_restore --list on a small dump, on a busy server) comes back
+# with an ExitCode of $null, and every "-ne 0" check reads that as a failure with an empty stderr.
+# Process.Start keeps its handle, so ExitCode is always the real one.
 function Invoke-GcpeCapture {
     param([Parameter(Mandatory)][string]$FilePath, [Parameter(Mandatory)][string[]]$Arguments)
-    $out = [IO.Path]::GetTempFileName()
-    $err = [IO.Path]::GetTempFileName()
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    # Resolved through PATH as Start-Process does (CreateProcess would try the current folder first).
+    $psi.FileName = @(Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop)[0].Path
+    # Joined with spaces and nothing quoted, as Start-Process did: callers quote their own values.
+    $psi.Arguments = $Arguments -join ' '
+    $psi.WorkingDirectory = (Get-Location -PSProvider FileSystem).ProviderPath
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = $utf8
+    $psi.StandardErrorEncoding = $utf8
+    $p = [System.Diagnostics.Process]::Start($psi)
     try {
-        $p = Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err
-        [pscustomobject]@{ ExitCode = $p.ExitCode; Out = ([IO.File]::ReadAllText($out)).Trim(); Err = ([IO.File]::ReadAllText($err)).Trim() }
-    } finally { Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue }
+        # Both streams at once: reading one to its end first can block on the other's full pipe.
+        $out = $p.StandardOutput.ReadToEndAsync()
+        $err = $p.StandardError.ReadToEndAsync()
+        $p.WaitForExit()
+        [pscustomobject]@{ ExitCode = $p.ExitCode; Out = $out.Result.Trim(); Err = $err.Result.Trim() }
+    } finally { $p.Dispose() }
 }
 
 # "10.20.0.0/16" -> @{ Address = '10.20.0.0'; Mask = '255.255.0.0' } for IIS ipSecurity. IPv4 only:

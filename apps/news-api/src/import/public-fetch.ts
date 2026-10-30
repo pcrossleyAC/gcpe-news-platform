@@ -63,8 +63,10 @@ export function createPublicApiClient(opts: PublicApiClientOptions): PublicApiCl
 
   const once = async (path: string): Promise<Response> => {
     if (last !== null) {
-      const wait = last + minInterval - now();
-      if (wait > 0) await sleep(wait);
+      // Until the clock really reaches it, not one sleep: a timer may fire early by the clock's
+      // granularity (about 15 ms on Windows).
+      const due = last + minInterval;
+      for (let wait = due - now(); wait > 0; wait = due - now()) await sleep(wait);
     }
     requests++;
     try {

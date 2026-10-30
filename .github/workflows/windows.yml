@@ -242,10 +242,14 @@ jobs:
           # The dump restores: into a scratch database, as the restore runbook does.
           $bin = "$env:ProgramFiles\PostgreSQL\17\bin"
           $env:PGPASSWORD = (Get-Content -Raw C:\gcpe\config\postgres-superuser.txt).Trim()
+          # Invoke-GcpeCapture, not Start-Process -PassThru: that can return a $null ExitCode for a
+          # command that exits quickly (see the function).
+          Import-Module C:\pkg\gcpe-windows\lib\Gcpe.psm1 -Force
           function Run([string]$exe, [string[]]$argv) {
-            $p = Start-Process -FilePath "$bin\$exe" -ArgumentList $argv -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:RUNNER_TEMP\out.txt" -RedirectStandardError "$env:RUNNER_TEMP\err.txt"
-            Get-Content "$env:RUNNER_TEMP\err.txt" | ForEach-Object { Write-Host "  $($exe): $_" }
-            [pscustomobject]@{ Code = $p.ExitCode; Out = (Get-Content -Raw "$env:RUNNER_TEMP\out.txt") }
+            $r = Invoke-GcpeCapture -FilePath "$bin\$exe" -Arguments $argv
+            if ($r.Err) { $r.Err -split "`r?`n" | ForEach-Object { Write-Host "  $($exe): $_" } }
+            Write-Host "  $($exe): exit $($r.ExitCode)"
+            [pscustomobject]@{ Code = $r.ExitCode; Out = $r.Out }
           }
           $core = ($dumps | Where-Object { $_.Name -eq 'gcpe_core.dump' }).FullName
           Check 'createdb' ((Run 'createdb.exe' @('-h', 'localhost', '-U', 'postgres', 'gcpe_restore_check')).Code -eq 0)
