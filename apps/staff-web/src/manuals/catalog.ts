@@ -67,7 +67,7 @@ export const MANUALS: ManualInfo[] = [
  * have no role in.
  */
 export function visibleManuals(s: SessionValue): ManualId[] {
-  if (s.has("Core.Admin")) return MANUALS.map((m) => m.id);
+  if (isCoreAdmin(s)) return MANUALS.map((m) => m.id);
   const own = MANUALS.filter((m) => m.heldBy(s));
   const topLevel = new Map<ManualApp, number>();
   for (const m of own) topLevel.set(m.app, Math.min(topLevel.get(m.app) ?? Infinity, m.level));

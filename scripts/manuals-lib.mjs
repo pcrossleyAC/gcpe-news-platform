@@ -85,11 +85,24 @@ const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace
 // Links and images may only point to http, https, mailto, the manual:/topic: schemes (Hub-internal
 // links, resolved by the Hub) or a relative address. Anything else (javascript:, data:, //host ...)
 // is shown as plain text, because the Hub injects this html into the page.
+const NAMED_REFS = { colon: ":", tab: "\t", newline: "\n", nbsp: "\u00a0", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", sol: "/", bsol: "\\", lpar: "(", rpar: ")" };
+const ENTITY = /&(?:#(\d+);?|#[xX]([0-9a-fA-F]+);?|([A-Za-z][A-Za-z0-9]*);)/g;
+
+// Browsers decode character references in an href before using it, so the check must see the decoded text.
+function decodeRefs(raw) {
+  return raw.replace(ENTITY, (whole, dec, hex, name) => {
+    if (name) return NAMED_REFS[name.toLowerCase()] ?? whole;
+    const code = dec !== undefined ? Number(dec) : parseInt(hex, 16);
+    return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
 function safeTarget(href) {
-  const h = href.replace(/[\u0000-\u0020\u007f-\u009f]/g, "");
-  if (h.startsWith("//")) return false;
-  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(h);
-  return !scheme || ["http", "https", "mailto", "manual", "topic"].includes(scheme[1].toLowerCase());
+  const decoded = decodeRefs(href).replace(/[\u0000-\u0020\u007f-\u009f\u00a0\u1680\u2000-\u200f\u2028\u2029\u202f\u205f\u3000\ufeff]/g, "");
+  if (/^[/\\]{2}/.test(decoded) || decoded.startsWith("/\\") || decoded.startsWith("\\")) return false;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(decoded);
+  if (scheme) return ["http", "https", "mailto", "manual", "topic"].includes(scheme[1].toLowerCase());
+  return !href.includes(":") && !/&(?:#|[A-Za-z][A-Za-z0-9]*;)/.test(href);
 }
 const marked = new Marked({
   renderer: {

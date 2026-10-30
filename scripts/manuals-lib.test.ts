@@ -89,6 +89,25 @@ describe("links and images", () => {
     expect(h).not.toContain("href");
     expect(h).toContain("x and y and z and w");
   });
+  it.each([
+    "javascript&#58;alert(1)",
+    "&#106;avascript:alert(1)",
+    "&#x6a;avascript:alert(1)",
+    "java&#x09;script:alert(1)",
+    "java&Tab;script:alert(1)",
+    "java&NewLine;script:alert(1)",
+    "javascript&colon;alert(1)",
+    "javascript&#0000058alert(1)",
+    "\\\\evil.example",
+    "/\\evil.example",
+    "&#47;/evil.example",
+    "&bogus;x",
+    ":nothing",
+  ])("turns the encoded or odd target %s into plain text", (target) => {
+    const h = html(`[x](<${target}>)\n![y](<${target}>)\n`);
+    expect(h).not.toMatch(/<a |<img|href|src=/i);
+    expect(h).toContain("x");
+  });
   it("turns an unsafe image into plain text", () => {
     const h = html("![alt text](javascript:alert(1))\n");
     expect(h).not.toContain("<img");
