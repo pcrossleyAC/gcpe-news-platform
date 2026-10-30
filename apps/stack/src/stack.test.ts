@@ -1791,6 +1791,8 @@ describe("apps/stack: /hub hosting", () => {
     await mkdir(join(dir, "assets"), { recursive: true });
     await writeFile(join(dir, "index.html"), "<!doctype html><html><body>staff web shell</body></html>");
     await writeFile(join(dir, "assets", "app-abc123.js"), "console.log('staff-web');\n");
+    await mkdir(join(dir, "manuals"), { recursive: true });
+    await writeFile(join(dir, "manuals", "core-admin.docx"), "PK-fake-docx");
     built = await setupStack({ fetchAdminToken: false, staffWebDir: dir });
 
     unbuiltDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-hub-missing-"));
@@ -1829,6 +1831,14 @@ describe("apps/stack: /hub hosting", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toMatch(/immutable/);
     expect(res.headers.get("cache-control")).toMatch(/max-age=31536000/);
+  });
+
+  it("GET /hub/manuals/<manual>.docx serves the Word file, and a missing one 404s", async () => {
+    const res = await fetch(`${built.stackUrl}/hub/manuals/core-admin.docx`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(await res.text()).toBe("PK-fake-docx");
+    expect((await fetch(`${built.stackUrl}/hub/manuals/nope.docx`)).status).toBe(404);
   });
 
   it("GET /hub/missing.js 404s instead of falling back to index.html", async () => {

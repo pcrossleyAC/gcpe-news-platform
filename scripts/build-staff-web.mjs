@@ -9,6 +9,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, posix, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { context } from "esbuild";
+import { writeAllDocx } from "./manuals-docx.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const entry = join(root, "apps/staff-web/src/main.tsx");
@@ -119,14 +120,22 @@ export async function runBuild({ watch = false } = {}) {
   console.log("[build-staff-web] bundling apps/staff-web/src/main.tsx …");
   const ctx = await context({ ...ESBUILD_OPTIONS, plugins: [writeIndexHtmlPlugin] });
 
+  // "Download as Word": the manuals' .docx files, served at /hub/manuals/<manualId>.docx.
+  const buildDocx = async () => {
+    const files = await writeAllDocx(join(outDir, "manuals"));
+    console.log(`[build-staff-web] wrote ${files.length} manual .docx file(s) to ${outDirRel}/manuals`);
+  };
+
   if (!watch) {
     await ctx.rebuild();
+    await buildDocx();
     await ctx.dispose();
     console.log(`[build-staff-web] OK — built at ${outDirRel}`);
     return;
   }
 
   console.log("[build-staff-web] watching for changes (Ctrl+C to stop) …");
+  await buildDocx();
   await ctx.watch();
 }
 

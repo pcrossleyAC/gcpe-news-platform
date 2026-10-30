@@ -29,3 +29,4 @@ export declare function compile(pages: PageSource[], previousData: ManualsData |
 export declare function readManualPages(dir?: string): PageSource[];
 export declare function vancouverToday(now?: Date): string;
 export declare function plainLanguageProblems(body: string): string[];
+export declare function safeTarget(href: string): boolean;
