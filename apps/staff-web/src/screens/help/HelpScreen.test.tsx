@@ -95,9 +95,11 @@ describe("HelpScreen", () => {
   it("lists every manual for a Core administrator, Core administrator manual first", async () => {
     renderHelp(["Core.Admin"]);
     const manuals = (await screen.findByRole("heading", { level: 2, name: "Manuals" })).closest("section")!;
-    const links = within(manuals).getAllByRole("link");
+    const links = within(within(manuals).getByRole("list")).getAllByRole("link");
     expect(links).toHaveLength(11);
     expect(links[0]).toHaveTextContent("Core administrator manual");
+    // After the manuals, outside their list: the Core administrator's review of what changed.
+    expect(within(manuals).getByRole("link", { name: "Changed since your last review" })).toHaveAttribute("href", "/help/manuals-review");
   });
 
   it("says there are no manuals, and still shows shortcuts and glossary, for a user with no app role (Review Focus 1)", async () => {

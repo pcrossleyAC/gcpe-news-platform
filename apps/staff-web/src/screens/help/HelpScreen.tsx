@@ -10,6 +10,7 @@ import { MANUALS, visibleManuals } from "../../manuals/catalog";
 import { canReadWebsite } from "../website/access";
 import { canReadSubscribers } from "../subscribers/access";
 import { hasCalendarRole } from "../calendar/access";
+import { isCoreAdmin } from "../admin/organizations/access";
 
 interface HowTo {
   area: GlossaryArea;
@@ -157,6 +158,11 @@ export function HelpScreen(): React.JSX.Element {
               </li>
             ))}
           </ul>
+        )}
+        {isCoreAdmin(session) && (
+          <p>
+            <Link to="/help/manuals-review">Changed since your last review</Link>
+          </p>
         )}
       </section>
 

@@ -64,6 +64,7 @@ import { ReleaseSendsReportScreen } from "./screens/subscribers/reports/ReleaseS
 import { DigestRunsReportScreen } from "./screens/subscribers/reports/DigestRunsReportScreen";
 import { DistributionReportScreen } from "./screens/subscribers/reports/DistributionReportScreen";
 import { HelpScreen } from "./screens/help/HelpScreen";
+import { ManualReviewScreen } from "./screens/help/ManualReviewScreen";
 import { ManualScreen } from "./screens/help/ManualScreen";
 
 /**
@@ -103,6 +104,7 @@ export const routes: RouteObject[] = [
       },
       { path: "search", element: <SearchScreen /> },
       { path: "help", element: <HelpScreen /> },
+      { path: "help/manuals-review", element: <ManualReviewScreen /> },
       { path: "help/manuals/:manualId", element: <ManualScreen /> },
       { path: "help/manuals/:manualId/:pageId", element: <ManualScreen /> },
       {
