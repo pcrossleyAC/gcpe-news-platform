@@ -13,7 +13,7 @@ Two settings screens set the wording that every ministry shares. A single minist
 
 ## Ministry page headings
 
-**Website** > **Site settings** > **Ministry pages** sets the seven headings on every ministry's public page: **More from this Ministry heading**, **Ministry website heading**, **Ministry photos heading**, **Ministry videos heading**, **Featured topics heading**, **Featured services heading** and **Media contacts heading**.
+**Website** > **Site settings** > **Ministry page headings** sets the seven headings on every ministry's public page: **More from this Ministry heading**, **Ministry website heading**, **Ministry photos heading**, **Ministry videos heading**, **Featured topics heading**, **Featured services heading** and **Media contacts heading**.
 
 1. Change the heading.
 2. Choose **Publish**.

@@ -16,9 +16,9 @@ import {
 
 export { ABBREVIATION_HINT } from "./abbreviation";
 
-/** Shown after a successful save. The rebuild latency is unmeasured, so no time is promised. */
+/** Shown after a successful save. */
 export const SAVED_MESSAGE =
-  "Saved. The public Ministries page updates when the site next rebuilds.";
+  "Saved. The public ministry pages update within a few minutes.";
 
 /** The confirmation shown before a ministry is deactivated, by the row button and the edit form's Active checkbox alike. */
 export const deactivateWarning = (displayName: string): string =>

@@ -13,6 +13,7 @@ import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { HiddenPrefixLabel } from "../../shared/ShortLabel";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
 import { canManageWebsite } from "./access";
+import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressProblems } from "./slideChecks";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { CarouselsResponse, CarouselView, SlideView } from "./types";
@@ -61,6 +62,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   const isLive = carousel.state === "live";
   const [publishOpen, setPublishOpen] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [addressProblems, setAddressProblems] = useState<string[] | null>(null);
   const { announce } = useAnnouncer();
   const moveFocus = useMoveFocusRestore<HTMLDivElement>();
   const nextClientKey = useRef(0);
@@ -91,6 +93,12 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   });
 
   const save = () => {
+    const found = slides.flatMap((slide, i) => slideAddressProblems(`Slide ${i + 1}`, slide));
+    setAddressProblems(found.length > 0 ? found : null);
+    if (found.length > 0) {
+      setPublishOpen(false);
+      return;
+    }
     void section
       .run(() =>
         apiFetch<CarouselView>(`/nrms/api/site/carousels/${carousel.id}`, {
@@ -121,11 +129,15 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
 
   const uploadImage = async (slideId: string, file: File) => {
     setImageError(null);
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImageError(IMAGE_TOO_BIG);
+      return;
+    }
     try {
       await apiFetch(`/nrms/api/site/slides/${slideId}/image`, { method: "PUT", raw: file });
       onSaved();
     } catch (caught) {
-      setImageError(caught instanceof Error ? caught.message : "Image upload failed.");
+      setImageError(imageUploadMessage(caught));
     }
   };
 
@@ -135,6 +147,13 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       {section.problems && (
         <ul role="alert" className="gcpe-release-editor__problems">
           {section.problems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      )}
+      {addressProblems && (
+        <ul role="alert" className="gcpe-release-editor__problems">
+          {addressProblems.map((p) => (
             <li key={p}>{p}</li>
           ))}
         </ul>
@@ -282,7 +301,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
                 </>
               }
             >
-              <p>This is the live carousel, so the public home page shows your changes straight away.</p>
+              <p>This is the live carousel, so the public home page shows your changes within a few minutes.</p>
             </AlertDialog>
           </Modal>
         </DialogTrigger>

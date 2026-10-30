@@ -14,7 +14,7 @@ topics: []
 - **M3U URL** is the address of the stream itself. It is needed to turn the feed on.
 - **Manifest URL** is optional. The public site doesn't use it.
 
-Both addresses come from whoever runs the webcast.
+Both addresses come from whoever runs the webcast. Choose **?** beside a field for a short explanation.
 
 ## Turn the Live Feed on
 

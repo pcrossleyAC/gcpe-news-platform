@@ -6,6 +6,7 @@ import { Button } from "../../shared/BusyButton";
 import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
+import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressProblems } from "./slideChecks";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { Justify, PinSlot, PinView } from "./types";
 
@@ -27,7 +28,12 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
   const [justify, setJustify] = useState<Justify>(pin.slide.justify);
   const [imageError, setImageError] = useState<string | null>(null);
 
+  const [addressProblems, setAddressProblems] = useState<string[] | null>(null);
+
   const save = () => {
+    const found = slideAddressProblems(SLOT_LABEL[pin.slot], { actionUrl, facebookPostUrl });
+    setAddressProblems(found.length > 0 ? found : null);
+    if (found.length > 0) return;
     void section
       .run(() =>
         apiFetch<PinView>(`/nrms/api/site/pins/${pin.slot}`, { method: "PUT", body: { version: pin.version, headline, summary, actionUrl, actionLabel, facebookPostUrl, justify } }),
@@ -41,7 +47,23 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
   const sectionRef = useRef<HTMLElement>(null);
   useShortcut("save", canEdit ? () => void (section.saving ? undefined : save()) : null, { within: sectionRef });
 
+  const hasUnsavedEdits =
+    headline !== pin.slide.headline ||
+    summary !== pin.slide.summary ||
+    actionUrl !== pin.slide.actionUrl ||
+    actionLabel !== pin.slide.actionLabel ||
+    facebookPostUrl !== pin.slide.facebookPostUrl ||
+    justify !== pin.slide.justify;
+
+  // The switch saves only the pin state, and the notice then reloads (its key changes with its version), which
+  // would discard anything typed. So with unsaved edits it refuses rather than lose them.
+  const [switchRefused, setSwitchRefused] = useState(false);
   const togglePinned = (next: boolean) => {
+    if (hasUnsavedEdits) {
+      setSwitchRefused(true);
+      return;
+    }
+    setSwitchRefused(false);
     void section.run(() => apiFetch<PinView>(`/nrms/api/site/pins/${pin.slot}/pinned`, { method: "POST", body: { version: pin.version, pinned: next } })).then((result) => {
       if (result) onSaved();
     });
@@ -49,11 +71,15 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
 
   const uploadImage = async (file: File) => {
     setImageError(null);
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImageError(IMAGE_TOO_BIG);
+      return;
+    }
     try {
       await apiFetch(`/nrms/api/site/pins/${pin.slot}/image`, { method: "PUT", raw: file });
       onSaved();
     } catch (caught) {
-      setImageError(caught instanceof Error ? caught.message : "Image upload failed.");
+      setImageError(imageUploadMessage(caught));
     }
   };
 
@@ -69,6 +95,14 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
           ))}
         </ul>
       )}
+      {addressProblems && (
+        <ul role="alert" className="gcpe-release-editor__problems">
+          {addressProblems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      )}
+      {switchRefused && hasUnsavedEdits && <InlineAlert variant="danger" role="alert" description="Save your changes first." />}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
       {imageError && <InlineAlert variant="danger" role="alert" description={imageError} />}
 

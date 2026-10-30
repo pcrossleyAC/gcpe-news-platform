@@ -172,7 +172,7 @@ describe("CarouselScreen", () => {
     await user.click(within(liveSection).getByRole("button", { name: "Publish carousel changes" }));
     let dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Publish these carousel changes now?");
-    expect(dialog).toHaveTextContent("the public home page shows your changes straight away.");
+    expect(dialog).toHaveTextContent("the public home page shows your changes within a few minutes.");
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(puts).toHaveLength(0);
@@ -353,6 +353,52 @@ describe("CarouselScreen", () => {
     const input = await screen.findByLabelText("Slide 1 image (JPEG or PNG, up to 2 MB)");
     const user = userEvent.setup();
     await user.upload(input, new File([new Uint8Array(10)], "big.png", { type: "image/png" }));
-    expect(await screen.findByText("request entity too large")).toBeInTheDocument();
+    expect(await screen.findByText("That image is over 2 MB. Choose a smaller image.")).toBeInTheDocument();
+    expect(screen.queryByText("request entity too large")).toBeNull();
+  });
+
+  it("an image over 2 MB is refused in the Hub, before anything is sent", async () => {
+    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push(`${init?.method ?? "GET"} ${url}`);
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
+        if (url === "/nrms/api/site/carousels") return jsonResponse(200, withSlide);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<CarouselScreen />));
+    const input = await screen.findByLabelText("Slide 1 image (JPEG or PNG, up to 2 MB)");
+    const user = userEvent.setup();
+    await user.upload(input, new File([new Uint8Array(2 * 1024 * 1024 + 1)], "big.png", { type: "image/png" }));
+    expect(await screen.findByText("That image is over 2 MB. Choose a smaller image.")).toBeInTheDocument();
+    expect(calls.some((c) => c.startsWith("PUT"))).toBe(false);
+  });
+
+  it.each([
+    ["Slide 1 action URL", "Slide 1: Enter a full web address for Action URL, starting with http:// or https://"],
+    ["Slide 1 Facebook post URL", "Slide 1: Enter a full web address for Facebook post URL, starting with http:// or https://"],
+  ])("a bad web address in %s is named before saving, and nothing is sent", async (label, message) => {
+    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push(`${init?.method ?? "GET"} ${url}`);
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
+        if (url === "/nrms/api/site/carousels") return jsonResponse(200, withSlide);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<CarouselScreen />));
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(label), "www.example.com");
+    await user.click(screen.getByRole("button", { name: "Save carousel" }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(calls.some((c) => c.startsWith("PUT"))).toBe(false);
   });
 });

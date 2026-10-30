@@ -63,9 +63,9 @@ To throw the next slides away, choose **Delete next carousel**, then **Confirm d
 
 | Message | What it means |
 |---|---|
-| "invalid request" | A web address doesn't start with http:// or https://. Check **Action URL** and **Facebook post URL** on every slide. |
+| "Slide 2: Enter a full web address for Action URL, starting with http:// or https://" | The web address in **Action URL** (or **Facebook post URL**) on that slide is wrong. Start it with http:// or https://, or empty the box. Nothing is saved until every address is right. |
 | "Keep the action label to 40 characters or fewer, in plain text." | Shorten the **Action label**, and remove any < or > characters. |
 | "Choose a go-live time in the future." | The go-live time has already passed. |
 | "Upload a JPEG or PNG image." | The file isn't a JPEG or PNG image. |
-| "request entity too large" | The image is bigger than 2 MB. Make it smaller and try again. |
+| "That image is over 2 MB. Choose a smaller image." | Make the image smaller and try again. |
 | "Someone else changed this — reload to see their changes." | Another site editor saved these slides while you had the page open. Choose **Reload**. Your unsaved changes are lost, so make them again. |

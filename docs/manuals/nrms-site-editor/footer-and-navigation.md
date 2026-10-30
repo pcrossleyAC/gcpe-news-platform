@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Site editors (NRMS.SiteEditor).
 
-Two settings screens set the wording around every public page: **Footer** for the footer's links, and **Navigation and labels** for the menu, buttons and headings. Open them from **Website** > **Site settings**. Both change the public site only when you publish. See [How site settings are published](manual:site-settings).
+Two settings screens set the wording around every public page: **Footer links** for the footer's links, and **Navigation and labels** for the menu, buttons and headings. Open them from **Website** > **Site settings**. Both change the public site only when you publish. See [How site settings are published](manual:site-settings).
 
 ## Footer
 

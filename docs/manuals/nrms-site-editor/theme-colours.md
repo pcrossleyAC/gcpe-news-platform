@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Site editors (NRMS.SiteEditor).
 
-**Theme colours** sets the public site's colours: **Header and buttons**, **Text on the header and buttons**, **Accent**, **Body text**, **Secondary text**, **Panels**, **Page background**, **Borders**, **Information banner**, **Emergency banner** and **Section bar colour (Connect page)**. Open it from **Website** > **Site settings** > **Theme**.
+**Theme colours** sets the public site's colours: **Header and buttons**, **Text on the header and buttons**, **Accent**, **Body text**, **Secondary text**, **Panels**, **Page background**, **Borders**, **Information banner**, **Emergency banner** and **Section bar colour (Connect page)**. Open it from **Website** > **Site settings** > **Theme colours**.
 
 ## Change a colour
 

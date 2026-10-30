@@ -65,7 +65,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "M3U URL",
     area: "Website",
     definition:
-      "Live Feed: the address of the live webcast's M3U playlist (the stream itself). The public site checks it every 15 seconds and shows its Live Webcast button only while Live Feed is on and this address is set and answers.",
+      "Live Feed: the address of the live webcast's M3U playlist (the stream itself). The public site shows its Live Webcast button on every page while Live Feed is on; open pages pick up the change within a minute.",
   },
   {
     id: "project-blue-bridge",

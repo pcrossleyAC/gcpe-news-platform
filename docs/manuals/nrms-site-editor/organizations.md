@@ -28,7 +28,7 @@ Core administrators add, deactivate and hand over ministries, and set each one's
    - **Meet the Team links**: shown as Meet the Team on the ministry page.
    - Under **Media contacts**: **Primary contact** and **Alternate contact** (each with **Name**, **Phone**, **Cell** and **Email**), and **After-hours phone**. **Phone** shows as Direct on the ministry page.
    - Under **Ministry page links**: **Ministry website**, **Photos (Flickr) address**, **Videos (YouTube) address**, **Featured Topics** and **Featured Services**.
-3. Choose **Save**. You see "Saved. The public Ministries page updates when the site next rebuilds."
+3. Choose **Save**. You see "Saved. The public ministry pages update within a few minutes."
 
 **Cancel** closes the form without saving.
 

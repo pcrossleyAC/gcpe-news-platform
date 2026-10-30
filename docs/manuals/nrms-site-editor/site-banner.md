@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Site editors (NRMS.SiteEditor).
 
-The banner is a notice across the top of every public page, such as planned maintenance or an emergency. Open it from **Website** > **Site settings** > **Banner**. Like every site setting, it changes the public site only when you publish. See [How site settings are published](manual:site-settings).
+The banner is a notice across the top of every public page, such as planned maintenance or an emergency. Open it from **Website** > **Site settings** > **Site banner**. Like every site setting, it changes the public site only when you publish. See [How site settings are published](manual:site-settings).
 
 ## Put up a banner
 

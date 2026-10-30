@@ -198,10 +198,10 @@ describe("OrganizationEditForm", () => {
     await user.type(screen.getByLabelText("Minister summary"), "Hi");
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Saved. The public Ministries page updates when the site next rebuilds.",
+      "Saved. The public ministry pages update within a few minutes.",
     );
     expect(SAVED_MESSAGE).toBe(
-      "Saved. The public Ministries page updates when the site next rebuilds.",
+      "Saved. The public ministry pages update within a few minutes.",
     );
     expect(onSaved).toHaveBeenCalledWith(HEALTH);
   });

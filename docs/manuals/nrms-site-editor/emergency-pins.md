@@ -22,9 +22,9 @@ If the notice is already pinned, the change goes to the public site when you sav
 
 ## Pin or unpin a notice
 
-Save the notice first. Pinning reloads the notice, and any change you haven't saved is lost.
+Save the notice first. If you have typed changes you haven't saved, the switch does nothing and shows "Save your changes first." Your typing stays.
 
-1. Choose the switch beside **Primary is not pinned**. It saves at once, with no question, and now reads **Primary is pinned**.
+1. Choose the switch beside **Primary is not pinned**. It saves at once, with no question, and changes only the pin; it now reads **Primary is pinned**.
 2. To take the notice down, choose the switch again.
 
 ## Add or change the image
@@ -42,8 +42,9 @@ Save the notice first. Pinning reloads the notice, and any change you haven't sa
 | Message | What it means |
 |---|---|
 | "Add a headline before pinning." | The saved notice has no headline. Enter one, choose **Save primary pin**, then pin it. |
-| "invalid request" | A web address doesn't start with http:// or https://. Check the action URL and the Facebook post URL. |
+| "Primary: Enter a full web address for Action URL, starting with http:// or https://" | The web address in the action URL (or Facebook post URL) is wrong. Start it with http:// or https://, or empty the box. Nothing is saved until it is right. |
 | "Keep the action label to 40 characters or fewer, in plain text." | Shorten the action label, and remove any < or > characters. |
 | "Upload a JPEG or PNG image." | The file isn't a JPEG or PNG image. |
-| "request entity too large" | The image is bigger than 2 MB. |
+| "That image is over 2 MB. Choose a smaller image." | Make the image smaller and try again. |
+| "Save your changes first." | You changed the notice and then used the pin switch. Choose **Save primary pin** (or **Save secondary pin**), then use the switch. |
 | "Someone else changed this — reload to see their changes." | Another site editor changed this notice while you had the page open. Choose **Reload**. |

@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Site editors (NRMS.SiteEditor).
 
-**Website** > **Site settings** lists the screens that set how the public site looks and reads: **Banner**, **Footer**, **Social links**, **Theme**, **Ministry pages**, **Media contacts page**, **Page text**, **Navigation and labels** and **Site identity**. They all save and publish the same way. **Settings history** lists everything published so far.
+**Website** > **Site settings** lists the screens that set how the public site looks and reads: **Site banner**, **Footer links**, **Social links**, **Theme colours**, **Ministry page headings**, **Media contacts page**, **Page text**, **Navigation and labels** and **Site identity**. They all save and publish the same way. **Settings history** lists everything published so far.
 
 ## Your draft
 
