@@ -3672,3 +3672,34 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   margin-block-start: 2rem;
   color: var(--typography-color-secondary, #474543);
 }
+
+/* /hub/help/manuals-review: each changed page's Before and Now, side by side from 768px, stacked below. */
+.gcpe-manual-review__list {
+  list-style: none;
+  padding: 0;
+}
+
+.gcpe-manual-review__item {
+  margin-block-end: 2.5rem;
+  padding-block-end: 1.5rem;
+  border-block-end: 1px solid var(--surface-color-border-default, #d8d8d8);
+}
+
+.gcpe-manual-review__compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  margin-block: 1rem;
+}
+
+.gcpe-manual-review__compare > section {
+  min-inline-size: 0;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--surface-color-border-default, #d8d8d8);
+}
+
+@media (min-width: 768px) {
+  .gcpe-manual-review__compare {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

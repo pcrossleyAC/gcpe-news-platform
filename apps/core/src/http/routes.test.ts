@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
@@ -707,6 +707,40 @@ describe("Core HTTP API", () => {
       const res = await request(app).patch("/api/organizations/succ-j/profile").set(auth(admin)).send({ isActive: true });
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ isActive: true, successorKeys: [] });
+    });
+  });
+
+  describe("manual review routes", () => {
+    const HASH = "c".repeat(64);
+    beforeEach(async () => {
+      await tdb.pool.query("TRUNCATE manual_reviews");
+    });
+
+    it("401 without a token; 403 for anyone but Core.Admin", async () => {
+      expect((await request(app).get("/api/manual-reviews")).status).toBe(401);
+      for (const token of [reader, siteEditor, directoryService]) {
+        expect((await request(app).get("/api/manual-reviews").set(auth(token))).status).toBe(403);
+        expect((await request(app).post("/api/manual-reviews").set(auth(token)).send({ pageId: "x", hash: HASH })).status).toBe(403);
+      }
+      expect((await request(app).get("/api/manual-reviews").set(auth(admin))).body).toEqual([]);
+    });
+
+    it("400 for unknown fields and for a malformed page id or hash", async () => {
+      const post = (body: unknown) => request(app).post("/api/manual-reviews").set(auth(admin)).send(body as object);
+      expect((await post({ pageId: "x", hash: HASH, reviewedBy: "Eve" })).status).toBe(400);
+      expect((await post({ pageId: "X", hash: HASH })).status).toBe(400);
+      expect((await post({ pageId: "x", hash: "abc" })).status).toBe(400);
+      expect((await post({ pageId: "x" })).status).toBe(400);
+      expect((await request(app).get("/api/manual-reviews").set(auth(admin))).body).toEqual([]);
+    });
+
+    it("records a review (201), idempotently, and lists it with who and when", async () => {
+      const post = () => request(app).post("/api/manual-reviews").set(auth(admin)).send({ pageId: "government-terms", hash: HASH });
+      expect((await post()).status).toBe(201);
+      expect((await post()).status).toBe(201);
+      const list = await request(app).get("/api/manual-reviews").set(auth(admin));
+      expect(list.status).toBe(200);
+      expect(list.body).toEqual([{ pageId: "government-terms", hash: HASH, reviewedBy: "svc", reviewedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) }]);
     });
   });
 

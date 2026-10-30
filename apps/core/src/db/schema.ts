@@ -165,3 +165,20 @@ export const cabinetChanges = pgTable(
     uniqueIndex("cabinet_changes_one_open_idx").on(sql`(true)`).where(sql`${t.status} IN ('draft','scheduled')`),
   ],
 );
+
+/**
+ * A Core admin's review of one version of a staff-manual page (Hub Help, "Changed since your last
+ * review"). `hash` is the page's content hash from the compiled manuals, so editing a page makes a
+ * new, unreviewed version. Core does not hold the manuals: it keeps what it is given, shape-checked.
+ * The first review of a (page, version) wins.
+ */
+export const manualReviews = pgTable(
+  "manual_reviews",
+  {
+    pageId: text("page_id").notNull(),
+    hash: text("hash").notNull(),
+    reviewedBy: text("reviewed_by").notNull(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.pageId, t.hash] })],
+);

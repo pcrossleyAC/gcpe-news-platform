@@ -24,6 +24,7 @@ import {
   successionPreview,
   upsertOrganization,
 } from "../services/organizations";
+import { listManualReviews, manualReviewInputSchema, recordManualReview } from "../services/manual-reviews";
 import { republishAll } from "../services/republish";
 import {
   DEFAULT_TIME_ZONE,
@@ -289,6 +290,21 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
       const kind = parseKind(req, res);
       if (!kind) return;
       (await deactivateTerm(db, kind, req.params.key, subscribers)) ? res.status(204).end() : res.status(404).json({ error: "not found" });
+    }),
+  );
+
+  // Hub Help, "Changed since your last review": which manual page versions a Core admin has reviewed.
+  r.get(
+    "/manual-reviews",
+    admin,
+    safe(async (_req, res) => void res.json(await listManualReviews(db))),
+  );
+  r.post(
+    "/manual-reviews",
+    admin,
+    safe(async (req, res) => {
+      await recordManualReview(db, manualReviewInputSchema.parse(req.body), actorOf(req).name);
+      res.status(201).end();
     }),
   );
 
