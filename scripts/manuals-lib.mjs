@@ -1,0 +1,176 @@
+// Staff manuals: the page format and the compiler. Pure functions (plus readManualPages, which reads
+// docs/manuals/) shared by scripts/manuals-build.mjs and the tests in apps/staff-web/src/manuals/, so
+// the CLI and the freshness test compile the same way. See docs/manuals/README.md for the page format.
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { Marked } from "marked";
+
+export const MANUAL_IDS = [
+  "core-admin",
+  "nrms-site-editor",
+  "nrms-editor",
+  "nrms-viewer",
+  "nod-admin",
+  "nod-editor",
+  "nod-viewer",
+  "calendar-admin",
+  "calendar-advanced",
+  "calendar-editor",
+  "calendar-readonly",
+];
+
+const FIELDS = {
+  id: "string",
+  title: "string",
+  manual: "string",
+  order: "number",
+  routes: "list",
+  screens: "list",
+  topics: "list",
+};
+
+const root = join(import.meta.dirname, "..");
+export const MANUALS_DIR = join(root, "docs/manuals");
+
+function fail(path, message) {
+  throw new Error(`${path}: ${message}`);
+}
+
+function parseValue(path, key, raw, kind) {
+  const unquote = (v) => v.trim().replace(/^(["'])(.*)\1$/, "$2");
+  if (kind === "list") {
+    const m = /^\[(.*)\]$/.exec(raw.trim());
+    if (!m) fail(path, `"${key}" must be a list in square brackets, like [a, b] or []`);
+    return m[1].trim() === "" ? [] : m[1].split(",").map(unquote);
+  }
+  if (kind === "number") {
+    const n = Number(raw.trim());
+    if (raw.trim() === "" || !Number.isFinite(n)) fail(path, `"${key}" must be a number`);
+    return n;
+  }
+  const v = unquote(raw);
+  if (v === "") fail(path, `"${key}" must not be empty`);
+  return v;
+}
+
+/** Splits a page into its YAML-style header (flat `key: value` lines) and its Markdown body. */
+export function parsePage(path, text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
+  if (!m) fail(path, "the page must start with a header between --- lines");
+  const raw = {};
+  for (const line of m[1].split(/\r?\n/)) {
+    if (line.trim() === "") continue;
+    const kv = /^([A-Za-z]+):\s*(.*)$/.exec(line);
+    if (!kv) fail(path, `cannot read header line "${line}"`);
+    const [, key, value] = kv;
+    if (!(key in FIELDS)) fail(path, `unknown header field "${key}"`);
+    if (key in raw) fail(path, `header field "${key}" appears twice`);
+    raw[key] = value;
+  }
+  const header = {};
+  for (const [key, kind] of Object.entries(FIELDS)) {
+    if (!(key in raw)) fail(path, `missing header field "${key}"`);
+    header[key] = parseValue(path, key, raw[key], kind);
+  }
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(header.id)) fail(path, `id "${header.id}" must be lower-case words joined by hyphens`);
+  if (header.manual !== "topic" && !MANUAL_IDS.includes(header.manual)) fail(path, `unknown manual "${header.manual}"`);
+  return { header, body: m[2] };
+}
+
+// Raw HTML in a page is shown as text, never rendered: pages are written by staff, not trusted markup.
+const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const marked = new Marked({ renderer: { html: ({ text }) => escapeHtml(text) } });
+
+export function renderMarkdown(markdown) {
+  return marked.parse(markdown, { async: false });
+}
+
+const hashOf = (header, body) =>
+  createHash("sha256")
+    .update(JSON.stringify(header) + "\n" + body)
+    .digest("hex");
+
+/**
+ * pages: [{ path, text }]. previousData: the last committed ManualsData, or null.
+ * A page whose hash is unchanged keeps its `changed` date and `previous`; an edited page gets
+ * changed = today and previous = its old html and date. Pages missing from the input are dropped.
+ */
+export function compile(pages, previousData, today) {
+  const old = new Map((previousData?.pages ?? []).map((p) => [p.id, p]));
+  const seen = new Map();
+  const out = [];
+  for (const { path, text } of pages) {
+    const { header, body } = parsePage(path, text);
+    if (seen.has(header.id)) fail(path, `duplicate id "${header.id}", already used by ${seen.get(header.id)}`);
+    seen.set(header.id, path);
+    const hash = hashOf(header, body);
+    const html = renderMarkdown(body);
+    const prev = old.get(header.id);
+    let changed = today;
+    let previous = null;
+    if (prev && prev.hash === hash) {
+      changed = prev.changed;
+      previous = prev.previous;
+    } else if (prev) {
+      previous = { html: prev.html, changed: prev.changed };
+    }
+    out.push({ ...header, markdown: body, html, hash, changed, previous });
+  }
+  const rank = (p) => (p.manual === "topic" ? MANUAL_IDS.length : MANUAL_IDS.indexOf(p.manual));
+  out.sort((a, b) => rank(a) - rank(b) || a.order - b.order || a.id.localeCompare(b.id));
+  return { pages: out };
+}
+
+/** Every page under docs/manuals/<folder>/ (the README and loose notes at the top level are not pages). */
+export function readManualPages(dir = MANUALS_DIR) {
+  const files = [];
+  const walk = (d, depth) => {
+    for (const e of readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p, depth + 1);
+      else if (depth > 0 && e.name.endsWith(".md")) files.push(p);
+    }
+  };
+  walk(dir, 0);
+  return files.map((f) => ({ path: relative(root, f).split("\\").join("/"), text: readFileSync(f, "utf8") }));
+}
+
+/** Today's calendar date in British Columbia, as YYYY-MM-DD. */
+export function vancouverToday(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+const BANNED_WORDS = ["database", "endpoint", "JSON", "SQL", "payload", "boolean", "null"];
+
+/** The plain-language rules for a page body. Returns a list of problems; empty means it passes. */
+export function plainLanguageProblems(body) {
+  const problems = [];
+  const lines = body.split(/\r?\n/);
+  let fenced = false;
+  let heading = null;
+  let firstParagraphDone = true;
+  lines.forEach((line, i) => {
+    const at = `line ${i + 1}`;
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    const isWho = line.startsWith("**Who this is for:**");
+    if (line.includes("/api/")) problems.push(`${at}: contains an API path ("/api/")`);
+    if (!isWho) {
+      const role = /\b(Core|NRMS|NoD|Calendar)\.[A-Z][A-Za-z]*/.exec(line);
+      if (role) problems.push(`${at}: role id "${role[0]}" belongs only on the "Who this is for" line`);
+    }
+    for (const w of BANNED_WORDS) {
+      if (new RegExp(`\\b${w}s?\\b`, "i").test(line)) problems.push(`${at}: contains the word "${w}"`);
+    }
+    if (fenced) return;
+    const h = /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
+    if (h) {
+      heading = h[1].toLowerCase();
+      firstParagraphDone = false;
+    } else if (!firstParagraphDone && line.trim() !== "") {
+      firstParagraphDone = true;
+      if (heading && line.trim().toLowerCase().startsWith(heading)) problems.push(`${at}: repeats the heading "${heading}" as its first sentence`);
+    }
+  });
+  return problems;
+}

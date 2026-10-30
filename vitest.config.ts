@@ -14,7 +14,7 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
-          include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts", "apps/*/test/**/*.test.ts", "tests/**/*.test.ts", "tools/**/*.test.ts"],
+          include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts", "apps/*/test/**/*.test.ts", "scripts/**/*.test.ts", "tests/**/*.test.ts", "tools/**/*.test.ts"],
           testTimeout: 20_000,
           hookTimeout: 30_000,
           env: { TZ: "UTC" },
