@@ -7,7 +7,7 @@ import { basePath, e, renderPage, safeHref, type PageOptions, type SiteInfo } fr
 import { sanitizeBodyHtml } from "../sanitize-body";
 import { releaseInstagram, settingsHref, themeDefaults } from "../settings";
 import { categoryPageId, pageUrl, parsePageId } from "../site-paths";
-import { bytesReadable, displayDate, displayDateTime } from "./format";
+import { bytesReadable, displayDate, displayDateTime, displayDateTimeNoWeekday } from "./format";
 import { translationLanguage } from "./languages";
 import { leadMedia, renderBodyAssets, renderMedia, type LeadMedia } from "./media";
 import { ministryLinkGroups, resourceLinks } from "./side-links";
@@ -152,7 +152,7 @@ function relatedBand(site: SiteInfo, post: PostDto, ctx: ReleaseContext): string
         .map((p) => ({ key: p.key, headline: headlineOf(p), publishDate: p.publishDate }));
   const articles = items.length
     ? `<div class="related-articles">\n<h2>Related Articles</h2>\n${items
-        .map((r) => `<div class="related-article">\n<h3><a href="${e(pageUrl(site, { type: "post", key: r.key }))}">${e(r.headline)}</a></h3>\n<div class="item-date">${e(displayDate(r.publishDate))}</div>\n</div>`)
+        .map((r) => `<div class="related-article">\n<h3><a href="${e(pageUrl(site, { type: "post", key: r.key }))}">${e(r.headline)}</a></h3>\n<div class="item-date">${e(displayDateTimeNoWeekday(r.publishDate))}</div>\n</div>`)
         .join("\n")}\n</div>`
     : "";
   const photos = safeHref(ctx.leadMinistry?.flickrUri);
@@ -211,6 +211,16 @@ function licenceLine(l: PageTextSettings["assetLicence"], site: SiteInfo): strin
  * (`.story-lang.secondary`, `lang="fr"`): site.js toggles `body.lang-secondary`; without script
  * both languages show (overrides.css).
  */
+/** NRMS references are `NEWS-<n>`; `/<n>` is news.gov's short link to the post (the stack's
+ * reference rule, C272, accepts 1-9 digits and reads "007" as 7, so a leading zero gets none). */
+const REFERENCE = /^NEWS-([1-9]\d{0,8})$/;
+
+/** The post's short link, `https://<site>/<n>` (keeping a prefixed site's base path), or null. */
+export function shortLinkOf(post: Pick<PostDto, "reference">, site: SiteInfo): string | null {
+  const n = REFERENCE.exec(post.reference ?? "")?.[1];
+  return n ? `${new URL(site.baseUrl).origin}${basePath(site)}/${n}` : null;
+}
+
 export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptions, ctx: ReleaseContext): string {
   const base = basePath(site);
   const { main, backgrounders, french, frenchBackgrounders } = documentsByLanguage(post.documents);
@@ -220,6 +230,7 @@ export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptio
   const labels = settings.ministryPages;
   const path = pageUrl(site, { type: "post", key: post.key });
   const canonical = new URL(site.baseUrl).origin + path;
+  const shortLink = shortLinkOf(post, site);
   const date = displayDateTime(post.publishDate);
   // A change to it re-renders every release (settings.ts releaseShareHash).
   const instagram = releaseInstagram(settings);
@@ -295,14 +306,16 @@ ${present(d.subheadline) ? `<p class="subheadline">${e(d.subheadline)}</p>\n` : 
   const translations = bodyTranslations.length ? `<div${assetItems.length ? "" : ' id="assets"'} class="assets expanded">\n<h2 id="translations">Translations</h2>\n<div class="media-assets-container">\n<ul>\n${bodyTranslations.join("\n")}\n</ul>\n</div>\n</div>` : "";
 
   const primaryAsset = lead ? `<div class="story-copy primary-asset">${renderMedia(lead, base, headline)}</div>` : "";
-  const storyBody = [primaryAsset, ...bylines, ...selectors, ...copies, bodyContacts, backgroundersHeading, ...allBackgrounders, assets, translations].filter(Boolean).join("\n");
+  // news.gov's short link at the end of the story (legacy .share-options; print.css hides it).
+  const permalink = shortLink ? `<div class="share-options">\n<div class="share-permalink">${e(shortLink)}</div>\n<div class="clear"></div>\n</div>` : "";
+  const storyBody = [primaryAsset, ...bylines, ...selectors, ...copies, bodyContacts, backgroundersHeading, ...allBackgrounders, assets, translations, permalink].filter(Boolean).join("\n");
 
   const header = [
     `<button type="button" class="print-document">${icon("print", e(base))} Print</button>`,
     storyMinistry(site, ctx.leadMinistry, ctx.leadMinistrySuccessor),
     `<div class="print-title">${e(site.name)}</div>`,
     `<h1 class="story-lang primary"${mainLang}>${e(headline)}</h1>${frHeadline}`,
-    `<div class="print-url">${e(canonical)}</div>`,
+    `<div class="print-url">${e(shortLink ?? canonical)}</div>`,
     `<div class="print-date">${e(date)}</div>`,
     ...subheadlines,
   ].filter(Boolean);

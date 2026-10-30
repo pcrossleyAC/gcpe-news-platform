@@ -321,8 +321,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     const feedRef = { href: feedUrl(site, p), title: "" };
     const feedChannel = (description: string) => ({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description });
     const writeFeeds = async (description: string, posts: PostDto[]) => {
-      await storage.write(feed, renderRssFeed(feedChannel(description), posts, site));
-      await storage.write(atom, renderAtomFeed({ ...feedChannel(description), feedPath: atomUrl(site, p) }, posts, site));
+      await storage.write(feed, renderRssFeed(feedChannel(description), posts, site, opts.ministryMenu));
+      await storage.write(atom, renderAtomFeed({ ...feedChannel(description), feedPath: atomUrl(site, p) }, posts, site, opts.ministryMenu));
     };
     if (kind === "ministries") {
       const hadBio = await storage.exists(bio!);
@@ -521,8 +521,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           await storage.write("index.html", renderHomePage({ ...f, latest, slides, links, sectors }, site, { ...opts, feed: feedRef }));
           const homePosts = sortNewest([f.top, f.feature, ...latest]);
           const homeChannel = { title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `The latest news from ${site.name}` };
-          await storage.write("feed.xml", renderRssFeed(homeChannel, homePosts, site));
-          await storage.write("atom.xml", renderAtomFeed({ ...homeChannel, feedPath: atomUrl(site, p) }, homePosts, site));
+          await storage.write("feed.xml", renderRssFeed(homeChannel, homePosts, site, opts.ministryMenu));
+          await storage.write("atom.xml", renderAtomFeed({ ...homeChannel, feedPath: atomUrl(site, p) }, homePosts, site, opts.ministryMenu));
           return [];
         }
         case "kind-feeds": {
@@ -534,8 +534,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           for (const [i, kind] of FEED_POST_KINDS.entries()) {
             const posts = all[i]!;
             const rss = { title: `${site.name}: ${kind}`, pagePath: pageUrl(site, p), feedPath: kindFeedUrl(site, kind, "rss"), description: `The latest ${kind} from ${site.name}` };
-            await storage.write(kindFeedFile(kind, "rss"), renderRssFeed(rss, posts, site));
-            await storage.write(kindFeedFile(kind, "atom"), renderAtomFeed({ ...rss, feedPath: kindFeedUrl(site, kind, "atom") }, posts, site));
+            await storage.write(kindFeedFile(kind, "rss"), renderRssFeed(rss, posts, site, opts.ministryMenu));
+            await storage.write(kindFeedFile(kind, "atom"), renderAtomFeed({ ...rss, feedPath: kindFeedUrl(site, kind, "atom") }, posts, site, opts.ministryMenu));
           }
           return [];
         }

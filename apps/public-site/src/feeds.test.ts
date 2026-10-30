@@ -90,3 +90,36 @@ describe("Atom 1.0 feeds", () => {
     expect(renderAtomFeed(ch, many, sub).match(/<entry>/g)).toHaveLength(20);
   });
 });
+
+describe("legacy item identity: atomId ids and the lead ministry as category (news.gov parity)", () => {
+  const ch = { title: "t", pagePath: "/", feedPath: "/feed.xml", description: "d" };
+  const names = [{ key: "health", name: "Health & Wellness" }];
+  const parse = (x: string) => new JSDOM(x, { contentType: "application/xml" }).window.document;
+  const withAtom = post({ key: "K1", leadMinistryKey: "Health", atomId: "uuid:d4727aed-a383-4a45-ad88-b8ebb507ac31" });
+
+  it("RSS: the guid is the post's atomId, not a permalink, so a reader that knew news.gov's items sees no duplicates", () => {
+    const item = parse(renderRssFeed(ch, [withAtom], site, names)).querySelector("item")!;
+    expect(item.querySelector("guid")?.textContent).toBe("uuid:d4727aed-a383-4a45-ad88-b8ebb507ac31");
+    expect(item.querySelector("guid")?.getAttribute("isPermaLink")).toBe("false");
+    expect(item.querySelector("category")?.textContent).toBe("Health & Wellness");
+  });
+  it("RSS: no atomId, or one that isn't a uuid URN, keeps the permalink guid; an unknown ministry adds no category", () => {
+    for (const atomId of [undefined, null, "", "javascript:x", "uuid:not-a-uuid"]) {
+      const item = parse(renderRssFeed(ch, [post({ key: "K2", leadMinistryKey: "nope", atomId })], site, names)).querySelector("item")!;
+      expect(item.querySelector("guid")?.getAttribute("isPermaLink")).toBe("true");
+      expect(item.querySelector("guid")?.textContent).toBe("https://news.example/releases/K2/");
+      expect(item.querySelector("category")).toBeNull();
+    }
+  });
+  it("Atom: the entry id is the atomId, with the ministry as a category term and a published instant", () => {
+    const entry = parse(renderAtomFeed(ch, [withAtom], site, names)).querySelector("entry")!;
+    expect(entry.querySelector("id")?.textContent).toBe("uuid:d4727aed-a383-4a45-ad88-b8ebb507ac31");
+    expect(entry.querySelector("category")?.getAttribute("term")).toBe("Health & Wellness");
+    expect(entry.querySelector("published")?.textContent).toBe("2026-10-03T17:00:00Z");
+  });
+  it("Atom: without names or an atomId the entry keeps its URL id and has no category", () => {
+    const entry = parse(renderAtomFeed(ch, [post({ key: "K3" })], site)).querySelector("entry")!;
+    expect(entry.querySelector("id")?.textContent).toBe("https://news.example/releases/K3/");
+    expect(entry.querySelector("category")).toBeNull();
+  });
+});

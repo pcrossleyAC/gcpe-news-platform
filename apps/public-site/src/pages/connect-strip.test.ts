@@ -13,11 +13,12 @@ function withAccounts(...keys: NetworkKey[]): SiteSettings {
 }
 
 describe("connectStrip", () => {
-  it("lists networks with accounts plus RSS in one ul; LinkedIn appears with BC defaults; RSS alt is 'RSS'; labels from navigation", () => {
+  it("lists networks with accounts plus RSS in rows of five, as news.gov's two lists (the flex row would shrink nine icons); LinkedIn appears with BC defaults; RSS alt is 'RSS'; labels from navigation", () => {
     const doc = parse(connectStrip(bcSettings(), "/site"));
     const box = doc.querySelector("div.resource-links.connect")!;
     expect(box.querySelector(":scope > h2")?.textContent).toBe("Connect With Us");
-    expect(box.querySelectorAll(":scope > ul")).toHaveLength(1);
+    const rows = [...box.querySelectorAll(":scope > ul")];
+    expect(rows.map((ul) => ul.querySelectorAll(":scope > li").length)).toEqual([5, 4]);
     const links = [...box.querySelectorAll("ul > li > a")];
     expect(links.map((a) => [a.id, a.getAttribute("href"), a.querySelector("img")!.getAttribute("alt")])).toEqual([
       ["connectFacebook", "/site/connect/#facebook", "Facebook"],
@@ -46,6 +47,7 @@ describe("connectStrip", () => {
     expect(doc.querySelector("h2")?.textContent).toBe("Find us");
     expect(doc.querySelector("a.read-more")?.textContent).toBe("Everything");
     expect(doc.querySelector("#connectLinkedin img")!.getAttribute("src")).toContain("linkedin-logo-blue.svg");
+    expect(doc.querySelectorAll("ul")).toHaveLength(1);
     const none = parse(connectStrip(withAccounts(), ""));
     expect([...none.querySelectorAll("li img")].map((i) => i.getAttribute("alt"))).toEqual(["RSS"]);
   });

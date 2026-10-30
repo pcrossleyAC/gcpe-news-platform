@@ -19,10 +19,15 @@ export const NETWORK_LOGO: Record<string, string> = { ...Object.fromEntries(STRI
 
 /**
  * Legacy `ConnectSocialMedia` ("Connect With Us"), shared by the home page and anywhere else the strip is wanted:
- * one wrapping list of the networks that have accounts, then RSS (always), each icon linking to
- * its section of /connect/, then the "view all" link. Legacy's two rows are one list here, as
- * news.gov now shows it. Labels come from the navigation settings.
+ * the networks that have accounts, then RSS (always), each icon linking to its section of /connect/,
+ * then the "view all" link. Icons go in lists of five, as news.gov's two lists: legacy CSS makes each
+ * list a flex row that doesn't wrap, so nine icons in one list shrink to about half size. Labels come
+ * from the navigation settings.
  */
+/** Icons per row: news.gov's first list holds five (Facebook to Bluesky), the second the rest. */
+const ROW = 5;
+const rows = <T>(xs: T[]): T[][] => Array.from({ length: Math.ceil(xs.length / ROW) }, (_, i) => xs.slice(i * ROW, i * ROW + ROW));
+
 export function connectStrip(settings: SiteSettings, base: string): string {
   const b = e(base);
   const img = (file: string, alt: string) => `<img src="${b}/assets/legacy/Content/Images/SocialMedia/${file}" alt="${e(alt)}" width="22" height="22">`;
@@ -33,9 +38,7 @@ export function connectStrip(settings: SiteSettings, base: string): string {
   const labels = settings.navigation.labels;
   return `<div class="resource-links connect">
 <h2>${e(labels.connectWithUs)}</h2>
-<ul>
-${items.join("\n")}
-</ul>
+${rows(items).map((row) => `<ul>\n${row.join("\n")}\n</ul>`).join("\n")}
 <a id="connectAllSocialMedia" href="${b}/connect/" class="read-more">${e(labels.viewAllSocialMedia)}</a>
 </div>`;
 }
