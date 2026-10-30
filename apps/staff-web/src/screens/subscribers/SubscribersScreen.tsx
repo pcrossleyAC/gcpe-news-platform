@@ -92,7 +92,10 @@ export function SubscribersScreen(): React.JSX.Element {
   const remembered = (location.state as SubscribersSearchState | null)?.subscribersQ ?? "";
   const [q, setQ] = useState(remembered);
   const [qInput, setQInput] = useState(remembered);
+  // Only a history entry for a different search resets the box (Back to an earlier one): paging
+  // keeps the same term, and must not wipe what's typed but not yet searched.
   useEffect(() => {
+    if (remembered === q) return;
     setQ(remembered);
     setQInput(remembered);
   }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps

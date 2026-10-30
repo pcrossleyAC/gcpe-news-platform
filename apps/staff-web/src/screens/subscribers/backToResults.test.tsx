@@ -23,7 +23,7 @@ const DETAIL: SubscriberDetail = {
   disabledReason: null, bouncedEmails: 0, bounceWindowDays: 15,
 };
 
-function setup() {
+function setup(page: SubscriberPage = PAGE) {
   const searches: unknown[] = [];
   vi.stubGlobal(
     "fetch",
@@ -32,7 +32,7 @@ function setup() {
       if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
       if (url === "/nod/api/subscribers/search") {
         searches.push(init?.body ? JSON.parse(String(init.body)) : {});
-        return jsonResponse(200, PAGE);
+        return jsonResponse(200, page);
       }
       if (url === `/nod/api/subscribers/${ID}`) return jsonResponse(200, DETAIL);
       if (url === "/nod/api/subscriber-list-options") return jsonResponse(200, { groups: [] });
@@ -87,6 +87,20 @@ describe("Find subscribers keeps its results when you come back", () => {
     await router.navigate(-1);
     await waitFor(() => expect(screen.getByRole("textbox", { name: /^Email contains/ })).toHaveValue("pat@"));
     expect(searches.at(-1)).toEqual({ q: "pat@", status: "active" });
+  });
+
+  it("paging keeps what's typed in the box but not yet searched, and pages the search that was run", async () => {
+    const user = userEvent.setup();
+    const { searches } = setup({ ...PAGE, total: 120 });
+    await screen.findByRole("link", { name: "pat@example.test" });
+    const q = screen.getByRole("textbox", { name: /^Email contains/ });
+    await user.type(q, "pat@");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await waitFor(() => expect(searches.at(-1)).toEqual({ q: "pat@", status: "active" }));
+    await user.type(q, "example");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(searches.at(-1)).toEqual({ q: "pat@", status: "active", page: 2 }));
+    expect(q).toHaveValue("pat@example");
   });
 
   it("a subscriber opened any other way has no Back to results", async () => {
