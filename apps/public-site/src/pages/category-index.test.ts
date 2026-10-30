@@ -31,6 +31,13 @@ describe("renderCategoryIndex", () => {
     expect(health!.querySelector(".news-control a.read-more")!.textContent).toBe("Search News");
   });
 
+  it("ministries: Office of the Premier comes first, as legacy's /ministries and our News menu; the rest keep the API's order", () => {
+    const doc = render("ministries", [g("finance", { name: "Finance" }), g("office-of-the-premier", { name: "Office of the Premier" }), g("agriculture", { name: "Agriculture" })]);
+    expect([...doc.querySelectorAll(".grouped-articles > h2")].map((h) => h.textContent)).toEqual(["Office of the Premier", "Finance", "Agriculture"]);
+    const sectors = render("sectors", [g("b", { name: "B" }), g("p", { name: "Office of the Premier" })]);
+    expect([...sectors.querySelectorAll(".grouped-articles > h2")].map((h) => h.textContent)).toEqual(["B", "Office of the Premier"]);
+  });
+
   it("the Connect strip and the Resources box follow in section.home-features[aria-label='Connect and resources']", () => {
     const doc = render("tags", groups);
     const section = doc.querySelector("section.home-features")!;

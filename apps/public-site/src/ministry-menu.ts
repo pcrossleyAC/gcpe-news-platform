@@ -10,6 +10,9 @@ export interface MenuMinistry {
 
 const PREMIER = "Office of the Premier";
 
+/** Legacy names the Premier's office first wherever it lists ministries (CategoryController, _Layout). */
+export const isPremier = (name: string): boolean => name === PREMIER;
+
 /**
  * The ministries the legacy `_Layout` and `DefaultController` list: active, top-level (no parent)
  * and with a key that can be a page path. Office of the Premier first, then by name.

@@ -3,6 +3,7 @@ import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "../ren
 import { themeDefaults } from "../settings";
 import { pageUrl, type CategoryKind } from "../site-paths";
 import { connectStrip } from "./connect-strip";
+import { isPremier } from "../ministry-menu";
 import { postCard } from "./post-card";
 import { resourcesBox } from "./resources";
 
@@ -25,6 +26,9 @@ const SEARCH_PARAM: Partial<Record<CategoryKind, string>> = { ministries: "minis
  * category with no posts still lists its heading and Browse More News. The page's one h1 names the
  * kind; the Connect strip and Resources box follow in a labelled section (no <aside> inside <main>).
  */
+/** Office of the Premier first (legacy CategoryController's OrderByDescending), the rest in the API's order. */
+const premierFirst = (groups: IndexGroup[]): IndexGroup[] => [...groups.filter((x) => isPremier(x.name)), ...groups.filter((x) => !isPremier(x.name))];
+
 export function renderCategoryIndex(kind: CategoryKind, groups: IndexGroup[], links: ResourceLinkDto[], site: SiteInfo, opts: PageOptions = {}): string {
   const base = basePath(site);
   const settings = opts.settings ?? themeDefaults(site.theme);
@@ -58,7 +62,7 @@ ${search}<div class="clear"></div>
 <div class="home-layout">
 <div class="home-body" id="main-content-release">
 <h1>${e(heading)}</h1>
-${groups.map(group).join("\n")}
+${(kind === "ministries" ? premierFirst(groups) : groups).map(group).join("\n")}
 </div>
 <section class="home-features" aria-label="Connect and resources">
 ${connectStrip(settings, base)}${resources ? `\n${resources}` : ""}
