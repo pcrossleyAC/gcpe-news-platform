@@ -396,6 +396,32 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     }
   });
 
+  it("a returned row that isn't on the first page is left alone, and loading it later doesn't jump to it", async () => {
+    stubFetch([], {
+      page: (offset) =>
+        offset === 0
+          ? { rows: [row({ id: 20001, title: "First listed" })], total: 2, offset: 0 }
+          : { rows: [row({ id: 20002, title: "Second listed" })], total: 2, offset: 1 },
+    });
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      renderList({ pathname: "/calendar", state: { calendarNotice: "Saved HLTH-20002.", calendarActivityId: 20002 } });
+      await screen.findByRole("link", { name: "First listed" });
+      await userEvent.click(screen.getByRole("button", { name: "Show 1 more" }));
+      const late = await screen.findByRole("link", { name: "Second listed" });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(late).not.toHaveFocus();
+      expect(scrolled).toEqual([]);
+      expect(late.closest("tr")).not.toHaveClass("gcpe-calendar-row--returned");
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("arriving any other way marks no row and leaves focus alone", async () => {
     stubFetch([]);
     renderList();

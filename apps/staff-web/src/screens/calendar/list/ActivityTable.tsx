@@ -101,18 +101,22 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
     return () => o.disconnect();
   }, [more]);
 
-  // Once per arrival: the row the user came back from, in view with focus on its link.
+  // Once per arrival, on the first completed load only: the row the user came back from, in view
+  // with focus on its link and marked. A row that isn't on that first page is left alone — loading
+  // it later (scrolling on, Show more) must not jump the page to it.
   const broughtBack = useRef<number | null>(null);
+  const [marked, setMarked] = useState<number | null>(null);
   const tbody = useRef<HTMLTableSectionElement>(null);
   useEffect(() => {
-    if (returnedFrom === null || broughtBack.current === returnedFrom) return;
+    if (returnedFrom === null || broughtBack.current === returnedFrom || total === null) return;
+    broughtBack.current = returnedFrom;
     const row = tbody.current?.querySelector<HTMLTableRowElement>(`tr[data-activity-id="${returnedFrom}"]`);
     if (!row) return;
-    broughtBack.current = returnedFrom;
+    setMarked(returnedFrom);
     const link = row.querySelector<HTMLAnchorElement>(".gcpe-col-title a") ?? row.querySelector<HTMLAnchorElement>("a");
     row.scrollIntoView?.({ block: "center" });
     link?.focus({ preventScroll: true });
-  }, [rows, returnedFrom]);
+  }, [rows, total, returnedFrom]);
 
   const update = (id: number) => (patch: Partial<ListRow>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const columns = LIST_COLUMNS.filter((c) => c === "activity" || !(hidden as readonly string[]).includes(c));
@@ -147,7 +151,7 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
                 <tr
                   key={r.id}
                   data-activity-id={r.id}
-                  className={[r.isDeleted && "gcpe-deleted", r.id === returnedFrom && "gcpe-calendar-row--returned"].filter(Boolean).join(" ") || undefined}
+                  className={[r.isDeleted && "gcpe-deleted", r.id === marked && "gcpe-calendar-row--returned"].filter(Boolean).join(" ") || undefined}
                 >
                   {columns.map((c) => {
                     const flagged = needsReviewOf(c, r);
