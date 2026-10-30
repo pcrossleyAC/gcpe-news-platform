@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Core administrators (Core.Admin).
 
-**Calendar access** gives staff a Calendar role and the ministries they work for. Calendar administrators use this screen too, but with limits that don't apply to you.
+**Calendar access** gives staff a Calendar role and the ministries they work for. Calendar administrators and Calendar system administrators use this screen too, but with limits that don't apply to you.
 
 The table shows each person's **Name**, **Email**, **Calendar role** and **Ministries**. Inactive people are hidden until you tick **Show inactive users, including those with no email**.
 
@@ -45,7 +45,7 @@ Saving replaces the person's whole ministry list with what is ticked.
 
 ## Limits that apply to other administrators
 
-You may change anyone, including yourself. Calendar administrators can't, and the screen shows them a note instead of **Edit**:
+You may change anyone, including yourself. Calendar administrators and Calendar system administrators can't, and the screen shows them a note instead of **Edit**:
 
 - "You can't change your own Calendar access."
 - "Only a System Administrator or a Core admin can change this user's access."

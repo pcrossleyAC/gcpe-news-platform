@@ -418,8 +418,8 @@ function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; si
     setError(null);
     const newKey = key.trim();
     try {
-      await apiFetch(`/core/api/terms/${kind}/${encodeURIComponent(newKey)}`, {
-        method: "PUT",
+      await apiFetch(`/core/api/terms/${kind}`, {
+        method: "POST",
         body: {
           kind,
           key: newKey,
@@ -434,7 +434,8 @@ function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; si
       setKeyEdited(false);
       onAdded(`Added ${name.trim()} (${newKey}).`);
     } catch (err) {
-      fail(explain(err));
+      // Core refuses an Add whose key is in use and says which entry has it; show that as written.
+      fail(err instanceof ApiError && err.status === 409 && err.code === "key-exists" ? { field: "key", text: err.message } : explain(err));
     } finally {
       inFlight.current = false;
       setBusy(false);

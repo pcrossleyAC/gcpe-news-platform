@@ -15,7 +15,7 @@ The table lists every staff account with its **Name**, **Email**, **Sign-in** (*
 
 ## Find someone
 
-1. Type part of a name or email address in **Filter users**. You can also type a single word of a role, such as Editor or Admin. Full badge names such as "NRMS Site editor" don't match.
+1. Type part of a name or email address in **Filter users**. You can also type a role as it appears in the table, such as "NRMS Site editor" or "Core Admin", or just a word of it, such as Editor.
 2. The table narrows as you type, and the count shows "Showing 3 of 24 users". Type **active** or **inactive** to list people by status.
 
 ## Add a user
@@ -24,7 +24,7 @@ Add the person before they first sign in. Without an account, sign-in tells them
 
 1. Under **Add a user**, enter their **Email**. For Microsoft sign-in, use their Microsoft sign-in name, which is usually their government email address.
 2. Enter their **Display name**.
-3. Under **Roles**, tick each role they need. Each box shows the role's name and what it allows.
+3. Under **Roles**, tick each role they need. Each box shows the role's name, as it appears in the table, and what it allows.
 4. To let them sign in with a password, tick **Set a password now** and enter a **Password (at least 12 characters)**. Leave it unticked for people who sign in with Microsoft.
 5. Choose **Add user**. The person appears in the table.
 
@@ -32,7 +32,7 @@ Nobody is emailed. Tell the person their account is ready.
 
 ### What each role allows
 
-The table shows roles as short badges. Each box starts with the role's system name: the area, a dot, then the role's words run together with no spaces (so **NRMS Site editor** appears as NRMS, a dot and SiteEditor). Then it says what the role allows.
+Each role has the same name in the table and beside its box.
 
 | Badge | What it allows |
 |---|---|

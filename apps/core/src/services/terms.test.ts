@@ -6,7 +6,7 @@ import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { terms } from "../db/schema";
 import { upsertOrganization } from "./organizations";
 import { republishAll } from "./republish";
-import { checkTermWrite, deactivateTerm, getTerm, listTerms, NEW_TERM_KEY, TermRuleError, upsertTerm, type TermInput } from "./terms";
+import { checkTermWrite, createTerm, deactivateTerm, getTerm, listTerms, NEW_TERM_KEY, TermExistsError, TermRuleError, upsertTerm, type TermInput } from "./terms";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }];
 const economy: TermInput = {
@@ -124,6 +124,52 @@ describe("terms service", () => {
 
     it("NEW_TERM_KEY means the same as the public site's CATEGORY_KEY", () => {
       expect(NEW_TERM_KEY.source).toBe("^[a-z0-9-]{1,100}$");
+    });
+  });
+
+  describe("createTerm", () => {
+    const social = { twitterUsername: "@BCGovNews", flickrUrl: "https://flickr.test/a", youtubeUrl: null, audioUrl: null };
+    const health: TermInput = { kind: "sector", key: "health", displayName: "Health", sortOrder: 3, isActive: false, social };
+
+    it("creates a new key and enqueues the same sector.upserted event upsertTerm does", async () => {
+      const { record } = await createTerm(tdb.db, { ...health, displayName: "  Health " }, subs);
+      expect(record).toMatchObject({ key: "health", displayName: "Health", sortOrder: 3, isActive: false });
+      const events = await tdb.db.select().from(outboxEvents);
+      expect(events.map((e) => `${e.type}|${e.aggregateId}`)).toEqual(["sector.upserted|sector:health"]);
+    });
+
+    it("refuses an existing key with TermExistsError naming it, leaving the row and the events unchanged", async () => {
+      await upsertTerm(tdb.db, health, subs);
+      const before = await getTerm(tdb.db, "sector", "health");
+      const eventsBefore = (await tdb.db.select().from(outboxEvents)).length;
+      const attempt = createTerm(tdb.db, { ...health, displayName: "Wellness", sortOrder: 9, isActive: true, social: { ...social, twitterUsername: null } }, subs);
+      await expect(attempt).rejects.toBeInstanceOf(TermExistsError);
+      await expect(attempt).rejects.toMatchObject({ message: "A sector with the key health already exists: Health." });
+      expect(await getTerm(tdb.db, "sector", "health")).toEqual(before);
+      expect((await tdb.db.select().from(outboxEvents)).length).toBe(eventsBefore);
+    });
+
+    it("refuses a case variant of an existing key, and allows the same key in another kind", async () => {
+      await tdb.pool.query("INSERT INTO terms (kind, key, display_name, sort_order, is_active, social, updated_at) VALUES ('sector', 'Health', 'Old health', 0, true, $1, now())", [JSON.stringify(social)]);
+      await expect(createTerm(tdb.db, health, subs)).rejects.toMatchObject({ message: "A sector with the key Health already exists: Old health." });
+      await expect(createTerm(tdb.db, { ...health, kind: "theme" }, subs)).resolves.toBeTruthy();
+    });
+
+    it("applies the name and key rules", async () => {
+      await expect(createTerm(tdb.db, { ...health, key: "Health" }, subs)).rejects.toMatchObject({ code: "key-format" });
+      await expect(createTerm(tdb.db, { ...health, displayName: " " }, subs)).rejects.toMatchObject({ code: "name-required" });
+    });
+
+    it("two adds of one key at once: one is created, the other is refused, and the first row survives", async () => {
+      const results = await Promise.allSettled([
+        createTerm(tdb.db, { ...health, displayName: "First" }, subs),
+        createTerm(tdb.db, { ...health, displayName: "Second" }, subs),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      expect(lost.reason).toBeInstanceOf(TermExistsError);
+      const winner = results.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ record: { displayName: string } }>;
+      expect((await getTerm(tdb.db, "sector", "health"))!.displayName).toBe(winner.value.record.displayName);
     });
   });
 

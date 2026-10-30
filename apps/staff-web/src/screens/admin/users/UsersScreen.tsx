@@ -48,7 +48,7 @@ function RoleCheckboxes({ selected, onChange, idPrefix, disabled }: { selected: 
         <label key={role} htmlFor={`${idPrefix}-${role}`}>
           <input id={`${idPrefix}-${role}`} type="checkbox" checked={selected.includes(role)} onChange={() => toggle(role)} disabled={disabled} />
           <span>
-            <strong>{role}</strong> — {description}
+            <strong>{roleBadge(role)}</strong> — {description}
           </span>
         </label>
       ))}
@@ -326,10 +326,10 @@ function UsersTable({ users, calendar, onChanged }: { users: UserView[]; calenda
   // name, roles or password survive Close and the filter.
   const [mounted, setMounted] = useState<Set<string>>(() => new Set());
   const q = query.trim().toLowerCase();
-  // Name, email and roles match on any part; the status only as a whole word, so "active"
+  // Name, email and roles (the badge names shown, or the role ids) match on any part; the status only as a whole word, so "active"
   // never finds an inactive user.
   const matches = (u: UserView) =>
-    !q || [u.displayName, u.email ?? "", ...u.roles, calendar.has(u.id) ? `Calendar ${calendar.get(u.id)}` : ""].some((t) => t.toLowerCase().includes(q)) || q === (u.isActive ? "active" : "inactive");
+    !q || [u.displayName, u.email ?? "", ...u.roles, ...u.roles.map(roleBadge), calendar.has(u.id) ? `Calendar ${calendar.get(u.id)}` : ""].some((t) => t.toLowerCase().includes(q)) || q === (u.isActive ? "active" : "inactive");
   const shownCount = users.filter(matches).length;
   // The count is announced once typing pauses, not on every keystroke.
   const [countText, setCountText] = useState(`${users.length} users`);

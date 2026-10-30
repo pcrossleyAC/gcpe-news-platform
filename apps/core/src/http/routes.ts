@@ -38,7 +38,7 @@ import {
   scheduleCabinetChange,
   type CabinetChangeRecord,
 } from "../services/cabinet-changes";
-import { checkTermWrite, deactivateTerm, getTerm, listTerms, TermRuleError, termInputSchema, upsertTerm } from "../services/terms";
+import { checkTermWrite, createTerm, deactivateTerm, getTerm, listTerms, TermExistsError, TermRuleError, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
 import { CALENDAR_ACCESS_ROLES, calendarAccessRouter } from "./calendar-access";
 import { usersRouter } from "./users";
@@ -55,6 +55,7 @@ function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | nu
 function handleError(res: Response, e: unknown) {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
   if (e instanceof AbbreviationTakenError) return void res.status(409).json({ error: "abbreviation-taken", takenBy: e.takenBy });
+  if (e instanceof TermExistsError) return void res.status(409).json({ error: e.message, code: "key-exists" });
   if (e instanceof TermRuleError) return void res.status(e.code === "key-taken" ? 409 : 400).json({ error: e.code });
   // drizzle wraps the pg error; a unique violation on the terms table means another create of the key won the race.
   if ((e as { cause?: { code?: string; constraint?: string } }).cause?.code === "23505" && (e as { cause?: { constraint?: string } }).cause?.constraint === "terms_kind_key")
@@ -268,6 +269,18 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
       if (!kind) return;
       const term = await getTerm(db, kind, req.params.key);
       term ? res.json(term) : res.status(404).json({ error: "not found" });
+    }),
+  );
+  // Add: create-only. PUT below replaces whatever is stored under the key, so it is for edits.
+  r.post(
+    "/terms/:kind",
+    admin,
+    safe<{ kind: string }>(async (req, res) => {
+      const kind = parseKind(req, res);
+      if (!kind) return;
+      const parsed = termInputSchema.strict().parse(req.body);
+      if (parsed.kind !== kind) return void res.status(400).json({ error: "body kind must match path" });
+      res.status(201).json((await createTerm(db, parsed, subscribers)).record);
     }),
   );
   r.put(

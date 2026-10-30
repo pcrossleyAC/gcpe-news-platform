@@ -27,12 +27,13 @@ function stub(roles: string[], onPut?: () => Response | Promise<Response>) {
     if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
     const list = /^\/core\/api\/terms\/(\w+)$/.exec(url);
     if (list && method === "GET") return jsonResponse(200, BY_KIND[list[1]!]);
-    if (url.startsWith("/core/api/terms/") && method === "PUT") return onPut?.() ?? jsonResponse(200, {});
+    if (url.startsWith("/core/api/terms/") && (method === "PUT" || method === "POST")) return onPut?.() ?? jsonResponse(200, {});
     throw new Error(`unhandled: ${method} ${url}`);
   }));
   return calls;
 }
 const puts = (calls: Call[]) => calls.filter((c) => c.method === "PUT");
+const posts = (calls: Call[]) => calls.filter((c) => c.method === "POST");
 function renderIt() {
   render(
     <SessionProvider>
@@ -229,27 +230,34 @@ describe("CategoriesScreen", () => {
     await user.type(name, "!");
     expect(key).toHaveValue("my-key");
     await user.click(within(form).getByRole("button", { name: "Add tag" }));
-    await waitFor(() => expect(puts(calls)).toHaveLength(1));
-    expect(puts(calls)[0]).toEqual({
-      url: "/core/api/terms/tag/my-key",
-      method: "PUT",
+    await waitFor(() => expect(posts(calls)).toHaveLength(1));
+    expect(puts(calls)).toEqual([]);
+    expect(posts(calls)[0]).toEqual({
+      url: "/core/api/terms/tag",
+      method: "POST",
       body: { kind: "tag", key: "my-key", displayName: "Jobs & Economy!", sortOrder: 8, isActive: true, social: NO_SOCIAL },
     });
     expect(await screen.findByRole("status")).toHaveTextContent("my-key");
   });
 
-  it("Add answers 409: the reactivate message shows beside the form", async () => {
-    stub(["Core.Admin"], () => jsonResponse(409, { error: "key-taken" }));
+  it("Add with a key already in use shows Core's message beside the form and leaves the list as it was", async () => {
+    const message = "A sector with the key health already exists: Health.";
+    const calls = stub(["Core.Admin"], () => jsonResponse(409, { error: message, code: "key-exists" }));
     renderIt();
     const user = userEvent.setup();
     const form = await screen.findByRole("form", { name: "Add a sector" });
+    await screen.findByRole("textbox", { name: "Name for education" });
+    const rowsBefore = screen.getAllByRole("row").map((r) => r.textContent);
     await user.type(within(form).getByRole("textbox", { name: "Name" }), "Health");
     await user.click(within(form).getByRole("button", { name: "Add sector" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("That key is already used. To bring a retired one back, tick Active on its row.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
     const keyField = within(form).getByRole("textbox", { name: "Key" });
     expect(keyField).toHaveAttribute("aria-invalid", "true");
     expect(keyField).toHaveFocus();
-    expect(keyField).toHaveAccessibleDescription("That key is already used. To bring a retired one back, tick Active on its row.");
+    expect(keyField).toHaveAccessibleDescription(message);
+    expect(puts(calls)).toEqual([]);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(screen.getAllByRole("row").map((r) => r.textContent)).toEqual(rowsBefore);
   });
 
   it.each([
@@ -293,10 +301,10 @@ describe("CategoriesScreen", () => {
     const form = await screen.findByRole("form", { name: "Add a sector" });
     await user.type(within(form).getByRole("textbox", { name: "Name" }), "Health");
     await user.keyboard("{Enter}{Enter}");
-    await waitFor(() => expect(puts(calls)).toHaveLength(1));
-    release(jsonResponse(200, {}));
+    await waitFor(() => expect(posts(calls)).toHaveLength(1));
+    release(jsonResponse(201, {}));
     await screen.findByRole("status");
-    expect(puts(calls)).toHaveLength(1);
+    expect(posts(calls)).toHaveLength(1);
   });
 
   it("a save finishing after Show was switched leaves the new kind's table alone", async () => {

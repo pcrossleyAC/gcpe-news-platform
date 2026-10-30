@@ -100,7 +100,7 @@ Plan 5 closed the older statuses *data, no screen*, *missing*, *hardcoded* and *
 
 | Value / block | Legacy source | Legacy edit today | Platform source | Hub edit today | Status |
 |---|---|---|---|---|---|
-| Name, sort order, active | `dbo.Sector/Theme/Tag` [V] | Calendar Admin Dynamic Data [V] | Core `terms` (`displayName`, `sortOrder`, `isActive`); API `PUT /terms/:kind/:key` and `/deactivate` (Core.Admin), with new-key rules (9dd8664) [V] | `/categories` (Core.Admin; 3e77411) | **editable** (C295, T8) |
+| Name, sort order, active | `dbo.Sector/Theme/Tag` [V] | Calendar Admin Dynamic Data [V] | Core `terms` (`displayName`, `sortOrder`, `isActive`); API `POST /terms/:kind` (Add, create-only), `PUT /terms/:kind/:key` (edit) and `/deactivate` (Core.Admin), with new-key rules (9dd8664) [V] | `/categories` (Core.Admin; 3e77411) | **editable** (C295, T8) |
 | Category Top/Feature story | `Sector.TopReleaseId` etc. [V] | Legacy release page | NRMS features [V] | Release editor Top/Feature switches | **editable** |
 | Category index pages (`/sectors`, `/themes`, Topics) | Generated | n/a | `/ministries/`, `/sectors/`, `/themes/`, `/tags/` (d0008cb); one batch call, `GET /api/v2/categories/{kind}/latest` (837f7a7) [V] | n/a | **derived**: built (M16 closed), from category names (C292); no editable values of their own |
 

@@ -16,7 +16,7 @@ You run the screens under **Administration** in the side menu. This map lists ea
 | Screen in the side menu | What it controls | Who else it affects | Help page |
 |---|---|---|---|
 | **Users** | Who can sign in to the Hub, and which roles they hold. | The person you change. Role changes reach them within 10 minutes. | [Users](manual:users) |
-| **Calendar access** | Each person's Calendar role and ministries. | The person you change, within a minute. Calendar administrators use this screen too. | [Calendar access](manual:calendar-access) |
+| **Calendar access** | Each person's Calendar role and ministries. | The person you change, within a minute. Calendar administrators and Calendar system administrators use this screen too, with limits that don't apply to you. | [Calendar access](manual:calendar-access) |
 | **Organizations** | Ministries: names, ministers, contacts, page links, abbreviations, HQ and public settings, deactivation and hand-over. | The public site's ministry pages, subscribers, Calendar users, release editors. Site editors can edit ministry details here too. | [Organizations](manual:organizations) |
 | **Organizations** > **Cabinet change** | A new cabinet's renames, new ministries and hand-overs, published together. | Everyone who uses a ministry: the public site, subscribers, staff, the Calendar, draft releases. | [Cabinet change](manual:cabinet-change) |
 | **Government terms** | The dates of each government term. | The public archive, which lists releases by term. | [Government terms](manual:government-terms) |

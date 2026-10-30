@@ -28,10 +28,9 @@ You see "Saved {n} changes."
 
 1. Choose the list under **Show**.
 2. Under **Add a sector** (or theme, or tag), enter the **Name**. The **Key** fills in from the name; you can change it. Use lowercase letters, numbers and hyphens.
-3. Check the key isn't already in the list. Adding with a key that is already used doesn't add a new row: it changes that row's name, moves it to the end, makes it active again and clears its social links (Twitter, Flickr, YouTube and audio).
-4. Choose **Add sector** (or **Add theme**, **Add tag**). You see "Added {name} ({key})."
+3. Choose **Add sector** (or **Add theme**, **Add tag**). You see "Added {name} ({key})."
 
-The new entry goes to the end of the list and is active.
+The new entry goes to the end of the list and is active. Adding never changes an entry that already exists. If the key is taken, you see a message beside the form and nothing is added.
 
 ## What happens next
 
@@ -47,6 +46,6 @@ The new entry goes to the end of the list and is active.
 | "Name is too long (at most 100 characters)." | Shorten the name. |
 | "Order must be a whole number." | Enter a number such as 3. |
 | "Keys use lowercase letters, numbers and hyphens (at most 100)." | Fix the key. |
-| "That key is already used. To bring a retired one back, tick Active on its row." | The key differs from an existing one only in capital letters. Use the existing row. |
+| "A sector with the key health already exists: Health." (or "A theme…", "A tag…") | The key is taken, and the message names the entry that has it. Choose another key. To bring a retired entry back, tick **Active** on its row. |
 | "{n} rows couldn't be saved — see the message on those rows." | The other rows were saved. Fix the rows with a message and save again. |
 | "No changes to save." | Nothing was changed. |
