@@ -20,13 +20,16 @@ async function countDatabasesWithPrefix(prefix: string): Promise<number> {
 }
 
 describe("createTestDatabase", () => {
+  // Three tests each make their own database: every one is dropped, not only the last assigned.
+  const made: TestDatabase[] = [];
+  const track = (t: TestDatabase) => (made.push(t), t);
   let tdb: TestDatabase;
   afterAll(async () => {
-    await tdb?.drop();
+    for (const t of made) await t.drop();
   });
 
   it("creates a fresh database, runs migrations and enables extensions", async () => {
-    tdb = await createTestDatabase({ migrationsFolder, extensions: ["vector"] });
+    tdb = track(await createTestDatabase({ migrationsFolder, extensions: ["vector"] }));
     await tdb.pool.query("INSERT INTO widgets (name) VALUES ('a')");
     const { rows } = await tdb.pool.query("SELECT count(*)::int AS n FROM widgets");
     expect(rows[0].n).toBe(1);
@@ -54,7 +57,7 @@ describe("createTestDatabase", () => {
   });
 
   it("upTo applies only the migrations through that tag; migrate() applies the rest of the folder", async () => {
-    tdb = await createTestDatabase({ migrationsFolder: multiMigrationsFolder, upTo: "0000_init" });
+    tdb = track(await createTestDatabase({ migrationsFolder: multiMigrationsFolder, upTo: "0000_init" }));
     await tdb.pool.query("INSERT INTO widgets (name) VALUES ('a')");
     // 0001 (adding "color") hasn't run yet.
     await expect(tdb.pool.query("SELECT color FROM widgets")).rejects.toThrow();
@@ -69,7 +72,7 @@ describe("createTestDatabase", () => {
   });
 
   it("migrate() is a no-op when everything is already applied (e.g. no upTo was given)", async () => {
-    tdb = await createTestDatabase({ migrationsFolder: multiMigrationsFolder });
+    tdb = track(await createTestDatabase({ migrationsFolder: multiMigrationsFolder }));
     await tdb.migrate();
     const { rows } = await tdb.pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations");
     expect(rows[0].n).toBe(2);
