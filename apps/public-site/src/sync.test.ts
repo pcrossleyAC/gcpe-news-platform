@@ -350,6 +350,12 @@ describe("syncSite", () => {
   });
 
   describe("site settings", () => {
+    // The tests that build the whole site into a real folder (fsStorage: every page and its .br/.gz
+    // written, stamped and renamed) take 0.7-2.1 s on a laptop but 7-16 s on the Windows CI runner,
+    // where one of them now and then passed 20 s and timed out; its turn then kept taking pages from
+    // the shared rebuild queue under the next tests, failing nine more. Measured runner slowness on
+    // file I/O, not a race: these get a longer limit.
+    const FULL_BUILDS_ON_DISK_MS = 60_000;
     const published = (doc: SiteSettings, revision = 1) => ({ revision, document: doc });
     const withHolder = (holder: string): SiteSettings => {
       const doc = bcSettings();
@@ -440,7 +446,7 @@ describe("syncSite", () => {
       const page = await readFile(join(dir, "releases/K1/index.html"), "utf8");
       expect(page).toContain("Published Holder");
       expect(page).not.toContain("Tenant Default Holder");
-    });
+    }, FULL_BUILDS_ON_DISK_MS);
 
     /** A first process builds the site under a published revision (Blue Bridge off) in a real
      * folder; then a "restarted" process over the same folder whose home() reports Blue Bridge
@@ -483,7 +489,7 @@ describe("syncSite", () => {
       expect(r.settingsHashes(r.after)).toEqual(r.settingsHashes(r.before));
       expect(r.page).toContain('id="bridge-banner"');
       expect(r.page).toContain("Published Holder");
-    });
+    }, FULL_BUILDS_ON_DISK_MS);
 
     it("with nothing persisted (but a marker), Blue Bridge still rebuilds every page — with the defaults, so the marker records the defaults' hashes", async () => {
       const r = await restartWithBlueBridge({ deletePersisted: true });
@@ -494,7 +500,7 @@ describe("syncSite", () => {
       expect(r.settingsHashes(r.after)).not.toEqual(r.settingsHashes(r.before));
       expect(r.page).toContain('id="bridge-banner"');
       expect(r.page).toContain("Tenant Default Holder"); // nothing else exists to render with
-    });
+    }, FULL_BUILDS_ON_DISK_MS);
 
     it("after that, the first successful fetch rebuilds back to the published settings and records their hashes", async () => {
       const r = await restartWithBlueBridge({ deletePersisted: true });
@@ -514,7 +520,7 @@ describe("syncSite", () => {
       expect(r.settingsHashes(marker)).toEqual(r.settingsHashes(r.before));
       expect(await readFile(join(r.dir, "releases/K1/index.html"), "utf8")).toContain("Published Holder");
       expect(await readFile(join(r.dir, "assets/theme.css"), "utf8")).toContain(`--color-primary: ${document.theme.colors.primary};`);
-    });
+    }, FULL_BUILDS_ON_DISK_MS);
 
     it("a fetch error before any successful fetch uses the tenant defaults (logged) rather than failing the turn", async () => {
       const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
