@@ -3,7 +3,9 @@
 // Usage: node scripts/check-manuals-current.mjs --base origin/main
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { parsePage, readManualPages } from "./manuals-lib.mjs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parsePage } from "./manuals-lib.mjs";
 
 export const OPT_OUT = "Manual: no change";
 const SCREENS = "apps/staff-web/src/screens/";
@@ -42,7 +44,30 @@ export function missingManualUpdates(changedFiles, pages, commitMessages) {
   return messages;
 }
 
-const git = (...args) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+const git = (...args) => execFileSync("git", ["-c", "core.quotepath=false", ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+
+/** Every page under docs/manuals/<folder>/ of the repository in the current directory. */
+function readPages() {
+  const pages = [];
+  const walk = (dir, depth) => {
+    let entries = [];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries.sort((x, y) => x.name.localeCompare(y.name))) {
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(rel, depth + 1);
+      else if (depth > 0 && e.name.endsWith(".md")) {
+        const { header } = parsePage(rel, readFileSync(join(process.cwd(), rel), "utf8"));
+        pages.push({ id: header.id, path: rel, screens: header.screens });
+      }
+    }
+  };
+  walk("docs/manuals", 0);
+  return pages;
+}
 
 function main(argv) {
   const i = argv.indexOf("--base");
@@ -51,20 +76,20 @@ function main(argv) {
     console.error("Usage: node scripts/check-manuals-current.mjs --base <ref>   (for example --base origin/main)");
     return 2;
   }
-  const changedFiles = git("diff", "--name-only", `${base}...HEAD`).split("\n").filter(Boolean);
+  // Compare with where this branch left the base, not the base's tip: the base may have moved on.
+  const mergeBase = git("merge-base", base, "HEAD").trim();
+  // -z and no quotepath keep non-ASCII names intact; --no-renames lists the old path of a moved file as deleted.
+  const changedFiles = git("diff", "--name-only", "--no-renames", "-z", `${base}...HEAD`).split("\0").filter(Boolean);
   const commitMessages = git("log", "--format=%B%x00", `${base}..HEAD`).split("\0").filter((m) => m.trim());
-  const pages = readManualPages().map(({ path, text }) => {
-    const { header } = parsePage(path, text);
-    return { id: header.id, path, screens: header.screens };
-  });
-  // A page deleted in this change no longer exists to read; take its header from the base.
+  const pages = readPages();
+  // A page deleted in this change no longer exists to read; take its header from the merge base.
   const current = new Set(pages.map((p) => p.path));
   for (const path of changedFiles.filter((f) => isPagePath(f) && !current.has(f))) {
     try {
-      const { header } = parsePage(path, git("show", `${base}:${path}`));
+      const { header } = parsePage(path, git("show", `${mergeBase}:${path}`));
       pages.push({ id: header.id, path, screens: header.screens });
-    } catch {
-      // Not a page at the base either (for example a new file that was removed again): nothing to count.
+    } catch (err) {
+      console.error(`Could not read the deleted page ${path} from ${mergeBase}: ${err.message}`);
     }
   }
   const messages = missingManualUpdates(changedFiles, pages, commitMessages);

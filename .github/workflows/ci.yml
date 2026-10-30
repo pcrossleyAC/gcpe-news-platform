@@ -29,7 +29,9 @@ jobs:
       - run: npm ci
       - name: Manuals are up to date with the screens
         if: github.event_name == 'pull_request'
-        run: node scripts/check-manuals-current.mjs --base origin/${{ github.base_ref }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-manuals-current.mjs --base "origin/$BASE_REF"
       - run: npm run check
       - run: npm test
       - name: Build Core bundle
