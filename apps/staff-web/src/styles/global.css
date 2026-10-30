@@ -3668,16 +3668,6 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   block-size: auto;
 }
 
-.gcpe-manual__content pre {
-  overflow-x: auto;
-}
-
-.gcpe-manual__content table {
-  display: block;
-  overflow-x: auto;
-  max-inline-size: 100%;
-}
-
 .gcpe-manual__changed {
   margin-block-start: 2rem;
   color: var(--typography-color-secondary, #474543);

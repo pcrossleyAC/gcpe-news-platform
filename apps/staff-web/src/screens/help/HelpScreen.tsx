@@ -153,7 +153,7 @@ export function HelpScreen(): React.JSX.Element {
             {manuals.map((m) => (
               <li key={m.id}>
                 <Link to={`/help/manuals/${m.id}`}>{m.title}</Link>
-                <span className="gcpe-help__aka"> For {m.forRoles}.</span>
+                <span className="gcpe-help__aka"> For: {m.forRoles}</span>
               </li>
             ))}
           </ul>

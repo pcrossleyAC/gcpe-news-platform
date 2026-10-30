@@ -113,6 +113,16 @@ describe("links and images", () => {
     expect(h).not.toContain("<img");
     expect(h).toContain("alt text");
   });
+  it("turns an image aimed at a manual: or topic: target into plain alt text", () => {
+    const h = html("![x](manual:foo) ![y](topic:bar)\n");
+    expect(h).not.toMatch(/<img|src=|<a /i);
+    expect(h).toContain("x y");
+  });
+  it("wraps a table and a code block in a labelled, focusable scroll box, keeping the table", () => {
+    const h = html("| A | B |\n|---|---|\n| 1 | 2 |\n\n```\ncode\n```\n");
+    expect(h).toContain('<div class="gcpe-table-scroll" role="region" aria-label="Table 1 — scrollable" tabindex="0"><table>');
+    expect(h).toContain('aria-label="Code 1 — scrollable" tabindex="0"><pre>');
+  });
   it("keeps http, https, mailto and relative links", () => {
     for (const t of ["http://a.example/", "https://a.example/", "mailto:a@b.example", "/government-terms", "#top", "other-page"]) {
       expect(html(`[go](${t})\n`)).toContain(`<a href="${t}">go</a>`);

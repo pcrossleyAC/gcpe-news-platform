@@ -137,7 +137,25 @@ const marked = new Marked({
       return false;
     },
     image(token) {
-      return safeTarget(token.href) ? false : escapeHtml(token.text);
+      // Images may not point at manual:/topic: (those are page links, not pictures).
+      return safeTarget(token.href) && !/^(manual|topic):/i.test(decodeRefs(token.href).trim()) ? false : escapeHtml(token.text);
+    },
+  },
+  hooks: {
+    // A table or code block wider than the screen scrolls inside its own labelled, focusable box
+    // (as shared/TableScroll does), not the whole page. Raw HTML in a page is escaped, so every
+    // <table> and <pre> here was made by the renderer.
+    postprocess(html) {
+      const wrap = (name, label) => {
+        let n = 0;
+        html = html.replace(new RegExp(`<${name}[\\s>][\\s\\S]*?</${name}>`, "g"), (block) => {
+          n += 1;
+          return `<div class="gcpe-table-scroll" role="region" aria-label="${label} ${n} — scrollable" tabindex="0">${block}</div>`;
+        });
+      };
+      wrap("table", "Table");
+      wrap("pre", "Code");
+      return html;
     },
   },
 });

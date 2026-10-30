@@ -68,7 +68,7 @@ export function ManualScreen({ data = MANUALS_DATA }: { data?: ManualsData }): R
         <Link to="/help">Help</Link>
       </p>
       <h1>{manual!.title}</h1>
-      <p>For {manual!.forRoles}.</p>
+      <p>For: {manual!.forRoles}</p>
       {manualPages!.length === 0 ? (
         <p>This manual has no pages yet.</p>
       ) : (

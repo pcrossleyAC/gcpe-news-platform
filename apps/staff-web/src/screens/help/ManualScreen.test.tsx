@@ -5,10 +5,15 @@ import axe from "axe-core";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
-import { FIXTURE } from "../../manuals/test-fixtures";
+import { compile } from "../../../../../scripts/manuals-lib.mjs";
+import { FIXTURE, fixturePage } from "../../manuals/test-fixtures";
 import { ManualScreen } from "./ManualScreen";
 
-function renderManual(roles: string[], path: string) {
+const TABLE_MD = "---\nid: tables\ntitle: Tables\nmanual: core-admin\norder: 1\nroutes: []\nscreens: []\ntopics: []\n---\n| Screen | What it does |\n|---|---|\n| Users | Add and remove people |\n\n| Other | Thing |\n|---|---|\n| a | b |\n";
+const COMPILED = compile([{ path: "t.md", text: TABLE_MD }], null, "2026-10-30").pages[0]!;
+const TABLE_DATA = { pages: [fixturePage({ ...COMPILED, id: "tables" })] };
+
+function renderManual(roles: string[], path: string, data = FIXTURE) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -21,8 +26,8 @@ function renderManual(roles: string[], path: string) {
       <MemoryRouter initialEntries={[path]}>
         <RequireAuth>
           <Routes>
-            <Route path="/help/manuals/:manualId" element={<ManualScreen data={FIXTURE} />} />
-            <Route path="/help/manuals/:manualId/:pageId" element={<ManualScreen data={FIXTURE} />} />
+            <Route path="/help/manuals/:manualId" element={<ManualScreen data={data} />} />
+            <Route path="/help/manuals/:manualId/:pageId" element={<ManualScreen data={data} />} />
           </Routes>
         </RequireAuth>
       </MemoryRouter>
@@ -90,6 +95,16 @@ describe("ManualScreen", () => {
     expect(container.querySelector(".gcpe-manual__content")).toBeNull();
     expect(container.textContent).not.toMatch(/Body of|Secret|Use your IDIR/);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("keeps a manual's tables as tables inside labelled scroll boxes, with no axe violations of any impact", async () => {
+    const { container } = renderManual(["Core.Admin"], "/help/manuals/core-admin/tables", TABLE_DATA);
+    await screen.findByRole("heading", { level: 1, name: "Tables" });
+    expect(screen.getAllByRole("table")).toHaveLength(2);
+    expect(screen.getByRole("region", { name: "Table 1 — scrollable" })).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("columnheader", { name: "Screen" })).toBeInTheDocument();
+    const results = await axe.run(container);
+    expect(results.violations).toEqual([]);
   });
 
   it.each([
