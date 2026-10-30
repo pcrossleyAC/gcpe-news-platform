@@ -24,7 +24,7 @@ The **Offered** column shows whether people can choose each list:
 | **No** | You stopped offering it. |
 | **No (retired)** | The list was retired where its name is set, such as a ministry that no longer exists. |
 | **No (category not offered)** | You stopped offering its whole category. |
-| **Managed in NRMS** | A media list. People never choose media lists themselves. |
+| **Managed in NRMS** | A media list. People never choose media lists themselves. (Core administrators set these on **Media list names**.) |
 
 ## Stop offering a list or a category
 
@@ -52,5 +52,5 @@ Categories move the same way, with **Move Ministries up** and so on. The public 
 | Message | What it means |
 |---|---|
 | "The lists changed while you were looking. They've been reloaded; try again." | Someone else changed the order, or a list was added. Try the move again. |
-| "Media lists are managed in NRMS." | Media lists can't be offered or reordered here. |
+| "Media lists are managed in NRMS." | Media lists can't be offered or reordered here. (Core administrators set these on **Media list names**.) |
 | "Not saved: Couldn't save. Try again." | The change didn't save. Try again. |

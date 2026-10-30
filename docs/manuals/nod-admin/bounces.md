@@ -16,7 +16,7 @@ A bounce is an email that comes back undelivered. A hard bounce means the addres
 When a subscriber's last 10 emails within 15 days have all hard-bounced, News On Demand acts on its own:
 
 - A subscriber who is not on any media list is disabled. Their status becomes **Disabled — after repeated bounces**, and they get nothing more. Their record and lists are kept. The retention purge never deletes them.
-- A media list member is never disabled. They are flagged **Bouncing** on **Media lists** and keep being sent email. Tell Media Relations.
+- A media list member is never disabled. They are flagged **Bouncing** on **Media lists** and keep being sent media and news release email. Tell Media Relations.
 
 A daily digest counts as one email, however many releases it lists. Soft bounces don't count, unless their code is listed under **Soft bounces counted as hard** on [Operations](manual:subscriber-operations).
 

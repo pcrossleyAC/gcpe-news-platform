@@ -34,13 +34,15 @@ Use this for people who aren't in Media Hub.
 
 - The reporter is not emailed. They get the next release sent to this list.
 - A new address gets a record that receives media email only.
-- If the address already has a record that is **Disabled**, **Pending** or **Unsubscribed or deleted**, adding makes it **Active** again. A **Disabled** or **Pending** person also starts getting the news release email they chose, even if staff deactivated them. A person who had unsubscribed gets media email only.
+- If the address already has a record that is **Disabled** or **Unsubscribed or deleted**, adding makes it **Active** again. A person who had unsubscribed gets media email only.
+- A **Disabled** person keeps their old news lists, so they also start getting news release email again, even if staff deactivated them. History shows only "Added to a media list". A person disabled by bounces keeps their old bounce count, so further bounces flag them **Bouncing**, and they keep being sent media and news release email.
+- Before adding, check the address on **Find subscribers**. If it is **Disabled**, ask whether they want news release email again. If not, add them, then straight away open their record, untick **As it happens**, **Daily digest** and their lists, and choose **Save preferences**. This can't be done before adding: a record with no lists is refused unless it is on a media list.
 - If the person left this list by unsubscribing, the Hub asks "This person unsubscribed" and says when. Choose **Add anyway** only if they have asked to get media releases again.
 
 ## Remove a reporter
 
 1. Open the list.
-2. Choose **Remove** and their address on their row. The Hub asks "Remove {address} from this list?" and explains "If this is their last list and they were added only for media lists, they stop receiving email altogether."
+2. Choose **Remove** and their address on their row. The Hub asks "Remove [their address] from this list?" and explains "If this is their last list and they were added only for media lists, they stop receiving email altogether."
 3. Choose **Confirm remove**. You see "Removed from the list."
 
 Nobody is emailed. If it was their last list and they were added only for media lists, their status becomes **Unsubscribed or deleted**. You can add them back later without the unsubscribe question.

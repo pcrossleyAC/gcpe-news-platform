@@ -34,6 +34,6 @@ Release editors choose media lists for a release. Each member of those lists get
 
 ## Emails about the subscription itself
 
-People who sign up on the public site get an email asking them to confirm. They stay **Pending** until they do. They also get an email when they ask to change their preferences or address. These emails still go out while sending is paused.
+People who sign up on the public site get an email asking them to confirm. They have no record here until they do. They also get an email when they ask to change their preferences or address. These emails still go out while sending is paused.
 
 Nothing you do on the **Subscribers** screens emails the subscriber. Adding, changing, deactivating and deleting are all silent. Tell the person yourself if they need to know.

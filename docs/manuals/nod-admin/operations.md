@@ -20,7 +20,7 @@ Pause this to hold news email, for example during an election period or while a 
 
 While paused, no as-it-happens, digest, emergency alert or media list email leaves News On Demand. Confirmation emails to people signing up still go out.
 
-To resume, choose **Resume News On Demand sending**, then **Confirm resume**. "Held emails start going out straight away."
+To resume, choose **Resume News On Demand sending**, then **Confirm resume**. The Hub warns that held emails start going out straight away.
 
 ## Pause Distribution
 
@@ -31,7 +31,7 @@ Distribution is the service that sends email for every app. Pause it only when e
 
 System notices still go out while paused. These include sign-up confirmations, manage-subscription links, the bounce summary and the pause emails themselves.
 
-To resume, choose **Resume Distribution**, then **Confirm resume**. "Queued email starts going out straight away."
+To resume, choose **Resume Distribution**, then **Confirm resume**. The Hub warns that queued email starts going out straight away.
 
 ## Before you resume after a long pause
 
@@ -47,7 +47,7 @@ The bounce summary is a daily email at 8:00 am listing bounced subscribers. It i
 
 The section shows where it goes now:
 
-- "Using the server default: {address}" means no one has chosen an address here, so the site's own address is used. The box is empty on purpose.
+- "Using the server default:" followed by an address means no one has chosen an address here, so the site's own address is used. The box is empty on purpose.
 - "No address is set, so no summary is sent." means nobody gets it.
 
 To send it somewhere else:
@@ -78,8 +78,7 @@ The retention purge permanently deletes old personal information. Leave it **Off
 
 When on, every night at 3:00 am it deletes:
 
-- people who signed up but never confirmed, after 10 days;
-- unused sign-up links, after 10 days;
+- sign-ups that were never confirmed, after 10 days;
 - people who unsubscribed or were deleted more than 90 days ago, with their history and delivery records.
 
 It never deletes subscribers disabled by bounces. When it deletes someone who had left a media list by unsubscribing, it keeps that they left the list, without their address, so adding that address back still asks first.
@@ -93,7 +92,7 @@ Deleted records can't be brought back. To stop it, choose **Turn off the retenti
 
 Links in sent emails are cleared every night 10 days after they expire, whether the purge is on or off. They stopped working long before.
 
-People brought over from the old News On Demand who had already left are kept for 90 days from the move, whatever their old end date.
+Records imported from the old system that had already ended are kept until 90 days after the import.
 
 ## Test bounce upload
 

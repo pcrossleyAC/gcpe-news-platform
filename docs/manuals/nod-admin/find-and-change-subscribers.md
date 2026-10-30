@@ -22,7 +22,7 @@ The **Status** column shows one of these:
 
 | Status | What it means |
 |---|---|
-| **Pending** | They signed up but haven't confirmed by email yet. They get nothing. |
+| **Pending** | Never confirmed. They get nothing. Rare; such records are deleted after 10 days when the retention purge is on. |
 | **Active** | They get the email they chose. |
 | **Disabled** | They get nothing. Staff deactivated them, or their email kept bouncing. Their lists are kept. |
 | **Unsubscribed or deleted** | They get nothing. Only they can subscribe again. |
@@ -36,7 +36,7 @@ The record shows **Status**, **Source**, **Registered** and, once they have left
 - **Disabled — after repeated bounces** means bounces disabled them. **Disabled — by staff** means someone deactivated them.
 - **Bounced emails counted (last 15 days)** shows how close they are to being disabled. See [Bounces](manual:bounces).
 - **Media lists** names the media lists they are on. Change those on **Media lists**.
-- **History** lists every change: when, what, who, and details. "Subscriber" means the person did it themselves. "Bounce processing" and "Media Hub sync" are automatic. The most recent 500 entries are shown.
+- **History** lists every change: when, what, who, and details. The exception is adding a record to a media list: History shows only "Added to a media list", even when that made the person **Active** again. "Subscriber" means the person did it themselves. "Bounce processing" and "Media Hub sync" are automatic. The most recent 500 entries are shown.
 
 ## Change their lists or timing
 
