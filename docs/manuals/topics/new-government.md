@@ -51,6 +51,6 @@ Nobody needs to do anything.
 
 ## 4. After the swearing-in: site editors
 
-1. On **Organizations**, choose **Edit** on each ministry and update the **Minister name**, **Minister photo URL** and **Minister biography**. Upload photos under **Website** > **Files** first. See [Organizations for site editors](manual:site-editor-organizations).
+1. On **Organizations**, choose **Edit** on each ministry and update the **Minister name**, **Minister photo URL** and **Minister biography**. Upload photos under **Website** > **Files** first. See [Organizations](manual:site-editor-organizations).
 2. Take down or change any election notice on **Website** > **Site settings** > **Banner**, and publish. See [Site banner](manual:site-banner).
 3. Update the ministers' contact records in Media Hub. The Hub does not change them.

@@ -17,15 +17,13 @@ Release editors and release viewers can open **Website**, but they see only **Wh
 
 | Screen | What it controls | When visitors see it | Help page |
 |---|---|---|---|
-| **Website** > **Carousel** | The slides at the top of the home page, and the next set of slides with its go-live time. | When you publish, or at the next set's go-live time. | [Carousel](manual:carousel) |
-| **Website** > **Emergency pins** | Two emergency notices you can pin to the home page. | When you save a pinned notice, or pin it. | [Emergency pins](manual:emergency-pins) |
-| **Website** > **Live Feed** | The Live Webcast button and the stream it plays. | When you save. | [Live Feed](manual:live-feed) |
-| **Website** > **Resource links** | The list of links on the home page. | When you save. | [Resource links](manual:resource-links) |
+| **Website** > **Carousel** | The slides at the top of the home page, and the next set of slides with its go-live time. | A few minutes after you publish, or after the next set's go-live time. | [Carousel](manual:carousel) |
+| **Website** > **Emergency pins** | Two emergency notices you can pin to the home page. | A few minutes after you save a pinned notice, or pin it. | [Emergency pins](manual:emergency-pins) |
+| **Website** > **Live Feed** | The Live Webcast button and the stream it plays. | A few minutes after you save. | [Live Feed](manual:live-feed) |
+| **Website** > **Resource links** | The list of links on the home page. | A few minutes after you save. | [Resource links](manual:resource-links) |
 | **Website** > **Files** | Files the public can open at a fixed web address, such as PDFs and minister photos. | As soon as the upload finishes. | [Files](manual:website-files) |
-| **Website** > **Site settings** | The banner, footer, social links, colours, headings, page wording, menu and site description. | When you publish. | [How site settings are published](manual:site-settings) |
-| **Organizations** | Each ministry's name, minister, biography, media contacts and page links. | When the site next rebuilds. | [Organizations](manual:site-editor-organizations) |
-
-Visitors see most changes within a few minutes.
+| **Website** > **Site settings** | The banner, footer, social links, colours, headings, page wording, menu and site description. | A few minutes after you publish. | [How site settings are published](manual:site-settings) |
+| **Organizations** | Each ministry's name, minister, biography, media contacts and page links. | Within a few minutes of saving. | [Organizations](manual:site-editor-organizations) |
 
 **What's featured where** and **Website log** are read-only for everyone. See [What's featured where and the Website log](manual:featured-and-website-log).
 

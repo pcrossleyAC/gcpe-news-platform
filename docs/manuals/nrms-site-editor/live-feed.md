@@ -12,9 +12,9 @@ topics: []
 **Live Feed** controls the public site's **Live Webcast** button, which plays a live stream such as a news conference.
 
 - **M3U URL** is the address of the stream itself. It is needed to turn the feed on.
-- **Manifest URL** is the address of an older stream format. It is optional.
+- **Manifest URL** is optional. The public site doesn't use it.
 
-Both addresses come from whoever runs the webcast. Choose **?** beside a field for a short explanation.
+Both addresses come from whoever runs the webcast.
 
 ## Turn the Live Feed on
 
@@ -22,7 +22,7 @@ Both addresses come from whoever runs the webcast. Choose **?** beside a field f
 2. Switch **Live Feed on** on.
 3. Choose **Save Live Feed**.
 
-The button appears only while the feed is on and the stream answers. The public site checks the stream every 15 seconds, so the button can come and go with the stream.
+The **Live Webcast** button shows on every page while **Live Feed on** is switched on. Pages that are already open pick up the change within a minute. Turn the feed off when the webcast ends.
 
 The wording around the webcast, such as the button's label and the text shown when nothing is live, is on [Navigation and labels](manual:footer-and-navigation) and [Page text](manual:page-text).
 
@@ -33,7 +33,7 @@ The wording around the webcast, such as the button's label and the text shown wh
 
 ## What happens next
 
-- The home page changes within a few minutes.
+- The button shows or goes within a few minutes.
 - **Website log** lists "Turned the Live Feed on", "Turned the Live Feed off" or "Changed the Live Feed URLs", with your name.
 
 ## Can't do this?

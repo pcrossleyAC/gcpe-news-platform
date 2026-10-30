@@ -56,3 +56,4 @@ The site's name and logo in the header are not set here. The support team sets t
 | "Must start with https:// or / (a page on this site)." | A link's web address is missing, starts with http://, or has a space in it. |
 | "Enter who holds the copyright." | **Copyright holder** is empty. |
 | "Keep the help text to 200 characters or fewer." | Shorten **Help text**. |
+| "Keep the land acknowledgement to 1000 characters or fewer." | Shorten **Land acknowledgement**. |

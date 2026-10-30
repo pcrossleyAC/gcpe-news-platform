@@ -39,7 +39,7 @@ Use a JPEG or PNG image of up to 2 MB.
 1. Choose the slide's **Image (JPEG or PNG, up to 2 MB)** button and pick the file.
 2. The image appears beside the slide.
 
-On a live slide, the new image goes to the public site straight away, without **Publish carousel changes**. A new slide gets its image box only after it is published or saved: the slide shows "Publish the carousel changes to add this slide's image."
+On a live slide, the new image goes live without **Publish carousel changes**, within a few minutes. A new slide gets its image box only after it is published or saved: the slide shows "Publish the carousel changes to add this slide's image."
 
 ## Prepare the next slides
 

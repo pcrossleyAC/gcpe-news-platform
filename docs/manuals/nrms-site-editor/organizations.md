@@ -13,7 +13,7 @@ topics: [new-government]
 
 The table shows each ministry's **Name**, **Abbreviation**, **Minister** and **Active**. A ministry left off the public site has a "Not public" badge. If any ministries are inactive, tick **Show inactive organizations** to list them too.
 
-Adding, deactivating and handing over a ministry, its abbreviation and whether it is public are set by Core administrators.
+Core administrators add, deactivate and hand over ministries, and set each one's abbreviation and whether it is public.
 
 ## Edit a ministry
 
@@ -40,7 +40,7 @@ When a new government takes office, you update every minister's name, photo and 
 
 ## What happens next
 
-- Saved details reach the public site when it next rebuilds.
+- Saved details reach the public site within a few minutes.
 - Nobody is emailed.
 - Changing a minister here doesn't change their contact record in Media Hub. Update that by hand.
 
