@@ -8,16 +8,13 @@ import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useSearchShortcut } from "../../shared/shortcuts";
 import { ReleaseRow } from "../releases/ReleaseRow";
 import { Pagination } from "../releases/Pagination";
+import { gotoReleaseId } from "./findRelease";
 
 /** `GET /nrms/api/categories`'s shape, trimmed to what this screen needs (ministries/sectors)
  * — defined locally rather than imported from apps/nrms, which is Node-only. */
 interface Categories {
   ministries: { key: string; name: string }[];
   sectors: { key: string; name: string }[];
-}
-
-interface GotoHit {
-  id: string;
 }
 
 /** `/hub/search?q=&ministry=&sector=&page=` (spec §2): one search box that tries `GET
@@ -111,12 +108,9 @@ export function SearchScreen(): React.JSX.Element {
     if (!typed) return;
     setError(null);
     try {
-      const hit = await apiFetch<GotoHit>(`/nrms/api/goto?q=${encodeURIComponent(typed)}`).catch((caught: unknown) => {
-        if (caught instanceof ApiError && caught.status === 404) return null;
-        throw caught;
-      });
+      const hit = await gotoReleaseId(typed);
       if (hit) {
-        navigate(`/releases/${hit.id}`);
+        navigate(`/releases/${hit}`);
         return;
       }
       // Merge into the existing params (fix round 1, finding 2) — a bare `setSearchParams({ q

@@ -78,6 +78,31 @@ body {
   display: none;
 }
 
+/* "Find a release" at the top of the side menu: the box over a small Find button, the menu's
+ * own inset. */
+.gcpe-find-release {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--layout-margin-small, 0.5rem);
+  padding: 0 var(--layout-padding-medium, 1rem);
+  margin-bottom: var(--layout-margin-large, 1.5rem);
+}
+.gcpe-find-release__q {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.gcpe-find-release__q input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.gcpe-find-release__error {
+  flex: 1 1 100%;
+  margin: 0;
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-danger, #ce3e39);
+}
+
 .gcpe-shell__nav-group + .gcpe-shell__nav-group {
   margin-top: var(--layout-margin-large, 1.5rem);
 }
@@ -3104,6 +3129,27 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   flex-wrap: wrap;
   gap: 0.25rem 1.25rem;
 }
+/* A button that reads as a link in running text ("Show every type"). */
+.gcpe-link-button {
+  display: inline;
+  min-height: 24px;
+  padding: 0.125rem 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--typography-color-link, #255a90);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.gcpe-link-button:hover {
+  text-decoration-thickness: 2px;
+}
+.gcpe-link-button:focus-visible {
+  outline: var(--layout-border-width-medium, 2px) solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: 2px;
+}
+
 .gcpe-disclosure-toggle {
   display: inline-flex;
   align-items: center;
