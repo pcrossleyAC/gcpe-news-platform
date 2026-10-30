@@ -21,6 +21,10 @@ export interface AssetDto {
 export interface PostDto {
   key: string;
   kind: string;
+  /** The post's stable feed identity (`uuid:<id>`), as news.gov's RSS guid and Atom id carry it. */
+  atomId?: string | null;
+  /** The NRMS reference, `NEWS-<n>`: news.gov's short link is `/<n>` (C272). */
+  reference?: string | null;
   /** BC-local ISO date with offset, e.g. 2026-10-03T10:00:00-07:00 (News API formatOffsetDateTime). */
   publishDate: string;
   summary: string | null;

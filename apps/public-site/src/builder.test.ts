@@ -51,6 +51,20 @@ describe("site builder", () => {
     expect(html(storage, "ministries/health/atom.xml")).toContain("https://news.example/ministries/health/atom.xml");
   });
 
+  it("home, ministry and kind feeds carry news.gov's item ids (atomId) and the lead ministry from the page's ministry menu", async () => {
+    const atomId = "uuid:d4727aed-a383-4a45-ad88-b8ebb507ac31";
+    const { storage, builder } = setup(new Map([["K1", post({ key: "K1", ministryKeys: ["Health"], leadMinistryKey: "health", atomId })]]));
+    await builder.rebuild(["home", "category:ministries:health", "kind-feeds"], { ministryMenu: [{ key: "health", name: "Health" }] });
+    for (const f of ["feed.xml", "ministries/health/feed.xml", "feeds/releases.xml"]) {
+      expect(html(storage, f), f).toContain(`<guid isPermaLink="false">${atomId}</guid>`);
+      expect(html(storage, f), f).toContain("<category>Health</category>");
+    }
+    for (const f of ["atom.xml", "ministries/health/atom.xml", "feeds/releases.atom.xml"]) {
+      expect(html(storage, f), f).toContain(`<id>${atomId}</id>`);
+      expect(html(storage, f), f).toContain('<category term="Health"/>');
+    }
+  });
+
   it("the factsheets feed holds only factsheets and includes a factsheet that is the home top post", async () => {
     const posts = new Map([
       ["F1", post({ key: "F1", kind: "factsheets", publishDate: "2026-10-01T10:00:00-07:00" })],
