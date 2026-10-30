@@ -160,7 +160,25 @@ describe("FilesScreen", () => {
     const input = (await screen.findByLabelText("Upload a file (any type, up to 512 MB)")) as HTMLInputElement;
     const user = userEvent.setup();
     await user.upload(input, new File([new Uint8Array(10)], "big.pdf", { type: "application/pdf" }));
-    expect(await screen.findByText("request entity too large")).toBeInTheDocument();
+    expect(await screen.findByText("big.pdf: A file can be at most 512 MB.")).toBeInTheDocument();
+    expect(screen.queryByText("request entity too large")).toBeNull();
+  });
+
+  it("a schema rejection (400 invalid request) shows a plain message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/files?replace=false" && init?.method === "POST") return jsonResponse(400, { error: "invalid request" });
+        if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, EMPTY);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    const input = (await screen.findByLabelText("Upload a file (any type, up to 512 MB)")) as HTMLInputElement;
+    await userEvent.setup().upload(input, new File([new Uint8Array(10)], "a.pdf", { type: "application/pdf" }));
+    expect(await screen.findByText("The upload wasn't accepted. Reload the page and try again.")).toBeInTheDocument();
+    expect(screen.queryByText("invalid request")).toBeNull();
   });
 
   // Minors: Files stays NRMS.SiteEditor/Core.Admin only even though WebsiteScreen itself now

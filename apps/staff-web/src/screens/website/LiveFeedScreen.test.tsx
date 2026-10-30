@@ -54,7 +54,7 @@ describe("LiveFeedScreen", () => {
     await screen.findByRole("heading", { name: "Live Feed", level: 1 });
     expect(screen.getByText("What is Manifest URL?").closest("details")!.open).toBe(false);
     await userEvent.setup().click(screen.getByText("What is M3U URL?").closest("summary")!);
-    expect(screen.getByText(/shows its Live Webcast button only while Live Feed is on/)).toBeVisible();
+    expect(screen.getByText(/shows its Live Webcast button on every page while Live Feed is on/)).toBeVisible();
   });
 
   it("refuses to enable with no M3U URL, client-side, without calling the server", async () => {

@@ -53,8 +53,8 @@ describe("WebsiteScreen", () => {
     expect(screen.getByRole("link", { name: "Site settings" })).toHaveAttribute("aria-current", "page");
     const main = screen.getByRole("heading", { name: "Site settings", level: 1 }).parentElement!;
     const labels = within(main).getAllByRole("link").map((l) => l.textContent);
-    expect(labels).toEqual(["Banner", "Footer", "Social links", "Theme", "Ministry pages", "Media contacts page", "Page text", "Navigation and labels", "Site identity", "Settings history", "Project Blue Bridge"]);
-    expect(within(main).getByRole("link", { name: "Banner" })).toHaveAttribute("href", "/website/banner");
+    expect(labels).toEqual(["Site banner", "Footer links", "Social links", "Theme colours", "Ministry page headings", "Media contacts page", "Page text", "Navigation and labels", "Site identity", "Settings history", "Project Blue Bridge"]);
+    expect(within(main).getByRole("link", { name: "Site banner" })).toHaveAttribute("href", "/website/banner");
     expect(within(main).getByRole("link", { name: "Settings history" })).toHaveAttribute("href", "/website/settings-history");
     expect(within(main).getByRole("link", { name: "Project Blue Bridge" })).toHaveAttribute("href", "/website/blue-bridge");
     expect(screen.getByRole("heading", { name: "Restricted", level: 2 })).toBeInTheDocument();
@@ -65,9 +65,9 @@ describe("WebsiteScreen", () => {
     await screen.findByText("banner child");
     expect(screen.getByRole("link", { name: "Site settings" })).toHaveAttribute("aria-current", "true");
     const pages = screen.getByRole("navigation", { name: "Site settings pages" });
-    expect(within(pages).getByRole("link", { name: "Banner" })).toHaveAttribute("aria-current", "page");
+    expect(within(pages).getByRole("link", { name: "Site banner" })).toHaveAttribute("aria-current", "page");
     expect(within(pages).getByRole("link", { name: "All site settings" })).toHaveAttribute("href", "/website/settings");
-    expect(within(pages).getByRole("link", { name: "Ministry pages" })).toHaveAttribute("href", "/website/ministry-pages");
+    expect(within(pages).getByRole("link", { name: "Ministry page headings" })).toHaveAttribute("href", "/website/ministry-pages");
   });
 
   it("shows the sub-nav to Core.Admin too", async () => {
@@ -84,7 +84,7 @@ describe("WebsiteScreen", () => {
     expect(screen.getByRole("link", { name: "Website log" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Carousel" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Project Blue Bridge" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Banner" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Site banner" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Site settings" })).toBeNull();
     expect(screen.getByText("index child")).toBeInTheDocument();
   });

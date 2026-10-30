@@ -16,20 +16,20 @@ const SECTIONS: { to: string; label: string; manageOnly: boolean }[] = [
 
 /** The site settings (spec "Hub screens"), behind one "Site settings" tab whose index lists them. */
 export const SITE_SETTINGS: { to: string; label: string; description: string }[] = [
-  { to: "banner", label: "Banner", description: "The notice shown across the top of the public site." },
-  { to: "footer", label: "Footer", description: "The links in the public site's footer." },
+  { to: "banner", label: "Site banner", description: "The notice shown across the top of the public site." },
+  { to: "footer", label: "Footer links", description: "The links in the public site's footer." },
   { to: "social", label: "Social links", description: "The social media accounts the public site links to." },
-  { to: "theme", label: "Theme", description: "The public site's colours." },
-  { to: "ministry-pages", label: "Ministry pages", description: "The headings on each ministry's page." },
+  { to: "theme", label: "Theme colours", description: "The public site's colours." },
+  { to: "ministry-pages", label: "Ministry page headings", description: "The headings on each ministry's page." },
   { to: "media-contacts", label: "Media contacts page", description: "The media contacts page and the contacts listed on it." },
   { to: "page-text", label: "Page text", description: "Text on the public site's own pages, such as its not-found and empty messages." },
   { to: "navigation", label: "Navigation and labels", description: "The public site's menu, and the labels on its links and buttons." },
-  { to: "identity", label: "Site identity", description: "The site's name and the details that identify it." },
+  { to: "identity", label: "Site identity", description: "The site description, the X account and the Project Blue Bridge banner wording." },
   { to: "settings-history", label: "Settings history", description: "Every published revision of these settings, and restoring an earlier one." },
 ];
 
 /** Listed under "Restricted" on the Site settings index (and last in its page list). */
-export const BLUE_BRIDGE = { to: "blue-bridge", label: "Project Blue Bridge", description: "Its current state. Only Core.Admin can turn it on or off, with a confirmation phrase." };
+export const BLUE_BRIDGE = { to: "blue-bridge", label: "Project Blue Bridge", description: "Its current state. Only Core administrators can turn it on or off, with a confirmation phrase." };
 
 const SETTINGS_PATHS = new Set(["settings", BLUE_BRIDGE.to, ...SITE_SETTINGS.map((s) => s.to)]);
 

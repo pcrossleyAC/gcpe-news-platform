@@ -25,7 +25,7 @@ For a new cabinet, prepare all the ministry changes together on [Cabinet change]
    - **Minister biography**: shown on the minister's biography page, linked as Read Bio. **Clear the biography** removes that page. After you rename the minister, a note warns "The biography still describes the previous minister."
    - **Meet the Team links**, **Media contacts** (**Primary contact**, **Alternate contact**, **After-hours phone**) and **Ministry page links** (**Ministry website**, **Photos (Flickr) address**, **Videos (YouTube) address**, **Featured Topics**, **Featured Services**).
    - Only you see the last three fields: **Abbreviation**, **Parent ministry** and **Active**.
-3. Choose **Save**. You see "Saved. The public Ministries page updates when the site next rebuilds."
+3. Choose **Save**. You see "Saved. The public ministry pages update within a few minutes."
 
 The public page shows the alternate contact only when there is a primary contact.
 
@@ -79,7 +79,7 @@ Reactivating stops its pages sending visitors to the successor. It does not move
 
 ## What happens next
 
-- Saved details reach the public Ministries page when the site next rebuilds.
+- Saved details reach the public Ministries page and each ministry's own page within a few minutes.
 - After a hand-over, the old ministry's public web addresses send visitors to the successor. If the successor is later handed over too, the old addresses go straight to the newest ministry.
 - Subscribers, staff, Calendar activities and drafts move in the background shortly after. If they haven't moved after a few minutes, tell the support team.
 - A deactivated ministry can't be added to anyone's Calendar access. People who already have it keep it.

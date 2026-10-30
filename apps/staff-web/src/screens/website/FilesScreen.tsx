@@ -17,6 +17,16 @@ const INITIAL_UPLOAD: UploadState = { busy: false, error: null, replacePrompt: n
 /** Any type, up to 512 MiB (owner decision 2026-10-29, like the legacy Hub's Files screen). */
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
 
+/** Plain wording for a failed upload: the server's 413 and schema-rejection 400 would otherwise show as raw text. */
+function uploadMessage(caught: unknown, file: File): string {
+  if (caught instanceof ApiError) {
+    if (caught.status === 413) return `${file.name}: A file can be at most 512 MB.`;
+    if (caught.status === 400 && caught.message === "invalid request") return "The upload wasn't accepted. Reload the page and try again.";
+    return caught.message;
+  }
+  return "Upload failed.";
+}
+
 /**
  * `/hub/website/files` (task-5-brief.md): general files served at `/files/<name>`. Writes need
  * `NRMS.SiteEditor`. A new upload whose name collides with an existing file gets a 409
@@ -69,7 +79,7 @@ export function FilesScreen(): React.JSX.Element {
       if (caught instanceof ApiError && caught.status === 409) {
         setUpload({ busy: false, error: null, replacePrompt: file });
       } else {
-        setUpload({ busy: false, error: caught instanceof ApiError ? caught.message : "Upload failed.", replacePrompt: null });
+        setUpload({ busy: false, error: uploadMessage(caught, file), replacePrompt: null });
       }
     }
   };

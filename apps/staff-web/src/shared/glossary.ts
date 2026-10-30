@@ -58,14 +58,14 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Manifest URL",
     area: "Website",
     definition:
-      "Live Feed: the address of the live webcast's media manifest (the older streaming format legacy called the Flash media manifest). It's sent to the public site with the M3U URL while Live Feed is on.",
+      "Live Feed: the address of the live webcast's media manifest (the older streaming format legacy called the Flash media manifest). It's optional, and the public site doesn't use it.",
   },
   {
     id: "m3u-url",
     term: "M3U URL",
     area: "Website",
     definition:
-      "Live Feed: the address of the live webcast's M3U playlist (the stream itself). The public site checks it every 15 seconds and shows its Live Webcast button only while Live Feed is on and this address is set and answers.",
+      "Live Feed: the address of the live webcast's M3U playlist (the stream itself). The public site shows its Live Webcast button on every page while Live Feed is on; open pages pick up the change within a minute.",
   },
   {
     id: "project-blue-bridge",

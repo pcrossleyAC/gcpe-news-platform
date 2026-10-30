@@ -589,17 +589,14 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Phase 6c — The public site
 
-- **Site editor** — The public site now has a header with the site's name (and logo, once one is supplied), a menu (Home, Ministries, Archive, Search) and a footer with the tenant's footer links. A "Skip to main content" link appears when you press Tab.
 - **Operations** — The site's colours and font come from the tenant config's `site.theme`. Logo and font files go in `config/site/assets/`; the site copies them on every start. Until a logo file exists the header shows the site name as text.
 - **Viewer** — The public site has a page for every ministry (with its minister and media contacts), sector, theme and tag, each with its latest 20 posts and an RSS feed (`feed.xml`). Older news is in the archive, one page per month.
-- **Site editor** — The home page shows the Top and Featured posts, the carousel's slides as a list (they no longer rotate), the latest 20 posts and the resource links.
 - **Operations** — The site rebuilds every page a post appears on when it's published, changed or unpublished. A deploy that changes the page layout rebuilds the whole site once, on start.
 - **Operations** — Site rebuilds now go through a queue in the site's database and run on each tick (200 pages at a time). A publish, change or unpublish shows on the site at the next tick. A layout change or a Blue Bridge switch updates the home page at once and older pages over the following ticks, newest first.
 - **Developer** — `npm run site:rebuild-all` (with the site's DATABASE_URL, NEWS_API_URL, OUTPUT_DIR and PUBLIC_SITE_URL) queues every page.
 - **Operations** — If the site builder was stopped, it catches up from the News API's change feed when it starts again; if it was stopped for more than 90 days it rebuilds the whole site.
 - **Administrator** — Standalone (OpenShift): the site builder needs an Entra app registration with the News API's `NewsApi.ChangesRead` app role (NEWS_API_TOKEN_URL, NEWS_API_CLIENT_ID, NEWS_API_CLIENT_SECRET, NEWS_API_SCOPE), and the News API needs AUTH_AUDIENCE. It won't start without them.
 - **Viewer** — The site's Search page searches every published post, optionally within one ministry. Ministry and sector pages link to it. Without JavaScript it points to the archive instead.
-- **Site editor** — Carousel images no longer have a combined size limit (each image is still limited to 2 MB). Pinned emergency slides show at the top of the platform site's home page.
 
 ## Phase 6d–6e — Staff help and the exit checks
 
@@ -614,12 +611,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Site settings (2026-10-27)
 
-- **Site editor** — Hub → Website has new tabs: Banner, Footer, Social links, Theme, Ministry pages and Settings history. Each editor has one private draft. **Save draft** keeps it without changing the site; **Publish** puts it live, with an optional note for the history. Core administrators can look but not change.
-- **Site editor** — If someone else published while you were editing, nothing of yours is published and your draft is kept. You can keep your section on top of their version, or discard yours and use theirs.
-- **Site editor** — Settings history lists every publish. **Restore** brings an old one back as a new revision. Nothing is deleted.
-- **Site editor** — The banner can be Off, Information or Emergency, with an optional "show from" and "hide after" time (BC time) and an option for visitors to close it. It switches on and off by itself at those times; no publish is needed at the time. It needs JavaScript, and it is hidden while the Project Blue Bridge banner is up.
-- **Site editor** — Theme colours that are too faint to read are flagged, and the theme can't be published until they are fixed. Reset to defaults only fills in the form; nothing changes until you publish.
-- **Site editor** — Changes show on the public site within a few minutes. Colours and the banner are quickest; a footer change updates every page over the following ticks.
 - **Viewer** — The public site has a new Connect page (`/connect/`) listing the government's social accounts, and a footer and banner that staff can change. Ministry pages now have a side column: media contacts, the ministry's website, photos and videos, and its featured topics and services.
 - **Operations** — Until the first publish, the site uses `config/tenants/<tenant>.site-settings.json` (the bc tenant's file carries news.gov.bc.ca's footer and social links, banner off). Edit that file and redeploy to change the starting point.
 - **Operations** — A theme or banner publish never rebuilds pages. A Connect change rebuilds the Connect page; a ministry-heading change rebuilds the ministry pages; a footer change rebuilds every page, and so does the new year each January.
@@ -636,7 +627,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 ## Hardening batch 1
 
 - **Editor**, **Site editor** — Saving no longer throws keyboard focus back to the top of the page: the button you pressed (or the field you pressed Enter in) keeps focus. It shows and reads as busy until the save finishes: sighted users see a highlighted border on the button, and a screen reader announces it as unavailable.
-- **Site editor** — If an upload fails with "invalid request" straight after a release of the platform, reload the page and try again: a page left open from before the release still sends the file name the old way, which the server now refuses outright.
 - **Operations** — The tick now runs `calendar.orphan-sweep`. It deletes Calendar attachment bytes that no attachment references any more (left behind when a delete failed after a replace or remove), only once they are a day old, at most 50 per tick. A failure logs "[calendar] orphan sweep could not delete a stored file" with the error's type only; it retries on its next pass.
 - **Developer** — `npm run test:clean-dbs` lists leftover test databases (`test_<20 hex>`, `test_nr_<16 hex>`) and roles (`nr_<16 hex>`); `-- --confirm` drops them. It skips anything in use or created in the last hour (`-- --min-age-minutes=N` to change), so it is safe while another checkout's tests run.
 - **Developer** — NRMS's upload routes (release files, site files, page images) take the name in the `X-GCPE-File-Name` header, percent-encoded, like the Calendar's. `?name=` is refused with a 400.
