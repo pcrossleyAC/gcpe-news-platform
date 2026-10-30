@@ -42,7 +42,7 @@ const HOW_TO: HowTo[] = [
         <strong>Correct a published release:</strong> edit it and save; it republishes. Subscribers and media lists aren&rsquo;t emailed again.
       </>,
       <>
-        <strong>Find a release:</strong> <Link to="/search">Search</Link> ({mod("K")} goes to the search box), then narrow it by ministry or sector.
+        <strong>Find a release:</strong> type its number (NEWS-00007) or some of its words into Find a release, at the top of the side menu ({mod("K")} goes there on screens without a search or filter box of their own). A number opens the release; words open <Link to="/search">Search</Link>, where you can narrow by ministry or sector.
       </>,
     ],
   },
@@ -66,7 +66,7 @@ const HOW_TO: HowTo[] = [
         <strong>Find a subscriber:</strong> in <Link to="/subscribers">Subscribers</Link>, type part of their email in Email contains ({mod("K")} goes there).
       </>,
       <>
-        <strong>Change what someone gets:</strong> open them, change their preferences and choose Save preferences ({mod("S")}).
+        <strong>Change what someone gets:</strong> open them, change their preferences and choose Save preferences ({mod("S")}). Back to results (or the browser&rsquo;s Back) returns to the same results.
       </>,
     ],
   },
@@ -76,6 +76,9 @@ const HOW_TO: HowTo[] = [
     items: [
       <>
         <strong>Add an activity:</strong> in the <Link to="/calendar">Calendar</Link>, choose New activity, fill it in and choose Save ({mod("S")} or {mod("Enter")}).
+      </>,
+      <>
+        <strong>Edit an activity:</strong> open it from the list, change it and choose Save ({mod("S")}). You&rsquo;re taken back to the list with that activity in view and marked.
       </>,
       <>
         <strong>Narrow the list:</strong> open Filters ({mod("K")} opens it and goes to Search for). Saved views keeps filters you use often.
@@ -142,7 +145,9 @@ export function HelpScreen(): React.JSX.Element {
         {howTo.length === 0 && <p>Your role doesn&rsquo;t open any of the Hub&rsquo;s work areas yet. Ask a Hub administrator for access.</p>}
         {howTo.map((h) => (
           <div key={h.area}>
-            <h3>{h.area}</h3>
+            <h3 id={`how-${h.area.toLowerCase()}`} tabIndex={-1}>
+              {h.area}
+            </h3>
             <ul className="gcpe-help__list">
               {h.items.map((item, i) => (
                 <li key={i}>{item}</li>

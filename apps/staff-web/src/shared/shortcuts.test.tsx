@@ -157,7 +157,24 @@ describe("useShortcut", () => {
     }
     render(<Page />);
     screen.getByRole("button", { name: "Cancel" }).focus();
-    ctrl("s");
+    // Save page stays blocked in a dialog too (only Cmd/Ctrl+K is left to the browser there).
+    expect(ctrl("s")).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("with focus in a dialog, a key the page behind would have taken is left to the dialog and the browser (not swallowed)", () => {
+    const run = vi.fn();
+    function Page(): React.JSX.Element {
+      useShortcut("search", run);
+      return (
+        <div role="dialog" aria-label="Publish">
+          <input aria-label="Note" />
+        </div>
+      );
+    }
+    render(<Page />);
+    screen.getByLabelText("Note").focus();
+    expect(ctrl("k")).toBe(true);
     expect(run).not.toHaveBeenCalled();
   });
 

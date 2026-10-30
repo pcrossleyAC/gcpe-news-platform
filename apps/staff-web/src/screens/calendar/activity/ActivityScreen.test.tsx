@@ -58,7 +58,17 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(typeof body.tabId).toBe("string");
     expect(body).not.toHaveProperty("lookAhead");
     expect(router.state.historyAction).toBe("REPLACE");
+    expect(router.state.location.state).toEqual({ calendarNotice: "Saved HLTH-20001.", calendarActivityId: 20001 });
     expect(calls.filter((c) => c.url.endsWith("/lock") && c.init?.method === "PUT")).toHaveLength(1);
+  });
+
+  it("Cancel, with nothing changed, goes back to the list naming this activity, so its row is brought into view", async () => {
+    stubActivity([]);
+    const { router } = renderActivity(`/calendar/activities/20001?return=${encodeURIComponent("/calendar")}`);
+    await title();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Sample list" })).toBeInTheDocument();
+    expect(router.state.location.state).toEqual({ calendarActivityId: 20001 });
   });
 
   it("Ctrl+S (⌘S on a Mac) from inside a field saves, as Save does; the Save button shows the keys", async () => {

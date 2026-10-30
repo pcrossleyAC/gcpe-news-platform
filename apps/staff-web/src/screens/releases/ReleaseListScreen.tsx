@@ -5,6 +5,7 @@ import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { readRememberedView, rememberView } from "../../shared/rememberedView";
 import { useSearchShortcut } from "../../shared/shortcuts";
 import { ReleaseRow } from "./ReleaseRow";
 import { Pagination } from "./Pagination";
@@ -34,7 +35,11 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
   const [result, setResult] = useState<ReleasePage<ReleaseListItem> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const type = (searchParams.get("type") ?? "all") as "all" | ReleaseType;
+  // The Type filter is remembered for this user in this browser, so it stays put across the
+  // folder tabs and the next visit; a link that names a type (?type=) still wins.
+  const userId = session.user?.id;
+  const typeParam = searchParams.get("type") ?? readRememberedView(userId, "release-type");
+  const type: "all" | ReleaseType = typeParam !== null && (RELEASE_TYPES as readonly string[]).includes(typeParam) ? (typeParam as ReleaseType) : "all";
   const page = Number(searchParams.get("page") ?? "1") || 1;
 
   useEffect(() => {
@@ -72,6 +77,7 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
   }, [result, page]);
 
   const onTypeChange = (next: string) => {
+    rememberView(userId, "release-type", next === "all" ? null : next);
     const params = new URLSearchParams(searchParams);
     if (next === "all") params.delete("type");
     else params.set("type", next);
@@ -113,7 +119,17 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
       </div>
 
       {error && <p role="alert">{error}</p>}
-      {!error && result && result.items.length === 0 && <p>No releases.</p>}
+      {!error && result && result.items.length === 0 &&
+        (type === "all" ? (
+          <p>No releases.</p>
+        ) : (
+          <p>
+            {`Nothing here of type ${TYPE_LABEL[type]}. `}
+            <button type="button" className="gcpe-link-button" onClick={() => onTypeChange("all")}>
+              Show every type
+            </button>
+          </p>
+        ))}
 
       {!error && result && result.items.length > 0 && (
         <ul className="gcpe-release-list__rows">

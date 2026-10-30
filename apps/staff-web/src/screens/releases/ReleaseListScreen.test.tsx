@@ -99,6 +99,58 @@ describe("ReleaseListScreen", () => {
     expect(type).toHaveFocus();
   });
 
+  describe("the Type filter is remembered for this user", () => {
+    afterEach(() => window.localStorage.clear());
+
+    it("a type chosen in Drafts is still chosen in Published, and on the next visit", async () => {
+      const user = userEvent.setup();
+      const calls = renderScreen("drafts", "/releases/drafts", { releasesPage: page([item({ headline: "First headline" })]) });
+      await screen.findByText("First headline");
+      await user.selectOptions(screen.getByLabelText("Type", { exact: false }), "story");
+      await waitFor(() => expect(calls).toContain("/nrms/api/releases?folder=drafts&type=story&page=1&pageSize=25"));
+      cleanup();
+      const later = renderScreen("published", "/releases/published", { releasesPage: page([item({ headline: "Second headline" })]) });
+      await screen.findByText("Second headline");
+      expect(screen.getByLabelText("Type", { exact: false })).toHaveValue("story");
+      expect(later.filter((c) => c.startsWith("/nrms/api/releases")).at(-1)).toBe("/nrms/api/releases?folder=published&type=story&page=1&pageSize=25");
+    });
+
+    it("a link that names a type wins over the remembered one; All forgets it", async () => {
+      window.localStorage.setItem("gcpe.hub.view.release-type.1", "story");
+      const user = userEvent.setup();
+      const calls = renderScreen("drafts", "/releases/drafts?type=advisory", { releasesPage: page([item({ headline: "First headline" })]) });
+      await screen.findByText("First headline");
+      await waitFor(() => expect(calls.filter((c) => c.startsWith("/nrms/api/releases")).at(-1)).toContain("type=advisory"));
+      await user.selectOptions(screen.getByLabelText("Type", { exact: false }), "all");
+      expect(window.localStorage.getItem("gcpe.hub.view.release-type.1")).toBeNull();
+    });
+
+    it("an empty filtered folder offers Show every type, which clears the filter", async () => {
+      window.localStorage.setItem("gcpe.hub.view.release-type.1", "factsheet");
+      const user = userEvent.setup();
+      const calls = renderScreen("drafts", "/releases/drafts", { releasesPage: page([]) });
+      const button = await screen.findByRole("button", { name: "Show every type" });
+      expect(screen.getByText(/Nothing here of type Factsheet/)).toBeInTheDocument();
+      await user.click(button);
+      await waitFor(() => expect(calls.filter((c) => c.startsWith("/nrms/api/releases")).at(-1)).toContain("type=all"));
+      expect(window.localStorage.getItem("gcpe.hub.view.release-type.1")).toBeNull();
+      expect(screen.getByText("No releases.")).toBeInTheDocument();
+    });
+
+    it("storage that throws (a locked-down browser) just means no memory", async () => {
+      const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+      try {
+        renderScreen("drafts", "/releases/drafts", { releasesPage: page([item({ headline: "First headline" })]) });
+        await screen.findByText("First headline");
+        expect(screen.getByLabelText("Type", { exact: false })).toHaveValue("all");
+      } finally {
+        spy.mockRestore();
+      }
+    });
+  });
+
   it("Drafts says who last edited each release; Scheduled doesn't", async () => {
     const edited = page([item({ lastEdited: { at: "2026-06-15T17:30:00Z", by: "Pat Example" } })]);
     renderScreen("drafts", "/releases/drafts", { releasesPage: edited });

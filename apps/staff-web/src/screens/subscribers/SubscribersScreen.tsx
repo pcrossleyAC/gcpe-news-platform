@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import { AlertDialog, DialogTrigger, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
@@ -13,6 +13,7 @@ import { Pagination } from "../releases/Pagination";
 import { canEditSubscribers } from "./access";
 import { STATUS_FILTER_OPTIONS, STATUS_LABELS, timingLabel } from "./labels";
 import type { BulkAction, BulkResult, BulkSkipReason, StatusFilter, SubscriberPage } from "./types";
+import type { BackToResults, SubscriberLinkState, SubscribersSearchState } from "./backToResults";
 
 const BULK_COPY: Record<BulkAction, { verb: string; title: (n: number) => string; body: string; variant: "warning" | "destructive" }> = {
   activate: {
@@ -85,8 +86,19 @@ export function SubscribersScreen(): React.JSX.Element {
   const status = statusFrom(params.get("status"));
   const page = pageFrom(params.get("page"));
 
-  const [q, setQ] = useState("");
-  const [qInput, setQInput] = useState("");
+  // The search term rides in this history entry's state (never the URL): Back from a subscriber,
+  // or "Back to results" there, brings the same results back without typing the address again.
+  const location = useLocation();
+  const remembered = (location.state as SubscribersSearchState | null)?.subscribersQ ?? "";
+  const [q, setQ] = useState(remembered);
+  const [qInput, setQInput] = useState(remembered);
+  // Only a history entry for a different search resets the box (Back to an earlier one): paging
+  // keeps the same term, and must not wipe what's typed but not yet searched.
+  useEffect(() => {
+    if (remembered === q) return;
+    setQ(remembered);
+    setQInput(remembered);
+  }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [statusInput, setStatusInput] = useState<StatusFilter>(status);
   const [result, setResult] = useState<SubscriberPage | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -122,21 +134,30 @@ export function SubscribersScreen(): React.JSX.Element {
   const onSearch = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setOutcome(null);
-    setQ(qInput.trim());
-    setParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (statusInput === "all") next.delete("status");
-      else next.set("status", statusInput);
-      next.delete("page");
-      return next;
-    });
+    const typed = qInput.trim();
+    setQ(typed);
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (statusInput === "all") next.delete("status");
+        else next.set("status", statusInput);
+        next.delete("page");
+        return next;
+      },
+      { state: { subscribersQ: typed } satisfies SubscribersSearchState },
+    );
   };
   const onPage = (next: number) =>
-    setParams((prev) => {
-      const p = new URLSearchParams(prev);
-      p.set("page", String(next));
-      return p;
-    });
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set("page", String(next));
+        return p;
+      },
+      { state: { subscribersQ: q } satisfies SubscribersSearchState },
+    );
+  // Where a subscriber's "Back to results" returns to: these results, search term included.
+  const backTo: BackToResults = { path: `${location.pathname}${location.search}`, state: { subscribersQ: q } };
 
   const runBulk = async (action: BulkAction) => {
     setBusy(true);
@@ -252,7 +273,9 @@ export function SubscribersScreen(): React.JSX.Element {
                   </td>
                 )}
                 <td className="gcpe-table__primary">
-                  <Link to={`/subscribers/${s.id}`}>{s.email}</Link>
+                  <Link to={`/subscribers/${s.id}`} state={{ backTo } satisfies SubscriberLinkState}>
+                    {s.email}
+                  </Link>
                 </td>
                 <td data-label="Status">
                   {STATUS_LABELS[s.status]}

@@ -1,13 +1,28 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Header, InlineAlert } from "@bcgov/design-system-react-components";
 import { Button } from "../shared/Button";
 import { useSession } from "../session/SessionContext";
-import { NAV_GROUPS } from "./nav";
+import { hasAnyReadRole, NAV_GROUPS } from "./nav";
+import { FindRelease } from "./FindRelease";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
 import { AnnouncerProvider } from "../shared/Announcer";
 import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 import { useEscapeClosesPanels } from "../shared/escapeClosesPanels";
+
+/** The header's Help opens at the How do I… pointers for the area you're in (the whole page
+ * otherwise); the Help page itself shows only the areas this user can open. */
+const HELP_AREAS: [RegExp, string][] = [
+  [/^\/(releases|search)(\/|$)/, "releases"],
+  [/^\/website(\/|$)/, "website"],
+  [/^\/subscribers(\/|$)/, "subscribers"],
+  [/^\/calendar(\/|$)/, "calendar"],
+];
+export function helpFor(pathname: string): string {
+  const area = HELP_AREAS.find(([pattern]) => pattern.test(pathname))?.[1];
+  return area ? `/help#how-${area}` : "/help";
+}
 
 export function AppShell(): React.JSX.Element {
   const session = useSession();
@@ -51,7 +66,7 @@ export function AppShell(): React.JSX.Element {
         <Header title="GCPE News — Staff">
           <div className="gcpe-shell__user">
             {session.user && <span>Signed in as {session.user.name}</span>}
-            <Link to="/help" className="gcpe-shell__help">
+            <Link to={helpFor(pathname)} className="gcpe-shell__help">
               Help
             </Link>
             <Button size="small" variant="secondary" onPress={onSignOut}>
@@ -72,6 +87,8 @@ export function AppShell(): React.JSX.Element {
                 <span>Signed in</span> <strong>{session.user.name}</strong>
               </p>
             )}
+            {/* Search has its own box; everywhere else a release is one step away. */}
+            {hasAnyReadRole(session) && pathname !== "/search" && <FindRelease reveal={() => flushSync(() => setMenuOpen(true))} />}
             {groups.map((group) => (
               <div key={group.label} className="gcpe-shell__nav-group">
                 <p id={`${uid}-${group.label}`} className="gcpe-shell__nav-heading">

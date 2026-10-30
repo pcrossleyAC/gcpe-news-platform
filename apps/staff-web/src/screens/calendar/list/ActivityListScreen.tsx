@@ -125,7 +125,9 @@ function SavedViews({ running, children }: { running: string | null; children: R
 export function ActivityListScreen(): React.JSX.Element {
   useDocumentTitle("Corporate Calendar");
   const here = useLocation();
-  const notice = (here.state as { calendarNotice?: string } | null)?.calendarNotice ?? null;
+  const arrival = here.state as { calendarNotice?: string; calendarActivityId?: number } | null;
+  const notice = arrival?.calendarNotice ?? null;
+  const returnedFrom = typeof arrival?.calendarActivityId === "number" ? arrival.calendarActivityId : null;
   const me = useCalendarContext();
   const canManage = canManageCalendarAccess(useSession());
   const [params, setParams] = useSearchParams();
@@ -296,7 +298,7 @@ export function ActivityListScreen(): React.JSX.Element {
       />
       {prefsError && <p role="alert">{prefsError}</p>}
       {view === "list" ? (
-        <ActivityTable query={query} hidden={prefs.hiddenColumns} timeZone={config.timeZone} reloadToken={reloadToken} onSort={(sort, dir) => setQuery({ ...query, sort, dir })} tools={tools} />
+        <ActivityTable query={query} hidden={prefs.hiddenColumns} timeZone={config.timeZone} reloadToken={reloadToken} onSort={(sort, dir) => setQuery({ ...query, sort, dir })} tools={tools} returnedFrom={returnedFrom} />
       ) : (
         <CalendarGrid
           query={query}

@@ -74,6 +74,34 @@ describe("router (basename /hub)", () => {
     expect(link).toHaveAttribute("href", "/hub/releases/22222222-2222-2222-2222-222222222222");
   });
 
+  it("Releases in the side menu (/hub/releases) comes back to the folder this user last had open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Viewer"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        if (url.startsWith("/nrms/api/releases")) return jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 25 });
+        if (url.startsWith("/calendar/api/forecast") || url.startsWith("/nrms/api/forecast")) return jsonResponse(200, { items: [] });
+        return jsonResponse(404, { error: "not found" });
+      }),
+    );
+    try {
+      const router = createMemoryRouter(routes, { basename: "/hub", initialEntries: ["/hub/releases/scheduled"] });
+      render(
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>,
+      );
+      await screen.findByText("No releases.");
+      await router.navigate("/releases");
+      await waitFor(() => expect(router.state.location.pathname).toBe("/hub/releases/scheduled"));
+      // Another user on the same browser still starts at Drafts.
+      expect(window.localStorage.getItem("gcpe.hub.view.release-folder.2")).toBeNull();
+    } finally {
+      window.localStorage.clear();
+    }
+  });
+
   it("/hub/releases/new renders the New release screen, and /hub/releases/:id renders the real editor (Task 3), not a placeholder", async () => {
     vi.stubGlobal(
       "fetch",

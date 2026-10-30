@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
@@ -10,6 +10,7 @@ import { Form } from "../../shared/Form";
 import { useFormShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
+import { backToFrom } from "./backToResults";
 import { ListPicker } from "./ListPicker";
 import { attentionLabel, STATUS_LABELS, timingLabel } from "./labels";
 import type { ListOptions, SubscriberDetail } from "./types";
@@ -422,6 +423,8 @@ export function SubscriberScreen(): React.JSX.Element {
   const timeZone = useTenantTimeZone();
   const canEdit = canEditSubscribers(session);
   useDocumentTitle("Subscriber");
+  // Opened from Find subscribers: a way back to those same results (the search term included).
+  const backTo = backToFrom(useLocation().state);
 
   const [detail, setDetail] = useState<SubscriberDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -484,6 +487,13 @@ export function SubscriberScreen(): React.JSX.Element {
   return (
     <div className="gcpe-subscriber">
       <h1>Subscriber</h1>
+      {backTo && (
+        <p>
+          <Link to={backTo.path} state={backTo.state}>
+            Back to results
+          </Link>
+        </p>
+      )}
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       <p>{detail.email}</p>
 
