@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes , type InitialEntry } from "react-router";
 import type { CalendarRangeView, ListOptions, ListPage, ListPreferences, ListRow, SavedFilterView } from "@gcpe/calendar-contract";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { RequireAuth } from "../../../session/RequireAuth";
@@ -111,7 +111,7 @@ export function stubFetch(calls: Call[], s: Stub = {}) {
   );
 }
 
-export const renderList = (path = "/calendar") =>
+export const renderList = (path: InitialEntry = "/calendar") =>
   render(
     <SessionProvider>
       <MemoryRouter initialEntries={[path]}>

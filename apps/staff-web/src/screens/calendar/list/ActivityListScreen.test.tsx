@@ -375,6 +375,35 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     expect(screen.getAllByText("(changed, needs review)")).toHaveLength(1);
   });
 
+  it("back from an activity (Save, Review, Cancel), its row is in view, marked and focused; the others aren't", async () => {
+    stubFetch([], { page: () => ({ rows: [row({ id: 20001, title: "First listed" }), row({ id: 20002, title: "Second listed" })], total: 2, offset: 0 }) });
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      renderList({ pathname: "/calendar", state: { calendarNotice: "Saved HLTH-20002.", calendarActivityId: 20002 } });
+      const link = await screen.findByRole("link", { name: "Second listed" });
+      await waitFor(() => expect(link).toHaveFocus());
+      const tr = link.closest("tr")!;
+      expect(tr).toHaveClass("gcpe-calendar-row--returned");
+      expect(scrolled).toEqual([tr]);
+      expect(screen.getByRole("link", { name: "First listed" }).closest("tr")).not.toHaveClass("gcpe-calendar-row--returned");
+      expect(screen.getByText("Saved HLTH-20002.")).toBeInTheDocument();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("arriving any other way marks no row and leaves focus alone", async () => {
+    stubFetch([]);
+    renderList();
+    const link = await screen.findByRole("link", { name: "Sample listed" });
+    expect(link).not.toHaveFocus();
+    expect(document.querySelector(".gcpe-calendar-row--returned")).toBeNull();
+  });
+
   it("titles open the activity, carrying this list's address back; New activity shows for creators", async () => {
     stubFetch([]);
     const path = `/calendar?q=${encodeURIComponent(JSON.stringify({ filter: { quickSearch: "Sample" } }))}`;

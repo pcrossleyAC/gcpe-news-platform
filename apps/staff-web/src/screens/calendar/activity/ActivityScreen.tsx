@@ -251,9 +251,11 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
+  // Back on the list, the row for this activity is brought into view and given focus.
+  const backOnList = (to: string) => (to === returnTo && view ? { calendarActivityId: view.id } : {});
   const leave = (to: string, calendarNotice: string, replace = false) => {
     leaving.current = true;
-    navigate(to, { state: { calendarNotice }, replace });
+    navigate(to, { state: { calendarNotice, ...backOnList(to) }, replace });
   };
   const showErrors = (es: FieldError[]) => {
     setErrors(es);
@@ -471,7 +473,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
               Save
             </Button>
           )}
-          <Button variant="secondary" onPress={() => navigate(returnTo)}>
+          <Button variant="secondary" onPress={() => navigate(returnTo, { state: backOnList(returnTo) })}>
             {readOnly ? "Back" : "Cancel"}
           </Button>
         </div>

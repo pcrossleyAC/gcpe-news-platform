@@ -29,7 +29,10 @@ function ColumnLabel({ column }: { column: ListColumn }): React.JSX.Element {
   return full ? <abbr title={full}>{LIST_COLUMN_LABELS[column]}</abbr> : <>{LIST_COLUMN_LABELS[column]}</>;
 }
 
-export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, tools }: {
+export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, tools, returnedFrom = null }: {
+  /** The activity just saved, reviewed or left (Cancel): its row is brought into view, marked and
+   * given focus once it's on the page, so the list picks up where the user was. */
+  returnedFrom?: number | null;
   query: ListQuery;
   hidden: readonly HideableColumn[];
   timeZone: string;
@@ -98,6 +101,19 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
     return () => o.disconnect();
   }, [more]);
 
+  // Once per arrival: the row the user came back from, in view with focus on its link.
+  const broughtBack = useRef<number | null>(null);
+  const tbody = useRef<HTMLTableSectionElement>(null);
+  useEffect(() => {
+    if (returnedFrom === null || broughtBack.current === returnedFrom) return;
+    const row = tbody.current?.querySelector<HTMLTableRowElement>(`tr[data-activity-id="${returnedFrom}"]`);
+    if (!row) return;
+    broughtBack.current = returnedFrom;
+    const link = row.querySelector<HTMLAnchorElement>(".gcpe-col-title a") ?? row.querySelector<HTMLAnchorElement>("a");
+    row.scrollIntoView?.({ block: "center" });
+    link?.focus({ preventScroll: true });
+  }, [rows, returnedFrom]);
+
   const update = (id: number) => (patch: Partial<ListRow>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const columns = LIST_COLUMNS.filter((c) => c === "activity" || !(hidden as readonly string[]).includes(c));
   const today = todayIn(timeZone);
@@ -126,9 +142,13 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody ref={tbody}>
               {rows.map((r) => (
-                <tr key={r.id} className={r.isDeleted ? "gcpe-deleted" : undefined}>
+                <tr
+                  key={r.id}
+                  data-activity-id={r.id}
+                  className={[r.isDeleted && "gcpe-deleted", r.id === returnedFrom && "gcpe-calendar-row--returned"].filter(Boolean).join(" ") || undefined}
+                >
                   {columns.map((c) => {
                     const flagged = needsReviewOf(c, r);
                     return (

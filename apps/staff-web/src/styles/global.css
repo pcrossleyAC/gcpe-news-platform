@@ -1362,6 +1362,24 @@ body {
 .gcpe-needs-review {
   background: #fef0d8;
 }
+/* The activity the user just came back from (saved, reviewed or left): a light-blue row with the
+ * primary bar down its left edge, so it's found again at a glance — not by colour alone, since
+ * focus is on its link too. Flagged (needs review) cells keep their own colour. */
+.gcpe-calendar-row--returned > td:not(.gcpe-needs-review) {
+  background: var(--surface-color-background-light-blue, #f1f8fe);
+}
+.gcpe-calendar-row--returned > td:first-child {
+  box-shadow: inset 4px 0 0 var(--surface-color-primary-default, #013366);
+}
+@media (max-width: 47.99rem) {
+  .gcpe-calendar-table tbody tr.gcpe-calendar-row--returned {
+    background: var(--surface-color-background-light-blue, #f1f8fe);
+    border-left: 4px solid var(--surface-color-primary-default, #013366);
+  }
+  .gcpe-calendar-row--returned > td:first-child {
+    box-shadow: none;
+  }
+}
 .gcpe-deleted td {
   text-decoration: line-through;
 }
