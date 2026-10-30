@@ -6,7 +6,7 @@ import { Button } from "../../shared/BusyButton";
 import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
-import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressProblems } from "./slideChecks";
+import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressErrors } from "./slideChecks";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { Justify, PinSlot, PinView } from "./types";
 
@@ -28,12 +28,13 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
   const [justify, setJustify] = useState<Justify>(pin.slide.justify);
   const [imageError, setImageError] = useState<string | null>(null);
 
-  const [addressProblems, setAddressProblems] = useState<string[] | null>(null);
+  const [addressErrors, setAddressErrors] = useState<{ actionUrl?: string; facebookPostUrl?: string }>({});
+  const addressProblems = Object.values(addressErrors);
 
   const save = () => {
-    const found = slideAddressProblems(SLOT_LABEL[pin.slot], { actionUrl, facebookPostUrl });
-    setAddressProblems(found.length > 0 ? found : null);
-    if (found.length > 0) return;
+    const found = slideAddressErrors({ actionUrl, facebookPostUrl });
+    setAddressErrors(found);
+    if (Object.keys(found).length > 0) return;
     void section
       .run(() =>
         apiFetch<PinView>(`/nrms/api/site/pins/${pin.slot}`, { method: "PUT", body: { version: pin.version, headline, summary, actionUrl, actionLabel, facebookPostUrl, justify } }),
@@ -95,12 +96,14 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
           ))}
         </ul>
       )}
-      {addressProblems && (
-        <ul role="alert" className="gcpe-release-editor__problems">
+      {addressProblems.length > 0 && (
+        <div role="alert">
+          <ul className="gcpe-release-editor__problems">
           {addressProblems.map((p) => (
-            <li key={p}>{p}</li>
+            <li key={p}>{`${SLOT_LABEL[pin.slot]}: ${p}`}</li>
           ))}
         </ul>
+        </div>
       )}
       {switchRefused && hasUnsavedEdits && <InlineAlert variant="danger" role="alert" description="Save your changes first." />}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
@@ -112,9 +115,9 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
 
       <TextField label={`${SLOT_LABEL[pin.slot]} headline`} value={headline} onChange={setHeadline} isDisabled={!canEdit} />
       <TextField label={`${SLOT_LABEL[pin.slot]} summary`} value={summary} onChange={setSummary} isDisabled={!canEdit} />
-      <TextField label={`${SLOT_LABEL[pin.slot]} action URL`} value={actionUrl} onChange={setActionUrl} isDisabled={!canEdit} />
+      <TextField label={`${SLOT_LABEL[pin.slot]} action URL`} value={actionUrl} onChange={setActionUrl} isDisabled={!canEdit} isInvalid={addressErrors.actionUrl !== undefined} errorMessage={addressErrors.actionUrl} />
       <TextField label={`${SLOT_LABEL[pin.slot]} action label`} description="The link text. Leave empty for the default set in Navigation and labels." value={actionLabel} onChange={setActionLabel} isDisabled={!canEdit} />
-      <TextField label={`${SLOT_LABEL[pin.slot]} Facebook post URL`} value={facebookPostUrl} onChange={setFacebookPostUrl} isDisabled={!canEdit} />
+      <TextField label={`${SLOT_LABEL[pin.slot]} Facebook post URL`} value={facebookPostUrl} onChange={setFacebookPostUrl} isDisabled={!canEdit} isInvalid={addressErrors.facebookPostUrl !== undefined} errorMessage={addressErrors.facebookPostUrl} />
       <label>
         {SLOT_LABEL[pin.slot]} justify
         <select value={justify} onChange={(e) => setJustify(e.target.value as Justify)} disabled={!canEdit}>

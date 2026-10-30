@@ -53,4 +53,4 @@ Links to a deleted file stop working. Check that nothing still points to it firs
 | "{name}: A file can be at most 512 MB." | The file is too big to upload. |
 | "The file is empty." | The file has nothing in it. Check you picked the right one. |
 | "{name}" is a reserved Windows device name; rename the file. | Names such as con, aux, nul or prn can't be used. Rename the file and upload it again. |
-| "invalid request" | If this happens just after the Hub was updated, reload the page and try again. A page left open from before the update sends the file in a way the Hub no longer accepts. |
+| "The upload wasn't accepted. Reload the page and try again." | Most often this happens just after the Hub was updated: a page left open from before the update sends the file in a way the Hub no longer accepts. |

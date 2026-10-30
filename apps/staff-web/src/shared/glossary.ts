@@ -58,7 +58,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Manifest URL",
     area: "Website",
     definition:
-      "Live Feed: the address of the live webcast's media manifest (the older streaming format legacy called the Flash media manifest). It's sent to the public site with the M3U URL while Live Feed is on.",
+      "Live Feed: the address of the live webcast's media manifest (the older streaming format legacy called the Flash media manifest). It's optional, and the public site doesn't use it.",
   },
   {
     id: "m3u-url",

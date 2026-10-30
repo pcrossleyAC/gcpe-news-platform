@@ -63,8 +63,8 @@ export const LISTING_HINTS: Record<ListingKind, string> = {
   updates: "Title of the /updates/ page.",
 };
 
-export const FOOTER_CONNECT_HINT = "Heading of the first (left) column in the page footer. Leave blank to show no heading. The column appears only when it has links on the Footer screen.";
-export const FOOTER_MORE_INFO_HINT = "Heading of the second (right) column in the page footer. Leave blank to show no heading. The column appears only when it has links on the Footer screen.";
+export const FOOTER_CONNECT_HINT = "Heading of the first (left) column in the page footer. Leave blank to show no heading. The column appears only when it has links on the Footer links screen.";
+export const FOOTER_MORE_INFO_HINT = "Heading of the second (right) column in the page footer. Leave blank to show no heading. The column appears only when it has links on the Footer links screen.";
 
 /**
  * `/hub/website/navigation`: the public site's header (menu and button labels, header links, the

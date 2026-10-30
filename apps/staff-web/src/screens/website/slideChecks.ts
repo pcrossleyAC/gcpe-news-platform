@@ -14,6 +14,13 @@ export function webAddressProblem(fieldName: string, value: string): string | nu
   return null;
 }
 
+/** The message for each bad web address, keyed by field, so it can sit on its own field. */
+export function slideAddressErrors(slide: { actionUrl: string; facebookPostUrl: string }): { actionUrl?: string; facebookPostUrl?: string } {
+  const actionUrl = webAddressProblem("Action URL", slide.actionUrl);
+  const facebookPostUrl = webAddressProblem("Facebook post URL", slide.facebookPostUrl);
+  return { ...(actionUrl ? { actionUrl } : {}), ...(facebookPostUrl ? { facebookPostUrl } : {}) };
+}
+
 /** Checks a slide's two web addresses; `prefix` (such as "Slide 2" or "Primary") leads each message. */
 export function slideAddressProblems(prefix: string, slide: { actionUrl: string; facebookPostUrl: string }): string[] {
   return [webAddressProblem("Action URL", slide.actionUrl), webAddressProblem("Facebook post URL", slide.facebookPostUrl)]

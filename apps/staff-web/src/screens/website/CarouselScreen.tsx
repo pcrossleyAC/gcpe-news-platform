@@ -13,7 +13,7 @@ import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { HiddenPrefixLabel } from "../../shared/ShortLabel";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
 import { canManageWebsite } from "./access";
-import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressProblems } from "./slideChecks";
+import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressErrors } from "./slideChecks";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { CarouselsResponse, CarouselView, SlideView } from "./types";
@@ -62,7 +62,8 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   const isLive = carousel.state === "live";
   const [publishOpen, setPublishOpen] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
-  const [addressProblems, setAddressProblems] = useState<string[] | null>(null);
+  const [addressErrors, setAddressErrors] = useState<Record<string, { actionUrl?: string; facebookPostUrl?: string }>>({});
+  const addressProblems = slides.flatMap((slide, i) => Object.values(addressErrors[slide.clientKey] ?? {}).map((m) => `Slide ${i + 1}: ${m}`));
   const { announce } = useAnnouncer();
   const moveFocus = useMoveFocusRestore<HTMLDivElement>();
   const nextClientKey = useRef(0);
@@ -93,9 +94,9 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   });
 
   const save = () => {
-    const found = slides.flatMap((slide, i) => slideAddressProblems(`Slide ${i + 1}`, slide));
-    setAddressProblems(found.length > 0 ? found : null);
-    if (found.length > 0) {
+    const found = Object.fromEntries(slides.map((slide) => [slide.clientKey, slideAddressErrors(slide)]));
+    setAddressErrors(found);
+    if (Object.values(found).some((e) => Object.keys(e).length > 0)) {
       setPublishOpen(false);
       return;
     }
@@ -151,12 +152,14 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
           ))}
         </ul>
       )}
-      {addressProblems && (
-        <ul role="alert" className="gcpe-release-editor__problems">
+      {addressProblems.length > 0 && (
+        <div role="alert">
+          <ul className="gcpe-release-editor__problems">
           {addressProblems.map((p) => (
             <li key={p}>{p}</li>
           ))}
         </ul>
+        </div>
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
       {imageError && <InlineAlert variant="danger" role="alert" description={imageError} />}
@@ -222,9 +225,9 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
             <div className="gcpe-carousel__slide-fields">
               <TextField label={label("headline")} value={slide.headline} onChange={(v) => update(index, { headline: v })} isDisabled={!canEdit} />
               <TextField label={label("summary")} value={slide.summary} onChange={(v) => update(index, { summary: v })} isDisabled={!canEdit} />
-              <TextField label={label("action URL")} value={slide.actionUrl} onChange={(v) => update(index, { actionUrl: v })} isDisabled={!canEdit} />
+              <TextField label={label("action URL")} value={slide.actionUrl} onChange={(v) => update(index, { actionUrl: v })} isDisabled={!canEdit} isInvalid={addressErrors[slide.clientKey]?.actionUrl !== undefined} errorMessage={addressErrors[slide.clientKey]?.actionUrl} />
               <TextField label={label("action label")} description="The link text. Leave empty for the default set in Navigation and labels." value={slide.actionLabel} onChange={(v) => update(index, { actionLabel: v })} isDisabled={!canEdit} />
-              <TextField label={label("Facebook post URL")} value={slide.facebookPostUrl} onChange={(v) => update(index, { facebookPostUrl: v })} isDisabled={!canEdit} />
+              <TextField label={label("Facebook post URL")} value={slide.facebookPostUrl} onChange={(v) => update(index, { facebookPostUrl: v })} isDisabled={!canEdit} isInvalid={addressErrors[slide.clientKey]?.facebookPostUrl !== undefined} errorMessage={addressErrors[slide.clientKey]?.facebookPostUrl} />
               <div className="gcpe-field">
                 <label htmlFor={`slide-${slide.clientKey}-justify`}>
                   <HiddenPrefixLabel prefix={prefix} text="justify" />

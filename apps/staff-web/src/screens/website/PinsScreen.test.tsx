@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
 import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
@@ -235,8 +236,13 @@ describe("PinsScreen", () => {
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText(label), "www.example.com");
     await user.click(screen.getByRole("button", { name: "Save primary pin" }));
-    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect((await screen.findAllByText(message)).length).toBeGreaterThan(0);
     expect(calls.some((c) => c.startsWith("PUT"))).toBe(false);
+    const field = screen.getByLabelText(label);
+    expect(field).toBeInvalid();
+    expect(field).toHaveAccessibleDescription(expect.stringContaining(message.replace("Primary: ", "")));
+    const found = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    expect(found.violations.map((v) => `${v.id} (${v.impact})`)).toEqual([]);
   });
 
   it("flipping the pin switch with unsaved edits refuses, keeps the typing and sends nothing", async () => {

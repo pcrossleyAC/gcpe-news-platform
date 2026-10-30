@@ -18,7 +18,7 @@ The Hub dates the archive, builds its pages and sends old ministry addresses to 
 | The swearing-in date is announced | Core administrator | **Government terms** > **Start new government term**, and enter the date. |
 | Before the swearing-in | Core administrator | **Organizations** > **Cabinet change**: add the renames, new ministries and hand-overs, preview them, then schedule them for the swearing-in time. |
 | Swearing-in day | Nobody | The term changes over at midnight Pacific. A scheduled cabinet change publishes by itself. |
-| After the swearing-in | Site editors | Minister photos and biographies on **Organizations**, and the banner on **Website** > **Site settings** > **Banner**. Update minister contact records in Media Hub by hand. |
+| After the swearing-in | Site editors | Minister photos and biographies on **Organizations**, and the banner on **Website** > **Site settings** > **Site banner**. Update minister contact records in Media Hub by hand. |
 
 ## 1. Start the new term
 
@@ -52,5 +52,5 @@ Nobody needs to do anything.
 ## 4. After the swearing-in: site editors
 
 1. On **Organizations**, choose **Edit** on each ministry and update the **Minister name**, **Minister photo URL** and **Minister biography**. Upload photos under **Website** > **Files** first. See [Organizations](manual:site-editor-organizations).
-2. Take down or change any election notice on **Website** > **Site settings** > **Banner**, and publish. See [Site banner](manual:site-banner).
+2. Take down or change any election notice on **Website** > **Site settings** > **Site banner**, and publish. See [Site banner](manual:site-banner).
 3. Update the ministers' contact records in Media Hub. The Hub does not change them.
