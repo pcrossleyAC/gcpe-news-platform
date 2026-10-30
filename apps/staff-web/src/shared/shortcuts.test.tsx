@@ -157,7 +157,8 @@ describe("useShortcut", () => {
     }
     render(<Page />);
     screen.getByRole("button", { name: "Cancel" }).focus();
-    ctrl("s");
+    // Save page stays blocked in a dialog too (only Cmd/Ctrl+K is left to the browser there).
+    expect(ctrl("s")).toBe(false);
     expect(run).not.toHaveBeenCalled();
   });
 

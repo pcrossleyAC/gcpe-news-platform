@@ -161,10 +161,13 @@ function onKeyDown(e: KeyboardEvent): void {
   const pick =
     scoped.find((r) => !scoped.some((o) => o !== r && r.within!.current!.contains(o.within!.current!))) ??
     screenWide(candidates);
-  // With focus in a dialog, nothing behind it acts, and the key is left to the dialog and the
-  // browser rather than swallowed.
+  // With focus in a dialog, nothing behind it acts. Cmd/Ctrl+K is left to the dialog and the
+  // browser; Save and Submit are still kept from the browser, as before.
   const dialog = inDialog(active);
-  if (dialog && !(pick?.within?.current && dialog.contains(pick.within.current))) return;
+  if (dialog && !(pick?.within?.current && dialog.contains(pick.within.current))) {
+    if (id !== "search") e.preventDefault();
+    return;
+  }
   // Otherwise the browser's own meaning is kept away even when nothing here acts (only scoped
   // Saves, focus in none of them): Save page never opens on a screen that has a Save.
   e.preventDefault();
