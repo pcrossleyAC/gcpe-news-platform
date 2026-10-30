@@ -8,6 +8,8 @@ metadata:
   name: gcpe-stack
   annotations:
     haproxy.router.openshift.io/ip_whitelist: "<staff CIDR ranges, space-separated>"
+    # HSTS, as the Windows installs send it (-HstsMaxAgeDays): this host only, one year.
+    haproxy.router.openshift.io/hsts_header: "max-age=31536000"
 spec:
   host: "<host>"
   to:

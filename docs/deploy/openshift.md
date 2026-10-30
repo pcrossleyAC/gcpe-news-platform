@@ -187,7 +187,7 @@ Secret yourself from `secret.example.yaml` (it is deliberately not in the kustom
   securityContext: `runAsNonRoot`, `allowPrivilegeEscalation: false`, all capabilities dropped,
   seccomp `RuntimeDefault`, `readOnlyRootFilesystem: true`. No `runAsUser`/`fsGroup`: the
   restricted-v2 SCC assigns them.
-- `service.yaml`, `route.yaml` (edge TLS, HTTP redirected), `pvc.yaml` (10 Gi, set the storage
+- `service.yaml`, `route.yaml` (edge TLS, HTTP redirected, HSTS for a year), `pvc.yaml` (10 Gi, set the storage
   class), `configmap.yaml`, `secret.example.yaml`, `migrate-job.yaml`.
 - Point `kustomization.yaml`'s `images:` at the pushed image by digest.
 

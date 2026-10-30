@@ -341,6 +341,7 @@ password manager. Every parameter:
 | `-AllowedClientRanges` | IPv4 CIDR ranges that may reach IIS on 443 and 80 (Windows Firewall); everything else is refused. A re-run keeps them unless you pass new ones. |
 | `-AllowAllClients` | Removes that restriction. |
 | `-LogRetentionDays` | IIS logs older than this are deleted nightly, default 30. |
+| `-HstsMaxAgeDays` | How long browsers keep to https only for this host (`Strict-Transport-Security`), default 365. Sent only with a real certificate, never a self-signed one. `0` sends `max-age=0`, which tells browsers to forget it. A re-run keeps the last value unless passed. |
 
 `-SmtpPassword`, `-AdminPassword`, `-EntraClientSecret` and `-PostgresAdminPassword` are secure
 strings, never plain text on the command line. Either leave them out (the script asks), or:
@@ -377,7 +378,11 @@ What it does, in order (full log: `C:\gcpe\logs\install-<time>.log`):
    would otherwise inherit read access for every local user from `C:\`.
 6. Creates the IIS site **GCPE**: https on 443, http on 80 redirecting to https, forwarding
    everything to `127.0.0.1:3000`. ARR passes `Host` on and writes `X-Forwarded-For` **without the
-   client's port**. Default Web Site is stopped if it held port 80 or 443.
+   client's port**. Default Web Site is stopped if it held port 80 or 443. With a real
+   certificate, every response carries `Strict-Transport-Security: max-age=31536000` (this host
+   only: no `includeSubDomains`, no preload), so a browser that has been here once never tries http.
+   A self-signed certificate gets no HSTS: it would turn the browser's warning into an error that
+   can't be clicked past.
 7. IIS logging: no log entry at all for `/api/Subscribe`, `/nod/Subscribe`, `/subscribe`,
    `/news-subscribe`, `/newsletters`, `/enewsletters` (their URLs carry e-mail addresses and
    tokens); no `Referer` field; scheduled task **GCPE IIS log cleanup (GCPE)** deletes logs older
@@ -818,9 +823,10 @@ Every parameter:
 | `-HttpsPort`, `-HttpPort` | 443 and 80 by default. |
 | `-Root` | Default `C:\gcpe-proxy` (site rules, cache, install logs, saved settings). |
 | `-LogRetentionDays` | IIS logs older than this are deleted nightly, default 30. |
+| `-HstsMaxAgeDays` | `Strict-Transport-Security` max-age, default 365; sent only with a real certificate. `0` sends `max-age=0` (browsers forget it). Use the same value as the app server. |
 
-**Re-runs keep what you chose.** `-Environment`, `-CacheMaxSizeGB`, `-HttpsPort`, `-HttpPort` and
-`-LogRetentionDays` are saved in `C:\gcpe-proxy\proxy-settings.json`; a re-run without one of them
+**Re-runs keep what you chose.** `-Environment`, `-CacheMaxSizeGB`, `-HttpsPort`, `-HttpPort`,
+`-LogRetentionDays` and `-HstsMaxAgeDays` are saved in `C:\gcpe-proxy\proxy-settings.json`; a re-run without one of them
 keeps the saved value (the script says so), so a Prod proxy never becomes Test by itself. Only an
 explicit `-Environment Test` turns a Prod proxy into Test (with a warning). The client ranges and
 the certificate are kept the same way.
@@ -876,6 +882,7 @@ allowed egress ranges** (and `-k` while the certificate is self-signed):
 | `curl.exe -s --path-as-is -o NUL -w '%{http_code}' "https://<public host>/releases/../hub/"` | `404` or `400` (never the Hub) |
 | `curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' https://<public host>/contact` | `301 https://forms.gov.bc.ca/` (an old news.gov address) |
 | `curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' http://<public host>/archive/` | `301 https://<public host>/archive/` |
+| `curl.exe -sI https://<public host>/` | contains `Strict-Transport-Security: max-age=31536000` (with the real certificate) |
 | `curl.exe -sI -H 'Accept-Encoding: br' https://<public host>/` | `content-encoding: br` |
 | `curl.exe -sI -H 'Accept-Encoding: gzip' https://<public host>/` | `content-encoding: gzip` or none, never `br` |
 | `curl.exe -sI https://<public host>/` | no `content-encoding` |
