@@ -1,0 +1,18 @@
+{
+  "pages": [
+    {
+      "id": "core-admin-overview",
+      "title": "Core administrator manual",
+      "manual": "core-admin",
+      "order": 1,
+      "routes": [],
+      "screens": [],
+      "topics": [],
+      "markdown": "**Who this is for:** Core administrators (Core.Admin).\n\nThis manual is being written. It will cover the administration screens that only Core administrators can open.\n",
+      "html": "<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>\n<p>This manual is being written. It will cover the administration screens that only Core administrators can open.</p>\n",
+      "hash": "80212e7e09b28407a619a6a38d5d925af462d16176e7d1c12889de6b86361f67",
+      "changed": "2026-10-30",
+      "previous": null
+    }
+  ]
+}

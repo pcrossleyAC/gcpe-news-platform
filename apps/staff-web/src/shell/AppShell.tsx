@@ -10,19 +10,9 @@ import { useTimeZoneWarning } from "../format/timeZoneWarning";
 import { AnnouncerProvider } from "../shared/Announcer";
 import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 import { useEscapeClosesPanels } from "../shared/escapeClosesPanels";
+import { helpFor, helpTargetFor } from "../manuals/help-target";
 
-/** The header's Help opens at the How do I… pointers for the area you're in (the whole page
- * otherwise); the Help page itself shows only the areas this user can open. */
-const HELP_AREAS: [RegExp, string][] = [
-  [/^\/(releases|search)(\/|$)/, "releases"],
-  [/^\/website(\/|$)/, "website"],
-  [/^\/subscribers(\/|$)/, "subscribers"],
-  [/^\/calendar(\/|$)/, "calendar"],
-];
-export function helpFor(pathname: string): string {
-  const area = HELP_AREAS.find(([pattern]) => pattern.test(pathname))?.[1];
-  return area ? `/help#how-${area}` : "/help";
-}
+export { helpFor };
 
 export function AppShell(): React.JSX.Element {
   const session = useSession();
@@ -66,7 +56,7 @@ export function AppShell(): React.JSX.Element {
         <Header title="GCPE News — Staff">
           <div className="gcpe-shell__user">
             {session.user && <span>Signed in as {session.user.name}</span>}
-            <Link to={helpFor(pathname)} className="gcpe-shell__help">
+            <Link to={helpTargetFor(pathname, session)} className="gcpe-shell__help">
               Help
             </Link>
             <Button size="small" variant="secondary" onPress={onSignOut}>

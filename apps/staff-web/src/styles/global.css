@@ -3648,3 +3648,27 @@ html:has(.gcpe-activity form > .gcpe-actions) {
     font-weight: 700;
   }
 }
+
+/* /hub/help/manuals/...: a manual's pages, and one page of a manual (the compiled Markdown). */
+.gcpe-manual__crumb {
+  margin-block-end: 0;
+}
+
+.gcpe-manual__content {
+  max-inline-size: 45rem;
+  overflow-wrap: anywhere;
+}
+
+.gcpe-manual__content :is(h2, h3, h4) {
+  margin-block-start: 1.5rem;
+}
+
+.gcpe-manual__content img {
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+.gcpe-manual__changed {
+  margin-block-start: 2rem;
+  color: var(--typography-color-secondary, #474543);
+}

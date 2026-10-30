@@ -64,6 +64,7 @@ import { ReleaseSendsReportScreen } from "./screens/subscribers/reports/ReleaseS
 import { DigestRunsReportScreen } from "./screens/subscribers/reports/DigestRunsReportScreen";
 import { DistributionReportScreen } from "./screens/subscribers/reports/DistributionReportScreen";
 import { HelpScreen } from "./screens/help/HelpScreen";
+import { ManualScreen } from "./screens/help/ManualScreen";
 
 /**
  * Library-mode react-router v7, basename "/hub" (the stack hosts the staff app there — see
@@ -102,6 +103,8 @@ export const routes: RouteObject[] = [
       },
       { path: "search", element: <SearchScreen /> },
       { path: "help", element: <HelpScreen /> },
+      { path: "help/manuals/:manualId", element: <ManualScreen /> },
+      { path: "help/manuals/:manualId/:pageId", element: <ManualScreen /> },
       {
         path: "website",
         element: <WebsiteScreen />,
