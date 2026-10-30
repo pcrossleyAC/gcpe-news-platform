@@ -402,8 +402,6 @@ html.js .expandable-section .expand-toggle{display:inline-block}
 .expandable-section.collapsed .expand-toggle::before,.expandable-section.expanded .expand-toggle::before{content:"";display:inline-block;margin-right:6px;vertical-align:2px;border:4px solid transparent;border-top-color:currentColor;border-bottom-width:0}
 .expandable-section.expanded .expand-toggle::before{border-top-width:0;border-bottom:4px solid currentColor}
 .connect .connect-intro{font-size:16px}
-/* Connect With Us (pages/connect-strip.ts): one list of up to nine icons; legacy's inline-block items wrap, so give the rows room. */
-.resource-links.connect ul li{padding-bottom:8px}
 /* Legacy's #connect-content is a flex row of two columns; ours holds one .home-layout. */
 #connect-content>.home-layout{flex:1 1 auto;min-width:0}
 
