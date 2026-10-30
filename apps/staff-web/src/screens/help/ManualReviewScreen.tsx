@@ -53,6 +53,15 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
+  const [announcement, setAnnouncement] = useState("");
+  /** The element id to focus once the list has re-rendered without the page just reviewed. */
+  const [focusId, setFocusId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusId) return;
+    document.getElementById(focusId)?.focus();
+    setFocusId(null);
+  }, [focusId, reviews]);
 
   const load = useCallback(() => apiFetch<Review[]>(API).then(setReviews), []);
 
@@ -88,11 +97,24 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
     if (saving !== null) return;
     setSaving(page.id);
     setProblems([]);
+    setAnnouncement("");
     try {
       await apiFetch(API, { method: "POST", body: { pageId: page.id, hash: page.hash } });
-      await load();
     } catch (caught) {
       setProblems(caught instanceof ApiError || caught instanceof Error ? messagesOf(caught) : ["Something went wrong."]);
+      setSaving(null);
+      return;
+    }
+    // Saved. Whatever happens to the reload, the review is not reported as failed.
+    const index = unreviewed.indexOf(page);
+    const remaining = unreviewed.filter((p) => p !== page);
+    const next = remaining[Math.min(index, remaining.length - 1)];
+    try {
+      await load();
+      setAnnouncement("Marked reviewed.");
+      setFocusId(next ? `review-${next.id}` : "reviewed");
+    } catch {
+      setLoadError(true);
     } finally {
       setSaving(null);
     }
@@ -104,6 +126,9 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
         <Link to="/help">Help</Link>
       </p>
       <h1>Changed since your last review</h1>
+      <div role="status" className="gcpe-visually-hidden">
+        {announcement}
+      </div>
 
       {loadError && <InlineAlert variant="danger" role="alert" description="Couldn't load the reviews. Reload the page to try again." />}
       {problems.length > 0 && <InlineAlert variant="danger" role="alert" title="Couldn't mark it reviewed" description={problems.join(" ")} />}
@@ -114,7 +139,7 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
         <ul className="gcpe-manual-review__list">
           {unreviewed.map((p) => (
             <li key={p.id} className="gcpe-manual-review__item">
-              <h2>
+              <h2 id={`review-${p.id}`} tabIndex={-1}>
                 <Link to={`/help/manuals/${p.manual}/${p.id}`}>{p.title}</Link>
               </h2>
               <p className="gcpe-manual__changed">
@@ -140,7 +165,7 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
 
       {reviewed.length > 0 && (
         <section aria-labelledby="reviewed">
-          <h2 id="reviewed">Reviewed</h2>
+          <h2 id="reviewed" tabIndex={-1}>Reviewed</h2>
           <ul className="gcpe-help__list">
             {reviewed.map(({ page, review }) => (
               <li key={page.id}>

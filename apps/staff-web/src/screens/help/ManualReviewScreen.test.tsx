@@ -34,21 +34,28 @@ interface Options {
   post?: Response;
   /** Record the POST as this reviewer at this time (another admin got there first). */
   recordedAs?: { reviewedBy: string; reviewedAt: string };
+  /** Answer the list reload that follows a saved review with this status. */
+  reloadStatus?: number;
 }
 
 function renderScreen(roles: string[], reviews: Review[], opts: Options = {}) {
   const calls: { url: string; init?: RequestInit }[] = [];
   const store = [...reviews];
+  let saved = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
       if (url === "/core/auth/session") return jsonResponse(200, sessionBody(roles));
-      if (url === "/core/api/manual-reviews" && (init?.method ?? "GET") === "GET") return jsonResponse(200, store);
+      if (url === "/core/api/manual-reviews" && (init?.method ?? "GET") === "GET") {
+        if (saved && opts.reloadStatus) return jsonResponse(opts.reloadStatus, { error: "internal error" });
+        return jsonResponse(200, store);
+      }
       if (url === "/core/api/manual-reviews" && init?.method === "POST") {
         if (opts.post) return opts.post;
         const body = JSON.parse(init.body as string) as { pageId: string; hash: string };
         store.push({ ...body, ...(opts.recordedAs ?? { reviewedBy: "Pat", reviewedAt: "2026-10-30T20:00:00.000Z" }) });
+        saved = true;
         return new Response(null, { status: 201 });
       }
       throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
@@ -155,6 +162,34 @@ describe("ManualReviewScreen", () => {
     await user.click(await screen.findByRole("button", { name: "Mark reviewed: Brand new page" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't mark it reviewed");
     expect(screen.getByRole("button", { name: "Mark reviewed: Brand new page" })).toBeEnabled();
+  });
+
+  it("says the list could not be reloaded, not that saving failed, when the review saved but the reload did not", async () => {
+    const user = userEvent.setup();
+    const { calls } = renderScreen(["Core.Admin"], [], { reloadStatus: 500 });
+    await user.click(await screen.findByRole("button", { name: "Mark reviewed: Brand new page" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load the reviews");
+    expect(screen.queryByText(/Couldn't mark it reviewed/)).toBeNull();
+    expect(calls.filter((c) => c.init?.method === "POST")).toHaveLength(1);
+  });
+
+  it("moves focus to the next unreviewed page's heading and announces it", async () => {
+    const user = userEvent.setup();
+    renderScreen(["Core.Admin"], [DONE]);
+    await user.click(await screen.findByRole("button", { name: "Mark reviewed: Brand new page" }));
+    const next = await screen.findByRole("heading", { level: 2, name: "Government terms" });
+    await waitFor(() => expect(next).toHaveFocus());
+    expect(next).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("status")).toHaveTextContent("Marked reviewed.");
+  });
+
+  it("moves focus to the Reviewed heading when the last page is reviewed", async () => {
+    const user = userEvent.setup();
+    renderScreen(["Core.Admin"], ALL_DONE.filter((r) => r.pageId !== "brand-new"));
+    await user.click(await screen.findByRole("button", { name: "Mark reviewed: Brand new page" }));
+    const heading = await screen.findByRole("heading", { level: 2, name: "Reviewed" });
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(screen.getByRole("status")).toHaveTextContent("Marked reviewed.");
   });
 
   it("is not available to a site editor, who never asks Core for the reviews", async () => {
