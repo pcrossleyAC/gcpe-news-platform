@@ -35,6 +35,27 @@ describe("documentsByLanguage", () => {
   });
 });
 
+describe("release page: the short NEWS-n link (news.gov parity)", () => {
+  it("prints and shows https://<site>/<n> for reference NEWS-<n>, as news.gov does, after the story", () => {
+    const d = dom({ reference: "NEWS-34332" });
+    expect(d.querySelector(".story-page > .print-url")?.textContent).toBe("https://news.example/34332");
+    const box = d.querySelector(".story-body > .share-options > .share-permalink")!;
+    expect(box.textContent?.trim()).toBe("https://news.example/34332");
+    expect(d.querySelector(".story-body")!.lastElementChild?.matches(".share-options")).toBe(true);
+  });
+  it("keeps the base path of a prefixed site", () => {
+    const html = renderReleasePage(post({ reference: "NEWS-7" }), { ...site, baseUrl: "https://boxs.example/site" }, {}, ctx);
+    expect(html).toContain('<div class="share-permalink">https://boxs.example/site/7</div>');
+  });
+  it("no reference, or one that isn't NEWS-<digits>, keeps the canonical print URL and no box", () => {
+    for (const reference of [undefined, null, "", "NEWS-", "NEWS-12a", "ABC-12", "NEWS-0012345678901"]) {
+      const d = dom({ reference });
+      expect(d.querySelector(".print-url")?.textContent).toBe("https://news.example/releases/2026HLTH0001-000001/");
+      expect(d.querySelector(".share-permalink")).toBeNull();
+    }
+  });
+});
+
 describe("release page", () => {
   it("one h1 (English headline); .story-page > .story-features[aria-label] + .story-body; no <aside>; no duplicate ids", () => {
     const d = dom();
