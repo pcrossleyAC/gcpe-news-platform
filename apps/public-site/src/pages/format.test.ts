@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bytesReadable, displayDateTime } from "./format";
+import { bytesReadable, displayDateTime, displayDateTimeNoWeekday } from "./format";
 
 describe("displayDateTime", () => {
   it("displayDateTime('2026-09-22T11:45:00-07:00') is 'Tuesday, September 22, 2026 11:45 AM'; T00:05 is 12:05 AM; T12:00 is 12:00 PM", () => {
@@ -49,5 +49,14 @@ describe("bytesReadable", () => {
     expect(bytesReadable(1023)).toBe("1 KB");
     expect(bytesReadable(1024)).toBe("1 KB");
     expect(bytesReadable(1_048_576)).toBe("1,024 KB");
+  });
+});
+
+describe("displayDateTimeNoWeekday (legacy FormatDate, MMMM d, yyyy h:mm tt)", () => {
+  it("writes the BC wall clock without a weekday; a malformed date is returned as is", () => {
+    expect(displayDateTimeNoWeekday("2026-09-21T10:15:00-07:00")).toBe("September 21, 2026 10:15 AM");
+    expect(displayDateTimeNoWeekday("2026-09-21T00:05:00-07:00")).toBe("September 21, 2026 12:05 AM");
+    expect(displayDateTimeNoWeekday("2026-02-30T10:00:00-08:00")).toBe("2026-02-30T10:00:00-08:00");
+    expect(displayDateTimeNoWeekday("soon")).toBe("soon");
   });
 });

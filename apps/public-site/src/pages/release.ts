@@ -7,7 +7,7 @@ import { basePath, e, renderPage, safeHref, type PageOptions, type SiteInfo } fr
 import { sanitizeBodyHtml } from "../sanitize-body";
 import { releaseInstagram, settingsHref, themeDefaults } from "../settings";
 import { categoryPageId, pageUrl, parsePageId } from "../site-paths";
-import { bytesReadable, displayDate, displayDateTime } from "./format";
+import { bytesReadable, displayDate, displayDateTime, displayDateTimeNoWeekday } from "./format";
 import { translationLanguage } from "./languages";
 import { leadMedia, renderBodyAssets, renderMedia, type LeadMedia } from "./media";
 import { ministryLinkGroups, resourceLinks } from "./side-links";
@@ -152,7 +152,7 @@ function relatedBand(site: SiteInfo, post: PostDto, ctx: ReleaseContext): string
         .map((p) => ({ key: p.key, headline: headlineOf(p), publishDate: p.publishDate }));
   const articles = items.length
     ? `<div class="related-articles">\n<h2>Related Articles</h2>\n${items
-        .map((r) => `<div class="related-article">\n<h3><a href="${e(pageUrl(site, { type: "post", key: r.key }))}">${e(r.headline)}</a></h3>\n<div class="item-date">${e(displayDate(r.publishDate))}</div>\n</div>`)
+        .map((r) => `<div class="related-article">\n<h3><a href="${e(pageUrl(site, { type: "post", key: r.key }))}">${e(r.headline)}</a></h3>\n<div class="item-date">${e(displayDateTimeNoWeekday(r.publishDate))}</div>\n</div>`)
         .join("\n")}\n</div>`
     : "";
   const photos = safeHref(ctx.leadMinistry?.flickrUri);

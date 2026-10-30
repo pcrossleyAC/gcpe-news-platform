@@ -603,9 +603,9 @@ describe("release page: share, social meta, lead media, related band", () => {
     const fromRelated = dom({}, { ...ctx, related: related(4), ministryLatest: latest(["2026HLTH0009-000009"]) });
     expect(band(fromRelated)!.querySelector(".related-articles > h2")?.textContent).toBe("Related Articles");
     expect(articles(fromRelated)).toEqual([
-      ["Related 0 <r>", "/releases/2026HLTH0100-000100/", "September 1, 2026"],
-      ["Related 1 <r>", "/releases/2026HLTH0100-000101/", "September 2, 2026"],
-      ["Related 2 <r>", "/releases/2026HLTH0100-000102/", "September 3, 2026"],
+      ["Related 0 <r>", "/releases/2026HLTH0100-000100/", "September 1, 2026 9:00 AM"],
+      ["Related 1 <r>", "/releases/2026HLTH0100-000101/", "September 2, 2026 9:00 AM"],
+      ["Related 2 <r>", "/releases/2026HLTH0100-000102/", "September 3, 2026 9:00 AM"],
     ]);
     const image = band(fromRelated)!.querySelector(":scope > div.related-image > img")!;
     expect(image.getAttribute("src")).toBe("/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg");
@@ -613,7 +613,7 @@ describe("release page: share, social meta, lead media, related band", () => {
 
     const fallback = dom({}, { ...ctx, related: [], ministryLatest: latest(["2026HLTH0002-000002", self, "2026HLTH0003-000003", "2026HLTH0004-000004", "2026HLTH0005-000005"]) });
     expect(articles(fallback).map((a) => a[0])).toEqual(["Latest 2026HLTH0002-000002", "Latest 2026HLTH0003-000003", "Latest 2026HLTH0004-000004"]);
-    expect(articles(fallback)[0]![2]).toBe("October 1, 2026");
+    expect(articles(fallback)[0]![2]).toBe("October 1, 2026 10:00 AM");
 
     // Neither related nor a connect block: no band at all.
     const none = dom({}, { ...ctx, leadMinistry: { ...health, flickrUri: null, youtubeUri: null }, related: [], ministryLatest: latest([self]) });
