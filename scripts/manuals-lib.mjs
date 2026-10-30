@@ -56,6 +56,7 @@ function parseValue(path, key, raw, kind) {
 
 /** Splits a page into its YAML-style header (flat `key: value` lines) and its Markdown body. */
 export function parsePage(path, text) {
+  text = text.replace(/\r\n/g, "\n");
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
   if (!m) fail(path, "the page must start with a header between --- lines");
   const raw = {};
@@ -80,7 +81,27 @@ export function parsePage(path, text) {
 
 // Raw HTML in a page is shown as text, never rendered: pages are written by staff, not trusted markup.
 const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const marked = new Marked({ renderer: { html: ({ text }) => escapeHtml(text) } });
+
+// Links and images may only point to http, https, mailto, the manual:/topic: schemes (Hub-internal
+// links, resolved by the Hub) or a relative address. Anything else (javascript:, data:, //host ...)
+// is shown as plain text, because the Hub injects this html into the page.
+function safeTarget(href) {
+  const h = href.replace(/[\u0000-\u0020\u007f-\u009f]/g, "");
+  if (h.startsWith("//")) return false;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(h);
+  return !scheme || ["http", "https", "mailto", "manual", "topic"].includes(scheme[1].toLowerCase());
+}
+const marked = new Marked({
+  renderer: {
+    html: ({ text }) => escapeHtml(text),
+    link(token) {
+      return safeTarget(token.href) ? false : this.parser.parseInline(token.tokens);
+    },
+    image(token) {
+      return safeTarget(token.href) ? false : escapeHtml(token.text);
+    },
+  },
+});
 
 export function renderMarkdown(markdown) {
   return marked.parse(markdown, { async: false });

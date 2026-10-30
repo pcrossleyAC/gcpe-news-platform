@@ -63,6 +63,12 @@ describe("compile", () => {
     const edited = compile([src("a.md", page({ id: "a", title: "Renamed" }, "Alpha.\n"))], first, "2026-10-30");
     expect(edited.pages[0]!.changed).toBe("2026-10-30");
   });
+  it("gives a CRLF copy of a page the same hash and text", () => {
+    const lf = compile([a], null, "2026-10-01").pages[0]!;
+    const crlf = compile([src("a.md", page({ id: "a" }, "Alpha.\n").replace(/\n/g, "\r\n"))], null, "2026-10-01").pages[0]!;
+    expect(crlf.hash).toBe(lf.hash);
+    expect(crlf.markdown).toBe(lf.markdown);
+  });
   it("drops a page missing from the input", () => {
     const first = compile([a, src("b.md", page({ id: "b" }))], null, "2026-10-01");
     expect(compile([a], first, "2026-10-30").pages.map((p) => p.id)).toEqual(["a"]);
@@ -72,6 +78,26 @@ describe("compile", () => {
     expect(p!.html).toContain("&lt;script&gt;");
     expect(p!.html).not.toContain("<script>");
     expect(p!.html).not.toContain("<div>");
+  });
+});
+
+describe("links and images", () => {
+  const html = (body: string) => compile([src("l.md", page({ id: "l" }, body))], null, "2026-10-30").pages[0]!.html;
+  it("turns an unsafe link into plain text", () => {
+    const h = html("[x](javascript:alert(1)) and [y](JaVaScRiPt:alert(1)) and [z](data:text/html,hi) and [w](//evil.example)\n");
+    expect(h).not.toMatch(/<a /i);
+    expect(h).not.toContain("href");
+    expect(h).toContain("x and y and z and w");
+  });
+  it("turns an unsafe image into plain text", () => {
+    const h = html("![alt text](javascript:alert(1))\n");
+    expect(h).not.toContain("<img");
+    expect(h).toContain("alt text");
+  });
+  it("keeps http, https, mailto, manual:, topic: and relative links", () => {
+    for (const t of ["http://a.example/", "https://a.example/", "mailto:a@b.example", "manual:core-admin", "topic:signing-in", "/government-terms", "#top", "other-page"]) {
+      expect(html(`[go](${t})\n`)).toContain(`<a href="${t}">go</a>`);
+    }
   });
 });
 

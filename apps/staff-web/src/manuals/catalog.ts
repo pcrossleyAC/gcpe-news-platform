@@ -1,4 +1,7 @@
 import type { SessionValue } from "../session/SessionContext";
+import { isCoreAdmin } from "../screens/admin/organizations/access";
+import { canAdminSubscribers, canEditSubscribers, canReadSubscribers } from "../screens/subscribers/access";
+import { hasCalendarRole } from "../screens/calendar/access";
 
 export type ManualId =
   | "core-admin"
@@ -27,26 +30,34 @@ export interface ManualInfo {
   heldBy(s: SessionValue): boolean;
 }
 
+/** The user's highest Subscribers level from the app's own predicates: 0 admin, 1 editor, 2 viewer, null none. */
+function nodLevel(s: SessionValue): number | null {
+  if (canAdminSubscribers(s)) return 0;
+  if (canEditSubscribers(s)) return 1;
+  return canReadSubscribers(s) ? 2 : null;
+}
+
 /** In display order: Core admin, then each app from its top role down. */
 export const MANUALS: ManualInfo[] = [
-  { id: "core-admin", title: "Core administrator manual", forRoles: "Core administrators", app: "core", level: 0, heldBy: (s) => s.has("Core.Admin") },
-  { id: "nrms-site-editor", title: "Site editor manual", forRoles: "Site editors", app: "nrms", level: 0, heldBy: (s) => s.has("NRMS.SiteEditor") },
-  { id: "nrms-editor", title: "Releases editor manual", forRoles: "Release editors", app: "nrms", level: 1, heldBy: (s) => s.has("NRMS.Editor") },
-  { id: "nrms-viewer", title: "Releases viewer manual", forRoles: "Release viewers", app: "nrms", level: 2, heldBy: (s) => s.has("NRMS.Viewer") },
-  { id: "nod-admin", title: "Subscribers administrator manual", forRoles: "Subscribers administrators", app: "nod", level: 0, heldBy: (s) => s.has("NoD.Admin") },
-  { id: "nod-editor", title: "Subscribers editor manual", forRoles: "Subscribers editors", app: "nod", level: 1, heldBy: (s) => s.has("NoD.Editor") },
-  { id: "nod-viewer", title: "Subscribers viewer manual", forRoles: "Subscribers viewers", app: "nod", level: 2, heldBy: (s) => s.has("NoD.Viewer") },
+  { id: "core-admin", title: "Core administrator manual", forRoles: "Core administrators", app: "core", level: 0, heldBy: isCoreAdmin },
+  { id: "nrms-site-editor", title: "Site editor manual", forRoles: "Site editors", app: "nrms", level: 0, heldBy: (s) => s.has("NRMS.SiteEditor") /* no shared predicate exists for this exact role */ },
+  { id: "nrms-editor", title: "Releases editor manual", forRoles: "Release editors", app: "nrms", level: 1, heldBy: (s) => s.has("NRMS.Editor") /* no shared predicate exists for this exact role */ },
+  { id: "nrms-viewer", title: "Releases viewer manual", forRoles: "Release viewers", app: "nrms", level: 2, heldBy: (s) => s.has("NRMS.Viewer") /* no shared predicate exists for this exact role */ },
+  { id: "nod-admin", title: "Subscribers administrator manual", forRoles: "Subscribers administrators", app: "nod", level: 0, heldBy: (s) => nodLevel(s) === 0 },
+  { id: "nod-editor", title: "Subscribers editor manual", forRoles: "Subscribers editors", app: "nod", level: 1, heldBy: (s) => nodLevel(s) === 1 },
+  { id: "nod-viewer", title: "Subscribers viewer manual", forRoles: "Subscribers viewers", app: "nod", level: 2, heldBy: (s) => nodLevel(s) === 2 },
   {
     id: "calendar-admin",
     title: "Calendar administrator manual",
     forRoles: "Calendar administrators and system administrators",
     app: "calendar",
     level: 0,
-    heldBy: (s) => s.has("Calendar.SysAdmin") || s.has("Calendar.Administrator"),
+    // hasCalendarRole guards the block; no shared predicate exists for each exact Calendar role.
+    heldBy: (s) => hasCalendarRole(s) && (s.has("Calendar.SysAdmin") || s.has("Calendar.Administrator")),
   },
-  { id: "calendar-advanced", title: "Calendar advanced user manual", forRoles: "Calendar advanced users", app: "calendar", level: 1, heldBy: (s) => s.has("Calendar.Advanced") },
-  { id: "calendar-editor", title: "Calendar editor manual", forRoles: "Calendar editors", app: "calendar", level: 2, heldBy: (s) => s.has("Calendar.Editor") },
-  { id: "calendar-readonly", title: "Calendar read-only manual", forRoles: "Calendar read-only users", app: "calendar", level: 3, heldBy: (s) => s.has("Calendar.ReadOnly") },
+  { id: "calendar-advanced", title: "Calendar advanced user manual", forRoles: "Calendar advanced users", app: "calendar", level: 1, heldBy: (s) => hasCalendarRole(s) && s.has("Calendar.Advanced") /* no shared predicate exists for this exact role */ },
+  { id: "calendar-editor", title: "Calendar editor manual", forRoles: "Calendar editors", app: "calendar", level: 2, heldBy: (s) => hasCalendarRole(s) && s.has("Calendar.Editor") /* no shared predicate exists for this exact role */ },
+  { id: "calendar-readonly", title: "Calendar read-only manual", forRoles: "Calendar read-only users", app: "calendar", level: 3, heldBy: (s) => hasCalendarRole(s) && s.has("Calendar.ReadOnly") /* no shared predicate exists for this exact role */ },
 ];
 
 /**

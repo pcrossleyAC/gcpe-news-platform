@@ -39,4 +39,8 @@ The readers are staff, not developers. Write for someone looking at the screen.
 - Name screens and buttons exactly as they appear on screen.
 - No filler introductions, and do not restate a heading as the first sentence under it. A test rejects a first sentence that begins with its own heading.
 - Describe only what the reader can see and do.
-- Raw HTML in a page is shown as text, not rendered. Use Markdown only.
+- Raw HTML in a page is shown as text, not rendered. Use Markdown only. Links may go to http, https, mailto, a relative address, or a `manual:` or `topic:` target; any other link is shown as plain text.
+
+## The up-to-date test
+
+`apps/staff-web/src/manuals/freshness.test.ts` recompiles every page and compares it with the committed JSON (id, hash, text). It uses a placeholder date, not the real one: a page whose hash has not changed keeps its own "changed" date, so the placeholder only matters for pages that are out of date, and those already fail the test. Line endings (Windows or Unix) do not affect the hash.
