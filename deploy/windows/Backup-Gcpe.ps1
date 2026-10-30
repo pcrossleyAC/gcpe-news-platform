@@ -56,7 +56,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $machineDir = Join-Path $BackupPath $env:COMPUTERNAME
 $runDir = Join-Path $machineDir $stamp
 
-# Arguments for Start-Process: Windows PowerShell 5.1 joins them with spaces and quotes nothing.
+# Arguments for Invoke-GcpeCapture: it joins them with spaces and quotes nothing.
 function Quote([string]$Value) { '"' + $Value + '"' }
 
 # A backup holds gcpe.env (every secret) and the subscribers' e-mail addresses: each folder this
@@ -104,7 +104,7 @@ try {
         $password = (Get-Content -Raw -LiteralPath $paths.PgSuperuser).Trim()
         Invoke-GcpeWithEnv -Variables @{ PGPASSWORD = $password; PGHOST = 'localhost'; PGUSER = 'postgres' } -Script {
             $list = Invoke-GcpeCapture -FilePath (Join-Path $PgBin 'psql.exe') -Arguments @('-d', 'postgres', '-At', '-c', (Quote "SELECT datname FROM pg_database WHERE left(datname, 5) = 'gcpe_' ORDER BY 1"))
-            if ($list.ExitCode -ne 0) { throw "psql could not list the databases: $($list.Err)" }
+            if ($list.ExitCode -ne 0) { throw "psql could not list the databases (exit $($list.ExitCode)): $($list.Err)" }
             $names = @($list.Out -split "`r?`n" | Where-Object { $_ })
             if ($names.Count -eq 0) { throw 'No gcpe_* databases on this server.' }
             foreach ($name in $names) {
@@ -112,7 +112,7 @@ try {
                 $dump = Invoke-GcpeCapture -FilePath (Join-Path $PgBin 'pg_dump.exe') -Arguments @('-Fc', '-f', (Quote $file), (Quote $name))
                 if ($dump.ExitCode -ne 0) { throw "pg_dump $name failed (exit $($dump.ExitCode)): $($dump.Err)" }
                 $check = Invoke-GcpeCapture -FilePath (Join-Path $PgBin 'pg_restore.exe') -Arguments @('--list', (Quote $file))
-                if ($check.ExitCode -ne 0) { throw "pg_restore --list could not read $file : $($check.Err)" }
+                if ($check.ExitCode -ne 0) { throw "pg_restore --list could not read $file (exit $($check.ExitCode)): $($check.Err)" }
                 $bytes = (Get-Item -LiteralPath $file).Length
                 $manifest.databases += [ordered]@{ name = $name; bytes = $bytes }
                 Write-GcpeOk "$name ($([math]::Round($bytes / 1MB, 1)) MB)"
