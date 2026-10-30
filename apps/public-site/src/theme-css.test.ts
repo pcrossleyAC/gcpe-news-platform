@@ -113,6 +113,10 @@ describe("overrides.css", () => {
   it("underlines links inside running text (legacy CSS removes it; axe link-in-text-block, WCAG 1.4.1)", () => {
     expect(overrides).toMatch(/main p a, main li a\s*\{[^}]*text-decoration:\s*underline/);
   });
+  it("side-column link lists (More from this Ministry, Featured Topics/Services) drop the underline as legacy: each row is a link alone; hover and focus add it", () => {
+    expect(overrides).toContain(".collapsible-regions .resource-links ul li>a:only-child{text-decoration:none}");
+    expect(overrides).toMatch(/\.collapsible-regions \.resource-links ul li>a:only-child:hover,\.collapsible-regions \.resource-links ul li>a:only-child:focus-visible\{text-decoration:underline\}/);
+  });
   it("re-declares the six BC Sans faces legacy declares, woff2 only, with font-display: swap", () => {
     const faces = [...overrides.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]!);
     const desc = faces.map((f) => ({

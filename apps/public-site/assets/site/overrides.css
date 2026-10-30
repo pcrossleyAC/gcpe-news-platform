@@ -179,6 +179,10 @@ html:not(.js) #btnCloseBannerBridge{display:none}
  * hover and keyboard focus add one, and theme.css keeps the focus ring. */
 .resource-links.resources-box ul li>a{text-decoration:none}
 .resource-links.resources-box ul li>a:hover,.resource-links.resources-box ul li>a:focus-visible{text-decoration:underline}
+/* The side column's link lists (More from this Ministry, Featured Topics/Services, on ministry and
+ * release pages): a row that is a link alone has no underline, as legacy; hover and focus add one. */
+.collapsible-regions .resource-links ul li>a:only-child{text-decoration:none}
+.collapsible-regions .resource-links ul li>a:only-child:hover,.collapsible-regions .resource-links ul li>a:only-child:focus-visible{text-decoration:underline}
 /* Legacy's .collapsible-regions h3:hover pointer was for its phone accordion; ours aren't controls. */
 .home-features .collapsible-regions .resource-links h3:hover{cursor:auto}
 .resource-links h3{font-size:14px;font-weight:600;color:var(--color-text);margin-top:15px !important;margin-bottom:2px;padding-bottom:0;line-height:1.2}
