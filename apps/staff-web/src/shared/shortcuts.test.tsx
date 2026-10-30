@@ -161,6 +161,22 @@ describe("useShortcut", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("with focus in a dialog, a key the page behind would have taken is left to the dialog and the browser (not swallowed)", () => {
+    const run = vi.fn();
+    function Page(): React.JSX.Element {
+      useShortcut("search", run);
+      return (
+        <div role="dialog" aria-label="Publish">
+          <input aria-label="Note" />
+        </div>
+      );
+    }
+    render(<Page />);
+    screen.getByLabelText("Note").focus();
+    expect(ctrl("k")).toBe(true);
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("stops acting once the screen unmounts", () => {
     const run = vi.fn();
     const { unmount } = render(<Screen run={run} />);

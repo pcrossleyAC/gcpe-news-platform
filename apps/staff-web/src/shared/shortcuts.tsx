@@ -103,11 +103,35 @@ export function matchesShortcut(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "meta
 interface Registration {
   id: ShortcutId;
   run: () => void;
+  /** go-to-search: the box it goes to, which carries the key hint while this registration wins. */
+  inputId?: string;
+  /** Acts only when no other screen-wide registration does, whenever either mounted (the shell's
+   * Find a release, behind any screen's own search box). */
+  fallback?: boolean;
   within?: RefObject<HTMLElement | null>;
   order: number;
 }
 
 const registrations = new Set<Registration>();
+
+/** The registration a key acts on when focus is in none of the scoped ones: the latest screen-wide one. */
+const screenWide = (candidates: Registration[]): Registration | undefined =>
+  candidates.filter((r) => !r.within).sort((a, b) => Number(Boolean(a.fallback)) - Number(Boolean(b.fallback)) || b.order - a.order)[0];
+
+/**
+ * Only the box ⌘/Ctrl+K actually goes to says so (`aria-keyshortcuts`): the screen's own search or
+ * filter box when it has one, the side menu's Find a release otherwise — never both.
+ */
+function syncSearchHints(): void {
+  const searches = [...registrations].filter((r) => r.id === "search" && r.inputId);
+  const winner = screenWide(searches);
+  for (const r of searches) {
+    const el = document.getElementById(r.inputId!);
+    if (!el) continue;
+    if (r === winner) el.setAttribute("aria-keyshortcuts", ariaKeyShortcuts("search"));
+    else el.removeAttribute("aria-keyshortcuts");
+  }
+}
 let nextOrder = 0;
 let listening = false;
 
@@ -132,16 +156,19 @@ function onKeyDown(e: KeyboardEvent): void {
   if (candidates.length === 0) return;
   const active = document.activeElement;
   if (id === "search" && active instanceof HTMLElement && active.isContentEditable) return;
-  e.preventDefault();
-  if (e.repeat) return;
   const scoped = candidates.filter((r) => r.within?.current && active && r.within.current.contains(active));
   // The innermost scope: one that contains no other matching scope.
   const pick =
     scoped.find((r) => !scoped.some((o) => o !== r && r.within!.current!.contains(o.within!.current!))) ??
-    candidates.filter((r) => !r.within).sort((a, b) => b.order - a.order)[0];
-  if (!pick) return;
+    screenWide(candidates);
+  // With focus in a dialog, nothing behind it acts, and the key is left to the dialog and the
+  // browser rather than swallowed.
   const dialog = inDialog(active);
-  if (dialog && !(pick.within?.current && dialog.contains(pick.within.current))) return;
+  if (dialog && !(pick?.within?.current && dialog.contains(pick.within.current))) return;
+  // Otherwise the browser's own meaning is kept away even when nothing here acts (only scoped
+  // Saves, focus in none of them): Save page never opens on a screen that has a Save.
+  e.preventDefault();
+  if (e.repeat || !pick) return;
   pick.run();
 }
 
@@ -150,23 +177,28 @@ function onKeyDown(e: KeyboardEvent): void {
  * `within` scopes it to an element: it acts only while focus is inside (a row's or a form's own
  * Save, on a screen with several).
  */
-export function useShortcut(id: ShortcutId, run: (() => void) | null | false | undefined, options: { within?: RefObject<HTMLElement | null> } = {}): void {
+export function useShortcut(id: ShortcutId, run: (() => void) | null | false | undefined, options: { within?: RefObject<HTMLElement | null>; inputId?: string; fallback?: boolean } = {}): void {
   const runRef = useRef(run);
   runRef.current = run;
   const enabled = Boolean(run);
-  const { within } = options;
+  const { within, inputId, fallback } = options;
   useEffect(() => {
     if (!enabled) return;
-    const registration: Registration = { id, run: () => runRef.current && runRef.current(), within, order: ++nextOrder };
+    const registration: Registration = { id, run: () => runRef.current && runRef.current(), within, inputId, fallback, order: ++nextOrder };
     registrations.add(registration);
     if (!listening) {
       document.addEventListener("keydown", onKeyDown);
       listening = true;
     }
+    if (inputId) syncSearchHints();
     return () => {
       registrations.delete(registration);
+      if (inputId) {
+        document.getElementById(inputId)?.removeAttribute("aria-keyshortcuts");
+        syncSearchHints();
+      }
     };
-  }, [id, enabled, within]);
+  }, [id, enabled, within, inputId, fallback]);
 }
 
 /**
@@ -181,19 +213,22 @@ export function useFormShortcut(id: ShortcutId, enabled: boolean, scoped = false
 
 /**
  * ⌘/Ctrl+K moves focus to this screen's search or filter box (the element with `inputId`), and
- * marks the box with `aria-keyshortcuts`. `reveal` runs first, synchronously — to open a closed
+ * marks the box with `aria-keyshortcuts` while it is the one the key goes to. `reveal` runs first, synchronously — to open a closed
  * panel the box sits in.
  */
-export function useSearchShortcut(inputId: string, reveal?: () => void): void {
-  useShortcut("search", () => {
-    reveal?.();
-    const input = document.getElementById(inputId);
-    input?.focus();
-    if (input instanceof HTMLInputElement && input.type !== "number") input.select();
-  });
-  useEffect(() => {
-    document.getElementById(inputId)?.setAttribute("aria-keyshortcuts", ariaKeyShortcuts("search"));
-  });
+export function useSearchShortcut(inputId: string, reveal?: () => void, options: { fallback?: boolean } = {}): void {
+  useShortcut(
+    "search",
+    () => {
+      reveal?.();
+      const input = document.getElementById(inputId);
+      input?.focus();
+      if (input instanceof HTMLInputElement && input.type !== "number") input.select();
+    },
+    { inputId, fallback: options.fallback },
+  );
+  // Every render: the box may only now be on the page (rendered once data has loaded).
+  useEffect(() => syncSearchHints());
 }
 
 /** The subtle key hint inside a button ("⌘S" / "Ctrl+S"). Hidden from assistive technology: the

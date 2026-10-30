@@ -5,6 +5,7 @@ import axe from "axe-core";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { SessionProvider } from "../session/SessionContext";
 import { AppShell, helpFor } from "./AppShell";
+import { useSearchShortcut } from "../shared/shortcuts";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -13,6 +14,17 @@ function jsonResponse(status: number, body: unknown): Response {
 function Where(): React.JSX.Element {
   const { pathname, search } = useLocation();
   return <p data-testid="where">{`${pathname}${search}`}</p>;
+}
+
+/** A screen with its own search box, as Subscribers, Users and the Calendar list have. */
+function OwnSearch(): React.JSX.Element {
+  useSearchShortcut("own-q");
+  return (
+    <>
+      <label htmlFor="own-q">Own search</label>
+      <input id="own-q" />
+    </>
+  );
 }
 
 function renderAt(path: string, roles: string[], goto: (q: string) => Response) {
@@ -32,6 +44,7 @@ function renderAt(path: string, roles: string[], goto: (q: string) => Response) 
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route element={<AppShell />}>
+            <Route path="/own" element={<OwnSearch />} />
             <Route path="*" element={<Where />} />
           </Route>
         </Routes>
@@ -92,6 +105,16 @@ describe("Find a release (side menu)", () => {
     expect(box()).toHaveAttribute("aria-keyshortcuts", "Control+K");
     expect(fireEvent.keyDown(document.body, { key: "k", ctrlKey: true })).toBe(false);
     expect(box()).toHaveFocus();
+  });
+
+  it("on a screen with its own search box, only that box advertises and takes Ctrl+K; the Find box doesn't claim it", async () => {
+    renderAt("/own", ["NRMS.Viewer"], () => jsonResponse(404, {}));
+    await screen.findByText("Signed in as Pat");
+    const own = screen.getByLabelText("Own search");
+    await waitFor(() => expect(own).toHaveAttribute("aria-keyshortcuts", "Control+K"));
+    expect(box()).not.toHaveAttribute("aria-keyshortcuts");
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    expect(own).toHaveFocus();
   });
 
   it("isn't shown on Search (it has its own box) or to someone with no release role", async () => {

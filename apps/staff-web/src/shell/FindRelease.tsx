@@ -20,7 +20,8 @@ export function FindRelease({ reveal }: { reveal: () => void }): React.JSX.Eleme
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useSearchShortcut(FIND_RELEASE_INPUT_ID, reveal);
+  // Only where the screen has no search or filter box of its own: that box always wins the key.
+  useSearchShortcut(FIND_RELEASE_INPUT_ID, reveal, { fallback: true });
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
