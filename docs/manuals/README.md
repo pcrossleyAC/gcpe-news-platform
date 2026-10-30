@@ -44,3 +44,13 @@ The readers are staff, not developers. Write for someone looking at the screen.
 ## The up-to-date test
 
 `apps/staff-web/src/manuals/freshness.test.ts` recompiles every page and compares it with the committed JSON (id, hash, text). It uses a placeholder date, not the real one: a page whose hash has not changed keeps its own "changed" date, so the placeholder only matters for pages that are out of date, and those already fail the test. Line endings (Windows or Unix) do not affect the hash.
+
+## Keeping pages current
+
+A pull request that changes a Hub screen must also change the manual page that describes it. CI runs `node scripts/check-manuals-current.mjs --base origin/main` on every pull request and fails when it does not.
+
+- The check looks at changed files under `apps/staff-web/src/screens/`, except test files (`*.test.*`).
+- A page covers a folder when its `screens` header names that folder exactly, or names a folder above it: `admin/organizations` covers `admin/organizations/sub/x.tsx` but not `admin/organizations-x/`.
+- For each changed folder that some page covers, at least one of those pages must also change in the same pull request. Deleting such a page counts as a change. A folder no page names is not checked.
+- If the change does not alter what staff see or do, put a line in any commit message of the pull request that says exactly `Manual: no change`. That exempts the whole pull request.
+- The failure message names the folder and the pages to update.
