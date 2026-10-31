@@ -1142,7 +1142,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Newest first.</td>
 </tr>
 </tbody></table></div>
-<p>Each row shows the type, the page title (when it says more than the type), the lead ministry, the status, the date, the Calendar activity it is linked to, and on <strong>Drafts</strong> who changed it last. Choose the headline to open the release.</p>
+<p>Each row shows the type, the page title, if it isn&#39;t the same as the type, the lead ministry, the status, the date, the Calendar activity it is linked to, and on <strong>Drafts</strong> who changed it last. Choose the headline to open the release.</p>
 <p>To see one kind only, choose it in <strong>Type</strong>: <strong>Release</strong>, <strong>Story</strong>, <strong>Factsheet</strong> or <strong>Advisory</strong>. The Hub remembers your choice on every tab. If nothing matches, choose <strong>Show every type</strong>.</p>
 <p>Each page shows 25 releases. Use <strong>Previous</strong> and <strong>Next</strong> to move between pages.</p>
 <h2>What the status means</h2>
@@ -1195,8 +1195,105 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p><strong>Forecast</strong> shows what is coming, so you can see what is already planned before you start something new.</p>
 <p>Calendar activities appear only if you have Calendar access, and only the ones you can see in the Calendar. They must be confirmed, not confidential, start from now on, and have a category starting with &quot;Approved&quot;. An activity that already has a release planned or scheduled is shown as that release instead. Without Calendar access the tab says &quot;Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it.&quot;</p>
 <p>Choose <strong>Start a release</strong> under an activity to start a release from it. See <a href="/hub/help/manuals/nrms-editor/editor-start-a-release">Start a release</a>.</p>
-`,changed:"2026-10-30"},R=null,N={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
-<p>At the top of a release you see its type, status, reference number and headline. Below that, under &quot;Before this can be approved:&quot; and &quot;Before this can be published:&quot;, is what is still missing.</p>
+`,changed:"2026-10-30"},R={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<h2>Create the release</h2>
+<ol>
+<li>In <strong>Releases</strong>, choose <strong>New release</strong>.</li>
+<li>Choose the <strong>Type</strong>: <strong>Release</strong>, <strong>Story</strong>, <strong>Factsheet</strong> or <strong>Advisory</strong>.</li>
+<li>Choose the <strong>Page title</strong>, such as <strong>News Release</strong> or <strong>Backgrounder</strong>. Choosing one also sets the usual <strong>Layout</strong> and <strong>Page image</strong> for it; you can change them.</li>
+<li>Choose the <strong>Layout</strong>: <strong>Formal</strong> or <strong>Informal</strong>.</li>
+<li>Choose a <strong>Page image</strong>, or <strong>(none)</strong>. Advisories have none.</li>
+<li>Enter the <strong>Headline</strong>.</li>
+<li>If the release is for a Calendar activity, enter its number in <strong>Activity ID</strong>. See below.</li>
+<li>Enter the <strong>Location</strong>, such as VICTORIA.</li>
+<li>Tick the <strong>Ministries</strong>. If you tick more than one, choose the <strong>Lead ministry</strong>.</li>
+<li>Tick the <strong>Sectors</strong>, <strong>Themes</strong> and <strong>Tags</strong> that fit. Advisories have none.</li>
+<li>Tick any <strong>Media distribution lists</strong> the release should go to. An advisory must have at least one before it can be published.</li>
+<li>Choose <strong>Create release</strong>.</li>
+</ol>
+<p>The release opens, ready to write. It is a <strong>Draft</strong> in the <strong>Drafts</strong> folder. Nobody is emailed and nothing is public.</p>
+<p>If something is missing, a box headed &quot;Fix these to create&quot; lists it, such as &quot;Choose a page title.&quot; or &quot;Enter a headline.&quot;. Each line links to its field.</p>
+<p>If the <strong>Page title</strong> list is empty, the page says &quot;No page titles are set up yet. An administrator adds them under Release page titles.&quot; Ask a Core administrator.</p>
+<h2>Which type to choose</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Ministries</th>
+<th>Sectors, themes, tags</th>
+<th>Media lists</th>
+<th>News On Demand subscribers</th>
+<th>Can be unpublished</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Release</strong></td>
+<td>At least one</td>
+<td>At least one sector</td>
+<td>Allowed</td>
+<td>Emailed unless you untick it</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><strong>Story</strong></td>
+<td>At least one</td>
+<td>At least one sector</td>
+<td>No</td>
+<td>Not emailed unless you tick it</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><strong>Factsheet</strong></td>
+<td>At least one</td>
+<td>At least one sector</td>
+<td>Allowed</td>
+<td>Not emailed unless you tick it</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><strong>Advisory</strong></td>
+<td>Optional</td>
+<td>None</td>
+<td>At least one</td>
+<td>Never</td>
+<td>No: once sent, it stays sent</td>
+</tr>
+</tbody></table></div>
+<h2>Start from a Calendar activity</h2>
+<p>If you have Calendar access, a release can be linked to a Calendar activity.</p>
+<ul>
+<li>On <strong>Forecast</strong>, choose <strong>Start a release</strong> under the activity. <strong>New release</strong> opens with the activity filled in.</li>
+<li>Or type the number in <strong>Activity ID</strong>. The activity&#39;s title, ministry and start appear under the field, and its &quot;Translations required&quot;, if any.</li>
+<li>Choose <strong>Fill in from activity 3</strong> (the button names the number) to copy its start (as the planned publish date), its city (as the location), its lead and shared ministries, sectors, themes and tags. Check them before you create the release.</li>
+</ul>
+<p>Nothing is filled in for an activity that has ended, or whose category doesn&#39;t start with &quot;Approved&quot;; the page says which. Other things you may see under the field:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Calendar activity 3: its details aren&#39;t shown to you.&quot;</td>
+<td>It is confidential, or your Calendar access doesn&#39;t let you see it.</td>
+</tr>
+<tr>
+<td>&quot;Calendar activity 3 has been deleted.&quot;</td>
+<td>It can&#39;t be linked.</td>
+</tr>
+<tr>
+<td>&quot;No Calendar activity has ID 3.&quot;</td>
+<td>Check the number.</td>
+</tr>
+<tr>
+<td>&quot;Legacy activity 3, not migrated&quot;</td>
+<td>A release brought over from the old system names an activity that didn&#39;t come across. It keeps that number until you change it.</td>
+</tr>
+</tbody></table></div>
+<p>You can link or change the activity later in <strong>Publish settings</strong> on the release, as <strong>Calendar activity ID</strong>. Once a release is linked, the activity shows its status in the Calendar within a minute of each change.</p>
+`,changed:"2026-10-30"},N={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<p>At the top of a release you see its type, status, reference number and headline. If something is still missing, a line such as &quot;Not ready: 2 things to fix.&quot; follows. Choose <strong>See them under Actions</strong> to go to the list, where each item links to the part to fix.</p>
 <p>On a wide screen, the release is on the left, and <strong>Actions</strong>, <strong>Publish settings</strong> and <strong>Release info</strong> are on the right. On a narrow screen they come one after another.</p>
 <h2>Save your changes</h2>
 <p>You can change several parts of the release, then save them all at once.</p>
@@ -1204,16 +1301,22 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Make your changes. Each part you changed says <strong>Unsaved</strong> beside its heading.</li>
 <li>A bar along the bottom lists them: &quot;You have unsaved changes in: \u2026&quot;.</li>
 <li>Choose <strong>Save changes</strong> in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too.</li>
-<li>The bar says &quot;All changes saved.&quot; for a moment, then goes. The button you pressed keeps keyboard focus.</li>
+<li>The bar says &quot;All changes saved.&quot; for a moment, then goes.</li>
 </ol>
 <p>If one part can&#39;t be saved, the bar says &quot;Couldn&#39;t save page details. See why in that section.&quot; Choose the link to go to the message. Parts after it are not saved yet and keep your changes.</p>
 <p>While anything is unsaved, <strong>Approve</strong>, <strong>Publish now</strong> and <strong>Schedule</strong> are greyed out, with &quot;Save your changes to \u2026 first.&quot; under them.</p>
 <p>If you try to leave with unsaved changes, a box asks &quot;Leave anyway and discard them?&quot; Choose <strong>Stay</strong> to go back, or <strong>Leave</strong> to lose them. If your sign-in runs out while you are writing, sign in again in the same browser tab: the text you typed in a document comes back.</p>
 <p>&quot;Someone else changed this \u2014 reload to see their changes.&quot; means another person saved this release after you opened it. Choose <strong>Reload</strong>. Copy anything you typed first, because reloading shows their version.</p>
-<p><strong>If the release is already published, saving any change republishes it at once.</strong> See <a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct, unpublish or delete</a>.</p>
+<p><strong>If the release is already published, saving any change republishes it at once.</strong> See <a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct, feature, unpublish or delete</a>.</p>
 <h2>Documents</h2>
 <p>A release has one or more documents, such as the news release and a backgrounder. Each has an <strong>English</strong> tab, and a <strong>French</strong> tab once you add one.</p>
-<p>Each document has a <strong>Page title</strong>, <strong>Organizations</strong>, <strong>Headline</strong>, <strong>Subheadline</strong>, <strong>Byline</strong>, <strong>Body</strong> and <strong>Contacts</strong>. With the <strong>Formal</strong> layout, <strong>Organizations</strong> must be filled in before you can publish.</p>
+<p>Each document says its layout under its heading, such as &quot;Layout: Formal&quot;. The layout decides one field:</p>
+<ul>
+<li>A <strong>Formal</strong> document has <strong>Organizations</strong>, marked &quot;Needed before publishing.&quot; on a release, story or factsheet.</li>
+<li>An <strong>Informal</strong> document has a <strong>Byline</strong> instead.</li>
+</ul>
+<p>Every document also has a <strong>Page title</strong>, <strong>Headline</strong>, <strong>Subheadline</strong>, <strong>Body</strong> and <strong>Contacts</strong>.</p>
+<p>If a document already holds a byline but is Formal, or organizations but is Informal, that text shows greyed out with a note such as &quot;A formal document doesn&#39;t keep a byline. It&#39;s removed the next time this document is saved.&quot; Copy it first if you need it.</p>
 <p>The <strong>Body</strong> toolbar has <strong>Bold</strong>, <strong>Italic</strong>, <strong>Bulleted list</strong>, <strong>Numbered list</strong>, <strong>Link</strong> and <strong>Insert asset</strong>. Pasted text keeps only that formatting.</p>
 <p>To show a video or photo inside the body:</p>
 <ol>
@@ -1232,7 +1335,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>French text</h2>
 <ol>
 <li>Choose <strong>Add French translation</strong> on the document.</li>
-<li>Choose the <strong>French</strong> tab and fill it in. Once the French tab exists, its headline, body and organizations must be filled in before you can publish.</li>
+<li>Choose the <strong>French</strong> tab and fill it in. Once the French tab exists, its headline and body, and on a Formal document its organizations, must be filled in before you can publish.</li>
 <li>To take it away, choose <strong>Remove French translation</strong>, then <strong>Confirm remove</strong>. This can&#39;t be undone.</li>
 </ol>
 <p>A French PDF goes under <strong>Files</strong> instead. See <a href="/hub/help/manuals/nrms-editor/editor-files-and-media">Photos, video and files</a>.</p>
@@ -1241,12 +1344,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li><strong>URL key</strong>: the last part of the release&#39;s public address. A release or advisory gets one when it is approved. A story&#39;s or factsheet&#39;s comes from its headline, and you can change it until it is scheduled.</li>
 <li><strong>Redirect URL</strong>: fill this in only to send visitors to another page instead.</li>
 <li><strong>Location</strong>: the place at the start of the release, up to 50 characters.</li>
-<li><strong>Summary</strong>: what subscribers see in their email. It fills itself from the start of the body, and <strong>Documents</strong> shows &quot;(auto)&quot; until you change it.</li>
+<li><strong>Summary</strong>: what subscribers see in their email. It fills itself from the start of the body. <strong>Documents</strong> shows it, with &quot;(auto)&quot; until you change it, and an <strong>Edit it in Page details</strong> link.</li>
 <li><strong>Social media summary</strong> and <strong>Keywords</strong>.</li>
 </ul>
 <p>Advisories have no summary, social media summary or keywords.</p>
 <h2>Categories</h2>
-<p><strong>Categories</strong> shows what is ticked. Choose <strong>Edit categories</strong> to change the <strong>Ministries</strong>, <strong>Lead ministry</strong>, <strong>Sectors</strong>, <strong>Themes</strong> and <strong>Tags</strong>.</p>
+<p><strong>Categories</strong> shows what is ticked. Choose <strong>Edit categories</strong> to change the <strong>Ministries</strong>, <strong>Lead ministry</strong>, <strong>Sectors</strong>, <strong>Themes</strong> and <strong>Tags</strong>. Once you tick more than one ministry, <strong>Lead ministry (needed before approving)</strong> appears and says &quot;Choose the lead ministry&quot; until you do. An advisory doesn&#39;t need one and offers <strong>(none)</strong>.</p>
 <p>These decide which subscribers are emailed and which public pages list the release. You need at least one ministry and one sector to publish, and a lead ministry when you tick more than one.</p>
 <h2>Similar published releases</h2>
 <p>Use it to check whether something like this has gone out before.</p>
@@ -1264,7 +1367,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li><strong>Email me a copy</strong> emails the release to you. You see &quot;Sent to&quot; and your address.</li>
 <li><strong>History</strong> lists what was done and by whom. Tick <strong>Show all</strong> to include every edit. <strong>Published copies</strong> lists each time it went out.</li>
 </ul>
-`,changed:"2026-10-30"},E={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},E={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>Advisories have no media asset, translations or media files.</p>
 <h2>The main photo or video</h2>
 <p><strong>Media asset</strong> holds the one photo or video shown with the release.</p>
@@ -1362,7 +1465,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Uploading or removing a file on a published release republishes it at once, as a correction.</p>
 `,changed:"2026-10-30"},I={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>A release goes from <strong>Draft</strong> to <strong>Approved</strong>, then out now or at a set time. <strong>Actions</strong> shows only the buttons that fit the release&#39;s status. Each step acts on the release as saved, so save your changes first.</p>
-<p>When a button is greyed out, the reasons are listed under it, such as &quot;Approve is unavailable until:&quot; and &quot;Choose at least one ministry.&quot;. Each reason links to the part of the release to fix.</p>
+<p>When a button is greyed out, the reasons are listed under it, such as &quot;Approve is unavailable until:&quot; and &quot;Choose at least one ministry.&quot;. On a draft, &quot;Also needed before it can be published:&quot; lists what publishing will need too. A scheduled release can still have something missing, listed under &quot;Before the scheduled time:&quot;, and a published one under &quot;Before your next save can republish it:&quot;, because each publish checks again. Each reason links to the part of the release to fix.</p>
 <h2>Approve</h2>
 <ol>
 <li>Choose <strong>Approve</strong>. A box asks &quot;Approve this release?&quot;</li>
@@ -1384,7 +1487,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>The status shows <strong>Publishing...</strong>, then <strong>Published</strong>, usually within a minute. The page updates by itself: &quot;This page updates on its own until the release is done \u2014 no need to reload.&quot;</p>
 <h2>Schedule</h2>
 <ol>
-<li>Choose <strong>Schedule</strong>. If the release has a planned publish date still ahead, the date and time are filled in from it.</li>
+<li>Choose <strong>Schedule</strong>. If the release has a planned publish date still ahead, the date and time are filled in from it, and the panel says &quot;Filled in from the planned publish date.&quot;</li>
 <li>Enter the <strong>Date</strong> and <strong>Time (BC time)</strong>. A time that has passed shows &quot;Choose a time in the future, or use Publish now.&quot;</li>
 <li>Choose <strong>Confirm schedule</strong>. A box asks, for example, &quot;Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?&quot; and lists who will be emailed, as for <strong>Publish now</strong>.</li>
 <li>Choose <strong>Schedule</strong>.</li>
@@ -1392,12 +1495,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>The release moves to <strong>Scheduled</strong>. At that time it publishes by itself and the emails go out. Until then nothing is public: not the page, not its files, not the emails.</p>
 <p>You can still change a scheduled release. What goes out is the release as saved at the publish time.</p>
 <h2>The planned publish date</h2>
-<p><strong>Planned publish date (not yet committed)</strong>, in <strong>Publish settings</strong>, is only a plan: nothing happens at that time. It shows on <strong>Forecast</strong> and makes the status <strong>Planned</strong>. Choose <strong>Clear planned date</strong> to remove it. Only <strong>Schedule</strong> commits a time.</p>
+<p><strong>Planned publish date (for planning only)</strong>, in <strong>Publish settings</strong>, is a plan: nothing happens at that time. It shows on <strong>Forecast</strong> and makes the status <strong>Planned</strong>. Choose <strong>Clear planned date</strong> to remove it. Only <strong>Schedule</strong> sets when the release goes out.</p>
 <h2>Who is emailed</h2>
 <p>Set this in <strong>Publish settings</strong> before you publish.</p>
 <ul>
 <li><strong>Send to News On Demand subscribers</strong>: ticked for releases, unticked for stories and factsheets, and not available for advisories.</li>
-<li><strong>Send to media distribution lists</strong>: tick it, then tick the lists. A retired list a release already had shows &quot;(retired)&quot; and gets nothing.</li>
+<li><strong>Media distribution lists</strong>: tick each list that should get the media email. With none ticked, no media email goes out. On a release brought over from the old system you may see &quot;As saved, these lists won&#39;t get the media email. Save Publish settings and they will.&quot; <strong>Publish settings</strong> then says <strong>Unsaved</strong>: choose <strong>Save changes</strong> and the ticked lists get it. A retired list a release already had shows &quot;(retired)&quot; and gets nothing.</li>
 </ul>
 <p>See <a href="/hub/help/manuals/nrms-editor/editor-what-happens-next">Who is emailed, and when it goes public</a>.</p>
 <h2>Take back an approval or a schedule</h2>
@@ -1433,10 +1536,10 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 <tr>
 <td>&quot;A live release&#39;s correction goes out immediately \u2014 choose Publish now.&quot;</td>
-<td>A failed correction of a published release can&#39;t be scheduled.</td>
+<td>A failed correction of a published release can&#39;t be scheduled, so <strong>Schedule</strong> isn&#39;t offered for it. If you see this, reload the page and choose <strong>Publish now</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>Publishing emails people. Publishing again after an unpublish emails only people who weren&#39;t reached the first time. Saving, approving, scheduling, correcting and unpublishing don&#39;t email anyone.</p>
 <h2>When you publish</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -1672,7 +1775,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <p>Each row shows the type, the lead ministry, the status and the date. It also shows the page title if it isn&#39;t the same as the type, and the Calendar activity it is linked to. On <strong>Drafts</strong> it shows who changed it last. Choose the headline to open the release.</p>
-<p>To see one kind only, choose it in <strong>Type</strong>: <strong>Release</strong>, <strong>Story</strong>, <strong>Factsheet</strong> or <strong>Advisory</strong>. The Hub remembers your choice on every tab. If nothing matches, choose <strong>Show every type</strong>.</p>
+<p>To see one kind only, choose it in <strong>Type</strong>: <strong>Release</strong>, <strong>Story</strong>, <strong>Factsheet</strong> or <strong>Advisory</strong>. Updates, an older kind, show only under <strong>All</strong>. The Hub remembers your choice on every tab. If nothing matches, choose <strong>Show every type</strong>.</p>
 <p>Each page shows 25 releases. Use <strong>Previous</strong> and <strong>Next</strong> to move between pages.</p>
 <h2>What the status means</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
@@ -1712,7 +1815,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 <tr>
 <td><strong>Unpublishing...</strong></td>
-<td>It is being taken off the public site.</td>
+<td>It is being taken off the public site. An advisory shows <strong>Unscheduling...</strong> instead.</td>
 </tr>
 <tr>
 <td><strong>Failed</strong></td>
@@ -1724,36 +1827,40 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p><strong>Forecast</strong> shows what is coming up.</p>
 <p>Calendar activities appear only if you have Calendar access, and only the ones you can see in the Calendar. Choose an activity&#39;s title to open it in the Calendar. An activity that already has a release planned or scheduled is shown as that release instead. Without Calendar access, the tab says &quot;Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it.&quot;</p>
 `,changed:"2026-10-30"},Q={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
-<p>You see a release just as a release editor does, but you can&#39;t change anything and there is nothing to save.</p>
-<p>At the top are its type, status, reference number and headline. A draft may also list what is still missing, under &quot;Before this can be approved:&quot; or &quot;Before this can be published:&quot;. Those lists are for the release editor.</p>
+<p>You see a release as a release editor does, without <strong>Actions</strong>, the &quot;Not ready&quot; line and <strong>Similar published releases</strong>, and you can&#39;t change anything.</p>
+<p>At the top are its type, status, reference number and headline. Under them you may see:</p>
+<ul>
+<li>&quot;This release failed&quot; and the reason, if publishing didn&#39;t work;</li>
+<li><strong>Flickr alert</strong>, if the release went out without its Flickr photo.</li>
+</ul>
 <p>If you see &quot;This page updates on its own until the release is done \u2014 no need to reload.&quot;, the release is being published or taken off the site. Its status changes by itself.</p>
 <p>On a wide screen, the release is on the left, and <strong>Publish settings</strong> and <strong>Release info</strong> are on the right. On a narrow screen they come one after another.</p>
 <h2>The release</h2>
 <ul>
-<li><strong>Documents</strong>: each document&#39;s page title, headline, body and contacts. If a document has French text, choose its <strong>French</strong> tab to read it.</li>
-<li><strong>Page details</strong>: the URL key, location, summary, social media summary and keywords.</li>
+<li><strong>Documents</strong>: each document&#39;s layout, such as &quot;Layout: Formal&quot;, then its <strong>Page title</strong>, <strong>Headline</strong>, <strong>Subheadline</strong>, <strong>Body</strong> and <strong>Contacts</strong>. A Formal document has <strong>Organizations</strong>; an Informal one has a <strong>Byline</strong>. If a document has French text, choose its <strong>French</strong> tab to read it.</li>
+<li><strong>Page details</strong>: the <strong>URL key</strong>, <strong>Redirect URL</strong>, <strong>Location</strong>, <strong>Summary</strong>, <strong>Social media summary</strong> and <strong>Keywords</strong>.</li>
 <li><strong>Categories</strong>: the ministries, sectors, themes and tags it is filed under. Choose <strong>Show categories</strong> to see every choice.</li>
 <li><strong>Top / Feature</strong>: where the release is a Top or Feature on the public site, such as &quot;Top on Home&quot;. Choose <strong>Show Top / Feature</strong> to see every place.</li>
-<li><strong>Media asset</strong>: the photo or video shown with the release, if it has one.</li>
+<li><strong>Media asset</strong>: the photo or video shown with the release, or &quot;No media asset set.&quot;</li>
 <li><strong>Files</strong>: translations and media files. Choose a file&#39;s name to open it.</li>
 </ul>
 <h2>Publish settings</h2>
-<p><strong>Publish settings</strong> shows the planned publish date, if there is one. It also shows whether the release goes to News On Demand subscribers, and which media distribution lists it is sent to.</p>
+<ul>
+<li><strong>Calendar activity ID</strong>: the Calendar activity the release is linked to. Under it you see the activity&#39;s title, which opens it in the Calendar. If you can&#39;t see that activity in the Calendar, it says &quot;Calendar activity 3: its details aren&#39;t shown to you.&quot;, with the activity&#39;s number.</li>
+<li><strong>Planned publish date (for planning only)</strong>: the date and time a release editor plans to publish it, if there is one. Nothing is published at that time unless they schedule it.</li>
+<li>Whether it goes to News On Demand subscribers, and the <strong>Media distribution lists</strong> ticked to get it. &quot;As saved, these lists won&#39;t get the media email.&quot; means a release editor still has to save its settings for them to.</li>
+</ul>
 <h2>Release info</h2>
 <ul>
 <li><strong>Key</strong> and <strong>Reference (NEWS number)</strong>, or &quot;(none yet)&quot;.</li>
-<li><strong>View on site</strong> opens the public page in a new tab. It works only while the release is published.</li>
+<li><strong>View on site</strong> opens the public page in a new tab. It works only while the release is published. The public news site has its own <strong>Search</strong> page and a <strong>Connect</strong> page.</li>
 <li><strong>View PDF</strong> opens the release as a PDF in a new tab.</li>
 <li><strong>Email me a copy</strong> emails the release to you. You see &quot;Sent to&quot; and your address. The release&#39;s <strong>History</strong> records that you did.</li>
 <li><strong>History</strong> lists what was done and by whom. Tick <strong>Show all</strong> to include every edit.</li>
 <li><strong>Published copies</strong> lists each time it went out.</li>
 </ul>
 <p>If you see &quot;This release doesn&#39;t exist, or has been deleted.&quot;, it was deleted, or the link you followed is wrong.</p>
-<h2>The public news site</h2>
-<p><strong>View on site</strong> takes you to the public news site. The site has a page for every ministry, sector, theme and tag, each with its latest 20 posts and an RSS feed. Older news is in the archive, one page per month. Each ministry page also shows its minister, its media contacts, the ministry&#39;s website, and its featured topics and services.</p>
-<p>The site&#39;s <strong>Search</strong> page searches every published post. You can narrow it by <strong>Ministry</strong>, <strong>Sector</strong>, <strong>Content</strong> or <strong>Date</strong>. Each ministry and sector page links to it.</p>
-<p>The <strong>Connect</strong> page lists the government&#39;s social media accounts and the site&#39;s RSS feeds.</p>
-`,changed:"2026-10-30"},B={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
+`,changed:"2026-10-31"},B={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
 <h2>Open a release you know</h2>
 <ol>
 <li>Type into <strong>Find a release</strong>, at the top of the side menu, one of:<ul>
