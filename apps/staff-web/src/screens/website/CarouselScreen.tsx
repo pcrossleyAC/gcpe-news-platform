@@ -243,10 +243,10 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
               <TextField label={label("action label")} description="The link text. Leave empty for the default set in Navigation and labels." value={slide.actionLabel} onChange={(v) => update(index, { actionLabel: v })} isDisabled={!canEdit} />
               <TextField label={label("Facebook post URL")} value={slide.facebookPostUrl} onChange={(v) => update(index, { facebookPostUrl: v })} isDisabled={!canEdit} isInvalid={addressErrors[slide.clientKey]?.facebookPostUrl !== undefined} errorMessage={addressErrors[slide.clientKey]?.facebookPostUrl} />
               <div className="gcpe-field">
-                <label htmlFor={`slide-${slide.clientKey}-justify`}>
+                <label htmlFor={`slide-${carousel.id}-${slide.clientKey}-justify`}>
                   <HiddenPrefixLabel prefix={prefix} text="justify" />
                 </label>
-                <select id={`slide-${slide.clientKey}-justify`} value={slide.justify} onChange={(e) => update(index, { justify: e.target.value as "left" | "right" })} disabled={!canEdit}>
+                <select id={`slide-${carousel.id}-${slide.clientKey}-justify`} value={slide.justify} onChange={(e) => update(index, { justify: e.target.value as "left" | "right" })} disabled={!canEdit}>
                   <option value="left">Left</option>
                   <option value="right">Right</option>
                 </select>
@@ -262,7 +262,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
                         <input
                           type="file"
                           accept="image/png,image/jpeg"
-                          aria-describedby={`slide-${slide.clientKey}-image-hint`}
+                          aria-describedby={`slide-${carousel.id}-${slide.clientKey}-image-hint`}
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             e.target.value = "";
@@ -270,7 +270,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
                           }}
                         />
                       </label>
-                      <p className="gcpe-hint" id={`slide-${slide.clientKey}-image-hint`}>
+                      <p className="gcpe-hint" id={`slide-${carousel.id}-${slide.clientKey}-image-hint`}>
                         {slide.imageName ? `New image chosen: ${slide.imageName}. It ${imageWhen}.` : `The image ${imageWhen}.`}
                       </p>
                     </>
