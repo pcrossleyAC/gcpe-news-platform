@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import type { SettingsState } from "./api";
 import { FOOTER_CONNECT_HINT, HEADER_LINKS_HINT, INTRO, REQUIRED_NOTE, LABEL_FIELDS, LABEL_HINTS, LISTING_HINTS, NavigationScreen } from "./NavigationScreen";
 
@@ -121,7 +122,7 @@ describe("NavigationScreen", () => {
     renderScreen();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: "Show the search box in the header" }));
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; baseRevision: number; value: SiteSettings["navigation"] };
     expect(body.section).toBe("navigation");

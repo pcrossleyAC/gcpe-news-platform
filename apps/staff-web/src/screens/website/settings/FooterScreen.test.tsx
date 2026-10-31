@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import type { SettingsState } from "./api";
 
 const BASE: SiteSettings = defaultSiteSettings({
@@ -101,7 +102,7 @@ describe("FooterScreen", () => {
     const user = userEvent.setup();
     const help = await screen.findByRole("group", { name: "Help links" });
     await user.click(within(help).getByRole("button", { name: "Move link 1 down" }));
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
     expect(post.body).toEqual({
@@ -118,7 +119,7 @@ describe("FooterScreen", () => {
     const field = await screen.findByDisplayValue("Contact Us");
     await user.clear(field);
     await user.type(field, "Contact");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["footer"] };
     expect(body.section).toBe("footer");
@@ -135,7 +136,7 @@ describe("FooterScreen", () => {
     expect(screen.getByText("Shown in a band above the footer on every page. Plain text. Leave it empty to hide the band.")).toBeInTheDocument();
     await user.clear(field);
     await user.type(field, "Changed.");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
     expect(post.body).toEqual({ baseRevision: 4, section: "footer", value: { ...FOOTER, landAcknowledgement: "Changed." } });

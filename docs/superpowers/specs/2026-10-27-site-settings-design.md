@@ -242,3 +242,29 @@ Component structure, the exact preview styling, how the hook shares draft/publis
 state between screens, the inline banner script's markup, and test layout — following the
 existing Website screens (`useVersionedSave`, `InlineAlert`, `BusyButton`, `useAnnouncer`,
 focus rules, axe sweep).
+
+## Amendment 2026-10-31: Publish asks first, and can publish only this screen (W4)
+
+Owner approved 2026-10-31 (suite review W4). This changes "Storage and publishing — NRMS" and
+the publish bar in "Hub screens":
+
+- **Publish** opens a confirmation, "Publish your changes?", worded as Restore's: "Compared with
+  what is live now, this publishes changes on: {screens}." (the draft's `draftSections`, plus
+  this screen when it has unsaved typing), then "Visitors see it within a few minutes." With
+  nothing different: "Your draft is the same as what is live now. Publishing it makes a new
+  revision with the same settings."
+- When the changes cover other screens as well as this one, the confirmation offers **Publish
+  only {screen}** beside **Publish all changes** (else just **Publish**). It names other screens
+  with problems: "{screens} has problems that block publishing all changes. Publish only {screen}
+  still works."
+- `POST /site/settings/publish` takes `onlySection: true`. NRMS saves the draft as before, then,
+  under the same lock and the same base-revision check, publishes live (or the defaults) with
+  only this section replaced, so another section's stale or invalid draft neither goes live nor
+  blocks it. The publisher's draft is kept for its other sections, re-based on the new revision;
+  with nothing else left it is deleted, as Publish does. Log: "Published revision {n}, {Section}
+  only[: note]".
+- Status after it: "Published revision {n}, with only your {screen} changes. Visitors see it
+  within a few minutes." plus " Your draft still has changes on {screens}." when some remain.
+- The hint above the buttons: "Publish and Discard draft apply to your whole draft, on every
+  settings screen. Publish lets you publish only this screen instead."
+

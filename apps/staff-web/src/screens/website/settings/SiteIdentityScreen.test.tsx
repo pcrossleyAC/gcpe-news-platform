@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import type { SettingsState } from "./api";
 import { BANNER_MESSAGE_HINT, BIRTH_DATE_HINT, DESCRIPTION_HINT, OPERATOR_NOTE, READ_ONLY_NOTE, SiteIdentityScreen, TWITTER_HINT } from "./SiteIdentityScreen";
 
@@ -100,7 +101,7 @@ describe("SiteIdentityScreen", () => {
     const description = await screen.findByLabelText("Site description");
     await user.clear(description);
     await user.type(description, "Updated description");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; baseRevision: number; value: SiteSettings["siteIdentity"] };
     expect(body.section).toBe("siteIdentity");
@@ -154,7 +155,7 @@ describe("SiteIdentityScreen", () => {
     stub(["NRMS.SiteEditor"], stateOf(DOC), () => jsonResponse(422, { error: "invalid", fieldErrors: errors }));
     renderScreen();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, await screen.findByRole("button", { name: "Publish" }));
     await waitFor(() => expect(screen.getByLabelText("X (Twitter) account")).toHaveFocus());
   });
 

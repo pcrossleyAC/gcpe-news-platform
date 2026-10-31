@@ -8,6 +8,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import type { SettingsState } from "./api";
 import { INTRO, LICENCE_HINT, REQUIRED_NOTE, PageTextScreen, STATEMENT_HINT } from "./PageTextScreen";
 
@@ -113,7 +114,7 @@ describe("PageTextScreen", () => {
     // can put back on a slow runner (test/editorCaret.ts).
     caretToEnd(field);
     await user.type(field, " more", { skipClick: true });
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
     const body = post.body as { section: string; baseRevision: number; value: SiteSettings["pageText"] };
@@ -134,7 +135,7 @@ describe("PageTextScreen", () => {
     await user.click(field);
     (field as unknown as { editor: { commands: { focus(p: string): void } } }).editor.commands.focus("start");
     await user.type(field, "X", { skipClick: true });
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
     const saved = (post.body as { value: SiteSettings["pageText"] }).value.privacy.bodyHtml;
@@ -160,7 +161,7 @@ describe("PageTextScreen", () => {
     const texts = within(group).getAllByLabelText("Link text");
     await user.type(texts[1]!, "2010");
     await user.type(within(group).getAllByLabelText("Web address")[1]!, "https://archive.invalid/2010");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { value: SiteSettings["pageText"] };
     expect(body.value.searchArchiveLinks).toEqual([
@@ -210,7 +211,7 @@ describe("PageTextScreen", () => {
     renderScreen();
     const user = userEvent.setup();
     await screen.findByRole("group", { name: "Privacy page" });
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { value: SiteSettings["pageText"] };
     expect(body.value.live.offAirHtml).toBe("");

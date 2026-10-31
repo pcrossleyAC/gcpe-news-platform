@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import { BannerScreen } from "./BannerScreen";
 import type { SettingsState } from "./api";
 
@@ -184,7 +185,7 @@ describe("BannerScreen", () => {
     renderScreen();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Note for the history log (optional)"), "Storm");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     expect(await screen.findByText("Published revision 1. Visitors see it within a few minutes.")).toBeInTheDocument();
     const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
     expect(post.body).toMatchObject({ baseRevision: null, section: "banner", note: "Storm" });
@@ -204,7 +205,7 @@ describe("BannerScreen", () => {
     renderScreen();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Message"), "<b>hi</b>");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
 
     expect(await screen.findByText("Draft saved, but it has problems to fix before it can be published.")).toBeInTheDocument();
     const message = screen.getByLabelText("Message");
@@ -225,7 +226,7 @@ describe("BannerScreen", () => {
     });
     renderScreen();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, await screen.findByRole("button", { name: "Publish" }));
 
     const panel = await screen.findByRole("region", { name: "Someone published while you were editing" });
     expect(within(panel).getByText(/^Revision 2 was published by Sam on .*\. Nothing of yours was published, and your draft is saved\.$/)).toBeInTheDocument();
@@ -253,7 +254,7 @@ describe("BannerScreen", () => {
     });
     renderScreen();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, await screen.findByRole("button", { name: "Publish" }));
     await user.click(await screen.findByRole("button", { name: "Discard mine, use theirs" }));
     expect(await screen.findByText("Draft discarded. Showing what is live.")).toBeInTheDocument();
     expect(screen.getByText(/^Live: revision 2, published by Sam on /)).toBeInTheDocument();
@@ -335,7 +336,7 @@ describe("BannerScreen", () => {
       expect(within(changes).getByRole("link", { name: "Theme colours" })).toHaveAttribute("href", "/website/theme");
       expect(within(changes).getByRole("link", { name: "Footer links" })).toHaveAttribute("href", "/website/footer");
       expect(within(changes).getByRole("link", { name: "Site banner" })).toHaveAttribute("href", "/website/banner");
-      expect(screen.getByText("Publish and Discard draft apply to your whole draft, on every settings screen, not just this one.")).toBeInTheDocument();
+      expect(screen.getByText("Publish and Discard draft apply to your whole draft, on every settings screen. Publish lets you publish only this screen instead.")).toBeInTheDocument();
     });
 
     it("Discard draft asks first, naming the other screens it will clear; Cancel keeps the draft; confirming discards as before", async () => {
@@ -400,6 +401,77 @@ describe("BannerScreen", () => {
       const dialog = await screen.findByRole("dialog");
       expect(dialog).toHaveTextContent("This throws away your draft changes on Site banner. It can’t be undone.");
       expect(dialog).not.toHaveTextContent("also");
+    });
+  });
+  describe("W4: Publish asks first, and can publish only this screen (owner decision 2026-10-31)", () => {
+    const LIVE = { revision: 1, publishedAt: "2026-10-27T18:00:00.000Z", publishedBy: "Sam", note: null };
+    const DRAFTED: SettingsState = { ...NOTHING_LIVE, live: LIVE, baseRevision: 1, draft: { baseRevision: 1, updatedAt: LIVE.publishedAt }, draftSections: ["banner", "footer"] };
+
+    it("names every screen whose changes go live; Cancel publishes nothing", async () => {
+      const calls = stub(["NRMS.SiteEditor"], () => undefined, DRAFTED);
+      renderScreen();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Publish" }));
+      const dialog = await screen.findByRole("dialog", { name: "Publish your changes?" });
+      expect(dialog).toHaveTextContent("Compared with what is live now, this publishes changes on: Site banner and Footer links.");
+      expect(dialog).toHaveTextContent("Visitors see it within a few minutes.");
+      expect(within(dialog).getByRole("button", { name: "Publish only Site banner" })).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "Publish all changes" })).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(false);
+    });
+
+    it("Publish only Site banner sends onlySection and says the rest of the draft is kept", async () => {
+      const calls = stub(
+        ["NRMS.SiteEditor"],
+        (c) => {
+          if (c.url === "/nrms/api/site/settings/publish") {
+            const live = { ...LIVE, revision: 2, publishedBy: "Pat" };
+            return jsonResponse(200, { revision: 2, state: { ...DRAFTED, live, baseRevision: 2, draft: { baseRevision: 2, updatedAt: LIVE.publishedAt }, draftSections: ["footer"] } });
+          }
+          return undefined;
+        },
+        DRAFTED,
+      );
+      renderScreen();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Publish" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "Publish only Site banner" }));
+      expect(await screen.findByText("Published revision 2, with only your Site banner changes. Visitors see it within a few minutes. Your draft still has changes on Footer links.")).toBeInTheDocument();
+      expect(calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body).toMatchObject({ section: "banner", baseRevision: 1, onlySection: true });
+    });
+
+    it("with changes on this screen only, it offers just Publish; a problem elsewhere in the draft is pointed at Publish only", async () => {
+      stub(["NRMS.SiteEditor"], () => undefined, { ...DRAFTED, draftSections: ["banner"] });
+      renderScreen();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Publish" }));
+      let dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("Compared with what is live now, this publishes changes on: Site banner.");
+      expect(within(dialog).queryByRole("button", { name: /^Publish only/ })).toBeNull();
+      expect(within(dialog).getByRole("button", { name: "Publish" })).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      cleanup();
+
+      const footerProblem = { field: "footer.moreInfoLinks[0].url", message: "Must start with https:// or / (a page on this site)." };
+      stub(["NRMS.SiteEditor"], () => undefined, { ...DRAFTED, errors: [footerProblem] });
+      renderScreen();
+      await user.click(await screen.findByRole("button", { name: "Publish" }));
+      dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("Footer links has problems that block publishing all changes. Publish only Site banner still works.");
+    });
+
+    it("unsaved typing on this screen counts as a change here", async () => {
+      stub(["NRMS.SiteEditor"], () => undefined, { ...DRAFTED, draftSections: ["footer"] });
+      renderScreen();
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Message"), "Road closed");
+      await user.click(screen.getByRole("button", { name: "Publish" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("this publishes changes on: Site banner and Footer links.");
+      expect(within(dialog).getByRole("button", { name: "Publish only Site banner" })).toBeInTheDocument();
     });
   });
 });
