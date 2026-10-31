@@ -5,6 +5,7 @@ import { ApiError, apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { messagesOf } from "../messages";
 import { canonicalId, checkCalendarGrant, grantableCalendarRoles, type CalendarGrantRefusal, type CalendarRoleName } from "./calendar-roles";
+import { useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import type { CalendarAccessUser, OrgOption } from "./CalendarAccessScreen";
 
 export function orgLabel(o: OrgOption): string {
@@ -61,8 +62,10 @@ export function actorFor(session: { user: { id: string } | null; roles: readonly
  * `showMessages` and `onFailed` let a page that shows other messages keep one on screen at a
  * time: the page hides this editor's refusal once it shows a newer message of its own.
  */
-export function AccessEditor({ user, orgs, actor, onSaved, onCancel, showMessages = true, onFailed }: {
+export function AccessEditor({ user, orgs, actor, onSaved, onCancel, showMessages = true, onFailed, reportDirty }: {
   user: CalendarAccessUser;
+  /** Suite review H2: tells the screen's leave-page guard whether the role or ministries changed. */
+  reportDirty?: ReportDirty;
   orgs: OrgOption[];
   actor: Actor;
   onSaved(message: string): void;
@@ -73,6 +76,7 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel, showMessage
   const session = useSession();
   const [role, setRole] = useState<CalendarRoleName | "">(user.calendarRole ?? "");
   const [keys, setKeys] = useState<string[]>(user.organizationKeys);
+  useReportDirty(reportDirty, `access-${user.id}`, role !== (user.calendarRole ?? "") || [...keys].sort().join() !== [...user.organizationKeys].sort().join());
   const [messages, setMessages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   // An HQ ministry is offered only when the server would let this actor add it (C125).

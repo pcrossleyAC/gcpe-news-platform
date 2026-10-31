@@ -6,6 +6,7 @@ import { apiFetch, ApiError } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { useShortcut } from "../../../shared/shortcuts";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 
 const TITLE = "Release page titles";
@@ -89,6 +90,8 @@ function PageTitlesEditor(): React.JSX.Element {
   const [imageError, setImageError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ key: string | null; nonce: number }>({ key: null, nonce: 0 });
+  // Suite review H2: any row's unsaved changes, or a title typed in the add form, ask before leaving.
+  const forms = useDirtyParts();
   const statusRef = useRef<HTMLParagraphElement>(null);
   // After a delete the row (and its dialog) are gone once the reload lands; only then is the status line a safe place for focus.
   const focusStatusAfterLoad = useRef(false);
@@ -140,6 +143,7 @@ function PageTitlesEditor(): React.JSX.Element {
   return (
     <div className="gcpe-admin__page-titles">
       <h1>{TITLE}</h1>
+      <LeavePageGuard dirty={forms.anyDirty} />
       <p>
         These are the page titles a new release can choose, such as News Release or Information Bulletin. The title shows above the headline on the
         public release page. A release keeps the title it was given: to change a published release's title, edit that release.
@@ -178,6 +182,7 @@ function PageTitlesEditor(): React.JSX.Element {
                           key={rowKey(r)}
                           record={r}
                           images={images}
+                          reportDirty={forms.report}
                           focusNonce={focus.key === rowKey(r) ? focus.nonce : 0}
                           onSaved={saved}
                           onFailed={failed}
@@ -194,7 +199,7 @@ function PageTitlesEditor(): React.JSX.Element {
             </section>
           );
         })}
-      <AddForm images={images} ready={rows !== null} nextOrder={nextOrder} onAdded={saved} onFailed={failed} />
+      <AddForm images={images} reportDirty={forms.report} ready={rows !== null} nextOrder={nextOrder} onAdded={saved} onFailed={failed} />
     </div>
   );
 }
@@ -239,9 +244,11 @@ function ImageOptions({ images, current }: { images: PageImage[]; current: strin
 }
 
 function TitleRow({
-  record, images, focusNonce, onSaved, onFailed, onDeleted,
+  record, images, focusNonce, onSaved, onFailed, onDeleted, reportDirty,
 }: {
   record: PageType;
+  /** Suite review H2: tells the screen's leave-page guard whether this row has unsaved changes. */
+  reportDirty?: ReportDirty;
   images: PageImage[];
   focusNonce: number;
   onSaved(text: string, focusKey: string): void;
@@ -252,6 +259,11 @@ function TitleRow({
     pageTitle: record.pageTitle, languageId: record.languageId, sortOrder: String(record.sortOrder), layout: record.layout, pageImageId: record.pageImageId ?? "",
   });
   const [error, setError] = useState<Problem | null>(null);
+  useReportDirty(
+    reportDirty,
+    `row-${record.languageId}-${record.pageTitle}`,
+    f.pageTitle !== record.pageTitle || f.languageId !== record.languageId || f.sortOrder !== String(record.sortOrder) || f.layout !== record.layout || f.pageImageId !== (record.pageImageId ?? ""),
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -413,8 +425,9 @@ function TitleRow({
 }
 
 function AddForm({
-  images, ready, nextOrder, onAdded, onFailed,
+  images, ready, nextOrder, onAdded, onFailed, reportDirty,
 }: {
+  reportDirty?: ReportDirty;
   images: PageImage[];
   ready: boolean;
   nextOrder(t: ReleaseType): number;
@@ -424,6 +437,7 @@ function AddForm({
   const [type, setType] = useState<ReleaseType>("release");
   const [f, setF] = useState<Fields>({ pageTitle: "", languageId: LANG_EN, sortOrder: "", layout: "formal", pageImageId: "" });
   const [orderEdited, setOrderEdited] = useState(false);
+  useReportDirty(reportDirty, "add", f.pageTitle.trim() !== "" || orderEdited);
   const [error, setError] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);

@@ -10,6 +10,7 @@ import { messagesOf } from "../../admin/messages";
 import { AccessEditor, actorFor, lockedMessage } from "../../admin/calendar-access/AccessEditor";
 import type { CalendarAccessUser, OrgOption } from "../../admin/calendar-access/CalendarAccessScreen";
 import { canonicalId, checkCalendarGrant, type CalendarGrantRefusal } from "../../admin/calendar-access/calendar-roles";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { RANK_OPTIONS, type CalendarUserDetail, type OpenActivities, type Profile } from "./types";
 
 const LAG = "The Calendar picks this up within a minute.";
@@ -61,8 +62,12 @@ function Alerts({ messages }: { messages: string[] }): React.JSX.Element {
 }
 
 /** Its refusal shows beside the form only while `showMessages`: the page hides it once it shows a newer message. */
-function ProfileForm({ userId, profile, onSaved, showMessages, onFailed }: { userId: string; profile: Profile; onSaved(msg: string): void; showMessages: boolean; onFailed(): void }): React.JSX.Element {
+function ProfileForm({ userId, profile, onSaved, showMessages, onFailed, reportDirty }: { userId: string; profile: Profile; onSaved(msg: string): void; showMessages: boolean; onFailed(): void; reportDirty?: ReportDirty }): React.JSX.Element {
   const [draft, setDraft] = useState({ phone: profile.phone ?? "", mobile: profile.mobile ?? "", jobTitle: profile.jobTitle ?? "", description: profile.description ?? "" });
+  // Suite review H2: profile changes not yet saved ask before leaving. Compared with what was last
+  // saved from here (the form keeps its own values after a save).
+  const [saved, setSaved] = useState(draft);
+  useReportDirty(reportDirty, "profile", (["phone", "mobile", "jobTitle", "description"] as const).some((k) => draft[k] !== saved[k]));
   const [messages, setMessages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const field = (key: keyof typeof draft, label: string, hint?: string) => (
@@ -78,6 +83,7 @@ function ProfileForm({ userId, profile, onSaved, showMessages, onFailed }: { use
     setMessages([]);
     try {
       await apiFetch(`/calendar/api/users/${userId}/profile`, { method: "PUT", body: draft });
+      setSaved(draft);
       onSaved("Saved contact details.");
     } catch (caught) {
       setMessages(messagesOf(caught));
@@ -119,6 +125,7 @@ export function CalendarUserScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<string[]>([]);
   const [editingAccess, setEditingAccess] = useState(false);
   const [linkEmail, setLinkEmail] = useState("");
+  const forms = useDirtyParts();
   const [preview, setPreview] = useState<OpenActivities | null>(null);
   /** Whose message is on screen: one at a time, so a newer message never sits beside a stale one. */
   const [shown, setShown] = useState<"page" | "profile" | "access" | `rank:${string}` | null>(null);
@@ -298,6 +305,7 @@ export function CalendarUserScreen(): React.JSX.Element {
         <Link to="/calendar/users">All Calendar users</Link>
       </p>
       <h1>{u.displayName}</h1>
+      <LeavePageGuard dirty={forms.anyDirty || linkEmail.trim() !== ""} />
       <p>
         {email ?? "No email"}
         {isActive ? "" : " — inactive"}
@@ -318,6 +326,7 @@ export function CalendarUserScreen(): React.JSX.Element {
             done(`${m} ${LAG}`);
           }}
           onCancel={() => setEditingAccess(false)}
+          reportDirty={forms.report}
           showMessages={shown === "access"}
           onFailed={() => setShown("access")}
         />
@@ -327,7 +336,7 @@ export function CalendarUserScreen(): React.JSX.Element {
         </Button>
       )}
 
-      <ProfileForm userId={u.id} profile={detail.profile} onSaved={done} showMessages={shown === "profile"} onFailed={() => setShown("profile")} />
+      <ProfileForm userId={u.id} profile={detail.profile} reportDirty={forms.report} onSaved={done} showMessages={shown === "profile"} onFailed={() => setShown("profile")} />
 
       <h2>Comm contact</h2>
       {/* Mounted from the start, so a screen reader hears when the Calendar is still setting them up. */}

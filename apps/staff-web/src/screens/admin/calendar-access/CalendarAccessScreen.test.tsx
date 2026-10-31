@@ -8,6 +8,7 @@ import { RequireAuth } from "../../../session/RequireAuth";
 import { CalendarAccessScreen } from "./CalendarAccessScreen";
 import { ACCESS_USERS, ORGS, SELF, STAFF } from "./fixtures";
 import { visibleText } from "../../../../test/visibleText";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 
 type Call = { url: string; init?: RequestInit };
 function stub(roles: string[], calls: Call[], onPut?: (url: string, init: RequestInit) => Response, opts: { users?: typeof ACCESS_USERS; sessionId?: string } = {}) {
@@ -207,3 +208,29 @@ describe("CalendarAccessScreen", () => {
     expect(screen.getByRole("button", { name: "Edit access for Dale Dormant" })).toBeInTheDocument();
   });
 });
+
+// Suite review H2: an access editor's unsaved role or ministries ask before leaving.
+describe("CalendarAccessScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("an open editor with nothing changed leaves freely; a changed role asks first", async () => {
+    stub(["Calendar.Administrator"], []);
+    let router = renderGuarded(<CalendarAccessScreen />);
+    let user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit access for Robin Staff" }));
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["Calendar.Administrator"], []);
+    router = renderGuarded(<CalendarAccessScreen />);
+    user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit access for Robin Staff" }));
+    const form = screen.getByRole("form", { name: "Calendar access for Robin Staff" });
+    await user.selectOptions(within(form).getByLabelText("Calendar role"), "Calendar.Editor");
+    await expectLeaveAsks(router, user);
+  });
+});
+

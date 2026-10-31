@@ -7,6 +7,7 @@ import { canReadSubscribers } from "../../subscribers/access";
 import { Button } from "../../../shared/BusyButton";
 import { useShortcut } from "../../../shared/shortcuts";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { TableScroll } from "../../../shared/TableScroll";
 
 interface MediaListRecord {
@@ -40,6 +41,8 @@ function MediaListNamesEditor(): React.JSX.Element {
   const [key, setKey] = useState("");
   const [name, setName] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  // Suite review H2: a row changed but not saved, or a list typed in the add form, asks before leaving.
+  const rowsDirty = useDirtyParts();
   const [busy, setBusy] = useState(false);
 
   // Only the latest load may land: an earlier, slower load landing after a faster later one
@@ -87,6 +90,7 @@ function MediaListNamesEditor(): React.JSX.Element {
   return (
     <div className="gcpe-admin__media-lists">
       <h1>Media list names</h1>
+      <LeavePageGuard dirty={rowsDirty.anyDirty || key.trim() !== "" || name.trim() !== ""} />
       <p>
         Changes reach News On Demand&rsquo;s media lists within a minute.{" "}
         {canSeeMembers ? (
@@ -116,6 +120,7 @@ function MediaListNamesEditor(): React.JSX.Element {
               {rows.map((r) => (
                 <MediaListRow
                   key={r.key}
+                  reportDirty={rowsDirty.report}
                   record={r}
                   onSaved={(text) => {
                     setMessage(text);
@@ -140,10 +145,12 @@ function MediaListNamesEditor(): React.JSX.Element {
   );
 }
 
-function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(text: string): void }): React.JSX.Element {
+function MediaListRow({ record, onSaved, reportDirty }: { record: MediaListRecord; onSaved(text: string): void; reportDirty?: ReportDirty }): React.JSX.Element {
   const [name, setName] = useState(record.displayName);
   const [order, setOrder] = useState(String(record.sortOrder));
   const [active, setActive] = useState(record.isActive);
+  // Suite review H2: tells the screen's leave-page guard whether this row has unsaved changes.
+  useReportDirty(reportDirty, record.key, name !== record.displayName || order !== String(record.sortOrder) || active !== record.isActive);
   const [confirmRetire, setConfirmRetire] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

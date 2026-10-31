@@ -13,6 +13,7 @@ import { OrganizationEditForm, SAVED_MESSAGE } from "./OrganizationEditForm";
 import { HandOverPanel } from "./HandOverPanel";
 import { abbreviationTakenMessage } from "./abbreviation";
 import { afterDialogsClose } from "../../../shared/afterDialogsClose";
+import { LeavePageGuard, useDirtyParts } from "../../../shared/LeaveGuard";
 import { canEditOrgProfile, isCoreAdmin } from "./access";
 
 /**
@@ -71,6 +72,8 @@ export function OrganizationsScreen(): React.JSX.Element {
   const [panelBusy, setPanelBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const [handOverKey, setHandOverKey] = useState<string | null>(null);
+  // Suite review H2: the edit, add and hand-over forms' unsaved changes ask before leaving.
+  const forms = useDirtyParts();
   const addButton = useRef<HTMLButtonElement>(null);
   const latest = useRef(0);
 
@@ -270,6 +273,7 @@ export function OrganizationsScreen(): React.JSX.Element {
   return (
     <div className="gcpe-organizations">
       <h1>Organizations</h1>
+      <LeavePageGuard dirty={forms.anyDirty} />
       <p>
         Ministry and minister names here appear on the public Ministries page.
       </p>
@@ -320,6 +324,7 @@ export function OrganizationsScreen(): React.JSX.Element {
       {isAdmin && adding && (
         <AddOrganizationForm
           orgs={orgs ?? []}
+          reportDirty={forms.report}
           onCancel={() => {
             setAdding(false);
             setTimeout(() => addButton.current?.focus(), 0);
@@ -339,6 +344,7 @@ export function OrganizationsScreen(): React.JSX.Element {
           org={orgs.find((o) => o.key === editingKey)!}
           orgs={orgs}
           isAdmin={isAdmin}
+          reportDirty={forms.report}
           onCancel={() => {
             refocusKey.current = editingKey;
             setEditingKey(null);
@@ -364,6 +370,7 @@ export function OrganizationsScreen(): React.JSX.Element {
             org={orgs.find((o) => o.key === handOverKey)!}
             orgs={orgs}
             onBusyChange={setPanelBusy}
+            reportDirty={forms.report}
             onCancel={() => {
               rowFocus.current = { key: handOverKey, target: "handOver" };
               setHandOverKey(null);

@@ -13,6 +13,7 @@ import { ALL_MOVES, HandOverMoveBoxes, useHandOverCounts, type HandOverMoves } f
 import { deactivateWarning } from "./OrganizationEditForm";
 import { normalizeAbbreviation } from "./abbreviation";
 import { isCoreAdmin } from "./access";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { TableScroll } from "../../../shared/TableScroll";
 
 /*
@@ -164,6 +165,9 @@ export function CabinetChangeScreen(): React.JSX.Element {
   const [scheduling, setScheduling] = useState(false);
   const [when, setWhen] = useState<ScheduleValue | null>(null);
   const [busy, setBusy] = useState(false);
+  // Suite review H2: each change is saved as soon as it is added; what can be lost by leaving is an
+  // add form filled in but not yet added, or a publish time chosen but not yet scheduled.
+  const addForm = useDirtyParts();
   const inFlight = useRef(false);
 
   const addButtons = useRef(new Map<string, HTMLButtonElement>());
@@ -476,6 +480,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
         <Link to="/organizations">Back to Organizations</Link>
       </p>
       <h1>Cabinet change</h1>
+      <LeavePageGuard dirty={addForm.anyDirty || (scheduling && when !== null)} />
       <p>
         Prepare every ministry change for a new cabinet here: new names, new ministries, and ministries handed over to
         others. Then publish them all together, right away or at the swearing-in time. Nothing changes on the public site
@@ -563,12 +568,13 @@ export function CabinetChangeScreen(): React.JSX.Element {
               {opener("succeed", "Hand over a ministry")}
             </p>
             {adding === "update" && (
-              <UpdateForm orgs={orgs} busy={busy} onCancel={cancelAdd} onAdd={(op, summary) => void add(op, summary, "update")} />
+              <UpdateForm orgs={orgs} busy={busy} reportDirty={addForm.report} onCancel={cancelAdd} onAdd={(op, summary) => void add(op, summary, "update")} />
             )}
             {adding === "create" && (
               <CreateForm
                 existing={[...orgs.map((o) => o.displayName), ...createdNames]}
                 busy={busy}
+                reportDirty={addForm.report}
                 onCancel={cancelAdd}
                 onAdd={(op, summary) => void add(op, summary, "create")}
               />
@@ -579,6 +585,7 @@ export function CabinetChangeScreen(): React.JSX.Element {
                 created={ops.filter((o): o is CreateOp => o.op === "create")}
                 handedOver={handedOver}
                 busy={busy}
+                reportDirty={addForm.report}
                 onCancel={cancelAdd}
                 onAdd={(op, summary) => void add(op, summary, "succeed")}
               />
@@ -894,6 +901,8 @@ interface FormProps<T extends Operation> {
   busy: boolean;
   onCancel: () => void;
   onAdd: (op: T, summary: string) => void;
+  /** Suite review H2: tells the screen's leave-page guard whether anything is filled in, not yet added. */
+  reportDirty?: ReportDirty;
 }
 
 /** Core's abbreviation rule (abbreviationSchema), checked here so the message sits by the field. */
@@ -1005,6 +1014,7 @@ function UpdateForm({ orgs, ...props }: FormProps<UpdateOp> & { orgs: OrgRecord[
   const [name, setName] = useState("");
   const [abbr, setAbbr] = useState("");
   const [minister, setMinister] = useState("");
+  useReportDirty(props.reportDirty, "add", key !== "");
   const { errors, fail, clear } = useFieldErrors();
   const org = orgs.find((o) => o.key === key);
   const ids = { org: `${uid}-org`, name: `${uid}-name`, abbr: `${uid}-abbr`, minister: `${uid}-minister` };
@@ -1084,6 +1094,7 @@ function CreateForm({ existing, ...props }: FormProps<CreateOp> & { existing: st
   const [name, setName] = useState("");
   const [abbr, setAbbr] = useState("");
   const [minister, setMinister] = useState("");
+  useReportDirty(props.reportDirty, "add", name.trim() !== "" || abbr.trim() !== "" || minister.trim() !== "");
   const { errors, fail, clear } = useFieldErrors();
   const ids = { name: `${uid}-name`, abbr: `${uid}-abbr` };
 
@@ -1137,6 +1148,7 @@ function SucceedForm({
   const [moves, setMoves] = useState<HandOverMoves>(ALL_MOVES);
   const [replaceAbbr, setReplaceAbbr] = useState(false);
   const [takeAbbr, setTakeAbbr] = useState(true);
+  useReportDirty(props.reportDirty, "add", key !== "" || successors.some((c) => c !== ""));
   const { errors, fail, clear } = useFieldErrors();
   const orgId = `${uid}-org`;
   const org = orgs.find((o) => o.key === key);

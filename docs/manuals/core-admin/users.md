@@ -88,6 +88,10 @@ Until they do, they are back on password sign-in, and any password they had befo
 - A deactivated person is signed out at that point and can't sign in again.
 - No change on this screen sends an email.
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question. A person's changes count even after you choose **Close** on their row: the Hub keeps them until you save them or leave.
+
 ## Can't do this?
 
 | Message | What it means |

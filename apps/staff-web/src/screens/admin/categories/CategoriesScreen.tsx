@@ -6,6 +6,7 @@ import { useSession } from "../../../session/SessionContext";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { TableScroll } from "../../../shared/TableScroll";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { useShortcut } from "../../../shared/shortcuts";
 
 type Kind = "sector" | "theme" | "tag";
@@ -108,6 +109,8 @@ function CategoriesEditor(): React.JSX.Element {
   const [errors, setErrors] = useState<ReadonlyMap<string, RowError>>(new Map());
   const [saving, setSaving] = useState(false);
   const [retiring, setRetiring] = useState<Edit[] | null>(null);
+  // Suite review H2: Unsaved rows, or a name typed in the add form, ask before leaving.
+  const addForm = useDirtyParts();
   const savingRef = useRef(false);
   const fields = useRef(new Map<string, { name: HTMLInputElement | null; order: HTMLInputElement | null }>());
   const labels = KINDS.find((k) => k.kind === kind)!;
@@ -237,6 +240,7 @@ function CategoriesEditor(): React.JSX.Element {
   return (
     <div className="gcpe-admin__categories">
       <h1>{TITLE}</h1>
+      <LeavePageGuard dirty={edits.size > 0 || addForm.anyDirty} />
       <p>Changes reach the public site, the subscribe page and the release editor within a minute. A key is part of the public address and never changes.</p>
       <RadioGroup label="Show" orientation="horizontal" value={kind} onChange={(k) => setKind(k as Kind)}>
         {KINDS.map((k) => (
@@ -318,6 +322,7 @@ function CategoriesEditor(): React.JSX.Element {
       <AddForm
         key={kind}
         kind={kind}
+        reportDirty={addForm.report}
         singular={labels.singular}
         nextOrder={Math.max(0, ...(rows ?? []).map((r) => r.sortOrder)) + 1}
         ready={rows !== null}
@@ -392,9 +397,10 @@ function TermRow({ record, draft, dirty, error, onChange, fieldRefs }: TermRowPr
   );
 }
 
-function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; singular: string; nextOrder: number; ready: boolean; onAdded(text: string): void }): React.JSX.Element {
+function AddForm({ kind, singular, nextOrder, ready, onAdded, reportDirty }: { kind: Kind; singular: string; nextOrder: number; ready: boolean; onAdded(text: string): void; reportDirty?: ReportDirty }): React.JSX.Element {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
+  useReportDirty(reportDirty, "add", name.trim() !== "" || key.trim() !== "");
   const [keyEdited, setKeyEdited] = useState(false);
   const [error, setError] = useState<{ field: "key" | "name" | "form"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);

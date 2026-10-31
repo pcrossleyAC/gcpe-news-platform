@@ -7,6 +7,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { CalendarUserScreen, catchUp } from "./CalendarUserScreen";
 import type { CalendarUserDetail, OpenActivities } from "./types";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 
 const DETAIL: CalendarUserDetail = {
   user: { id: "u1", displayName: "Robin Staff", email: "robin.staff@example.test", isActive: true, role: "Calendar.Editor", ministryKeys: ["health"] },
@@ -461,3 +462,33 @@ describe("CalendarUserScreen", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
+
+// Suite review H2: contact details or access not yet saved ask before leaving; saved, they don't.
+describe("CalendarUserScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const at = { path: "/calendar/users/:id", at: "/calendar/users/u1" };
+
+  it("asks after the job title is typed", async () => {
+    stub([]);
+    const router = renderGuarded(<CalendarUserScreen />, at);
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Contact details" });
+    await user.type(within(form).getByLabelText("Job title"), "Sample title");
+    await expectLeaveAsks(router, user);
+  });
+
+  it("leaves freely once the contact details are saved", async () => {
+    stub([]);
+    const router = renderGuarded(<CalendarUserScreen />, at);
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Contact details" });
+    await user.type(within(form).getByLabelText("Job title"), "Sample title");
+    await user.click(within(form).getByRole("button", { name: "Save contact details" }));
+    await waitFor(() => expect(said().length).toBeGreaterThan(0));
+    await expectLeaveFree(router);
+  });
+});
+

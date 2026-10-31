@@ -5,6 +5,7 @@ import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { AccessEditor, actorFor, lockedMessage, type Actor } from "./AccessEditor";
 import { calendarRoleLabel, canManageCalendarAccess, checkCalendarGrant, type CalendarRoleName } from "./calendar-roles";
+import { LeavePageGuard, useDirtyParts } from "../../../shared/LeaveGuard";
 import { TableScroll } from "../../../shared/TableScroll";
 
 export interface CalendarAccessUser {
@@ -44,6 +45,8 @@ export function CalendarAccessScreen(): React.JSX.Element {
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  // Suite review H2: an open editor's unsaved role or ministries ask before leaving.
+  const editor = useDirtyParts();
   const latest = useRef(0);
 
   const reload = useCallback(() => {
@@ -83,6 +86,7 @@ export function CalendarAccessScreen(): React.JSX.Element {
   return (
     <div className="gcpe-calendar-access">
       <h1>Calendar access</h1>
+      <LeavePageGuard dirty={editor.anyDirty} />
       <p>Give staff a Calendar role and their ministries. Members of an HQ organization see every ministry.</p>
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {status && <p role="status">{status}</p>}
@@ -158,6 +162,7 @@ export function CalendarAccessScreen(): React.JSX.Element {
                             user={u}
                             orgs={orgs}
                             actor={actor}
+                            reportDirty={editor.report}
                             onSaved={(m) => {
                               setEditing(null);
                               setStatus(m);

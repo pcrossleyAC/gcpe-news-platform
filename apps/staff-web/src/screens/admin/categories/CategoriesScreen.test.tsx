@@ -6,6 +6,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { CategoriesScreen } from "./CategoriesScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 
 const SOCIAL: { twitterUsername: string | null; flickrUrl: null; youtubeUrl: null; audioUrl: null } = { twitterUsername: "@bcgov", flickrUrl: null, youtubeUrl: null, audioUrl: null };
 const NO_SOCIAL: typeof SOCIAL = { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null };
@@ -338,3 +339,26 @@ describe("CategoriesScreen", () => {
     await waitFor(() => expect(puts(calls).map((c) => c.url).sort()).toEqual(["/core/api/terms/sector/education", "/core/api/terms/tag/budget"]));
   });
 });
+
+// Suite review H2: an Unsaved row asks before leaving; with none, leaving just goes.
+describe("CategoriesScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves freely untouched, and asks once a row is Unsaved", async () => {
+    stub(["Core.Admin"]);
+    let router = renderGuarded(<CategoriesScreen />);
+    await screen.findByRole("textbox", { name: "Name for education" });
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["Core.Admin"]);
+    router = renderGuarded(<CategoriesScreen />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Name for education" }), " and training");
+    await expectLeaveAsks(router, user);
+  });
+});
+

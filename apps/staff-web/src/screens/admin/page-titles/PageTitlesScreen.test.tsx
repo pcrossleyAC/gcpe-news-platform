@@ -7,6 +7,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { GONE_IMAGE, PageTypesFixture, PAGE_IMAGES } from "./fixtures";
 import { PageTitlesScreen } from "./PageTitlesScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 
 type Call = { url: string; method: string; body: any };
 function stub(roles: string[], handlers: { write?: (c: Call) => Response; list?: () => unknown } = {}) {
@@ -352,3 +353,26 @@ describe("PageTitlesScreen", () => {
     await waitFor(() => expect(document.title).toBe("Release page titles — GCPE News Staff"));
   });
 });
+
+// Suite review H2: a row changed but not saved asks before leaving; untouched rows don't.
+describe("PageTitlesScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves freely untouched, and asks once a row is changed", async () => {
+    stub(["Core.Admin"]);
+    let router = renderGuarded(<PageTitlesScreen />);
+    await screen.findByRole("textbox", { name: "Page title for Information Bulletin" });
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["Core.Admin"]);
+    router = renderGuarded(<PageTitlesScreen />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Page title for Information Bulletin" }), "!");
+    await expectLeaveAsks(router, user);
+  });
+});
+

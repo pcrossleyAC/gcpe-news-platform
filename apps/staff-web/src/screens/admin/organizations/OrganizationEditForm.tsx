@@ -10,6 +10,7 @@ import { useAnnouncer } from "../../../shared/Announcer";
 import { BodyEditor } from "../../../editor/BodyEditor";
 import { FIX_BELOW, fieldErrorsOf, messagesOf } from "../messages";
 import type { OrgRecord } from "@gcpe/events/catalogue";
+import { useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import {
   AbbreviationField,
   abbreviationTakenMessage,
@@ -32,6 +33,8 @@ export interface OrganizationEditFormProps {
   isAdmin: boolean;
   onSaved: (o: OrgRecord) => void;
   onCancel: () => void;
+  /** Suite review H2: tells the screen's leave-page guard whether the form has unsaved changes. */
+  reportDirty?: ReportDirty;
 }
 
 type MinisterField = "name" | "summary" | "email" | "photoUrl";
@@ -113,6 +116,7 @@ export function OrganizationEditForm({
   isAdmin,
   onSaved,
   onCancel,
+  reportDirty,
 }: OrganizationEditFormProps): React.JSX.Element {
   const uid = useId();
   const { announce } = useAnnouncer();
@@ -265,6 +269,9 @@ export function OrganizationEditForm({
     }
     return body;
   };
+
+  // H2: anything a Save would send counts as unsaved (the same comparison Save makes).
+  useReportDirty(reportDirty, "edit", Object.keys(buildPatch()).length > 0);
 
   /** Splits a failed save's messages: beside their fields where the form has one, else at the top. */
   const showErrors = (caught: unknown) => {
