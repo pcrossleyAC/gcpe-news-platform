@@ -56,7 +56,7 @@ describe("email it again", () => {
     expect(ev.type).toBe("release.updated");
     expect(ev.envelope.data.emailAgain).toEqual({ seq: 1, subscribers: true, mediaLists: false, requestedBy: editor.name, requestedAt: pending.at });
     expect(await row(due.id)).toEqual({ email_again: null, corrections_emailed: 1 });
-    expect((await logs(due.id)).at(-1)).toEqual({ text: `Emailed it again with "Corrected:" to subscribers who got it, as ${editor.name} asked`, actor_name: "System" });
+    expect((await logs(due.id)).at(-1)).toEqual({ text: `Passed to News On Demand: email it again with "Corrected:" to subscribers who got it (correction 1, as ${editor.name} asked)`, actor_name: "System" });
 
     await requestEmailAgain(db(), due.id, { version: await version(due.id), subscribers: true, mediaLists: true }, editor);
     await publishDue({ db: db(), subscribers: subs });
@@ -176,5 +176,65 @@ describe("email it again", () => {
     expect(await emailAgainAudience(db(), adv.id, counting)).toMatchObject({ subscribers: null, mediaContacts: { count: 12 } });
     const fresh = await createRelease(db(), { ...sampleCreate, headline: "Not out" }, editor);
     expect(await emailAgainAudience(db(), fresh.id, counting)).toBeNull();
+  });
+
+  // Review I2: the request rides on every later republish until the release is unpublished, so an
+  // event that NoD never applies (overtaken, or given up on) can't lose it; NoD acts on it once.
+  it("the latest request is repeated on every later republish, and dropped by an unpublish", async () => {
+    const due = await published();
+    await requestEmailAgain(db(), due.id, { version: await version(due.id), subscribers: true, mediaLists: false }, editor);
+    await publishDue({ db: db(), subscribers: subs });
+    await saveCategories(db(), due.id, { version: await version(due.id), leadMinistryKey: "health", ministries: ["health"], sectors: ["education"], themes: [], tags: [] }, editor);
+    await publishDue({ db: db(), subscribers: subs });
+    const evs = await events();
+    expect(evs.slice(-2).map((e) => [e.type, (e.envelope.data.emailAgain as { seq: number } | undefined)?.seq])).toEqual([["release.updated", 1], ["release.updated", 1]]);
+    // Only one "passed on" line: repeating it isn't a new request.
+    expect((await logs(due.id)).filter((l) => l.text.startsWith("Passed to News On Demand"))).toHaveLength(1);
+
+    await unpublish(db(), due.id, await version(due.id), editor);
+    await publishDue({ db: db(), subscribers: subs });
+    await schedule(db(), due.id, { version: await version(due.id), publishAt: "now" }, editor, deps);
+    await publishDue({ db: db(), subscribers: subs });
+    expect((await events()).at(-1)!.envelope.data).not.toHaveProperty("emailAgain");
+    expect((await loadView(db(), due.id))!.lastCorrection).toBeNull();
+  });
+
+  it("the release shows the request waiting, then whether News On Demand received it", async () => {
+    const due = await published();
+    await requestEmailAgain(db(), due.id, { version: await version(due.id), subscribers: true, mediaLists: false }, editor);
+    expect((await loadView(db(), due.id))!.emailAgainPending).toMatchObject({ subscribers: true, mediaLists: false, requestedBy: editor.name });
+    await publishDue({ db: db(), subscribers: subs });
+    const v = (await loadView(db(), due.id))!;
+    expect(v.emailAgainPending).toBeNull();
+    expect(v.lastCorrection).toMatchObject({ seq: 1, subscribers: true, mediaLists: false, requestedBy: editor.name, state: "waiting" });
+    const setState = (status: string) => tdb.pool.query("UPDATE outbox_deliveries SET status = $1 WHERE subscriber = 'nod'", [status]);
+    await setState("dead");
+    expect((await loadView(db(), due.id))!.lastCorrection!.state).toBe("not-delivered");
+    await setState("delivered");
+    expect((await loadView(db(), due.id))!.lastCorrection!.state).toBe("delivered");
+    // Not sent to any subscriber named "nod" (NoD isn't set up here): NRMS can't tell.
+    const other = await createScheduledRelease(db(), { mediaListKeys: ["regional"], headline: "No NoD" });
+    await publishDue({ db: db(), subscribers: [] });
+    await requestEmailAgain(db(), other.id, { version: await version(other.id), subscribers: true, mediaLists: false }, editor);
+    await publishDue({ db: db(), subscribers: [] });
+    expect((await loadView(db(), other.id))!.lastCorrection!.state).toBe("unknown");
+  });
+
+  it("a second Email the correction while one is waiting adds its ticks to it", async () => {
+    const due = await published();
+    await requestEmailAgain(db(), due.id, { version: await version(due.id), subscribers: true, mediaLists: false }, editor);
+    await requestEmailAgain(db(), due.id, { version: await version(due.id), subscribers: false, mediaLists: true }, { id: "00000000-0000-4000-8000-0000000000e2", name: "Other Editor" });
+    expect((await row(due.id)).email_again).toMatchObject({ subscribers: true, mediaLists: true, actorName: "Other Editor" });
+    await publishDue({ db: db(), subscribers: subs });
+    expect((await events()).at(-1)!.envelope.data.emailAgain).toMatchObject({ seq: 1, subscribers: true, mediaLists: true });
+  });
+
+  it("subscribers can't be ticked once the release no longer goes to them", async () => {
+    const due = await published();
+    await tdb.db.execute(sql`UPDATE news_releases SET to_subscribers = false WHERE id = ${due.id}`);
+    await expect(requestEmailAgain(db(), due.id, { version: await version(due.id), subscribers: true, mediaLists: false }, editor)).rejects.toEqual(
+      new ReleaseRuleError(["This release no longer goes to News On Demand subscribers, so it can't be emailed to them again."]),
+    );
+    expect(await emailAgainAudience(db(), due.id, { timeZone: TZ, correctionAudience: async () => ({ subscribers: 1, mediaContacts: 2, both: 0 }) })).toMatchObject({ subscribers: null });
   });
 });

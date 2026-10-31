@@ -207,7 +207,8 @@ export async function audiencePreview(db: Db, id: string, deps: WorkflowDeps): P
 export function emailAgainOffer(v: Pick<ReleaseView, "type" | "everPublished" | "publishOptions" | "mediaListKeys">): EmailAgainChoice | null {
   if (!v.everPublished) return null;
   const rules = typeRules(v.type);
-  return { subscribers: rules.nodAllowed, mediaLists: rules.mediaListsAllowed && v.publishOptions.toMediaLists && v.mediaListKeys.length > 0 };
+  // Review M7: both ticks follow the release's current settings, the same way.
+  return { subscribers: rules.nodAllowed && v.publishOptions.toSubscribers, mediaLists: rules.mediaListsAllowed && v.publishOptions.toMediaLists && v.mediaListKeys.length > 0 };
 }
 
 /** "subscribers", "media lists" or "subscribers and media lists". */
@@ -226,7 +227,11 @@ async function emailAgainRequest(tx: DbOrTx, view: ReleaseView, choice: EmailAga
   if (!offer) throw new ReleaseRuleError(["Only a release that has gone out before can be emailed again."]);
   if (choice.subscribers && !offer.subscribers) {
     throw new ReleaseRuleError([
-      view.type === "advisory" ? "A media advisory is emailed again to media lists only." : `This ${TYPE_LABEL[view.type].toLowerCase()} isn't sent to News On Demand subscribers, so it can't be emailed to them again.`,
+      view.type === "advisory"
+        ? "A media advisory is emailed again to media lists only."
+        : typeRules(view.type).nodAllowed
+          ? "This release no longer goes to News On Demand subscribers, so it can't be emailed to them again."
+          : `This ${TYPE_LABEL[view.type].toLowerCase()} isn't sent to News On Demand subscribers, so it can't be emailed to them again.`,
     ]);
   }
   if (choice.mediaLists && !offer.mediaLists) throw new ReleaseRuleError(["This release doesn't go to any media distribution lists, so it can't be emailed to them again."]);
@@ -291,7 +296,10 @@ export async function requestEmailAgain(db: Db, id: string, input: EmailAgainInp
       const view = (await loadView(tx, id))!;
       const problems = publishProblems(view);
       if (problems.length) throw new ReleaseRuleError(problems);
-      const request = (await emailAgainRequest(tx, view, input, actor, true))!;
+      const asked = (await emailAgainRequest(tx, view, input, actor, true))!;
+      // Review M3: one already waiting keeps its ticks; this adds to them (and is now who asked).
+      const waiting = row.emailAgain;
+      const request = waiting ? { ...asked, subscribers: asked.subscribers || waiting.subscribers, mediaLists: asked.mediaLists || waiting.mediaLists } : asked;
       await tx.update(newsReleases).set({ emailAgain: request, status: "publishing" }).where(eq(newsReleases.id, id));
       return askedLine(request);
     },
@@ -421,7 +429,8 @@ export async function unpublish(db: Db, id: string, version: number, actor: Acto
       if (!row.live || !UNPUBLISHABLE_STATUSES.has(row.status)) throw new ReleaseStateError("Only a published release can be unpublished.");
       if (!typeRules(row.type).unpublishable) throw new ReleaseStateError(`A sent ${TYPE_LABEL[row.type]} can't be unpublished.`);
       // Taking it down drops any "email it again" still waiting for its republish.
-      await tx.update(newsReleases).set({ status: "unpublishing", emailAgain: null }).where(eq(newsReleases.id, id));
+      // Like any email not yet sent, a corrected email is stopped: a later republish doesn't repeat it.
+      await tx.update(newsReleases).set({ status: "unpublishing", emailAgain: null, lastEmailAgain: null }).where(eq(newsReleases.id, id));
       return "Unpublished Release";
     },
     { correction: false },

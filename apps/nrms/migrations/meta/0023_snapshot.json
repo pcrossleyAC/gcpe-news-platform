@@ -1,5 +1,5 @@
 {
-  "id": "d66abed4-1f16-4821-8f5b-551ff81d5ec5",
+  "id": "92f8cc4e-98ff-4483-9dd3-7ce8083342f3",
   "prevId": "ee89a97d-9ec9-4712-ac72-8b4bcf44e8c3",
   "version": "7",
   "dialect": "postgresql",
@@ -1231,6 +1231,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "last_email_again": {
+          "name": "last_email_again",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "version": {
           "name": "version",
