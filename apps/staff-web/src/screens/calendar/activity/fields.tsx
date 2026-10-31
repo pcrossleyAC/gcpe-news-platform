@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import type { Choice } from "./form";
 import { HelpToggle } from "../../../shared/HelpToggle";
 
@@ -13,6 +13,14 @@ interface Common {
   /** A glossary entry (shared/glossary.ts) explained by a "?" beside the label. */
   help?: string;
 }
+
+/**
+ * The whole form is read-only: no "(required)" markers and no "Choose …" prompts, which ask for
+ * something the reader can't do (form-order audit #13). An empty choice reads "None" instead.
+ */
+export const ReadOnlyForm = createContext(false);
+/** Whether to mark a field required: never on a read-only form. */
+const useRequired = (required: boolean | undefined) => !useContext(ReadOnlyForm) && !!required;
 
 function describedBy(id: string, p: Pick<Common, "error" | "review" | "hint">): string | undefined {
   const ids = [p.review && `${id}-review`, p.hint && `${id}-hint`, p.error?.length && `${id}-error`].filter(Boolean);
@@ -66,17 +74,18 @@ const wrap = (p: Pick<Common, "review">, base = "gcpe-field") => `${base}${p.rev
 const invalid = (p: Pick<Common, "error">) => (p.error?.length ? true : undefined);
 
 export function TextField(p: Common & { value: string; onChange: (v: string) => void; multiline?: boolean; rows?: number }): React.JSX.Element {
+  const required = useRequired(p.required);
   const attrs = {
     id: p.id,
     value: p.value,
     "aria-invalid": invalid(p),
     "aria-describedby": describedBy(p.id, p),
-    "aria-required": p.required || undefined,
+    "aria-required": required || undefined,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => p.onChange(e.target.value),
   };
   return (
     <div className={wrap(p)}>
-      <Label id={p.id} label={p.label} required={p.required} help={p.help} />
+      <Label id={p.id} label={p.label} required={required} help={p.help} />
       {p.multiline ? <textarea rows={p.rows ?? 3} {...attrs} /> : <input type="text" {...attrs} />}
       <Notes id={p.id} p={p} />
     </div>
@@ -84,11 +93,13 @@ export function TextField(p: Common & { value: string; onChange: (v: string) => 
 }
 
 export function SelectField(p: Common & { value: string; onChange: (v: string) => void; options: Choice[]; empty?: string }): React.JSX.Element {
+  const readOnly = useContext(ReadOnlyForm);
+  const required = useRequired(p.required);
   return (
     <div className={wrap(p)}>
-      <Label id={p.id} label={p.label} required={p.required} help={p.help} />
-      <select id={p.id} value={p.value} onChange={(e) => p.onChange(e.target.value)} aria-invalid={invalid(p)} aria-describedby={describedBy(p.id, p)} aria-required={p.required || undefined}>
-        {p.empty !== undefined && <option value="">{p.empty}</option>}
+      <Label id={p.id} label={p.label} required={required} help={p.help} />
+      <select id={p.id} value={p.value} onChange={(e) => p.onChange(e.target.value)} aria-invalid={invalid(p)} aria-describedby={describedBy(p.id, p)} aria-required={required || undefined}>
+        {p.empty !== undefined && <option value="">{readOnly ? "None" : p.empty}</option>}
         {p.options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -118,6 +129,7 @@ export function CheckField(p: Common & { checked: boolean; onChange: (v: boolean
  * would be hundreds of unticked boxes.
  */
 export function CheckList(p: Common & { values: readonly string[]; onChange: (v: string[]) => void; options: Choice[]; readOnly?: boolean }): React.JSX.Element {
+  const required = useRequired(p.required);
   const toggle = (v: string, on: boolean) => p.onChange(on ? [...p.values, v] : p.values.filter((x) => x !== v));
   const chosen = p.readOnly ? p.options.filter((o) => p.values.includes(o.value)) : [];
   return (
@@ -125,7 +137,7 @@ export function CheckList(p: Common & { values: readonly string[]; onChange: (v:
       <legend>
         {p.label}
         {/* A fieldset can't carry aria-required, so here the marker stays in the group's name. */}
-        {p.required && " (required)"}
+        {required && " (required)"}
       </legend>
       {p.help && (
         <div className="gcpe-label-row">
@@ -241,18 +253,21 @@ export function DateTimeField(p: {
   dateError?: string[];
   timeError?: string[];
   review?: boolean;
-  timeEmpty?: string;
+  /** Under the time: how the date and the time go together. */
+  timeHint?: string;
 }): React.JSX.Element {
+  const required = useRequired(p.required);
+  const readOnly = useContext(ReadOnlyForm);
   const dateNotes = { error: p.dateError, review: p.review };
   return (
     <div className="gcpe-datetime">
       <div className={wrap(p)}>
-        <Label id={p.idDate} label={`${p.label} date`} required={p.required} />
-        <input type="date" id={p.idDate} min="1900-01-01" max="2199-12-31" value={p.date ?? ""} onChange={(e) => p.onDate(e.target.value || null)} aria-invalid={invalid({ error: p.dateError })} aria-describedby={describedBy(p.idDate, dateNotes)} aria-required={p.required || undefined} />
+        <Label id={p.idDate} label={`${p.label} date`} required={required} />
+        <input type="date" id={p.idDate} min="1900-01-01" max="2199-12-31" value={p.date ?? ""} onChange={(e) => p.onDate(e.target.value || null)} aria-invalid={invalid({ error: p.dateError })} aria-describedby={describedBy(p.idDate, dateNotes)} aria-required={required || undefined} />
         <Notes id={p.idDate} p={dateNotes} />
       </div>
       {p.showTime && (
-        <SelectField id={p.idTime} label={`${p.label} time`} value={p.time ?? ""} onChange={(v) => p.onTime(v || null)} options={timeChoices(p.time)} empty={p.timeEmpty ?? "Choose a time"} required={p.required} error={p.timeError} review={p.review} />
+        <SelectField id={p.idTime} label={`${p.label} time`} value={p.time ?? ""} onChange={(v) => p.onTime(v || null)} options={timeChoices(p.time)} empty="Choose a time" required={p.required} error={p.timeError} review={p.review} hint={readOnly ? undefined : p.timeHint} />
       )}
     </div>
   );

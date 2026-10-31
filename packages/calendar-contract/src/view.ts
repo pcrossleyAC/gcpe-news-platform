@@ -4,7 +4,7 @@ import type { LookAheadInference } from "./look-ahead";
 
 /** History field keys (activity_change_fields.field_key) and their labels on "View changes" (spec addendum §8.3). */
 export const HISTORY_FIELDS = {
-  category: "Category", is_confidential: "Not for Look Ahead", title: "Title", details: "Summary", is_issue: "Issue",
+  category: "Category", is_confidential: "Confidential (not for Look Ahead)", title: "Title", details: "Summary", is_issue: "Issue",
   significance: "Significance", lead_organization: "Lead Organization", initiatives: "HQ Initiatives & Leads", keywords: "HQ Tags",
   comm_contact: "Comm Contact", is_milestone: "Key activity", strategy: "Strategy", comm_materials: "Comm Materials",
   comments: "Internal notes", contact_ministry: "Lead Ministry", is_cross_government: "Cross-Government", shared_with: "Shared With",

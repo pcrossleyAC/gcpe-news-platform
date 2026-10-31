@@ -94,7 +94,7 @@ export function checkActivity(i: ActivityFields, ctx: CheckContext): FieldError[
   if (i.lookAhead && !ctx.lookAheadFieldset) add("lookAhead", "Only HQ can change the Look Ahead fields");
   if (i.lookAhead && ctx.lookAheadFieldset && i.isConfidential && ctx.inferredSection !== null && i.lookAhead.hqSection !== ctx.inferredSection && blank(i.lookAhead.hqComments)) {
     // Activity.aspx:2419-2421
-    add("lookAhead.hqComments", "Enter an Executive Summary: this Not-for-Look-Ahead activity's section is overridden");
+    add("lookAhead.hqComments", "Enter an Executive Summary: this confidential activity's section is overridden");
   }
 
   // Lengths apply to new values only: imported titles reach 217 characters (SV 4.5). But the
