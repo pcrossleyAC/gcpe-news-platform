@@ -137,6 +137,12 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
       if (latest.current.dirty) saveDraft(key, { version: latest.current.version, form: latest.current.form });
     });
   }, [canPersistDraft, userId, releaseId, documentId, languageId]);
+  // A restored draft now lives in the form; it's kept again only if another 401 comes. So
+  // closing or reloading the tab, or Leave, can't bring it back a second time.
+  useEffect(() => {
+    if (restored && draftKey) clearDraft(draftKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Back to clean (saved, reloaded, or the edits taken back out): nothing left to keep.
   useEffect(() => {
     if (canPersistDraft && draftKey && !dirty) clearDraft(draftKey);

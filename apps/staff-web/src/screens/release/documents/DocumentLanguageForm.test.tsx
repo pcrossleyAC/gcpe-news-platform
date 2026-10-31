@@ -181,6 +181,8 @@ describe("DocumentLanguageForm", () => {
     renderForm(BASE);
     expect(await screen.findByLabelText("Headline")).toHaveValue("Kept headline");
     expect(screen.getByText("Your unsaved changes were restored.")).toBeInTheDocument();
+    // Now held by the form only: closing or reloading the tab can't bring it back again.
+    await waitFor(() => expect(loadDraft(draftKeyFor())).toBeNull());
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(calls).toHaveLength(1));

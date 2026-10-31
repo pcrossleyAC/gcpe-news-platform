@@ -323,7 +323,11 @@ describe("ReleaseEditorPage", () => {
     const v = releaseView({ id });
     const lang = v.documents[0]!.languages[0]!;
     const key = { userId: "1", releaseId: id, documentId: v.documents[0]!.id, languageId: lang.languageId };
-    saveDraft(key, { version: v.version, form: { pageTitle: lang.pageTitle, organizations: lang.organizations ?? "", headline: "Discard me", subheadline: lang.subheadline ?? "", byline: lang.byline ?? "", bodyHtml: lang.bodyHtml, contacts: lang.contacts } });
+    const form = { pageTitle: lang.pageTitle, organizations: lang.organizations ?? "", headline: "Discard me", subheadline: lang.subheadline ?? "", byline: lang.byline ?? "", bodyHtml: lang.bodyHtml, contacts: lang.contacts };
+    saveDraft(key, { version: v.version, form });
+    // One kept for a language tab that isn't on screen: only Leave can clear it.
+    const unopened = { ...key, languageId: 3084 };
+    saveDraft(unopened, { version: v.version, form });
     stubFetch({ roles: ["NRMS.Editor"], view: v });
     const router = createMemoryRouter(
       [
@@ -345,6 +349,7 @@ describe("ReleaseEditorPage", () => {
     await user.click(screen.getByRole("button", { name: "Leave" }));
     await screen.findByText("Drafts list");
     expect(loadDraft(key)).toBeNull();
+    expect(loadDraft(unopened)).toBeNull();
 
     router.navigate(`/releases/${id}`);
     expect(await screen.findByLabelText("Headline")).toHaveValue(lang.headline);
