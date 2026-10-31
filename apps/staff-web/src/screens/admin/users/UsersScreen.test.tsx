@@ -518,4 +518,36 @@ describe("UsersScreen", () => {
     expect(calls.some((c) => c.url === "/core/api/users/other-1/unlink-entra")).toBe(false);
     expect(within(row).getByText("Sign-in: Microsoft (Entra)")).toBeInTheDocument();
   });
+
+  it("audit #18: each save says what it saves; an unsaved name or roles says so; Active, sign-in and password sit apart under Account", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [OTHER]);
+      if (url === "/core/api/users/other-1/roles" && init?.method === "PUT") return jsonResponse(200, { ...OTHER, roles: ["NRMS.Viewer", "NRMS.Editor"] });
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    await openEditor("other@x.invalid", user);
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
+    expect(within(row).queryByText("Name not saved yet.")).toBeNull();
+    const name = within(row).getByRole("textbox", { name: "other@x.invalid display name" });
+    await user.clear(name);
+    await user.type(name, "Other Person");
+    expect(within(row).getByRole("button", { name: "Save name" })).toHaveAccessibleDescription("Saves the display name only. Name not saved yet.");
+    await user.click(within(row).getByLabelText(/^NRMS Editor —/));
+    const saveRoles = within(row).getByRole("button", { name: "Save roles" });
+    expect(saveRoles).toHaveAccessibleDescription("Saves the roles only. Roles not saved yet.");
+    await user.click(saveRoles);
+    await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1/roles")).toBe(true));
+    // Save roles leaves the name alone, and the name still says it isn't saved.
+    expect(calls.some((c) => c.url === "/core/api/users/other-1" && c.init?.method === "PATCH")).toBe(false);
+    expect(within(row).getByText("Name not saved yet.")).toBeInTheDocument();
+
+    const account = within(row).getByRole("region", { name: "Account" });
+    expect(within(account).getByText("Sign-in: Local password")).toBeInTheDocument();
+    expect(within(account).getByRole("switch", { name: "other@x.invalid is active" })).toBeInTheDocument();
+    expect(within(account).getByRole("button", { name: "Set password" })).toBeInTheDocument();
+    expect(within(account).getByText("Each of these takes effect on its own.")).toBeInTheDocument();
+  });
 });

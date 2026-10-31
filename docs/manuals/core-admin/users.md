@@ -50,10 +50,10 @@ Calendar roles are not on this screen. Give them on [Calendar access](manual:cal
 ## Change someone's account
 
 1. Find the person and choose **Edit** on their row. Their settings open under the row.
-2. Make one change, then choose the button beside it:
-   - To rename them, change the display name and choose **Save name**.
-   - To change what they can do, tick or untick roles and choose **Save roles**. Saving replaces all their roles with the ticked ones.
-   - To set a new password, type it and choose **Set password**. You see "Password updated." This only appears for people who sign in with a password.
+2. Make one change, then choose the button beside it. Each button saves only its own part:
+   - To rename them, change the display name and choose **Save name**. Until you do, "Name not saved yet." shows beside it.
+   - To change what they can do, tick or untick roles and choose **Save roles**. Until you do, "Roles not saved yet." shows beside it. Saving replaces all their roles with the ticked ones.
+   - Under **Account**, each action takes effect on its own: **Active**, **Unlink Microsoft sign-in**, and **Set password**. To set a new password, type it and choose **Set password**. You see "Password updated." This only appears for people who sign in with a password.
 3. Choose **Close** on their row when you are done. Anything you typed but did not save stays there until you leave the page.
 
 ## Deactivate or reactivate someone
