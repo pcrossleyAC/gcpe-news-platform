@@ -31,13 +31,13 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Planned publish date",
     area: "Releases",
     definition:
-      "Set in Publish settings, it's only a plan: nothing is published at that time. Schedule, under Actions, commits a time. Schedule starts from the planned date when there is one still ahead.",
+      "Set in Publish settings, for planning only: it shows on the Forecast, and nothing is published at that time. Schedule, under Actions, sets when it goes out, starting from the planned date when there is one still ahead.",
   },
   {
     id: "media-distribution-lists",
     term: "Media distribution lists",
     area: "Releases",
-    definition: "Lists of media contacts a release is emailed to when it's published, chosen in Publish settings. A release is sent to them only once, the first time it's published.",
+    definition: "Lists of media contacts a release is emailed to when it's published: the lists ticked in its Publish settings. A release is sent to them only once, the first time it's published.",
   },
   {
     id: "news-on-demand",

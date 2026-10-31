@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Release editors (NRMS.Editor).
 
-At the top of a release you see its type, status, reference number and headline. Below that, under "Before this can be approved:" and "Before this can be published:", is what is still missing.
+At the top of a release you see its type, status, reference number and headline. If something is still missing, a line such as "Not ready: 2 things to fix." follows. Choose **See them under Actions** to go to the list, where each item links to the part to fix.
 
 On a wide screen, the release is on the left, and **Actions**, **Publish settings** and **Release info** are on the right. On a narrow screen they come one after another.
 
@@ -36,7 +36,14 @@ If you try to leave with unsaved changes, a box asks "Leave anyway and discard t
 
 A release has one or more documents, such as the news release and a backgrounder. Each has an **English** tab, and a **French** tab once you add one.
 
-Each document has a **Page title**, **Organizations**, **Headline**, **Subheadline**, **Byline**, **Body** and **Contacts**. With the **Formal** layout, **Organizations** must be filled in before you can publish.
+Each document says its layout under its heading, such as "Layout: Formal". The layout decides one field:
+
+- A **Formal** document has **Organizations**, marked "Needed before publishing." on a release, story or factsheet.
+- An **Informal** document has a **Byline** instead.
+
+Every document also has a **Page title**, **Headline**, **Subheadline**, **Body** and **Contacts**.
+
+If a document already holds a byline but is Formal, or organizations but is Informal, that text shows greyed out with a note such as "A formal document doesn't keep a byline. It's removed the next time this document is saved." Copy it first if you need it.
 
 The **Body** toolbar has **Bold**, **Italic**, **Bulleted list**, **Numbered list**, **Link** and **Insert asset**. Pasted text keeps only that formatting.
 
@@ -59,7 +66,7 @@ To work with documents:
 ## French text
 
 1. Choose **Add French translation** on the document.
-2. Choose the **French** tab and fill it in. Once the French tab exists, its headline, body and organizations must be filled in before you can publish.
+2. Choose the **French** tab and fill it in. Once the French tab exists, its headline and body, and on a Formal document its organizations, must be filled in before you can publish.
 3. To take it away, choose **Remove French translation**, then **Confirm remove**. This can't be undone.
 
 A French PDF goes under **Files** instead. See [Photos, video and files](manual:editor-files-and-media).
@@ -69,14 +76,14 @@ A French PDF goes under **Files** instead. See [Photos, video and files](manual:
 - **URL key**: the last part of the release's public address. A release or advisory gets one when it is approved. A story's or factsheet's comes from its headline, and you can change it until it is scheduled.
 - **Redirect URL**: fill this in only to send visitors to another page instead.
 - **Location**: the place at the start of the release, up to 50 characters.
-- **Summary**: what subscribers see in their email. It fills itself from the start of the body, and **Documents** shows "(auto)" until you change it.
+- **Summary**: what subscribers see in their email. It fills itself from the start of the body. **Documents** shows it, with "(auto)" until you change it, and an **Edit it in Page details** link.
 - **Social media summary** and **Keywords**.
 
 Advisories have no summary, social media summary or keywords.
 
 ## Categories
 
-**Categories** shows what is ticked. Choose **Edit categories** to change the **Ministries**, **Lead ministry**, **Sectors**, **Themes** and **Tags**.
+**Categories** shows what is ticked. Choose **Edit categories** to change the **Ministries**, **Lead ministry**, **Sectors**, **Themes** and **Tags**. Once you tick more than one ministry, **Lead ministry (needed before approving)** appears and says "Choose the lead ministry" until you do. An advisory doesn't need one and offers **(none)**.
 
 These decide which subscribers are emailed and which public pages list the release. You need at least one ministry and one sector to publish, and a lead ministry when you tick more than one.
 

@@ -13,15 +13,15 @@ topics: []
 
 1. In **Releases**, choose **New release**.
 2. Choose the **Type**: **Release**, **Story**, **Factsheet** or **Advisory**.
-3. Choose the **Page title**, such as **News Release** or **Backgrounder**. Choosing one also sets the usual **Layout** and **Page image** for it; you can change them.
-4. Choose the **Layout**: **Formal** or **Informal**.
+3. Choose the **Page title** (required), such as **News Release** or **Backgrounder**. Choosing one also sets the usual **Layout** and **Page image** for it; you can change them.
+4. Choose the **Layout**: **Formal** documents have an **Organizations** line, **Informal** ones a **Byline**.
 5. Choose a **Page image**, or **(none)**. Advisories have none.
 6. Enter the **Headline**.
-7. If the release is for a Calendar activity, enter its number in **Activity ID**. See below.
+7. If the release is for a Calendar activity, enter its number in **Calendar activity ID**. See below.
 8. Enter the **Location**, such as VICTORIA.
-9. Tick the **Ministries**. If you tick more than one, choose the **Lead ministry**.
+9. Tick the **Ministries**. If you tick more than one, choose the **Lead ministry (needed before approving)**. An advisory doesn't need one.
 10. Tick the **Sectors**, **Themes** and **Tags** that fit. Advisories have none.
-11. Tick any **Media distribution lists** the release should go to. An advisory must have at least one before it can be published.
+11. Tick any **Media distribution lists** the release should go to. For an advisory the heading reads **Media distribution lists (needed before publishing)**: you can create it without one.
 12. Choose **Create release**.
 
 The release opens, ready to write. It is a **Draft** in the **Drafts** folder. Nobody is emailed and nothing is public.
@@ -44,8 +44,8 @@ If the **Page title** list is empty, the page says "No page titles are set up ye
 If you have Calendar access, a release can be linked to a Calendar activity.
 
 - On **Forecast**, choose **Start a release** under the activity. **New release** opens with the activity filled in.
-- Or type the number in **Activity ID**. The activity's title, ministry and start appear under the field, and its "Translations required", if any.
-- Choose **Fill in from activity 3** (the button names the number) to copy its start (as the planned publish date), its city (as the location), its lead and shared ministries, sectors, themes and tags. Check them before you create the release.
+- Or type the number in **Calendar activity ID**. The activity's title, ministry and start appear under the field, and its "Translations required", if any.
+- Choose **Fill in from activity 3** (the button names the number) to copy its start (as the planned publish date), its city (as the location), its lead and shared ministries, sectors, themes and tags. Check them before you create the release. The planned publish date shows as a line, such as "Planned publish date: Jun 11, 2031 10:00 AM, from the activity. You can change it in Publish settings once the release is created."
 
 Nothing is filled in for an activity that has ended, or whose category doesn't start with "Approved"; the page says which. Other things you may see under the field:
 
