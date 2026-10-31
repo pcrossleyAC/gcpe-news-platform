@@ -119,7 +119,9 @@ export const items = pgTable(
 );
 export type ItemRow = typeof items.$inferSelect;
 
-export const DELIVERY_MODES = ["as_it_happens", "digest", "media"] as const;
+// "correction": a corrected copy of a release someone already got, asked for when it was
+// republished (owner decision 2026-10-31); `correction` is then that resend's number.
+export const DELIVERY_MODES = ["as_it_happens", "digest", "media", "correction"] as const;
 export type DeliveryMode = (typeof DELIVERY_MODES)[number];
 
 export const deliveries = pgTable(
@@ -144,10 +146,15 @@ export const deliveries = pgTable(
     // The bounce's own status code/string (e.g. "5.1.1", or legacy's numeric "550"), from
     // whichever bounce -- hard or soft -- first set it for this delivery.
     bounceStatus: text("bounce_status"),
+    // 0 for every first send (as_it_happens/digest/media); for a corrected copy (mode
+    // 'correction'), the release's correction number (1, 2, ...), so each correction is its own
+    // send: one corrected copy per person per correction, without touching the first send's rows.
+    correction: integer("correction").notNull().default(0),
   },
   (t) => [
-    primaryKey({ columns: [t.itemKey, t.subscriberId, t.mode] }),
-    check("deliveries_mode_check", sql`${t.mode} IN ('as_it_happens','digest','media')`),
+    primaryKey({ columns: [t.itemKey, t.subscriberId, t.mode, t.correction] }),
+    check("deliveries_mode_check", sql`${t.mode} IN ('as_it_happens','digest','media','correction')`),
+    check("deliveries_correction_check", sql`(${t.mode} = 'correction') = (${t.correction} > 0)`),
     // Filtered by the per-part attempted_at stamp (send-jobs.ts's sendAllChunks), the digest
     // claim's own read of this job's items, withdrawItem/createItemSend's deletes, and the
     // ON DELETE SET NULL FK check on sendJobs — none of which had an index to use.

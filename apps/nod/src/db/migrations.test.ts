@@ -59,3 +59,25 @@ describe("0008 backfill", () => {
     expect(cols.rows).toHaveLength(0);
   });
 });
+
+describe("0033 corrected copies", () => {
+  let tdb: TestDatabase | undefined;
+  afterEach(async () => tdb?.drop());
+
+  it("keeps every first-send delivery as correction 0, one row per (item, subscriber, mode) as before, and lets corrections add their own", async () => {
+    tdb = await createTestDatabase({ migrationsFolder: nodMigrations, upTo: "0032_items_link_identity_index" });
+    await tdb.db.execute(sql`
+      INSERT INTO subscribers (id, email, status) VALUES ('00000000-0000-0000-0000-000000000021', 'a@example.test', 'active');
+      INSERT INTO deliveries (item_key, subscriber_id, mode) VALUES ('K1', '00000000-0000-0000-0000-000000000021', 'media');`);
+    await tdb.migrate();
+    const d = await tdb.db.execute<{ mode: string; correction: number }>(sql`SELECT mode, correction FROM deliveries`);
+    expect(d.rows).toEqual([{ mode: "media", correction: 0 }]);
+    // A first send's ON CONFLICT DO NOTHING still dedupes exactly as before.
+    const again = await tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode) VALUES ('K1', '00000000-0000-0000-0000-000000000021', 'media') ON CONFLICT DO NOTHING RETURNING 1`);
+    expect(again.rows).toHaveLength(0);
+    await tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode, correction) VALUES
+      ('K1', '00000000-0000-0000-0000-000000000021', 'correction', 1), ('K1', '00000000-0000-0000-0000-000000000021', 'correction', 2)`);
+    await expect(tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode, correction) VALUES ('K1', '00000000-0000-0000-0000-000000000021', 'correction', 0)`)).rejects.toThrow();
+    await expect(tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode, correction) VALUES ('K2', '00000000-0000-0000-0000-000000000021', 'media', 1)`)).rejects.toThrow();
+  });
+});

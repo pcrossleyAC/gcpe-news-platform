@@ -13,6 +13,7 @@ import { subscribeApiRoutes } from "./http/subscribe-routes";
 import { itemHandlers } from "./items";
 import { listsHandler } from "./lists";
 import type { MediaHubClient } from "./media-hub/client";
+import { createCorrectionSends } from "./correction";
 import { createMediaSend } from "./media-send";
 import type { RenderOptions } from "./render";
 import type { JourneyDeps } from "./subscribe/journeys";
@@ -89,6 +90,9 @@ export function createApp(deps: AppDeps): express.Express {
       await createMediaSend(tx, r.key, deps.render);
       await createItemSend(tx, r.key, "as_it_happens");
     },
+    // Owner decision 2026-10-31: "Also email it again?" -- a corrected copy to those who already
+    // got it, after the normal sends above (which never re-email anyone).
+    onEmailAgain: (tx, r, emailAgain) => createCorrectionSends(tx, r.key, emailAgain, deps.render),
   });
   const resolveBounceHandler = bounceHandler({ appId: deps.distributionAppId ?? "nod" });
   app.use(
