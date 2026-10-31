@@ -25,7 +25,8 @@ export interface SessionValue {
    * may hold unsaved changes) keeps working as it was until they sign in again or leave it. */
   user: SessionUser | null;
   /** Suite review H1: the session ended (it ran out while the computer was asleep or offline, they
-   * signed out in another tab, an administrator changed their account) and nothing can be saved
+   * signed out in another tab, an administrator changed their account, 12 hours passed since
+   * sign-in) and nothing can be saved
    * until they sign in again. RequireAuth and the shell explain it. A later check-in that finds
    * the session good again (signed in in another tab) clears it. */
   ended: boolean;
@@ -44,7 +45,8 @@ const SessionContext = createContext<SessionValue | null>(null);
  * 60 minutes); this is how often the staff app checks in. Suite review H1 (owner 2026-10-31): it
  * checks in whether or not the tab is visible, so a Hub tab left open behind Outlook stays signed
  * in. Browsers slow a hidden tab's timers to about once a minute at most, which is well inside
- * this. The server sets no limit on how long a session can be kept renewed. */
+ * this. Renewal stops 12 hours after sign-in (owner decision 2026-10-31, SESSION_MAX_HOURS): the
+ * next check-in or request is then a 401, and the session-ended flow takes over. */
 const RENEW_INTERVAL_MS = 10 * 60_000;
 
 interface LoginResponse {

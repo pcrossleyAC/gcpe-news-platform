@@ -45,7 +45,7 @@ Just after you give someone a ministry, or take one away, the page says "Updatin
 
 ## Deactivate someone
 
-Deactivating closes the person's Hub account. They can't sign in again until reactivated, and the Hub signs them out within 10 minutes.
+Deactivating closes the person's Hub account. It signs them out at once, everywhere in the Hub, and they can't sign in again until reactivated.
 
 1. Under **Account**, choose **Deactivate** followed by their name.
 2. The page lists their **Open activities**: activities you can see where they are the comm contact, that aren't deleted and haven't ended, even if you set them to **Not a comm contact**. Only the first 500 are listed.

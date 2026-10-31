@@ -10,6 +10,8 @@ import { useDocumentTitle } from "../shared/useDocumentTitle";
 const SIGN_IN_FAILED = "Sign-in failed. Check your user name and password.";
 const RATE_LIMITED = "Too many attempts, wait a minute";
 const NOT_SET_UP = "Your account hasn't been set up. Contact an administrator.";
+/** Owner decision 2026-10-31: a deactivated account, by password (Core's 403) or Microsoft. */
+const NOT_ACTIVE = "Your account is not active. Contact a Core administrator.";
 const METHODS_UNAVAILABLE = "Microsoft sign-in is unavailable right now.";
 /** Suite review H1: why someone who was working is back here. */
 export const SESSION_ENDED = "Your session ended. Sign in to carry on where you left off.";
@@ -20,7 +22,7 @@ export const ENTRA_ERRORS: Record<string, string> = {
   expired: "Your sign-in took too long. Please try again.",
   failed: "We couldn't sign you in with Microsoft. Please try again.",
   not_provisioned: NOT_SET_UP,
-  inactive: NOT_SET_UP,
+  inactive: NOT_ACTIVE,
   conflict: "Your account needs an administrator to check it. Contact an administrator.",
 };
 
@@ -74,7 +76,8 @@ export function SignIn(): React.JSX.Element {
       await signIn(username, password);
       // Render falls through to the `user` redirect above on the next render.
     } catch (caught) {
-      setError(caught instanceof ApiError && caught.status === 429 ? RATE_LIMITED : SIGN_IN_FAILED);
+      const inactive = caught instanceof ApiError && caught.status === 403 && caught.message === "inactive";
+      setError(caught instanceof ApiError && caught.status === 429 ? RATE_LIMITED : inactive ? NOT_ACTIVE : SIGN_IN_FAILED);
     } finally {
       setSubmitting(false);
     }

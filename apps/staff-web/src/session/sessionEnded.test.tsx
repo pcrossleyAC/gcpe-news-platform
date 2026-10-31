@@ -104,6 +104,8 @@ describe("when the session ends (suite review H1)", () => {
 
     const dialog = await screen.findByRole("alertdialog", { name: "Your session has ended" });
     expect(dialog).toHaveTextContent("You were signed out, so the changes on this page can’t be saved until you sign in again.");
+    // Owner decision 2026-10-31: the 12-hour limit is one of the reasons, said plainly.
+    expect(dialog).toHaveTextContent("Sessions last 12 hours.");
     expect(dialog).toHaveTextContent("Unsaved changes on this page are lost when you sign in again here, so copy anything you need first.");
     await user.click(within(dialog).getByRole("button", { name: "Stay on this page" }));
     // Still there to copy from, with a notice that stays.

@@ -266,7 +266,7 @@ describe("UsersScreen", () => {
     await user.click(toggle);
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Deactivate Other?");
-    expect(dialog).toHaveTextContent(/They can[’']t sign in until reactivated\./);
+    expect(dialog).toHaveTextContent(/They[’']re signed out at once and can[’']t sign in until reactivated\./);
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(toggle).toBeChecked();

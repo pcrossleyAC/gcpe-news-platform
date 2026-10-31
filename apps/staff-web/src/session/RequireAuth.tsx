@@ -82,7 +82,7 @@ function SessionEndedGate({ children }: { children: ReactNode }): React.JSX.Elem
         >
           <p>
             You were signed out, so the changes on this page can&rsquo;t be saved until you sign in again. This happens when you sign out in another tab or window,
-            when your computer has been asleep or offline for a while, or when an administrator changes your account.
+            when your computer has been asleep or offline for a while, or when an administrator changes your account. Sessions last 12 hours.
           </p>
           <p>
             {unsaved?.allKeepDrafts

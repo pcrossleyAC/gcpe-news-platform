@@ -83,6 +83,19 @@ describe("SignIn", () => {
     expect(await screen.findByText("Sign-in failed. Check your user name and password.")).toBeInTheDocument();
   });
 
+  // Owner decision 2026-10-31: a deactivated person signing in again (from Your session has ended's
+  // Sign in again) is told plainly why, once their password is right; Core answers 403 inactive.
+  it("403 inactive says the account is not active", async () => {
+    stubFetch(() => jsonResponse(403, { error: "inactive" }));
+    renderSignIn();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/user name/i), "pat");
+    await user.type(screen.getByLabelText(/password/i), "s3cret");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your account is not active. Contact a Core administrator.");
+  });
+
   it("429 shows the rate-limit message", async () => {
     stubFetch(() => textResponse(429, "Too many requests, please try again later."));
     renderSignIn();
@@ -168,7 +181,7 @@ describe("SignIn", () => {
       expired: "Your sign-in took too long. Please try again.",
       failed: "We couldn't sign you in with Microsoft. Please try again.",
       not_provisioned: "Your account hasn't been set up. Contact an administrator.",
-      inactive: "Your account hasn't been set up. Contact an administrator.",
+      inactive: "Your account is not active. Contact a Core administrator.",
       conflict: "Your account needs an administrator to check it. Contact an administrator.",
     });
     stubFetch(noLogin);

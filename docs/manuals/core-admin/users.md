@@ -59,10 +59,10 @@ Calendar roles are not on this screen. Give them on [Calendar access](manual:cal
 ## Deactivate or reactivate someone
 
 1. Choose **Edit** on their row.
-2. Switch **Active** off. The Hub asks "Deactivate {name}?" and explains "They can't sign in until reactivated."
+2. Switch **Active** off. The Hub asks "Deactivate {name}?" and explains "They're signed out at once and can't sign in until reactivated."
 3. Choose **Deactivate**. You see "Saved" beside the switch.
 
-To bring them back, switch **Active** on. It saves straight away, with no question.
+To bring them back, switch **Active** on. It saves straight away, with no question. They sign in again as usual: reactivating doesn't bring back the session they had.
 
 ## Link a person who has no email
 
@@ -84,8 +84,8 @@ Until they do, they are back on password sign-in, and any password they had befo
 
 ## What happens next
 
-- Role changes and deactivation reach the person within 10 minutes. They take effect at once if the person reloads the Hub or comes back to its tab.
-- A deactivated person is signed out at that point and can't sign in again.
+- Deactivating signs the person out at once, everywhere in the Hub. The next thing they do is refused, and the Hub tells them "Your session has ended". If they try to sign in again, they see "Your account is not active. Contact a Core administrator."
+- A role you take away stops working at once: the next thing they try that needs it is refused. Their Hub menus catch up within 10 minutes, or at once if they reload the Hub or come back to its tab.
 - No change on this screen sends an email.
 
 ## If you leave before saving
