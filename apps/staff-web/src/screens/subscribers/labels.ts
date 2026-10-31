@@ -37,7 +37,7 @@ export const HISTORY_LABELS: Record<string, string> = {
   "media-list-added": "Added to a media list",
   "media-news-email-off": "Added to a media list while Disabled. News release email stays off",
   "media-list-removed": "Removed from a media list",
-  "media-list-opted-out": "Left a media list by unsubscribing",
+  "media-list-opted-out": "Left a media list",
   "media-ended": "Ended: removed from their last media list",
   "media-hub-email-changed": "Email updated from Media Hub",
   "media-hub-flagged": "Flagged: Media Hub email needs attention",

@@ -10,6 +10,11 @@ describe("history labels", () => {
     expect(Object.keys(HISTORY_LABELS).sort()).toEqual([...HISTORY_ACTIONS].sort());
   });
 
+  it("says a media-list leave without claiming it was an unsubscribe", () => {
+    // Leaves imported from the old system may have been removals.
+    expect(historyLabel("media-list-opted-out")).toBe("Left a media list");
+  });
+
   it("falls back to the raw action and names system actors", () => {
     expect(historyLabel("something-new")).toBe("something-new");
     expect(actorLabel("subscriber")).toBe("Subscriber");

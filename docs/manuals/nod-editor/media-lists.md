@@ -59,7 +59,7 @@ If the person has also asked for news release email again:
 
 ### If they unsubscribed
 
-When you add someone, the Hub may ask "This person unsubscribed" and say when. It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose **Add anyway**. Adding them back clears the question for this list, unless they unsubscribe again.
+When you add someone, the Hub may ask "This person unsubscribed" and explain "Our records show they left [when]: they unsubscribed, or left it in the old system. Add them only if they've asked to receive media releases again." It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose **Add anyway**. Adding them back clears the question for this list, unless they unsubscribe again.
 
 If they haven't asked to get media releases again, choose **Cancel**.
 

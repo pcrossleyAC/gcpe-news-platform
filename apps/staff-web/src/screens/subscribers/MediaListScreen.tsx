@@ -19,7 +19,8 @@ import type { AddMemberBody, AddMemberResult, MediaListSummary, MediaMember, Med
  * `/hub/subscribers/media-lists/:key`: one media list's members, who left it (unsubscribed, or left it in legacy),
  * and, for Editors, add (by hand or from Media Hub), remove and resolve. The h1 and title are
  * the static "Media list"; the list name is shown below it (no async titles). Re-adding someone
- * who unsubscribed always asks first and names when they left (C64).
+ * whose records show they may have unsubscribed since they were last added may ask first, and
+ * names when they left (C64).
  */
 export function MediaListScreen(): React.JSX.Element {
   const { key = "" } = useParams();
@@ -249,7 +250,7 @@ export function MediaListScreen(): React.JSX.Element {
               </>
             }
           >
-            <p>{`They unsubscribed ${optOutPrompt.at ? formatWhen(optOutPrompt.at, new Date(), timeZone) : "earlier"}. Add them only if they've asked to receive media releases again.`}</p>
+            <p>{`Our records show they left ${optOutPrompt.at ? formatWhen(optOutPrompt.at, new Date(), timeZone) : "earlier"}: they unsubscribed, or left it in the old system. Add them only if they've asked to receive media releases again.`}</p>
             {actionError && <InlineAlert variant="danger" role="alert" description={actionError} />}
           </AlertDialog>
         </Modal>
