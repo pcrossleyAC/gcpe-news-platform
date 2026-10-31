@@ -36,17 +36,19 @@ const INITIAL: VersionedSaveState = { saving: false, problems: null, conflict: f
  * pins, live feed, Blue Bridge, links, files) has its own URL and payload, so the caller supplies
  * the whole `apiFetch` call as a thunk and this just wraps it with the shared state machine.
  */
-export function useVersionedSave<T = unknown>(): VersionedSave<T> {
+export function useVersionedSave<T = unknown>(options: { quiet?: boolean } = {}): VersionedSave<T> {
   const [state, setState] = useState<VersionedSaveState>(INITIAL);
   const { announce } = useAnnouncer();
+  const quiet = options.quiet ?? false;
 
   const run = useCallback(async (action: () => Promise<T>): Promise<T | null> => {
     setState({ saving: true, problems: null, conflict: false, error: null });
     try {
       const result = await action();
       setState(INITIAL);
-      // I4: one shared announcement for every Website section save, same as release sections.
-      announce("Saved");
+      // I4: one shared announcement for every Website section save, same as release sections —
+      // unless the screen shows (and so announces) its own result (W8's SaveResult).
+      if (!quiet) announce("Saved");
       return result;
     } catch (caught) {
       // Same code-aware distinction as release/useReleaseSection.ts's save(): a 409 is a real
@@ -63,7 +65,7 @@ export function useVersionedSave<T = unknown>(): VersionedSave<T> {
       }
       return null;
     }
-  }, [announce]);
+  }, [announce, quiet]);
 
   const clear = useCallback(() => setState(INITIAL), []);
 

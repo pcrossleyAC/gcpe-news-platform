@@ -273,4 +273,65 @@ describe("PinsScreen", () => {
     expect(toggle.compareDocumentPosition(refusal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(calls.some((c) => c.startsWith("POST"))).toBe(false);
   });
+  describe("W7/W8: what a save did, on screen", () => {
+    const stub = (handle: (url: string, init?: RequestInit) => Response | undefined) => {
+      let pins = [PRIMARY, SECONDARY];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+          if (url === "/nrms/api/site/pins") return jsonResponse(200, pins);
+          const out = handle(url, init);
+          if (out) return out;
+          throw new Error(`unhandled: ${url}`);
+        }),
+      );
+      return { set: (next: PinView[]) => (pins = next) };
+    };
+
+    it("saving an unpinned notice says it was saved and isn't on the home page", async () => {
+      stub((url, init) => (url === "/nrms/api/site/pins/primary" && init?.method === "PUT" ? jsonResponse(200, { ...PRIMARY, version: 2 }) : undefined));
+      render(withAuth(<PinsScreen />));
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Save primary pin" }));
+      expect(await screen.findByText(/^Saved at \d{1,2}:\d{2}\s?[AP]M\. Not on the home page: this notice isn.t pinned\.$/)).toHaveAttribute("role", "status");
+    });
+
+    it("pinning says it is live now; unpinning says it comes off the home page", async () => {
+      const state = stub((url, init) => {
+        if (url === "/nrms/api/site/pins/primary/pinned" && init?.method === "POST") {
+          const pinned = JSON.parse(init.body as string).pinned as boolean;
+          const next = { ...PRIMARY, pinned, version: pinned ? 2 : 3 };
+          state.set([next, SECONDARY]);
+          return jsonResponse(200, next);
+        }
+        return undefined;
+      });
+      render(withAuth(<PinsScreen />));
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("switch", { name: "Primary is not pinned" }));
+      expect(await screen.findByText(/^Pinned at .+\. Live now: the home page shows this notice within a few minutes\.$/)).toBeInTheDocument();
+      await user.click(await screen.findByRole("switch", { name: "Primary is pinned" }));
+      expect(await screen.findByText(/^Unpinned at .+\. The home page stops showing this notice within a few minutes\.$/)).toBeInTheDocument();
+    });
+
+    it("replacing a pinned notice's image shows the new image and says it is live", async () => {
+      const withImage = { ...SECONDARY, slide: { ...SECONDARY.slide, hasImage: true, imageUrl: "/nrms/api/site/pins/secondary/image?v=1" } };
+      const state = stub((url, init) => {
+        if (url === "/nrms/api/site/pins/secondary/image" && init?.method === "PUT") {
+          state.set([PRIMARY, { ...withImage, slide: { ...withImage.slide, imageUrl: "/nrms/api/site/pins/secondary/image?v=2" } }]);
+          return new Response(null, { status: 204 });
+        }
+        return undefined;
+      });
+      state.set([PRIMARY, withImage]);
+      const { container } = render(withAuth(<PinsScreen />));
+      const user = userEvent.setup();
+      const input = await screen.findByLabelText("Secondary image (JPEG or PNG, up to 2 MB)");
+      expect(container.querySelector('img[src="/nrms/api/site/pins/secondary/image?v=1"]')).not.toBeNull();
+      await user.upload(input, new File(["png"], "new.png", { type: "image/png" }));
+      expect(await screen.findByText(/^Image saved at .+\. Live now: the home page shows it within a few minutes\.$/)).toBeInTheDocument();
+      expect(container.querySelector('img[src="/nrms/api/site/pins/secondary/image?v=2"]')).not.toBeNull();
+    });
+  });
 });

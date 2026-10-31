@@ -6,9 +6,13 @@ import { useAnnouncer } from "../../shared/Announcer";
 import { Button } from "../../shared/BusyButton";
 import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { HostWarning } from "../../shared/HostWarning";
+import { staffHostWarning, usePublicFilesOrigin } from "../../shared/publicAddress";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
+import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { canManageWebsite } from "./access";
+import { SaveResult, clockTime } from "./SaveResult";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { LinksView, ResourceLinkView } from "./types";
@@ -38,13 +42,17 @@ export function LinksScreen(): React.JSX.Element {
   useDocumentTitle("Resource links");
   const canManage = canManageWebsite(session);
   const canEdit = session.has("NRMS.SiteEditor");
-  const section = useVersionedSave<LinksView>();
+  const section = useVersionedSave<LinksView>({ quiet: true });
+  const timeZone = useTenantTimeZone();
+  // W8: what the last save did, on screen.
+  const [result, setResult] = useState("");
   const [view, setView] = useState<LinksView | null>(null);
   const [links, setLinks] = useState<LinkForm[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { announce } = useAnnouncer();
   const moveFocus = useMoveFocusRestore<HTMLDivElement>();
   const nextClientKey = useRef(0);
+  const publicOrigin = usePublicFilesOrigin();
 
   const resetFrom = (v: LinksView) => {
     setView(v);
@@ -91,7 +99,9 @@ export function LinksScreen(): React.JSX.Element {
     void section
       .run(() => apiFetch<LinksView>("/nrms/api/site/links", { method: "PUT", body: { version: view.version, links: links.map(({ clientKey, ...link }) => link) } }))
       .then((next) => {
-        if (next) resetFrom(next);
+        if (!next) return;
+        resetFrom(next);
+        setResult(`Saved at ${clockTime(new Date(), timeZone)}. Live now: the public home page shows the resource links within a few minutes.`);
       });
   };
   useShortcut("save", canManage && canEdit && view ? () => void (section.saving ? undefined : save()) : null);
@@ -133,7 +143,8 @@ export function LinksScreen(): React.JSX.Element {
         <div key={link.clientKey} className="gcpe-links__item" {...dragReorder.dropZoneProps(index)}>
           {canEdit && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder link ${index + 1}`} />}
           <TextField label={`Link ${index + 1} text`} value={link.text} onChange={(v) => update(index, { text: v })} isDisabled={!canEdit} />
-          <TextField label={`Link ${index + 1} URL`} value={link.url} onChange={(v) => update(index, { url: v })} isDisabled={!canEdit} />
+          <TextField label={`Link ${index + 1} URL`} value={link.url} onChange={(v) => update(index, { url: v })} isDisabled={!canEdit} aria-describedby={staffHostWarning(link.url, publicOrigin) ? `link-${link.clientKey}-host` : undefined} />
+          <HostWarning id={`link-${link.clientKey}-host`} text={staffHostWarning(link.url, publicOrigin)} />
           {canEdit && (
             <>
               <span data-move-id={link.clientKey} data-move-dir="up">
@@ -165,6 +176,7 @@ export function LinksScreen(): React.JSX.Element {
           </Button>
         </>
       )}
+      <SaveResult text={result} />
     </div>
   );
 }

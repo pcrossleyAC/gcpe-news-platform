@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { FieldError, LinkSetting } from "@gcpe/site-settings";
 import { AnnouncerProvider } from "./Announcer";
 import { LinkListEditor, withoutBlankLinks } from "./LinkListEditor";
+import { STAFF_HOST_WARNING } from "./publicAddress";
+import { jsonResponse } from "../../test/jsonResponse";
 
 let latest: LinkSetting[] = [];
 
@@ -43,6 +45,24 @@ describe("LinkListEditor", () => {
     cleanup();
     render(<Harness initial={[]} />);
     expect(screen.getByRole("group", { name: "Help links" })).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("W1: a web address on the Hub's own host says the public can't open it; a public one doesn't", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.gov.bc.ca", filesBase: "https://news.gov.bc.ca" });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    try {
+      render(<Harness initial={[{ text: "Map", url: `${window.location.origin}/files/map.pdf` }, { text: "Report", url: "https://news.gov.bc.ca/files/report.pdf" }]} />);
+      const [hubRow, publicRow] = screen.getAllByRole("textbox", { name: "Web address" });
+      await waitFor(() => expect(hubRow).toHaveAccessibleDescription(STAFF_HOST_WARNING));
+      expect(publicRow).not.toHaveAccessibleDescription(STAFF_HOST_WARNING);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("editing a row keeps its id and summary", async () => {

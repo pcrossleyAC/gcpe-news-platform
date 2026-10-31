@@ -78,6 +78,27 @@ describe("FilesScreen", () => {
     await screen.findByText("report.pdf");
   });
 
+  it("W1: each file shows its public address on the public site's base, not the Hub's host, and Copy public address copies it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "https://news.gov.bc.ca", publicSiteUrl: "https://news.gov.bc.ca", filesBase: "https://news.gov.bc.ca", isTestSite: false });
+        if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, ONE_FILE);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    // The Hub runs on its own (here: jsdom's localhost) host.
+    expect(window.location.host).not.toBe("news.gov.bc.ca");
+    render(withAuth(<FilesScreen />));
+    const user = userEvent.setup();
+    expect(await screen.findByText("https://news.gov.bc.ca/files/report.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "report.pdf" })).toHaveAttribute("href", "https://news.gov.bc.ca/files/report.pdf");
+    await user.click(screen.getByRole("button", { name: "Copy public address of report.pdf" }));
+    expect(await navigator.clipboard.readText()).toBe("https://news.gov.bc.ca/files/report.pdf");
+    expect(await screen.findByRole("status")).toHaveTextContent("Copied the public address of report.pdf.");
+  });
+
   it("deletes a file after confirming", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal(

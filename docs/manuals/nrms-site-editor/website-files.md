@@ -11,7 +11,7 @@ topics: []
 
 **Files** holds documents and images the public can open at a fixed web address, such as a media guide or a minister's photo. You can upload any type of file of up to 512 MB.
 
-The list shows the 50 newest files, each linked to its public address. To find an older one, type part of its name in **Search files** and choose **Search**.
+The list shows the 50 newest files. Under each file's name is its full public address, the one visitors use, such as https://news.gov.bc.ca/files/media-guide.pdf. To find an older file, type part of its name in **Search files** and choose **Search**.
 
 ## Upload a file
 
@@ -22,7 +22,16 @@ The file's public name is made from your file name: in lower case, with spaces a
 
 PDFs, images, Office documents, audio, video and text open in the visitor's browser. Anything else, such as a web page, an SVG drawing or a program, is downloaded, never shown on the site.
 
-To use a file elsewhere, such as a minister's photo on [Organizations](manual:site-editor-organizations) or a link on [Resource links](manual:resource-links), open it from the list and copy the full address from your browser's address bar.
+## Use a file elsewhere
+
+To put a file in a minister's photo on [Organizations](manual:site-editor-organizations), a slide, an emergency pin, a banner link or a link on [Resource links](manual:resource-links):
+
+1. Choose **Copy public address** beside the file. You see "Copied the public address of {name}."
+2. Paste the address into the other screen's web address box.
+
+Don't copy the address from your browser's address bar while you are in the Hub. That address points at the Hub's own server, which the public can't open: you would see the file, but visitors would get a broken image or link. A web address box holding such an address says "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead."
+
+
 
 ## Replace a file
 
@@ -53,4 +62,5 @@ Links to a deleted file stop working. Check that nothing still points to it firs
 | "{name}: A file can be at most 512 MB." | The file is too big to upload. |
 | "The file is empty." | The file has nothing in it. Check you picked the right one. |
 | "{name}" is a reserved Windows device name; rename the file. | Names such as con, aux, nul or prn can't be used. Rename the file and upload it again. |
+| "Couldn't copy. Select the address of {name} and copy it." | Your browser didn't allow the copy. Select the address under the file's name and copy it yourself. |
 | "The upload wasn't accepted. Reload the page and try again." | Most often this happens just after the Hub was updated: a page left open from before the update sends the file in a way the Hub no longer accepts. |

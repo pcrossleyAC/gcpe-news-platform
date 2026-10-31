@@ -105,6 +105,32 @@ describe("LiveFeedScreen", () => {
     render(withAuth(<LiveFeedScreen />));
     await screen.findByText("You don’t have permission to view the Live Feed settings.");
     expect(screen.queryByRole("switch", { name: "Live Feed on" })).toBeNull();
-    expect(calls).toHaveLength(1); // only /core/auth/session — the live-feed GET is never sent
+    // The live-feed GET is never sent (the screen still asks for the tenant's time zone).
+    expect(calls.filter((c) => c.url.startsWith("/nrms/api/site"))).toHaveLength(0);
+  });
+  it("W8: saving shows the result on screen: live now when on, no button when off", async () => {
+    let feed = OFF;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/live-feed" && init?.method === "PUT") {
+          const body = JSON.parse(init.body as string);
+          feed = { ...feed, enabled: body.enabled, m3uUrl: body.m3uUrl, version: feed.version + 1 };
+          return jsonResponse(200, feed);
+        }
+        if (url === "/nrms/api/site/live-feed") return jsonResponse(200, feed);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<LiveFeedScreen />));
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("M3U URL"), "https://stream.example.invalid/live.m3u8");
+    await user.click(screen.getByRole("switch", { name: "Live Feed on" }));
+    await user.click(screen.getByRole("button", { name: "Save Live Feed" }));
+    expect(await screen.findByText(/^Saved at \d{1,2}:\d{2}\s?[AP]M\. Live now: the Live Webcast button shows on the public site within a few minutes\.$/)).toHaveAttribute("role", "status");
+    await user.click(screen.getByRole("switch", { name: "Live Feed on" }));
+    await user.click(screen.getByRole("button", { name: "Save Live Feed" }));
+    expect(await screen.findByText(/^Saved at .+\. The Live Feed is off: the Live Webcast button goes from the public site within a few minutes\.$/)).toBeInTheDocument();
   });
 });

@@ -69,13 +69,13 @@ function stub(roles: string[], routes: Record<string, unknown>) {
 }
 
 const CAROUSELS: CarouselsResponse = {
-  live: { id: "c1", state: "live", goLiveAt: null, wentLiveAt: "2026-01-01T00:00:00.000Z", version: 1, slides: [{ id: "s1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
+  live: { id: "c1", state: "live", goLiveAt: null, wentLiveAt: "2026-01-01T00:00:00.000Z", version: 1, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", slides: [{ id: "s1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
   next: null,
   past: [],
 };
 const CAROUSELS_WITH_NEXT: CarouselsResponse = {
   ...CAROUSELS,
-  next: { id: "n1", state: "next", goLiveAt: "2027-01-01T12:00:00.000Z", wentLiveAt: null, version: 1, slides: [{ id: "ns1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
+  next: { id: "n1", state: "next", goLiveAt: "2027-01-01T12:00:00.000Z", wentLiveAt: null, version: 1, createdAt: "2026-02-01T00:00:00.000Z", updatedAt: "2026-02-01T00:00:00.000Z", slides: [{ id: "ns1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
 };
 const PINS: PinView[] = [
   { slot: "primary", pinned: false, version: 1, slide: { id: "p1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } },
