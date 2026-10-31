@@ -19,6 +19,11 @@ export const FEATURE_SLOTS = ["top", "feature"] as const;
 export type FeatureSlot = (typeof FEATURE_SLOTS)[number];
 
 export const POST_KIND = { release: "releases", story: "stories", factsheet: "factsheets", update: "updates", advisory: "advisories" } as const satisfies Record<ReleaseType, string>;
+/** The largest translation or media file a release takes, in MB (MiB). The Hub checks it before uploading. */
+export const RELEASE_FILE_MAX_MB = 25;
+/** What the Hub and the server say when a release file is over {@link RELEASE_FILE_MAX_MB}. */
+export const RELEASE_FILE_TOO_LARGE = `A file can be at most ${RELEASE_FILE_MAX_MB} MB.`;
+
 export const TYPE_LABEL: Record<ReleaseType, string> = { release: "Release", story: "Story", factsheet: "Factsheet", update: "Update", advisory: "Advisory" };
 
 export interface PublishOptions {
@@ -83,6 +88,9 @@ export interface ReleaseView {
   key: string | null;
   reference: string | null;
   status: ReleaseStatus;
+  /** On the public site now: published, or a correction that failed while it stayed up. False
+   * before the first publish and after an unpublish (when `releasedAt` is still set). */
+  live: boolean;
   onHold: boolean;
   version: number;
   leadMinistryKey: string | null;

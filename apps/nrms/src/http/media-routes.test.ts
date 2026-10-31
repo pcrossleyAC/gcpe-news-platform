@@ -118,6 +118,7 @@ describe("NRMS media routes", () => {
     const big = Buffer.concat([PDF, Buffer.alloc(26 * 1024 * 1024)]);
     const res = await upload(filesPath(id, version), editorCookie, big, "big.pdf");
     expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: "A file can be at most 25 MB." });
     expect(await store.list(`releases/${id}`)).toEqual([]);
   });
 

@@ -325,7 +325,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   );
 
   r.get("/releases", read, run(async (req, res) => void res.json(await listFolder(db, listQuerySchema.parse(req.query), opts()))));
-  r.get("/search", read, run(async (req, res) => void res.json(await searchReleases(db, searchQuerySchema.parse(req.query), opts()))));
+  r.get("/search", read, run(async (req, res) => void res.json(await searchReleases(db, searchQuerySchema.parse(req.query), opts(), await calendarViewerOf(db, req)))));
   r.get(
     "/goto",
     read,

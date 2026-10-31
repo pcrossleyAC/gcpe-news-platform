@@ -71,7 +71,7 @@ Other refusals you may see:
 | Message | What it means |
 |---|---|
 | "Set a URL key in Page details before this can be published." | A story or factsheet needs a URL key. |
-| "The lead ministry has no abbreviation in Core; add one before approving." | Ask a Core administrator to add the ministry's abbreviation. |
+| "The lead ministry has no abbreviation yet. Ask an administrator to add one, then approve again." | Ask a Core administrator to add the ministry's abbreviation, then approve. |
 | "That number is already in use — try again." | Two releases were approved at the same moment. Approve again. |
 | "The publish time is more than 5 minutes in the past." | Choose a later time. |
 | "A live release's correction goes out immediately — choose Publish now." | A failed correction of a published release can't be scheduled. |

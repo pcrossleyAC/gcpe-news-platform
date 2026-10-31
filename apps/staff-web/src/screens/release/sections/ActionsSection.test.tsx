@@ -69,14 +69,35 @@ describe("ActionsSection", () => {
   });
 
   it("a Release shows Unpublish once published", () => {
-    renderActions(releaseView({ type: "release", status: "published", releasedAt: "2026-01-01T00:00:00.000Z" }));
+    renderActions(releaseView({ type: "release", status: "published", live: true, releasedAt: "2026-01-01T00:00:00.000Z" }));
     expect(screen.getByRole("button", { name: "Unpublish" })).toBeInTheDocument();
+  });
+
+  // The server unpublishes only a release that is on the site (workflow.ts unpublish): a
+  // republish that failed after an unpublish has a release date but is no longer up.
+  it("no Unpublish for a release that isn't on the site, even with a release date (a failed republish after an unpublish)", () => {
+    renderActions(releaseView({ type: "release", status: "failed", live: false, key: "k1", reference: "NEWS-00001", releasedAt: "2026-01-01T00:00:00.000Z" }));
+    expect(screen.queryByRole("button", { name: "Unpublish" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  // The server refuses to delete a live release ("This release has been published — unpublish
+  // it first.", service.ts deleteRelease): a correction that failed leaves it live.
+  it("a failed correction (still on the site) offers Unpublish, not Delete", () => {
+    renderActions(releaseView({ type: "release", status: "failed", live: true, key: "k1", reference: "NEWS-00001", releasedAt: "2026-01-01T00:00:00.000Z" }));
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unpublish" })).toBeInTheDocument();
+  });
+
+  it("a failed first publish (never on the site) still offers Delete", () => {
+    renderActions(releaseView({ type: "release", status: "failed", live: false, key: "k1", reference: "NEWS-00001" }));
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 
   // Minors: Unpublish takes a public release down — it needs a confirm dialog, same pattern
   // as Delete, instead of firing the POST straight from the button press.
   it("Unpublish opens a confirm dialog; only Confirm unpublish actually sends the request", async () => {
-    const v = releaseView({ type: "release", status: "published", releasedAt: "2026-01-01T00:00:00.000Z" });
+    const v = releaseView({ type: "release", status: "published", live: true, releasedAt: "2026-01-01T00:00:00.000Z" });
     const calls: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -259,11 +280,10 @@ describe("ActionsSection", () => {
     expect(dialog).toHaveTextContent("News on Demand subscribers will not be emailed.");
   });
 
-  // Review P2: NoD and media sends happen once per release (keys are insert-or-ignore), so a
-  // release published before (corrected, or unpublished and republished) emails nobody again.
-  it("for a release that was published before, the dialog says nobody is emailed again", async () => {
+  // A correction (the release is still on the site) emails nobody: NoD only refreshes the item.
+  it("for a correction of a live release, the dialog says nobody is emailed again", async () => {
     const v = releaseView({
-      status: "approved", key: "k1", reference: "NEWS-00001", releasedAt: "2026-10-01T17:00:00.000Z",
+      status: "failed", live: true, key: "k1", reference: "NEWS-00001", releasedAt: "2026-10-01T17:00:00.000Z",
       mediaListKeys: ["regional"], publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: true },
     });
     vi.stubGlobal("fetch", publishFetch([], v));
@@ -274,6 +294,68 @@ describe("ActionsSection", () => {
     expect(dialog).toHaveTextContent("Subscribers and media lists already received this when it was first published; they won’t be emailed again.");
     expect(dialog).not.toHaveTextContent("Emails News on Demand");
     expect(dialog).not.toHaveTextContent("Sends to media distribution lists");
+    expect(dialog).not.toHaveTextContent("hadn’t reached");
+  });
+
+  // After an unpublish, NoD deletes the sends that hadn't gone out yet, and a republish sends to
+  // the people not yet reached (apps/nod/src/items.ts withdrawItem). The daily digest only
+  // carries it if it's back on the site by the 5 pm cutoff its first release date falls in.
+  describe("publishing again after an unpublish", () => {
+    const unpublished = (over: Partial<ReleaseView> = {}) =>
+      releaseView({
+        status: "approved", live: false, key: "k1", reference: "NEWS-00001", releasedAt: "2026-10-01T17:00:00.000Z", // 10:00 AM Oct 1, BC time
+        ministries: ["health"], leadMinistryKey: "health", sectors: ["seniors"],
+        mediaListKeys: ["regional"], publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: true },
+        ...over,
+      });
+    const openPublishNow = async (v: ReleaseView) => {
+      vi.stubGlobal("fetch", publishFetch([], v));
+      renderActions(v);
+      await userEvent.setup().click(screen.getByRole("button", { name: "Publish now" }));
+      return screen.findByRole("dialog");
+    };
+    afterEach(() => vi.useRealTimers());
+
+    it("says people already emailed aren't emailed again, and that anyone a cut-short send hadn't reached is emailed now", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T18:00:00Z") });
+      const dialog = await openPublishNow(unpublished());
+      expect(dialog).toHaveTextContent("Anyone already emailed about it won’t be emailed again.");
+      await waitFor(() =>
+        expect(dialog).toHaveTextContent(
+          "If unpublishing stopped its emails before they all went out, the people they hadn’t reached yet are emailed now: members of Regional newspapers, and News on Demand subscribers who chose As it happens.",
+        ),
+      );
+      expect(dialog).not.toHaveTextContent("they won’t be emailed again");
+    });
+
+    it("before the 5 pm cutoff of the day it first went out, says the daily digest gets it only if it's published before then", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T18:00:00Z") }); // 11:00 AM
+      const dialog = await openPublishNow(unpublished());
+      expect(dialog).toHaveTextContent("Daily digest subscribers get it only if it’s on the site again before 5:00 PM on Oct 1, 2026.");
+      expect(dialog).not.toHaveTextContent("That time has passed");
+    });
+
+    it("first released after 5 pm, the cutoff is the next day's", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-02T04:00:00Z") }); // 9:00 PM Oct 1
+      const dialog = await openPublishNow(unpublished({ releasedAt: "2026-10-02T01:30:00.000Z" })); // 6:30 PM Oct 1
+      expect(dialog).toHaveTextContent("before 5:00 PM on Oct 2, 2026.");
+    });
+
+    it("after that cutoff, says digest subscribers who didn't get it then won't", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-05T18:00:00Z") });
+      const dialog = await openPublishNow(unpublished());
+      expect(dialog).toHaveTextContent(
+        "Daily digest subscribers get it only if it’s on the site again before 5:00 PM on Oct 1, 2026. That time has passed, so daily digest subscribers who didn’t get it then won’t.",
+      );
+    });
+
+    it("with News on Demand and media lists off, says nobody is emailed", async () => {
+      const dialog = await openPublishNow(unpublished({ publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: false } }));
+      expect(dialog).toHaveTextContent("No media distribution lists.");
+      expect(dialog).toHaveTextContent("News on Demand subscribers will not be emailed.");
+      expect(dialog).not.toHaveTextContent("hadn’t reached");
+      expect(dialog).not.toHaveTextContent("Daily digest");
+    });
   });
 
   // Review P3: a blocker can appear while the dialog is open (a background refresh, an edit in

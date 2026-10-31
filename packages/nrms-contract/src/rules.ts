@@ -1,4 +1,10 @@
-import { LANG_EN, LANGUAGE_NAME, type PublishOptions, type ReleaseType, type ReleaseView } from "./types";
+import { LANG_EN, LANGUAGE_NAME, TYPE_LABEL, type PublishOptions, type ReleaseType, type ReleaseView } from "./types";
+
+/** The type's label with its article, to start a sentence: "An Advisory", "An Update", "A Release". */
+export function aType(type: ReleaseType): string {
+  const label = TYPE_LABEL[type];
+  return `${/^[AEIOU]/.test(label) ? "An" : "A"} ${label}`;
+}
 
 export interface TypeRules {
   creatable: boolean;

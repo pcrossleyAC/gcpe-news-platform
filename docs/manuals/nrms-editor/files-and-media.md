@@ -45,12 +45,12 @@ Links that are refused when you save:
 
 ## Translations and media files
 
-**Files** holds files people can open from the public release.
+**Files** holds files people can open from the public release. On an advisory it says "An Advisory has no translations or media files." and offers no upload.
 
 - **Translations**: PDFs, such as the release in French or another language. Choose **Upload a translation (PDF)** and pick the file.
 - **Media files**: PDF, PNG or JPEG files, such as a photo or a fact sheet. Choose **Upload a media file** and pick the file. **Includes additional media assets** in **Media asset** is ticked for you.
 
-Each file can be up to 25 MB. A file is saved as soon as it is uploaded; you don't need **Save changes**. Choose a file's name to open it.
+Each file can be up to 25 MB. A larger file isn't uploaded. A file is saved as soon as it is uploaded; you don't need **Save changes**. Choose a file's name to open it.
 
 Files can be opened by the public only while the release is published. Before then, and after an unpublish, only Hub staff can open them.
 
@@ -61,6 +61,7 @@ To remove a file, choose **Remove** and its name, then **Confirm remove**. This 
 | "This file isn't a PDF." | Translations must be PDFs. |
 | "Upload a PDF, PNG or JPEG file." | Media files must be one of those. |
 | "The file is empty." | Pick the file again. |
-| "request entity too large" | The file is over 25 MB. Make it smaller. |
+| "photo.jpg is too large to upload. A file can be at most 25 MB." | The file is over 25 MB. Make it smaller. |
+| "A file can be at most 25 MB." | The same, found while uploading. |
 
 Uploading or removing a file on a published release republishes it at once, as a correction.

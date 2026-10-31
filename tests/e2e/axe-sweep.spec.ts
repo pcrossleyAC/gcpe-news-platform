@@ -113,7 +113,13 @@ test.describe("item 16: axe across every staff screen", () => {
   test("Help (from the header), and a ? explanation open", async ({ page, context }) => {
     await signInAs(context, "editor");
     await gotoAndWaitForH1(page, "/hub/releases/drafts");
+    // From a release folder, an editor's header Help opens that screen's page of the Releases
+    // editor manual (docs/manuals/nrms-editor/release-folders.md); the Help page itself is still
+    // one link away.
     await page.getByRole("banner").getByRole("link", { name: "Help" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "The release folders" })).toBeVisible();
+    await expectNoSeriousA11yViolations(page, "/hub/help/manuals/nrms-editor/editor-release-folders");
+    await gotoAndWaitForH1(page, "/hub/help");
     await expect(page.getByRole("heading", { level: 1, name: "Help" })).toBeVisible();
     await expectNoSeriousA11yViolations(page, "/hub/help");
 

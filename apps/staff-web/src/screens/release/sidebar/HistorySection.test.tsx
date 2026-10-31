@@ -59,4 +59,21 @@ describe("HistorySection", () => {
     await user.click(screen.getByRole("checkbox", { name: "Show all" }));
     await waitFor(() => expect(calls).toContain(`/nrms/api/releases/${VIEW.id}/log?all=true`));
   });
+
+  it("reloads the log and the published copies when the release changes (after an action), without a page reload", async () => {
+    let approved = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/log")) return jsonResponse(200, approved ? [{ at: "2026-10-10T21:30:00Z", actorName: "Pat", text: "Approved Release" }] : []);
+        return jsonResponse(200, approved ? [{ id: 1, publishedAt: "2026-01-15T23:00:00Z", actorName: "Pat" }] : []);
+      }),
+    );
+    const { rerender } = render(<HistorySection view={VIEW} timeZone="America/Vancouver" />);
+    expect(await screen.findByText("No history yet.")).toBeInTheDocument();
+    approved = true;
+    rerender(<HistorySection view={{ ...VIEW, version: VIEW.version + 1, status: "approved" }} timeZone="America/Vancouver" />);
+    expect(await screen.findByText(/Pat: Approved Release/)).toBeInTheDocument();
+    expect(await screen.findByText(/Jan 15, 2026 3:00 PM — Pat/)).toBeInTheDocument();
+  });
 });

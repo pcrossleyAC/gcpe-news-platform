@@ -41,7 +41,7 @@ To put it back, choose **Publish now** or **Schedule**. It keeps its numbers and
 
 ## Delete
 
-You can delete a draft, an approved release or a failed one. A published release, including one whose correction failed, must be unpublished first.
+You can delete a draft, an approved release or a failed one. A published release, including one whose correction failed, must be unpublished first; until then it has no **Delete**.
 
 1. Choose **Delete**. A box asks "Delete this release?"
 2. Choose **Confirm delete**. You are taken to **Drafts**.

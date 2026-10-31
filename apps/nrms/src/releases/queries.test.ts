@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { CreateReleaseInput, ListQuery } from "@gcpe/nrms-contract";
 import { createNrmsTestDb, createScheduledRelease, editor, sampleCreate, seedActivity, seedTaxonomy } from "../../test/helpers";
+import { LEVEL, type Viewer } from "@gcpe/calendar-contract";
 import { goTo, listFolder, releaseLog, searchReleases, startOfTomorrow } from "./queries";
 import { createRelease, deleteRelease, saveCategories } from "./service";
 import { approve } from "./workflow";
@@ -117,8 +118,10 @@ describe("release queries", () => {
   });
 
   describe("searchReleases", () => {
-    const search = (q: Partial<{ q: string; ministry: string; sector: string; page: number }>) =>
-      searchReleases(tdb.db, { q: "", page: 1, ...q }, { timeZone: TZ, nowMs: Date.now() });
+    /** A Calendar reader in Health, who sees the seeded activities (their contact ministry is Health). */
+    const healthReader: Viewer = { level: LEVEL.readOnly, isHq: false, ministryKeys: ["health"] };
+    const search = (q: Partial<{ q: string; ministry: string; sector: string; page: number }>, viewer: Viewer | null = healthReader) =>
+      searchReleases(tdb.db, { q: "", page: 1, ...q }, { timeZone: TZ, nowMs: Date.now() }, viewer);
 
     it("matches headlines case-insensitively, including drafts", async () => {
       const draft = await create();
@@ -142,6 +145,26 @@ describe("release queries", () => {
       const hit = await create({ headline: "Activity one", activityId: 4521 });
       await create({ headline: "Activity two", activityId: 99 });
       expect((await search({ q: "ABC-4521" })).items.map((i) => i.id)).toEqual([hit.id]);
+    });
+
+    it("an activity-shaped query that matches no activity falls back to the headline search (COVID-19)", async () => {
+      const covid = await create({ headline: "New COVID-19 clinics open" });
+      await create({ headline: "Something else", activityId: 4521 });
+      expect((await search({ q: "COVID-19" })).items.map((i) => i.id)).toEqual([covid.id]);
+      expect((await search({ q: "covid-19" })).total).toBe(1);
+      // An activity match still wins over headlines: ABC-4521 is not in any headline, and a
+      // headline that happens to contain the query isn't added to the activity's results.
+      await create({ headline: "About ABC-4521" });
+      expect((await search({ q: "ABC-4521" })).items.map((i) => i.headline)).toEqual(["Something else"]);
+    });
+
+    it("an activity the user can't see in the Calendar doesn't take over the search: its releases and headline matches both appear", async () => {
+      await create({ headline: "Linked", activityId: 4521 });
+      await create({ headline: "About ABC-4521" });
+      const headlines = async (viewer: Viewer | null) => (await search({ q: "ABC-4521" }, viewer)).items.map((i) => i.headline).sort();
+      expect(await headlines(null)).toEqual(["About ABC-4521", "Linked"]);
+      expect(await headlines({ level: LEVEL.readOnly, isHq: false, ministryKeys: ["finance"] })).toEqual(["About ABC-4521", "Linked"]);
+      expect(await headlines(healthReader)).toEqual(["Linked"]);
     });
 
     it("ministry and sector filters AND together", async () => {

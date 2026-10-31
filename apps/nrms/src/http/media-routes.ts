@@ -2,7 +2,7 @@ import express, { Router, type NextFunction, type Request, type Response } from 
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
-import { statusText, versionOnlySchema, type ReleaseView } from "@gcpe/nrms-contract";
+import { RELEASE_FILE_TOO_LARGE, statusText, versionOnlySchema, type ReleaseView } from "@gcpe/nrms-contract";
 import type { ObjectStore } from "@gcpe/storage";
 import { assetStatus } from "../media/asset-status";
 import { addReleaseFile, MAX_RELEASE_FILE_BYTES, releaseFileForStaff, removeReleaseFile } from "../media/files";
@@ -76,7 +76,15 @@ export function mediaRoutes(deps: MediaRouteDeps): Router {
   const edit = requireRole("NRMS.Editor");
   const images = requireAnyRole("NRMS.SiteEditor", "NRMS.Editor");
   const json = express.json({ limit: "16kb" });
-  const rawFile = express.raw({ type: () => true, limit: MAX_RELEASE_FILE_BYTES });
+  const parseFile = express.raw({ type: () => true, limit: MAX_RELEASE_FILE_BYTES });
+  // Over the cap, the parser's own "request entity too large" becomes a plain sentence naming the
+  // limit (the Hub shows it as is). The parser refuses a declared length before reading the body.
+  const rawFile = (req: Request, res: Response, next: NextFunction) =>
+    parseFile(req, res, (err?: unknown) =>
+      (err as { type?: string } | undefined)?.type === "entity.too.large"
+        ? void res.status(413).set("connection", "close").json({ error: RELEASE_FILE_TOO_LARGE })
+        : next(err),
+    );
   const rawImage = express.raw({ type: () => true, limit: MAX_PAGE_IMAGE_BYTES });
   const withStatus = (v: ReleaseView) => ({ ...v, statusText: statusText(v, Date.now()) });
 

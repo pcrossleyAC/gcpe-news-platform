@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approveProblems, assetUrlProblem, publishProblems, statusText, typeRules } from "./rules";
+import { approveProblems, assetUrlProblem, publishProblems, statusText, typeRules, aType } from "./rules";
 import { view } from "./testing";
 
 describe("typeRules", () => {
@@ -67,5 +67,15 @@ describe("approveProblems / publishProblems", () => {
       "Document 1 (French) needs body text.",
     ]);
     expect(publishProblems(view({ type: "advisory", sectors: [], mediaListKeys: [] }))).toContain("Choose at least one media distribution list.");
+  });
+});
+
+describe("aType", () => {
+  it("puts An before Advisory and Update, and A before the rest", () => {
+    expect(aType("advisory")).toBe("An Advisory");
+    expect(aType("update")).toBe("An Update");
+    expect(aType("release")).toBe("A Release");
+    expect(aType("story")).toBe("A Story");
+    expect(aType("factsheet")).toBe("A Factsheet");
   });
 });

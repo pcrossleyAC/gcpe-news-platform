@@ -66,13 +66,45 @@ describe("FilesSection", () => {
     expect(await screen.findByText("That file type isn't allowed.")).toBeInTheDocument();
   });
 
-  it("shows a 413 message from the server on upload", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(413, { error: "release too large" })));
+  it("a 413 from the server shows the limit in plain words, not the server's own text", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(413, { error: "request entity too large" })));
     render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
     const file = new File(["x"], "huge.pdf", { type: "application/pdf" });
     const user = userEvent.setup();
     await user.upload(screen.getByLabelText("Upload a translation (PDF)"), file);
-    expect(await screen.findByText("release too large")).toBeInTheDocument();
+    expect(await screen.findByText("A file can be at most 25 MB.")).toBeInTheDocument();
+    expect(screen.queryByText("request entity too large")).not.toBeInTheDocument();
+  });
+
+  it("a file over 25 MB is refused before uploading, naming the file and the limit", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(201, BASE));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
+    const file = new File(["x"], "video.mp4", { type: "video/mp4" });
+    Object.defineProperty(file, "size", { value: 25 * 1024 * 1024 + 1 });
+    const user = userEvent.setup();
+    await user.upload(screen.getByLabelText("Upload a media file"), file);
+    expect(await screen.findByText("video.mp4 is too large to upload. A file can be at most 25 MB.")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a file of exactly 25 MB is uploaded", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(201, BASE));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
+    const file = new File(["x"], "video.mp4", { type: "video/mp4" });
+    Object.defineProperty(file, "size", { value: 25 * 1024 * 1024 });
+    await userEvent.setup().upload(screen.getByLabelText("Upload a media file"), file);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  });
+
+  // The server refuses translations and media files on an Advisory (media/files.ts), so the Hub
+  // doesn't offer the upload, and says why.
+  it("an Advisory offers no uploads and says it has no translations or media files", () => {
+    render(<FilesSection view={releaseView({ type: "advisory" })} setView={() => {}} readOnly={false} />);
+    expect(screen.getByText("An Advisory has no translations or media files.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Upload a translation (PDF)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Upload a media file")).not.toBeInTheDocument();
   });
 
   // Fix round 1, finding 2: removal now asks for confirmation first, same AlertDialog pattern

@@ -53,7 +53,7 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
     return out;
   });
   return {
-    id: r.id, type: r.type, key: r.key, reference: r.reference, status: r.status, onHold: r.onHold, version: r.version,
+    id: r.id, type: r.type, key: r.key, reference: r.reference, status: r.status, live: r.live, onHold: r.onHold, version: r.version,
     leadMinistryKey: r.leadMinistryKey, activityId: r.activityId, publishAt: iso(r.publishAt), releasedAt: iso(r.releasedAt),
     publishOptions: { toWeb: r.toWeb, toSubscribers: r.toSubscribers, toMediaLists: r.toMediaLists },
     assetUrl: r.assetUrl, assetAltText: r.assetAltText, hasMediaAssets: r.hasMediaAssets, hasTranslations: r.hasTranslations,

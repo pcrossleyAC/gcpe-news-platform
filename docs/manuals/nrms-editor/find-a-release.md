@@ -34,6 +34,6 @@ Before you search, **Search** lists the five most recently published releases.
 
 Results include drafts, scheduled and published releases, newest first, 20 to a page. Deleted releases don't appear. If nothing matches, you see "No releases match" and your words; if a ministry or sector is chosen, choose **Clear ministry and sector filters** to try again without them.
 
-Search looks at headlines only, although the hint on the screen also mentions the summary and body. To find a release by other words, use **Similar published releases** on a release, or the public site's own search.
+Search looks at headlines only. To find a release by other words, use **Similar published releases** on a release, or the public site's own search.
 
-To find the releases linked to a Calendar activity, search for its reference with a ministry prefix, such as HLTH-123.
+To find the releases linked to a Calendar activity, search for its reference with a ministry prefix, such as HLTH-123. If no release is linked to it, or you can't see that activity in the Calendar, you also get the releases with those words in the headline, so COVID-19 finds headlines that mention COVID-19.

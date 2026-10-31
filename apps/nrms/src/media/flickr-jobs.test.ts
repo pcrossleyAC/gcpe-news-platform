@@ -116,7 +116,7 @@ describe("Flickr jobs", () => {
     expect(ev.envelope.data.assetUrl).toBeNull();
     const v = (await loadView(tdb.db, r.id))!;
     expect(v.status).toBe("published");
-    expect(v.flickrAlert).toMatch(/^The Flickr photo couldn't be made public \(.*auth.*\)\. The release went out without it; NRMS keeps trying for 24 hours\.$/i);
+    expect(v.flickrAlert).toMatch(/^The Flickr photo couldn't be made public \(.*auth.*\)\. The release went out without it; adding the photo is retried for 24 hours\.$/i);
 
     expect(await work()).toMatchObject({ alerted: [r.key] });
     expect(alerts).toHaveLength(1);
@@ -334,7 +334,7 @@ describe("Flickr jobs", () => {
     expect(await publish()).toEqual({ ...none, published: [r.key] });
     const v = (await loadView(tdb.db, r.id))!;
     expect(v.status).toBe("published");
-    expect(v.flickrAlert).toMatch(/The release went out without it; NRMS keeps trying for 24 hours\.$/);
+    expect(v.flickrAlert).toMatch(/The release went out without it; adding the photo is retried for 24 hours\.$/);
     expect(await job(r.id)).toMatchObject({ status: "pending", attempts: 0, first_attempt_at: null });
     expect(fake.photos.get("53000000001")!.isPublic).toBe(false);
   });

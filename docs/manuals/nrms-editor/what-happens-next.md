@@ -46,9 +46,11 @@ Saving any change republishes it at once, with no box asking first. The status s
 
 ## When you publish it again after an unpublish
 
-The release goes back on the public site at the same address. People who already got it aren't emailed again. The **Publish now** box says "Subscribers and media lists already received this when it was first published; they won't be emailed again."
+The release goes back on the public site at the same address. People who already got it aren't emailed again.
 
-If you unpublished it before all its emails had gone out, As-it-happens subscribers it hadn't reached are emailed when you publish it again. Daily-digest subscribers get it only if you republish before 5 pm on the day it first went out.
+If you unpublished it before all its emails had gone out, the media list members and As-it-happens subscribers it hadn't reached are emailed when you publish it again. Daily-digest subscribers get it only if it is back on the site before the 5 pm digest that would have carried it: 5 pm on the day it first went out, or the next day if it first went out after 5 pm.
+
+The **Publish now** box says so, with the date. Once that 5 pm has passed, it says "That time has passed, so daily digest subscribers who didn't get it then won't."
 
 ## Embargoes
 
