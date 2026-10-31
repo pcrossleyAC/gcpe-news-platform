@@ -12,7 +12,7 @@ import { ReleaseRow } from "./ReleaseRow";
 
 /**
  * The Forecast tab (spec addendum §11): releases planned or scheduled from now on (and, suite review
- * R8, ones whose time passed earlier today that still aren't out, flagged), and the Calendar
+ * R8, ones whose time passed in the last 24 hours that still aren't out, flagged), and the Calendar
  * activities a release may be planned for, by time (`GET /nrms/api/forecast?page=`). No type filter,
  * as legacy hid it on Forecast.
  */

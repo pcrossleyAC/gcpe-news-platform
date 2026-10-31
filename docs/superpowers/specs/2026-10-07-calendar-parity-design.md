@@ -670,7 +670,7 @@ Every report:
   - **Saving an id:** any id the projection knows can be saved, as legacy's text box allowed. Unknown ids are refused. Legacy saved any number (C142).
   - The "not deleted" check is new; legacy's lookup didn't check it (C142).
 - **Forecast tab** (NRMS; `News/ReleaseManagement/ReleasesModel.cs:144-230`; closes C15 except the Forecast iCal):
-  - **Future releases:** every non-deleted release with `publish_at ≥ now`.
+  - **Future releases:** every non-deleted release with `publish_at ≥ now`. Amended 2026-10-31 (suite review R8, owner approved): also a release whose `publish_at` passed in the last 24 hours and that is still draft, approved, scheduled or failed; a planned one reads "Planned time passed – not published" (C15).
   - **Eligible activities:** start ≥ now, not confidential, confirmed, not deleted, a category starting with "Approved", and not linked to one of those future releases. Each is shown at `nr_at`, or at its start when there is none.
   - Sorted by time, with the release or activity title, ministry, location and status.
   - The rule is evaluated by NRMS at read time, because "future" changes by the minute.

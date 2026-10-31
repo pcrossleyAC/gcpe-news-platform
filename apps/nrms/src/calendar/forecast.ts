@@ -14,12 +14,12 @@ export interface ForecastOptions {
   /** The tenant's `calendar.forecastCategoryPrefix`; null lists releases only. */
   prefix: string | null;
   nowMs: number;
-  /** The tenant's zone: "today" starts at midnight there. */
-  timeZone: string;
 }
 
-/** Not out yet: a release in one of these whose time passed earlier today stays listed (suite
- * review R8), so a planned release nobody scheduled doesn't vanish at the moment it was due. */
+/** Not out yet: a release in one of these whose time passed within {@link PASSED_KEPT_FOR} stays
+ * listed (suite review R8), so a planned release nobody scheduled doesn't vanish at the moment it
+ * was due, and one due late in the evening isn't dropped at midnight (fix round 1). */
+const PASSED_KEPT_FOR = "24 hours";
 const NOT_OUT_STATUSES = ["draft", "approved", "scheduled", "failed"] as const;
 
 type Entry = { kind: "release"; at: Date; row: NewsReleaseRow } | { kind: "activity"; at: Date; row: CalendarActivityRow };
@@ -35,7 +35,8 @@ function byTime(x: Entry, y: Entry): number {
 /**
  * The Forecast tab (spec addendum §11, ReleasesModel.cs:144-230), evaluated at read time against
  * the database clock. Releases: every non-deleted one planned or scheduled from now on, and (suite
- * review R8, owner-approved 2026-10-31) one whose time passed earlier today that still isn't out.
+ * review R8, owner-approved 2026-10-31) one whose time passed in the last 24 hours that still
+ * isn't out.
  * Activities: confirmed, not confidential or deleted, starting from now on, with a category
  * starting with the tenant's prefix, not linked to one of those releases, and visible to `viewer`
  * in the Calendar (spec addendum §6). Each is placed at its release time, or else its start.
@@ -51,7 +52,7 @@ export async function forecast(db: DbOrTx, viewer: Viewer | null, q: ForecastQue
           sql`${newsReleases.publishAt} >= now()`,
           and(
             inArray(newsReleases.status, [...NOT_OUT_STATUSES]),
-            sql`${newsReleases.publishAt} >= (date_trunc('day', now() AT TIME ZONE ${o.timeZone}) AT TIME ZONE ${o.timeZone})`,
+            sql`${newsReleases.publishAt} >= now() - ${PASSED_KEPT_FOR}::interval`,
           ),
         ),
       ),

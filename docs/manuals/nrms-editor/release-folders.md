@@ -13,7 +13,7 @@ topics: []
 
 | Tab | What it lists | In what order |
 |---|---|---|
-| **Forecast** | Releases planned or scheduled from now on, releases whose time passed earlier today but haven't gone out, and the Calendar activities a release may be planned for. | By time. |
+| **Forecast** | Releases planned or scheduled from now on, releases whose time passed in the last 24 hours but haven't gone out, and the Calendar activities a release may be planned for. | By time. |
 | **Drafts** | Releases not yet scheduled or published: drafts, approved releases and failed ones. | Those planned for today or earlier first, then those with no planned time, then later ones. |
 | **Scheduled** | Releases set to publish at a time. | Soonest first. |
 | **Published** | Releases on the public site, and advisories that have been sent. | Newest first. |
@@ -42,7 +42,7 @@ A **Flickr alert** badge means the release went out without its Flickr photo. Se
 
 ## The Forecast
 
-**Forecast** shows what is coming, so you can see what is already planned before you start something new. A release planned for earlier today that hasn't gone out stays on the list until the end of the day, labelled "Planned time passed – not published" in red, so you can see it was due and nothing went out. Schedule or publish it if it should go out.
+**Forecast** shows what is coming, so you can see what is already planned before you start something new. A release whose time has passed but hasn't gone out stays on the list for 24 hours after that time, labelled "Planned time passed – not published" in red, so you can see it was due and nothing went out. Schedule or publish it if it should go out.
 
 Calendar activities appear only if you have Calendar access, and only the ones you can see in the Calendar. They must be confirmed, not confidential, start from now on, and have a category starting with "Approved". An activity that already has a release planned or scheduled is shown as that release instead. Without Calendar access the tab says "Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it."
 

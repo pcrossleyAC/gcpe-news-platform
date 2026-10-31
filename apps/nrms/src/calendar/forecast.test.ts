@@ -13,7 +13,7 @@ import { forecast } from "./forecast";
 
 const HQ: Viewer = { level: 1, isHq: true, ministryKeys: ["gcpe-hq"] };
 const HEALTH: Viewer = { level: 2, isHq: false, ministryKeys: ["health"] };
-const opts = { prefix: "Approved", nowMs: Date.now(), timeZone: "America/Vancouver" };
+const opts = { prefix: "Approved", nowMs: Date.now() };
 /** Each item as "release:<headline>" or "activity:<id>", with its time. */
 const outline = (items: ForecastItem[]) => items.map((i) => (i.kind === "release" ? `release:${i.release.headline}@${i.at}` : `activity:${i.activity.activityId}@${i.at}`));
 
@@ -58,24 +58,21 @@ describe("the Forecast tab (spec addendum §11, ReleasesModel.cs:144-230)", () =
     expect(page.items[1]).toMatchObject({ kind: "release", release: { status: "scheduled", statusText: expect.any(String), activityId: null } });
   });
 
-  // Suite review R8: a planned release that is still not out stays on the Forecast for the rest of
-  // its day after its time passes (the morning check's gap that matters most); one that went out,
-  // or one from an earlier day, doesn't.
-  it("keeps today's releases whose time has passed until they are out; earlier days' never", async () => {
-    const { rows } = await tdb.pool.query<{ start: Date; now: Date }>("SELECT (date_trunc('day', now() AT TIME ZONE 'America/Vancouver') AT TIME ZONE 'America/Vancouver') AS start, now() AS now");
-    const start = rows[0]!.start.getTime();
-    const earlierToday = new Date(start + (rows[0]!.now.getTime() - start) / 2).toISOString();
-    const yesterday = new Date(start - 3600_000).toISOString();
-    await planned("Planned earlier today", earlierToday);
-    await planned("Approved, planned earlier today", earlierToday, null, "approved");
-    await planned("Failed earlier today", earlierToday, null, "failed");
-    await planned("Published earlier today", earlierToday, null, "published");
-    await planned("Planned yesterday", yesterday);
+  // Suite review R8 (fix round 1): a planned release that is still not out stays on the Forecast
+  // for 24 hours after its time passes (not cut at midnight); one that went out, or one more
+  // than 24 hours past, doesn't.
+  it("keeps releases whose time passed in the last 24 hours until they are out; older ones never", async () => {
+    const { rows } = await tdb.pool.query<{ now: Date }>("SELECT now() AS now");
+    const now = rows[0]!.now.getTime();
+    const hoursAgo = (h: number) => new Date(now - h * 3600_000).toISOString();
+    await planned("Planned an hour ago", hoursAgo(1));
+    await planned("Approved, planned 23 hours ago", hoursAgo(23), null, "approved");
+    await planned("Failed two hours ago", hoursAgo(2), null, "failed");
+    await planned("Published an hour ago", hoursAgo(1), null, "published");
+    await planned("Planned 25 hours ago", hoursAgo(25));
     await planned("Planned later", "2031-06-12T17:00:00Z");
-    const at = new Date(earlierToday).toISOString();
-    expect(outline((await forecast(tdb.db, null, { page: 1 }, opts)).items).sort()).toEqual(
-      [`release:Approved, planned earlier today@${at}`, `release:Failed earlier today@${at}`, `release:Planned earlier today@${at}`, "release:Planned later@2031-06-12T17:00:00.000Z"].sort(),
-    );
+    const headlines = (await forecast(tdb.db, null, { page: 1 }, opts)).items.map((i) => (i.kind === "release" ? i.release.headline : ""));
+    expect(headlines).toEqual(["Approved, planned 23 hours ago", "Failed two hours ago", "Planned an hour ago", "Planned later"]);
   });
 
   it("leaves out confidential, deleted, unconfirmed, started, not \"Approved\", and activities a future release is linked to", async () => {
