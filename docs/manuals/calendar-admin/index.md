@@ -35,7 +35,7 @@ Calendar advanced users, editors and read-only users can't do any of this.
 
 ## What you share with other Calendar users
 
-Everyone with Calendar access uses the list, filters, **My Queries**, **Updates**, **Excel export** and the **Look Ahead**, **30/60/90** and **Planning** reports. Editors and above create, change and clone their ministries' activities. HQ staff at Advanced and above also have **Corporate Queries**, the **Look Ahead filter** and **Review**.
+Everyone with Calendar access uses the list, filters, **My Queries**, **Updates**, **Excel export** and the **Look Ahead**, **30/60/90** and **Planning** reports. Editors and above create, change and clone their ministries' activities. HQ staff at Editor and above also have **Clear LA Status**, and HQ staff at Advanced and above also have **Corporate Queries**, the **Look Ahead filter** and **Review**.
 
 The [Calendar advanced user manual](manual:calendar-advanced), the [Calendar editor manual](manual:calendar-editor) and the [Calendar read-only manual](manual:calendar-readonly) cover that work.
 

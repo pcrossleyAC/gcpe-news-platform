@@ -11,14 +11,14 @@ topics: []
 
 **Calendar** > **Updates** lists recent changes to the activities you can see, newest first. It opens on **Today's updates**. **Latest 5 updates** shows the five newest.
 
-Each line says when, who, and what they did: "added activity", "changed activity", "reviewed activity", "deleted activity" or "added new clone". Then come the activity's number, its title and its dates as they are now. Point at the title to see the summary.
+Each line says when, who, and what they did: "added activity", "changed activity", "reviewed activity" or "added new clone". Then come the activity's number, its title and its dates as they are now. Point at the title to see the summary.
 
 Choose the activity's number to open it. **Save** or **Cancel** there brings you back to the same updates.
 
 ## Find older updates
 
 1. Fill in **From** and **To**. **From** starts at yesterday. Both days are included. Leave either one empty to leave that end open.
-2. To narrow it, choose an **Update type**: **Changed**, **Added**, **Deleted**, **Reviewed** or **Cloned**.
+2. To narrow it, choose an **Update type**: **Changed**, **Added**, **Deleted**, **Reviewed** or **Cloned**. **Deleted** finds nothing for you, since you can't see deleted activities.
 3. To narrow it further, type in **Search for**: words in the activity's title or summary, or the name of who made the change.
 4. Choose **Search**.
 

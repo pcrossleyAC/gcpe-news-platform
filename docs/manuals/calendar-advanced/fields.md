@@ -61,7 +61,7 @@ Only HQ sees this section. Other users' saves leave it as it is.
 |---|---|
 | **Executive Summary** | Shown in HQ's Look Ahead report. Up to 2,000 characters. |
 | **LA Status** | **None**, **New** or **Changed**. HQ's Look Ahead flags the activity NEW or CHANGED. |
-| **LA Section** | Where the activity goes in the Look Ahead. It is worked out from the category, **Issue**, **Dates Confirmed** and **Comm Materials**, and says "Inferred from the activity". Choose another section to override it; it then says "Override" and offers **Use the inferred section**. Awareness dates and activities led by the consultations ministry keep a fixed section, which can't be overridden. |
+| **LA Section** | Where the activity goes in the Look Ahead. It is worked out from the category, **Issue**, **Dates Confirmed** and **Comm Materials**, and says "Inferred from the activity". Choose another section to override it; it then says "Override" and offers **Use the inferred section**. Awareness dates and activities led by Citizen Engagement (CITENG) keep a fixed section, which can't be overridden. |
 | **Long Term Outlook** | Tick it to list the activity in the Look Ahead's Long Term Outlook. |
 
 An activity marked **Not for Look Ahead** whose section is overridden needs an **Executive Summary**.

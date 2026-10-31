@@ -26,7 +26,7 @@ In an HQ organization, Advanced gives you four things that HQ editors don't have
 
 | Where | What you do there | Help page |
 |---|---|---|
-| The activity list | See other ministries' activities marked **Not for Look Ahead**. | [The activity list](manual:calendar-advanced-list) |
+| The list, **Updates**, reports and activities | See other ministries' activities marked **Not for Look Ahead**. | [The activity list](manual:calendar-advanced-list) |
 | **Saved views** > **Corporate Queries** | List every ministry's upcoming activities by status. | [HQ review and corporate queries](manual:calendar-advanced-hq) |
 | **Look Ahead filter**, above the list | Show only the activities for the Look Ahead, or only those not for it. | [HQ review and corporate queries](manual:calendar-advanced-hq) |
 | **Review**, on an activity | Mark the activity reviewed. | [HQ review and corporate queries](manual:calendar-advanced-hq) |

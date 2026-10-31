@@ -3,13 +3,15 @@ id: calendar-hq-review
 title: HQ review
 manual: calendar-admin
 order: 60
-routes: []
+routes: [/calendar]
 screens: [calendar/list]
 topics: []
 ---
 **Who this is for:** Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin) who belong to an HQ organization.
 
 HQ reviews what the ministries enter. This page is for HQ Administrators: Administrators and system administrators whose ministries include an HQ organization. **Review** and **Corporate Queries** are shared with HQ advanced users. **Review selected**, deleted activities and the **Exec Look Ahead** are yours alone.
+
+For the list's filters, saved queries, columns and reports, see [The activity list](manual:calendar-advanced-list).
 
 ## What you see
 

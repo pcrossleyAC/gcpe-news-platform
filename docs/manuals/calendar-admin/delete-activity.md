@@ -3,13 +3,15 @@ id: calendar-delete-activity
 title: Delete an activity
 manual: calendar-admin
 order: 50
-routes: []
+routes: [/calendar/activities]
 screens: [calendar/activity]
 topics: []
 ---
 **Who this is for:** Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).
 
 Only administrators see **Delete** on an activity. You can delete an activity your ministry leads. HQ Administrators can delete any activity. A ministry that is only shared on an activity can't delete it.
+
+Adding, changing and cloning activities is the same for you as for advanced users: see [Add or change an activity](manual:calendar-advanced-activity).
 
 ## Delete an activity
 

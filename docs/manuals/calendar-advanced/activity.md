@@ -98,7 +98,7 @@ If you are signed out while you have unsaved changes, sign in again and open the
 
 | Message | What it means |
 |---|---|
-| "It doesn't exist, or you can't see it." (under "Activity not found") | Check the number. The activity may be led by a ministry you're not in, or be marked **Not for Look Ahead**. |
+| "It doesn't exist, or you can't see it." (under "Activity not found") | Check the number. The activity may be led by a ministry you're not in, or it was deleted. |
 | "Someone else changed this activity — reload to see their changes" | Someone saved it after you opened it. Choose **Reload**. If you have unsaved changes, it asks "Reload and lose your changes? The activity as it is now replaces them." Choose **Reload**, then make your change again, or **Keep editing**. |
 | "This activity is no longer available." | It was deleted, or moved out of your ministries, after you opened it. |
 | "This activity is deleted" | Someone deleted it while you were editing. Your changes stay on the page but can't be saved. |

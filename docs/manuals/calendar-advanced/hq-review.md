@@ -24,7 +24,7 @@ You don't see deleted activities. Reviewing deletions is for HQ Administrators.
 
 1. Open the activity.
 2. Check what changed. **View changes** shows each change before and after.
-3. Choose **Review**. You are back on the list and see, for example, "Reviewed HLTH-21."
+3. Choose **Review**. You go back to where you opened it, and see, for example, "Reviewed HLTH-21."
 
 Review marks the activity **Reviewed** and clears its "Changed: needs review" marks. It shows on **Updates** as "reviewed activity".
 

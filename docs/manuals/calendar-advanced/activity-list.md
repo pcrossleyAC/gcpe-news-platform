@@ -14,7 +14,7 @@ topics: []
 Two kinds of activity are left out until you ask for them:
 
 - Awareness dates. Choose **Awareness Day / Week / Month** in **Category** to see them.
-- Activities led by the consultations ministry. Choose it in **Lead Ministry** to see them.
+- Activities led by Citizen Engagement. Choose **CITENG** in **Lead Ministry** to see them.
 
 ## Read the list
 

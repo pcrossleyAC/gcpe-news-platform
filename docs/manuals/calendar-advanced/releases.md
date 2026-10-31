@@ -30,7 +30,8 @@ Release editors see Calendar activities on **Releases** > **Forecast** only if t
 - its category starts with "Approved", such as **Approved Release**;
 - **Dates Confirmed** is ticked;
 - it isn't marked **Not for Look Ahead**;
-- it starts from now on, and isn't deleted.
+- it starts from now on, and isn't deleted;
+- no upcoming release is linked to it yet.
 
 From the **Forecast**, a release editor can start a release for the activity. The release can copy the activity's start, city, lead and shared ministries, sectors, themes and **News Subscribe** topics.
 

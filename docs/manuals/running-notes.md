@@ -308,7 +308,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **All staff** — Who you're signed in as, and Sign out, are at the right-hand end of the header bar.
 - **All staff** — A section's own screens (Releases' Drafts/Scheduled/Published, Website, Subscribers, Calendar) are a row of tabs above the page heading; the one you're on is bold and underlined.
 - **NRMS editors** — Release history and published copies show times in BC time, like "Today 9:49 AM", not raw timestamps.
-- **All Calendar users** — The list's filter is under "Filters", open when the page loads; close it to see more results. New activity, Review selected, Clear LA Status, Excel export and List/Month/Week sit above the results.
 
 ## Phase 5f — Updates feed
 

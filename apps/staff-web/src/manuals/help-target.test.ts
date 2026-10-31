@@ -84,20 +84,20 @@ describe("Help on the Subscribers screens, with the compiled manuals", () => {
 });
 
 describe("Help on the Calendar screens, with the compiled manuals", () => {
-  // The activity list, Updates and the activity pages: the advanced manual's pages, which administrators
-  // see too (their own manual has no pages for these screens). Editors and read-only users have no
-  // manual yet, so they get the Calendar's How do I.
-  const SHARED: [string, string][] = [
-    ["/calendar", "calendar-advanced-list"],
-    ["/calendar/updates", "calendar-advanced-updates"],
-    ["/calendar/activities/new", "calendar-advanced-activity"],
-    ["/calendar/activities/12", "calendar-advanced-activity"],
-    ["/calendar/activities/12/changes", "calendar-advanced-activity"],
+  // [path, advanced user's page, administrator's page]. An administrator's own manual wins where it has a
+  // page for the screen (the list: HQ review; an activity: Delete an activity); Updates has only the
+  // advanced page. Editors and read-only users have no manual yet, so they get the Calendar's How do I.
+  const SHARED: [string, string, string][] = [
+    ["/calendar", "calendar-advanced-list", "calendar-admin/calendar-hq-review"],
+    ["/calendar/updates", "calendar-advanced-updates", "calendar-advanced/calendar-advanced-updates"],
+    ["/calendar/activities/new", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
+    ["/calendar/activities/12", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
+    ["/calendar/activities/12/changes", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
   ];
-  it.each(SHARED)("on %s, an advanced user and an administrator get %s; an editor gets the How do I", (path, page) => {
+  it.each(SHARED)("on %s, an advanced user gets %s and an administrator %s; an editor gets the How do I", (path, page, adminPage) => {
     expect(helpTargetFor(path, as("Calendar.Advanced"))).toBe(`/help/manuals/calendar-advanced/${page}`);
-    expect(helpTargetFor(path, as("Calendar.Administrator"))).toBe(`/help/manuals/calendar-advanced/${page}`);
-    expect(helpTargetFor(path, as("Calendar.SysAdmin"))).toBe(`/help/manuals/calendar-advanced/${page}`);
+    expect(helpTargetFor(path, as("Calendar.Administrator"))).toBe(`/help/manuals/${adminPage}`);
+    expect(helpTargetFor(path, as("Calendar.SysAdmin"))).toBe(`/help/manuals/${adminPage}`);
     expect(helpTargetFor(path, as("Calendar.Editor"))).toBe("/help#how-calendar");
     expect(helpTargetFor(path, as("Calendar.ReadOnly"))).toBe("/help#how-calendar");
   });
