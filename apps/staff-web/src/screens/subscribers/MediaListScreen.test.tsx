@@ -91,7 +91,10 @@ describe("MediaListScreen", () => {
     const members = await screen.findByRole("table", { name: "Members" });
     expect(within(members).getByRole("row", { name: /sam@riverbend\.example\.test Media Hub Media Hub email removed/ })).toBeInTheDocument();
     expect(within(members).getByRole("row", { name: /lee@example\.test Added by hand Bouncing/ })).toBeInTheDocument();
-    const opted = screen.getByRole("table", { name: "Left this list by unsubscribing" });
+    expect(screen.getByRole("heading", { level: 2, name: "Left this list" })).toBeInTheDocument();
+    expect(screen.getByText("They unsubscribed, or left it in the old system.")).toBeInTheDocument();
+    expect(screen.queryByText(/by unsubscribing/)).toBeNull();
+    const opted = screen.getByRole("table", { name: "Left this list" });
     expect(within(opted).getByRole("row", { name: /gone@example\.test .* No/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Email address" })).toBeNull();
