@@ -74,6 +74,39 @@ describe("HelpScreen", () => {
     expect(within(howTo).queryByRole("heading", { level: 3, name: "Calendar" })).toBeNull();
   });
 
+  it("shows each How do I pointer only to the roles that can do it", async () => {
+    const pointers = async () => {
+      const howTo = (await screen.findByRole("heading", { level: 2, name: "How do I…" })).closest("section")!;
+      return [...howTo.querySelectorAll("li strong")].map((s) => s.textContent);
+    };
+    const EDITOR_ONLY = ["Start a release:", "Save your edits:", "Approve, publish or schedule:", "Plan a time without committing it:", "Correct a published release:"];
+    const SITE_EDITOR_ONLY = ["Change the banner, footer and other site settings:", "Change the home page carousel:"];
+
+    renderHelp(["NRMS.Viewer"]);
+    const viewer = await pointers();
+    expect(viewer).toContain("Find a release:");
+    for (const p of [...EDITOR_ONLY, ...SITE_EDITOR_ONLY]) expect(viewer).not.toContain(p);
+    cleanup();
+
+    renderHelp(["NRMS.Editor"]);
+    const editor = await pointers();
+    for (const p of [...EDITOR_ONLY, "Find a release:"]) expect(editor).toContain(p);
+    for (const p of SITE_EDITOR_ONLY) expect(editor).not.toContain(p);
+    cleanup();
+
+    renderHelp(["NRMS.SiteEditor"]);
+    const siteEditor = await pointers();
+    for (const p of SITE_EDITOR_ONLY) expect(siteEditor).toContain(p);
+    for (const p of EDITOR_ONLY) expect(siteEditor).not.toContain(p);
+    cleanup();
+
+    renderHelp(["NoD.Viewer"]);
+    expect(await pointers()).not.toContain("Change what someone gets:");
+    cleanup();
+    renderHelp(["NoD.Editor"]);
+    expect(await pointers()).toContain("Change what someone gets:");
+  });
+
   it("a link to one glossary entry lands on it", async () => {
     renderHelp(["Calendar.ReadOnly"], "/help#glossary-la-status");
     const term = await screen.findByText("LA Status", { selector: "dt" });

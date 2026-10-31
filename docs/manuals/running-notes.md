@@ -462,26 +462,22 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 ## Phase 6c — The public site
 
 - **Operations** — The site's colours and font come from the tenant config's `site.theme`. Logo and font files go in `config/site/assets/`; the site copies them on every start. Until a logo file exists the header shows the site name as text.
-- **Viewer** — The public site has a page for every ministry (with its minister and media contacts), sector, theme and tag, each with its latest 20 posts and an RSS feed (`feed.xml`). Older news is in the archive, one page per month.
 - **Operations** — The site rebuilds every page a post appears on when it's published, changed or unpublished. A deploy that changes the page layout rebuilds the whole site once, on start.
 - **Operations** — Site rebuilds now go through a queue in the site's database and run on each tick (200 pages at a time). A publish, change or unpublish shows on the site at the next tick. A layout change or a Blue Bridge switch updates the home page at once and older pages over the following ticks, newest first.
 - **Developer** — `npm run site:rebuild-all` (with the site's DATABASE_URL, NEWS_API_URL, OUTPUT_DIR and PUBLIC_SITE_URL) queues every page.
 - **Operations** — If the site builder was stopped, it catches up from the News API's change feed when it starts again; if it was stopped for more than 90 days it rebuilds the whole site.
 - **Administrator** — Standalone (OpenShift): the site builder needs an Entra app registration with the News API's `NewsApi.ChangesRead` app role (NEWS_API_TOKEN_URL, NEWS_API_CLIENT_ID, NEWS_API_CLIENT_SECRET, NEWS_API_SCOPE), and the News API needs AUTH_AUDIENCE. It won't start without them.
-- **Viewer** — The site's Search page searches every published post, optionally within one ministry. Ministry and sector pages link to it. Without JavaScript it points to the archive instead.
 
 ## Phase 6d–6e — Staff help and the exit checks
 
 - **Developer** — The News API has a service-only `POST /api/v2/internal/similar` for NRMS (role `NewsApi.Similar`). It never stores, caches or logs the draft text it is sent, and only ever returns published posts.
 - **Operations** — With the staff-AI flag on (and a provider and pgvector), the News API's embedding worker runs even when semantic search is off: AI matching compares drafts with published posts' vectors. Search and related posts stay in text mode until `semanticSearch` is also on.
 - **Administrator** — Standalone (OpenShift): NRMS needs `NEWS_API_URL` and an Entra app registration holding the News API's `NewsApi.Similar` app role (`NEWS_API_TOKEN_URL`, `NEWS_API_CLIENT_ID`, `NEWS_API_CLIENT_SECRET`, `NEWS_API_SCOPE`) for "Similar published releases". Without `NEWS_API_URL` the panel doesn't appear. On the stack it's wired automatically.
-- **Viewer** — The panel is for editors only; viewers don't see it.
 - **Developer** — `npm run site:quality` builds a fictional, production-config copy of the public site and runs axe (zero violations allowed) and Lighthouse (accessibility ≥ 95, performance, best practices and SEO ≥ 90) on every page type. It needs Playwright's Chromium (`npx playwright install chromium`). CI runs it as the `site-quality` job.
 - **Developer** — `npm run search:spot-check` runs 20 searches over a fictional corpus in a throwaway database and lists the top 5 for each. Text mode must find every expected post. With the stand-in provider the semantic column proves only that the plumbing works; set `EMBEDDINGS_PROVIDER=azure-openai` and the Azure settings to check real relevance once Azure is available (Q70).
 
 ## Site settings (2026-10-27)
 
-- **Viewer** — The public site has a new Connect page (`/connect/`) listing the government's social accounts, and a footer and banner that staff can change. Ministry pages now have a side column: media contacts, the ministry's website, photos and videos, and its featured topics and services.
 - **Operations** — Until the first publish, the site uses `config/tenants/<tenant>.site-settings.json` (the bc tenant's file carries news.gov.bc.ca's footer and social links, banner off). Edit that file and redeploy to change the starting point.
 - **Operations** — A theme or banner publish never rebuilds pages. A Connect change rebuilds the Connect page; a ministry-heading change rebuilds the ministry pages; a footer change rebuilds every page, and so does the new year each January.
 - **Operations** — If the News API can't be reached for settings, the site keeps the last settings it applied (saved in `.site-settings.json`, which isn't served) and still handles Project Blue Bridge and deploys as normal.
@@ -489,7 +485,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Entra staff sign-in
 
-- **Viewer** — "Sign in with Microsoft" signs you in with your government Microsoft account. You need a Core account first: if the screen says "Your account hasn't been set up", ask an administrator to create you. Signing out of the staff app doesn't sign you out of Microsoft.
 - **Administrator** — Switching on Entra sign-in also switches on Entra token checks in every app (`ENTRA_TENANT_ID` is a shared, stack-wide setting), so each app's `<PREFIX>_AUTH_AUDIENCE` must be filled in too, or the site won't start.
 - **Operations** — In *real* production with Entra sign-in on, user passwords are refused unless `CORE_LOCAL_PASSWORDS_ALLOWED=true`. A test site run with `NODE_ENV=production` (`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` or `SITE_ENVIRONMENT=test`, e.g. boxs.ca) is unaffected either way. The break-glass administrator (`LOCAL_ADMIN_*`) is unaffected too.
 - **Developer** — `FAKE_ENTRA_ENABLED=true` (tests and test sites only) mounts a fake Microsoft sign-in at `/fake-entra` with two made-up identities, `entra-staff@example.test` and `entra-unknown@example.test`. It needs `CORE_PUBLIC_BASE_URL` and is refused in real production and alongside real Entra settings, by the same test-site rule as `CORE_LOCAL_PASSWORDS_ALLOWED` above.

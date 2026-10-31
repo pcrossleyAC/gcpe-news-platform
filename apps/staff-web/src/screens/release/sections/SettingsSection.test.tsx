@@ -163,6 +163,21 @@ describe("SettingsSection", () => {
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
 
+  it("read-only disables the planned date and time and drops the Schedule hint; an editor keeps both", async () => {
+    stubFetch();
+    renderSettings(releaseView({ type: "release", publishAt: "2026-12-15T17:00:00.000Z" }), () => {}, true);
+    expect(await screen.findByLabelText("Date")).toBeDisabled();
+    expect(screen.getByLabelText("Time (BC time)")).toBeDisabled();
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-12-15");
+    expect(screen.queryByText(/Schedule, under Actions/)).not.toBeInTheDocument();
+    cleanup();
+    stubFetch();
+    renderSettings(releaseView({ type: "release" }));
+    expect(await screen.findByLabelText("Date")).toBeEnabled();
+    expect(screen.getByLabelText("Time (BC time)")).toBeEnabled();
+    expect(screen.getByText(/Schedule, under Actions/)).toBeInTheDocument();
+  });
+
   // I2: re-sending a minute-truncated local time for a date the user never touched caused a
   // permanent 409 loop on published releases (saveSettings only tolerates a no-op change to the
   // planned time once published) — saving an untouched planned date with seconds must re-send

@@ -7,8 +7,9 @@ import { GLOSSARY, type GlossaryArea } from "../../shared/glossary";
 import { isApplePlatform, SHORTCUTS, shortcutText, shortcutWords } from "../../shared/shortcuts";
 import { hasAnyReadRole } from "../../shell/nav";
 import { MANUALS, visibleManuals } from "../../manuals/catalog";
-import { canReadWebsite } from "../website/access";
-import { canReadSubscribers } from "../subscribers/access";
+import { canManageWebsite, canReadWebsite } from "../website/access";
+import { canEditSubscribers, canReadSubscribers } from "../subscribers/access";
+import { canEditReleases } from "../release/access";
 import { hasCalendarRole } from "../calendar/access";
 import { isCoreAdmin } from "../admin/organizations/access";
 
@@ -16,7 +17,8 @@ interface HowTo {
   area: GlossaryArea;
   /** The same rule the side navigation uses to show the area. */
   show(session: SessionValue): boolean;
-  items: React.ReactNode[];
+  /** Each pointer, with `show` when only some of the area's roles can do it. */
+  items: { show?(session: SessionValue): boolean; text: React.ReactNode }[];
 }
 
 /** The keys for a shortcut as this device names them ("⌘S" / "Ctrl+S"). */
@@ -28,69 +30,137 @@ const HOW_TO: HowTo[] = [
     area: "Releases",
     show: hasAnyReadRole,
     items: [
-      <>
-        <strong>Start a release:</strong> in <Link to="/releases">Releases</Link>, choose New release, fill in the form and choose Create release ({mod("Enter")}).
-      </>,
-      <>
-        <strong>Save your edits:</strong> Save changes, in the bar along the bottom of the release, saves every section you changed ({mod("S")}). A section with edits not yet saved says Unsaved beside its heading.
-      </>,
-      <>
-        <strong>Approve, publish or schedule:</strong> use Actions, at the top of the release. Each asks first; Publish now and Schedule say who will be emailed. They wait until your edits are saved.
-      </>,
-      <>
-        <strong>Plan a time without committing it:</strong> the planned publish date in Publish settings is only a plan. Schedule commits the time.
-      </>,
-      <>
-        <strong>Correct a published release:</strong> edit it and save; it republishes. Subscribers and media lists aren&rsquo;t emailed again.
-      </>,
-      <>
-        <strong>Find a release:</strong> type its number (NEWS-00007) or some of its words into Find a release, at the top of the side menu ({mod("K")} goes there on screens without a search or filter box of their own). A number opens the release; words open <Link to="/search">Search</Link>, where you can narrow by ministry or sector.
-      </>,
+      {
+        show: canEditReleases,
+        text: (
+          <>
+            <strong>Start a release:</strong> in <Link to="/releases">Releases</Link>, choose New release, fill in the form and choose Create release ({mod("Enter")}).
+          </>
+        ),
+      },
+      {
+        show: canEditReleases,
+        text: (
+          <>
+            <strong>Save your edits:</strong> Save changes, in the bar along the bottom of the release, saves every section you changed ({mod("S")}). A section with edits not yet saved says Unsaved beside its heading.
+          </>
+        ),
+      },
+      {
+        show: canEditReleases,
+        text: (
+          <>
+            <strong>Approve, publish or schedule:</strong> use Actions, at the top of the release. Each asks first; Publish now and Schedule say who will be emailed. They wait until your edits are saved.
+          </>
+        ),
+      },
+      {
+        show: canEditReleases,
+        text: (
+          <>
+            <strong>Plan a time without committing it:</strong> the planned publish date in Publish settings is only a plan. Schedule commits the time.
+          </>
+        ),
+      },
+      {
+        show: canEditReleases,
+        text: (
+          <>
+            <strong>Correct a published release:</strong> edit it and save; it republishes. Subscribers and media lists aren&rsquo;t emailed again.
+          </>
+        ),
+      },
+      {
+        text: (
+          <>
+            <strong>Find a release:</strong> type its number (NEWS-00007) or some of its words into Find a release, at the top of the side menu ({mod("K")} goes there on screens without a search or filter box of their own). A number opens the release; words open <Link to="/search">Search</Link>, where you can narrow by ministry or sector.
+          </>
+        ),
+      },
     ],
   },
   {
     area: "Website",
     show: canReadWebsite,
     items: [
-      <>
-        <strong>Change the banner, footer and other site settings:</strong> make your changes, Save draft ({mod("S")}), then Publish. Nothing is live until you publish. Settings history lists every published revision and can restore one.
-      </>,
-      <>
-        <strong>Change the home page carousel:</strong> edit the next carousel and save it; it goes live at its Go live at time, or choose Make live now. Changes to the live carousel publish at once, so it asks first.
-      </>,
+      {
+        show: canManageWebsite,
+        text: (
+          <>
+            <strong>Change the banner, footer and other site settings:</strong> make your changes, Save draft ({mod("S")}), then Publish. Nothing is live until you publish. Settings history lists every published revision and can restore one.
+          </>
+        ),
+      },
+      {
+        show: canManageWebsite,
+        text: (
+          <>
+            <strong>Change the home page carousel:</strong> edit the next carousel and save it; it goes live at its Go live at time, or choose Make live now. Changes to the live carousel publish at once, so it asks first.
+          </>
+        ),
+      },
     ],
   },
   {
     area: "Subscribers",
     show: canReadSubscribers,
     items: [
-      <>
-        <strong>Find a subscriber:</strong> in <Link to="/subscribers">Subscribers</Link>, type part of their email in Email contains ({mod("K")} goes there).
-      </>,
-      <>
-        <strong>Change what someone gets:</strong> open them, change their preferences and choose Save preferences ({mod("S")}). Back to results (or the browser&rsquo;s Back) returns to the same results.
-      </>,
+      {
+        text: (
+          <>
+            <strong>Find a subscriber:</strong> in <Link to="/subscribers">Subscribers</Link>, type part of their email in Email contains ({mod("K")} goes there).
+          </>
+        ),
+      },
+      {
+        show: canEditSubscribers,
+        text: (
+          <>
+            <strong>Change what someone gets:</strong> open them, change their preferences and choose Save preferences ({mod("S")}). Back to results (or the browser&rsquo;s Back) returns to the same results.
+          </>
+        ),
+      },
     ],
   },
   {
     area: "Calendar",
     show: hasCalendarRole,
     items: [
-      <>
-        <strong>Add an activity:</strong> in the <Link to="/calendar">Calendar</Link>, choose New activity, fill it in and choose Save ({mod("S")} or {mod("Enter")}).
-      </>,
-      <>
-        <strong>Edit an activity:</strong> open it from the list, change it and choose Save ({mod("S")}). You&rsquo;re taken back to the list with that activity in view and marked.
-      </>,
-      <>
-        <strong>Narrow the list:</strong> open Filters ({mod("K")} opens it and goes to Search for). Saved views keeps filters you use often.
-      </>,
-      <>
-        <strong>Make a report:</strong> Export and reports, above the list, makes the Look Ahead, 30/60/90 and Planning PDFs and the Excel export from the list&rsquo;s current filter.
-      </>,
-      <>
-        <strong>Change something during the daily change freeze:</strong> the list says when the freeze is on; ask the Corp Cal Manager to make an urgent change for you.
-      </>,
+      {
+        text: (
+          <>
+            <strong>Add an activity:</strong> in the <Link to="/calendar">Calendar</Link>, choose New activity, fill it in and choose Save ({mod("S")} or {mod("Enter")}).
+          </>
+        ),
+      },
+      {
+        text: (
+          <>
+            <strong>Edit an activity:</strong> open it from the list, change it and choose Save ({mod("S")}). You&rsquo;re taken back to the list with that activity in view and marked.
+          </>
+        ),
+      },
+      {
+        text: (
+          <>
+            <strong>Narrow the list:</strong> open Filters ({mod("K")} opens it and goes to Search for). Saved views keeps filters you use often.
+          </>
+        ),
+      },
+      {
+        text: (
+          <>
+            <strong>Make a report:</strong> Export and reports, above the list, makes the Look Ahead, 30/60/90 and Planning PDFs and the Excel export from the list&rsquo;s current filter.
+          </>
+        ),
+      },
+      {
+        text: (
+          <>
+            <strong>Change something during the daily change freeze:</strong> the list says when the freeze is on; ask the Corp Cal Manager to make an urgent change for you.
+          </>
+        ),
+      },
     ],
   },
 ];
@@ -121,7 +191,10 @@ export function HelpScreen(): React.JSX.Element {
   }, [hash]);
 
   const manuals = visibleManuals(session).map((id) => MANUALS.find((m) => m.id === id)!);
-  const howTo = HOW_TO.filter((h) => h.show(session));
+  // Each area's pointers this user can act on; an area with none left is left out, heading and all.
+  const howTo = HOW_TO.filter((h) => h.show(session))
+    .map((h) => ({ ...h, items: h.items.filter((item) => !item.show || item.show(session)) }))
+    .filter((h) => h.items.length > 0);
 
   return (
     <div className="gcpe-help">
@@ -178,7 +251,7 @@ export function HelpScreen(): React.JSX.Element {
             </h3>
             <ul className="gcpe-help__list">
               {h.items.map((item, i) => (
-                <li key={i}>{item}</li>
+                <li key={i}>{item.text}</li>
               ))}
             </ul>
           </div>

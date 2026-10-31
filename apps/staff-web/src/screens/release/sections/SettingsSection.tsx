@@ -175,8 +175,9 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           initialDate={initialPlanned?.date}
           initialTime={initialPlanned?.time}
           onChange={setPlannedValue}
+          isDisabled={readOnly}
         />
-        <p className="gcpe-hint gcpe-release-editor__planned-note">Only a plan: Schedule, under Actions, commits the publish time.</p>
+        {!readOnly && <p className="gcpe-hint gcpe-release-editor__planned-note">Only a plan: Schedule, under Actions, commits the publish time.</p>}
         {plannedValue && !readOnly && (
           <Button size="small" variant="secondary" onPress={() => setPlannedValue(null)}>
             Clear planned date

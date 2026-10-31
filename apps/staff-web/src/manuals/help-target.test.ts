@@ -44,3 +44,20 @@ describe("helpFor", () => {
     expect(helpFor("/users")).toBe("/help");
   });
 });
+
+describe("Help on the release screens, with the compiled manuals", () => {
+  const SCREENS: [string, string, string][] = [
+    ["/releases/forecast", "viewer-release-folders", "editor-release-folders"],
+    ["/releases/drafts", "viewer-release-folders", "editor-release-folders"],
+    ["/releases/scheduled", "viewer-release-folders", "editor-release-folders"],
+    ["/releases/published", "viewer-release-folders", "editor-release-folders"],
+    ["/releases/123", "viewer-read-a-release", "editor-write-a-release"],
+    ["/search", "viewer-find-a-release", "editor-find-a-release"],
+    ["/website/featured", "viewer-featured-and-log", "editor-featured-and-log"],
+    ["/website/log", "viewer-featured-and-log", "editor-featured-and-log"],
+  ];
+  it.each(SCREENS)("on %s, a release viewer gets %s and a release editor %s", (path, viewerPage, editorPage) => {
+    expect(helpTargetFor(path, as("NRMS.Viewer"))).toBe(`/help/manuals/nrms-viewer/${viewerPage}`);
+    expect(helpTargetFor(path, as("NRMS.Editor"))).toBe(`/help/manuals/nrms-editor/${editorPage}`);
+  });
+});
