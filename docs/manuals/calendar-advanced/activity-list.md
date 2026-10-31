@@ -14,7 +14,7 @@ topics: []
 Two kinds of activity are left out until you ask for them:
 
 - Awareness dates. Choose **Awareness Day / Week / Month** in **Category** to see them.
-- Activities led by Citizen Engagement. Choose **CITENG** in **Lead Ministry** to see them.
+- Activities led by the consultations ministry, shown as **CITENG**. Choose **CITENG** in **Lead Ministry** to see them.
 
 ## Read the list
 
@@ -96,6 +96,8 @@ For the PDF reports in the same panel, see [Reports](manual:calendar-advanced-re
 ## HQ tools
 
 If you are in an HQ organization, you also see the **Look Ahead filter**, **Corporate Queries** under **Saved views**, and **LA status**. See [HQ review and corporate queries](manual:calendar-advanced-hq).
+
+For **Review selected**, deleted activities, the **Exec Look Ahead** and other administrator tasks, see the Calendar administrator manual.
 
 ## Can't do this?
 

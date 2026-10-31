@@ -85,10 +85,10 @@ describe("Help on the Subscribers screens, with the compiled manuals", () => {
 
 describe("Help on the Calendar screens, with the compiled manuals", () => {
   // [path, advanced user's page, administrator's page]. An administrator's own manual wins where it has a
-  // page for the screen (the list: HQ review; an activity: Delete an activity); Updates has only the
-  // advanced page. Editors and read-only users have no manual yet, so they get the Calendar's How do I.
+  // page for the screen (an activity: Delete an activity); the list and Updates have only the
+  // advanced pages. Editors and read-only users have no manual yet, so they get the Calendar's How do I.
   const SHARED: [string, string, string][] = [
-    ["/calendar", "calendar-advanced-list", "calendar-admin/calendar-hq-review"],
+    ["/calendar", "calendar-advanced-list", "calendar-advanced/calendar-advanced-list"],
     ["/calendar/updates", "calendar-advanced-updates", "calendar-advanced/calendar-advanced-updates"],
     ["/calendar/activities/new", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
     ["/calendar/activities/12", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
