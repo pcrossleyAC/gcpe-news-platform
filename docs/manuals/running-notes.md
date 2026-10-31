@@ -223,15 +223,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Phase 5c-1 — Activity rules and the activity API
 
-- **Editor** — Between 4pm and 5pm BC time nobody outside HQ can create, change, clone or delete
-  activities, or start editing one. A save begun at 3:58 and sent at 4:01 is refused with the same
-  message; try again at 5pm. HQ users at Editor and above aren't affected.
-- **Editor** — If someone else is editing an activity, it shows "<name> is editing this activity (since
-  hh:mm)" and can't be saved until they finish or have been idle for 15 minutes.
-- **Editor** — "Someone else changed this activity — reload to see their changes" means another save,
-  a review or a Clear LA Status happened since you opened it. Reload, then make your change again.
-- **Editor** — Every change is recorded with who made it and the old and new values. A clone's history
-  starts with the activity it was cloned from.
 - **HQ** — Review clears every needs-review flag and marks the activity Reviewed. On a deleted
   activity it clears only the "deleted" flag. Review selected skips rows changed since the list
   loaded and says which.
@@ -248,96 +239,30 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   a year before 1900 or after 2199) answers 400, never a 500. A database data error the request
   checks miss also answers 400 `{"error":"invalid value"}`, and its code is logged.
 
-## Phase 5c-2 — Transfer, the deactivation preview, undelivered events
-
-- **Editor** — An activity can't be given a comm contact whose account is inactive ("That person's
-  account is inactive"). An activity that already has that contact keeps it when saved, but can't
-  be cloned until it has an active comm contact: a clone is a new assignment.
-
 ## Phase 5d — The activity list
 
-- **All Calendar users** — Hub → Calendar opens the activity list: today onward by default, 30 at a
-  time (more load as you scroll, or with "Show more"). Filter by dates, words, HQ Tags, Issue, Date
-  Confirmed, Status, Category, Lead Ministry, Comm Contact, Representative, Initiative, Premier
-  Requested and Distribution; choose Show All, My Ministries, My Activities or My Watchlist.
-- **All Calendar users** — Type an activity number such as HLTH-12345 in "Search for" to go
-  straight to it. A bare number up to 10,000 is searched as a word.
-- **All Calendar users** — Awareness dates and the consultations ministry are hidden until you pick
-  that category or ministry in the filter. They show on My Watchlist.
-- **All Calendar users** — Columns: choose which show; your choice and your display are kept.
-  The link in the address bar keeps your filter: bookmark it or send it to a colleague.
-- **All Calendar users** — A link from an HQ colleague opens without their Corporate Query or Look
-  Ahead filter if you can't use those. A filter choice whose lookup was since removed shows as
-  "(no longer available)"; pick another or clear it.
-- **All Calendar users** — My Queries: save the current filter, run it, rename it, move it and
-  delete it. Only you see your queries. Saving works during the 4pm-5pm freeze.
-- **All Calendar users** — The star watches an activity; its tooltip lists who else watches it.
 - **All Calendar users** — Excel export downloads what the list shows (up to 10,000 activities),
   with the old header, columns and confidentiality footer.
-- **All Calendar users** — Month and Week show the same filter as a calendar.
-- **HQ Editor and above** — Clear LA Status for the next N days (8 by default).
 
 ## Phase 5e-1 — Activity files
 
-- **Editor** — A file attached to an activity can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV, up to 25 MB, and up to 50 files an activity. A file with the same name, in any case, replaces the old one.
-- **Editor** — Adding or removing a file is blocked during the 4pm-5pm freeze (unless you're HQ) and while someone else is editing the activity, as saving is.
-- **All Calendar users** — A file opens only for people who can see its activity. Anyone else, including someone holding an old link, gets "not found".
 - **Operations** — Calendar files live in `<DATA_DIR>/calendar-files` (`CALENDAR_STORAGE_DIR`). Back that folder up with the Calendar database. The stack refuses to start if it is put inside a folder it serves publicly.
 
 ## Phase 5e-2 — Activity editor
 
-- **All Calendar users** — If your session runs out while an activity has unsaved changes, sign in again and open the same activity: the page says "Your unsaved changes were restored." If someone else saved it meanwhile, Save says so and Reload, once you confirm, replaces your changes with their version. Signing out yourself discards kept changes.
-- **All Calendar users** — Click an activity's title in the list or the calendar to open it. Save, Cancel, Review and Delete bring you back to the list as you left it, filter and all.
-- **All Calendar users** — "View changes" lists every change to the activity, newest first: who, when, and each field before and after. Changes from the old Calendar are marked "from legacy log".
-- **All Calendar users** — The star on the activity page adds it to My Watchlist; hover or focus it to see who else watches it.
-- **All Calendar users** — An activity you can't see, or that doesn't exist, says "Activity not found".
-- **All Calendar users** — When the activity opens read-only, each checklist (Shared With, Comm Materials, Sectors and the rest) lists only what is ticked, or "None".
-- **Calendar editors** — "New activity" on the list opens a blank activity at 8:00 AM to 6:00 PM. Saving opens it, ready for files.
-- **Calendar editors** — The form checks itself before saving: a box at the top lists what to fix, each linked to its field. A start or end date in the past is a warning, not a stop.
-- **Calendar editors** — Potential Dates is shown again, under Schedule. Use a general timeline, like "late June": no numbers, TBC or TBD.
-- **Calendar editors** — When someone else is editing, the page says who and since when, and stays read-only. It opens for you, without a reload, once they save, cancel or leave it for 15 minutes.
-- **Calendar editors** — Open in two of your own tabs? "Continue here" moves your editing to this tab.
-- **Calendar editors** — Leave the page alone for 15 minutes and your edit lock lapses. Your changes stay on the page, and Save still works if nobody else changed the activity; if they did, you're told to reload.
-- **Calendar editors** — When Save or Review says someone else changed the activity, Reload asks before it replaces your unsaved changes with theirs. If the reload fails, your changes stay and the page still warns before you leave.
-- **Calendar editors** — If someone deletes the activity while you're editing it, Save says so and your changes stay on the page, read-only. Nothing else is offered, except Review for an HQ Administrator.
-- **Calendar editors** — Between 4pm and 5pm the page opens read-only, with the freeze message, unless you're HQ.
-- **Calendar editors** — Records shows when the tenant turns on the Records section (off for BC, as in legacy, see Q51). Files are added several at a time, and each is checked and saved straight away.
-- **HQ Editor and above** — The Look Ahead fieldset follows the activity: the section is worked out from the category, Issue, confirmation and comm materials. Choose another to override it (marked "Override"); "Use the inferred section" undoes that.
-- **HQ Editor and above** — Fields changed since the last review say "Changed: needs review".
-- **All Calendar users** — "BC Gov News" on an activity lists its releases. If you also have an NRMS role, each one links to the release.
 - **All staff** — Who you're signed in as, and Sign out, are at the right-hand end of the header bar.
 - **All staff** — A section's own screens (Releases' Drafts/Scheduled/Published, Website, Subscribers, Calendar) are a row of tabs above the page heading; the one you're on is bold and underlined.
 - **NRMS editors** — Release history and published copies show times in BC time, like "Today 9:49 AM", not raw timestamps.
 
-## Phase 5f — Updates feed
-
-- **All Calendar users** — Calendar → Updates lists recent changes to the activities you can see. It opens on today's updates. "Latest 5 updates" shows the five newest.
-- **All Calendar users** — Use From and To, then Search, to find updates between two dates. From starts at yesterday, and both dates are included; leave either blank to leave that end open. Narrow it further by Update type (Changed, Added, Deleted, Reviewed, Cloned) and by words in the activity's title or summary, or the name of who made the change.
-- **All Calendar users** — Type an activity's number above 10,000 (such as HLTH-20001) in "Search for" to see just that activity's updates. Shorter numbers and words like "COVID-19" are searched as text.
-- **All Calendar users** — Each line links to its activity. Save or Cancel there brings you back to the same updates.
-- **All Calendar users** — Hover over an activity's title in the feed to see its summary. The title and dates shown are the activity's current ones.
-- **All Calendar users** — At most 1,000 updates show at once. The page says when there were more: narrow the dates or the search.
-- **All Calendar users** — The feed starts empty at cutover. Older changes are on each activity's "View changes", marked "from legacy log".
-- **All Calendar users** — Transfers and Clear LA Status don't appear in the feed, as in the old Calendar. See the activity's "View changes".
-- **Calendar editors** — When an activity is made confidential, moved to another ministry or deleted, its updates leave the feed for anyone who can no longer see it.
-- **HQ Editor and above** — Changes to an activity's Look Ahead fields show as "changed activity" only to people who see the Look Ahead fieldset.
-
 ## Phase 5g — Reports
 
-- **All Calendar users** — The list's toolbar has Look Ahead, 30/60/90 and Planning buttons after Excel export. Each makes a PDF of the activities the list's current filter finds, in date order, whatever the list is sorted by.
-- **All Calendar users** — A report takes a few seconds. While it's being prepared the page says "Preparing your … report…" and the buttons wait; the PDF then downloads by itself. If you leave the page first, run it again.
-- **All Calendar users** — A report holds only activities you can see. Other ministries' confidential activities, and deleted activities, are never in it.
-- **All Calendar users** — "Too many activities match" or "Too many rows to print" means the filter is too wide for a PDF: narrow the dates or the filter. "Other reports are being prepared" means wait a few seconds and try again.
 - **All Calendar users** — The Look Ahead has six sections; "Consultations and Dialogues" is gone. With no To date it covers 60 days and adds the Long Term Outlook.
-- **All Calendar users** — Each activity number in a report links to the activity in the Hub.
-- **HQ Editor and above** — Your Look Ahead shows each activity's Executive Summary, when it has one, and its NEW or CHANGED flag. Others see titles and details.
 - **Operations** — The Calendar puts each activity on its day with the database's own time-zone data. At startup the stack checks it; if the database's data predates BC's permanent UTC−7 (tzdata 2026b), the error log shows "the Calendar database's time-zone data predates BC's permanent UTC−7", and activities between midnight and 1 a.m. (from 2026-11-01) are listed, exported and reported on the previous day until the database is upgraded. `node stack.js --check` shows the same as `"calendarDbTimeZone"`.
 - **Operations** — Reports render in a worker thread of the stack process, one at a time: `CALENDAR_REPORT_CONCURRENCY` (1), `CALENDAR_REPORT_HEAP_MB` (320), `CALENDAR_REPORT_TIMEOUT_SECONDS` (120), `CALENDAR_REPORT_INLINE_WAIT_MS` (5000). A finished PDF stays in memory for 10 minutes; a restart forgets it.
 - **Developer** — `npm run calendar:report-compare -- --legacy <pdf> --new <pdf> --out <folder outside the repo>` compares two reports' sections and activity order (5i's parity check).
 
 ## Phase 5h — The NRMS link and the Forecast
 
-- **All Calendar users** — An activity's "BC Gov News" shows each linked release's status (Draft, Approved, Scheduled, Published, Failed) within a minute of the change in NRMS. A release being corrected or taken down still shows Published until it's done. A deleted release disappears.
 - **Operations** — The NRMS migration adds `calendar_activities`, `calendar_viewers` and `organizations.is_hq`. On first start with the Calendar mounted, the stack asks Core to republish once, so NRMS learns who has Calendar access and which organizations are HQ.
 - **Operations** — `npm run calendar:replay-to-nrms` and then `npm run nrms:replay-activity-links` (each a dry run until `-- --confirm`) fill NRMS's copy of the Calendar's activities and the Calendar's release lists. Run them in that order after any legacy release import too: the bulk importer doesn't emit link changes itself, so `nrms:replay-activity-links` is what sends status to the Calendar for the releases it just imported. The second reports how many releases name an activity that wasn't migrated.
 - **Developer** — NRMS never holds a confidential activity's text: a database CHECK keeps such rows to the id, the flag and deletion. No event route says "*", and none carries `activity.*` or `release.status_changed` to the News API (`apps/stack/src/env.test.ts`).
@@ -347,7 +272,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Operations** — `npm run calendar:import -- --cutoff <date>` reads legacy's Calendar database and writes the Calendar's and Core's. `--cutoff` is required; there's no default. Run it first without `--confirm` and read the report before running it again with `--confirm`. The report balances when `legacy` equals the rows it accounts for; exit code `0` is balanced, `2` is not balanced (still completed — read the report), `1` is an error. After a confirmed import: if `CORE_EVENT_SUBSCRIBERS` wasn't set, run Core's republish; then `calendar:replay-to-nrms --confirm` and a tick; then `nrms:replay-activity-links --confirm` and a tick, in that order. A re-run never overwrites a change already made in the Calendar.
 - **Operations** — An unknown legacy ministry, sector, theme or tag stops the import before it writes anything, listed in the report. Fix Core first (import or add the missing one there), then re-run.
 - **All Calendar users** — Activities that ended before the cutoff aren't in the new Calendar, except awareness dates, which come in whatever their age. Their history, favourites and files stay in the old Calendar, which one HQ administrator can read for a year after cutover.
-- **All Calendar users** — "View changes" on an imported activity shows the old Calendar's recorded changes (title, dates, city, contact, lead ministry, confirmation), marked "from legacy log".
 - **Developer** — The import lives in `apps/calendar/src/import/` (`cli.ts`, `run.ts`, `scope.ts`, `map.ts`, `apply.ts`, `apply-related.ts`, `history-map.ts`, `report.ts`) and `apps/core/src/import/calendar-users.ts`. Tests run it against a fake source (`createFakeSource`, `@gcpe/legacy-import`) loaded with the synthetic fixture in `apps/calendar/test/legacy-calendar-fixture.ts`. Because the fake source ignores SQL, the scope rule runs twice for real: once in the SQL that narrows what's read, and again in `selectScope`, which is what the tests actually check.
 - **Operations** — `npm run calendar:report-parity -- --csv <file> … --part-c <file> --legacy-dir <folder> --out <folder> --cutoff <date> --from <date> --to <date> --to-30-60-90 <date>` checks our reports against legacy's PDFs on a survey 08 CSV snapshot. Everything it writes holds real activities and people: `--out` must be outside the repository (it refuses one inside) in an owner-only folder, and nothing from it goes into the repo, a ticket or chat. It drops its throwaway `test_…` databases itself; after a crash, `npm run test:clean-dbs` finds them. Results of the first run: `docs/parity/calendar-report-parity.md`.
 - **All Calendar users** — A report's CC ID# (for example a four-letter ministry and a six-digit id) now always stays on one line, as in legacy. A long one may run a little past its column's edge instead of breaking before its last digit.

@@ -84,21 +84,23 @@ describe("Help on the Subscribers screens, with the compiled manuals", () => {
 });
 
 describe("Help on the Calendar screens, with the compiled manuals", () => {
-  // [path, advanced user's page, administrator's page]. An administrator's own manual wins where it has a
-  // page for the screen (an activity: Delete an activity); the list and Updates have only the
-  // advanced pages. Editors and read-only users have no manual yet, so they get the Calendar's How do I.
-  const SHARED: [string, string, string][] = [
-    ["/calendar", "calendar-advanced-list", "calendar-advanced/calendar-advanced-list"],
-    ["/calendar/updates", "calendar-advanced-updates", "calendar-advanced/calendar-advanced-updates"],
-    ["/calendar/activities/new", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
-    ["/calendar/activities/12", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
-    ["/calendar/activities/12/changes", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
+  // [path, editor's page, advanced user's page, administrator's page]. Each reader's own manual wins
+  // on an equal match: an editor gets the editor pages, an advanced user the advanced ones. An
+  // administrator's own manual wins where it has a page for the screen (an activity: Delete an
+  // activity); on the list and Updates the advanced pages come first among the manuals below theirs.
+  // Read-only users have no manual yet, so they get the Calendar's How do I.
+  const SHARED: [string, string, string, string][] = [
+    ["/calendar", "calendar-editor-list", "calendar-advanced-list", "calendar-advanced/calendar-advanced-list"],
+    ["/calendar/updates", "calendar-editor-updates", "calendar-advanced-updates", "calendar-advanced/calendar-advanced-updates"],
+    ["/calendar/activities/new", "calendar-editor-activity", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
+    ["/calendar/activities/12", "calendar-editor-activity", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
+    ["/calendar/activities/12/changes", "calendar-editor-activity", "calendar-advanced-activity", "calendar-admin/calendar-delete-activity"],
   ];
-  it.each(SHARED)("on %s, an advanced user gets %s and an administrator %s; an editor gets the How do I", (path, page, adminPage) => {
+  it.each(SHARED)("on %s, an editor gets %s, an advanced user %s and an administrator %s", (path, editorPage, page, adminPage) => {
+    expect(helpTargetFor(path, as("Calendar.Editor"))).toBe(`/help/manuals/calendar-editor/${editorPage}`);
     expect(helpTargetFor(path, as("Calendar.Advanced"))).toBe(`/help/manuals/calendar-advanced/${page}`);
     expect(helpTargetFor(path, as("Calendar.Administrator"))).toBe(`/help/manuals/${adminPage}`);
     expect(helpTargetFor(path, as("Calendar.SysAdmin"))).toBe(`/help/manuals/${adminPage}`);
-    expect(helpTargetFor(path, as("Calendar.Editor"))).toBe("/help#how-calendar");
     expect(helpTargetFor(path, as("Calendar.ReadOnly"))).toBe("/help#how-calendar");
   });
   const ADMIN: [string, string][] = [
