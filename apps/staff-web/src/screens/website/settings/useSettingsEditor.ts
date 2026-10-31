@@ -62,6 +62,8 @@ export interface SettingsEditor<F> {
   /** Problems elsewhere in the draft, for {@link OtherSectionErrors}. */
   otherErrors: FieldError[];
   conflict: PublishConflict | null;
+  /** The form differs from what the state holds for this section (typed but not saved). */
+  dirty: boolean;
   /** The action in flight, if any. */
   pending: SettingsAction | null;
   busy: boolean;
@@ -232,6 +234,7 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
     fieldErrors: errors.filter((e) => e.field.startsWith(prefix)),
     otherErrors: errors.filter((e) => !e.field.startsWith(prefix)),
     conflict,
+    dirty: state !== null && value !== null && JSON.stringify(request()) !== JSON.stringify(optionsRef.current.toRequest(optionsRef.current.fromDocument(state.document[section]))),
     pending,
     busy: pending !== null,
   };

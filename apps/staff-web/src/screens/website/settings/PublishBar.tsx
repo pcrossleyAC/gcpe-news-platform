@@ -18,12 +18,15 @@ interface PublishBarProps {
 const LIST = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
 
 /** What Discard draft's confirmation says it throws away (audit #12). */
-function discardMessage(section: SectionKey, draftSections: readonly SectionKey[]): string {
+function discardMessage(section: SectionKey, draftSections: readonly SectionKey[], unsavedHere: boolean): string {
   const others = draftSections.filter((k) => k !== section);
-  const here = draftSections.includes(section);
+  const first = [
+    ...(draftSections.includes(section) ? [`your draft changes on ${settingsScreenFor(section).label}`] : []),
+    ...(unsavedHere ? ["anything you haven\u2019t saved on this screen"] : []),
+  ];
   const parts = [
-    ...(here ? [`This throws away your draft changes on ${settingsScreenFor(section).label}.`] : []),
-    ...(others.length > 0 ? [`${here ? "This also throws away" : "This throws away"} your draft changes on ${sectionList(others)}.`] : []),
+    ...(first.length > 0 ? [`This throws away ${first.join(" and ")}.`] : []),
+    ...(others.length > 0 ? [`${first.length > 0 ? "This also throws away" : "This throws away"} your draft changes on ${sectionList(others)}.`] : []),
   ];
   return `${parts.length > 0 ? parts.join(" ") : "This throws away your draft."} It can\u2019t be undone.`;
 }
@@ -110,7 +113,7 @@ export function PublishBar({ editor, canEdit, timeZone }: PublishBarProps): Reac
                       </>
                     }
                   >
-                    <p>{discardMessage(editor.section, state.draftSections)}</p>
+                    <p>{discardMessage(editor.section, state.draftSections, editor.dirty)}</p>
                   </AlertDialog>
                 </Modal>
               </DialogTrigger>

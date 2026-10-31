@@ -17,7 +17,7 @@ You have one private draft that covers all of these screens. Other site editors 
 
 - **Save draft** keeps your changes in your draft. The public site doesn't change.
 - **Publish** puts your whole draft live: the changes on this screen, and any you saved as a draft on other settings screens.
-- **Discard draft** throws your whole draft away, on every settings screen. A box asks "Discard your whole draft?" and names the other screens it clears, such as "This also throws away your draft changes on Theme colours and Footer links." Choose **Discard draft** to confirm, or **Cancel**. The screen then shows what is live: "Draft discarded. Showing what is live."
+- **Discard draft** throws your whole draft away, on every settings screen. A box asks "Discard your whole draft?" and names the other screens it clears, such as "This also throws away your draft changes on Theme colours and Footer links." If you have typed something on this screen and not saved it, the box says that goes too. Choose **Discard draft** to confirm, or **Cancel**. The screen then shows what is live: "Draft discarded. Showing what is live."
 
 The foot of each screen says where you are. "Draft saved · not yet live" means you have a draft; "No unpublished changes" means you don't. With a draft, "Your draft has changes on:" names each screen it changes, with a link to it. The next line shows the live revision, who published it and when. Above the buttons, "Publish and Discard draft apply to your whole draft, on every settings screen, not just this one."
 

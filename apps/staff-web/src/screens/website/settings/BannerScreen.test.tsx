@@ -366,6 +366,32 @@ describe("BannerScreen", () => {
       expect(screen.getByText("No unpublished changes")).toBeInTheDocument();
     });
 
+    it("fix round 1: with unsaved typing on this screen, Discard draft says that goes too", async () => {
+      stub(["NRMS.SiteEditor"], () => undefined, drafted(["banner", "theme"]));
+      renderScreen();
+      const user = userEvent.setup();
+      const message = await screen.findByLabelText("Message");
+      await user.click(screen.getByRole("button", { name: "Discard draft" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent("This throws away your draft changes on Site banner. This also throws away your draft changes on Theme colours. It can’t be undone.");
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+      await user.type(message, " today");
+      await user.click(screen.getByRole("button", { name: "Discard draft" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent(
+        "This throws away your draft changes on Site banner and anything you haven’t saved on this screen. This also throws away your draft changes on Theme colours. It can’t be undone.",
+      );
+    });
+
+    it("fix round 1: unsaved typing on a screen with nothing in the draft is named on its own", async () => {
+      stub(["NRMS.SiteEditor"], () => undefined, drafted(["theme"]));
+      renderScreen();
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Message"), "!");
+      await user.click(screen.getByRole("button", { name: "Discard draft" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent("This throws away anything you haven’t saved on this screen. This also throws away your draft changes on Theme colours. It can’t be undone.");
+    });
+
     it("with only this screen in the draft, Discard draft still asks, and names no other screen", async () => {
       stub(["NRMS.SiteEditor"], () => undefined, drafted(["banner"]));
       renderScreen();
