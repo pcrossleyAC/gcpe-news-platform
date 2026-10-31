@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useBlocker, type Blocker } from "react-router";
+import type { Blocker } from "react-router";
 import { useAnnouncer } from "../../shared/Announcer";
+import { useLeaveBlocker } from "../../shared/LeaveGuard";
 
 export interface DirtySectionInfo {
   /** "Save " plus what the page calls this section (e.g. "Save English content (Document 1)",
@@ -140,17 +141,10 @@ export function useUnsavedChangesGuard(): UnsavedChangesGuard {
     );
   }, []);
 
-  const blocker = useBlocker(anyDirty);
-
-  useEffect(() => {
-    if (!anyDirty) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [anyDirty]);
+  // The Hub's shared leave-page rule (shared/LeaveGuard.tsx). Only a document's changes are kept
+  // through a sign-in (documents/unsavedDocumentStorage.ts), so the release says it keeps a draft
+  // only when nothing else is unsaved.
+  const blocker = useLeaveBlocker(anyDirty, { keepsDraft: [...dirtyKeys].every((k) => k.startsWith("document-")) });
 
   useEffect(() => {
     if (anyDirty && !announcedRef.current) {
