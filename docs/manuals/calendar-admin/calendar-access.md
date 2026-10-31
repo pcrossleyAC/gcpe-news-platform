@@ -19,6 +19,7 @@ The table shows everyone with a Hub account: **Name**, **Email**, **Calendar rol
 - Administrators can give any role up to **Administrator**. Only system administrators can give **System Administrator**.
 - You can give any ministry, not just your own.
 - HQ organizations are marked "— HQ" in the ministry list. Their members see every ministry in the Calendar. Only HQ Administrators and system administrators are offered them.
+- HQ Administrator isn't a separate role: give **Administrator** and tick an HQ ministry.
 
 ## Give or change someone's access
 
@@ -58,7 +59,9 @@ Some rows show a note instead of **Edit**.
 | "You can't change your own Calendar access." | Ask another administrator or a Core administrator. |
 | "Only a System Administrator or a Core admin can change this user's access." | The person is a system administrator and you are an Administrator. |
 | "Only an HQ Administrator, a System Administrator or a Core admin can change this user's access." | The person belongs to an HQ organization and you don't. |
-| "Only a Core admin can give Calendar access to an inactive user who has none." | The person's Hub account is inactive and has no Calendar role. Most of them were brought in from the old news release system. Ask a Core administrator. |
+| "Only a Core admin can give Calendar access to an inactive user who has none." | The person's Hub account is inactive and has no Calendar role. Ask a Core administrator. |
+
+If you have no ministry yourself, the Calendar shows "You aren't in any ministry yet, so there are no activities to show you. Ask another Calendar administrator or a Core administrator to add your ministry." You can't add it yourself.
 
 ## Can't do this?
 

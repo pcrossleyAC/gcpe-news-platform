@@ -15,13 +15,16 @@ interface Draft {
   isActive: boolean;
 }
 
-function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel }: {
+/** Its refusal shows only while `showMessages`: the page hides it once it shows a newer message. */
+function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel, showMessages, onFailed }: {
   lookup: LookupSummary;
   row: LookupRowView | null;
   label: string;
   submitLabel: string;
   onSubmit(draft: Draft): Promise<void>;
   onCancel?(): void;
+  showMessages: boolean;
+  onFailed(): void;
 }): React.JSX.Element {
   const [draft, setDraft] = useState<Draft>({
     name: row?.name ?? "",
@@ -40,6 +43,7 @@ function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel }: {
       if (!row) setDraft({ name: "", extras: Object.fromEntries(lookup.extras.map((x) => [x.key, ""])), isActive: true });
     } catch (caught) {
       setMessages(messagesOf(caught));
+      onFailed();
     } finally {
       setBusy(false);
     }
@@ -48,7 +52,7 @@ function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel }: {
   const formRef = useFormShortcut("save", row !== undefined && row !== null && !busy, true);
   return (
     <form ref={formRef} aria-label={label} onSubmit={submit}>
-      {messages.map((m) => (
+      {(showMessages ? messages : []).map((m) => (
         <p role="alert" key={m}>
           {m}
         </p>
@@ -87,6 +91,8 @@ export function LookupScreen(): React.JSX.Element {
   const [status, setStatus] = useState<string | null>(null);
   const [orderMessages, setOrderMessages] = useState<string[]>([]);
   const [editing, setEditing] = useState<number | null>(null);
+  /** Whose message is on screen ("page", "add" or "row:<id>"): one at a time, so a newer message never sits beside a stale one. */
+  const [shown, setShown] = useState<string | null>(null);
   const latest = useRef(0);
   useDocumentTitle(lookup?.label ?? null);
 
@@ -110,12 +116,14 @@ export function LookupScreen(): React.JSX.Element {
   const add = async (d: Draft) => {
     const created = await apiFetch<LookupRowView>(`/calendar/api/lookups/${lookup.name}`, { method: "POST", body: body(d) });
     setStatus(`Added ${created.name}.`);
+    setShown("page");
     reload();
   };
   const save = (row: LookupRowView) => async (d: Draft) => {
     const saved = await apiFetch<LookupRowView>(`/calendar/api/lookups/${lookup.name}/${row.id}`, { method: "PUT", body: { ...body(d), isActive: d.isActive } });
     setEditing(null);
     setStatus(`Saved ${saved.name}.`);
+    setShown("page");
     reload();
   };
   const move = async (index: number, by: -1 | 1) => {
@@ -127,8 +135,10 @@ export function LookupScreen(): React.JSX.Element {
       await apiFetch(`/calendar/api/lookups/${lookup.name}/order`, { method: "PUT", body: { ids } });
       setStatus(`Moved ${lookup.rows[index]!.name} ${by < 0 ? "up" : "down"}.`);
     } catch (caught) {
+      setStatus(null);
       setOrderMessages(messagesOf(caught));
     }
+    setShown("page");
     reload();
   };
 
@@ -139,8 +149,8 @@ export function LookupScreen(): React.JSX.Element {
       </p>
       <h1>{lookup.label}</h1>
       {!lookup.editable && <p>Only a System Administrator can change {lookup.label.toLowerCase()}.</p>}
-      {status && <p role="status">{status}</p>}
-      {orderMessages.map((m) => (
+      {shown === "page" && status && <p role="status">{status}</p>}
+      {(shown === "page" ? orderMessages : []).map((m) => (
         <p role="alert" key={m}>
           {m}
         </p>
@@ -171,7 +181,7 @@ export function LookupScreen(): React.JSX.Element {
               {lookup.editable && (
                 <td>
                   {editing === r.id ? (
-                    <RowForm lookup={lookup} row={r} label={`Edit ${r.name}`} submitLabel="Save" onSubmit={save(r)} onCancel={() => setEditing(null)} />
+                    <RowForm lookup={lookup} row={r} label={`Edit ${r.name}`} submitLabel="Save" onSubmit={save(r)} onCancel={() => setEditing(null)} showMessages={shown === `row:${r.id}`} onFailed={() => setShown(`row:${r.id}`)} />
                   ) : (
                     <>
                       <Button variant="secondary" onPress={() => setEditing(r.id)}>{`Edit ${r.name}`}</Button>
@@ -189,7 +199,7 @@ export function LookupScreen(): React.JSX.Element {
       {lookup.editable && (
         <>
           <h2>Add {withArticle(lookup.singular)}</h2>
-          <RowForm lookup={lookup} row={null} label={`Add ${withArticle(lookup.singular)}`} submitLabel="Add" onSubmit={add} />
+          <RowForm lookup={lookup} row={null} label={`Add ${withArticle(lookup.singular)}`} submitLabel="Add" onSubmit={add} showMessages={shown === "add"} onFailed={() => setShown("add")} />
         </>
       )}
     </div>

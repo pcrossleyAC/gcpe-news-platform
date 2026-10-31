@@ -22,7 +22,10 @@ export const calendarAccessSchema = z
   .refine((v) => v.role === null || v.organizationKeys.length > 0, { message: "choose at least one ministry for a Calendar role", path: ["organizationKeys"] });
 export type CalendarAccessInput = z.infer<typeof calendarAccessSchema>;
 
-export type CalendarAccessView = Pick<UserView, "id" | "email" | "displayName" | "isActive" | "calendarRole" | "organizationKeys">;
+export type CalendarAccessView = Pick<UserView, "id" | "email" | "displayName" | "isActive" | "calendarRole" | "organizationKeys"> & {
+  /** The user has a Hub role besides their Calendar one, so only a Core admin may change their account (Q55). Never which roles. */
+  hasOtherRoles: boolean;
+};
 
 export const REFUSAL_MESSAGES: Record<CalendarGrantRefusal, string> = {
   "not-an-administrator": "only a Calendar Administrator can change Calendar access",
@@ -71,7 +74,7 @@ export interface CalendarActor {
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
 
 function toView(u: UserView): CalendarAccessView {
-  return { id: u.id, email: u.email, displayName: u.displayName, isActive: u.isActive, calendarRole: u.calendarRole, organizationKeys: u.organizationKeys };
+  return { id: u.id, email: u.email, displayName: u.displayName, isActive: u.isActive, calendarRole: u.calendarRole, organizationKeys: u.organizationKeys, hasOtherRoles: u.roles.length > 0 };
 }
 
 /**

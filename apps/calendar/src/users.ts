@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import type { CalendarRole } from "@gcpe/auth";
@@ -12,7 +12,8 @@ export class CalendarUserNotFoundError extends Error {
 }
 export class NotUsersMinistryError extends Error {
   override name = "NotUsersMinistryError";
-  constructor(readonly ministryKey: string) {
+  /** `ministryName` is the ministry's display name, or its key when the Calendar doesn't know it yet. */
+  constructor(readonly ministryKey: string, readonly ministryName: string = ministryKey) {
     super("not one of the user's ministries");
   }
 }
@@ -140,7 +141,10 @@ export async function setCommContactRank(db: Db, id: string, ministryKey: string
     const u = await projectedUser(tx, id);
     // ministryKey arrives exactly as the Calendar stores it (spec addendum §5.2): Core keys are
     // byte for byte, and legacy's own GCPE ministry keys are uppercase GUIDs.
-    if (!u.organizationKeys.includes(ministryKey)) throw new NotUsersMinistryError(ministryKey);
+    if (!u.organizationKeys.includes(ministryKey)) {
+      const [o] = await tx.select({ name: orgs.displayName }).from(orgs).where(eq(orgs.key, ministryKey));
+      throw new NotUsersMinistryError(ministryKey, o?.name ?? ministryKey);
+    }
     const [existing] = await tx.select().from(commContacts).where(and(eq(commContacts.userId, u.id), eq(commContacts.ministryKey, ministryKey))).for("update");
     if (existing) {
       await tx
@@ -165,24 +169,55 @@ export interface OpenActivity {
   endDate: string | null;
 }
 
+export interface OpenActivities {
+  /** The open activities Transfer would move for this Administrator, first `limit` of them. */
+  activities: OpenActivity[];
+  truncated: boolean;
+  /**
+   * How many other open activities they are comm contact for: in ministries the Administrator
+   * doesn't belong to, or only shared with theirs, so Transfer can't move them. Only the number:
+   * never a title, id or ministry, which could reveal a confidential activity.
+   */
+  otherCount: number;
+}
+
+/**
+ * What Transfer would move from one of the user's comm contacts for this actor (transfer.ts's
+ * pair and inScope): anything they can see for an HQ actor; otherwise only an activity led by the
+ * contact's own ministry, which must be one of the actor's. Never NULL, so it can be counted.
+ */
+function movableSql(actor: Viewer): SQL {
+  if (actor.isHq) return visibleSql(actor);
+  const keys = [...actor.ministryKeys];
+  if (keys.length === 0) return sql`false`;
+  return sql`(coalesce(${inArray(commContacts.ministryKey, keys)} AND ${activities.contactMinistryKey} = ${commContacts.ministryKey}, false) AND ${visibleSql(actor)})`;
+}
+
 /**
  * What legacy's user page listed before deactivating (User.aspx:183-223): activities whose comm
- * contact is one of the user's active comm contacts, here only those still open (not deleted,
- * ending today or later, or undated) and visible to the Administrator. No count of the rest: it
- * would reveal confidential activities.
+ * contact is one of the user's comm contacts, active or not (Not a comm contact leaves the
+ * activities pointing at it), here only those still open (not deleted, ending today or later, or
+ * undated). Those Transfer would move are listed; the rest are only counted.
  */
-export async function openActivitiesOf(deps: ApiDeps, actor: Viewer, userId: string, opts: { limit?: number } = {}): Promise<{ activities: OpenActivity[]; truncated: boolean }> {
+export async function openActivitiesOf(deps: ApiDeps, actor: Viewer, userId: string, opts: { limit?: number } = {}): Promise<OpenActivities> {
   const u = await projectedUser(deps.db, userId);
   const limit = opts.limit ?? 500;
   const now = await dbNow(deps.db, deps.now);
   const today = bcMidnight(wallClock(now, deps.rules.timeZone).date, deps.rules.timeZone);
   const ends = sql`coalesce(${activities.endAt}, ${activities.startAt})`;
+  const open = and(eq(commContacts.userId, u.id), isNull(activities.deletedAt), or(sql`${ends} IS NULL`, gte(ends, today)));
+  const movable = movableSql(actor);
+  const [counts] = await deps.db
+    .select({ all: sql<number>`count(*)::int`, movable: sql<number>`(count(*) FILTER (WHERE ${movable}))::int` })
+    .from(activities)
+    .innerJoin(commContacts, eq(commContacts.id, activities.commContactId))
+    .where(open);
   const rows = await deps.db
     .select({ id: activities.id, title: activities.title, startAt: activities.startAt, endAt: activities.endAt, abbreviation: orgs.abbreviation })
     .from(activities)
     .innerJoin(commContacts, eq(commContacts.id, activities.commContactId))
     .leftJoin(orgs, eq(orgs.key, activities.contactMinistryKey))
-    .where(and(eq(commContacts.userId, u.id), eq(commContacts.isActive, true), isNull(activities.deletedAt), or(sql`${ends} IS NULL`, gte(ends, today)), visibleSql(actor)))
+    .where(and(open, movable))
     .orderBy(sql`${activities.startAt} ASC NULLS LAST`, asc(activities.id))
     .limit(limit + 1);
   const local = (d: Date | null) => (d ? wallClock(d, deps.rules.timeZone).date : null);
@@ -192,5 +227,6 @@ export async function openActivitiesOf(deps: ApiDeps, actor: Viewer, userId: str
       id: r.id, reference: `${r.abbreviation ?? "?"}-${r.id}`, title: r.title,
       startAt: r.startAt?.toISOString() ?? null, endAt: r.endAt?.toISOString() ?? null, startDate: local(r.startAt), endDate: local(r.endAt),
     })),
+    otherCount: (counts?.all ?? 0) - (counts?.movable ?? 0),
   };
 }

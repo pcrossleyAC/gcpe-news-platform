@@ -7,9 +7,9 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { DeadLettersScreen } from "./DeadLettersScreen";
 
-const ROW = { eventId: "11111111-1111-4111-8111-111111111111", subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" };
+const ROW = { eventId: "11111111-1111-4111-8111-111111111111", subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", activityReference: "HLTH-7", attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" };
 
-const RETRY_NAME = "Retry activity.updated for activity:7 to nrms, queued 2026-08-31 17:00";
+const RETRY_NAME = "Retry Activity changed for HLTH-7 to Releases, queued 2026-08-31 17:00";
 const SESSION = { user: { id: "s1", name: "Sam", email: "sam@x.invalid", roles: ["Calendar.SysAdmin"] }, expiresAt: new Date().toISOString() };
 
 function stub(calls: string[], rowsAfterRetry: unknown[]) {
@@ -52,7 +52,7 @@ describe("DeadLettersScreen", () => {
     const calls: string[] = [];
     stub(calls, []);
     renderScreen();
-    const row = (await screen.findByText("activity:7")).closest("tr")!;
+    const row = (await screen.findByText("HLTH-7")).closest("tr")!;
     expect(within(row).getByText("HTTP 503")).toBeInTheDocument();
     await userEvent.setup().click(within(row).getByRole("button", { name: RETRY_NAME }));
     expect(await screen.findByRole("status")).toHaveTextContent("Queued for delivery again.");
@@ -67,13 +67,38 @@ describe("DeadLettersScreen", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Queued for delivery again. If it comes back here after the next minute, the receiving app is still refusing it: check it before retrying.");
   });
 
-  it("never shows an activity's payload, only its id", async () => {
+  it("shows the event, activity and app in plain words, never the internal names", async () => {
     stub([], []);
     renderScreen();
-    const row = (await screen.findByText("activity:7")).closest("tr")!;
+    const row = (await screen.findByText("HLTH-7")).closest("tr")!;
+    expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 3)).toEqual(["Activity changed", "HLTH-7", "Releases"]);
+    for (const raw of ["activity.updated", "activity:7", "nrms"]) expect(screen.queryByText(raw)).toBeNull();
+  });
+
+  it.each([
+    ["activity.created", "New activity"],
+    ["activity.deleted", "Activity deleted"],
+  ])("names %s as %s; an activity the System Administrator can't see by its number only", async (type, label) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, SESSION);
+        if (url === "/calendar/api/dead-letters") return jsonResponse(200, { items: [{ ...ROW, type, activityReference: null }], truncated: false });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    renderScreen();
+    const row = (await screen.findByText(label)).closest("tr")!;
+    expect(within(row).getByText("Activity 7")).toBeInTheDocument();
+  });
+
+  it("never shows an activity's payload, only its reference", async () => {
+    stub([], []);
+    renderScreen();
+    const row = (await screen.findByText("HLTH-7")).closest("tr")!;
     expect(within(row).queryByText(/payload/i)).toBeNull();
     for (const key of Object.keys(ROW)) {
-      if (key !== "aggregateId" && key !== "type" && key !== "subscriber" && key !== "attempts" && key !== "lastError" && key !== "queuedAtBc") {
+      if (key !== "activityReference" && key !== "aggregateId" && key !== "type" && key !== "subscriber" && key !== "attempts" && key !== "lastError" && key !== "queuedAtBc") {
         expect(screen.queryByText(String((ROW as Record<string, unknown>)[key]))).toBeNull();
       }
     }

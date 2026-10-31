@@ -33,8 +33,11 @@ export interface OpenActivity {
   endDate: string | null;
 }
 export interface OpenActivities {
+  /** The open activities Transfer would move for this administrator. */
   activities: OpenActivity[];
   truncated: boolean;
+  /** How many more they are comm contact for that this administrator can't transfer: only the number. */
+  otherCount: number;
 }
 
 /** Legacy's CommContactTypeSortOrder (Admin/User.aspx.cs:16-25). */

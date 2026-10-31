@@ -28,7 +28,7 @@ Only administrators see **Delete** on an activity. You can delete an activity yo
 ## When Delete isn't offered
 
 - The activity is led by another ministry, or only shared with yours.
-- It is between the daily change freeze's hours, and you aren't HQ. The page shows the freeze message.
+- It is during the daily change freeze, and you aren't in an HQ organization. The page shows the freeze message.
 - Someone else is editing it.
 - It is already deleted.
 

@@ -137,4 +137,27 @@ describe("Calendar lookup screens", () => {
     await user.click(within(add).getByRole("button", { name: "Add" }));
     expect(await within(add).findByRole("alert")).toHaveTextContent("an active row with that name already exists");
   });
+
+  it("shows one message at a time: a later Saved replaces the Add form's refusal, and a refusal replaces an earlier Saved", async () => {
+    let addFails = true;
+    stub([], (url, init) =>
+      url === "/calendar/api/lookups/keywords" && init?.method === "POST" && addFails ? jsonResponse(400, { error: "invalid request", issues: [{ message: "enter a name", path: ["name"] }] }) : undefined,
+    );
+    renderAt("/calendar/lookups/keywords");
+    const user = userEvent.setup();
+    const add = await screen.findByRole("form", { name: "Add an HQ tag" });
+    await user.type(within(add).getByLabelText("Name"), " ");
+    await user.click(within(add).getByRole("button", { name: "Add" }));
+    expect(await within(add).findByRole("alert")).toHaveTextContent("enter a name");
+
+    await user.click(screen.getByRole("button", { name: "Edit Sample keyword" }));
+    await user.click(within(screen.getByRole("form", { name: "Edit Sample keyword" })).getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved Sample keyword.");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await user.click(within(add).getByRole("button", { name: "Add" }));
+    expect(await within(add).findByRole("alert")).toHaveTextContent("enter a name");
+    expect(screen.queryByRole("status")).toBeNull();
+    addFails = false;
+  });
 });

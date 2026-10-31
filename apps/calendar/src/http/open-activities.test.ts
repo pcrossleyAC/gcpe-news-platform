@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCalendarTestDb, createTestApp, FIXED_NOW, TEST_RULES } from "../../test/helpers";
 import { call, insertRaw, seedWorld, type World } from "../../test/world";
+import { activitySharedWith } from "../db/schema";
 import { openActivitiesOf } from "../users";
 
 describe("a user's open activities, before deactivating (spec addendum §8.5)", () => {
@@ -30,20 +31,46 @@ describe("a user's open activities, before deactivating (spec addendum §8.5)", 
     expect(res.body.activities.map((a: { id: number }) => a.id)).toEqual([today, later, undated]);
     expect(res.body.activities[0]).toMatchObject({ reference: `HLTH-${today}`, title: "Sample today", startDate: "2026-11-03" });
     expect(res.body.truncated).toBe(false);
+    expect(res.body.otherCount).toBe(0);
   });
 
-  it("only what the Administrator can see, with no count of the rest", async () => {
-    await insertRaw(tdb.db, { commContactId: w.contact.financeEditor, contactMinistryKey: "finance", isConfidential: true, title: "Sample hidden" });
+  it("an activity in a ministry the Administrator doesn't belong to is only counted, never described", async () => {
+    const c = w.contact.financeEditor;
+    const hidden = await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", isConfidential: true, title: "Sample hidden" });
+    const other = await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", title: "Sample other ministry" });
+    // Only shared with the Administrator's ministry: they can see it, but Transfer moves only what their ministry leads.
+    const shared = await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", title: "Sample shared" });
+    await tdb.db.insert(activitySharedWith).values({ activityId: shared, ministryKey: "health" });
+    // Neither counts: one has ended, one is deleted.
+    await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", title: "Sample ended", startAt: new Date("2026-11-02T17:00:00Z"), endAt: new Date("2026-11-02T18:00:00Z") });
+    await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", title: "Sample gone", deletedAt: FIXED_NOW });
+
     const ministry = await open("admin", w.as.financeEditor.id);
-    expect(ministry.body).toEqual({ activities: [], truncated: false });
+    expect(ministry.status).toBe(200);
+    expect(ministry.body).toEqual({ activities: [], truncated: false, otherCount: 3 });
+    const raw = JSON.stringify(ministry.body);
+    for (const leak of ["Sample", "finance", "FIN", String(hidden), String(other), String(shared)]) expect(raw).not.toContain(leak);
+
     const hq = await open("hqAdmin", w.as.financeEditor.id);
-    expect(hq.body.activities.map((a: { title: string }) => a.title)).toContain("Sample hidden");
+    expect(hq.body.activities.map((a: { id: number }) => a.id).sort()).toEqual([hidden, other, shared].sort());
+    expect(hq.body.otherCount).toBe(0);
   });
 
-  it("a user who is nobody's comm contact has none; an inactive comm contact's activities aren't theirs", async () => {
-    expect((await open("admin", w.as.readOnly.id)).body).toEqual({ activities: [], truncated: false });
-    await insertRaw(tdb.db, { commContactId: w.contact.retiredHealth, title: "Sample retired contact's" });
-    expect((await open("admin", w.as.advanced.id)).body.activities).toEqual([]);
+  it("a user who is nobody's comm contact has none at all", async () => {
+    expect((await open("admin", w.as.readOnly.id)).body).toEqual({ activities: [], truncated: false, otherCount: 0 });
+  });
+
+  it("still lists activities after the user was set to Not a comm contact, as Transfer still moves them", async () => {
+    const put = (rank: number | null) => call(app, "put", `/api/users/${w.as.advanced.id}/comm-contacts/health`, w.as.admin.cookie, { rank });
+    const id = await insertRaw(tdb.db, { commContactId: w.contact.retiredHealth, title: "Sample retired contact's" });
+    expect((await put(2)).status).toBe(200);
+    expect((await put(null)).status).toBe(200);
+    const res = await open("admin", w.as.advanced.id);
+    expect(res.body).toMatchObject({ truncated: false, otherCount: 0 });
+    expect(res.body.activities.map((a: { id: number }) => a.id)).toEqual([id]);
+    // The preview lists exactly what Transfer would move from that comm contact.
+    const transfer = await call(app, "get", `/api/transfer/preview?from=${w.contact.retiredHealth}&to=${w.contact.editorHealth}`, w.as.admin.cookie);
+    expect(transfer.body.count).toBe(1);
   });
 
   it("says when the list is cut short", async () => {

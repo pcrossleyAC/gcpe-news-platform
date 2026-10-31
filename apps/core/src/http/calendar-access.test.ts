@@ -184,8 +184,13 @@ describe("Calendar access API", () => {
       isActive: true,
       calendarRole: "Calendar.Administrator",
       organizationKeys: ["gcpe-media-relations"],
+      hasOtherRoles: false,
     });
-    expect(JSON.stringify(list.body)).not.toMatch(/passwordHash|signInMethod|NRMS\./);
+    // Whether someone has other Hub roles, so the screens offer Deactivate only where it would be
+    // allowed; never which roles.
+    expect(list.body.find((u: { id: string }) => u.id === ids.nrmsEditor).hasOtherRoles).toBe(true);
+    expect(list.body.find((u: { id: string }) => u.id === ids.coreAdmin).hasOtherRoles).toBe(true);
+    expect(JSON.stringify(list.body)).not.toMatch(/passwordHash|signInMethod|NRMS\.|Core\.Admin/);
 
     // The target's own session gains the Calendar.Administrator check as soon as it's granted.
     const targetCookie = `gcpe_session=${(await mintSession(SECRET, { id: targetId, name: "Robin Staff", email: "robin.staff@example.test", roles: [] })).token}`;

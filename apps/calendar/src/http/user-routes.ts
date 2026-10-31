@@ -10,7 +10,7 @@ const run = (h: (req: Request<Params>, res: Response) => Promise<void>) => (req:
     if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
     if (e instanceof CalendarUserNotFoundError) return void res.status(404).json({ error: "not found" });
     if (e instanceof NotUsersMinistryError) {
-      return void res.status(409).json({ error: `${e.ministryKey} isn't one of this user's ministries in the Calendar yet: save their ministries first; the Calendar picks them up within a minute` });
+      return void res.status(409).json({ error: `${e.ministryName} isn't one of this user's ministries in the Calendar yet. Save their ministries first.` });
     }
     next(e);
   });

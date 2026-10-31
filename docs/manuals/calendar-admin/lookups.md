@@ -57,4 +57,9 @@ Choose **Move** followed by the row's name and **up** or **down**. You see, for 
 |---|---|
 | "an active row with that name already exists" | Two active rows can't share a name, whatever the capitals. Use the existing row, or make it inactive first. The same applies when you make an inactive row active again. |
 | "enter a name" | The name is empty. |
+| "at most 50 characters" | The name is too long. The limit depends on the lookup, from 50 to 255 characters. |
+| "Phone: at most 50 characters" | Shorten the phone number. |
+| "Job title: at most 150 characters" | Shorten the job title. |
+| "Short name: at most 40 characters" | Shorten the short name. |
+| "Description: at most 84 characters" | Shorten the description. |
 | "the list changed since you loaded it: reload and try again" | Someone else added a row while you were moving one. Reload the page. |

@@ -54,7 +54,19 @@ export function actorFor(session: { user: { id: string } | null; roles: readonly
   return { id: session.user?.id ?? "", roles: session.roles, isHq: !!own?.organizationKeys.some((k) => hqKeys.has(k)) };
 }
 
-export function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: CalendarAccessUser; orgs: OrgOption[]; actor: Actor; onSaved(message: string): void; onCancel(): void }): React.JSX.Element {
+/**
+ * `showMessages` and `onFailed` let a page that shows other messages keep one on screen at a
+ * time: the page hides this editor's refusal once it shows a newer message of its own.
+ */
+export function AccessEditor({ user, orgs, actor, onSaved, onCancel, showMessages = true, onFailed }: {
+  user: CalendarAccessUser;
+  orgs: OrgOption[];
+  actor: Actor;
+  onSaved(message: string): void;
+  onCancel(): void;
+  showMessages?: boolean;
+  onFailed?(): void;
+}): React.JSX.Element {
   const session = useSession();
   const [role, setRole] = useState<CalendarRoleName | "">(user.calendarRole ?? "");
   const [keys, setKeys] = useState<string[]>(user.organizationKeys);
@@ -85,6 +97,7 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: C
       onSaved(`Saved Calendar access for ${user.displayName}.`);
     } catch (caught) {
       setMessages(saveMessages(caught, keys));
+      onFailed?.();
     } finally {
       setBusy(false);
     }
@@ -95,7 +108,7 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: C
   const formRef = useFormShortcut("save", true, true);
   return (
     <form ref={formRef} onSubmit={save} aria-label={`Calendar access for ${user.displayName}`} className="gcpe-stack">
-      {messages.map((m) => (
+      {(showMessages ? messages : []).map((m) => (
         <p role="alert" key={m}>
           {m}
         </p>

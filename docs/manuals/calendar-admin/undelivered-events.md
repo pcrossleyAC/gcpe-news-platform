@@ -21,9 +21,9 @@ The newest are first. "Only the 200 most recent are listed." means there are mor
 
 | Column | What it shows |
 |---|---|
-| **Event** | What happened: activity.created, activity.updated or activity.deleted. |
-| **About** | Which activity: activity:12 is the activity numbered 12, such as HLTH-12. |
-| **To** | The app that didn't accept it: nrms is **Releases**. |
+| **Event** | What happened: "New activity", "Activity changed" or "Activity deleted". |
+| **About** | Which activity, such as HLTH-12. An activity you can't see in the Calendar shows only its number, such as "Activity 12". |
+| **To** | The app that didn't accept it, such as **Releases**. |
 | **Attempts** | How many times the Calendar tried. |
 | **Last error** | The last reason it failed, such as HTTP 503. |
 | **Queued** | When the change was made, in BC time. |

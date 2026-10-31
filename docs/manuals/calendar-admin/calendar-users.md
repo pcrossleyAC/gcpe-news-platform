@@ -15,6 +15,8 @@ topics: []
 - Tick **Show inactive users, including those with no email** or **Show users without Calendar access** to see more people.
 - Choose a name to open that person's page.
 
+If two old Calendar accounts had the same email address, they are now one user.
+
 A person's page has four parts: **Calendar access**, **Contact details**, **Comm contact** and **Account**. Changes to access and accounts reach the Calendar within a minute. Contact details and ranks take effect at once.
 
 ## Change their Calendar access
@@ -44,15 +46,16 @@ Choose **Not a comm contact** to stop offering them. Activities that already hav
 Deactivating closes the person's Hub account. They can't sign in again until reactivated, and the Hub signs them out within 10 minutes.
 
 1. Under **Account**, choose **Deactivate** followed by their name.
-2. The page lists their **Open activities**: activities you can see where they are the comm contact, that aren't deleted and haven't ended. Only the first 500 are listed.
-3. To hand those activities over first, choose **Transfer their activities first**. See [Transfer activities](manual:calendar-transfer).
-4. Choose **Deactivate**, or **Deactivate anyway** when activities are listed. You see that the person "is deactivated. The Calendar picks this up within a minute."
+2. The page shows their **Open activities**: every activity where they are the comm contact that isn't deleted and hasn't ended, even if you set them to **Not a comm contact**.
+   - The activities you can transfer are listed. Only the first 500 are listed.
+   - Activities in ministries you don't belong to are counted, not listed, for example "2 more in ministries you don't belong to. Ask an HQ Administrator to transfer them." This includes activities only shared with your ministry.
+   - "No open activities." means there are none at all.
+3. To hand the listed activities over first, choose **Transfer their activities first**, or **Transfer the listed activities first** when some are in other ministries. See [Transfer activities](manual:calendar-transfer). For the ones in other ministries, ask an HQ Administrator.
+4. Choose **Deactivate**, or **Deactivate anyway** when they have open activities. You see that the person "is deactivated. The Calendar picks this up within a minute."
 
 Deactivating doesn't move their activities. Each one keeps them as comm contact and can still be saved, but can't be cloned until it has an active comm contact. Editors can't choose them as a comm contact any more.
 
 Nobody is emailed, including the person.
-
-The list of open activities leaves out any activity where you set them to **Not a comm contact** first. Check **Transfer** for those.
 
 ## Reactivate someone
 
@@ -71,15 +74,16 @@ They can then sign in with Microsoft using that address.
 
 Only people who use nothing in the Hub but the Calendar, and whose Calendar access you could change. You can't deactivate yourself, so the button isn't shown on your own page.
 
-The page offers the button for other people too, then refuses when you confirm:
+For anyone else you can't change, **Account** says why instead of showing the button. The message names the button it replaces: deactivate, reactivate or link.
 
 | Message | What it means |
 |---|---|
-| "only a Core admin can change a user who also has NRMS or NoD roles" | The person also works in Releases or Subscribers. Ask a Core administrator. |
-| "only a Core admin can change a user who has no Calendar role" | The person has no Calendar role. Ask a Core administrator. |
-| "only an HQ Administrator, a System Administrator or a Core admin can change the Calendar access of someone with an HQ ministry" | The person belongs to an HQ organization and you don't. |
-| "only a System Administrator or a Core admin can change a System Administrator's access" | The person is a system administrator and you are an Administrator. |
-| "a user with that email already exists" | Another Hub account has that address. Ask a Core administrator. |
+| "Only a Core administrator can deactivate someone who also has other Hub roles." | The person also works in Releases or Subscribers. Ask a Core administrator. |
+| "Only a Core administrator can reactivate someone who has no Calendar role." | The person has no Calendar role. Ask a Core administrator. |
+| "Only an HQ Administrator, a System Administrator or a Core administrator can deactivate someone in an HQ organization." | The person belongs to an HQ organization and you don't. |
+| "Only a System Administrator or a Core administrator can deactivate a System Administrator." | The person is a system administrator and you are an Administrator. |
+
+If the person's access changed a moment ago, the same message can appear after you choose the button instead.
 
 ## Can't do this?
 
@@ -89,5 +93,6 @@ The page offers the button for other people too, then refuses when you confirm:
 | "use 12 digits and hyphens, like 250-555-0100" | Fix the mobile number, or leave it empty. |
 | "job title: at most 100 characters" | Shorten the job title. |
 | "description: at most 2000 characters" | Shorten the description. |
-| "health isn't one of this user's ministries in the Calendar yet: save their ministries first; the Calendar picks them up within a minute" | The ministry (shown by its short web name) was only just given. Wait a minute, reload, and choose the rank again. |
+| "Health isn't one of this user's ministries in the Calendar yet. Save their ministries first." | That ministry was only just given. Wait a minute, reload, and choose the rank again. |
+| "A user with that email already exists." | When linking: another Hub account has that address. Ask a Core administrator. |
 | "This user isn't in the Calendar." | The address you opened isn't a Calendar user. Go back to **All Calendar users**. |

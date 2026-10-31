@@ -16,6 +16,7 @@ describe("Calendar user routes", () => {
     tdb = await createCalendarTestDb();
     app = createTestApp(tdb.db);
     await projectOrg(app, "health", { abbreviation: "HLTH" });
+    await projectOrg(app, "finance", { abbreviation: "FIN", displayName: "Sample Finance" });
     await projectUser(app, { id: id(1), email: "a@example.test", displayName: "Sample Admin", isActive: true, calendarRole: "Calendar.Administrator", organizationKeys: ["health"] });
     await projectUser(app, { id: id(2), email: "b@example.test", displayName: "Sample Advanced", isActive: true, calendarRole: "Calendar.Advanced", organizationKeys: ["health"] });
     admin = await sessionCookie(id(1));
@@ -46,7 +47,9 @@ describe("Calendar user routes", () => {
     expect(bad.body.issues[0].message).toBe("use 12 digits and hyphens, like 250-555-0100");
     const notHeld = await put(admin, `/api/users/${id(2)}/comm-contacts/finance`, { rank: 2 });
     expect(notHeld.status).toBe(409);
-    expect(notHeld.body.error).toBe("finance isn't one of this user's ministries in the Calendar yet: save their ministries first; the Calendar picks them up within a minute");
+    // Named as the ministry is shown, not by its key; a ministry the Calendar doesn't know yet only has its key.
+    expect(notHeld.body.error).toBe("Sample Finance isn't one of this user's ministries in the Calendar yet. Save their ministries first.");
+    expect((await put(admin, `/api/users/${id(2)}/comm-contacts/not-yet-here`, { rank: 2 })).body.error).toBe("not-yet-here isn't one of this user's ministries in the Calendar yet. Save their ministries first.");
     expect((await request(app).get(`/api/users/${id(99)}`).set("cookie", admin)).status).toBe(404);
     expect((await put(admin, `/api/users/${id(2)}/comm-contacts/health`, { rank: 7 })).status).toBe(400);
   });
