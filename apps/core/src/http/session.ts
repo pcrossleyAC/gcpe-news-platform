@@ -9,6 +9,7 @@ import {
   readCookie,
   SESSION_COOKIE,
   SESSION_RENEW_WINDOW_SECONDS,
+  SessionLimitError,
   verifyPassword,
   verifySession,
   type LocalAuthConfig,
@@ -18,7 +19,7 @@ import {
 } from "@gcpe/auth";
 import type { EntraClient } from "../entra/client";
 import { entraRoutes } from "../entra/routes";
-import { BREAK_GLASS_ID, breakGlassUser, endSession, sessionGate, startSession } from "../services/sessions";
+import { breakGlassUser, endSession, legacySid, sessionGate, startSession } from "../services/sessions";
 import { passwordSignIn, sessionRolesOf } from "../services/users";
 import { newSessionCookie } from "./session-cookie";
 
@@ -57,11 +58,13 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
   const requireCsrf: RequestHandler = (req, res, next) =>
     req.header(CSRF_HEADER) === "1" ? next() : void res.status(403).json({ error: "missing X-GCPE-Request header" });
   const maxSessionSeconds = deps.maxSessionSeconds ?? DEFAULT_SESSION_MAX_SECONDS;
-  const gate = deps.gate ?? sessionGate(deps.db, { localConfigured: deps.local !== null });
+  const gate = deps.gate ?? sessionGate(deps.db, { localConfigured: deps.local !== null, secret: deps.secret });
+  /** How long a session lasts, for the Hub's own wording (review S M2). */
+  const sessionHours = Math.round((maxSessionSeconds / 3600) * 100) / 100;
   const issue = async (res: Response, user: SessionUser, terms: { sid: string; signedAt: number }) => {
     const { cookie, expiresAt } = await newSessionCookie(deps.secret, deps.secure, user, { ...terms, maxSessionSeconds });
     res.setHeader("set-cookie", cookie);
-    res.json({ user, expiresAt: new Date(expiresAt * 1000).toISOString() });
+    res.json({ user, expiresAt: new Date(expiresAt * 1000).toISOString(), sessionHours });
   };
   /** A new sign-in: recorded, then issued. */
   const signIn = async (res: Response, user: SessionUser) => {
@@ -72,6 +75,11 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
   const notSignedIn = (res: Response) => {
     clear(res);
     res.status(401).json({ error: "not signed in" });
+  };
+  /** Core's database can't answer the session check: not a sign-out, so the cookie stays (I1). */
+  const checkUnavailable = (res: Response) => {
+    res.setHeader("retry-after", "5");
+    res.status(503).json({ error: "sign-in check unavailable" });
   };
 
   r.post(
@@ -110,16 +118,19 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
 
   // Ends this session on the server too (owner decision 2026-10-31), so a copy of the cookie
   // can't be used afterwards. Only this sign-in: the person's other computers stay signed in.
-  r.post("/auth/logout", requireCsrf, async (req, res, next) => {
+  // The browser's cookie is cleared first, so Sign out works even when Core can't record it (M5).
+  r.post("/auth/logout", requireCsrf, async (req, res) => {
+    clear(res);
+    const cookie = readCookie(req.header("cookie"), SESSION_COOKIE);
+    const session = cookie ? await verifySession(deps.secret, cookie, { maxSessionSeconds }).catch(() => null) : null;
     try {
-      const cookie = readCookie(req.header("cookie"), SESSION_COOKIE);
-      const session = cookie ? await verifySession(deps.secret, cookie, { maxSessionSeconds }).catch(() => null) : null;
-      if (session?.sid) await endSession(deps.db, session.sid);
-      clear(res);
-      res.status(204).end();
+      // A pre-limit token is ended under its fixed id (M3).
+      if (session) await endSession(deps.db, session.sid ?? legacySid(deps.secret, session.id, session.signedAt), session.id);
     } catch (e) {
-      next(e);
+      console.error(`[core] sign-out couldn't be recorded: Core's database is unavailable (${e instanceof Error ? e.name : "error"})`);
+      return void res.status(503).json({ error: "sign-out not recorded" });
     }
+    res.status(204).end();
   });
 
   r.get("/auth/session", async (req, res, next) => {
@@ -134,18 +145,34 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
         return notSignedIn(res);
       }
       // Inactive, signed out or ended by a deactivation: the same refusal every app gives.
-      const current = await gate(session);
+      let current: SessionUser | null;
+      try {
+        current = await gate(session);
+      } catch (e) {
+        console.error(`[core] session check unavailable (${e instanceof Error ? e.name : "error"})`);
+        return checkUnavailable(res);
+      }
       if (!current) return notSignedIn(res);
       const now = Math.floor(Date.now() / 1000);
       const limit = session.signedAt + maxSessionSeconds;
       // A token from before the limit has no sid: record it now, counting from its issue time, so
       // Sign out and a deactivation can end it like any other.
-      if (!session.sid) return void (await issue(res, current, { sid: await startSession(deps.db, current.id, session.signedAt, maxSessionSeconds), signedAt: session.signedAt }));
-      const changed = !sameRoles(session.roles, current.roles) || session.name !== current.name;
-      // Renewal can't go past the limit: once the token already runs to it, there is nothing to renew.
-      const renew = session.expiresAt - now <= SESSION_RENEW_WINDOW_SECONDS && session.expiresAt < limit;
-      if (renew || changed) return void (await issue(res, current, { sid: session.sid, signedAt: session.signedAt }));
-      res.json({ user: current, expiresAt: new Date(session.expiresAt * 1000).toISOString() });
+      // Its id is fixed for that token (M3): recorded once, and refused by the check above once ended.
+      try {
+        if (!session.sid) {
+          const sid = await startSession(deps.db, current.id, session.signedAt, maxSessionSeconds, legacySid(deps.secret, current.id, session.signedAt));
+          return void (await issue(res, current, { sid, signedAt: session.signedAt }));
+        }
+        const changed = !sameRoles(session.roles, current.roles) || session.name !== current.name;
+        // Renewal can't go past the limit: once the token already runs to it, there is nothing to renew.
+        const renew = session.expiresAt - now <= SESSION_RENEW_WINDOW_SECONDS && session.expiresAt < limit;
+        if (renew || changed) return void (await issue(res, current, { sid: session.sid, signedAt: session.signedAt }));
+      } catch (e) {
+        // The limit came while this ran (M4): the same answer as a token past it.
+        if (e instanceof SessionLimitError) return notSignedIn(res);
+        throw e;
+      }
+      res.json({ user: current, expiresAt: new Date(session.expiresAt * 1000).toISOString(), sessionHours });
     } catch (e) {
       next(e);
     }

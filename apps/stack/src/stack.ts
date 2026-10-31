@@ -6,7 +6,7 @@ import type { Server } from "node:http";
 import express, { Router, type Express } from "express";
 import rateLimit from "express-rate-limit";
 import type { ZodTypeAny } from "zod";
-import { authFromEnv, requireBearer, requireRole, setSessionGate } from "@gcpe/auth";
+import { authFromEnv, requireBearer, requireRole, sessionGateInstalled, setSessionGate } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createFakeEmergencyFeed } from "@gcpe/emergency-feed-fake";
@@ -332,6 +332,8 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // active, not signed out), so a deactivation is refused on the very next request anywhere, not
   // only in Core. Installed before the other apps start, removed on shutdown.
   const uninstallSessionGate = setSessionGate(core.sessionGate);
+  if (!sessionGateInstalled()) throw new Error("[stack] Core's session check was not installed: refusing to start");
+  console.log("[stack] staff session check installed for every app");
   const nrms: NrmsHandle = await startNamed("NRMS", "NRMS", () => startNrms(nrmsEnv));
   const nod: NodHandle = await startNamed("NoD", "NOD", () => startNod(nodEnv));
   // The Calendar runs only once its own database has been created (SiteGround: by hand in Site

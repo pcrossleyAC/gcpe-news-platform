@@ -20,6 +20,8 @@ const schema = z
     LOCAL_ADMIN_PASSWORD_HASH: z.string().optional(),
     LOCAL_AUTH_SECRET: z.string().optional(),
     SESSION_SECRET: z.string().optional(),
+    /** Set by the stack for every app: refuse a cookie (503) while Core's session check isn't installed. */
+    SESSION_GATE_REQUIRED: boolString,
     SESSION_COOKIE_SECURE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
     /** Owner decision 2026-10-31: how long a staff session lasts from sign-in, whatever the renewals. */
     SESSION_MAX_HOURS: z.coerce
@@ -61,7 +63,7 @@ export function authFromEnv(
     bearer: {
       ...(e.ENTRA_TENANT_ID ? { issuer: entraIssuer(e.ENTRA_TENANT_ID), audience: e.AUTH_AUDIENCE!, keys: entraJwks(e.ENTRA_TENANT_ID) } : {}),
       ...(local ? { local: { secret: local.secret } } : {}),
-      ...(session ? { session: { ...session } } : {}),
+      ...(session ? { session: { ...session, gateRequired: e.SESSION_GATE_REQUIRED } } : {}),
     },
     loginRouter: local ? localLoginRouter(local) : null,
     local,

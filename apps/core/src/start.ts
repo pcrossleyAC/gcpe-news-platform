@@ -8,7 +8,7 @@ import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import type { SessionGate } from "@gcpe/auth";
 import { createApp } from "./app";
-import { sessionGate as coreSessionGate } from "./services/sessions";
+import { sessionCheckDb, sessionGate as coreSessionGate } from "./services/sessions";
 import { createEntraClient } from "./entra/client";
 import { signInSettingsFromEnv } from "./entra/config";
 import { republishAll } from "./services/republish";
@@ -64,7 +64,9 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
 
-  const sessionGate = coreSessionGate(db, { localConfigured: auth.local !== null });
+  // Its own small pool with short timeouts (review S I1): every app's cookie requests use it.
+  const check = sessionCheckDb(parsed.DATABASE_URL);
+  const sessionGate = coreSessionGate(check.db, { localConfigured: auth.local !== null, secret: auth.session?.secret ?? "" });
   const app = createApp({
     sessionGate,
     trustProxyHops: trustProxyHopsFrom(env),
@@ -124,6 +126,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
       { name: "cabinet change scheduler", close: async () => clearInterval(cabinetLoop) },
       { name: "db pool", close: () => pool.end() },
+      { name: "session check pool", close: () => check.pool.end() },
     ],
   };
 }

@@ -5,12 +5,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import { decodeJwt, SignJWT } from "jose";
-import type { TestDatabase } from "@gcpe/db-kit";
-import { hashPassword } from "@gcpe/auth";
+import express from "express";
+import { createDb, type TestDatabase } from "@gcpe/db-kit";
+import { hashPassword, mintSession, requireBearer } from "@gcpe/auth";
 import { createCoreTestDb } from "../../test/helpers";
 import { createApp } from "../app";
 import { staffSessions } from "../db/schema";
-import { createUser, createUserSchema, updateUser } from "../services/users";
+import { createUser, createUserSchema, setRoles, updateUser } from "../services/users";
+import { sessionCheckDb, sessionGate } from "../services/sessions";
 
 const SECRET = "session-secret-for-limits-tests-0123456789";
 const PW = "correct horse battery";
@@ -181,5 +183,116 @@ describe("Core session limits", () => {
     await updateUser(tdb.db, u.id, { isActive: false }, []);
     expect((await api(legacy)).status).toBe(401);
     expect((await api(tokenOf(renewed)!)).status).toBe(401);
+  });
+
+  // Fix round 1 (review S).
+  const legacyToken = async (id: string, email: string, iat: number) => {
+    const { localKey } = await import("../../../../packages/auth/src/local");
+    return new SignJWT({ name: "Legacy", email, roles: ["NRMS.Editor"] })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuer("gcpe-session")
+      .setAudience("gcpe-session")
+      .setSubject(id)
+      .setIssuedAt(iat)
+      .setExpirationTime(iat + 3600)
+      .sign(localKey(SECRET));
+  };
+
+  it("M2: sign-in and check-in say how many hours a session lasts", async () => {
+    const u = await newUser();
+    const res = await login(u.email);
+    expect(res.body.sessionHours).toBe(12);
+    expect((await check(tokenOf(res)!)).body.sessionHours).toBe(12);
+  });
+
+  it("M3: a pre-deploy cookie gets one fixed session id, so after Sign out neither it nor a copy can be upgraded again", async () => {
+    const u = await newUser();
+    const legacy = await legacyToken(u.id, u.email, Math.floor(Date.now() / 1000) - 60);
+    const first = tokenOf(await check(legacy))!;
+    const again = tokenOf(await check(legacy))!;
+    expect(decodeJwt(again).sid).toBe(decodeJwt(first).sid);
+    await request(app).post("/auth/logout").set("x-gcpe-request", "1").set("cookie", `gcpe_session=${first}`);
+    expect((await check(legacy)).status).toBe(401);
+    expect((await api(legacy)).status).toBe(401);
+    // Signing out with the pre-deploy cookie itself ends it too.
+    const v = await newUser();
+    const other = await legacyToken(v.id, v.email, Math.floor(Date.now() / 1000) - 60);
+    expect((await api(other)).status).toBe(200);
+    expect((await request(app).post("/auth/logout").set("x-gcpe-request", "1").set("cookie", `gcpe_session=${other}`)).status).toBe(204);
+    expect((await api(other)).status).toBe(401);
+    expect((await check(other)).status).toBe(401);
+  });
+
+  it("M4: a check-in that reaches the limit while it runs is a 401, not a server error", async () => {
+    const u = await newUser();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at(0);
+    const sid = String(decodeJwt(tokenOf(await login(u.email))!).sid);
+    at(11 * 60 + 30);
+    // A renewal at 11:30 runs to the limit; then their roles change, so the next check-in re-issues.
+    const { token } = await mintSession(SECRET, { id: u.id, name: `Limits ${n}`, email: u.email, roles: ["NRMS.Editor"] }, { sid, signedAt: sec(T0) });
+    await setRoles(tdb.db, u.id, ["NRMS.Viewer"], []);
+    vi.setSystemTime(new Date(T0.getTime() + 12 * 3600_000 - 1000));
+    const real = sessionGate(tdb.db, { localConfigured: false, secret: SECRET });
+    // The clock reaches the limit between the token check and the re-issue.
+    const racing = createApp({ db: tdb.db, subscribers: [], auth: { session: { secret: SECRET } }, session: { secret: SECRET, secure: true, local: null }, sessionGate: async (s) => {
+      const r = await real(s);
+      at(12 * 60);
+      return r;
+    } });
+    const res = await request(racing).get("/auth/session").set("cookie", `gcpe_session=${token}`);
+    expect(res.status).toBe(401);
+    expect(tokenOf(res)).toBe("");
+  });
+
+  it("I1/I2/M5: with Core's database down, break-glass still signs in, checks in, works in other apps and signs out; anyone else gets 503 with the cookie kept; Sign out still clears the cookie", async () => {
+    const u = await newUser();
+    const userToken = tokenOf(await login(u.email))!;
+    const dead = createDb(tdb.url, { max: 1, connectionTimeoutMillis: 500 });
+    await dead.pool.end();
+    const local = { username: "admin", passwordHash: await hashPassword(ADMIN_PW), secret: "local-secret-for-limits-tests-0123456789" };
+    const gate = sessionGate(dead.db, { localConfigured: true, secret: SECRET });
+    const down = createApp({ db: dead.db, subscribers: [], auth: { session: { secret: SECRET } }, session: { secret: SECRET, secure: true, local, ratePerMinute: 1000 }, sessionGate: gate });
+    // Another app in the stack (its own database is fine), checking with Core's gate.
+    const otherApp = express();
+    otherApp.get("/x", requireBearer({ session: { secret: SECRET, gate } }), (_req, res) => void res.json({ ok: true }));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const warns = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const signIn = await request(down).post("/auth/login").set("x-gcpe-request", "1").send({ username: "admin", password: ADMIN_PW });
+      expect(signIn.status).toBe(200);
+      const glass = tokenOf(signIn)!;
+      expect((await request(down).get("/auth/session").set("cookie", `gcpe_session=${glass}`)).status).toBe(200);
+      expect((await request(otherApp).get("/x").set("cookie", `gcpe_session=${glass}`)).status).toBe(200);
+
+      const userCheck = await request(down).get("/auth/session").set("cookie", `gcpe_session=${userToken}`);
+      expect(userCheck.status).toBe(503);
+      expect(userCheck.body).toEqual({ error: "sign-in check unavailable" });
+      expect(userCheck.headers["set-cookie"]).toBeUndefined();
+      const userApi = await request(otherApp).get("/x").set("cookie", `gcpe_session=${userToken}`);
+      expect(userApi.status).toBe(503);
+      expect(userApi.headers["set-cookie"]).toBeUndefined();
+
+      const userOut = await request(down).post("/auth/logout").set("x-gcpe-request", "1").set("cookie", `gcpe_session=${userToken}`);
+      expect(tokenOf(userOut)).toBe(""); // cleared in the browser even though Core couldn't record it
+      expect(userOut.status).toBe(503);
+
+      const out = await request(down).post("/auth/logout").set("x-gcpe-request", "1").set("cookie", `gcpe_session=${glass}`);
+      expect(out.status).toBe(204);
+      expect((await request(otherApp).get("/x").set("cookie", `gcpe_session=${glass}`)).status).toBe(401);
+      expect((await request(down).get("/auth/session").set("cookie", `gcpe_session=${glass}`)).status).toBe(401);
+    } finally {
+      errors.mockRestore();
+      warns.mockRestore();
+    }
+  });
+
+  it("I1: the session check has its own small pool that gives up within seconds", async () => {
+    const { pool } = sessionCheckDb(tdb.url);
+    try {
+      expect(pool.options).toMatchObject({ max: 4, connectionTimeoutMillis: 2000, statement_timeout: 2000, query_timeout: 2500 });
+    } finally {
+      await pool.end();
+    }
   });
 });

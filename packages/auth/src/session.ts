@@ -20,6 +20,15 @@ export const CSRF_HEADER = "x-gcpe-request";
  * renewals (SESSION_MAX_HOURS overrides it, the same value for every app). */
 export const DEFAULT_SESSION_MAX_SECONDS = 12 * 60 * 60;
 
+/** Minting or verifying a token once its sign-in is older than the session limit: a renewal
+ * answers this with "not signed in", never a server error. */
+export class SessionLimitError extends Error {
+  constructor() {
+    super("the session limit has passed: sign in again");
+    this.name = "SessionLimitError";
+  }
+}
+
 export interface SessionUser {
   id: string;
   name: string;
@@ -59,7 +68,7 @@ export async function mintSession(
   const now = Math.floor(Date.now() / 1000);
   const signedAt = o.signedAt ?? now;
   const limit = signedAt + (o.maxSessionSeconds ?? DEFAULT_SESSION_MAX_SECONDS);
-  if (limit <= now) throw new Error("the session limit has passed: sign in again");
+  if (limit <= now) throw new SessionLimitError();
   const expiresAt = Math.min(now + (o.ttlSeconds ?? SESSION_TTL_SECONDS), limit);
   const token = await new SignJWT({ name: user.name, email: user.email, roles: [...user.roles], sat: signedAt, ...(o.sid ? { sid: o.sid } : {}) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
@@ -84,7 +93,7 @@ export async function verifySession(secret: string, token: string, opts: { maxSe
   const signedAt = typeof payload.sat === "number" ? payload.sat : payload.iat!;
   // A sign-in time later than the token's own issue can't come from Core: refuse it.
   if (signedAt > payload.iat!) throw new Error("invalid session: signed in after issue");
-  if (now >= signedAt + (opts.maxSessionSeconds ?? DEFAULT_SESSION_MAX_SECONDS)) throw new Error("the session limit has passed: sign in again");
+  if (now >= signedAt + (opts.maxSessionSeconds ?? DEFAULT_SESSION_MAX_SECONDS)) throw new SessionLimitError();
   return {
     id: String(payload.sub),
     name: typeof payload.name === "string" ? payload.name : String(payload.sub),

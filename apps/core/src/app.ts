@@ -35,7 +35,7 @@ export function createApp(deps: {
   // The cookie carries the roles minted at sign-in; every /api request made with it checks the
   // person and this sign-in as Core holds them now (services/sessions.ts), so a deactivated
   // user is refused, a signed-out session too, and a demoted one gets their current roles.
-  const gate = deps.sessionGate ?? sessionGate(deps.db, { localConfigured: deps.session?.local != null });
+  const gate = deps.sessionGate ?? sessionGate(deps.db, { localConfigured: deps.session?.local != null, secret: deps.session?.secret ?? deps.auth.session?.secret ?? "" });
   const auth: BearerOptions = deps.auth.session
     ? { ...deps.auth, session: { secure: deps.session?.secure, maxSessionSeconds: deps.session?.maxSessionSeconds, ...deps.auth.session, gate } }
     : deps.auth;

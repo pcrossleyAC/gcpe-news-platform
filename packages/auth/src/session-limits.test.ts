@@ -150,3 +150,59 @@ describe("requireBearer and the session gate", () => {
     expect((await request(a).get("/x").set("authorization", `Bearer ${bearer}`)).status).toBe(200);
   });
 });
+
+// Fix round 1 (review S I1, M4, M6).
+describe("when the session check can't answer", () => {
+  const appWith = (session: Parameters<typeof requireBearer>[0]["session"]) => {
+    const a = express();
+    a.get("/x", requireBearer({ session }), (req, res) => void res.json({ auth: req.auth }));
+    return a;
+  };
+  const cookie = (t: string) => `${SESSION_COOKIE}=${t}`;
+
+  it("a gate that fails answers 503 with Retry-After, keeps the cookie, and logs once per 30 seconds, not per request", async () => {
+    const { token } = await mintSession(secret, user, { sid: "sid-1" });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const a = appWith({ secret, gate: async () => Promise.reject(new Error("connection timeout")) });
+      for (let i = 0; i < 3; i++) {
+        const res = await request(a).get("/x").set("cookie", cookie(token));
+        expect(res.status).toBe(503);
+        expect(res.body).toEqual({ error: "sign-in check unavailable" });
+        expect(res.headers["retry-after"]).toBe("5");
+        expect(res.headers["set-cookie"]).toBeUndefined();
+      }
+      expect(errors.mock.calls.filter((c) => String(c[0]).includes("session check unavailable"))).toHaveLength(1);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("an app the stack says must have a gate refuses with 503 while none is installed (never the signature alone)", async () => {
+    const { token } = await mintSession(secret, user, { sid: "sid-1" });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const a = appWith({ secret, gateRequired: true });
+      expect((await request(a).get("/x").set("cookie", cookie(token))).status).toBe(503);
+      setSessionGate(async () => user);
+      expect((await request(a).get("/x").set("cookie", cookie(token))).status).toBe(200);
+    } finally {
+      errors.mockRestore();
+    }
+    expect(authFromEnv({ ENTRA_TENANT_ID: "t", AUTH_AUDIENCE: "a", SESSION_SECRET: secret, SESSION_GATE_REQUIRED: "true" }).bearer.session?.gateRequired).toBe(true);
+    expect(authFromEnv({ ENTRA_TENANT_ID: "t", AUTH_AUDIENCE: "a", SESSION_SECRET: secret }).bearer.session?.gateRequired).toBe(false);
+  });
+
+  it("roles the gate vouched for are marked current; the token's own are not", async () => {
+    const { token } = await mintSession(secret, user, { sid: "sid-1" });
+    expect((await request(appWith({ secret, gate: async () => user })).get("/x").set("cookie", cookie(token))).body.auth.claims.rolesCurrent).toBe(true);
+    expect((await request(appWith({ secret })).get("/x").set("cookie", cookie(token))).body.auth.claims.rolesCurrent).toBeUndefined();
+  });
+
+  it("minting past the limit throws a SessionLimitError a renewal can answer with 401", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at(12 * 60);
+    const { SessionLimitError } = await import("./session");
+    await expect(mintSession(secret, user, { sid: "sid-1", signedAt: s(T0) })).rejects.toBeInstanceOf(SessionLimitError);
+  });
+});

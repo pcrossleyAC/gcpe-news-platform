@@ -1,4 +1,4 @@
-export { actorOf, entraIssuer, entraJwks, requireAnyRole, requireBearer, requireRole, setSessionGate, type AuthContext, type BearerOptions, type SessionGate } from "./bearer";
+export { actorOf, entraIssuer, entraJwks, requireAnyRole, requireBearer, requireRole, sessionGateInstalled, setSessionGate, type AuthContext, type BearerOptions, type SessionGate } from "./bearer";
 export { CALENDAR_LEVELS, calendarLevel, checkCalendarGrant, grantCeiling, isCalendarRole, type CalendarGrantCheck, type CalendarGrantRefusal } from "./calendar-roles";
 export { createClientCredentialsProvider } from "./client-credentials";
 export { authFromEnv } from "./from-env";
@@ -25,6 +25,7 @@ export {
   SESSION_COOKIE,
   SESSION_ISSUER,
   SESSION_RENEW_WINDOW_SECONDS,
+  SessionLimitError,
   SESSION_TTL_SECONDS,
   sessionCookie,
   verifySession,

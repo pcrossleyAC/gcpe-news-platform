@@ -346,6 +346,10 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   if (dataDir && prefix === "CALENDAR" && view.STORAGE_DIR && !isAbsolute(view.STORAGE_DIR)) {
     view.STORAGE_DIR = join(dataDir, view.STORAGE_DIR);
   }
+  // Review S M6: wherever sessions are on, every app in the stack checks a staff cookie with Core (stack.ts installs the
+  // check); without it, a cookie is refused (503), never accepted on its signature alone. Last,
+  // so no setting can turn it off.
+  if (view.SESSION_SECRET) view.SESSION_GATE_REQUIRED = "true";
   return view;
 }
 

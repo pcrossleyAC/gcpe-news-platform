@@ -108,4 +108,33 @@ describe("the Calendar actor, re-derived on every request", () => {
   it("anonymous is 401", async () => {
     expect((await request(app).get("/api/me")).status).toBe(401);
   });
+
+  // Review S M1 (owner 2026-10-31: removals take effect at once): in the stack, Core's session
+  // check gives each request the person's current roles; the Calendar takes the lower of that
+  // Calendar role and its own copy, so a removal or downgrade in Core works before the event comes.
+  describe("with Core's current roles (the stack's session check)", () => {
+    let current: string[] = [];
+    let gated: ReturnType<typeof createTestApp>;
+    beforeAll(async () => {
+      gated = createTestApp(tdb.db, { auth: { session: { secret: SESSION_SECRET, gate: async (v) => ({ id: v.id, name: v.name, email: v.email, roles: current }) } } });
+      await projectUser(app, user(40, { calendarRole: "Calendar.Administrator" }));
+    });
+    const meGated = async () => request(gated).get("/api/me").set("cookie", await sessionCookie(id(40)));
+
+    it("a Calendar role removed in Core is refused on the next request, before the Calendar hears of it", async () => {
+      current = ["Calendar.Administrator"];
+      expect((await meGated()).body).toMatchObject({ role: "Calendar.Administrator" });
+      current = ["NRMS.Viewer"];
+      const res = await meGated();
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({ error: "no Calendar access" });
+    });
+
+    it("a lowered role takes the lower level at once; a raised one waits for the Calendar's own copy", async () => {
+      current = ["Calendar.ReadOnly"];
+      expect((await meGated()).body).toMatchObject({ role: "Calendar.ReadOnly", level: 1 });
+      current = ["Calendar.SysAdmin"];
+      expect((await meGated()).body).toMatchObject({ role: "Calendar.Administrator" });
+    });
+  });
 });

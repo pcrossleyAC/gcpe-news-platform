@@ -666,7 +666,12 @@ from starting; the reason is in `C:\gcpe\service\logs\gcpe-stack.err.log`). On
 `admin`), however often the Hub renews it; then the person signs in again. To change it, add
 `SESSION_MAX_HOURS=<hours>` (more than 0, at most 168) to `gcpe.env` and `Restart-Service
 gcpe-stack`; every app uses the one value. Deactivating a user in the Hub, or their **Sign out**,
-ends that session at once in every app. Details: siteground.md, "Revoking access".
+ends that session at once in every app. If Core's database is down, staff see "The Hub can't check
+your sign-in right now" (nobody is signed out) and `admin` still works. The manual pages say 12
+hours: edit them if you change the value. Details: siteground.md, "Revoking access".
+
+Rolling back past this change (Core migration 0012) means deploying the previous release and
+leaving the `staff_sessions` table in place; never drop it by hand.
 
 ### D8. Connect the outside services
 
