@@ -85,6 +85,12 @@ export interface FilesMountOptions {
    */
   siteFileByName?: (name: string) => Promise<{ name: string; storageKey: string } | null>;
   /**
+   * NRMS's `isDeletedSiteFileName` (apps/nrms/src/website/files.ts): staff deleted a site file of
+   * this name (any case) in the Hub. Such a name is the 404, never the legacy fallback (suite
+   * review W2): the Hub told them it is gone from the public site.
+   */
+  siteFileDeleted?: (name: string) => Promise<boolean>;
+  /**
    * The legacy safety net: where `/files/<path>` is 302'd when nothing here answers it (legacy's
    * Azure front door), or null/absent for the plain 404. Never for `releases/` or `slides/`.
    */
@@ -140,7 +146,7 @@ const statusOf = (err: unknown): number | undefined => {
 export function filesHandlers(opts: FilesMountOptions): [RequestHandler, RequestHandler, ErrorRequestHandler] {
   const notFound = siteNotFound(opts.outputDir);
   const fallbackOrigin = opts.fallbackOrigin ?? null;
-  /** Nothing here answers: the 302 safety net (safe paths only), else the 404. */
+  /** Nothing here answers: the 302 safety net (safe paths only, never a name deleted in the Hub), else the 404. */
   const fallbackOrNotFound: RequestHandler = (req, res, next) => {
     if (!fallbackOrigin) return notFound(req, res, next);
     const n = normalizeLegacyPath(req.url.replace(/[?#].*$/s, "").slice(1));
@@ -149,7 +155,15 @@ export function filesHandlers(opts: FilesMountOptions): [RequestHandler, Request
     // its resolver tried that first (46 of 46 mixed-case links surveyed on 2026-10-29 answered only
     // lowercased). Each segment percent-encoded; the host is the configured origin, nothing else.
     const location = `${fallbackOrigin}/files/${n.path.toLowerCase().split("/").map(encodeURIComponent).join("/")}`;
-    res.status(302).set("Cache-Control", "no-store").location(location).end();
+    const redirect = () => void res.status(302).set("Cache-Control", "no-store").location(location).end();
+    if (!opts.siteFileDeleted) return redirect();
+    opts.siteFileDeleted(n.path).then(
+      (gone) => (gone ? notFound(req, res, next) : redirect()),
+      (err: unknown) => {
+        console.error(`[stack] deleted site file lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+        if (!res.headersSent) res.status(503).set("Cache-Control", "no-store").type("text/plain").send("Service unavailable");
+      },
+    );
   };
   const sendStored = (req: Request, res: Response, next: (err?: unknown) => void, storageKey: string, name: string) => {
     // root + a single-segment key: send refuses anything that would leave the folder.

@@ -4,7 +4,7 @@ import { dbClock, type Db, type TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { createNrmsTestDb, createScheduledRelease, editor, requireBcTzdata2026b } from "../test/helpers";
 import { ReleaseRuleError, ReleaseStateError } from "./releases/errors";
-import { deleteRelease, saveCategories } from "./releases/service";
+import { deleteRelease, saveCategories, saveDocumentLanguage } from "./releases/service";
 import { loadView } from "./releases/store";
 import { cancel, schedule, unpublish } from "./releases/workflow";
 import { publishDue, startPublisher } from "./publisher";
@@ -159,6 +159,27 @@ describe("publisher", () => {
     expect(evs[2]!.envelope.data).not.toHaveProperty("notify");
     expect((await loadView(tdb.db, due.id))!).toMatchObject({ status: "published", releasedAt: due.publishAt });
     expect((await logs(due.id)).slice(-2).map((l) => l.text)).toEqual(["Released for Publishing", "Published to BC Gov News and News On Demand"]);
+  });
+
+  // Suite review R2: NoD matches people already sent a release by its key, so a republish under a
+  // new key would email every subscriber (and media list) again. The key must survive this sequence.
+  it("unpublish, edit the headline, republish: a Story goes out again under the same key", async () => {
+    const due = await createScheduledRelease(tdb.db, { type: "story", headline: "Ferry sails" });
+    await publishDue({ db: tdb.db, subscribers: subs });
+    await unpublish(tdb.db, due.id, (await loadView(tdb.db, due.id))!.version, editor);
+    await publishDue({ db: tdb.db, subscribers: subs });
+    let v = (await loadView(tdb.db, due.id))!;
+    const doc = v.documents[0]!;
+    const en = doc.languages.find((l) => l.languageId === 4105)!;
+    v = await saveDocumentLanguage(tdb.db, due.id, doc.id, 4105, {
+      version: v.version, layout: doc.layout, pageTitle: en.pageTitle, headline: "Ferry sails late", subheadline: en.subheadline,
+      organizations: en.organizations, byline: en.byline, bodyHtml: en.bodyHtml, pageImageId: en.pageImageId, contacts: en.contacts,
+    }, editor);
+    expect(v.key).toBe(due.key);
+    await schedule(tdb.db, due.id, { version: v.version, publishAt: "now" }, editor, deps);
+    expect((await publishDue({ db: tdb.db, subscribers: subs })).published).toEqual([due.key]);
+    const evs = await events();
+    expect(evs.map((e) => [e.type, e.envelope.data.key])).toEqual([["release.published", due.key], ["release.unpublished", due.key], ["release.published", due.key]]);
   });
 
   it("a failed correction that is re-scheduled is still a correction (release.updated, no second go-live)", async () => {

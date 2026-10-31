@@ -186,9 +186,12 @@ describe("filesHandlers with imported legacy site files", () => {
   /** name (any case) → storage key, as NRMS's findSiteFileByName answers. */
   const rows = new Map<string, { name: string; storageKey: string }>();
   const siteFileByName = vi.fn(async (name: string) => rows.get(name.toLowerCase()) ?? null);
+  /** Names staff deleted in the Hub, lowercased, as NRMS's isDeletedSiteFileName answers. */
+  const deleted = new Set<string>();
+  const siteFileDeleted = vi.fn(async (name: string) => deleted.has(name.toLowerCase()));
   const appWith = (fallbackOrigin: string | null) => {
     const a = express();
-    a.use("/files", ...filesHandlers({ storageDir, outputDir, isPublic: (k) => isPublic(k), siteFileByName: (n) => siteFileByName(n), fallbackOrigin }));
+    a.use("/files", ...filesHandlers({ storageDir, outputDir, isPublic: (k) => isPublic(k), siteFileByName: (n) => siteFileByName(n), siteFileDeleted: (n) => siteFileDeleted(n), fallbackOrigin }));
     a.use((_req, res) => void res.status(404).json({ error: "not found" }));
     return a;
   };
@@ -264,6 +267,29 @@ describe("filesHandlers with imported legacy site files", () => {
     expect((await request(on).get("/files/Unknown.pdf")).headers.location).toBe(`${ORIGIN}/files/unknown.pdf`);
     expect((await request(on).head("/files/unknown.pdf")).status).toBe(302);
     expect(brief(await request(off).get("/files/Newsroom/Not%20Copied%23yet.pdf"))).toEqual(notFoundShape);
+  });
+
+  // Suite review W2: staff deleted it in the Hub, so legacy's copy of that name must not answer.
+  it("a file deleted in the Hub is the 404 in any letter case, never the 302 to legacy's copy; other names still fall back", async () => {
+    deleted.add("old plan.pdf");
+    try {
+      for (const p of ["/files/Old%20Plan.pdf", "/files/old%20plan.pdf", "/files/OLD%20PLAN.PDF"]) {
+        expect(brief(await request(on).get(p)), p).toEqual(notFoundShape);
+        expect((await request(on).head(p)).status, p).toBe(404);
+      }
+      expect((await request(on).get("/files/Old%20Plan%202.pdf")).status).toBe(302);
+    } finally {
+      deleted.clear();
+    }
+  });
+
+  it("a failed deleted-name check is a 503 that is never cached, never a 302", async () => {
+    siteFileDeleted.mockRejectedValueOnce(new Error("db down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await request(on).get("/files/Gone.pdf");
+    expect(res.status).toBe(503);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    spy.mockRestore();
   });
 
   it("an NRMS single-segment name that exists but isn't a regular file is NRMS's 404, not a lookup or a fallback", async () => {

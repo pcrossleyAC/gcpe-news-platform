@@ -1109,7 +1109,13 @@ site file over that limit gets nginx's HTML `413` instead of the Hub's message. 
    lowercased); a mixed-case-only blob (the footage licence is one) is reachable only through the
    import, so check it (below). Stack-level settings: `LEGACY_FILES_FALLBACK=false` turns it off
    (the site's 404 instead); `LEGACY_FILES_ORIGIN` (default the front door above, https origin
-   only) moves it.
+   only) moves it. **Never for a deleted name** (suite review W2, owner 2026-10-31): deleting a
+   file under Website > Files records its name, lowercased, in NRMS's `site_file_tombstones`
+   (migration `0022`), and a path whose lowercased name is there gets the site's 404 instead of
+   the 302, so legacy's copy of an imported file stops answering too. A Hub upload or replace
+   served under that name removes the record. `legacy-files:copy` skips a recorded name (counted
+   as skipped, even with `--refresh`), so a re-run doesn't bring a deleted file back. To let one
+   fall back again, delete its row from `site_file_tombstones`.
 4. Otherwise the site's 404. Unsafe paths (`..`, dot names, `~`, `:`, a trailing dot or space,
    encoded separators) are never looked up or redirected.
 
@@ -1889,7 +1895,7 @@ Every page the site serves under `<OUTPUT_DIR>`:
 | Page | Path |
 |---|---|
 | Home | `/index.html`, `/feed.xml` |
-| Release/story/factsheet/update/advisory | `/releases/<key>/index.html` |
+| Release/story/factsheet/update | `/releases/<key>/index.html` |
 | Ministries index | `/ministries/index.html` |
 | Ministry/sector/theme/tag | `/<kind>/<key>/index.html`, `/<kind>/<key>/feed.xml` |
 | Archive index | `/archive/index.html` |
@@ -1901,6 +1907,8 @@ Every page the site serves under `<OUTPUT_DIR>`:
 The public site keeps a local index of every post it has rendered (`site_posts`, in the public site's own database) — its headline, date, month and category keys — so a post change can rebuild exactly the pages that listed it, both before and after the change (the News API has no "posts in a month" query). A post's publish, update or unpublish event rebuilds its own page, then its dependents (home, archive, sitemap, and its ministry/sector/theme/tag pages), reading the index row from before the change.
 
 A layout change (bumping `RENDER_CHROME_VERSION`) or a Blue Bridge/test-flag switch queues every page on the site — every published post, then every aggregate page — on the next `site.rebuild_requested` event, at the next start, or on the next `site.sync` tick (the chrome check runs every tick, not only on an event or a start). See "The rebuild queue" below for how that queue drains.
+
+**Advisories never get a page.** A release NRMS marks as not for the web (every Advisory, as in legacy) is never stored as a published post by the News API, so it has no page and is in no listing, search, feed, sitemap or API answer; NoD still gets its event and sends it to its media lists. A key that was public before comes off the site the way an unpublish takes it off. News API migration `0012_unpublish_advisories` (data only, safe to re-run) does that on deploy for every Advisory an older build put on the site, and writes a `post.unpublished` change for each, so the public site removes its page and rebuilds the pages that listed it within a few `site.sync` ticks. It also writes a `post.upserted` change for each post whose related band may link one, so those pages are re-rendered without it; an ordinary unpublish does the same. Check afterwards, once every process (each Windows server, every pod) runs the new build: `/releases/<advisory key>/` answers 404, and `<site>/api/Posts/Latest/home/default?postKind=advisories&api-version=1.0` returns an empty list. If not (an older process re-stored one while the deploy rolled), run the migration file again as one transaction against the News API database (`psql "$NEWSAPI_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f migrations/news-api/0012_unpublish_advisories.sql` from the release folder; it only acts on Advisories still published), or `npm run site:rebuild-all` for a page that is still on disk.
 
 To force a full rebuild by hand, delete `<OUTPUT_DIR>/.site-state.json` and restart — the next startup finds no marker and queues a rebuild of everything.
 
