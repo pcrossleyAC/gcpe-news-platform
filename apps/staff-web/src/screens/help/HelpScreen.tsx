@@ -10,7 +10,7 @@ import { MANUALS, visibleManuals } from "../../manuals/catalog";
 import { canManageWebsite, canReadWebsite } from "../website/access";
 import { canEditSubscribers, canReadSubscribers } from "../subscribers/access";
 import { canEditReleases } from "../release/access";
-import { hasCalendarRole } from "../calendar/access";
+import { canChangeCalendar, hasCalendarRole } from "../calendar/access";
 import { isCoreAdmin } from "../admin/organizations/access";
 
 interface HowTo {
@@ -127,6 +127,7 @@ const HOW_TO: HowTo[] = [
     show: hasCalendarRole,
     items: [
       {
+        show: canChangeCalendar,
         text: (
           <>
             <strong>Add an activity:</strong> in the <Link to="/calendar">Calendar</Link>, choose New activity, fill it in and choose Save ({mod("S")} or {mod("Enter")}).
@@ -134,6 +135,7 @@ const HOW_TO: HowTo[] = [
         ),
       },
       {
+        show: canChangeCalendar,
         text: (
           <>
             <strong>Edit an activity:</strong> open it from the list, change it and choose Save ({mod("S")}). You&rsquo;re taken back to the list with that activity in view and marked.
@@ -155,6 +157,7 @@ const HOW_TO: HowTo[] = [
         ),
       },
       {
+        show: canChangeCalendar,
         text: (
           <>
             <strong>Change something during the daily change freeze:</strong> the list says when the freeze is on; ask the Corp Cal Manager to make an urgent change for you.
