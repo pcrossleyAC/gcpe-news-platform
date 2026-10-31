@@ -224,6 +224,17 @@ describe("OrganizationEditForm", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
+  it("audit #19: an admin sets Abbreviation and Parent ministry right after the names, before Sort order", () => {
+    setup(true);
+    const order = ["Ministry name (required)", "Additional display name", "Abbreviation", "Parent ministry", "Sort order"].map((l) => screen.getByLabelText(l));
+    for (let i = 1; i < order.length; i++) expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("a SiteEditor doesn't see Abbreviation either", () => {
+    setup(false);
+    expect(screen.queryByLabelText("Abbreviation")).toBeNull();
+  });
+
   it("a SiteEditor doesn't see Parent ministry or Active", () => {
     setup(false);
     expect(screen.queryByLabelText("Parent ministry")).toBeNull();

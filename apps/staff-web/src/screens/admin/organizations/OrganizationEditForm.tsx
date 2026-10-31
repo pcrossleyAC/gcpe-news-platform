@@ -391,6 +391,33 @@ export function OrganizationEditForm({
         )}
       </div>
 
+      {/* Audit #19: the short name and the parent are set with the name, not after every contact. */}
+      {isAdmin && (
+        <>
+          <AbbreviationField
+            id={id("abbr")}
+            value={abbreviation}
+            onChange={setAbbreviation}
+            error={errorFor("abbreviation")}
+          />
+          <div>
+            <label htmlFor={id("parent")}>Parent ministry</label>
+            <select
+              id={id("parent")}
+              value={parentKey}
+              onChange={(e) => setParentKey(e.target.value)}
+            >
+              <option value="">None</option>
+              {parents.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+
       <div>
         <label htmlFor={id("sort")}>Sort order</label>
         <input
@@ -631,27 +658,6 @@ export function OrganizationEditForm({
 
       {isAdmin && (
         <>
-          <AbbreviationField
-            id={id("abbr")}
-            value={abbreviation}
-            onChange={setAbbreviation}
-            error={errorFor("abbreviation")}
-          />
-          <div>
-            <label htmlFor={id("parent")}>Parent ministry</label>
-            <select
-              id={id("parent")}
-              value={parentKey}
-              onChange={(e) => setParentKey(e.target.value)}
-            >
-              <option value="">None</option>
-              {parents.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
           <div>
             <input
               id={id("active")}
