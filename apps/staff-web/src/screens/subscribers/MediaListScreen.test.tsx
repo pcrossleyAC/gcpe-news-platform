@@ -28,6 +28,7 @@ interface StubOptions {
   onAdd?: (body: Record<string, unknown>) => Response | Promise<Response>;
   onSearch?: (body: Record<string, unknown>) => Response | Promise<Response>;
   members?: () => Response;
+  active?: boolean;
   onRemove?: () => Response;
   onResolve?: () => Response;
 }
@@ -39,7 +40,7 @@ function stub(roles: string[], opts: StubOptions = {}) {
     calls.push({ url, method, body });
     if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
     if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-    if (url === "/nod/api/media-lists") return jsonResponse(200, [{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 2, needsAttention: 2 }]);
+    if (url === "/nod/api/media-lists") return jsonResponse(200, [{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: opts.active ?? true, members: 2, needsAttention: 2 }]);
     if (url === "/nod/api/media-lists/budget/members" && method === "GET") return opts.members?.() ?? jsonResponse(200, MEMBERS);
     if (url === "/nod/api/media-lists/budget/members" && method === "POST") return opts.onAdd?.(body) ?? jsonResponse(201, { subscriberId: "x", created: true });
     if (url === "/nod/api/media-lists/budget/opted-out") return jsonResponse(200, OPTED);
@@ -75,6 +76,13 @@ describe("MediaListScreen", () => {
     cleanup();
     vi.unstubAllGlobals();
     sessionStorage.clear();
+  });
+
+  it("a retired list says so in plain words", async () => {
+    stub(["NoD.Viewer"], { active: false });
+    renderIt();
+    expect(await screen.findByText("(retired: releases can no longer be sent to it)", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText(/NRMS/)).toBeNull();
   });
 
   it("shows members with source and flag, and the opt-outs; a Viewer has no controls", async () => {

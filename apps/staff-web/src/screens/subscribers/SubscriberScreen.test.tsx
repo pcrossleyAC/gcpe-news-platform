@@ -208,6 +208,53 @@ describe("SubscriberScreen", () => {
     expect(screen.queryByRole("button", { name: "Save preferences" })).toBeNull();
   });
 
+  it("shows one message at a time: a refused email change or an Activate replaces an earlier success", async () => {
+    let current = detail({ status: "active", disabledReason: null });
+    stub(["NoD.Editor"], () => current, {
+      [`PUT /nod/api/subscribers/${ID}/preferences`]: () => [200, { ok: true }],
+      [`POST /nod/api/subscribers/${ID}/email`]: () => {
+        current = { ...current, email: "new@example.test" };
+        return [200, { changed: true }];
+      },
+      [`POST /nod/api/subscribers/${ID}/status`]: (body) => {
+        current = { ...current, status: (body as { status: "active" | "disabled" }).status, disabledReason: "staff" };
+        return [200, { changed: true }];
+      },
+    });
+    renderAt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Save preferences" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Preferences saved.");
+    await user.type(screen.getByLabelText("New email"), "a@example.test");
+    await user.type(screen.getByLabelText("Confirm new email"), "b@example.test");
+    await user.click(screen.getByRole("button", { name: "Change email" }));
+    await screen.findByText("The two email addresses don't match.");
+    expect(screen.queryByText("Preferences saved.")).toBeNull();
+
+    await user.clear(screen.getByLabelText("New email"));
+    await user.clear(screen.getByLabelText("Confirm new email"));
+    await user.type(screen.getByLabelText("New email"), "new@example.test");
+    await user.type(screen.getByLabelText("Confirm new email"), "new@example.test");
+    await user.click(screen.getByRole("button", { name: "Change email" }));
+    await screen.findByText("Email address changed. No confirmation email was sent.");
+    await user.click(screen.getByRole("button", { name: "Deactivate" }));
+    await user.click(await screen.findByRole("button", { name: "Confirm deactivate" }));
+    await waitFor(() => expect(screen.queryByText("Email address changed. No confirmation email was sent.")).toBeNull());
+    await user.click(await screen.findByRole("button", { name: "Activate" }));
+    await waitFor(() => expect(screen.getAllByRole("status").map((s) => s.textContent)).toEqual(["Activated. Their bounce count starts again."]));
+  });
+
+  it("a list that is no longer offered shows its name, or its key when it has none", async () => {
+    stub(["NoD.Editor"], () =>
+      detail({ status: "active", disabledReason: null, asItHappens: true, listKeys: ["ministries:health", "ministries:old", "ministries:nameless"], listNames: { "ministries:health": "Health", "ministries:old": "Old ministry" } }),
+    );
+    renderAt();
+    const group = await screen.findByRole("group", { name: "No longer offered" });
+    expect(within(group).getByRole("checkbox", { name: "Old ministry" })).toBeChecked();
+    expect(within(group).getByRole("checkbox", { name: "ministries:nameless" })).toBeChecked();
+    expect(within(group).queryByRole("checkbox", { name: "ministries:old" })).toBeNull();
+  });
+
   it("Change email: mismatch is refused; email-taken links to the other record", async () => {
     const calls = stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null }), {
       [`POST /nod/api/subscribers/${ID}/email`]: () => [409, { error: "email-taken", id: OTHER_ID }],

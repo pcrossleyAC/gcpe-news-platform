@@ -30,6 +30,9 @@ export interface SubscriberDetail extends SubscriberSummary {
   allNews: boolean;
   /** Public list keys (`<category>:<key>`), never `*` (see allNews) or a media key. */
   listKeys: string[];
+  /** The name of each public list in `listKeys` that has a list row (a retired one included), so
+   * staff see a held list's name even once it's no longer offered. */
+  listNames: Record<string, string>;
   mediaLists: { listKey: string; name: string }[];
   /** Media Hub manages this address (sourced from it, or linked to a contact): the nightly sync
    * rewrites it, so staff change it in Media Hub, not here (actions.ts's MediaHubManagedError). */
@@ -109,6 +112,7 @@ export async function getSubscriberDetail(db: DbOrTx, id: string): Promise<Subsc
     createdAt: s.createdAt, needsAttention: s.needsAttention, verifiedAt: s.verifiedAt, endedAt: s.endedAt, attentionAt: s.attentionAt,
     allNews: subs.some((r) => r.listKey === "*"),
     listKeys: subs.filter((r) => r.listKey !== "*" && !isMedia(r.listKey)).map((r) => r.listKey),
+    listNames: Object.fromEntries(subs.filter((r) => r.listKey !== "*" && !isMedia(r.listKey) && r.name !== null).map((r) => [r.listKey, r.name!])),
     mediaLists: subs.filter((r) => isMedia(r.listKey)).map((r) => ({ listKey: r.listKey, name: r.name ?? r.listKey })),
     mediaHubLinked: s.mediaHubContactId !== null || s.source === "media-hub",
     disabledReason,

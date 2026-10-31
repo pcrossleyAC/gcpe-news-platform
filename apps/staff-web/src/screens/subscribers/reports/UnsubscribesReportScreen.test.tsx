@@ -17,7 +17,7 @@ describe("UnsubscribesReportScreen", () => {
     renderAt(PATTERN, PATTERN, <UnsubscribesReportScreen />);
     expect(await screen.findByText("Since 2026-07-09: 12 new subscriptions, 3 returning, 5 unsubscribed, 1 deleted by staff.")).toBeInTheDocument();
     expect(screen.getByText("2 people unsubscribed or were deleted since 2026-07-09.")).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /gone@example\.test Unsubscribed 2026-10-05 09:30 Deleted 2026-01-02/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /gone@example\.test Unsubscribed 2026-10-05 09:30 Unsubscribed or deleted 2026-01-02/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /back@example\.test Deleted by staff 2026-10-01 09:30 Active 2025-05-02/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download daily counts (CSV)" })).toHaveAttribute("href", "/nod/api/reports/unsubscribes/daily.csv");
     expect(screen.queryByRole("link", { name: "Download list with addresses (CSV)" })).toBeNull();

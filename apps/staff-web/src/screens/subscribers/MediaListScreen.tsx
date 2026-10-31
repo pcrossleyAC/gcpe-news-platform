@@ -129,7 +129,7 @@ export function MediaListScreen(): React.JSX.Element {
       {list && (
         <p>
           <strong>{list.name}</strong>
-          {!list.active && " (retired in NRMS: releases can no longer be sent to it)"}
+          {!list.active && " (retired: releases can no longer be sent to it)"}
         </p>
       )}
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
