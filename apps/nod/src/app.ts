@@ -92,7 +92,15 @@ export function createApp(deps: AppDeps): express.Express {
     },
     // Owner decision 2026-10-31: "Also email it again?" -- a corrected copy to those who already
     // got it, after the normal sends above (which never re-email anyone).
-    onEmailAgain: (tx, r, emailAgain) => createCorrectionSends(tx, r.key, emailAgain, deps.render),
+    // Re-review N3: a request can arrive on a later republish than the one it was asked for, so
+    // what it sends follows what the release goes to now (a withdrawn one gets nothing).
+    onEmailAgain: (tx, r, emailAgain) =>
+      createCorrectionSends(
+        tx,
+        r.key,
+        { ...emailAgain, subscribers: emailAgain.subscribers && r.publishFlags.toSubscribers, mediaLists: emailAgain.mediaLists && r.publishFlags.toMediaLists },
+        deps.render,
+      ),
     onRefreshed: (tx, r) => rerenderWaitingEmail(tx, r.key, deps.render),
   });
   const resolveBounceHandler = bounceHandler({ appId: deps.distributionAppId ?? "nod" });

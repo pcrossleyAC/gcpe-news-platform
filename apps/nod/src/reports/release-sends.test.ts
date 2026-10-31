@@ -70,6 +70,14 @@ describe("sends per release", () => {
     expect(page.items[0]!.corrected).toEqual({ recipients: 0, handedOffNotBounced: 0, bounced: 0, notSent: 0 });
   });
 
+  // Re-review N1: an unpublish deletes a part-sent job (its sent deliveries stay, detached); the
+  // emails already sent still count.
+  it("still counts corrected copies already sent after their job is gone", async () => {
+    await tdb.db.execute(sql`DELETE FROM send_jobs WHERE job_key = 'correction:1:media:r1'`);
+    const r1 = (await releaseSendsPage(tdb.db, range(), 1)).items.find((i) => i.itemKey === "r1")!;
+    expect(r1.corrected).toEqual({ recipients: 3, handedOffNotBounced: 1, bounced: 1, notSent: 1 });
+  });
+
   it("batches the same rows for the CSV, with the hostile title neutralised", async () => {
     const all = [];
     for await (const b of releaseSendBatches(tdb.db, range(), 1)) all.push(...b);

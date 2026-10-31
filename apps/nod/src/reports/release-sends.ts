@@ -73,14 +73,15 @@ export function releaseSendsSql(range: ReportRange, limit: number, offset: numbe
                count(*) FILTER (WHERE d.mode = 'media' AND d.bounce_status IS NOT NULL)::int AS media_bounced
           FROM deliveries d
          WHERE d.item_key = i.key AND d.mode IN ('as_it_happens', 'media')) c ON c.aih_recipients + c.media_recipients > 0
-      -- Corrected copies, through the release's correction jobs (send_jobs_item_key_idx, then
-      -- deliveries_job_id_idx): rare, so this never reads the first sends' rows.
+      -- Corrected copies, from the release's own deliveries (re-review N1: not through their jobs,
+      -- which an unpublish deletes while keeping the emails already sent). The primary key leads
+      -- with item_key, so this reads only this release's rows.
       JOIN LATERAL (
         SELECT count(*)::int AS cor_recipients,
                count(*) FILTER (WHERE d.distribution_batch_id IS NOT NULL)::int AS cor_sent,
                count(*) FILTER (WHERE d.bounce_status IS NOT NULL)::int AS cor_bounced
-          FROM send_jobs j JOIN deliveries d ON d.job_id = j.id
-         WHERE j.item_key = i.key AND j.kind IN ('correction', 'correction_media')) k ON true
+          FROM deliveries d
+         WHERE d.item_key = i.key AND d.mode LIKE 'correction:%') k ON true
      WHERE i.published_at >= ${range.start} AND i.published_at < ${range.end} ${resume}
      ORDER BY i.published_at DESC, i.key DESC
      LIMIT ${limit} OFFSET ${offset}`;

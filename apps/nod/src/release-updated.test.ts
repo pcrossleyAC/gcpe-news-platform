@@ -133,6 +133,19 @@ describe("a republish re-emails only when asked", () => {
     expect(jobs.map((j) => j.key).sort()).toEqual([`as_it_happens:${r2.key}`, `correction:1:as_it_happens:${r2.key}`]);
   });
 
+  // Re-review N3: a request applied late (carried by a later republish) follows what the release
+  // goes to now.
+  it("a request applied late sends only to what the release still goes to", async () => {
+    const r4 = { ...release, key: "CORRECTED-4" };
+    await sendEvent(app, envelope("nrms", "release.published", r4, r4.key));
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    // Lost: the release.updated that first carried seq 1. The next one has subscribers turned off.
+    const off = { ...r4, publishFlags: { ...r4.publishFlags, toSubscribers: false }, notify: true, emailAgain: emailAgain(1) };
+    await sendEvent(app, envelope("nrms", "release.updated", off, r4.key));
+    const jobs = await tdb.db.select({ key: sendJobs.jobKey }).from(sendJobs).where(eq(sendJobs.itemKey, r4.key));
+    expect(jobs.map((j) => j.key)).toEqual([`as_it_happens:${r4.key}`]);
+  });
+
   // Review I4: email still held by a pause goes out once, with the corrected content.
   it("someone whose first email is still held gets the corrected release once, not the old one and not a corrected copy", async () => {
     const r3 = { ...release, key: "CORRECTED-3", documents: [{ ...release.documents[0]!, headline: "Wrong date" }] };
