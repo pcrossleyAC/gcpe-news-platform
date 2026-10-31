@@ -151,7 +151,8 @@ async function takeEmailAgain(tx: Tx, id: string, view: ReleaseView): Promise<{ 
   const seq = row!.done + 1;
   await tx.update(newsReleases).set({ emailAgain: null, correctionsEmailed: seq }).where(eq(newsReleases.id, id));
   return {
-    send: { seq, ...go, requestedBy: request.actorName, requestedAt: request.at },
+    // The event allows a name of up to 200 characters (packages/events emailAgainSchema).
+    send: { seq, ...go, requestedBy: request.actorName.slice(0, 200) || "Unknown", requestedAt: request.at },
     line: `Emailed it again with "Corrected:" to ${emailAgainWho(go)} who got it, as ${request.actorName} asked`,
   };
 }
