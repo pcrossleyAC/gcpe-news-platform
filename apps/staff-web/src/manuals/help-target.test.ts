@@ -44,3 +44,13 @@ describe("helpFor", () => {
     expect(helpFor("/users")).toBe("/help");
   });
 });
+
+describe("Help on the release screens, with the compiled manuals", () => {
+  const RELEASE_SCREENS = ["/releases/forecast", "/releases/drafts", "/releases/scheduled", "/releases/published", "/releases/123", "/search", "/website/featured", "/website/log"];
+  it.each(RELEASE_SCREENS)("opens the viewer manual for a release viewer on %s", (path) => {
+    expect(helpTargetFor(path, as("NRMS.Viewer"))).toMatch(/^\/help\/manuals\/nrms-viewer\//);
+  });
+  it.each(RELEASE_SCREENS)("still opens the editor manual for a release editor on %s", (path) => {
+    expect(helpTargetFor(path, as("NRMS.Editor"))).toMatch(/^\/help\/manuals\/nrms-editor\//);
+  });
+});
