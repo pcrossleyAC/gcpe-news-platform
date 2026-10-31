@@ -98,6 +98,9 @@ export interface ReleaseView {
   /** ISO 8601; planned (draft/approved) or committed (scheduled+) publish time. */
   publishAt: string | null;
   releasedAt: string | null;
+  /** Has ever been on the public site (a release date, an atom id or a publication record): its
+   * key is then fixed (suite review R2). Unlike `live`, it stays true after an unpublish. */
+  everPublished: boolean;
   publishOptions: PublishOptions;
   assetUrl: string | null;
   assetAltText: string | null;

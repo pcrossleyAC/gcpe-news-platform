@@ -383,6 +383,7 @@ function pseudoView(raw: RawReleaseRow, bundle: Bundle): ReleaseView {
     activityId: (bundle.release.activityId as number | null) ?? null,
     publishAt: null,
     releasedAt: null,
+    everPublished: false,
     publishOptions: { toWeb: Boolean(bundle.release.toWeb), toSubscribers: Boolean(bundle.release.toSubscribers), toMediaLists: Boolean(bundle.release.toMediaLists) },
     assetUrl: (bundle.release.assetUrl as string | null) ?? null,
     assetAltText: null,
