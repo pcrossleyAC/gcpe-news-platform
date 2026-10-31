@@ -2077,7 +2077,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>No news release email. This person is here only for media lists.</td>
 </tr>
 </tbody></table></div>
-<p>A correction to a release never emails anyone again. If a release is unpublished, anything not yet sent is stopped, and it stays out of later digests.</p>
+<p>A correction to a release never emails anyone again. If a release is unpublished, anything not yet sent is stopped, and daily digests leave it out while it is off the site. If it is published again before 5:00 pm on the day it first went out (the next day if it first went out after 5:00 pm), that digest still carries it.</p>
 <h2>Emergency alerts</h2>
 <p>Alerts posted by Emergency Info BC are checked every 5 minutes. A new alert goes at once to everyone active on the <strong>Emergency Info BC Alerts</strong> list, whatever timing they chose. An alert edited later is not sent again.</p>
 <h2>Media lists</h2>
@@ -2668,7 +2668,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>No news release email. This person is here only for media lists.</td>
 </tr>
 </tbody></table></div>
-<p>A correction to a release never emails anyone again. If a release is unpublished, anything not yet sent is stopped, and it stays out of later digests.</p>
+<p>A correction to a release never emails anyone again. If a release is unpublished, anything not yet sent is stopped, and daily digests leave it out while it is off the site. If it is published again before 5:00 pm on the day it first went out (the next day if it first went out after 5:00 pm), that digest still carries it.</p>
 <h2>Emergency alerts</h2>
 <p>Alerts posted by Emergency Info BC are checked every 5 minutes. A new alert goes at once to everyone active on the <strong>Emergency Info BC Alerts</strong> list, whatever timing they chose. An alert edited later is not sent again.</p>
 <h2>Media lists</h2>
