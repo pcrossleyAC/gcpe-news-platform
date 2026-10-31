@@ -112,6 +112,32 @@ describe("CalendarUserScreen", () => {
     expect(JSON.parse(calls.find((c) => c.url.includes("/comm-contacts/"))!.init!.body as string)).toEqual({ rank: 1 });
   });
 
+  it("says Saved beside the rank after each change, politely, one message at a time (form-order audit #17)", async () => {
+    stub([]);
+    renderAt("u1");
+    const user = userEvent.setup();
+    const rank = await screen.findByLabelText("Comm contact rank for Health (HLTH)");
+    await user.selectOptions(rank, "1");
+    const saved = await screen.findByRole("status");
+    expect(saved).toHaveTextContent("Saved: Comm Director for Health (HLTH).");
+    expect(saved.parentElement).toBe(rank.parentElement);
+    expect(rank).toHaveAccessibleDescription("Saved: Comm Director for Health (HLTH).");
+    await user.selectOptions(rank, "");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Saved: Not a comm contact for Health (HLTH)."));
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("a rank that doesn't save says so plainly beside the select", async () => {
+    stub([], DETAIL, (url) => (url.includes("/comm-contacts/") ? jsonResponse(500, { error: "boom" }) : undefined));
+    renderAt("u1");
+    const rank = await screen.findByLabelText("Comm contact rank for Health (HLTH)");
+    await userEvent.setup().selectOptions(rank, "1");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The rank wasn't saved. Try again.");
+    expect(alert.parentElement).toBe(rank.parentElement);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("with no ministry, the comm contact hint names the control that gives one (form-order audit #17)", async () => {
     stub([], detailOf("u3"));
     renderAt("u3");
@@ -362,7 +388,7 @@ describe("CalendarUserScreen", () => {
     await user.click(within(form).getByRole("button", { name: "Save contact details" }));
     expect(await within(form).findByRole("alert")).toHaveTextContent("job title: at most 100 characters");
     await user.selectOptions(screen.getByLabelText("Comm contact rank for Health (HLTH)"), "1");
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved the comm-contact rank.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved: Comm Director for Health (HLTH).");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
