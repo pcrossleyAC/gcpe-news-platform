@@ -29,7 +29,6 @@ export async function createActivity(deps: ApiDeps, actor: CalendarActor, body: 
   return deps.db.transaction(async (tx) => {
     const now = await dbNow(tx, deps.now);
     assertNotFrozen(now, actor, deps.rules);
-    // Before reading keywords, so a concurrent save can't create the same new keyword twice.
     let source: StoredActivity | null = null;
     if (clonedFrom !== undefined) {
       source = await cloneSource(tx, actor, clonedFrom).catch((e: unknown) => {
@@ -40,6 +39,7 @@ export async function createActivity(deps: ApiDeps, actor: CalendarActor, body: 
         throw e;
       });
     }
+    // Before reading keywords, so a concurrent save can't create the same new keyword twice.
     if (input.keywordNames.length) await lockLookup(tx, LOOKUPS.keywords);
     // A clone's values are judged against its source's, but its lead ministry and comm contact as new choices (clone.ts).
     const sourceFields = source ? { ...fieldsOf(source, deps.rules.timeZone), contactMinistryKey: null, commContactId: null } : null;
