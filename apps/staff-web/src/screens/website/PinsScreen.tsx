@@ -105,13 +105,8 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
         </ul>
         </div>
       )}
-      {switchRefused && hasUnsavedEdits && <InlineAlert variant="danger" role="alert" description="Save your changes first." />}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
       {imageError && <InlineAlert variant="danger" role="alert" description={imageError} />}
-
-      <Switch isSelected={pin.pinned} isDisabled={!canEdit} isReadOnly={section.saving} onChange={togglePinned}>
-        {pin.pinned ? `${SLOT_LABEL[pin.slot]} is pinned` : `${SLOT_LABEL[pin.slot]} is not pinned`}
-      </Switch>
 
       <TextField label={`${SLOT_LABEL[pin.slot]} headline`} value={headline} onChange={setHeadline} isDisabled={!canEdit} />
       <TextField label={`${SLOT_LABEL[pin.slot]} summary`} value={summary} onChange={setSummary} isDisabled={!canEdit} />
@@ -150,6 +145,12 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
           Save {SLOT_LABEL[pin.slot].toLowerCase()} pin
         </Button>
       )}
+
+      {/* Audit #6: edit, save, then pin. The switch pins the saved notice, so it follows Save. */}
+      <Switch isSelected={pin.pinned} isDisabled={!canEdit} isReadOnly={section.saving} onChange={togglePinned}>
+        {pin.pinned ? `${SLOT_LABEL[pin.slot]} is pinned` : `${SLOT_LABEL[pin.slot]} is not pinned`}
+      </Switch>
+      {switchRefused && hasUnsavedEdits && <InlineAlert variant="danger" role="alert" description="Save your changes first." />}
     </section>
   );
 }

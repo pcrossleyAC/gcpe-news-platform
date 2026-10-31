@@ -264,6 +264,13 @@ describe("PinsScreen", () => {
     await user.click(screen.getByRole("switch", { name: "Primary is not pinned" }));
     expect(await screen.findByText("Save your changes first.")).toBeInTheDocument();
     expect(screen.getByLabelText("Primary headline")).toHaveValue("Evacuation order");
+    // Audit #6: edit, save, then pin. The switch (and its refusal) come after the notice's Save.
+    const save = screen.getByRole("button", { name: /^Save primary pin/ });
+    const toggle = screen.getByRole("switch", { name: "Primary is not pinned" });
+    const refusal = screen.getByText("Save your changes first.");
+    expect(save.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByLabelText("Primary image (JPEG or PNG, up to 2 MB)").compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toggle.compareDocumentPosition(refusal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(calls.some((c) => c.startsWith("POST"))).toBe(false);
   });
 });

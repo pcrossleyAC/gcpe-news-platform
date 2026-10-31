@@ -24,7 +24,7 @@ If the notice is already pinned, the change goes to the public site when you sav
 
 Save the notice first. If you have typed changes you haven't saved, the switch does nothing and shows "Save your changes first." Your typing stays.
 
-1. Choose the switch beside **Primary is not pinned**. It saves at once, with no question, and changes only the pin; it now reads **Primary is pinned**.
+1. Choose the switch beside **Primary is not pinned**, below **Save primary pin**. It saves at once, with no question, and changes only the pin; it now reads **Primary is pinned**.
 2. To take the notice down, choose the switch again.
 
 ## Add or change the image
