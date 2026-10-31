@@ -46,4 +46,4 @@ A **Flickr alert** badge means the release went out without its Flickr photo. Se
 
 Calendar activities appear only if you have Calendar access, and only the ones you can see in the Calendar. They must be confirmed, not confidential, start from now on, and have a category starting with "Approved". An activity that already has a release planned or scheduled is shown as that release instead. Without Calendar access the tab says "Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it."
 
-Choose **Start a release** under an activity to start a release from it. See [Start a release](manual:editor-start-a-release).
+Each activity shows its planned time and its **Calendar activity ID**. Choose **Start a release** under an activity to start a release from it. See [Start a release](manual:editor-start-a-release).

@@ -40,8 +40,8 @@ test.describe("item 2: per-type required/allowed fields", () => {
     await expect(page.getByRole("group", { name: "Themes" })).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Tags" })).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Page image" })).toHaveCount(0);
-    // But Media distribution lists is offered (and marked required for an Advisory).
-    await expect(page.getByText("Media distribution lists (required)")).toBeVisible();
+    // But Media distribution lists is offered (and marked "needed before publishing" for an Advisory).
+    await expect(page.getByText("Media distribution lists (needed before publishing)")).toBeVisible();
   });
 
   test("the API refuses an Advisory with sectors attached, directly", async () => {
@@ -74,9 +74,9 @@ test.describe("item 2: per-type required/allowed fields", () => {
 
     await signInAs(context, "editor");
     await page.goto(`${baseUrl()}/hub/releases/${approved.id}`);
-    // Scoped to the header's own checklist — Actions' own "why is Publish now disabled" reasons
-    // list (next to the button itself) repeats the same sentence as its own link.
-    await expect(page.locator("header").getByText("Choose at least one media distribution list.")).toBeVisible();
+    // The header says how much is left and links to the one list, under Actions, which names it.
+    await expect(page.locator("header").getByText(/^Not ready: 1 thing to fix\./)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Choose at least one media distribution list." })).toBeVisible();
     await expect(page.getByRole("button", { name: "Publish now" })).toBeDisabled();
 
     // Fixable from the same form: check a media list, save, and the warning (and the

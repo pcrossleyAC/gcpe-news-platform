@@ -11,7 +11,7 @@ topics: []
 
 A release goes from **Draft** to **Approved**, then out now or at a set time. **Actions** shows only the buttons that fit the release's status. Each step acts on the release as saved, so save your changes first.
 
-When a button is greyed out, the reasons are listed under it, such as "Approve is unavailable until:" and "Choose at least one ministry.". Each reason links to the part of the release to fix.
+When a button is greyed out, the reasons are listed under it, such as "Approve is unavailable until:" and "Choose at least one ministry.". On a draft, "Also needed before it can be published:" lists what publishing will need too. A scheduled release can still have something missing, listed under "Before the scheduled time:", and a published one under "Before your next save can republish it:", because each publish checks again. Each reason links to the part of the release to fix.
 
 ## Approve
 
@@ -35,7 +35,7 @@ The status shows **Publishing...**, then **Published**, usually within a minute.
 
 ## Schedule
 
-1. Choose **Schedule**. If the release has a planned publish date still ahead, the date and time are filled in from it.
+1. Choose **Schedule**. If the release has a planned publish date still ahead, the date and time are filled in from it, and the panel says "Filled in from the planned publish date."
 2. Enter the **Date** and **Time (BC time)**. A time that has passed shows "Choose a time in the future, or use Publish now."
 3. Choose **Confirm schedule**. A box asks, for example, "Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?" and lists who will be emailed, as for **Publish now**.
 4. Choose **Schedule**.
@@ -46,14 +46,14 @@ You can still change a scheduled release. What goes out is the release as saved 
 
 ## The planned publish date
 
-**Planned publish date (not yet committed)**, in **Publish settings**, is only a plan: nothing happens at that time. It shows on **Forecast** and makes the status **Planned**. Choose **Clear planned date** to remove it. Only **Schedule** commits a time.
+**Planned publish date (for planning only)**, in **Publish settings**, is a plan: nothing happens at that time. It shows on **Forecast** and makes the status **Planned**. Choose **Clear planned date** to remove it. Only **Schedule** sets when the release goes out.
 
 ## Who is emailed
 
 Set this in **Publish settings** before you publish.
 
 - **Send to News On Demand subscribers**: ticked for releases, unticked for stories and factsheets, and not available for advisories.
-- **Send to media distribution lists**: tick it, then tick the lists. A retired list a release already had shows "(retired)" and gets nothing.
+- **Media distribution lists**: tick each list that should get the media email. With none ticked, no media email goes out. On a release brought over from the old system you may see "As saved, these lists won't get the media email. Save Publish settings and they will." **Publish settings** then says **Unsaved**: choose **Save changes** and the ticked lists get it. If that release went out before and is now off the site, it says "As saved, these lists won't get the media email when it's republished." instead, and nothing is marked unsaved: the old system may already have emailed those lists. A retired list a release already had shows "(retired)" and gets nothing; if only retired lists are ticked, the section says "The ticked lists are retired and won't get the media email."
 
 See [Who is emailed, and when it goes public](manual:editor-what-happens-next).
 

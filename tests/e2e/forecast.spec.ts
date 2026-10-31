@@ -58,12 +58,12 @@ test.describe("parent spec §10.2: Calendar activity → Forecast → draft → 
     await useCookie(context, planner);
     await page.goto(`${baseUrl()}/hub/releases/forecast?page=${pageNo}`);
     const row = page.locator("li.gcpe-release-row", { has: page.getByRole("link", { name: new RegExp(title) }) });
-    await expect(row).toContainText(`Planned for Jun 11, 2031 10:00 AM · Activity ID ${activity.id}`);
+    await expect(row).toContainText(`Planned for Jun 11, 2031 10:00 AM · Calendar activity ID ${activity.id}`);
     await expectNoSeriousA11yViolations(page, "the Forecast");
 
     // Draft: started from the activity, pre-filled.
     await row.getByRole("link", { name: "Start a release" }).click();
-    await expect(page.getByLabel("Activity ID")).toHaveValue(String(activity.id));
+    await expect(page.getByLabel("Calendar activity ID")).toHaveValue(String(activity.id));
     await expect(page.getByRole("group", { name: "Ministries" }).getByLabel("Health")).toBeChecked();
     await expect(page.getByText("Translations required: French")).toBeVisible();
     await expect(page.getByText("Planned publish date: Jun 11, 2031 10:00 AM, from the activity.", { exact: false })).toBeVisible();

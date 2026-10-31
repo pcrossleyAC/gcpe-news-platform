@@ -68,11 +68,42 @@ describe("CategoriesSection", () => {
     stubFetch();
     renderSection(releaseView({ type: "release", ministries: ["health"], leadMinistryKey: "health" }));
     await screen.findByLabelText("Health");
-    expect(screen.queryByText("Lead ministry")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /Lead ministry/ })).not.toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Education"));
-    expect(screen.getByText("Lead ministry")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Lead ministry/ })).toBeInTheDocument();
+  });
+
+  // forms-b #23: a lead is needed to approve (approveProblems), so "(none)" isn't offered: the
+  // empty choice only prompts. An advisory doesn't need one and keeps "(none)".
+  it("the lead ministry says it's needed before approving and offers no \"(none)\"; an advisory keeps (none)", async () => {
+    stubFetch();
+    const { unmount } = renderSection(releaseView({ type: "release", ministries: ["health", "education"], leadMinistryKey: null }));
+    const lead = await screen.findByRole("combobox", { name: "Lead ministry (needed before approving)" });
+    expect(lead).toHaveValue("");
+    const prompt = screen.getByRole("option", { name: "Choose the lead ministry" });
+    expect(prompt).toBeDisabled();
+    expect(screen.queryByRole("option", { name: "(none)" })).not.toBeInTheDocument();
+    unmount();
+
+    renderSection(releaseView({ type: "advisory", ministries: ["health", "education"], leadMinistryKey: null }));
+    expect(await screen.findByRole("combobox", { name: "Lead ministry" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "(none)" })).toBeEnabled();
+  });
+
+  // Fix round 1 (minor): approving is behind it once the release isn't a draft.
+  it("an approved release's lead ministry has no needed-before-approving marker, and still no (none)", async () => {
+    stubFetch();
+    renderSection(releaseView({ type: "release", status: "approved", ministries: ["health", "education"], leadMinistryKey: "health" }));
+    expect(await screen.findByRole("combobox", { name: "Lead ministry" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "(none)" })).not.toBeInTheDocument();
+  });
+
+  it("read-only: the lead ministry has no marker", async () => {
+    stubFetch();
+    renderSection(releaseView({ type: "release", ministries: ["health", "education"], leadMinistryKey: "health" }), () => {}, true);
+    expect(await screen.findByRole("combobox", { name: "Lead ministry" })).toBeDisabled();
   });
 
   it("saves with PUT /categories carrying the current version and selections", async () => {

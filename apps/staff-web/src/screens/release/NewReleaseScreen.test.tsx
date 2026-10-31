@@ -106,7 +106,18 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
 
     expect(screen.queryByText("Page image")).not.toBeInTheDocument();
     expect(screen.queryByText("Sectors")).not.toBeInTheDocument();
-    expect(screen.getByText("Media distribution lists (required)")).toBeInTheDocument();
+    // forms-b #22: creating doesn't need a list; publishing does.
+    expect(screen.getByText("Media distribution lists (needed before publishing)")).toBeInTheDocument();
+  });
+
+  // forms-b #22: Create needs a page title and a headline, so both are marked.
+  it("marks Page title required, as Create needs it, alongside Headline", async () => {
+    stubFetch();
+    renderScreen();
+    await screen.findByText("Legislature");
+    const pageTitle = screen.getByRole("combobox", { name: "Page title" });
+    expect(pageTitle).toHaveAttribute("aria-required", "true");
+    expect(pageTitle.closest(".gcpe-field")).toHaveTextContent("Page title (required)");
   });
 
   it("offers only active media lists, never a retired one", async () => {
@@ -131,11 +142,11 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen();
     await screen.findByText("Legislature");
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     expect((screen.getByLabelText("Layout") as HTMLSelectElement).value).toBe("formal");
     expect(screen.getByRole("radio", { name: /Legislature/ })).toBeChecked();
 
-    await user.selectOptions(screen.getByLabelText("Page title"), "Backgrounder");
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "Backgrounder");
     expect((screen.getByLabelText("Layout") as HTMLSelectElement).value).toBe("informal");
     expect(screen.getByRole("radio", { name: "(none)" })).toBeChecked();
   });
@@ -145,7 +156,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen();
     await screen.findByText("Legislature");
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     await user.click(screen.getByRole("button", { name: "Create release" }));
 
     await waitFor(() => expect(screen.getByLabelText("Headline", { exact: false })).toHaveAttribute("aria-invalid", "true"));
@@ -158,7 +169,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen();
     await screen.findByText("Legislature");
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open this weekend");
     await user.click(screen.getByLabelText("Health"));
     await user.click(screen.getByRole("button", { name: "Create release" }));
@@ -179,7 +190,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     await screen.findByText("Legislature");
     const user = userEvent.setup();
     expect(screen.getByRole("button", { name: "Create release" })).toHaveAttribute("aria-keyshortcuts", "Control+Enter");
-    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     const headline = screen.getByLabelText("Headline", { exact: false });
     await user.type(headline, "Clinics open this weekend");
     await user.click(screen.getByLabelText("Health"));
@@ -195,7 +206,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen();
     await screen.findByText("Legislature");
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     await user.type(screen.getByLabelText("Headline", { exact: false }), "A headline");
     await user.click(screen.getByRole("button", { name: "Create release" }));
 
@@ -307,16 +318,16 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     const calls = stubFetch({ lookups: { "4102": ACTIVITY } });
     renderScreen("/releases/new?activity=4102");
     expect(await screen.findByRole("link", { name: "Sample clinic opening" })).toHaveAttribute("href", "/calendar/activities/4102");
-    expect(screen.getByLabelText("Activity ID")).toHaveValue("4102");
+    expect(screen.getByLabelText("Calendar activity ID")).toHaveValue("4102");
     await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
     expect(screen.getByLabelText("Education")).toBeChecked();
     expect(screen.getByLabelText("Sector One")).toBeChecked();
     expect(screen.getByLabelText("Theme One")).toBeChecked();
     expect(screen.getByLabelText("Location")).toHaveValue("Victoria");
-    expect(screen.getByText("Planned publish date: Jun 11, 2031 10:00 AM, from the activity. Change it in Publish settings.")).toBeInTheDocument();
+    expect(screen.getByText("Planned publish date: Jun 11, 2031 10:00 AM, from the activity. You can change it in Publish settings once the release is created.")).toBeInTheDocument();
     expect(screen.getByText("Translations required: French")).toBeInTheDocument();
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open");
     await user.click(screen.getByRole("button", { name: "Create release" }));
     await waitFor(() => expect(calls.find((c) => c.url === "/nrms/api/releases")?.body).toMatchObject({
@@ -355,7 +366,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
       }),
     );
     renderScreen("/releases/new?activity=4102");
-    expect(await screen.findByLabelText("Activity ID")).toHaveValue("4102");
+    expect(await screen.findByLabelText("Calendar activity ID")).toHaveValue("4102");
 
     // The lookup is still in flight: edit fields the pre-fill would otherwise touch.
     const user = userEvent.setup();
@@ -379,7 +390,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen();
     await screen.findByText("Legislature");
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Activity ID"), "4102");
+    await user.type(screen.getByLabelText("Calendar activity ID"), "4102");
     expect(await screen.findByRole("link", { name: "Sample clinic opening" })).toBeInTheDocument();
     expect(screen.getByLabelText("Health")).not.toBeChecked();
     await user.click(screen.getByRole("button", { name: "Fill in from activity 4102" }));
@@ -405,8 +416,8 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
 
     // Retype the Activity ID to a different activity: the untouched pre-fill (ministries,
     // the planned publish date) clears, but the touched Location survives.
-    await user.clear(screen.getByLabelText("Activity ID"));
-    await user.type(screen.getByLabelText("Activity ID"), "4103");
+    await user.clear(screen.getByLabelText("Calendar activity ID"));
+    await user.type(screen.getByLabelText("Calendar activity ID"), "4103");
     await waitFor(() => expect(screen.getByLabelText("Health")).not.toBeChecked());
     expect(screen.getByLabelText("Education")).not.toBeChecked();
     expect(screen.queryByText(/Planned publish date:/)).not.toBeInTheDocument();
@@ -419,7 +430,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
 
     const user = userEvent.setup();
-    await user.clear(screen.getByLabelText("Activity ID"));
+    await user.clear(screen.getByLabelText("Calendar activity ID"));
     await waitFor(() => expect(screen.getByLabelText("Health")).not.toBeChecked());
     expect(screen.getByLabelText("Location")).toHaveValue("");
     expect(screen.queryByText(/Planned publish date:/)).not.toBeInTheDocument();
@@ -431,7 +442,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     await screen.findByText("Legislature");
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Health")); // touched, before any lookup
-    await user.type(screen.getByLabelText("Activity ID"), "4102");
+    await user.type(screen.getByLabelText("Calendar activity ID"), "4102");
     await screen.findByRole("button", { name: "Fill in from activity 4102" });
     expect(screen.getByLabelText("Health")).toBeChecked();
 
@@ -449,10 +460,10 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     expect(await screen.findByText("No Calendar activity has ID 9999.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Fill in from/ })).toBeNull();
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     await user.type(screen.getByLabelText("Headline", { exact: false }), "A headline");
     await user.click(screen.getByRole("button", { name: "Create release" }));
-    await waitFor(() => expect(screen.getByLabelText("Activity ID")).toHaveAttribute("aria-invalid", "true"));
+    await waitFor(() => expect(screen.getByLabelText("Calendar activity ID")).toHaveAttribute("aria-invalid", "true"));
   });
 
   it("has no serious or critical axe violations, filled in from an activity", async () => {

@@ -13,6 +13,7 @@ import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useFormShortcut } from "../../shared/shortcuts";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { dateTimeText } from "../calendar/list/dates";
+import { LeadMinistrySelect } from "./LeadMinistrySelect";
 import { ActivityLookupPanel, useActivityLookup } from "./ActivityLookupPanel";
 import type { Categories } from "./categories";
 
@@ -99,7 +100,7 @@ function issueText(field: string, issue: ZodIssue): string {
     case "location":
       return tooLong !== null ? `Shorten the location to ${tooLong} characters or fewer.` : "Check the location.";
     case "activityId":
-      // Its own messages are already plain ("Activity ID must be numeric").
+      // Its own messages are already plain ("Calendar activity ID must be numeric").
       return /^(String|Number|Expected|Invalid)\b/.test(issue.message) ? "Enter the Calendar activity's number, such as 1234." : issue.message;
     case "ministries":
     case "leadMinistryKey":
@@ -186,7 +187,7 @@ export function NewReleaseScreen(): React.JSX.Element {
   const [touchedFields, setTouchedFields] = useState<ReadonlySet<string>>(() => new Set());
   const touch = (field: string) => setTouchedFields((prev) => (prev.has(field) ? prev : new Set(prev).add(field)));
   // The activity id the fields below were last filled in from (or null, before any fill). When
-  // the Activity ID field moves away from this id -- retyped or cleared -- the effect below
+  // the Calendar activity ID field moves away from this id -- retyped or cleared -- the effect below
   // clears whatever it set that the user hasn't touched, so a stale pre-fill never survives a
   // change of activity.
   const [prefilledFrom, setPrefilledFrom] = useState<number | null>(null);
@@ -250,7 +251,7 @@ export function NewReleaseScreen(): React.JSX.Element {
     if (prefill) fillIn(prefill);
   }, [fillOnLookup, lookup, prefill]);
 
-  // A change (or clearing) of the Activity ID clears whatever the last fill set that the
+  // A change (or clearing) of the Calendar activity ID clears whatever the last fill set that the
   // user hasn't touched -- never a touched field, and never anything before the first fill.
   useEffect(() => {
     if (prefilledFrom === null || activityId === prefilledFrom) return;
@@ -395,10 +396,14 @@ export function NewReleaseScreen(): React.JSX.Element {
           </div>
 
           <div className="gcpe-field">
-            <label htmlFor={FIELD_IDS.pageTitle}>Page title</label>
+            {/* Create needs it (createReleaseSchema): the design system's marker, as on Headline. */}
+            <label htmlFor={FIELD_IDS.pageTitle}>
+              Page title<span aria-hidden="true"> (required)</span>
+            </label>
             <select
               id={FIELD_IDS.pageTitle}
               value={pageTitle}
+              aria-required="true"
               aria-invalid={!!fieldProblem("pageTitle") || undefined}
               aria-describedby={fieldProblem("pageTitle") ? `${FIELD_IDS.pageTitle}-error` : undefined}
               onChange={(e) => onPageTitleChange(e.target.value)}
@@ -454,7 +459,7 @@ export function NewReleaseScreen(): React.JSX.Element {
 
         <TextField
           id={FIELD_IDS.activityId}
-          label="Activity ID"
+          label="Calendar activity ID"
           value={activityText}
           onChange={setActivityText}
           inputMode="numeric"
@@ -479,7 +484,7 @@ export function NewReleaseScreen(): React.JSX.Element {
           }}
           maxLength={50}
         />
-        {publishAt && <p>Planned publish date: {dateTimeText(publishAt, timeZone)}, from the activity. Change it in Publish settings.</p>}
+        {publishAt && <p>Planned publish date: {dateTimeText(publishAt, timeZone)}, from the activity. You can change it in Publish settings once the release is created.</p>}
 
         <fieldset className="gcpe-options" id={FIELD_IDS.ministries} tabIndex={-1}>
           <legend>Ministries</legend>
@@ -493,24 +498,16 @@ export function NewReleaseScreen(): React.JSX.Element {
         {fieldProblem("ministries") && <p className="gcpe-field-error">{fieldProblem("ministries")}</p>}
 
         {ministries.length > 1 && (
-          <label className="gcpe-field">
-            Lead ministry
-            <select
-              id={FIELD_IDS.leadMinistryKey}
-              value={leadMinistryKey ?? ""}
-              onChange={(e) => {
-                touch("ministries");
-                setLeadMinistryKey(e.target.value || null);
-              }}
-            >
-              <option value="">(none)</option>
-              {ministries.map((key) => (
-                <option key={key} value={key}>
-                  {categories.ministries.find((m) => m.key === key)?.name ?? key}
-                </option>
-              ))}
-            </select>
-          </label>
+          <LeadMinistrySelect
+            id={FIELD_IDS.leadMinistryKey}
+            value={leadMinistryKey}
+            ministries={ministries.map((key) => ({ key, name: categories.ministries.find((m) => m.key === key)?.name ?? key }))}
+            needed={type !== "advisory"}
+            onChange={(key) => {
+              touch("ministries");
+              setLeadMinistryKey(key);
+            }}
+          />
         )}
 
         {rules.categoriesBeyondMinistries && (
@@ -548,7 +545,8 @@ export function NewReleaseScreen(): React.JSX.Element {
         {rules.mediaListsAllowed && (
           <fieldset className="gcpe-options" id={FIELD_IDS.mediaListKeys} tabIndex={-1}>
             <legend>
-              Media distribution lists{rules.mediaListRequired ? " (required)" : ""}
+              {/* Create doesn't need one; publishing does (publishProblems). */}
+              Media distribution lists{rules.mediaListRequired ? " (needed before publishing)" : ""}
             </legend>
             {mediaLists.map((l) => (
               <label key={l.key}>

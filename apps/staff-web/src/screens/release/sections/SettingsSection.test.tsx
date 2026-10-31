@@ -84,6 +84,124 @@ describe("SettingsSection", () => {
     await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["old-desk", "list1"] }));
   });
 
+  // forms-b #2: the server sends the media email to the ticked lists, whatever a "Send to media
+  // distribution lists" box said (apps/nrms/src/releases/service.ts saveSettings), so there's no
+  // such box: the lists alone say who gets it.
+  it("has no separate Send to media distribution lists box; the ticked lists decide, and the section says so", async () => {
+    const calls = stubFetch({
+      mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }],
+      onPut: () => jsonResponse(200, releaseView({ version: 2 })),
+    });
+    const v = releaseView({ type: "release", version: 1, mediaListKeys: [], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: false } });
+    renderSettings(v);
+    const list = await screen.findByLabelText("List One");
+    expect(screen.queryByLabelText("Send to media distribution lists")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("The lists you tick get the media email when this is published. With none ticked, no media email goes out.");
+
+    const user = userEvent.setup();
+    await user.click(list);
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["list1"], toMediaLists: true }));
+  });
+
+  // forms-b fix round 1, finding 1: publishing follows the saved flag (publishOptions.toMediaLists),
+  // which an imported release can have off while lists are ticked. The server sets the flag from the
+  // lists on any settings save, so the section counts as unsaved and says so, instead of the hint.
+  describe("an imported release with lists ticked but the media email off", () => {
+    const stale = () => releaseView({ type: "release", version: 1, releasedAt: null, mediaListKeys: ["list1"], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: false } });
+    const LISTS = [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }];
+
+    it("an editor sees a warning, not the hint, and the section is unsaved until Save sends the flag on", async () => {
+      const calls = stubFetch({ mediaLists: LISTS, onPut: () => jsonResponse(200, releaseView({ version: 2, mediaListKeys: ["list1"], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: true } })) });
+      const v = stale();
+      renderSettings(v);
+      await screen.findByLabelText("List One");
+      const group = screen.getByRole("group", { name: "Media distribution lists" });
+      expect(group).toHaveAccessibleDescription("As saved, these lists won't get the media email. Save Publish settings and they will.");
+      expect(screen.queryByText(/The lists you tick/)).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).toHaveTextContent("Unsaved");
+
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["list1"], toMediaLists: true }));
+    });
+
+    it("a viewer sees a plain read-only line", async () => {
+      stubFetch({ mediaLists: LISTS });
+      renderSettings(stale(), () => {}, true);
+      await screen.findByLabelText("List One");
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("As saved, these lists won't get the media email.");
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
+    });
+
+    it("the normal case is unchanged: the hint, and nothing unsaved", async () => {
+      stubFetch({ mediaLists: LISTS });
+      renderSettings(releaseView({ type: "release", mediaListKeys: ["list1"], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: true } }));
+      await screen.findByLabelText("List One");
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription(/^The lists you tick/);
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
+    });
+
+    it("while it's live, no warning: a correction emails nobody", async () => {
+      stubFetch({ mediaLists: LISTS });
+      renderSettings(releaseView({ ...stale(), status: "published", live: true, releasedAt: "2026-01-01T00:00:00.000Z" }));
+      await screen.findByLabelText("List One");
+      expect(screen.queryByText(/As saved/)).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
+    });
+
+    // Fix round 2, finding 2: gone out before, now unpublished. A save would turn the flag on and
+    // could email lists the old system already emailed, so it's said, not forced.
+    it("released before and now off the site: a plain line, not forced unsaved, for editor and viewer", async () => {
+      const unpublished = () => releaseView({ ...stale(), status: "approved", live: false, releasedAt: "2026-01-01T00:00:00.000Z" });
+      stubFetch({ mediaLists: LISTS });
+      const { unmount } = renderSettings(unpublished());
+      await screen.findByLabelText("List One");
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("As saved, these lists won't get the media email when it's republished.");
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
+      unmount();
+      renderSettings(unpublished(), () => {}, true);
+      await screen.findByLabelText("List One");
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("As saved, these lists won't get the media email when it's republished.");
+    });
+
+    // Fix round 2, finding 3: a retired list gets nothing either way.
+    it("only retired lists ticked: says so, and isn't forced unsaved", async () => {
+      stubFetch({ mediaLists: [...LISTS, { key: "old-desk", displayName: "Old desk", sortOrder: 2, isActive: false }] });
+      renderSettings(releaseView({ ...stale(), mediaListKeys: ["old-desk"] }));
+      await screen.findByLabelText("Old desk (retired)");
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("The ticked lists are retired and won't get the media email.");
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
+    });
+
+    // Fix round 2, finding 1: an imported advisory can carry the old News On Demand bit, which the
+    // server refuses for an advisory; the save sends it off, so the forced save can succeed.
+    it("an imported advisory with the old News On Demand bit on saves, and the warning clears", async () => {
+      const v = releaseView({ ...stale(), type: "advisory", sectors: [], publishOptions: { toWeb: false, toSubscribers: true, toMediaLists: false } });
+      const saved = releaseView({ ...v, version: 2, publishOptions: { toWeb: false, toSubscribers: false, toMediaLists: true } });
+      const calls = stubFetch({ mediaLists: LISTS, onPut: () => jsonResponse(200, saved) });
+      let current = v;
+      const { rerender } = renderSettings(v, (next) => { current = next; });
+      await screen.findByLabelText("List One");
+      expect(screen.getByText(/As saved, these lists won't get the media email\. Save/)).toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ toSubscribers: false, toMediaLists: true }));
+      await waitFor(() => expect(current.version).toBe(2));
+      rerender(<SettingsSection view={current} setView={() => {}} timeZone="America/Vancouver" readOnly={false} />);
+      await waitFor(() => expect(screen.queryByText(/As saved/)).not.toBeInTheDocument());
+    });
+  });
+
+  // forms-b #10: the planned date only plans; Schedule, under Actions, sets when it goes out.
+  it("names the planned date as for planning only and says Schedule sets the time", async () => {
+    stubFetch();
+    renderSettings(releaseView({ type: "release" }));
+    const group = await screen.findByRole("group", { name: "Planned publish date (for planning only)" });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByText("Shows on the Forecast. Nothing is published at this time: Schedule, under Actions, sets when it goes out.")).toBeInTheDocument();
+  });
+
   it("disables the subscribers checkbox and explains why, for a type that doesn't allow it", () => {
     stubFetch();
     renderSettings(releaseView({ type: "advisory", publishOptions: { toWeb: false, toSubscribers: false, toMediaLists: false } }));
@@ -110,7 +228,7 @@ describe("SettingsSection", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("List One"));
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(await screen.findByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(setView).toHaveBeenCalledWith(saved));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
@@ -130,7 +248,7 @@ describe("SettingsSection", () => {
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-12-15" } });
     fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(await screen.findByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
@@ -148,7 +266,7 @@ describe("SettingsSection", () => {
     const user = userEvent.setup();
     // Some other edit, so there is something to save.
     await user.click(screen.getByLabelText("Send to News On Demand subscribers"));
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(await screen.findByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
@@ -191,7 +309,7 @@ describe("SettingsSection", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Send to News On Demand subscribers"));
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(await screen.findByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
@@ -207,7 +325,7 @@ describe("SettingsSection", () => {
     renderSettings(v);
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Send to News On Demand subscribers"));
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(await screen.findByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText("Only a draft can have its planned date changed.")).toBeInTheDocument();
     expect(screen.queryByText(/someone else changed this/i)).toBeNull();
@@ -230,7 +348,7 @@ describe("SettingsSection", () => {
     await user.click(screen.getByLabelText("Send to News On Demand subscribers")); // uncheck it
     expect(screen.getByLabelText("Send to News On Demand subscribers")).not.toBeChecked();
 
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(await screen.findByRole("button", { name: "Save changes" }));
     expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
 
     // The user's edit is still showing, untouched — never silently reverted or retried.

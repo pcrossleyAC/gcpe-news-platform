@@ -1,4 +1,7 @@
-import type { DocumentLanguageView, DocumentView, LanguageId, ReleaseView } from "@gcpe/nrms-contract";
+import type { DocumentLanguageView, DocumentView, LanguageId, Layout, ReleaseView } from "@gcpe/nrms-contract";
+
+/** A document layout as the screens name it. */
+export const LAYOUT_LABEL: Record<Layout, string> = { formal: "Formal", informal: "Informal" };
 
 export function findDocument(view: ReleaseView, documentId: string): DocumentView | undefined {
   return view.documents.find((d) => d.id === documentId);

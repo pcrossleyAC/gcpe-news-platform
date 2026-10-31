@@ -75,14 +75,16 @@ describe("ReleaseEditorPage", () => {
   it("acceptance: Approve is disabled and the checklist is shown until approveProblems is empty", async () => {
     renderPage("11111111-1111-1111-1111-111111111111", { view: releaseView({ status: "draft", ministries: [] }) });
     await screen.findByRole("heading", { name: "Actions" });
-    expect(screen.getByText("Before this can be approved:")).toBeInTheDocument();
+    expect(screen.getByText(/^Not ready: \d+ things? to fix\./)).toBeInTheDocument();
+    expect(screen.getByText("Approve is unavailable until:")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
   });
 
-  it("acceptance: a Viewer sees the page read-only — no Actions, every input disabled", async () => {
-    renderPage("11111111-1111-1111-1111-111111111111", { roles: ["NRMS.Viewer"] });
+  it("acceptance: a Viewer sees the page read-only — no Actions, no to-do line, every input disabled", async () => {
+    renderPage("11111111-1111-1111-1111-111111111111", { roles: ["NRMS.Viewer"], view: releaseView({ status: "draft", ministries: [] }) });
     await screen.findByRole("heading", { name: "Publish settings" });
     expect(screen.queryByRole("heading", { name: "Actions" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Not ready|Before this can be/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Location")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save page details" })).not.toBeInTheDocument();

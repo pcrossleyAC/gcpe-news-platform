@@ -13,14 +13,14 @@ const version = z.number().int().positive();
 const contact = z.string().max(250);
 /** The Calendar's activity ids are int4 (apps/calendar's `activities.id`, NRMS's `calendar_activities.id`). */
 export const MAX_ACTIVITY_ID = 2_147_483_647;
-const activityIdNumber = z.number().int().positive().max(MAX_ACTIVITY_ID, "Activity ID is too large");
+const activityIdNumber = z.number().int().positive().max(MAX_ACTIVITY_ID, "Calendar activity ID is too large");
 const activityId = z
   .union([
     activityIdNumber,
     z
       .string()
-      .max(10, "Activity ID is too large")
-      .regex(/^\d+$/, "Activity ID must be numeric")
+      .max(10, "Calendar activity ID is too large")
+      .regex(/^\d+$/, "Calendar activity ID must be numeric")
       .transform(Number)
       .pipe(activityIdNumber),
     z.null(),

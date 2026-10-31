@@ -15,6 +15,7 @@ import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
 import { bcLocalToInstant, instantToBcLocal, wallClockNowMinute } from "../timezone";
 import { placeholderHits } from "../placeholders";
+import { APPROVE_LIST_ID, readiness } from "../readiness";
 import { addDaysTo, bcDateOf, dateTimeText } from "../../calendar/list/dates";
 
 /** Schedule's field error for a time that isn't in the future. */
@@ -156,6 +157,12 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const asBlockers = (problems: string[]): Blocker[] => problems.map((p) => ({ text: p, target: blockerTarget(p) }));
   const approveBlockers = canApprove ? [...unsavedBlockers, ...asBlockers(approveProblems(view))] : [];
   const publishBlockers = canPublish ? [...unsavedBlockers, ...asBlockers(publishProblems(view))] : [];
+  // forms-b #16: the one list of what publishing needs (the header only links here). Where Publish
+  // now isn't offered it's listed on its own: on a draft (leaving out what Approve already lists),
+  // approved with no URL key yet, and (fix round 1) scheduled or published, since the publisher
+  // re-checks it at the scheduled time and on every republish.
+  const ready = readiness(view);
+  const publishLater = !canPublish ? asBlockers(ready.publish) : [];
 
   // Owner decision 2026-10-29: Approve confirms first, and warns (never blocks) about
   // placeholder text left in the release — "TBD", "to come", "[insert" and the like.
@@ -174,7 +181,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
     });
   const typeName = TYPE_LABEL[view.type].toLowerCase();
   // Owner decision 2026-10-29: Schedule starts from the planned publish date (Publish
-  // settings) when there is one still ahead; the editor can change it.
+  // settings, for planning only) when there is one still ahead; the editor can change it.
   const openScheduler = () => {
     if (schedulerOpen) {
       setSchedulerOpen(false);
@@ -459,8 +466,23 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
         )}
       </div>
 
-      {approveBlockers.length > 0 && <BlockerList id="actions-approve-why" lead="Approve is unavailable until:" items={approveBlockers} />}
+      {approveBlockers.length > 0 && <BlockerList id={APPROVE_LIST_ID} lead="Approve is unavailable until:" items={approveBlockers} />}
       {canApprove && <p className="gcpe-release-editor__why">Publish now and Schedule appear once this is approved.</p>}
+      {publishLater.length > 0 && (
+        <BlockerList
+          id="actions-publish-later"
+          lead={
+            view.status === "scheduled"
+              ? "Before the scheduled time:"
+              : view.status === "published"
+                ? "Before your next save can republish it:"
+                : approveBlockers.length > 0
+                  ? "Also needed before it can be published:"
+                  : "Before it can be published:"
+          }
+          items={publishLater}
+        />
+      )}
       {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead={canSchedule ? "Publish now and Schedule are unavailable until:" : "Publish now is unavailable until:"} items={publishBlockers} />}
 
       {schedulerOpen && canSchedule && (
@@ -482,10 +504,11 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
           />
           <p className="gcpe-hint gcpe-release-editor__planned-note">
             {prefilled
-              ? "Filled in from the planned publish date in Publish settings — change it if you need to. The time you confirm here is the one that's committed."
+              ? "Filled in from the planned publish date. "
               : view.publishAt && view.status === "approved"
-              ? `Planned in Publish settings: ${dateTimeText(view.publishAt, timeZone)}. That's only a plan; the time you confirm here is the one that's committed.`
-              : "The time you confirm here is the one that's committed. (A planned publish date in Publish settings is only a plan.)"}
+              ? `Planned publish date: ${dateTimeText(view.publishAt, timeZone)}. `
+              : ""}
+            The time you confirm here is when it goes out.
           </p>
           <DialogTrigger isOpen={scheduleConfirmOpen} onOpenChange={openScheduleConfirm}>
             <Button isDisabled={!scheduleValue || publishBlockers.length > 0} isPending={section.saving}>
@@ -549,7 +572,8 @@ function blockerTarget(problem: string): string | null {
 
 function BlockerList({ id, lead, items }: { id: string; lead: string; items: Blocker[] }): React.JSX.Element {
   return (
-    <div id={id} className="gcpe-release-editor__why">
+    // tabIndex: the header's "See them under Actions" link moves focus here.
+    <div id={id} className="gcpe-release-editor__why" tabIndex={-1}>
       <p>{lead}</p>
       <ul>
         {items.map(({ text, target }) => (

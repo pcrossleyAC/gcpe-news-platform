@@ -65,6 +65,34 @@ describe("DocumentsSection", () => {
     expect(await screen.findByText(/Auto summary\..*\(auto\)/)).toBeInTheDocument();
   });
 
+  // forms-b #1: the layout decides whether a document keeps Organizations or a Byline, so it's shown.
+  it("shows each document's layout", async () => {
+    stubFetch();
+    renderSection(releaseView({ documents: [doc("doc-1", 0, "First"), { ...doc("doc-2", 1, "Second"), layout: "informal" }] }));
+    await screen.findAllByLabelText("Headline");
+    const items = screen.getAllByRole("heading", { level: 3 }).map((h) => h.closest(".gcpe-documents__item") as HTMLElement);
+    expect(within(items[0]!).getByText("Layout: Formal")).toBeInTheDocument();
+    expect(within(items[1]!).getByText("Layout: Informal")).toBeInTheDocument();
+  });
+
+  // forms-b #21: the summary is edited in Page details, so the note links there.
+  it("the summary note links to Page details for an editor, not for a viewer, and an advisory has none", async () => {
+    stubFetch();
+    const withSummary = releaseView({ ...TWO_DOCS, languages: [{ languageId: LANG_EN, location: "VICTORIA", summary: "Auto summary.", summaryEdited: false, socialMediaSummary: null }] });
+    const { unmount } = renderSection(withSummary);
+    expect(await screen.findByRole("link", { name: "Edit it in Page details" })).toHaveAttribute("href", "#section-page-details");
+    unmount();
+
+    renderSection(withSummary, () => {}, true);
+    await screen.findByText(/Auto summary\./);
+    expect(screen.queryByRole("link", { name: "Edit it in Page details" })).not.toBeInTheDocument();
+    cleanup();
+
+    renderSection(releaseView({ ...withSummary, type: "advisory" }));
+    await screen.findAllByLabelText("Headline");
+    expect(screen.queryByText(/Summary:/)).not.toBeInTheDocument();
+  });
+
   it("acceptance 3: Move document 1 down sends the new order to PUT .../documents/order", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stubFetch((url, init) => {

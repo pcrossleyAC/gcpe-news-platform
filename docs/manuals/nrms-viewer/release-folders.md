@@ -44,4 +44,4 @@ A **Flickr alert** badge means the release went out without its Flickr photo.
 
 **Forecast** shows what is coming up.
 
-Calendar activities appear only if you have Calendar access, and only the ones you can see in the Calendar. Choose an activity's title to open it in the Calendar. An activity that already has a release planned or scheduled is shown as that release instead. Without Calendar access, the tab says "Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it."
+Calendar activities appear only if you have Calendar access, and only the ones you can see in the Calendar. Each activity shows its planned time and its **Calendar activity ID**. Choose an activity's title to open it in the Calendar. An activity that already has a release planned or scheduled is shown as that release instead. Without Calendar access, the tab says "Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it."

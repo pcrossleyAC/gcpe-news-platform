@@ -223,6 +223,16 @@ body {
 .gcpe-documents__add {
   margin-top: 1rem;
 }
+/* Publish settings: an imported release's lists that, as saved, won't get the media email. */
+.gcpe-release-editor__media-warning {
+  margin: 0;
+  font-weight: 600;
+}
+/* Which layout a document has: it decides whether it keeps Organizations or a Byline. */
+.gcpe-documents__layout {
+  margin: 0 0 0.5rem;
+  color: var(--typography-color-secondary, #474543);
+}
 
 .gcpe-shell__main {
   flex: 1 1 auto;
@@ -1045,7 +1055,11 @@ body {
   margin: 0 0 0.5rem;
 }
 
-.gcpe-release-editor__checklist ul,
+/* The header's one "Not ready: n things to fix" line, linking to the list under Actions. */
+.gcpe-release-editor__checklist {
+  margin: 0.25rem 0 0.75rem;
+}
+
 .gcpe-release-editor__problems {
   margin: 0.25rem 0 0.75rem;
 }
@@ -1164,6 +1178,11 @@ body {
 
 .gcpe-release-editor__why ul {
   margin: 0.25rem 0 0;
+}
+
+/* Each reason is a link: far enough apart for a 24px target (WCAG 2.5.8). */
+.gcpe-release-editor__why li + li {
+  margin-top: 0.375rem;
 }
 
 /* Release editor: what Publish now will do, in its confirm dialog. */

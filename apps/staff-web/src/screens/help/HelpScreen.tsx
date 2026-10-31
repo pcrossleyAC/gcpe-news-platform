@@ -62,7 +62,7 @@ const HOW_TO: HowTo[] = [
         show: canEditReleases,
         text: (
           <>
-            <strong>Plan a time without committing it:</strong> the planned publish date in Publish settings is only a plan. Schedule commits the time.
+            <strong>Plan a time without committing it:</strong> the planned publish date in Publish settings is for planning only; it shows on the Forecast. Schedule, under Actions, sets when it goes out.
           </>
         ),
       },

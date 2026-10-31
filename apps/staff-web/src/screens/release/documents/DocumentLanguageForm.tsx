@@ -1,6 +1,6 @@
 import { useEffect, type FormEvent } from "react";
 import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
-import { LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
+import { LANGUAGE_NAME, typeRules, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
@@ -17,6 +17,9 @@ export interface DocumentLanguageFormProps {
   languageId: LanguageId;
   readOnly: boolean;
 }
+
+const DROPPED_BYLINE = "A formal document doesn't keep a byline. It's removed the next time this tab is saved.";
+const DROPPED_ORGANIZATIONS = "An informal document doesn't keep organizations. They're removed the next time this tab is saved.";
 
 interface FormState {
   pageTitle: string;
@@ -122,6 +125,14 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   if (!doc || !lang) return <p role="alert">This document or language no longer exists.</p>;
 
   const idBase = `doc-${documentId}-${languageId}`;
+  // The server keeps Organizations only on a Formal document and Byline only on an Informal one
+  // (apps/nrms/src/releases/service.ts saveDocumentLanguage), so only that field is offered.
+  // Text the document already holds in the other one (imported, or from before a layout change)
+  // stays in view, read-only, saying it goes on the next save. The save itself is unchanged.
+  const formal = doc.layout === "formal";
+  const orgsNeededToPublish = typeRules(view.type).categoriesBeyondMinistries;
+  const heldOrganizations = !formal ? (lang.organizations ?? "").trim() : "";
+  const heldByline = formal ? (lang.byline ?? "").trim() : "";
 
   const setContact = (index: number, value: string) => setForm((f) => ({ ...f, contacts: f.contacts.map((c, i) => (i === index ? value : c)) }));
   const removeContact = (index: number) => setForm((f) => ({ ...f, contacts: f.contacts.filter((_, i) => i !== index) }));
@@ -150,14 +161,32 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
 
       <Form onSubmit={onSubmit} className="gcpe-doc-form">
         <div className="gcpe-form-grid">
-          <TextField label="Page title" value={form.pageTitle} onChange={(v) => setForm((f) => ({ ...f, pageTitle: v }))} isDisabled={readOnly} isRequired maxLength={50} />
-          <TextField label="Organizations" value={form.organizations} onChange={(v) => setForm((f) => ({ ...f, organizations: v }))} isDisabled={readOnly} />
+          <TextField label="Page title" value={form.pageTitle} onChange={(v) => setForm((f) => ({ ...f, pageTitle: v }))} isDisabled={readOnly} isRequired={!readOnly} maxLength={50} />
+          {formal ? (
+            <TextField
+              label="Organizations"
+              value={form.organizations}
+              onChange={(v) => setForm((f) => ({ ...f, organizations: v }))}
+              isDisabled={readOnly}
+              description={!readOnly && orgsNeededToPublish ? "Needed before publishing." : undefined}
+            />
+          ) : (
+            heldOrganizations && <TextField label="Organizations" value={heldOrganizations} isReadOnly isDisabled={readOnly} description={DROPPED_ORGANIZATIONS} />
+          )}
         </div>
         <TextField label="Headline" value={form.headline} onChange={(v) => setForm((f) => ({ ...f, headline: v }))} isDisabled={readOnly} maxLength={255} />
         <TextField label="Subheadline" value={form.subheadline} onChange={(v) => setForm((f) => ({ ...f, subheadline: v }))} isDisabled={readOnly} maxLength={100} />
-        <div className="gcpe-form-grid">
-          <TextField label="Byline" value={form.byline} onChange={(v) => setForm((f) => ({ ...f, byline: v }))} isDisabled={readOnly} maxLength={250} />
-        </div>
+        {formal ? (
+          heldByline && (
+            <div className="gcpe-form-grid">
+              <TextField label="Byline" value={heldByline} isReadOnly isDisabled={readOnly} description={DROPPED_BYLINE} />
+            </div>
+          )
+        ) : (
+          <div className="gcpe-form-grid">
+            <TextField label="Byline" value={form.byline} onChange={(v) => setForm((f) => ({ ...f, byline: v }))} isDisabled={readOnly} maxLength={250} />
+          </div>
+        )}
 
         <BodyEditor id={`${idBase}-body`} label="Body" value={form.bodyHtml} onChange={(html) => setForm((f) => ({ ...f, bodyHtml: html }))} readOnly={readOnly} allowItalic />
 
