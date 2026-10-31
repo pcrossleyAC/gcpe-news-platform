@@ -173,12 +173,29 @@ export type ListQuery = z.infer<typeof listQuerySchema>;
 /** `GET /forecast` (spec addendum §11): one page of the merged releases and activities. */
 export const forecastQuerySchema = z.object({ page: z.coerce.number().int().min(1).max(1000).default(1) });
 export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
-export const searchQuerySchema = z.object({
-  q: z.string().trim().max(200).default(""),
-  ministry: z.string().trim().toLowerCase().max(100).optional(),
-  sector: z.string().trim().toLowerCase().max(100).optional(),
-  page: z.coerce.number().int().min(1).default(1),
-});
+/** "2026-09-02" names a real calendar day (not "2026-02-30", which Date.parse rolls over to
+ * March 2): the round trip gives the same day back. */
+export function isRealDay(d: string): boolean {
+  // Year 0001 at the earliest: Postgres has no year 0000.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d.startsWith("0000")) return false;
+  const t = Date.parse(`${d}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d;
+}
+/** A calendar day ("2026-09-02"), as an `<input type="date">` gives it. */
+const isoDay = z.string().refine(isRealDay, "That isn't a real date.");
+export const searchQuerySchema = z
+  .object({
+    q: z.string().trim().max(200).default(""),
+    ministry: z.string().trim().toLowerCase().max(100).optional(),
+    sector: z.string().trim().toLowerCase().max(100).optional(),
+    // Suite review R9: the release type, and a From/To range (BC days, both included) on the
+    // release date: when it went out, or else its planned or scheduled time.
+    type: z.enum(["all", ...RELEASE_TYPES]).optional(),
+    from: isoDay.optional(),
+    to: isoDay.optional(),
+    page: z.coerce.number().int().min(1).default(1),
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: "The From date is after the To date.", path: ["to"] });
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type AddDocumentInput = z.infer<typeof addDocumentSchema>;
 export type AddTranslationInput = z.infer<typeof addTranslationSchema>;

@@ -7,7 +7,7 @@ import { ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError } from "./err
 import { bcYear, nextCounter } from "./numbering";
 import { createRelease, saveCategories } from "./service";
 import { loadView } from "./store";
-import { approve, cancel, returnToDraft, schedule, unpublish } from "./workflow";
+import { approve, audiencePreview, cancel, returnToDraft, schedule, unpublish } from "./workflow";
 
 const TZ = "America/Vancouver";
 const log1 = (r: { rows: { text: string }[] }) => r.rows.map((x) => x.text).at(-1);
@@ -203,6 +203,33 @@ describe("workflow", () => {
     expect(again.nodSubscribers).toBe(7);
     const log = await tdb.db.execute<{ text: string }>(sql`SELECT text FROM release_log WHERE release_id = ${v.id} ORDER BY id`);
     expect(log.rows.map((r) => r.text)).toEqual(["Created Release", "Approved Release", "Scheduled for Immediate Release", "Scheduled for Immediate Release"]);
+  });
+
+  // Suite review R6 (fix round 1): who a first publish reaches, from NoD's breakdown by its own
+  // send rules (apps/nod/src/audience.test.ts pins those against real sends). Read-only.
+  it("audiencePreview: NoD's emailed-now, digest and media counts for a first publish, read-only; unavailable kept apart from not emailed", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, headline: "Audience preview", mediaListKeys: ["regional"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    let asked: unknown = null;
+    const counting = { timeZone: TZ, releaseAudience: async (input: unknown) => ((asked = input), { asItHappens: 40_000, digest: 1_200, mediaContacts: 312 }) };
+    expect(await audiencePreview(db(), v.id, counting)).toEqual({ asItHappens: { count: 40_000 }, digest: { count: 1_200 }, mediaContacts: { count: 312 } });
+    expect(asked).toEqual({ listKeys: ["ministries:health", "sectors:health"], mediaListKeys: ["media-distribution-lists:regional"], toSubscribers: true, postKind: "releases" });
+    const after = (await loadView(db(), v.id))!;
+    expect(after.version).toBe(a.version);
+    const log = await tdb.db.execute<{ text: string }>(sql`SELECT text FROM release_log WHERE release_id = ${v.id} ORDER BY id`);
+    expect(log.rows.map((r) => r.text)).toEqual(["Created Release", "Approved Release"]);
+
+    // A failing or missing NoD: unavailable, not "nobody".
+    const down = { timeZone: TZ, releaseAudience: async () => { throw new Error("down"); } };
+    expect(await audiencePreview(db(), v.id, down)).toEqual({ asItHappens: { count: null }, digest: { count: null }, mediaContacts: { count: null } });
+    expect(await audiencePreview(db(), v.id, { timeZone: TZ })).toEqual({ asItHappens: { count: null }, digest: { count: null }, mediaContacts: { count: null } });
+    // Media lists off: no media number; subscribers off: no subscriber numbers.
+    await tdb.db.execute(sql`UPDATE news_releases SET to_subscribers = false WHERE id = ${v.id}`);
+    expect(await audiencePreview(db(), v.id, counting)).toMatchObject({ asItHappens: null, digest: null, mediaContacts: { count: 312 } });
+    // Already released (republish after an unpublish): no first-publish counts.
+    await tdb.db.execute(sql`UPDATE news_releases SET released_at = now() WHERE id = ${v.id}`);
+    expect(await audiencePreview(db(), v.id, counting)).toEqual({ asItHappens: null, digest: null, mediaContacts: null });
+    expect(await audiencePreview(db(), "00000000-0000-4000-8000-0000000000ff", counting)).toBeNull();
   });
 
   // Owner decision 2026-10-29: an approved release that has never been published can go back to

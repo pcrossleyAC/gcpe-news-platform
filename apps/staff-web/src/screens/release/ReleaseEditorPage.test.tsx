@@ -11,6 +11,7 @@ import { SignIn } from "../SignIn";
 import { AnnouncerProvider } from "../../shared/Announcer";
 import { ReleaseEditorPage, SETTLING_REFRESH_MS, settlingDelay } from "./ReleaseEditorPage";
 import { RELOAD_MESSAGE } from "./useReleaseSection";
+import { loadDraft, saveDraft } from "./documents/unsavedDocumentStorage";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -304,6 +305,56 @@ describe("ReleaseEditorPage", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/releases/drafts"));
   });
 
+  // Suite review R7: the page tells the bar when a save republishes (a published release).
+  it.each([
+    ["published", true],
+    ["approved", false],
+  ] as const)("a %s release's save bar %s says Save and republish", async (status, republishes) => {
+    renderPage("11111111-1111-1111-1111-111111111111", { view: releaseView({ status, live: status === "published", key: "k1", reference: "NEWS-00001", releasedAt: status === "published" ? "2026-01-01T00:00:00.000Z" : null }) });
+    await userEvent.setup().type(await screen.findByLabelText("Location"), "V");
+    const bar = await screen.findByRole("region", { name: "Unsaved changes" });
+    expect(within(bar).getByRole("button", { name: republishes ? "Save and republish" : "Save changes" })).toBeInTheDocument();
+  });
+
+  // Suite review R3: changes discarded with Leave must not come back. A kept draft (from a 401)
+  // that was restored and then discarded is gone when the release is opened again.
+  it("Leave discards a restored draft: opening the release again shows the saved content", async () => {
+    const id = "11111111-1111-1111-1111-111111111111";
+    const v = releaseView({ id });
+    const lang = v.documents[0]!.languages[0]!;
+    const key = { userId: "1", releaseId: id, documentId: v.documents[0]!.id, languageId: lang.languageId };
+    const form = { pageTitle: lang.pageTitle, organizations: lang.organizations ?? "", headline: "Discard me", subheadline: lang.subheadline ?? "", byline: lang.byline ?? "", bodyHtml: lang.bodyHtml, contacts: lang.contacts };
+    saveDraft(key, { version: v.version, form });
+    // One kept for a language tab that isn't on screen: only Leave can clear it.
+    const unopened = { ...key, languageId: 3084 };
+    saveDraft(unopened, { version: v.version, form });
+    stubFetch({ roles: ["NRMS.Editor"], view: v });
+    const router = createMemoryRouter(
+      [
+        { path: "/releases/:id", element: <ReleaseEditorPage /> },
+        { path: "/releases/drafts", element: <p>Drafts list</p> },
+      ],
+      { initialEntries: [`/releases/${id}`] },
+    );
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    const user = userEvent.setup();
+    expect(await screen.findByLabelText("Headline")).toHaveValue("Discard me");
+
+    router.navigate("/releases/drafts");
+    await screen.findByRole("dialog");
+    await user.click(screen.getByRole("button", { name: "Leave" }));
+    await screen.findByText("Drafts list");
+    expect(loadDraft(key)).toBeNull();
+    expect(loadDraft(unopened)).toBeNull();
+
+    router.navigate(`/releases/${id}`);
+    expect(await screen.findByLabelText("Headline")).toHaveValue(lang.headline);
+  });
+
   // constraints.md Review Focus 1 / task-4-brief.md Step 1: a session expiring mid-edit — the
   // save gets a 401, which signs the user out (SessionContext) and RequireAuth sends them to
   // sign in, carrying `?return=` back to this same release. Their unsaved document text
@@ -578,6 +629,7 @@ describe("ReleaseEditorPage", () => {
           if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "health", name: "Health" }, { key: "sector1", name: "Sector One" }], themes: [], tags: [] });
           if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
           if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+          if (url.endsWith("/audience")) return jsonResponse(200, { asItHappens: null, digest: null, mediaContacts: null });
           const write = Object.entries(writes).find(([suffix]) => url.endsWith(suffix));
           if (write && init?.method && init.method !== "GET") {
             const result = write[1](current, init.body ? JSON.parse(init.body as string) : {});
@@ -624,6 +676,7 @@ describe("ReleaseEditorPage", () => {
       await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
       await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Schedule" }));
       await user.click(await screen.findByRole("button", { name: "Cancel schedule" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel schedule" }));
       const publish = await screen.findByRole("button", { name: "Publish now" });
       await waitFor(() => expect(publish).toBeEnabled());
       expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();

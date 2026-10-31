@@ -751,6 +751,14 @@ body {
   color: #b00020;
 }
 
+/* Suite review R8: "Planned" is only a plan (nothing goes out), so it doesn't look like
+ * "Scheduled": amber, with a dashed edge so it differs by more than colour. */
+.gcpe-badge--planned {
+  border-style: dashed;
+  border-color: var(--support-border-color-warning, #f8bb47);
+  background: var(--support-surface-color-warning, #fef1d8);
+}
+
 /* Visually hidden but still reachable by aria-describedby/aria-labelledby (used for the
  * Flickr alert badge's accessible description). */
 .gcpe-visually-hidden {

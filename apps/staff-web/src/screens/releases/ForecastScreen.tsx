@@ -11,7 +11,8 @@ import { ReleaseFolderTabs } from "./ReleaseFolderTabs";
 import { ReleaseRow } from "./ReleaseRow";
 
 /**
- * The Forecast tab (spec addendum §11): releases planned or scheduled from now on, and the Calendar
+ * The Forecast tab (spec addendum §11): releases planned or scheduled from now on (and, suite review
+ * R8, ones whose time passed in the last 24 hours that still aren't out, flagged), and the Calendar
  * activities a release may be planned for, by time (`GET /nrms/api/forecast?page=`). No type filter,
  * as legacy hid it on Forecast.
  */
@@ -67,7 +68,7 @@ export function ForecastScreen(): React.JSX.Element {
         <ul className="gcpe-release-list__rows">
           {result.items.map((i) =>
             i.kind === "release" ? (
-              <ReleaseRow key={i.release.id} item={i.release} now={now} timeZone={timeZone} />
+              <ReleaseRow key={i.release.id} item={i.release} now={now} timeZone={timeZone} flagPassedPlanned />
             ) : (
               <ForecastActivityRow key={`activity-${i.activity.activityId}`} activity={i.activity} at={i.at} now={now} timeZone={timeZone} canStartRelease={canStartRelease} />
             ),
