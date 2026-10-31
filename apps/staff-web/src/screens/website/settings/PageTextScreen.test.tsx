@@ -9,7 +9,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import type { SettingsState } from "./api";
-import { INTRO, LICENCE_HINT, PageTextScreen, STATEMENT_HINT } from "./PageTextScreen";
+import { INTRO, LICENCE_HINT, REQUIRED_NOTE, PageTextScreen, STATEMENT_HINT } from "./PageTextScreen";
 
 const BASE: SiteSettings = defaultSiteSettings({
   colors: { primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D", mutedText: "#474543", surface: "#FFFFFF", background: "#FFFFFF", border: "#D8D8D8" },
@@ -189,7 +189,8 @@ describe("PageTextScreen", () => {
     stub(["NRMS.SiteEditor"], stateOf(DOC));
     renderScreen();
     expect(await screen.findByText(INTRO)).toBeInTheDocument();
-    expect(INTRO).toMatch(/page not found heading and the privacy page title are required/);
+    expect(screen.getByText(REQUIRED_NOTE)).toBeInTheDocument();
+    expect(REQUIRED_NOTE).toMatch(/page not found heading and the privacy page title are required/);
     const privacy = screen.getByRole("group", { name: "Privacy page" });
     expect(within(privacy).getByLabelText("Label")).toHaveAccessibleDescription(/above the title on the privacy page/);
     expect(within(screen.getByRole("group", { name: "Media assets licence" })).getByLabelText("Text")).toHaveAccessibleDescription(LICENCE_HINT);
@@ -223,5 +224,8 @@ describe("PageTextScreen", () => {
     expect(await screen.findByLabelText("Notice heading")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
     expect(screen.queryByRole("button", { name: "+ Add a link" })).toBeNull();
+    // Audit #13: nothing is marked required on a view that can't change it.
+    expect(screen.getByText(INTRO)).toBeInTheDocument();
+    expect(screen.queryByText(REQUIRED_NOTE)).toBeNull();
   });
 });

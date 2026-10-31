@@ -15,8 +15,9 @@ import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
 
 const TITLE = "Page text";
 
-export const INTRO =
-  "The wording on the pages that are not news releases. The page not found heading and the privacy page title are required. Leave any other box empty to hide that wording.";
+export const INTRO = "The wording on the pages that are not news releases.";
+/** Editors only: a view that can't change anything marks nothing required (audit #13). */
+export const REQUIRED_NOTE = "The page not found heading and the privacy page title are required. Leave any other box empty to hide that wording.";
 
 export const STATEMENT_HINT =
   "The title above is the page's main heading. For a heading inside the statement, put bold text on a line of its own.";
@@ -123,6 +124,7 @@ function PageTextFields({ canEdit }: { canEdit: boolean }): React.JSX.Element {
     <div className="gcpe-site-page-text">
       <h1>{TITLE}</h1>
       <p>{INTRO}</p>
+      {canEdit && <p>{REQUIRED_NOTE}</p>}
 
       <fieldset>
         <legend>Page not found</legend>

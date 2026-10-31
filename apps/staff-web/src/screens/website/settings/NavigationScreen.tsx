@@ -12,8 +12,9 @@ import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
 
 const TITLE = "Navigation and labels";
 
-export const INTRO =
-  "The menu, button and heading wording used across the public site. The news menu label, the webcast button label, every page label and every listing title are required. The footer headings are optional.";
+export const INTRO = "The menu, button and heading wording used across the public site.";
+/** Editors only: a view that can't change anything marks nothing required (audit #13). */
+export const REQUIRED_NOTE = "The news menu label, the webcast button label, every page label and every listing title are required. The footer headings are optional.";
 
 export const HEADER_LINKS_HINT = "Shown in the header after the news menu. Up to 4 links.";
 
@@ -125,6 +126,7 @@ function NavigationFields({ canEdit }: { canEdit: boolean }): React.JSX.Element 
     <div className="gcpe-site-navigation">
       <h1>{TITLE}</h1>
       <p>{INTRO}</p>
+      {canEdit && <p>{REQUIRED_NOTE}</p>}
 
       <fieldset>
         <legend>Header</legend>
