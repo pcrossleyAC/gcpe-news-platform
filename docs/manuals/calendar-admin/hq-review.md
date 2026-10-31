@@ -40,8 +40,9 @@ Reviewing it takes it off the list's default view. The activity stays deleted. A
 ## Review several at once
 
 1. In the list, tick the box beside each activity number, such as **Select HLTH-1**.
-2. Choose **Review selected**. The button shows how many are ticked, up to 500 at a time.
-3. You see, for example, "Reviewed 3 activities."
+2. Choose **Review selected**, beside **New activity**. The button shows how many are ticked, up to 500 at a time.
+3. The Hub asks first, for example "Review 3 activities?": "Their “Changed: needs review” marks are cleared and they become Reviewed. This can’t be undone." Choose **Review**, or **Cancel** to review nothing.
+4. You see, for example, "Reviewed 3 activities."
 
 An activity someone changed after your list loaded is skipped, and named: "1 skipped because it changed since the list loaded: HLTH-2." Open it, check the change, and review it again.
 

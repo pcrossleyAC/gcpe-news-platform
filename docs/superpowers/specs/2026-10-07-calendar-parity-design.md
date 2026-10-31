@@ -324,6 +324,7 @@ Both now come from the one HQ flag (C124).
   - Writes history.
 - **Review selected:**
   - The list sends each row's version. Rows changed since the list loaded are skipped and reported back, as legacy skipped rows changed after the grid loaded (`ActivityHandler.ashx.cs:177-193`).
+  - Amendment 2026-10-31 (owner approved, suite review CAL-6): the Hub asks first, naming how many, as legacy did ("N activities selected. Are you sure…", `UCFlexiGrid.ascx:4-22`): "Review 12 activities?", with **Review** and **Cancel**. The list's button is a secondary one, so **New activity** stays the only primary action.
 - **Clear LA Status:**
   - Clears `hq_status` on every visible activity whose start is on or before today plus N days, including past ones, as legacy does (`ActivityHandler.ashx.cs:1258-1274`).
   - Writes one `la_status_cleared` history entry per changed activity.

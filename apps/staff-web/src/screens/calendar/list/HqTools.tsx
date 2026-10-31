@@ -22,13 +22,19 @@ function Result({ status, error }: { status: string | null; error: string | null
   );
 }
 
-/** Review selected (UCFlexiGrid.ascx.cs:21-27; HQ Administrators). Rows changed since the list loaded are skipped. */
+/**
+ * Review selected (UCFlexiGrid.ascx.cs:21-27; HQ Administrators). Rows changed since the list loaded
+ * are skipped. It asks first, naming how many, as legacy did (UCFlexiGrid.ascx:4-22; suite review
+ * CAL-6): the marks it clears can't be put back. A secondary button, so New activity leads.
+ */
 export function ReviewSelected({ selected, onDone }: { selected: Map<number, { version: number; label: string }>; onDone: () => void }): React.JSX.Element {
   const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const run = async () => {
     const items = [...selected].map(([id, s]) => ({ id, version: s.version }));
+    setConfirm(false);
     setBusy(true);
     setStatus(null);
     setError(null);
@@ -60,9 +66,27 @@ export function ReviewSelected({ selected, onDone }: { selected: Map<number, { v
   const tooMany = selected.size > REVIEW_SELECTED_MAX;
   return (
     <div>
-      <Button isPending={busy} isDisabled={selected.size === 0 || tooMany} pendingLabel="Reviewing…" onPress={() => void run()}>{`Review selected (${selected.size})`}</Button>
+      <Button variant="secondary" isPending={busy} isDisabled={selected.size === 0 || tooMany} pendingLabel="Reviewing…" onPress={() => setConfirm(true)}>{`Review selected (${selected.size})`}</Button>
       {tooMany && <p className="gcpe-hint">{`Select at most ${REVIEW_SELECTED_MAX} at a time.`}</p>}
       <Result status={status} error={error} />
+      <Modal isOpen={confirm} onOpenChange={setConfirm} isDismissable>
+        <AlertDialog
+          role="alertdialog"
+          aria-label={`Review ${plural(selected.size)}?`}
+          variant="warning"
+          title={`Review ${plural(selected.size)}?`}
+          buttons={
+            <>
+              <Button variant="secondary" onPress={() => setConfirm(false)}>
+                Cancel
+              </Button>
+              <Button onPress={() => void run()}>Review</Button>
+            </>
+          }
+        >
+          <p>Their &ldquo;Changed: needs review&rdquo; marks are cleared and they become Reviewed. This can&rsquo;t be undone.</p>
+        </AlertDialog>
+      </Modal>
     </div>
   );
 }
