@@ -32,6 +32,20 @@ Alerts posted by Emergency Info BC are checked every 5 minutes. A new alert goes
 
 Release editors choose media lists for a release. Each member of those lists gets the full-text media version. A reporter who is also an **As it happens** subscriber for that release gets one email, the media version, not two.
 
+## When a subscriber unsubscribes
+
+Every release, digest, alert and media list email ends with an **Unsubscribe** link. It opens the Unsubscribe page on the public site, which asks them to confirm with its **Unsubscribe** button. Opening the link alone changes nothing. Once they confirm, the page says "You're unsubscribed." and their status becomes **Unsubscribed or deleted**. Some email programs also show their own unsubscribe button, which unsubscribes them at once.
+
+If something goes wrong, the page says so:
+
+| What the page says | What it means |
+|---|---|
+| "We couldn't unsubscribe you. You're still subscribed. Try again in a few minutes." | Nothing changed. They can choose **Unsubscribe** again. |
+| "This unsubscribe link isn't complete. It may have been cut off in your email." | The link was cut short, which some email programs do to long links. |
+| "This link has expired." | They came from the manage page, and its link lasts only 24 hours. |
+
+Each of these also points them to the public **Manage Subscription** page, where they can ask for a new link by email and unsubscribe from there.
+
 ## Emails about the subscription itself
 
 People who sign up on the public site get an email asking them to confirm. They have no record here until they do, so the **Pending** choice under **Status** on **Find subscribers** finds no one. They also get an email when they ask to change their preferences or address.

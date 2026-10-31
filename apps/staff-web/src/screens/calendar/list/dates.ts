@@ -1,13 +1,8 @@
-const formatters = new Map<string, Intl.DateTimeFormat>();
-/** The BC calendar date (YYYY-MM-DD) of an instant, by the browser's tzdata. */
+import { formatInZone, formatToPartsInZone, zonedDate } from "../../../format/bcTime";
+
+/** The BC calendar date (YYYY-MM-DD) of an instant (format/bcTime.ts: right on old-tzdata browsers too). */
 export function bcDateOf(at: string | Date, timeZone: string): string {
-  let f = formatters.get(timeZone);
-  if (!f) {
-    f = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
-    formatters.set(timeZone, f);
-  }
-  const p = Object.fromEntries(f.formatToParts(new Date(at)).map((x) => [x.type, x.value]));
-  return `${p.year}-${p.month}-${p.day}`;
+  return zonedDate(at, timeZone);
 }
 export const todayIn = (timeZone: string, now: Date = new Date()) => bcDateOf(now, timeZone);
 /** Calendar arithmetic on a bare date: no time zone, no DST. */
@@ -58,12 +53,12 @@ export function weekRange(anchor: string): { start: string; end: string } {
 /** "9:00 AM" in the tenant's zone, with a plain space: formatToParts keeps ICU's narrow no-break space out. */
 export function timeText(iso: string, timeZone: string): string {
   const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(new Date(iso)).map((x) => [x.type, x.value]),
+    formatToPartsInZone(iso, timeZone, { hour: "numeric", minute: "2-digit", hour12: true }).map((x) => [x.type, x.value]),
   );
   return `${p.hour}:${p.minute} ${p.dayPeriod}`;
 }
 
 /** "Nov 10, 2031 10:00 AM" in the tenant's zone: when a release goes out, or a change was made. */
 export function dateTimeText(iso: string, timeZone: string): string {
-  return `${new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso))} ${timeText(iso, timeZone)}`;
+  return `${formatInZone(iso, timeZone, { month: "short", day: "numeric", year: "numeric" })} ${timeText(iso, timeZone)}`;
 }

@@ -77,7 +77,7 @@ describe("NRMS HTTP API", () => {
   // against this server-computed one, warning if a stale browser tzdata disagrees.
   it("GET /config's tzCheck gives the server's own UTC offset for a pinned instant after BC's permanent UTC-7 switch (requires Node 24+ tzdata)", async () => {
     const res = await request(app).get("/api/config").set("cookie", viewerCookie);
-    expect(res.body.tzCheck).toEqual({ at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
+    expect(res.body.tzCheck).toEqual({ at: "2026-12-15T20:00:00Z", offsetMinutes: -420, fixedSince: "2026-03-08T10:00:00.000Z" });
   });
 
   it("a viewer can read categories and releases but can't create one", async () => {

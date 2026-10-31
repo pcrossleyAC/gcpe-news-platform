@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
+import { formatInZone, formatToPartsInZone } from "../../../format/bcTime";
 import { Button } from "../../../shared/BusyButton";
 import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
@@ -31,8 +32,8 @@ export function scheduleText(local: string): string {
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = time.split(":").map(Number);
   const at = new Date(Date.UTC(y!, mo! - 1, d!, h!, mi!));
-  const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(at);
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(at).map((x) => [x.type, x.value]));
+  const day = formatInZone(at, "UTC", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const p = Object.fromEntries(formatToPartsInZone(at, "UTC", { hour: "numeric", minute: "2-digit", hour12: true }).map((x) => [x.type, x.value]));
   return `${day} at ${p.hour}:${p.minute} ${p.dayPeriod} Pacific time`;
 }
 
@@ -671,7 +672,7 @@ export function digestCutoffFor(releasedAt: string, timeZone: string): string {
 }
 
 /** "Oct 1, 2026" in the tenant's zone. */
-const dayText = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
+const dayText = (iso: string, timeZone: string) => formatInZone(iso, timeZone, { month: "short", day: "numeric", year: "numeric" });
 
 /**
  * What Publish now (or, given `at`, Schedule) will do, from the release as saved (publishing is blocked while anything is

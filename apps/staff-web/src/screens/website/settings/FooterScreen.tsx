@@ -1,6 +1,7 @@
 import { InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import type { FooterSettings } from "@gcpe/site-settings";
 import { useTenantTimeZone } from "../../../format/tenantTimeZone";
+import { formatInZone } from "../../../format/bcTime";
 import { useSession } from "../../../session/SessionContext";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -73,7 +74,7 @@ function FooterFields({ canEdit }: { canEdit: boolean }): React.JSX.Element {
   };
   const set = (patch: Partial<FooterSettings>) => editor.setValue((v) => ({ ...v, ...patch }));
   // The public site shows the year in the tenant's zone; this hint is only a sample of the wording.
-  const year = new Intl.DateTimeFormat("en-CA", { year: "numeric", timeZone }).format(new Date());
+  const year = formatInZone(new Date(), timeZone, { year: "numeric" }, "en-CA");
 
   return (
     <div className="gcpe-site-footer">

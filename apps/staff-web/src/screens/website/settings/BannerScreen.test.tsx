@@ -9,6 +9,8 @@ import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import { BannerScreen } from "./BannerScreen";
 import type { SettingsState } from "./api";
+import { setServerZoneRule } from "../../../format/bcTime";
+import { BC_RULE, playOldRulesBrowser } from "../../../format/oldRulesBrowser.testkit";
 
 const DOC: SiteSettings = defaultSiteSettings({
   colors: { primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D", mutedText: "#474543", surface: "#FFFFFF", background: "#FFFFFF", border: "#D8D8D8" },
@@ -90,6 +92,28 @@ describe("BannerScreen", () => {
     // 2026-11-02 is after BC's switch to permanent UTC-7: 17:00Z is 10:00 in Vancouver.
     expect(screen.getByLabelText(/Show from/)).toHaveValue("2026-11-02T10:00");
     expect(screen.getByLabelText(/Hide after/)).toHaveValue("");
+  });
+
+  // Owner decision 2026-10-31: on a browser whose tzdata predates BC's permanent UTC-7, once
+  // AppShell has the server's rule the schedule pre-fills in true BC time — so saving another
+  // field sends the stored time back unchanged, not an hour early.
+  it("on an old-rules browser, pre-fills the stored schedule in true BC time and saves it back unchanged", async () => {
+    const undo = playOldRulesBrowser();
+    setServerZoneRule(BC_RULE);
+    try {
+      const stored = withBanner(NOTHING_LIVE, { enabled: true, style: "info", message: "Hi", startsAt: "2026-11-03T16:00:00.000Z", endsAt: null });
+      const calls = stub(["NRMS.SiteEditor"], (c) => (c.url === "/nrms/api/site/settings/draft" && c.method === "PUT" ? jsonResponse(200, { ...stored, draft: { baseRevision: null, updatedAt: "2026-10-27T18:00:00.000Z" } }) : undefined), stored);
+      renderScreen();
+      const user = userEvent.setup();
+      expect(await screen.findByLabelText(/Show from/)).toHaveValue("2026-11-03T09:00");
+      await user.type(screen.getByLabelText("Message"), "!");
+      await user.click(screen.getByRole("button", { name: "Save draft" }));
+      await screen.findByText("Draft saved. It isn't live until you publish.");
+      const put = calls.find((c) => c.url === "/nrms/api/site/settings/draft" && c.method === "PUT")!;
+      expect((put.body as { value: { startsAtLocal: string } }).value.startsAtLocal).toBe("2026-11-03T09:00");
+    } finally {
+      undo();
+    }
   });
 
   it("Ctrl+S (⌘S on a Mac) from a field is Save draft (never Publish); the button shows the keys", async () => {
