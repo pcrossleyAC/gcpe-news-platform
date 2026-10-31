@@ -6,7 +6,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
-import { lists, subscribers, subscriptions, type SubscriberSource, type SubscriptionRow } from "./db/schema";
+import { lists, subscribers, subscriptions, type SubscriberSource, type SubscriberStatus, type SubscriptionRow } from "./db/schema";
 import { MEDIA_CATEGORY, mediaListKey } from "./lists";
 import { lockAddress, withLockedSubscriber } from "./locks";
 import { mediaOptOutAt } from "./opt-outs";
@@ -37,9 +37,27 @@ export interface AddMediaMemberInput {
   confirmOptOut?: boolean;
 }
 
+/** What an add did, so the screen can say so (N12, owner 2026-10-31: wording only, the add
+ * itself behaves as before). */
+export interface AddMediaMemberResult {
+  subscriberId: string;
+  /** The address added, for the screen's message (a Media Hub add sends no address). */
+  email: string;
+  created: boolean;
+  newsEmailOff: boolean;
+  /** They were already on this list before the add. */
+  alreadyMember: boolean;
+  /** The add made a Disabled, Pending or ended record Active again (media email only). */
+  reactivated: boolean;
+  /** The add linked the record to a different Media Hub contact or email than before. */
+  relinked: boolean;
+}
+
 export interface MediaMember {
   subscriberId: string;
   email: string;
+  /** Only `active` members are sent media email (media-send.ts); staff need to see the rest (N4). */
+  status: SubscriberStatus;
   source: string;
   mediaHubContactId: number | null;
   /** The chosen Media Hub email's ref; what the resolve screen preselects against. */
@@ -53,7 +71,10 @@ export interface MediaListSummary {
   key: string;
   name: string;
   active: boolean;
+  /** Members who get the list's email: active subscribers only, as media-send.ts sends (N4). */
   members: number;
+  /** Members who are Disabled, so get nothing until staff activate them; not in `members`. */
+  disabled: number;
   /** Members with a needs-attention flag (C59): what the index screen surfaces first. */
   needsAttention: number;
 }
@@ -119,7 +140,7 @@ export async function addMediaMember(
   listKey: string,
   input: AddMediaMemberInput,
   actor: string,
-): Promise<{ subscriberId: string; created: boolean; newsEmailOff: boolean }> {
+): Promise<AddMediaMemberResult> {
   const key = mediaListKey(listKey);
   const email = normaliseEmail(input.email);
   return db.transaction(async (tx) => {
@@ -127,6 +148,14 @@ export async function addMediaMember(
     if (!(await mediaListRow(tx, key))) throw new MediaListNotFoundError(listKey);
 
     const [existing] = await tx.select().from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`).for("update");
+    // N12: whether they were already on this list, only to say so; the add goes ahead as always.
+    const alreadyMember = existing
+      ? (await tx.select({ listKey: subscriptions.listKey }).from(subscriptions).where(and(eq(subscriptions.subscriberId, existing.id), eq(subscriptions.listKey, key)))).length > 0
+      : false;
+    const relinked =
+      !!existing &&
+      input.mediaHubContactId !== undefined &&
+      (existing.mediaHubContactId !== input.mediaHubContactId || (input.mediaHubEmailRef !== undefined && existing.mediaHubEmailRef !== input.mediaHubEmailRef));
     // The record's own opt-out, or one kept from a purged record of this address (opt-outs.ts).
     if (!input.confirmOptOut) {
       const optedOutAt = await mediaOptOutAt(tx, email, key, existing ?? null);
@@ -183,7 +212,8 @@ export async function addMediaMember(
     await tx.insert(subscriptions).values({ subscriberId, listKey: key }).onConflictDoNothing();
     await writeHistory(tx, subscriberId, actor, "media-list-added", key);
     if (newsOffDetail !== null) await writeHistory(tx, subscriberId, actor, "media-news-email-off", newsOffDetail);
-    return { subscriberId, created, newsEmailOff: newsOffDetail !== null };
+    const reactivated = !!existing && existing.status !== "active";
+    return { subscriberId, email, created, newsEmailOff: newsOffDetail !== null, alreadyMember, reactivated, relinked };
   });
 }
 
@@ -228,6 +258,7 @@ export async function listMediaMembers(db: DbOrTx, listKey: string): Promise<Med
     .select({
       subscriberId: subscribers.id,
       email: subscribers.email,
+      status: subscribers.status,
       source: subscribers.source,
       mediaHubContactId: subscribers.mediaHubContactId,
       mediaHubEmailRef: subscribers.mediaHubEmailRef,
@@ -248,7 +279,8 @@ export async function listMediaLists(db: DbOrTx): Promise<MediaListSummary[]> {
       key: lists.key,
       name: lists.name,
       active: lists.active,
-      members: sql<number>`count(${subscriptions.subscriberId})::int`,
+      members: sql<number>`count(${subscribers.id}) FILTER (WHERE ${subscribers.status} = 'active')::int`,
+      disabled: sql<number>`count(${subscribers.id}) FILTER (WHERE ${subscribers.status} = 'disabled')::int`,
       needsAttention: sql<number>`count(${subscribers.id}) FILTER (WHERE ${subscribers.needsAttention} IS NOT NULL)::int`,
     })
     .from(lists)

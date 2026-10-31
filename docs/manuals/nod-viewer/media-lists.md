@@ -11,12 +11,12 @@ topics: []
 
 **Media lists** holds the reporters on each media list. Release editors pick these lists on a release, and every member gets the full-text media version.
 
-The table shows each list's **Members**, how many **Need attention**, and its **Status**. A **Retired** list can't be put on a release, and nothing is sent to it.
+The table shows each list's **Members**, how many **Need attention**, and its **Status**. **Members** counts only the members who get the list's email. Disabled members get nothing, so they aren't counted; the cell then adds, for example, "(and 2 Disabled, who get nothing)". A **Retired** list can't be put on a release, and nothing is sent to it.
 
 ## See who is on a list
 
 1. Choose a list's name. The list opens.
-2. Read the members. Each shows their **Email**, their **Source** (**Media Hub**, **Added by hand** or **Subscriber**) and any problem under **Needs attention**.
+2. Read the members. Each shows their **Email**, their **Status**, their **Source** (**Media Hub**, **Added by hand** or **Subscriber**) and any problem under **Needs attention**. A line above the members says how many get this list's email. A member whose **Status** says "Disabled: gets nothing" is on the list but is sent nothing until an editor activates them on their record.
 3. Choose an address to open that subscriber's record.
 
 **All media lists** takes you back.
@@ -35,7 +35,7 @@ Subscribers editors fix these. Tell one, or Media Relations for a bouncing repor
 
 ## Left this list
 
-This section lists people who left the list, with when they left (**Left**) and whether they are **Back on the list**. The screen explains "They unsubscribed, or left it in the old system." Someone removed by staff in the Hub isn't listed. If more than 200 have left, you see "Showing the most recent 200."
+This section lists people who left the list, with when they left (**Left**) and whether they are **Back on the list**. The screen explains "They unsubscribed, asked staff to stop their email, or left it in the old system." Someone staff removed from the list, or deleted for another reason, isn't listed. If more than 200 have left, you see "Showing the most recent 200."
 
 ## Media Hub sync
 

@@ -8,7 +8,7 @@ import { onDeliveryBounced } from "../bounces";
 import { deliveries, mediaOptOuts, subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import { lockAddress } from "../locks";
 import { addMediaMember, OptedOutError } from "../media-members";
-import { ALL_MEDIA_LISTS, mediaOptOutAt, optOutHash } from "../opt-outs";
+import { ALL_MEDIA_LISTS, keepMediaOptOuts, mediaOptOutAt, optOutHash } from "../opt-outs";
 import { addSubscriber } from "../subscribers";
 import { createLink, findLink } from "../subscribe/links";
 import {
@@ -124,6 +124,28 @@ describe("staff subscriber actions", () => {
     expect(acts).not.toContain("media-list-opted-out");
     expect(acts).not.toContain("unsubscribed");
     await expect(addMediaMember(tdb.db, "budget", { email: "del@example.test", source: "manual-media" }, ACTOR)).resolves.toMatchObject({ subscriberId });
+  });
+
+  it("N5: delete because they asked us to stop records their opt-out as an unsubscribe does: re-adding to a media list asks first, and it survives the purge", async () => {
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name, active) VALUES ('media-distribution-lists:arts','media-distribution-lists','arts','Arts',true) ON CONFLICT DO NOTHING`);
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "stop@example.test", source: "manual-media" }, ACTOR);
+    expect(await deleteSubscriber(tdb.db, subscriberId, ACTOR, { askedToStop: true })).toEqual({ changed: true });
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(row).toMatchObject({ status: "deleted" });
+    expect(row!.endedAt).not.toBeNull();
+    expect(await keys(subscriberId)).toEqual([]);
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, subscriberId));
+    expect(history.filter((h) => h.action !== "media-list-added").map((h) => [h.action, h.actor, h.detail]).sort()).toEqual([
+      ["media-list-opted-out", ACTOR, "media-distribution-lists:budget"],
+      ["unsubscribed", ACTOR, "asked staff"],
+    ]);
+    // The list they were on, and any other media list: both ask first, as for a self-unsubscribe.
+    await expect(addMediaMember(tdb.db, "budget", { email: "stop@example.test", source: "manual-media" }, ACTOR)).rejects.toBeInstanceOf(OptedOutError);
+    await expect(addMediaMember(tdb.db, "arts", { email: "stop@example.test", source: "manual-media" }, ACTOR)).rejects.toBeInstanceOf(OptedOutError);
+    // Kept, without the address, when the purge removes the record.
+    expect(await keepMediaOptOuts(tdb.db, row!)).toBe(2);
+    // Already deleted: nothing more happens.
+    expect(await deleteSubscriber(tdb.db, subscriberId, ACTOR, { askedToStop: true })).toEqual({ changed: false });
   });
 
   it("change email moves the address, rotates the unsubscribe token, ends old links and writes history with no address", async () => {

@@ -202,10 +202,34 @@ describe("SubscriberScreen", () => {
     await user.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Delete this subscriber?");
+    // N5: staff say why; without a choice nothing is sent.
     await user.click(screen.getByRole("button", { name: "Confirm delete" }));
-    await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
+    expect(await within(dialog).findByText("Choose why you’re deleting them.")).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    await user.click(within(dialog).getByRole("radio", { name: /Something else/ }));
+    await user.click(screen.getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "DELETE")?.body).toEqual({ askedToStop: false }));
     expect((await screen.findAllByText(/Unsubscribed or deleted/)).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Save preferences" })).toBeNull();
+  });
+
+  it("N5: Delete with \"They asked us to stop\" sends askedToStop and explains what it records", async () => {
+    let current = detail({ status: "active", disabledReason: null });
+    const calls = stub(["NoD.Editor"], () => current, {
+      [`DELETE /nod/api/subscribers/${ID}`]: () => {
+        current = { ...current, status: "deleted", endedAt: "2026-10-05T12:00:00.000Z" };
+        return [200, { changed: true }];
+      },
+    });
+    renderAt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("alertdialog");
+    const why = within(dialog).getByRole("radiogroup", { name: /^Why are you deleting them\?/ });
+    await user.click(within(why).getByRole("radio", { name: "They asked us to stop sending them email" }));
+    expect(dialog).toHaveTextContent("This is kept as their unsubscribe. If anyone adds them to a media list later, the Hub asks first.");
+    await user.click(screen.getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "DELETE")?.body).toEqual({ askedToStop: true }));
   });
 
   it("shows one message at a time: a refused email change or an Activate replaces an earlier success", async () => {

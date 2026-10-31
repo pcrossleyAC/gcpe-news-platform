@@ -7,7 +7,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
-import { mediaOptOuts, subscribers, subscriptions } from "../db/schema";
+import { mediaOptOuts, subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import { ALL_MEDIA_LISTS, optOutHash } from "../opt-outs";
 import { privateErrors } from "./staff-subscriber-routes";
 
@@ -173,6 +173,15 @@ describe("staff subscriber routes — writes", () => {
     expect((await send("post", "/api/subscribers/bulk", editor, { action: "delete", ids: [id] })).body).toEqual({ changed: 0, skipped: [{ id, reason: "unchanged" }] });
     expect((await send("post", "/api/subscribers/bulk", editor, { action: "delete", ids: Array.from({ length: 201 }, () => randomUUID()) })).status).toBe(400);
     expect((await send("post", "/api/subscribers/not-a-uuid/status", editor, { status: "active" })).status).toBe(404);
+  });
+
+  it("N5: delete with askedToStop records an unsubscribe by the staff member; a bad flag is 400", async () => {
+    const { body: { id } } = await send("post", "/api/subscribers", editor, { email: "asked@example.test", lists: "all" });
+    expect((await send("delete", `/api/subscribers/${id}`, editor, { askedToStop: "yes" })).status).toBe(400);
+    expect((await send("delete", `/api/subscribers/${id}`, editor, { askedToStop: true })).body).toEqual({ changed: true });
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, id));
+    expect(history.map((h) => h.action)).toContain("unsubscribed");
+    expect(history.map((h) => h.action)).not.toContain("staff-deleted");
   });
 
   it("add and change email cap an address at 150 characters, the same as the public journey", async () => {

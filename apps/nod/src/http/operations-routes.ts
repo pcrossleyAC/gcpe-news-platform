@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole } from "@gcpe/auth";
 import { getOperations } from "../operations";
+import { cancelHeldEmail, NotPausedError } from "../outgoing";
 import { getPurgeStatus, setPurgeEnabled } from "../purge";
 import { getSoftCodesCounted, resolveBounceSummaryAddress, setBounceSummaryAddress, setSoftCodesCounted, SOFT_CODE_RE } from "../settings";
 import { privateErrorsWith } from "./private-errors";
@@ -13,9 +14,12 @@ const blankToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? 
 const addressBody = z.object({ address: z.preprocess(blankToNull, z.union([z.string().trim().email().max(254), z.null()])) });
 const softCodesBody = z.object({ codes: z.array(z.string().trim().regex(SOFT_CODE_RE)).max(50) });
 const purgeBody = z.object({ enabled: z.boolean() });
+/** The send jobs the screen showed and the admin confirmed (N3); a long pause's digests run to a few thousand. */
+const cancelBody = z.object({ jobIds: z.array(z.string().uuid()).min(1).max(20_000) });
 
 function mapError(e: unknown, res: Response): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
+  if (e instanceof NotPausedError) return void res.status(409).json({ error: "not-paused" }), true;
   return false;
 }
 /** The summary address is bound in these queries (see private-errors.ts). */
@@ -56,6 +60,13 @@ export function operationsRoutes(db: Db, deps: SettingsRouteDeps): Router {
     const { enabled } = purgeBody.parse(req.body);
     const { changed } = await setPurgeEnabled(db, enabled, actorOf(req).name);
     res.json({ changed, purge: await getPurgeStatus(db, deps.timeZone) });
+  }));
+
+  // Held news email (N3): cancelled only while News On Demand sending is paused, and only the
+  // jobs the admin was shown that are still held. Answers what it cancelled.
+  r.post("/operations/held-email/cancel", admin, privateErrors(async (req, res) => {
+    const { jobIds } = cancelBody.parse(req.body);
+    res.json(await cancelHeldEmail(db, jobIds, actorOf(req).name));
   }));
 
   return r;

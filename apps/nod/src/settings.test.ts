@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
@@ -49,7 +49,7 @@ describe("settings", () => {
   it("pause: sets paused, writes one operations_log row and sends one ops email; a repeat pause changes nothing", async () => {
     const distribution = stubDistribution();
     const result = await setPaused(deps({ distribution }), true, "Jamie Admin");
-    expect(result).toEqual({ changed: true });
+    expect(result).toEqual({ changed: true, released: null });
 
     const [settingsRow] = await tdb.db.select().from(nodSettings);
     expect(settingsRow!.paused).toBe(true);
@@ -70,9 +70,22 @@ describe("settings", () => {
 
     // Repeat pause: already paused -- no new log row, no second email, changed: false.
     const again = await setPaused(deps({ distribution }), true, "Someone Else");
-    expect(again).toEqual({ changed: false });
+    expect(again).toEqual({ changed: false, released: null });
     expect(await tdb.db.select().from(operationsLog)).toHaveLength(1);
     expect(distribution.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("resume still happens when counting what it releases fails: no count, setting and log stand", async () => {
+    await tdb.pool.query("UPDATE nod_settings SET paused = true");
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const distribution = stubDistribution();
+    // A failing query, as a real count failure would be: it must not abort the resume's transaction.
+    const result = await setPaused(deps({ distribution }), false, "Jamie Admin", (tx) => tx.execute(sql`SELECT * FROM no_such_table`));
+    expect(result).toEqual({ changed: true, released: null });
+    expect((await tdb.db.select().from(nodSettings))[0]!.paused).toBe(false);
+    expect((await tdb.db.select().from(operationsLog)).map((l) => l.action)).toEqual(["resumed"]);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("resume: sets paused false, writes one operations_log row and sends one ops email; a repeat resume changes nothing", async () => {
@@ -80,7 +93,7 @@ describe("settings", () => {
     const distribution = stubDistribution();
 
     const result = await setPaused(deps({ distribution }), false, "Jamie Admin");
-    expect(result).toEqual({ changed: true });
+    expect(result).toEqual({ changed: true, released: null });
 
     const [settingsRow] = await tdb.db.select().from(nodSettings);
     expect(settingsRow!.paused).toBe(false);
@@ -95,7 +108,7 @@ describe("settings", () => {
     expect(req.idempotencyKey).toBe(`nod-ops-${logRows[0]!.id}`);
 
     const again = await setPaused(deps({ distribution }), false, "Jamie Admin");
-    expect(again).toEqual({ changed: false });
+    expect(again).toEqual({ changed: false, released: null });
     expect(await tdb.db.select().from(operationsLog)).toHaveLength(1);
     expect(distribution.send).toHaveBeenCalledTimes(1);
   });
@@ -103,7 +116,7 @@ describe("settings", () => {
   it("no ops email configured: writes the log row but sends no email", async () => {
     const distribution = stubDistribution();
     const result = await setPaused(deps({ distribution, opsEmail: null }), true, "Jamie Admin");
-    expect(result).toEqual({ changed: true });
+    expect(result).toEqual({ changed: true, released: null });
 
     expect(await tdb.db.select().from(operationsLog)).toHaveLength(1);
     expect(distribution.send).not.toHaveBeenCalled();
@@ -115,7 +128,7 @@ describe("settings", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const result = await setPaused(deps({ distribution }), true, "Jamie Admin");
-      expect(result).toEqual({ changed: true });
+      expect(result).toEqual({ changed: true, released: null });
       expect(errorSpy).toHaveBeenCalledTimes(1);
       expect(String(errorSpy.mock.calls[0]![0])).toContain("ops email");
     } finally {

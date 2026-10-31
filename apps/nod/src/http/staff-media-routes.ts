@@ -79,16 +79,16 @@ export function staffMediaRoutes(db: Db, mediaHub: MediaHubClient | null): Route
       // same schema and response as a manual add's bad email.
       const address = emailAddressSchema.safeParse(email.address);
       if (!address.success) return void res.status(400).json({ error: "invalid request", issues: address.error.issues });
-      const { subscriberId, created, newsEmailOff } = await addMediaMember(
+      const added = await addMediaMember(
         db,
         req.params.key,
         { email: address.data, source: "media-hub", mediaHubContactId: parsed.mediaHubContactId, mediaHubEmailRef: parsed.emailRef, confirmOptOut: parsed.confirmOptOut },
         actor,
       );
-      return void res.status(created ? 201 : 200).json({ subscriberId, created, newsEmailOff });
+      return void res.status(added.created ? 201 : 200).json(added);
     }
-    const { subscriberId, created, newsEmailOff } = await addMediaMember(db, req.params.key, { email: parsed.email, source: "manual-media", confirmOptOut: parsed.confirmOptOut }, actor);
-    res.status(created ? 201 : 200).json({ subscriberId, created, newsEmailOff });
+    const added = await addMediaMember(db, req.params.key, { email: parsed.email, source: "manual-media", confirmOptOut: parsed.confirmOptOut }, actor);
+    res.status(added.created ? 201 : 200).json(added);
   }));
 
   r.delete("/media-lists/:key/members/:subscriberId", write, privateErrors<{ key: string; subscriberId: string }>(async (req, res) => {
