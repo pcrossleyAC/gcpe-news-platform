@@ -33,7 +33,7 @@ On a wide screen, the release is on the left, and **Publish settings** and **Rel
 
 - **Calendar activity ID**: the Calendar activity the release is linked to. Under it you see the activity's title, which opens it in the Calendar. If you can't see that activity in the Calendar, it says "Calendar activity 3: its details aren't shown to you.", with the activity's number.
 - **Planned publish date (for planning only)**: the date and time a release editor plans to publish it, if there is one. Nothing is published at that time unless they schedule it.
-- Whether it goes to News On Demand subscribers, and the **Media distribution lists** ticked to get it.
+- Whether it goes to News On Demand subscribers, and the **Media distribution lists** ticked to get it. "As saved, these lists won't get the media email." means a release editor still has to save its settings for them to.
 
 ## Release info
 

@@ -2,7 +2,7 @@
  * The release's Lead ministry, shown once more than one ministry is ticked (Categories, and New
  * release). Approving needs a lead then (approveProblems), except on an advisory, so the label says
  * so and the empty choice only prompts: it can't be picked (forms-b #23). An advisory, which needs
- * no lead, keeps "(none)". A read-only view has no marker.
+ * no lead, keeps "(none)". A read-only view, or a release already past approval, has no marker.
  */
 export function LeadMinistrySelect({
   id,
@@ -10,6 +10,7 @@ export function LeadMinistrySelect({
   ministries,
   needed,
   readOnly = false,
+  beforeApproval = true,
   onChange,
 }: {
   id?: string;
@@ -19,9 +20,11 @@ export function LeadMinistrySelect({
   /** The release's type needs a lead to approve. */
   needed: boolean;
   readOnly?: boolean;
+  /** Still a draft: approving is ahead, so the marker applies. */
+  beforeApproval?: boolean;
   onChange(key: string | null): void;
 }): React.JSX.Element {
-  const marked = needed && !readOnly;
+  const marked = needed && !readOnly && beforeApproval;
   return (
     <label className="gcpe-field">
       {marked ? "Lead ministry (needed before approving)" : "Lead ministry"}

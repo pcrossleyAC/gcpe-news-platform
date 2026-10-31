@@ -157,9 +157,10 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const asBlockers = (problems: string[]): Blocker[] => problems.map((p) => ({ text: p, target: blockerTarget(p) }));
   const approveBlockers = canApprove ? [...unsavedBlockers, ...asBlockers(approveProblems(view))] : [];
   const publishBlockers = canPublish ? [...unsavedBlockers, ...asBlockers(publishProblems(view))] : [];
-  // forms-b #16: the one list of what publishing needs (the header only links here). Before
-  // Publish now is offered (a draft, or approved with no URL key yet) it's listed for later,
-  // leaving out what Approve already lists.
+  // forms-b #16: the one list of what publishing needs (the header only links here). Where Publish
+  // now isn't offered it's listed on its own: on a draft (leaving out what Approve already lists),
+  // approved with no URL key yet, and (fix round 1) scheduled or published, since the publisher
+  // re-checks it at the scheduled time and on every republish.
   const ready = readiness(view);
   const publishLater = !canPublish ? asBlockers(ready.publish) : [];
 
@@ -468,7 +469,19 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
       {approveBlockers.length > 0 && <BlockerList id={APPROVE_LIST_ID} lead="Approve is unavailable until:" items={approveBlockers} />}
       {canApprove && <p className="gcpe-release-editor__why">Publish now and Schedule appear once this is approved.</p>}
       {publishLater.length > 0 && (
-        <BlockerList id="actions-publish-later" lead={approveBlockers.length > 0 ? "Also needed before it can be published:" : "Before it can be published:"} items={publishLater} />
+        <BlockerList
+          id="actions-publish-later"
+          lead={
+            view.status === "scheduled"
+              ? "Before the scheduled time:"
+              : view.status === "published"
+                ? "Before your next save can republish it:"
+                : approveBlockers.length > 0
+                  ? "Also needed before it can be published:"
+                  : "Before it can be published:"
+          }
+          items={publishLater}
+        />
       )}
       {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead={canSchedule ? "Publish now and Schedule are unavailable until:" : "Publish now is unavailable until:"} items={publishBlockers} />}
 

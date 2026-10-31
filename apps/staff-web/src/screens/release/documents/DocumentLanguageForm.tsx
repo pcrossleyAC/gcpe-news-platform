@@ -18,8 +18,8 @@ export interface DocumentLanguageFormProps {
   readOnly: boolean;
 }
 
-const DROPPED_BYLINE = "A formal document doesn't keep a byline. It's removed the next time this document is saved.";
-const DROPPED_ORGANIZATIONS = "An informal document doesn't keep organizations. They're removed the next time this document is saved.";
+const DROPPED_BYLINE = "A formal document doesn't keep a byline. It's removed the next time this tab is saved.";
+const DROPPED_ORGANIZATIONS = "An informal document doesn't keep organizations. They're removed the next time this tab is saved.";
 
 interface FormState {
   pageTitle: string;

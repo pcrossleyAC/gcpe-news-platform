@@ -82,7 +82,12 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
     setLookupId(next.activityId);
   };
 
-  const dirty = !readOnly && edited;
+  // Fix round 1, finding 1: publishing follows the saved flag (publishOptions.toMediaLists), and an
+  // imported release can have lists ticked with it off. Any settings save sets it from the lists
+  // (saveSettings), so until then the section says so and counts as unsaved. Once a release has
+  // gone out it won't email the lists again anyway (workflow.ts), so then there's nothing to say.
+  const mediaFlagOff = rules.mediaListsAllowed && !view.publishOptions.toMediaLists && view.mediaListKeys.length > 0 && view.releasedAt === null;
+  const dirty = !readOnly && (edited || mediaFlagOff);
   const plannedValue = form.planned;
   const setPlannedValue = (planned: ScheduleValue | null) => setForm((f) => ({ ...f, planned }));
 
@@ -194,9 +199,15 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           // to the ticked lists whatever such a box said (saveSettings), so the lists alone decide.
           <fieldset className="gcpe-options" aria-describedby="settings-media-lists-hint">
             <legend>Media distribution lists</legend>
-            <p id="settings-media-lists-hint" className="gcpe-options__wide gcpe-hint">
-              {readOnly ? "The lists ticked here get the media email when this is published." : "The lists you tick get the media email when this is published. With none ticked, no media email goes out."}
-            </p>
+            {mediaFlagOff ? (
+              <p id="settings-media-lists-hint" className="gcpe-options__wide gcpe-release-editor__media-warning">
+                {readOnly ? "As saved, these lists won't get the media email." : "As saved, these lists won't get the media email. Save Publish settings and they will."}
+              </p>
+            ) : (
+              <p id="settings-media-lists-hint" className="gcpe-options__wide gcpe-hint">
+                {readOnly ? "The lists ticked here get the media email when this is published." : "The lists you tick get the media email when this is published. With none ticked, no media email goes out."}
+              </p>
+            )}
             {lists
               .filter((l) => l.isActive || view.mediaListKeys.includes(l.key))
               .map((l) =>

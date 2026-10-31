@@ -228,7 +228,7 @@ describe("DocumentLanguageForm", () => {
       const byline = await screen.findByRole("textbox", { name: "Byline" });
       expect(byline).toHaveValue("By Pat");
       expect(byline).toHaveAttribute("readonly");
-      expect(byline).toHaveAccessibleDescription("A formal document doesn't keep a byline. It's removed the next time this document is saved.");
+      expect(byline).toHaveAccessibleDescription("A formal document doesn't keep a byline. It's removed the next time this tab is saved.");
 
       const user = userEvent.setup();
       await user.type(screen.getByLabelText("Headline"), " today");
@@ -242,7 +242,7 @@ describe("DocumentLanguageForm", () => {
       renderForm(withLanguage("informal", { organizations: "Ministry of Health", byline: null }));
       const orgs = await screen.findByRole("textbox", { name: "Organizations" });
       expect(orgs).toHaveAttribute("readonly");
-      expect(orgs).toHaveAccessibleDescription("An informal document doesn't keep organizations. They're removed the next time this document is saved.");
+      expect(orgs).toHaveAccessibleDescription("An informal document doesn't keep organizations. They're removed the next time this tab is saved.");
       expect(screen.getByRole("textbox", { name: "Byline" })).not.toHaveAttribute("readonly");
     });
 

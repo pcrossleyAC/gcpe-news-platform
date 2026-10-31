@@ -104,6 +104,53 @@ describe("SettingsSection", () => {
     await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["list1"], toMediaLists: true }));
   });
 
+  // forms-b fix round 1, finding 1: publishing follows the saved flag (publishOptions.toMediaLists),
+  // which an imported release can have off while lists are ticked. The server sets the flag from the
+  // lists on any settings save, so the section counts as unsaved and says so, instead of the hint.
+  describe("an imported release with lists ticked but the media email off", () => {
+    const stale = () => releaseView({ type: "release", version: 1, releasedAt: null, mediaListKeys: ["list1"], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: false } });
+    const LISTS = [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }];
+
+    it("an editor sees a warning, not the hint, and the section is unsaved until Save sends the flag on", async () => {
+      const calls = stubFetch({ mediaLists: LISTS, onPut: () => jsonResponse(200, releaseView({ version: 2, mediaListKeys: ["list1"], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: true } })) });
+      const v = stale();
+      renderSettings(v);
+      await screen.findByLabelText("List One");
+      const group = screen.getByRole("group", { name: "Media distribution lists" });
+      expect(group).toHaveAccessibleDescription("As saved, these lists won't get the media email. Save Publish settings and they will.");
+      expect(screen.queryByText(/The lists you tick/)).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).toHaveTextContent("Unsaved");
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["list1"], toMediaLists: true }));
+    });
+
+    it("a viewer sees a plain read-only line", async () => {
+      stubFetch({ mediaLists: LISTS });
+      renderSettings(stale(), () => {}, true);
+      await screen.findByLabelText("List One");
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("As saved, these lists won't get the media email.");
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
+    });
+
+    it("the normal case is unchanged: the hint, and nothing unsaved", async () => {
+      stubFetch({ mediaLists: LISTS });
+      renderSettings(releaseView({ type: "release", mediaListKeys: ["list1"], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: true } }));
+      await screen.findByLabelText("List One");
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription(/^The lists you tick/);
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
+    });
+
+    it("once it has gone out, no warning: it won't send again anyway", async () => {
+      stubFetch({ mediaLists: LISTS });
+      renderSettings(releaseView({ ...stale(), releasedAt: "2026-01-01T00:00:00.000Z" }));
+      await screen.findByLabelText("List One");
+      expect(screen.queryByText(/As saved/)).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
+    });
+  });
+
   // forms-b #10: the planned date only plans; Schedule, under Actions, sets when it goes out.
   it("names the planned date as for planning only and says Schedule sets the time", async () => {
     stubFetch();

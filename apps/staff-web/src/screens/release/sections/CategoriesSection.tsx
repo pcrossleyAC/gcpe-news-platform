@@ -159,6 +159,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
                 ministries={form.ministries.map((key) => ({ key, name: nameOf(categories.ministries, key) }))}
                 needed={view.type !== "advisory"}
                 readOnly={readOnly}
+                beforeApproval={view.status === "draft"}
                 onChange={(leadMinistryKey) => setForm((f) => ({ ...f, leadMinistryKey }))}
               />
             )}

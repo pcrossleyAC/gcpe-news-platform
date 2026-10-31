@@ -71,7 +71,15 @@ describe("HeaderSection", () => {
     expect(screen.queryByText(/Not ready/)).not.toBeInTheDocument();
     rerender(<HeaderSection view={releaseView({ type: "release", status: "draft", ministries: [] })} />);
     expect(screen.queryByText(/Not ready/)).not.toBeInTheDocument();
-    rerender(<HeaderSection view={releaseView({ type: "release", status: "published", sectors: [] })} canEdit />);
+    rerender(<HeaderSection view={releaseView({ type: "release", status: "published", live: true })} canEdit />);
     expect(screen.queryByText(/Not ready/)).not.toBeInTheDocument();
+  });
+
+  // Fix round 1, finding 2: every publish re-checks publishProblems (a correction, a schedule
+  // firing), so a published or scheduled release with something missing says so too.
+  it("a published release with no sector: 1 thing, linked to the list under Actions", () => {
+    render(<HeaderSection view={releaseView({ type: "release", status: "published", live: true, sectors: [] })} canEdit />);
+    expect(screen.getByText(/^Not ready: 1 thing to fix\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See them under Actions" })).toHaveAttribute("href", "#actions-publish-later");
   });
 });

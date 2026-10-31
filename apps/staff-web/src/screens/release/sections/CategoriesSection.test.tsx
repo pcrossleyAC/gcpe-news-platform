@@ -92,6 +92,14 @@ describe("CategoriesSection", () => {
     expect(screen.getByRole("option", { name: "(none)" })).toBeEnabled();
   });
 
+  // Fix round 1 (minor): approving is behind it once the release isn't a draft.
+  it("an approved release's lead ministry has no needed-before-approving marker, and still no (none)", async () => {
+    stubFetch();
+    renderSection(releaseView({ type: "release", status: "approved", ministries: ["health", "education"], leadMinistryKey: "health" }));
+    expect(await screen.findByRole("combobox", { name: "Lead ministry" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "(none)" })).not.toBeInTheDocument();
+  });
+
   it("read-only: the lead ministry has no marker", async () => {
     stubFetch();
     renderSection(releaseView({ type: "release", ministries: ["health", "education"], leadMinistryKey: "health" }), () => {}, true);

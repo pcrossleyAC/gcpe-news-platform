@@ -11,7 +11,7 @@ topics: []
 
 A release goes from **Draft** to **Approved**, then out now or at a set time. **Actions** shows only the buttons that fit the release's status. Each step acts on the release as saved, so save your changes first.
 
-When a button is greyed out, the reasons are listed under it, such as "Approve is unavailable until:" and "Choose at least one ministry.". On a draft, "Also needed before it can be published:" lists what publishing will need too. Each reason links to the part of the release to fix.
+When a button is greyed out, the reasons are listed under it, such as "Approve is unavailable until:" and "Choose at least one ministry.". On a draft, "Also needed before it can be published:" lists what publishing will need too. A scheduled release can still have something missing, listed under "Before the scheduled time:", and a published one under "Before your next save can republish it:", because each publish checks again. Each reason links to the part of the release to fix.
 
 ## Approve
 
@@ -53,7 +53,7 @@ You can still change a scheduled release. What goes out is the release as saved 
 Set this in **Publish settings** before you publish.
 
 - **Send to News On Demand subscribers**: ticked for releases, unticked for stories and factsheets, and not available for advisories.
-- **Media distribution lists**: tick each list that should get the media email. With none ticked, no media email goes out. A retired list a release already had shows "(retired)" and gets nothing.
+- **Media distribution lists**: tick each list that should get the media email. With none ticked, no media email goes out. On a release brought over from the old system you may see "As saved, these lists won't get the media email. Save Publish settings and they will." **Publish settings** then says **Unsaved**: choose **Save changes** and the ticked lists get it. A retired list a release already had shows "(retired)" and gets nothing.
 
 See [Who is emailed, and when it goes public](manual:editor-what-happens-next).
 

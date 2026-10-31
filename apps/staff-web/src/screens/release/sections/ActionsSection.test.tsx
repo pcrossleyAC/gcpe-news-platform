@@ -858,6 +858,18 @@ describe("ActionsSection", () => {
     expect(screen.getByText("Before it can be published:").parentElement).toHaveTextContent("Add at least one document.");
   });
 
+  // Fix round 1, finding 2: the publisher re-checks publishProblems on every publish.
+  it("a published release lists what its next save needs to republish; a scheduled one, what it needs by its time", () => {
+    const { unmount } = renderActions(releaseView({ type: "release", status: "published", live: true, reference: "NEWS-00001", key: "k", sectors: [] }));
+    const list = screen.getByText("Before your next save can republish it:").parentElement!;
+    expect(list).toHaveAttribute("id", "actions-publish-later");
+    expect(screen.getByRole("link", { name: "Choose at least one sector." })).toHaveAttribute("href", "#section-categories");
+    unmount();
+
+    renderActions(releaseView({ type: "release", status: "scheduled", reference: "NEWS-00001", key: "k", publishAt: "2031-06-15T21:30:00.000Z", sectors: [] }));
+    expect(screen.getByText("Before the scheduled time:").parentElement).toHaveTextContent("Choose at least one sector.");
+  });
+
   it("an approvable draft has no 'unavailable' reasons", () => {
     renderActions(releaseView({ status: "draft", ministries: ["health"], leadMinistryKey: "health" }));
     expect(screen.queryByText(/is unavailable until/)).not.toBeInTheDocument();

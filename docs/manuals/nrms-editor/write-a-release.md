@@ -43,7 +43,7 @@ Each document says its layout under its heading, such as "Layout: Formal". The l
 
 Every document also has a **Page title**, **Headline**, **Subheadline**, **Body** and **Contacts**.
 
-If a document already holds a byline but is Formal, or organizations but is Informal, that text shows greyed out with a note such as "A formal document doesn't keep a byline. It's removed the next time this document is saved." Copy it first if you need it.
+If a document already holds a byline but is Formal, or organizations but is Informal, that text shows, but can't be edited, with a note such as "A formal document doesn't keep a byline. It's removed the next time this tab is saved." Copy it first if you need it.
 
 The **Body** toolbar has **Bold**, **Italic**, **Bulleted list**, **Numbered list**, **Link** and **Insert asset**. Pasted text keeps only that formatting.
 

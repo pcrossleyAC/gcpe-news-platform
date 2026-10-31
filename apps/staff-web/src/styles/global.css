@@ -223,6 +223,11 @@ body {
 .gcpe-documents__add {
   margin-top: 1rem;
 }
+/* Publish settings: an imported release's lists that, as saved, won't get the media email. */
+.gcpe-release-editor__media-warning {
+  margin: 0;
+  font-weight: 600;
+}
 /* Which layout a document has: it decides whether it keeps Organizations or a Byline. */
 .gcpe-documents__layout {
   margin: 0 0 0.5rem;
