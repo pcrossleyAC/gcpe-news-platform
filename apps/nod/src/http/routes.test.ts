@@ -799,9 +799,17 @@ describe("GET /api/settings, POST /api/settings/pause|resume", () => {
     expect(pauseAgain.body).toEqual({ paused: true, changed: false });
     expect(distribution.send).toHaveBeenCalledTimes(1);
 
+    // Review M4: the resume answer says how much it actually released, counted as it unpaused.
+    const [held] = await tdb.db.insert(sendJobs).values({ jobKey: "as_it_happens:resume-count" }).returning({ id: sendJobs.id });
+    const [who] = await tdb.db.insert(subscribers).values({ email: "resume-count@example.test", status: "active" }).returning({ id: subscribers.id });
+    await tdb.db.execute(sql`INSERT INTO job_recipients (job_id, subscriber_id) VALUES (${held!.id}::uuid, ${who!.id}::uuid)`);
     const resume = await request(app).post("/api/settings/resume").set("authorization", `Bearer ${admin}`);
     expect(resume.status).toBe(200);
-    expect(resume.body).toEqual({ paused: false, changed: true });
+    expect(resume.body).toEqual({ paused: false, changed: true, released: { emails: 1, releases: 0 } });
+    await tdb.db.delete(sendJobs).where(eq(sendJobs.id, held!.id));
+    await tdb.db.delete(subscribers).where(eq(subscribers.id, who!.id));
+    const again = await request(app).post("/api/settings/resume").set("authorization", `Bearer ${admin}`);
+    expect(again.body).toEqual({ paused: false, changed: false, released: null });
     expect(distribution.send).toHaveBeenCalledTimes(2);
     expect((distribution.send.mock.calls[1]![0] as MessageRequest).subject).toBe("BC Gov News On Demand sending resumed");
 

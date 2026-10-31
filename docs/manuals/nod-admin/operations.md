@@ -22,8 +22,8 @@ While paused, no as-it-happens, digest, emergency alert or media list email leav
 
 To resume:
 
-1. Choose **Resume News On Demand sending**. The Hub asks "Resume News On Demand sending?" and says how much goes out straight away, for example "1,205 held emails for 3 releases start going out straight away. The oldest has waited 12 days, since …". When nothing is held, it says "Nothing is held, so nothing goes out straight away."
-2. Choose **Confirm resume**. To cancel some held email first, choose **Cancel** instead and use **Outgoing news email**, below.
+1. Choose **Resume News On Demand sending**. The Hub asks "Resume News On Demand sending?" and says how much goes out straight away, counted as you open the question, for example "1,205 held emails for 3 releases start going out straight away. The oldest has waited 12 days, since …". When nothing is held, it says "Nothing is held, so nothing goes out straight away."
+2. Choose **Confirm resume**. You see how much was actually released, for example "News On Demand sending resumed. 1,205 held emails for 3 releases are going out now." To cancel some held email first, choose **Cancel** instead and use **Outgoing news email**, below.
 
 ## Pause Distribution
 

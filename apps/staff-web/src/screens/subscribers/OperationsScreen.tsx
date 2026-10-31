@@ -74,6 +74,14 @@ function OperationsPanels(): React.JSX.Element {
             path="/nod/api/settings"
             pauseBody={`News On Demand keeps recording releases and building emails but holds them until you resume. Nothing is dropped. ${whoIsEmailed(ops)}`}
             resumeBody={`${resumeHeld(ops.outgoing, timeZone)} ${whoIsEmailed(ops)}`}
+            // Review M4: counted again when the question opens, and the answer says what went.
+            freshResumeBody={() => apiFetch<OperationsStatus>("/nod/api/operations").then((o) => `${resumeHeld(o.outgoing, timeZone)} ${whoIsEmailed(o)}`)}
+            resumedText={(r) => {
+              const released = (r as { released?: { emails: number; releases: number } | null } | undefined)?.released;
+              return released && released.emails > 0
+                ? `News On Demand sending resumed. ${plural(released.emails, "held email")} for ${plural(released.releases, "release")} are going out now.`
+                : "News On Demand sending resumed.";
+            }}
             onDone={done}
           >
             <p>{`Last daily digest: ${ops.nod.lastDigestCutoff ? formatWhen(ops.nod.lastDigestCutoff, new Date(), timeZone) : "none yet"}.`}</p>
@@ -296,10 +304,15 @@ function PauseControl(props: {
   path: string;
   pauseBody: string;
   resumeBody: string;
+  /** Reads the resume question's text again when it opens (the page's copy may be old). */
+  freshResumeBody?: () => Promise<string>;
+  /** The success message from the resume's own answer. */
+  resumedText?: (response: unknown) => string;
   onDone(text: string): void;
   children?: React.ReactNode;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const [freshBody, setFreshBody] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const id = `ops-${props.path.replace(/\W+/g, "-")}`;
@@ -308,9 +321,9 @@ function PauseControl(props: {
     setBusy(true);
     setError(null);
     try {
-      await apiFetch(`${props.path}/${verb}`, { method: "POST" });
+      const response = await apiFetch<unknown>(`${props.path}/${verb}`, { method: "POST" });
       setOpen(false);
-      props.onDone(`${props.title} ${props.paused ? "resumed" : "paused"}.`);
+      props.onDone(props.paused && props.resumedText ? props.resumedText(response) : `${props.title} ${props.paused ? "resumed" : "paused"}.`);
     } catch (e) {
       setError(e instanceof ApiError && e.status === 502 ? "Distribution isn’t responding. Nothing changed." : "Couldn’t change it. Nothing changed.");
     } finally {
@@ -327,6 +340,9 @@ function PauseControl(props: {
         onOpenChange={(o) => {
           setError(null);
           setOpen(o);
+          setFreshBody(null);
+          // If it can't be read again, the page's last count stays.
+          if (o && props.paused && props.freshResumeBody) props.freshResumeBody().then(setFreshBody, () => {});
         }}
       >
         <Button variant="secondary" danger={!props.paused}>{`${props.paused ? "Resume" : "Pause"} ${props.title}`}</Button>
@@ -346,7 +362,7 @@ function PauseControl(props: {
               </>
             }
           >
-            <p>{props.paused ? props.resumeBody : props.pauseBody}</p>
+            <p>{props.paused ? (freshBody ?? props.resumeBody) : props.pauseBody}</p>
             {error && <InlineAlert variant="danger" role="alert" description={error} />}
           </AlertDialog>
         </Modal>

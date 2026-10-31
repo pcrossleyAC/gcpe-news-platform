@@ -67,6 +67,7 @@ function stub(
     purge?: () => Response | Promise<Response>;
     bounceAddress?: () => Response | Promise<Response>;
     cancel?: () => Response | Promise<Response>;
+    resume?: () => Response | Promise<Response>;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -78,6 +79,7 @@ function stub(
     if (url === "/nod/api/operations") return opts.load?.() ?? jsonResponse(200, ops);
     if (url === "/nod/api/operations/purge") return opts.purge?.() ?? jsonResponse(200, { changed: true, purge: { ...ops.purge, enabled: true } });
     if (url.endsWith("/pause")) return jsonResponse(200, { paused: true, changed: true });
+    if (url === "/nod/api/settings/resume") return opts.resume?.() ?? jsonResponse(200, { paused: false, changed: true, released: { emails: 0, releases: 0 } });
     if (url === "/nod/api/operations/held-email/cancel") return opts.cancel?.() ?? jsonResponse(200, { cancelledJobs: 1, cancelledEmails: 1200 });
     if (url === "/nod/api/operations/bounce-summary-address") return opts.bounceAddress?.() ?? jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } });
     if (url === "/nod/api/operations/bounce-soft-codes") return opts.softCodes?.() ?? jsonResponse(200, { changed: true, softCodesCounted: ["4.2.2", "4.4.7"] });
@@ -144,6 +146,24 @@ describe("OperationsScreen", () => {
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("1,205 held emails for 3 releases start going out straight away. The oldest has waited");
     expect(dialog).toHaveTextContent("To stop some of them, choose Cancel and cancel them under Outgoing news email first.");
+  });
+
+  it("review M4: the resume question counts what's held when it opens, and the result says what actually went", async () => {
+    let loads = 0;
+    const fresher: OperationsStatus = { ...HELD, outgoing: { ...HELD.outgoing, held: { ...HELD.outgoing.held, emails: 1300, releases: 4 } } };
+    const calls = stub(["NoD.Admin"], HELD, {
+      load: () => jsonResponse(200, ++loads === 1 ? HELD : fresher),
+      resume: () => jsonResponse(200, { paused: false, changed: true, released: { emails: 1310, releases: 5 } }),
+    });
+    renderIt();
+    const user = userEvent.setup();
+    const nod = await screen.findByRole("region", { name: "News On Demand sending" });
+    await user.click(within(nod).getByRole("button", { name: "Resume News On Demand sending" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await waitFor(() => expect(dialog).toHaveTextContent("1,300 held emails for 4 releases start going out straight away."));
+    await user.click(within(dialog).getByRole("button", { name: "Confirm resume" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nod/api/settings/resume")).toBe(true));
+    expect(await screen.findByText("News On Demand sending resumed. 1,310 held emails for 5 releases are going out now.")).toBeInTheDocument();
   });
 
   it("N3: a failed send is shown with what went wrong, and what to do", async () => {
