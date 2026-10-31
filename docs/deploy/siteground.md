@@ -588,7 +588,9 @@ It asks for the admin password and a password for each test user (12+ characters
 The break-glass `admin` has no email address, so "Email me a copy" is disabled for it. Test email
 with a real staff account.
 
-**Revoking access.** A session renews (and its roles refresh) while the user stays active; changing a password or logging out does not end a user's *other* sessions. To cut someone off, deactivate the user — that takes effect at once in Core, and within the cookie's remaining life (at most 1 hour) in other apps. To end every session at once, including break-glass, rotate `SESSION_SECRET` (or `STACK_EVENT_SECRET`, which also re-derives the event secrets).
+**Session length.** A session lasts at most 12 hours from sign-in (password, break-glass or Microsoft), whatever the renewals: the token carries its sign-in time, no renewal goes past the limit, and every app refuses a token past it. `SESSION_MAX_HOURS` (default `12`, more than 0, at most 168; shared by every app, so no prefix) changes it. Sessions from before this change have no sign-in time: they count from when they were last renewed, and are recorded at their next check-in.
+
+**Revoking access.** Core records every sign-in (`staff_sessions`, Core migration `0012`, applied at startup). On every request made with the session cookie, every app in the stack checks with Core that the user is still active and that sign-in still stands (one indexed query, no cache), and takes their current roles from Core. So deactivating a user refuses their very next request in Core, NRMS (site settings included), NoD, Distribution and the Calendar with 401 and a cleared cookie, and ends all their sessions for good: reactivating them doesn't revive an old cookie. A removed role stops working on the next request the same way. **Sign out** ends that session on the server, not just in the browser; the user's other sessions (other computers) stay. To end every session at once, including break-glass, rotate `SESSION_SECRET` (or `STACK_EVENT_SECRET`, which also re-derives the event secrets).
 
 ## Staff sign-in with Microsoft Entra
 

@@ -4,6 +4,7 @@ import type { Db } from "@gcpe/db-kit";
 import { readCookie } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { matchEntraUser, type EntraRefusal } from "../services/users";
+import { startSession } from "../services/sessions";
 import { newSessionCookie } from "../http/session-cookie";
 import { newEntraChecks, type EntraClient } from "./client";
 import { safeHubReturnTo } from "./return-to";
@@ -18,6 +19,7 @@ export interface EntraRouteDeps {
   secure: boolean;
   entra: EntraClient;
   ratePerMinute?: number;
+  maxSessionSeconds?: number;
 }
 
 // Codes an administrator may need to act on go to console.error, which the stack's error log captures.
@@ -65,7 +67,9 @@ export function entraRoutes(deps: EntraRouteDeps): Router {
       const identity = await deps.entra.exchange({ callbackQuery: queryOf(req), state: saved.state, nonce: saved.nonce, codeVerifier: saved.codeVerifier });
       const match = await matchEntraUser(deps.db, identity.oid, identity.email);
       if (!match.ok) return refuse(res, route, match.code, { userId: match.userId });
-      const { cookie } = await newSessionCookie(deps.secret, deps.secure, match.user);
+      const signedAt = Math.floor(Date.now() / 1000);
+      const sid = await startSession(deps.db, match.user.id, signedAt, deps.maxSessionSeconds);
+      const { cookie } = await newSessionCookie(deps.secret, deps.secure, match.user, { sid, signedAt, maxSessionSeconds: deps.maxSessionSeconds });
       res.setHeader("set-cookie", [cleared, cookie]);
       res.redirect(302, safeHubReturnTo(saved.returnTo));
     } catch (e) {

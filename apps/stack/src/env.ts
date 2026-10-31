@@ -264,7 +264,8 @@ export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
  * family), LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV, (fix round 1, P2-R30 M6) ENTRA_TENANT_ID
  * — every app talks to the same Entra tenant, so that one is shared too — and (Task 6)
  * SESSION_SECRET / SESSION_COOKIE_SECURE, so every app verifies the same `gcpe_session` cookie
- * under the same security policy. AUTH_AUDIENCE is deliberately NOT shared: each app is its own
+ * under the same security policy, and SESSION_MAX_HOURS (owner decision 2026-10-31), so every app
+ * refuses it at the same limit. AUTH_AUDIENCE is deliberately NOT shared: each app is its own
  * audience/resource in Entra (`<PREFIX>_AUTH_AUDIENCE`), same as it would be as six separate
  * deployments. DATA_DIR (Task 1) is shared too — the one folder, outside any SiteGround deploy
  * folder, that survives a redeploy (see data-dir.ts). SITE_ENVIRONMENT (plan 3d task 4) is
@@ -279,6 +280,7 @@ function isSharedKey(key: string): boolean {
     key === "ENTRA_TENANT_ID" ||
     key === "SESSION_SECRET" ||
     key === "SESSION_COOKIE_SECURE" ||
+    key === "SESSION_MAX_HOURS" ||
     key === "DATA_DIR" ||
     key === "SITE_ENVIRONMENT" ||
     key === "TRUST_PROXY_HOPS" ||

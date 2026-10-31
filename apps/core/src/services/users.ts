@@ -5,6 +5,7 @@ import { hashPassword, isCalendarRole, STAFF_ROLES, verifyPassword, type Calenda
 import { enqueueEvent, type SubscriberConfig, type UserRecord } from "@gcpe/events";
 import { organizations, roleGrants, userOrganizations, users } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, userAggregateId } from "./aggregate";
+import { endUserSessions } from "./sessions";
 
 const email = z.string().trim().toLowerCase().email().max(254);
 const password = z.string().min(12, "use at least 12 characters").max(200);
@@ -204,6 +205,8 @@ export async function updateUser(db: Db, id: string, patch: UpdateUserInput, sub
         .update(users)
         .set({ ...patch, updatedAt: new Date() })
         .where(eq(users.id, row.id));
+      // Owner decision 2026-10-31: a deactivation ends their sessions for good, in every app.
+      if (patch.isActive === false) await endUserSessions(tx, row.id);
       await emitUserUpserted(tx, row.id, subscribers);
     });
   } catch (e) {
@@ -278,11 +281,28 @@ let dummyHash: Promise<string> | undefined;
  * refusals still cost the one verification and look exactly like a wrong password.
  */
 export async function authenticate(db: Db, address: string, pw: string, opts: { usersAllowed?: boolean } = {}): Promise<UserView | null> {
+  const r = await passwordSignIn(db, address, pw, opts);
+  return r.ok ? r.user : null;
+}
+
+/**
+ * authenticate, telling an inactive account apart (owner decision 2026-10-31: the sign-in screen
+ * says "Your account is not active"). Only once the password is right, so it reveals nothing to
+ * someone guessing; every other refusal stays one plain "invalid".
+ */
+export async function passwordSignIn(
+  db: Db,
+  address: string,
+  pw: string,
+  opts: { usersAllowed?: boolean } = {},
+): Promise<{ ok: true; user: UserView } | { ok: false; reason: "invalid" | "inactive" }> {
   const [row] = await db.select().from(users).where(sql`lower(${users.email}) = ${address.trim().toLowerCase()}`);
   const stored = row?.passwordHash ?? (await (dummyHash ??= hashPassword("placeholder-never-matches-anything")));
   const ok = await verifyPassword(pw, stored);
-  if (!row || !row.isActive || !row.passwordHash || row.signInMethod === "entra" || opts.usersAllowed === false || !ok) return null;
-  return getUser(db, row.id);
+  if (!row || !row.passwordHash || row.signInMethod === "entra" || opts.usersAllowed === false || !ok) return { ok: false, reason: "invalid" };
+  if (!row.isActive) return { ok: false, reason: "inactive" };
+  const user = await getUser(db, row.id);
+  return user ? { ok: true, user } : { ok: false, reason: "invalid" };
 }
 
 /** The current identity for a session, or null if the user no longer exists or is inactive. */

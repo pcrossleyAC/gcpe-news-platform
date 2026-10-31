@@ -6,7 +6,7 @@ import type { Server } from "node:http";
 import express, { Router, type Express } from "express";
 import rateLimit from "express-rate-limit";
 import type { ZodTypeAny } from "zod";
-import { authFromEnv, requireBearer, requireRole } from "@gcpe/auth";
+import { authFromEnv, requireBearer, requireRole, setSessionGate } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createFakeEmergencyFeed } from "@gcpe/emergency-feed-fake";
@@ -328,6 +328,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
 
   // Fix round 1, P2-R30 M5: name the app and its env prefix in any startup failure.
   const core: CoreHandle = await startNamed("Core", "CORE", () => startCore(coreEnv));
+  // Owner decision 2026-10-31: every app in this process checks a staff cookie with Core (still
+  // active, not signed out), so a deactivation is refused on the very next request anywhere, not
+  // only in Core. Installed before the other apps start, removed on shutdown.
+  const uninstallSessionGate = setSessionGate(core.sessionGate);
   const nrms: NrmsHandle = await startNamed("NRMS", "NRMS", () => startNrms(nrmsEnv));
   const nod: NodHandle = await startNamed("NoD", "NOD", () => startNod(nodEnv));
   // The Calendar runs only once its own database has been created (SiteGround: by hand in Site
@@ -692,7 +696,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     ],
     // Reverse mount order, then the error capture last so it's still installed while every
     // other closer's own console.error calls (e.g. a failed shutdown step) run.
-    closers: [...newsApi.closers, ...siteBuilder.closers, ...distribution.closers, ...(calendar?.closers ?? []), ...nod.closers, ...nrms.closers, ...core.closers, { name: "error capture", close: () => errorCapture.close() }, { name: "internal fetch", close: () => uninstallInternalFetch() }],
+    closers: [...newsApi.closers, ...siteBuilder.closers, ...distribution.closers, ...(calendar?.closers ?? []), ...nod.closers, ...nrms.closers, ...core.closers, { name: "error capture", close: () => errorCapture.close() }, { name: "internal fetch", close: () => uninstallInternalFetch() }, { name: "session gate", close: async () => uninstallSessionGate() }],
   };
 }
 

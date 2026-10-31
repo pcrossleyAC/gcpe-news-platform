@@ -1669,6 +1669,57 @@ describe("staff session cookie across the stack", () => {
     expect((await post({})).status).toBe(403);
     expect((await post({ "x-gcpe-request": "1" })).status).toBe(200);
   });
+
+  // Owner decision 2026-10-31: "end deactivated sessions immediately" — in every app, not just Core.
+  // One GET per app that takes the staff cookie (site settings are NRMS's; the News API takes no
+  // staff cookie at all). Before: anything but 401 (some 403 or 404 for this person's roles).
+  const everyApp = ["/core/api/organizations", "/nrms/api/categories", "/nrms/api/site/settings", "/nod/api/reports/subscribers-by-list", "/distribution/api/batches/00000000-0000-4000-8000-000000000000", "/calendar/api/me", "/stack/errors"];
+  const signIn = async (username: string, password: string) => {
+    const res = await fetch(`${inst.stackUrl}/core/auth/login`, { method: "POST", headers: { "content-type": "application/json", "x-gcpe-request": "1" }, body: JSON.stringify({ username, password }) });
+    return { status: res.status, body: (await res.json()) as unknown, cookie: res.headers.getSetCookie().find((c) => c.startsWith("gcpe_session="))?.split(";")[0] };
+  };
+  const statuses = async (cookie: string) => {
+    const out: Record<string, { status: number; cleared: boolean }> = {};
+    for (const path of everyApp) {
+      const res = await fetch(`${inst.stackUrl}${path}`, { headers: { cookie } });
+      out[path] = { status: res.status, cleared: res.headers.getSetCookie().some((c) => c.startsWith("gcpe_session=;") && c.includes("Max-Age=0")) };
+    }
+    return out;
+  };
+
+  it("a deactivated user's very next request to every app is 401 with the cookie cleared; reactivated, the old cookie stays refused and signing in again works", async () => {
+    const PW = "stack session limits pw";
+    const person = await createUser(inst.dbs.core.db, createUserSchema.parse({ email: "leaver@example.test", displayName: "Leaver", roles: ["NRMS.Editor", "NoD.Viewer", "Distribution.Send"], password: PW }), []);
+    const admin = (await signIn("admin", ADMIN_PASSWORD)).cookie!;
+    const { cookie } = await signIn("leaver@example.test", PW);
+    const before = await statuses(cookie!);
+    for (const path of everyApp) expect.soft(before[path]!.status, path).not.toBe(401);
+
+    const setActive = (isActive: boolean) =>
+      fetch(`${inst.stackUrl}/core/api/users/${person.id}`, { method: "PATCH", headers: { cookie: admin, "content-type": "application/json", "x-gcpe-request": "1" }, body: JSON.stringify({ isActive }) });
+    expect((await setActive(false)).status).toBe(200);
+    // No tick, no wait: the very next request.
+    const after = await statuses(cookie!);
+    for (const path of everyApp) expect.soft(after[path], path).toEqual({ status: 401, cleared: true });
+    const refused = await signIn("leaver@example.test", PW);
+    expect(refused).toMatchObject({ status: 403, body: { error: "inactive" } });
+
+    expect((await setActive(true)).status).toBe(200);
+    const stale = await statuses(cookie!);
+    for (const path of everyApp) expect.soft(stale[path]!.status, path).toBe(401);
+    const again = await signIn("leaver@example.test", PW);
+    expect(again.status).toBe(200);
+    const fresh = await statuses(again.cookie!);
+    for (const path of everyApp) expect.soft(fresh[path]!.status, path).not.toBe(401);
+  });
+
+  it("Sign out ends the session in every app, not just in this browser", async () => {
+    const { cookie } = await signIn("admin", ADMIN_PASSWORD);
+    expect((await fetch(`${inst.stackUrl}/nrms/api/categories`, { headers: { cookie: cookie! } })).status).toBe(200);
+    expect((await fetch(`${inst.stackUrl}/core/auth/logout`, { method: "POST", headers: { cookie: cookie!, "x-gcpe-request": "1" } })).status).toBe(204);
+    const after = await statuses(cookie!);
+    for (const path of everyApp) expect.soft(after[path]!.status, path).toBe(401);
+  });
 });
 
 // Fix round 1: the Critical finding — selfHeal fired from inside startPublicSite always failed

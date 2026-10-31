@@ -182,3 +182,22 @@ export const manualReviews = pgTable(
   },
   (t) => [primaryKey({ columns: [t.pageId, t.hash] })],
 );
+
+/**
+ * Owner decision 2026-10-31: one row per staff sign-in (password, break-glass or Microsoft), its id
+ * the session token's `sid`, kept through every renewal. Every app's session gate reads it, so a
+ * sign-out (`ended_at`) or a deactivation (every row of that person) is refused on the very next
+ * request, and an account reactivated later doesn't bring an old cookie back. No foreign key: the
+ * break-glass admin (`local:admin`) has no users row. Rows older than the session limit are
+ * deleted as new sign-ins come in.
+ */
+export const staffSessions = pgTable(
+  "staff_sessions",
+  {
+    sid: text("sid").primaryKey(),
+    userId: text("user_id").notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+  },
+  (t) => [index("staff_sessions_user_id_idx").on(t.userId), index("staff_sessions_signed_at_idx").on(t.signedAt)],
+);

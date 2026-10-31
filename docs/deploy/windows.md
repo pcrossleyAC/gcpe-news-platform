@@ -662,6 +662,12 @@ the way in.
 from starting; the reason is in `C:\gcpe\service\logs\gcpe-stack.err.log`). On
 `https://<internal host>/hub/`, **Sign in with Microsoft** returns you to the Hub signed in.
 
+**Session length.** A staff session lasts at most 12 hours from sign-in (Microsoft, password or
+`admin`), however often the Hub renews it; then the person signs in again. To change it, add
+`SESSION_MAX_HOURS=<hours>` (more than 0, at most 168) to `gcpe.env` and `Restart-Service
+gcpe-stack`; every app uses the one value. Deactivating a user in the Hub, or their **Sign out**,
+ends that session at once in every app. Details: siteground.md, "Revoking access".
+
 ### D8. Connect the outside services
 
 Until these are set, the stack uses built-in fakes and says so in its log. Add each to `gcpe.env`,

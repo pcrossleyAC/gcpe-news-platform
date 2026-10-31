@@ -1,7 +1,7 @@
-import type { Request, RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { assertSecretStrength, LOCAL_AUDIENCE, LOCAL_ISSUER, localKey } from "./local";
-import { CSRF_HEADER, readCookie, SESSION_COOKIE, verifySession, type VerifiedSession } from "./session";
+import { clearedSessionCookie, CSRF_HEADER, readCookie, SESSION_COOKIE, verifySession, type SessionUser, type VerifiedSession } from "./session";
 
 export interface AuthContext {
   subject: string;
@@ -32,7 +32,35 @@ export interface BearerOptions {
   keys?: JWTVerifyGetKey;
   local?: { secret: string };
   /** Accept Core's staff session cookie (spec addendum §2). */
-  session?: { secret: string };
+  session?: {
+    secret: string;
+    /** The cookie's Secure flag, for the cleared cookie a refused session gets back. Default true. */
+    secure?: boolean;
+    /** SESSION_MAX_HOURS, in seconds. Default 12 hours. */
+    maxSessionSeconds?: number;
+    /** Core's own check; every other app uses the one the stack installed with setSessionGate. */
+    gate?: SessionGate;
+  };
+}
+
+/**
+ * Owner decision 2026-10-31: whether a signed, unexpired session cookie still stands. Core answers
+ * from its users and sessions tables (the person is active, and this sign-in wasn't signed out or
+ * ended by a deactivation) with the person as they are now, or null to refuse. Run on every
+ * cookie request, so a deactivation is refused on the very next request in every app.
+ */
+export type SessionGate = (session: VerifiedSession) => Promise<SessionUser | null>;
+
+let installedGate: SessionGate | null = null;
+
+/** The stack installs Core's gate here once Core has started, for every app in the process; null
+ * removes it. An app running on its own, without Core in its process, has none: it checks the
+ * cookie's signature and limits only. Returns a remover that leaves a gate installed since alone. */
+export function setSessionGate(gate: SessionGate | null): () => void {
+  installedGate = gate;
+  return () => {
+    if (installedGate === gate) installedGate = null;
+  };
 }
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -47,6 +75,10 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
   const local = opts.local ? { key: localKey(opts.local.secret) } : null;
   if (opts.session) assertSecretStrength(opts.session.secret);
   const sessionSecret = opts.session?.secret;
+  const refuseSession = (res: Response, error: string) => {
+    res.setHeader("set-cookie", clearedSessionCookie({ secure: opts.session?.secure ?? true }));
+    res.status(401).json({ error });
+  };
   return async (req, res, next) => {
     const header = req.header("authorization");
     if (!header?.startsWith("Bearer ")) {
@@ -56,14 +88,24 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
       if (!cookie) return void res.status(401).json({ error: "missing bearer token" });
       let session: VerifiedSession;
       try {
-        session = await verifySession(sessionSecret!, cookie);
+        session = await verifySession(sessionSecret!, cookie, { maxSessionSeconds: opts.session?.maxSessionSeconds });
       } catch {
-        return void res.status(401).json({ error: "invalid session" });
+        return refuseSession(res, "invalid session");
+      }
+      const gate = opts.session?.gate ?? installedGate;
+      let current: SessionUser | null = session;
+      if (gate) {
+        try {
+          current = await gate(session);
+        } catch (e) {
+          return next(e);
+        }
+        if (!current) return refuseSession(res, "not signed in");
       }
       if (!SAFE_METHODS.has(req.method) && req.header(CSRF_HEADER) !== "1") {
         return void res.status(403).json({ error: "missing X-GCPE-Request header" });
       }
-      req.auth = { subject: session.id, roles: session.roles, claims: { name: session.name, email: session.email, via: "session" } };
+      req.auth = { subject: session.id, roles: [...current.roles], claims: { name: current.name, email: current.email, via: "session" } };
       return next();
     }
     const token = header.slice(7);

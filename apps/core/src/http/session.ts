@@ -3,26 +3,26 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import {
-  ADMIN_ROLES,
   clearedSessionCookie,
   CSRF_HEADER,
+  DEFAULT_SESSION_MAX_SECONDS,
   readCookie,
   SESSION_COOKIE,
   SESSION_RENEW_WINDOW_SECONDS,
   verifyPassword,
   verifySession,
   type LocalAuthConfig,
+  type SessionGate,
   type SessionUser,
   type VerifiedSession,
 } from "@gcpe/auth";
 import type { EntraClient } from "../entra/client";
 import { entraRoutes } from "../entra/routes";
-import { authenticate, sessionRolesOf, sessionUserFor } from "../services/users";
+import { BREAK_GLASS_ID, breakGlassUser, endSession, sessionGate, startSession } from "../services/sessions";
+import { passwordSignIn, sessionRolesOf } from "../services/users";
 import { newSessionCookie } from "./session-cookie";
 
-/** Session id for the environment break-glass admin (LOCAL_ADMIN_*); it has no users row. */
-export const BREAK_GLASS_ID = "local:admin";
-const BREAK_GLASS_NAME = "Administrator (break-glass)";
+export { BREAK_GLASS_ID } from "../services/sessions";
 
 const loginSchema = z.object({ username: z.string().max(254), password: z.string().max(200) });
 
@@ -38,6 +38,10 @@ export interface SessionRouteDeps {
   ratePerMinute?: number;
   /** Per-IP limit on each Entra route. Default 30 a minute. */
   entraRatePerMinute?: number;
+  /** SESSION_MAX_HOURS, in seconds (owner decision 2026-10-31). Default 12 hours. */
+  maxSessionSeconds?: number;
+  /** Core's session gate; built from `db` and `local` when not given. */
+  gate?: SessionGate;
 }
 
 const sameRoles = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((r, i) => r === [...b].sort()[i]);
@@ -52,10 +56,17 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
   const clear = (res: Response) => res.setHeader("set-cookie", clearedSessionCookie({ secure: deps.secure }));
   const requireCsrf: RequestHandler = (req, res, next) =>
     req.header(CSRF_HEADER) === "1" ? next() : void res.status(403).json({ error: "missing X-GCPE-Request header" });
-  const issue = async (res: Response, user: SessionUser) => {
-    const { cookie, expiresAt } = await newSessionCookie(deps.secret, deps.secure, user);
+  const maxSessionSeconds = deps.maxSessionSeconds ?? DEFAULT_SESSION_MAX_SECONDS;
+  const gate = deps.gate ?? sessionGate(deps.db, { localConfigured: deps.local !== null });
+  const issue = async (res: Response, user: SessionUser, terms: { sid: string; signedAt: number }) => {
+    const { cookie, expiresAt } = await newSessionCookie(deps.secret, deps.secure, user, { ...terms, maxSessionSeconds });
     res.setHeader("set-cookie", cookie);
     res.json({ user, expiresAt: new Date(expiresAt * 1000).toISOString() });
+  };
+  /** A new sign-in: recorded, then issued. */
+  const signIn = async (res: Response, user: SessionUser) => {
+    const signedAt = Math.floor(Date.now() / 1000);
+    await issue(res, user, { sid: await startSession(deps.db, user.id, signedAt, maxSessionSeconds), signedAt });
   };
   const userPasswordsAllowed = deps.userPasswordsAllowed ?? true;
   const notSignedIn = (res: Response) => {
@@ -76,11 +87,14 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
         // Exactly one scrypt verification on every path, so timing doesn't reveal which path ran.
         if (deps.local && username === deps.local.username) {
           if (!(await verifyPassword(password, deps.local.passwordHash))) return void res.status(401).json({ error: "invalid credentials" });
-          return void (await issue(res, { id: BREAK_GLASS_ID, name: BREAK_GLASS_NAME, email: "", roles: [...ADMIN_ROLES] }));
+          return void (await signIn(res, breakGlassUser()));
         }
-        const user = await authenticate(deps.db, username, password, { usersAllowed: userPasswordsAllowed });
-        if (!user) return void res.status(401).json({ error: "invalid credentials" });
-        await issue(res, { id: user.id, name: user.displayName, email: user.email ?? "", roles: sessionRolesOf(user) });
+        const result = await passwordSignIn(deps.db, username, password, { usersAllowed: userPasswordsAllowed });
+        // The right password for an account that is switched off: say so (the sign-in screen's
+        // "Your account is not active"). Anything else stays the one "invalid credentials".
+        if (!result.ok) return void res.status(result.reason === "inactive" ? 403 : 401).json({ error: result.reason === "inactive" ? "inactive" : "invalid credentials" });
+        const { user } = result;
+        await signIn(res, { id: user.id, name: user.displayName, email: user.email ?? "", roles: sessionRolesOf(user) });
       } catch (e) {
         next(e);
       }
@@ -92,11 +106,20 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
     res.json({ entra: deps.entra != null, local: userPasswordsAllowed || deps.local !== null });
   });
 
-  if (deps.entra) r.use(entraRoutes({ db: deps.db, secret: deps.secret, secure: deps.secure, entra: deps.entra, ratePerMinute: deps.entraRatePerMinute }));
+  if (deps.entra) r.use(entraRoutes({ db: deps.db, secret: deps.secret, secure: deps.secure, entra: deps.entra, ratePerMinute: deps.entraRatePerMinute, maxSessionSeconds }));
 
-  r.post("/auth/logout", requireCsrf, (_req, res) => {
-    clear(res);
-    res.status(204).end();
+  // Ends this session on the server too (owner decision 2026-10-31), so a copy of the cookie
+  // can't be used afterwards. Only this sign-in: the person's other computers stay signed in.
+  r.post("/auth/logout", requireCsrf, async (req, res, next) => {
+    try {
+      const cookie = readCookie(req.header("cookie"), SESSION_COOKIE);
+      const session = cookie ? await verifySession(deps.secret, cookie, { maxSessionSeconds }).catch(() => null) : null;
+      if (session?.sid) await endSession(deps.db, session.sid);
+      clear(res);
+      res.status(204).end();
+    } catch (e) {
+      next(e);
+    }
   });
 
   r.get("/auth/session", async (req, res, next) => {
@@ -105,21 +128,23 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
       if (!cookie) return void res.status(401).json({ error: "not signed in" });
       let session: VerifiedSession;
       try {
-        session = await verifySession(deps.secret, cookie);
+        // Refuses a token past the session limit (12 hours from sign-in by default).
+        session = await verifySession(deps.secret, cookie, { maxSessionSeconds });
       } catch {
         return notSignedIn(res);
       }
-      const current: SessionUser | null =
-        session.id === BREAK_GLASS_ID
-          ? deps.local
-            ? { id: BREAK_GLASS_ID, name: BREAK_GLASS_NAME, email: "", roles: [...ADMIN_ROLES] }
-            : null
-          : await sessionUserFor(deps.db, session.id);
+      // Inactive, signed out or ended by a deactivation: the same refusal every app gives.
+      const current = await gate(session);
       if (!current) return notSignedIn(res);
-      const remaining = session.expiresAt - Math.floor(Date.now() / 1000);
-      if (remaining <= SESSION_RENEW_WINDOW_SECONDS || !sameRoles(session.roles, current.roles) || session.name !== current.name) {
-        return void (await issue(res, current));
-      }
+      const now = Math.floor(Date.now() / 1000);
+      const limit = session.signedAt + maxSessionSeconds;
+      // A token from before the limit has no sid: record it now, counting from its issue time, so
+      // Sign out and a deactivation can end it like any other.
+      if (!session.sid) return void (await issue(res, current, { sid: await startSession(deps.db, current.id, session.signedAt, maxSessionSeconds), signedAt: session.signedAt }));
+      const changed = !sameRoles(session.roles, current.roles) || session.name !== current.name;
+      // Renewal can't go past the limit: once the token already runs to it, there is nothing to renew.
+      const renew = session.expiresAt - now <= SESSION_RENEW_WINDOW_SECONDS && session.expiresAt < limit;
+      if (renew || changed) return void (await issue(res, current, { sid: session.sid, signedAt: session.signedAt }));
       res.json({ user: current, expiresAt: new Date(session.expiresAt * 1000).toISOString() });
     } catch (e) {
       next(e);

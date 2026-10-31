@@ -6,7 +6,9 @@ import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } f
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
+import type { SessionGate } from "@gcpe/auth";
 import { createApp } from "./app";
+import { sessionGate as coreSessionGate } from "./services/sessions";
 import { createEntraClient } from "./entra/client";
 import { signInSettingsFromEnv } from "./entra/config";
 import { republishAll } from "./services/republish";
@@ -30,6 +32,9 @@ export interface AppHandle {
   /** One iteration of each background loop, using the same function and options the loop
    * itself uses. */
   workers: Record<string, () => Promise<unknown>>;
+  /** Core's session gate: the stack installs it for every app in its process (setSessionGate),
+   * so a deactivation or sign-out is refused on the very next request anywhere. */
+  sessionGate: SessionGate;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
   /** Closers that must run *before* the http server closes. Core has none — always empty —
@@ -59,7 +64,9 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
 
+  const sessionGate = coreSessionGate(db, { localConfigured: auth.local !== null });
   const app = createApp({
+    sessionGate,
     trustProxyHops: trustProxyHopsFrom(env),
     db,
     subscribers,
@@ -73,6 +80,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
           local: auth.local,
           entra: signIn.entra ? createEntraClient(signIn.entra) : null,
           userPasswordsAllowed: signIn.userPasswordsAllowed,
+          maxSessionSeconds: auth.session.maxSessionSeconds,
         }
       : undefined,
   });
@@ -85,6 +93,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   return {
     app,
     port: parsed.PORT,
+    sessionGate,
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
       // Phase 4a: lets the stack ask Core to re-emit every org/term as an upserted event — the
