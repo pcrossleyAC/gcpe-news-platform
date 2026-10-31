@@ -21,7 +21,8 @@ export type OperationsAction =
   | "report-exported"
   | "purge-enabled"
   | "purge-disabled"
-  | "purge-ran";
+  | "purge-ran"
+  | "held-email-cancelled";
 
 export async function getSettings(db: Db): Promise<{ paused: boolean; lastDigestCutoff: string | null }> {
   const [row] = await db.select({ paused: nodSettings.paused, lastDigestCutoff: nodSettings.lastDigestCutoff }).from(nodSettings).where(eq(nodSettings.id, 1));

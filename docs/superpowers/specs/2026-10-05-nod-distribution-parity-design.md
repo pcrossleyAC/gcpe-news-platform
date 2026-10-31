@@ -217,6 +217,7 @@ Added to the existing staff app (`apps/staff-web`): the same sign-in, shell, des
   - digest runs;
   - Distribution sent vs bounced.
 - **Operations:** NoD pause/resume, Distribution pause/resume, purge on/off (and next-run preview count), bounce summary address, the fake bounce mailbox upload (test sites only).
+  - *Amendment (2026-10-31, owner approved, suite review N3):* Operations also shows outgoing news email: held send jobs per release (count, oldest age, last error) and jobs that failed in the last 30 days. While NoD is paused an admin can cancel held jobs (status `cancelled`) after a confirmation naming how many emails and which releases; the resume confirmation says how many held emails go out. See C312.
 - **Roles** (Core, granted by `Core.Admin`):
   - `NoD.Viewer`: reports, lists, subscriber search (read-only). Legacy `LOB_USRS` roughly.
   - `NoD.Editor`: subscribers and media lists. Legacy `EDTRS`.

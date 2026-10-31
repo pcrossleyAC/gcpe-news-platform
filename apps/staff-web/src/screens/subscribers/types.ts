@@ -213,4 +213,23 @@ export interface OperationsStatus {
   purge: PurgeStatus;
   emergencyFeed: EmergencyFeedStatus;
   opsEmailSet: boolean;
+  outgoing: OutgoingStatus;
+}
+
+/** apps/nod/src/outgoing.ts (N3) */
+export interface OutgoingGroup {
+  jobIds: string[];
+  kind: "as_it_happens" | "emergency" | "media" | "digest";
+  title: string | null;
+  itemKey: string | null;
+  digestCutoff: string | null;
+  releases: number;
+  emails: number;
+  createdAt: string;
+  attempts: number;
+  lastError: string | null;
+}
+export interface OutgoingStatus {
+  held: { emails: number; releases: number; oldestAt: string | null; groups: OutgoingGroup[] };
+  failed: OutgoingGroup[];
 }

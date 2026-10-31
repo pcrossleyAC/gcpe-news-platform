@@ -8,9 +8,10 @@ import { Button } from "../../shared/BusyButton";
 import { Form } from "../../shared/Form";
 import { useFormShortcut } from "../../shared/shortcuts";
 import { ignoreWhileBusy } from "../../shared/guardSubmit";
+import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canAdminSubscribers } from "./access";
-import type { EmergencyFeedStatus, OperationsStatus, PurgeStatus } from "./types";
+import type { EmergencyFeedStatus, OperationsStatus, OutgoingGroup, OutgoingStatus, PurgeStatus } from "./types";
 
 /** Distribution's own fake-inbox limit (apps/distribution/src/http/routes.ts). */
 const MAX_BOUNCE_BYTES = 1024 * 1024;
@@ -72,11 +73,12 @@ function OperationsPanels(): React.JSX.Element {
             paused={ops.nod.paused}
             path="/nod/api/settings"
             pauseBody={`News On Demand keeps recording releases and building emails but holds them until you resume. Nothing is dropped. ${whoIsEmailed(ops)}`}
-            resumeBody={`Held emails start going out straight away. ${whoIsEmailed(ops)}`}
+            resumeBody={`${resumeHeld(ops.outgoing, timeZone)} ${whoIsEmailed(ops)}`}
             onDone={done}
           >
             <p>{`Last daily digest: ${ops.nod.lastDigestCutoff ? formatWhen(ops.nod.lastDigestCutoff, new Date(), timeZone) : "none yet"}.`}</p>
           </PauseControl>
+          <OutgoingPanel outgoing={ops.outgoing} paused={ops.nod.paused} timeZone={timeZone} onDone={done} />
           {ops.distribution ? (
             <PauseControl
               title="Distribution"
@@ -100,6 +102,182 @@ function OperationsPanels(): React.JSX.Element {
         </>
       )}
     </div>
+  );
+}
+
+/** What a resume sends at once (N3): the held count, from the last load. */
+function resumeHeld(o: OutgoingStatus, timeZone: string): string {
+  if (o.held.emails === 0) return "Nothing is held, so nothing goes out straight away.";
+  return (
+    `${plural(o.held.emails, "held email")} for ${plural(o.held.releases, "release")} start going out straight away. ${oldestText(o, timeZone)} ` +
+    "To stop some of them, choose Cancel and cancel them under Outgoing news email first."
+  );
+}
+
+const oldestText = (o: OutgoingStatus, timeZone: string): string =>
+  o.held.oldestAt ? `The oldest has waited ${waitedFor(o.held.oldestAt)}, since ${formatWhen(o.held.oldestAt, new Date(), timeZone, { withDate: true })}.` : "";
+
+function waitedFor(iso: string): string {
+  const hours = Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000);
+  if (hours < 1) return "under an hour";
+  if (hours < 48) return plural(hours, "hour");
+  return plural(Math.floor(hours / 24), "day");
+}
+
+const KIND_LABELS: Record<OutgoingGroup["kind"], string> = {
+  as_it_happens: "As it happens",
+  emergency: "Emergency alert",
+  media: "Media list",
+  digest: "Daily digest",
+};
+
+function groupTitle(g: OutgoingGroup, timeZone: string): string {
+  if (g.kind !== "digest") return g.title ?? "A release no longer in News On Demand";
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(g.digestCutoff ?? g.createdAt));
+  return `Daily digest of ${day}, ${plural(g.releases, "release")}`;
+}
+const groupLabel = (g: OutgoingGroup, timeZone: string) => `${groupTitle(g, timeZone)} (${KIND_LABELS[g.kind]})`;
+
+/** Held and failed news email, and cancelling held email while paused (N3). */
+function OutgoingPanel({ outgoing, paused, timeZone, onDone }: { outgoing: OutgoingStatus; paused: boolean; timeZone: string; onDone(text: string): void }): React.JSX.Element {
+  const [cancelling, setCancelling] = useState<OutgoingGroup[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { held, failed } = outgoing;
+  const close = () => {
+    setCancelling(null);
+    setError(null);
+  };
+  const cancel = async (groups: OutgoingGroup[]) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await apiFetch<{ cancelledJobs: number; cancelledEmails: number }>("/nod/api/operations/held-email/cancel", {
+        method: "POST",
+        body: { jobIds: groups.flatMap((g) => g.jobIds) },
+      });
+      setCancelling(null);
+      onDone(r.cancelledJobs === 0 ? "Nothing was cancelled: that email had already gone out or been cancelled." : `Cancelled ${plural(r.cancelledEmails, "held email")}.`);
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? "News On Demand sending isn’t paused, so nothing was cancelled. Pause it first."
+          : "Couldn’t cancel. Nothing changed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const chosenEmails = cancelling?.reduce((n, g) => n + g.emails, 0) ?? 0;
+  const chosenReleases = cancelling ? (cancelling.length === held.groups.length ? held.releases : cancelling.reduce((n, g) => n + g.releases, 0)) : 0;
+  return (
+    <section aria-labelledby="ops-outgoing">
+      <h2 id="ops-outgoing">Outgoing news email</h2>
+      {held.groups.length === 0 ? (
+        <p>Nothing is waiting to go out.</p>
+      ) : (
+        <>
+          <p>{`${paused ? "Held while paused" : "Waiting to go out"}: ${plural(held.emails, "email")} for ${plural(held.releases, "release")}. ${oldestText(outgoing, timeZone)}`}</p>
+          {paused && <p>They go out when you resume. Cancel any that shouldn’t be sent any more, such as old releases.</p>}
+          <TableScroll label="Held news email">
+            <table className="gcpe-table" aria-label="Held news email">
+              <thead>
+                <tr>
+                  <th scope="col">Release</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Emails</th>
+                  <th scope="col">Waiting since</th>
+                  <th scope="col">Note</th>
+                  {paused && <th scope="col">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {held.groups.map((g) => (
+                  <tr key={g.jobIds[0]}>
+                    <td>{groupTitle(g, timeZone)}</td>
+                    <td>{KIND_LABELS[g.kind]}</td>
+                    <td>{count(g.emails)}</td>
+                    <td>{formatWhen(g.createdAt, new Date(), timeZone, { withDate: true })}</td>
+                    <td>{g.attempts > 0 ? `Tried ${plural(g.attempts, "time")}. Last error: ${g.lastError ?? "none recorded"}` : ""}</td>
+                    {paused && (
+                      <td>
+                        <Button variant="secondary" danger aria-label={`Cancel held email: ${groupLabel(g, timeZone)}`} onPress={() => setCancelling([g])}>
+                          Cancel
+                        </Button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+          {paused && (
+            <Button variant="secondary" danger onPress={() => setCancelling(held.groups)}>
+              Cancel all held email
+            </Button>
+          )}
+        </>
+      )}
+      <h3>Failed in the last 30 days</h3>
+      {failed.length === 0 ? (
+        <p>No news email failed in the last 30 days.</p>
+      ) : (
+        <>
+          <p>Failed email isn’t sent again by itself. Ask technical support to look at the error before anyone republishes the release.</p>
+          <TableScroll label="Failed news email">
+            <table className="gcpe-table" aria-label="Failed news email">
+              <thead>
+                <tr>
+                  <th scope="col">Release</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Emails not sent</th>
+                  <th scope="col">Made</th>
+                  <th scope="col">What went wrong</th>
+                </tr>
+              </thead>
+              <tbody>
+                {failed.map((g) => (
+                  <tr key={g.jobIds[0]}>
+                    <td>{groupTitle(g, timeZone)}</td>
+                    <td>{KIND_LABELS[g.kind]}</td>
+                    <td>{count(g.emails)}</td>
+                    <td>{formatWhen(g.createdAt, new Date(), timeZone, { withDate: true })}</td>
+                    <td>{`Gave up after ${plural(g.attempts, "try", "tries")}. Distribution said: ${g.lastError ?? "nothing"}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        </>
+      )}
+      {cancelling && (
+        <Modal isOpen onOpenChange={(o) => { if (!o) close(); }} isDismissable={!busy} isKeyboardDismissDisabled={busy}>
+          <AlertDialog
+            role="alertdialog"
+            variant="destructive"
+            title="Cancel held email?"
+            buttons={
+              <>
+                <Button onPress={close} isPending={busy}>
+                  Keep it
+                </Button>
+                <Button danger onPress={() => void cancel(cancelling)} isPending={busy}>
+                  Cancel held email
+                </Button>
+              </>
+            }
+          >
+            <p>{`${plural(chosenEmails, "email")} for ${plural(chosenReleases, "release")} won’t be sent. This can’t be undone.`}</p>
+            <ul>
+              {cancelling.map((g) => (
+                <li key={g.jobIds[0]}>{`${groupLabel(g, timeZone)}: ${plural(g.emails, "email")}`}</li>
+              ))}
+            </ul>
+            {error && <InlineAlert variant="danger" role="alert" description={error} />}
+          </AlertDialog>
+        </Modal>
+      )}
+    </section>
   );
 }
 

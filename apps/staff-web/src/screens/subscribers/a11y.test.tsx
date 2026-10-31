@@ -73,7 +73,7 @@ const MEDIA_MEMBERS: MediaMember[] = [
 ];
 const MEDIA_OPTED = { items: [{ subscriberId: "33333333-3333-3333-3333-333333333333", email: "gone@example.test", at: "2026-09-01T17:00:00.000Z", member: false }], truncated: false };
 const OPS: OperationsStatus = {
-  nod: { paused: false, lastDigestCutoff: "2026-10-07T00:00:00.000Z" },
+  nod: { paused: true, lastDigestCutoff: "2026-10-07T00:00:00.000Z" },
   distribution: { paused: false },
   bounceSource: "fake",
   bounceSummary: { address: "server@example.test", from: "server" },
@@ -90,6 +90,15 @@ const OPS: OperationsStatus = {
     result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, failed: 0, error: null },
   },
   opsEmailSet: true,
+  outgoing: {
+    held: {
+      emails: 12,
+      releases: 1,
+      oldestAt: "2026-10-06T17:00:00.000Z",
+      groups: [{ jobIds: ["66666666-6666-6666-6666-666666666666"], kind: "as_it_happens", title: "Budget 2027", itemKey: "r1", digestCutoff: null, releases: 1, emails: 12, createdAt: "2026-10-06T17:00:00.000Z", attempts: 0, lastError: null }],
+    },
+    failed: [{ jobIds: ["77777777-7777-7777-7777-777777777777"], kind: "media", title: "Wildfire update", itemKey: "r2", digestCutoff: null, releases: 1, emails: 4, createdAt: "2026-10-06T17:00:00.000Z", attempts: 2, lastError: "Distribution 400: bad request" }],
+  },
 };
 const LISTS_VIEW: StaffListsView = {
   allNews: 12,
@@ -340,10 +349,22 @@ describe("accessibility — Subscribers", () => {
     expect(await seriousViolations(document.body, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
   });
 
-  it("Operations, with the pause dialog open, has no serious violations", async () => {
+  // Paused (OPS), so the held news email table and its Cancel buttons are on the page too (N3).
+  it("Operations, with the resume dialog open, has no serious violations", async () => {
     stubCommon(["NoD.Admin"]);
     const { container } = render(withAuthAt("/subscribers/operations", "/subscribers/operations", <OperationsScreen />));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Pause News On Demand sending" }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Resume News On Demand sending" }));
+    await screen.findByRole("alertdialog");
+    // jsdom has no `inert` (see the bulk delete dialog's note above).
+    const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };
+    expect(await seriousViolations(document.body, noInert)).toEqual([]);
+    expect(await seriousViolations(container, noInert)).toEqual([]);
+  });
+
+  it("Operations, with the cancel held email dialog open, has no serious violations", async () => {
+    stubCommon(["NoD.Admin"]);
+    const { container } = render(withAuthAt("/subscribers/operations", "/subscribers/operations", <OperationsScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Cancel all held email" }));
     await screen.findByRole("alertdialog");
     // jsdom has no `inert` (see the bulk delete dialog's note above).
     const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };

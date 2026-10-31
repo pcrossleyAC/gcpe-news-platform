@@ -6,7 +6,7 @@ import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { OperationsScreen } from "./OperationsScreen";
-import type { OperationsStatus } from "./types";
+import type { OperationsStatus, OutgoingGroup } from "./types";
 
 const OPS: OperationsStatus = {
   nod: { paused: false, lastDigestCutoff: "2026-10-07T00:00:00.000Z" },
@@ -26,6 +26,34 @@ const OPS: OperationsStatus = {
     result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, failed: 0, error: null },
   },
   opsEmailSet: true,
+  outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
+};
+
+const J1 = "11111111-1111-1111-1111-111111111111";
+const J2 = "22222222-2222-2222-2222-222222222222";
+const J3 = "33333333-3333-3333-3333-333333333333";
+const J4 = "44444444-4444-4444-4444-444444444444";
+const J5 = "55555555-5555-5555-5555-555555555555";
+const group = (over: Partial<OutgoingGroup>): OutgoingGroup => ({
+  jobIds: [], kind: "as_it_happens", title: null, itemKey: null, digestCutoff: null, releases: 1, emails: 0,
+  createdAt: "2026-10-07T17:00:00.000Z", attempts: 0, lastError: null, ...over,
+});
+/** Paused, with an As it happens email, a two-job digest run and a failed media email. */
+const HELD: OperationsStatus = {
+  ...OPS,
+  nod: { paused: true, lastDigestCutoff: "2026-10-07T00:00:00.000Z" },
+  outgoing: {
+    held: {
+      emails: 1205,
+      releases: 3,
+      oldestAt: "2026-09-25T17:00:00.000Z",
+      groups: [
+        group({ jobIds: [J1], title: "Budget 2027", itemKey: "r1", emails: 1200, createdAt: "2026-09-25T17:00:00.000Z" }),
+        group({ jobIds: [J2, J3], kind: "digest", digestCutoff: "2026-10-01T00:00:00.000Z", releases: 2, emails: 5, createdAt: "2026-10-01T00:00:00.000Z", attempts: 1, lastError: "Distribution 503: unavailable" }),
+      ],
+    },
+    failed: [group({ jobIds: [J4], kind: "media", title: "Wildfire update", itemKey: "r2", emails: 40, attempts: 3, lastError: "Distribution 400: bad request" })],
+  },
 };
 
 type Call = { url: string; method: string; body: unknown };
@@ -38,6 +66,7 @@ function stub(
     softCodes?: () => Response | Promise<Response>;
     purge?: () => Response | Promise<Response>;
     bounceAddress?: () => Response | Promise<Response>;
+    cancel?: () => Response | Promise<Response>;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -49,6 +78,7 @@ function stub(
     if (url === "/nod/api/operations") return opts.load?.() ?? jsonResponse(200, ops);
     if (url === "/nod/api/operations/purge") return opts.purge?.() ?? jsonResponse(200, { changed: true, purge: { ...ops.purge, enabled: true } });
     if (url.endsWith("/pause")) return jsonResponse(200, { paused: true, changed: true });
+    if (url === "/nod/api/operations/held-email/cancel") return opts.cancel?.() ?? jsonResponse(200, { cancelledJobs: 1, cancelledEmails: 1200 });
     if (url === "/nod/api/operations/bounce-summary-address") return opts.bounceAddress?.() ?? jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } });
     if (url === "/nod/api/operations/bounce-soft-codes") return opts.softCodes?.() ?? jsonResponse(200, { changed: true, softCodesCounted: ["4.2.2", "4.4.7"] });
     if (url === "/nod/api/bounces/inbox") return opts.upload?.() ?? jsonResponse(201, { id: "b1" });
@@ -98,6 +128,90 @@ describe("OperationsScreen", () => {
     await user.click(within(dialog).getByRole("button", { name: "Confirm pause" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/settings/pause", method: "POST", body: undefined }));
     expect(calls.filter((c) => c.url === "/nod/api/operations").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("N3: while paused, shows what's held per release, how many and since when; resuming says how many go out", async () => {
+    stub(["NoD.Admin"], HELD);
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    expect(out).toHaveTextContent("Held while paused: 1,205 emails for 3 releases. The oldest has waited");
+    const held = within(out).getByRole("table", { name: "Held news email" });
+    expect(within(held).getByRole("row", { name: /^Budget 2027 As it happens 1,200 / })).toBeInTheDocument();
+    expect(within(held).getByRole("row", { name: /^Daily digest of .*2 releases Daily digest 5 .*Tried 1 time\. Last error: Distribution 503: unavailable/ })).toBeInTheDocument();
+    const nod = screen.getByRole("region", { name: "News On Demand sending" });
+    await user.click(within(nod).getByRole("button", { name: "Resume News On Demand sending" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("1,205 held emails for 3 releases start going out straight away. The oldest has waited");
+    expect(dialog).toHaveTextContent("To stop some of them, choose Cancel and cancel them under Outgoing news email first.");
+  });
+
+  it("N3: a failed send is shown with what went wrong, and what to do", async () => {
+    stub(["NoD.Admin"], HELD);
+    renderIt();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    const failed = within(out).getByRole("table", { name: "Failed news email" });
+    expect(within(failed).getByRole("row", { name: /^Wildfire update Media list 40 .*Gave up after 3 tries\. Distribution said: Distribution 400: bad request/ })).toBeInTheDocument();
+    expect(out).toHaveTextContent("Failed email isn’t sent again by itself.");
+  });
+
+  it("N3: cancelling one release's held email asks first, naming how many and which, then posts its jobs and reloads", async () => {
+    const calls = stub(["NoD.Admin"], HELD);
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel held email: Budget 2027 (As it happens)" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Cancel held email?");
+    expect(dialog).toHaveTextContent("1,200 emails for 1 release won’t be sent. This can’t be undone.");
+    expect(within(dialog).getByRole("listitem")).toHaveTextContent("Budget 2027 (As it happens): 1,200 emails");
+    expect(calls.some((c) => c.url.endsWith("/cancel"))).toBe(false);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
+    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/held-email/cancel", method: "POST", body: { jobIds: [J1] } }));
+    expect(await screen.findByText("Cancelled 1,200 held emails.")).toBeInTheDocument();
+    expect(calls.filter((c) => c.url === "/nod/api/operations").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("N3: Cancel all held email names every release and posts every job", async () => {
+    const calls = stub(["NoD.Admin"], HELD, { cancel: () => jsonResponse(200, { cancelledJobs: 3, cancelledEmails: 1205 }) });
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel all held email" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("1,205 emails for 3 releases won’t be sent.");
+    expect(within(dialog).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Budget 2027 (As it happens): 1,200 emails",
+      expect.stringMatching(/^Daily digest of .*, 2 releases \(Daily digest\): 5 emails$/),
+    ]);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
+    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/held-email/cancel", method: "POST", body: { jobIds: [J1, J2, J3] } }));
+  });
+
+  it("N3: if sending was resumed meanwhile, the dialog says nothing was cancelled", async () => {
+    stub(["NoD.Admin"], HELD, { cancel: () => jsonResponse(409, { error: "not-paused" }) });
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel all held email" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("News On Demand sending isn’t paused, so nothing was cancelled.");
+  });
+
+  it("N3: while running, nothing can be cancelled; with nothing waiting it says so", async () => {
+    stub(["NoD.Admin"], { ...HELD, nod: { ...HELD.nod, paused: false }, outgoing: { ...HELD.outgoing, held: { ...HELD.outgoing.held, groups: [HELD.outgoing.held.groups[1]!] } } });
+    renderIt();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    expect(out).toHaveTextContent("Waiting to go out:");
+    expect(within(out).queryByRole("button", { name: /Cancel/ })).toBeNull();
+    cleanup();
+    stub(["NoD.Admin"]);
+    renderIt();
+    expect(await screen.findByText("Nothing is waiting to go out.")).toBeInTheDocument();
+    expect(screen.getByText("No news email failed in the last 30 days.")).toBeInTheDocument();
+    const nod = screen.getByRole("region", { name: "News On Demand sending" });
+    expect(within(nod).queryByText(/held emails for/)).toBeNull();
   });
 
   it("with no operations inbox set up, the pause and resume dialogs say no one is emailed", async () => {
