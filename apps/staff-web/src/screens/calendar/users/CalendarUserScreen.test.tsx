@@ -112,6 +112,12 @@ describe("CalendarUserScreen", () => {
     expect(JSON.parse(calls.find((c) => c.url.includes("/comm-contacts/"))!.init!.body as string)).toEqual({ rank: 1 });
   });
 
+  it("with no ministry, the comm contact hint names the control that gives one (form-order audit #17)", async () => {
+    stub([], detailOf("u3"));
+    renderAt("u3");
+    expect(await screen.findByText("Give this user a ministry under Calendar access (Edit Calendar access) first.")).toBeInTheDocument();
+  });
+
   it("deactivates through Core's Calendar route", async () => {
     openActivities = { activities: [], truncated: false };
     const calls: { url: string; init?: RequestInit }[] = [];
@@ -135,7 +141,7 @@ describe("CalendarUserScreen", () => {
     await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
     const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
     expect(within(preview).getByText("HLTH-41 — Sample launch — 2026-11-10")).toBeInTheDocument();
-    expect(within(preview).getByRole("link", { name: "Transfer their activities first" })).toHaveAttribute("href", "/calendar/transfer");
+    expect(within(preview).getByRole("link", { name: "Transfer their activities first" })).toHaveAttribute("href", "/calendar/transfer?user=u1");
     expect(calls.some((c) => c.url.endsWith("/active"))).toBe(false);
     await user.click(within(preview).getByRole("button", { name: "Deactivate anyway" }));
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/active"))).toBe(true));
@@ -294,7 +300,7 @@ describe("CalendarUserScreen", () => {
     const preview = await openPreview();
     expect(within(preview).getByText("HLTH-41 — Sample launch — no date")).toBeInTheDocument();
     expect(within(preview).getByText(LINE)).toBeInTheDocument();
-    expect(within(preview).getByRole("link", { name: "Transfer their activities first" })).toHaveAttribute("href", "/calendar/transfer");
+    expect(within(preview).getByRole("link", { name: "Transfer their activities first" })).toHaveAttribute("href", "/calendar/transfer?user=u1");
     expect(within(preview).getByRole("button", { name: "Deactivate anyway" })).toBeInTheDocument();
   });
 

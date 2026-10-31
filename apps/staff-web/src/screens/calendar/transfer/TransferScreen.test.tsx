@@ -31,10 +31,10 @@ function stub(calls: { url: string; init?: RequestInit }[], transferred = 3) {
   );
 }
 
-const renderScreen = () =>
+const renderScreen = (path = "/calendar/transfer") =>
   render(
     <SessionProvider>
-      <MemoryRouter initialEntries={["/calendar/transfer"]}>
+      <MemoryRouter initialEntries={[path]}>
         <RequireAuth>
           <Routes>
             <Route path="/calendar/transfer" element={<TransferScreen />} />
@@ -48,6 +48,20 @@ describe("TransferScreen", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("opened from a user's page, From starts on that user's comm contact (form-order audit #17)", async () => {
+    stub([]);
+    renderScreen("/calendar/transfer?user=u2");
+    const from = (await screen.findByLabelText("From comm contact")) as HTMLSelectElement;
+    expect(from).toHaveValue("2");
+    expect(screen.getByLabelText("To comm contact")).toHaveValue("");
+  });
+
+  it("opened for a user with several comm contacts, or none, From waits for a choice", async () => {
+    stub([]);
+    renderScreen("/calendar/transfer?user=nobody");
+    expect(await screen.findByLabelText("From comm contact")).toHaveValue("");
   });
 
   it("offers every contact as From, inactive ones included, and only those that canReceive as To", async () => {

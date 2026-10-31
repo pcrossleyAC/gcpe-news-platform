@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { InlineAlert } from "@bcgov/design-system-react-components";
+import { useSearchParams } from "react-router";
 import { ApiError, apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
+import { canonicalId } from "../../admin/calendar-access/calendar-roles";
 import { plural, type TransferContact, type TransferPreview } from "./types";
 
 interface TransferResult {
@@ -18,9 +20,15 @@ interface TransferResult {
 const errorsOf = (caught: unknown) =>
   caught instanceof ApiError && caught.status === 404 ? ["That comm contact is no longer available: reload the page."] : messagesOf(caught);
 
-/** `/hub/calendar/transfer` (spec addendum §8.5): move every activity of one comm contact to another. */
+/**
+ * `/hub/calendar/transfer` (spec addendum §8.5): move every activity of one comm contact to another.
+ * `?user=` (from a user's page, before deactivating) starts From on that person's comm contact
+ * when they have exactly one; with several, the reader chooses which ministry's.
+ */
 export function TransferScreen(): React.JSX.Element {
   useDocumentTitle("Transfer activities");
+  const [params] = useSearchParams();
+  const forUser = params.get("user");
   const [contacts, setContacts] = useState<TransferContact[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [from, setFrom] = useState("");
@@ -34,7 +42,12 @@ export function TransferScreen(): React.JSX.Element {
   useEffect(() => {
     const call = ++latest.current;
     apiFetch<TransferContact[]>("/calendar/api/transfer/comm-contacts").then(
-      (c) => call === latest.current && setContacts(c),
+      (c) => {
+        if (call !== latest.current) return;
+        setContacts(c);
+        const theirs = forUser === null ? [] : c.filter((x) => canonicalId(x.userId) === canonicalId(forUser));
+        if (theirs.length === 1) setFrom(String(theirs[0]!.id));
+      },
       () => call === latest.current && setLoadError("Couldn't load comm contacts."),
     );
   }, []);
