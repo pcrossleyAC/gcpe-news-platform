@@ -66,6 +66,7 @@ import { DistributionReportScreen } from "./screens/subscribers/reports/Distribu
 import { HelpScreen } from "./screens/help/HelpScreen";
 import { ManualReviewScreen } from "./screens/help/ManualReviewScreen";
 import { ManualScreen } from "./screens/help/ManualScreen";
+import { HubErrorPage, NotFoundScreen } from "./shell/HubMessagePages";
 
 /**
  * Library-mode react-router v7, basename "/hub" (the stack hosts the staff app there — see
@@ -76,110 +77,119 @@ import { ManualScreen } from "./screens/help/ManualScreen";
  * simply isn't one of those three literal segments) and still fall through to
  * {@link ReleaseEditorPage}. `releases/new` (Task 3) is listed *before* `releases/:id` so the
  * literal segment wins the match instead of being captured as an `:id` param. The remaining `*`
- * keeps any other deep link (Website/Users/the error log — later tasks) resolving to the shell
- * instead of a 404 inside the client router (the stack's own /hub fallback already serves
- * index.html for any such path).
+ * answers any other address inside the shell with "Page not found" (suite review H4; the stack's
+ * own /hub fallback serves index.html for any such path).
+ *
+ * Suite review H3: every screen sits in one pathless route whose `errorElement` is the Hub's own
+ * error page, so a screen that crashes shows it inside the shell (menu and Sign out stay), never
+ * React Router's developer page. A crash outside the shell gets the same page on its own.
  */
 export const routes: RouteObject[] = [
-  { path: "sign-in", element: <SignIn /> },
+  { path: "sign-in", element: <SignIn />, errorElement: <HubErrorPage standalone /> },
   {
     element: (
       <RequireAuth>
         <AppShell />
       </RequireAuth>
     ),
+    errorElement: <HubErrorPage standalone />,
     children: [
-      { index: true, element: <HomeRedirect /> },
       {
-        path: "releases",
+        errorElement: <HubErrorPage />,
         children: [
-          { index: true, element: <ReleasesIndex /> },
-          { path: "forecast", element: <ForecastScreen /> },
-          { path: "drafts", element: <ReleaseListScreen folder="drafts" /> },
-          { path: "scheduled", element: <ReleaseListScreen folder="scheduled" /> },
-          { path: "published", element: <ReleaseListScreen folder="published" /> },
-          { path: "new", element: <NewReleaseScreen /> },
-          { path: ":id", element: <ReleaseEditorPage /> },
+          { index: true, element: <HomeRedirect /> },
+          {
+            path: "releases",
+            children: [
+              { index: true, element: <ReleasesIndex /> },
+              { path: "forecast", element: <ForecastScreen /> },
+              { path: "drafts", element: <ReleaseListScreen folder="drafts" /> },
+              { path: "scheduled", element: <ReleaseListScreen folder="scheduled" /> },
+              { path: "published", element: <ReleaseListScreen folder="published" /> },
+              { path: "new", element: <NewReleaseScreen /> },
+              { path: ":id", element: <ReleaseEditorPage /> },
+            ],
+          },
+          { path: "search", element: <SearchScreen /> },
+          { path: "help", element: <HelpScreen /> },
+          { path: "help/manuals-review", element: <ManualReviewScreen /> },
+          { path: "help/manuals/:manualId", element: <ManualScreen /> },
+          { path: "help/manuals/:manualId/:pageId", element: <ManualScreen /> },
+          {
+            path: "website",
+            element: <WebsiteScreen />,
+            children: [
+              { index: true, element: <WebsiteIndexRedirect /> },
+              { path: "carousel", element: <CarouselScreen /> },
+              { path: "pins", element: <PinsScreen /> },
+              { path: "live-feed", element: <LiveFeedScreen /> },
+              { path: "blue-bridge", element: <BlueBridgeScreen /> },
+              { path: "links", element: <LinksScreen /> },
+              { path: "files", element: <FilesScreen /> },
+              { path: "featured", element: <FeaturedScreen /> },
+              { path: "log", element: <LogScreen /> },
+              { path: "settings", element: <SiteSettingsIndex /> },
+              { path: "banner", element: <BannerScreen /> },
+              { path: "footer", element: <FooterScreen /> },
+              { path: "social", element: <SocialScreen /> },
+              { path: "theme", element: <ThemeScreen /> },
+              { path: "ministry-pages", element: <MinistryPagesScreen /> },
+              { path: "media-contacts", element: <MediaContactsScreen /> },
+              { path: "page-text", element: <PageTextScreen /> },
+              { path: "navigation", element: <NavigationScreen /> },
+              { path: "identity", element: <SiteIdentityScreen /> },
+              { path: "settings-history", element: <SettingsHistoryScreen /> },
+            ],
+          },
+          {
+            path: "subscribers",
+            element: <SubscribersSection />,
+            children: [
+              { index: true, element: <SubscribersScreen /> },
+              { path: "new", element: <AddSubscriberScreen /> },
+              { path: "lists", element: <ListsScreen /> },
+              { path: "media-lists", element: <MediaListsScreen /> },
+              { path: "media-lists/:key", element: <MediaListScreen /> },
+              { path: "operations", element: <OperationsScreen /> },
+              { path: "reports", element: <ReportsScreen /> },
+              { path: "reports/subscribers-by-list", element: <SubscribersByListReportScreen /> },
+              { path: "reports/unsubscribes", element: <UnsubscribesReportScreen /> },
+              { path: "reports/release-sends", element: <ReleaseSendsReportScreen /> },
+              { path: "reports/digest-runs", element: <DigestRunsReportScreen /> },
+              { path: "reports/distribution", element: <DistributionReportScreen /> },
+              { path: ":id", element: <SubscriberScreen /> },
+              { path: ":id/history", element: <HistoryScreen /> },
+            ],
+          },
+          {
+            path: "calendar",
+            element: <CalendarSection />,
+            children: [
+              { index: true, element: <ActivityListScreen /> },
+              { path: "activities/new", element: <ActivityRoute /> },
+              { path: "activities/:id", element: <ActivityRoute /> },
+              { path: "activities/:id/changes", element: <ChangesRoute /> },
+              { path: "updates", element: <UpdatesScreen /> },
+              { path: "lookups", element: <LookupsScreen /> },
+              { path: "lookups/:name", element: <LookupScreen /> },
+              { path: "users", element: <CalendarUsersScreen /> },
+              { path: "users/:id", element: <CalendarUserScreen /> },
+              { path: "transfer", element: <TransferScreen /> },
+              { path: "dead-letters", element: <DeadLettersScreen /> },
+            ],
+          },
+          { path: "users", element: <UsersScreen /> },
+          { path: "calendar-access", element: <CalendarAccessScreen /> },
+          { path: "organizations", element: <OrganizationsScreen /> },
+          { path: "organizations/cabinet-change", element: <CabinetChangeScreen /> },
+          { path: "government-terms", element: <GovernmentTermsScreen /> },
+          { path: "categories", element: <CategoriesScreen /> },
+          { path: "release-page-titles", element: <PageTitlesScreen /> },
+          { path: "media-list-names", element: <MediaListNamesScreen /> },
+          { path: "error-log", element: <ErrorLogScreen /> },
+          { path: "*", element: <NotFoundScreen /> },
         ],
       },
-      { path: "search", element: <SearchScreen /> },
-      { path: "help", element: <HelpScreen /> },
-      { path: "help/manuals-review", element: <ManualReviewScreen /> },
-      { path: "help/manuals/:manualId", element: <ManualScreen /> },
-      { path: "help/manuals/:manualId/:pageId", element: <ManualScreen /> },
-      {
-        path: "website",
-        element: <WebsiteScreen />,
-        children: [
-          { index: true, element: <WebsiteIndexRedirect /> },
-          { path: "carousel", element: <CarouselScreen /> },
-          { path: "pins", element: <PinsScreen /> },
-          { path: "live-feed", element: <LiveFeedScreen /> },
-          { path: "blue-bridge", element: <BlueBridgeScreen /> },
-          { path: "links", element: <LinksScreen /> },
-          { path: "files", element: <FilesScreen /> },
-          { path: "featured", element: <FeaturedScreen /> },
-          { path: "log", element: <LogScreen /> },
-          { path: "settings", element: <SiteSettingsIndex /> },
-          { path: "banner", element: <BannerScreen /> },
-          { path: "footer", element: <FooterScreen /> },
-          { path: "social", element: <SocialScreen /> },
-          { path: "theme", element: <ThemeScreen /> },
-          { path: "ministry-pages", element: <MinistryPagesScreen /> },
-          { path: "media-contacts", element: <MediaContactsScreen /> },
-          { path: "page-text", element: <PageTextScreen /> },
-          { path: "navigation", element: <NavigationScreen /> },
-          { path: "identity", element: <SiteIdentityScreen /> },
-          { path: "settings-history", element: <SettingsHistoryScreen /> },
-        ],
-      },
-      {
-        path: "subscribers",
-        element: <SubscribersSection />,
-        children: [
-          { index: true, element: <SubscribersScreen /> },
-          { path: "new", element: <AddSubscriberScreen /> },
-          { path: "lists", element: <ListsScreen /> },
-          { path: "media-lists", element: <MediaListsScreen /> },
-          { path: "media-lists/:key", element: <MediaListScreen /> },
-          { path: "operations", element: <OperationsScreen /> },
-          { path: "reports", element: <ReportsScreen /> },
-          { path: "reports/subscribers-by-list", element: <SubscribersByListReportScreen /> },
-          { path: "reports/unsubscribes", element: <UnsubscribesReportScreen /> },
-          { path: "reports/release-sends", element: <ReleaseSendsReportScreen /> },
-          { path: "reports/digest-runs", element: <DigestRunsReportScreen /> },
-          { path: "reports/distribution", element: <DistributionReportScreen /> },
-          { path: ":id", element: <SubscriberScreen /> },
-          { path: ":id/history", element: <HistoryScreen /> },
-        ],
-      },
-      {
-        path: "calendar",
-        element: <CalendarSection />,
-        children: [
-          { index: true, element: <ActivityListScreen /> },
-          { path: "activities/new", element: <ActivityRoute /> },
-          { path: "activities/:id", element: <ActivityRoute /> },
-          { path: "activities/:id/changes", element: <ChangesRoute /> },
-          { path: "updates", element: <UpdatesScreen /> },
-          { path: "lookups", element: <LookupsScreen /> },
-          { path: "lookups/:name", element: <LookupScreen /> },
-          { path: "users", element: <CalendarUsersScreen /> },
-          { path: "users/:id", element: <CalendarUserScreen /> },
-          { path: "transfer", element: <TransferScreen /> },
-          { path: "dead-letters", element: <DeadLettersScreen /> },
-        ],
-      },
-      { path: "users", element: <UsersScreen /> },
-      { path: "calendar-access", element: <CalendarAccessScreen /> },
-      { path: "organizations", element: <OrganizationsScreen /> },
-      { path: "organizations/cabinet-change", element: <CabinetChangeScreen /> },
-      { path: "government-terms", element: <GovernmentTermsScreen /> },
-      { path: "categories", element: <CategoriesScreen /> },
-      { path: "release-page-titles", element: <PageTitlesScreen /> },
-      { path: "media-list-names", element: <MediaListNamesScreen /> },
-      { path: "error-log", element: <ErrorLogScreen /> },
-      { path: "*", element: null },
     ],
   },
 ];
