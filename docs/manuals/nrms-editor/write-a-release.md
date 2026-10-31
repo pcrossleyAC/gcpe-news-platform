@@ -19,7 +19,7 @@ You can change several parts of the release, then save them all at once.
 
 1. Make your changes. Each part you changed says **Unsaved** beside its heading.
 2. A bar along the bottom lists them: "You have unsaved changes in: …".
-3. Choose **Save changes** in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too.
+3. Choose **Save changes** in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too. On a published release the button reads **Save and republish**, because saving puts the change on the public site: see [Correct, feature, unpublish or delete](manual:editor-correct-unpublish-delete).
 4. The bar says "All changes saved." for a moment, then goes.
 
 If one part can't be saved, the bar says "Couldn't save page details. See why in that section." Choose the link to go to the message. Parts after it are not saved yet and keep your changes.

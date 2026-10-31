@@ -232,7 +232,15 @@ export function ReleaseEditorPage(): React.JSX.Element {
               <SideBar view={view} timeZone={timeZone} />
             </div>
           </div>
-          <UnsavedChangesBar sections={guard.dirtySections} state={guard.saveState} onSave={() => void guard.saveAll()} targetOf={(key) => unsavedTarget(key, view)} />
+          <UnsavedChangesBar
+            sections={guard.dirtySections}
+            state={guard.saveState}
+            onSave={() => void guard.saveAll()}
+            targetOf={(key) => unsavedTarget(key, view)}
+            // Suite review R7: a save of a published release republishes it (apps/nrms store.ts
+            // mutateRelease); one still publishing goes out as it is when the publisher gets to it.
+            republishes={view.live && (view.status === "published" || view.status === "publishing")}
+          />
         </DirtyKeysProvider>
       </guard.Provider>
     </SaveQueueContext.Provider>

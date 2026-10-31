@@ -305,6 +305,17 @@ describe("ReleaseEditorPage", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/releases/drafts"));
   });
 
+  // Suite review R7: the page tells the bar when a save republishes (a published release).
+  it.each([
+    ["published", true],
+    ["approved", false],
+  ] as const)("a %s release's save bar %s says Save and republish", async (status, republishes) => {
+    renderPage("11111111-1111-1111-1111-111111111111", { view: releaseView({ status, live: status === "published", key: "k1", reference: "NEWS-00001", releasedAt: status === "published" ? "2026-01-01T00:00:00.000Z" : null }) });
+    await userEvent.setup().type(await screen.findByLabelText("Location"), "V");
+    const bar = await screen.findByRole("region", { name: "Unsaved changes" });
+    expect(within(bar).getByRole("button", { name: republishes ? "Save and republish" : "Save changes" })).toBeInTheDocument();
+  });
+
   // Suite review R3: changes discarded with Leave must not come back. A kept draft (from a 401)
   // that was restored and then discarded is gone when the release is opened again.
   it("Leave discards a restored draft: opening the release again shows the saved content", async () => {
