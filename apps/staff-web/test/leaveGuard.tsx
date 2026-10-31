@@ -12,7 +12,7 @@ import { AnnouncerProvider } from "../src/shared/Announcer";
  * data router (blocking needs one), RequireAuth (the shell's unsaved-changes state) — with a
  * second address, /elsewhere, to leave for.
  */
-export function renderGuarded(element: ReactElement, opts: { path?: string; at?: string; parent?: Omit<RouteObject, "children" | "path" | "index"> & { path: string } } = {}) {
+export function renderGuarded(element: ReactElement, opts: { path?: string; at?: string; parent?: Omit<RouteObject, "children" | "path" | "index"> & { path: string }; extra?: RouteObject[] } = {}) {
   const path = opts.path ?? "/screen";
   const screenRoute: RouteObject = opts.parent ? { ...opts.parent, children: [{ path, element }] } as RouteObject : { path, element };
   const router = createMemoryRouter(
@@ -25,7 +25,7 @@ export function renderGuarded(element: ReactElement, opts: { path?: string; at?:
             </RequireAuth>
           </AnnouncerProvider>
         ),
-        children: [screenRoute, { path: "/elsewhere", element: <h1>Somewhere else</h1> }],
+        children: [screenRoute, { path: "/elsewhere", element: <h1>Somewhere else</h1> }, ...(opts.extra ?? [])],
       },
     ],
     { initialEntries: [opts.at ?? path] },

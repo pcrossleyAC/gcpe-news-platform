@@ -11,6 +11,7 @@ import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canAdminSubscribers } from "./access";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../shared/LeaveGuard";
 import type { EmergencyFeedStatus, OperationsStatus, OutgoingGroup, OutgoingStatus, PurgeStatus } from "./types";
 
 /** Distribution's own fake-inbox limit (apps/distribution/src/http/routes.ts). */
@@ -36,6 +37,7 @@ function OperationsPanels(): React.JSX.Element {
   const [ops, setOps] = useState<OperationsStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const forms = useDirtyParts();
 
   // Only the latest load may land: an earlier, slower load landing after a faster later one
   // would put back stale pause/bounce state.
@@ -63,6 +65,7 @@ function OperationsPanels(): React.JSX.Element {
   return (
     <div className="gcpe-subscribers__operations">
       <h1>Operations</h1>
+      <LeavePageGuard dirty={forms.anyDirty} />
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {message && <p role="status">{message}</p>}
       {ops && (
@@ -102,9 +105,9 @@ function OperationsPanels(): React.JSX.Element {
               <InlineAlert variant="warning" description="Distribution isn’t responding, so its state is unknown. Reload the page shortly." />
             </section>
           )}
-          <BounceSummaryForm value={ops.bounceSummary} onDone={done} />
+          <BounceSummaryForm value={ops.bounceSummary} onDone={done} reportDirty={forms.report} />
           <EmergencyFeedPanel feed={ops.emergencyFeed} timeZone={timeZone} />
-          <SoftCodesForm value={ops.softCodesCounted} onDone={done} />
+          <SoftCodesForm value={ops.softCodesCounted} onDone={done} reportDirty={forms.report} />
           <PurgeControl purge={ops.purge} timeZone={timeZone} onDone={done} />
           {ops.bounceSource === "fake" && <BounceUpload onDone={done} />}
         </>
@@ -371,11 +374,13 @@ function PauseControl(props: {
   );
 }
 
-function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceSummary"]; onDone(text: string): void }): React.JSX.Element {
+function BounceSummaryForm({ value, onDone, reportDirty }: { value: OperationsStatus["bounceSummary"]; onDone(text: string): void; reportDirty?: ReportDirty }): React.JSX.Element {
   // The field holds only an address staff set. The server default is shown as text beside it,
   // never put in the field: saving the form unchanged must not store the default as a setting.
   const staffAddress = value.from === "setting" ? (value.address ?? "") : "";
   const [address, setAddress] = useState(staffAddress);
+  // Suite review H2: an address typed but not saved asks before leaving Operations.
+  useReportDirty(reportDirty, "bounce-summary", address.trim() !== staffAddress);
   const [busy, setBusy] = useState(false);
   // ⌘/Ctrl+S saves this form while you're in it (the screen has two).
   const bounceForm = useFormShortcut("save", !busy, true);
@@ -419,9 +424,12 @@ function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceS
   );
 }
 
-function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string): void }): React.JSX.Element {
+function SoftCodesForm({ value, onDone, reportDirty }: { value: string[]; onDone(text: string): void; reportDirty?: ReportDirty }): React.JSX.Element {
   const saved = value.join(", ");
   const [codes, setCodes] = useState(saved);
+  // Suite review H2: codes changed but not saved ask before leaving (spacing alone isn't a change).
+  const typed = codes.split(",").map((c) => c.trim()).filter(Boolean).join(", ");
+  useReportDirty(reportDirty, "soft-codes", typed !== saved);
   const [busy, setBusy] = useState(false);
   // ⌘/Ctrl+S saves this form while you're in it (the screen has two).
   const codesForm = useFormShortcut("save", !busy, true);

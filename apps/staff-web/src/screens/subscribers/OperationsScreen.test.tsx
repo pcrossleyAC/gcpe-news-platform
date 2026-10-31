@@ -6,6 +6,7 @@ import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { OperationsScreen } from "./OperationsScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
 import type { OperationsStatus, OutgoingGroup } from "./types";
 
 const OPS: OperationsStatus = {
@@ -539,3 +540,27 @@ describe("OperationsScreen", () => {
     expect(await screen.findByText("No feed is configured (EMERGENCY_FEED_URL), so no emergency alerts are read.")).toBeInTheDocument();
   });
 });
+
+// Suite review H2: an Operations setting typed but not saved asks before leaving.
+describe("OperationsScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const at = { path: "/subscribers/operations" };
+
+  it("leaves freely untouched, and asks once the bounce summary email is changed", async () => {
+    stub(["NoD.Admin"]);
+    let router = renderGuarded(<OperationsScreen />, at);
+    await screen.findByRole("textbox", { name: "Bounce summary email" });
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["NoD.Admin"]);
+    router = renderGuarded(<OperationsScreen />, at);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Bounce summary email" }), "x");
+    await expectLeaveAsks(router, user);
+  });
+});
+

@@ -185,9 +185,21 @@ export function LeavePageDialog({
   );
 }
 
-/** One line per edit screen: asks before leaving while `dirty`. Renders nothing until it asks. */
-export function LeavePageGuard({ dirty, message, onLeave }: { dirty: boolean; message?: string; onLeave?: () => void }): React.JSX.Element {
-  const blocker = useLeaveBlocker(dirty);
+/** One line per edit screen: asks before leaving while `dirty`. Renders nothing until it asks.
+ * `leaving` is for a screen that goes somewhere itself once its work is saved (see
+ * {@link LeaveBlockerOptions.leaving}). */
+export function LeavePageGuard({
+  dirty,
+  message,
+  onLeave,
+  leaving,
+}: {
+  dirty: boolean;
+  message?: string;
+  onLeave?: () => void;
+  leaving?: MutableRefObject<boolean>;
+}): React.JSX.Element {
+  const blocker = useLeaveBlocker(dirty, { leaving });
   return <LeavePageDialog blocker={blocker} message={message} onLeave={onLeave} />;
 }
 

@@ -111,6 +111,10 @@ Every night, News On Demand picks up changed Media Hub contacts. **Media Hub syn
 
 To run it now, choose **Sync with Media Hub now**. You see "Sync finished." and its counts. A long sync may stop part-way: you then see "Sync stopped part-way and carries on at the next scheduled run."
 
+## If you leave before adding
+
+If you have typed an address in **Email address** and not chosen **Add to list**, the Hub asks before you go to another screen: "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard it. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |
