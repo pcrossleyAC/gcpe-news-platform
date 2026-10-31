@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
-import { CalendarUserScreen } from "./CalendarUserScreen";
+import { CalendarUserScreen, catchUp } from "./CalendarUserScreen";
 import type { CalendarUserDetail, OpenActivities } from "./types";
 
 const DETAIL: CalendarUserDetail = {
@@ -149,6 +149,48 @@ describe("CalendarUserScreen", () => {
     stub([], detailOf("u3"));
     renderAt("u3");
     expect(await screen.findByText("Give this user a ministry under Calendar access (Edit Calendar access) first.")).toBeInTheDocument();
+  });
+
+  describe("a ministry just given in Calendar access (suite review CAL-9)", () => {
+    const saved = { ...catchUp };
+    beforeEach(() => Object.assign(catchUp, { everyMs: 20, tries: 5 }));
+    afterEach(() => Object.assign(catchUp, saved));
+    const reads = (calls: { url: string }[]) => calls.filter((c) => c.url === "/calendar/api/users/u1").length;
+    /** The Calendar's copy of u1 has no ministry yet; Core's has Health. The Calendar's catches up after `lag` reads. */
+    const lagging = (calls: { url: string; init?: RequestInit }[], lag: number) => {
+      let n = 0;
+      stub(calls, DETAIL, (url, init) => {
+        if (url !== "/calendar/api/users/u1" || (init?.method ?? "GET") !== "GET") return undefined;
+        n++;
+        return jsonResponse(200, n > lag ? DETAIL : { ...DETAIL, user: { ...DETAIL.user, ministryKeys: [] }, commContacts: [] });
+      });
+    };
+    it("says the Calendar is setting them up and offers the rank by itself once it has, with no reload", async () => {
+      const calls: { url: string; init?: RequestInit }[] = [];
+      lagging(calls, 2);
+      renderAt("u1");
+      expect(await screen.findByText("Setting up their ministries in the Calendar… The rank appears here in a moment.")).toBeInTheDocument();
+      expect(screen.queryByText(/Give this user a ministry/)).toBeNull();
+      expect(screen.queryByLabelText("Comm contact rank for Health (HLTH)")).toBeNull();
+      expect(await screen.findByLabelText("Comm contact rank for Health (HLTH)")).toBeInTheDocument();
+      expect(screen.queryByText(/Setting up their ministries/)).toBeNull();
+      expect(reads(calls)).toBe(3);
+      // Caught up: it stops asking.
+      await new Promise((r) => setTimeout(r, 200));
+      expect(reads(calls)).toBe(3);
+    });
+
+    it("stops after about a minute and a half, and says to reload later", async () => {
+      const calls: { url: string; init?: RequestInit }[] = [];
+      lagging(calls, Infinity);
+      renderAt("u1");
+      await screen.findByText(/Setting up their ministries/);
+      expect(await screen.findByText("The Calendar hasn't picked up their new ministries yet. Reload the page in a minute.")).toBeInTheDocument();
+      // The first read, then one per try.
+      expect(reads(calls)).toBe(6);
+      await new Promise((r) => setTimeout(r, 200));
+      expect(reads(calls)).toBe(6);
+    });
   });
 
   it("deactivates through Core's Calendar route", async () => {
