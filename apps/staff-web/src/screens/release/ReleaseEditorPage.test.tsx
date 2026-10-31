@@ -11,6 +11,7 @@ import { SignIn } from "../SignIn";
 import { AnnouncerProvider } from "../../shared/Announcer";
 import { ReleaseEditorPage, SETTLING_REFRESH_MS, settlingDelay } from "./ReleaseEditorPage";
 import { RELOAD_MESSAGE } from "./useReleaseSection";
+import { loadDraft, saveDraft } from "./documents/unsavedDocumentStorage";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -302,6 +303,40 @@ describe("ReleaseEditorPage", () => {
     await screen.findByRole("dialog");
     await user.click(screen.getByRole("button", { name: "Leave" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/releases/drafts"));
+  });
+
+  // Suite review R3: changes discarded with Leave must not come back. A kept draft (from a 401)
+  // that was restored and then discarded is gone when the release is opened again.
+  it("Leave discards a restored draft: opening the release again shows the saved content", async () => {
+    const id = "11111111-1111-1111-1111-111111111111";
+    const v = releaseView({ id });
+    const lang = v.documents[0]!.languages[0]!;
+    const key = { userId: "1", releaseId: id, documentId: v.documents[0]!.id, languageId: lang.languageId };
+    saveDraft(key, { version: v.version, form: { pageTitle: lang.pageTitle, organizations: lang.organizations ?? "", headline: "Discard me", subheadline: lang.subheadline ?? "", byline: lang.byline ?? "", bodyHtml: lang.bodyHtml, contacts: lang.contacts } });
+    stubFetch({ roles: ["NRMS.Editor"], view: v });
+    const router = createMemoryRouter(
+      [
+        { path: "/releases/:id", element: <ReleaseEditorPage /> },
+        { path: "/releases/drafts", element: <p>Drafts list</p> },
+      ],
+      { initialEntries: [`/releases/${id}`] },
+    );
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    const user = userEvent.setup();
+    expect(await screen.findByLabelText("Headline")).toHaveValue("Discard me");
+
+    router.navigate("/releases/drafts");
+    await screen.findByRole("dialog");
+    await user.click(screen.getByRole("button", { name: "Leave" }));
+    await screen.findByText("Drafts list");
+    expect(loadDraft(key)).toBeNull();
+
+    router.navigate(`/releases/${id}`);
+    expect(await screen.findByLabelText("Headline")).toHaveValue(lang.headline);
   });
 
   // constraints.md Review Focus 1 / task-4-brief.md Step 1: a session expiring mid-edit — the

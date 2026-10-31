@@ -9,7 +9,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { DocumentLanguageForm } from "./DocumentLanguageForm";
 import { renderWithSaveBar } from "../saveBarHarness";
-import { loadDraft } from "./unsavedDocumentStorage";
+import { loadDraft, saveDraft } from "./unsavedDocumentStorage";
 
 const BASE = releaseView({
   id: "00000000-0000-4000-8000-000000000099",
@@ -36,6 +36,9 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Response | Prom
     }),
   );
 }
+
+/** BASE's English language as the form holds it. */
+const FORM_OF_BASE = { pageTitle: "News Release", organizations: "Ministry of Health", headline: "Clinics open", subheadline: "", byline: "", bodyHtml: "<p>Body</p>", contacts: ["Media Relations\n250-555-0100"] };
 
 function draftKeyFor(userId = "user-a") {
   return { userId, releaseId: BASE.id, documentId: "doc-1", languageId: LANG_EN };
@@ -140,26 +143,77 @@ describe("DocumentLanguageForm", () => {
     expect(screen.queryByLabelText("Contact 2")).not.toBeInTheDocument();
   });
 
-  it("restores unsaved text after an unmount/remount (session-expiry recovery)", async () => {
+  // Suite review R3: like the Calendar, unsaved text is kept only when a 401 is about to send
+  // the user to sign in; leaving the page (Leave in "Unsaved changes") or the form going away for
+  // any other reason keeps nothing.
+  it("keeps unsaved text when a 401 interrupts, with the version it was based on", async () => {
+    stubFetch((_url, init) => (init?.method === "PUT" ? jsonResponse(401, { error: "not signed in" }) : jsonResponse(200, {})));
+    renderForm(BASE);
+    const user = userEvent.setup();
+    await user.clear(await screen.findByLabelText("Headline"));
+    await user.type(screen.getByLabelText("Headline"), "Unsaved draft text");
+    expect(loadDraft(draftKeyFor())).toBeNull(); // nothing kept just for typing
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(loadDraft<{ headline: string }>(draftKeyFor())).toMatchObject({ version: 1, form: { headline: "Unsaved draft text" } }));
+  });
+
+  it("keeps nothing when the form goes away without a 401", async () => {
     stubFetch(() => jsonResponse(200, {}));
     const { unmount } = renderForm(BASE);
     const user = userEvent.setup();
     await user.clear(await screen.findByLabelText("Headline"));
-    await user.type(screen.getByLabelText("Headline"), "Unsaved draft text");
-    await waitFor(() => expect(loadDraft(draftKeyFor())).not.toBeNull());
+    await user.type(screen.getByLabelText("Headline"), "Discarded text");
     unmount();
+    expect(loadDraft(draftKeyFor())).toBeNull();
 
     renderForm(BASE);
-    expect(await screen.findByLabelText("Headline")).toHaveValue("Unsaved draft text");
+    expect(await screen.findByLabelText("Headline")).toHaveValue("Clinics open");
+    expect(screen.queryByText(/unsaved changes were restored/i)).not.toBeInTheDocument();
+  });
+
+  it("restores a kept draft, says so, and saves it against the version it was based on", async () => {
+    saveDraft(draftKeyFor(), { version: 1, form: { ...FORM_OF_BASE, headline: "Kept headline" } });
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubFetch((url, init) => {
+      calls.push({ url, init });
+      return jsonResponse(200, releaseView({ ...BASE, version: 2 }));
+    });
+    renderForm(BASE);
+    expect(await screen.findByLabelText("Headline")).toHaveValue("Kept headline");
+    expect(screen.getByText("Your unsaved changes were restored.")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(JSON.parse(calls[0]!.init?.body as string)).toMatchObject({ version: 1, headline: "Kept headline" });
+  });
+
+  // A draft based on an older version must not silently overwrite what's there now: it's saved
+  // with its own version, which the server refuses (409) when the release changed since.
+  it("a kept draft from before a newer change saves with its old version and meets the conflict", async () => {
+    saveDraft(draftKeyFor(), { version: 1, form: { ...FORM_OF_BASE, headline: "Stale headline" } });
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubFetch((url, init) => {
+      calls.push({ url, init });
+      return init?.method === "PUT" ? jsonResponse(409, { error: "conflict" }) : jsonResponse(200, releaseView({ ...BASE, version: 4 }));
+    });
+    renderForm(releaseView({ ...BASE, version: 4 }));
+    expect(await screen.findByLabelText("Headline")).toHaveValue("Stale headline");
+    expect(screen.getByText(/this release has changed since/i)).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
+    expect(JSON.parse(calls.find((c) => c.init?.method === "PUT")!.init?.body as string)).toMatchObject({ version: 1 });
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(screen.getByLabelText("Headline")).toHaveValue("Clinics open"));
+    expect(loadDraft(draftKeyFor())).toBeNull();
   });
 
   it("clears the draft after a successful save", async () => {
+    saveDraft(draftKeyFor(), { version: 1, form: { ...FORM_OF_BASE, headline: "Changed" } });
     stubFetch(() => jsonResponse(200, releaseView({ ...BASE, version: 2 })));
     renderForm(BASE);
     const user = userEvent.setup();
-    await user.clear(await screen.findByLabelText("Headline"));
-    await user.type(screen.getByLabelText("Headline"), "Changed");
-    await waitFor(() => expect(loadDraft(draftKeyFor())).not.toBeNull());
+    expect(await screen.findByLabelText("Headline")).toHaveValue("Changed");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(loadDraft(draftKeyFor())).toBeNull());
   });
@@ -174,15 +228,7 @@ describe("DocumentLanguageForm", () => {
   // Fix round 1, finding 1: a shared machine — user B signing in on the same tab must never see
   // user A's unsaved text for the same release/document/language.
   it("doesn't restore a different signed-in user's draft", async () => {
-    stubFetch(() => jsonResponse(200, {}), "user-a");
-    const { unmount } = renderForm(BASE);
-    const user = userEvent.setup();
-    await user.clear(await screen.findByLabelText("Headline"));
-    await user.type(screen.getByLabelText("Headline"), "A's unsaved text");
-    await waitFor(() => expect(loadDraft(draftKeyFor("user-a"))).not.toBeNull());
-    unmount();
-    vi.unstubAllGlobals();
-
+    saveDraft(draftKeyFor("user-a"), { version: 1, form: { ...FORM_OF_BASE, headline: "A's unsaved text" } });
     stubFetch(() => jsonResponse(200, {}), "user-b");
     renderForm(BASE);
     expect(await screen.findByLabelText("Headline")).toHaveValue("Clinics open");

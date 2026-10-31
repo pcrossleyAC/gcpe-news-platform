@@ -1,10 +1,11 @@
-import { useEffect, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { LANGUAGE_NAME, typeRules, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
 import { useSession } from "../../../session/SessionContext";
+import { onUnauthorized } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { BodyEditor } from "../../../editor/BodyEditor";
 import { findDocument, findLanguage } from "./documentHelpers";
@@ -49,19 +50,19 @@ function fromView(view: ReleaseView, documentId: string, languageId: LanguageId)
  * subheadline, byline, body (TipTap, editor/BodyEditor.tsx) and the contacts list — saved via
  * `PUT .../documents/:docId/:lang` (`documentLanguageSchema`).
  *
- * Review Focus 1 (session-expiry recovery): while dirty, the form's own fields are mirrored
- * into `sessionStorage` keyed by signed-in user id + release id + document id + language
- * (unsavedDocumentStorage.ts) — restored on mount (e.g. after a 401 sent the user to sign in
- * and RequireAuth brought them back to this same release) and cleared on a successful save.
- * Never written at all for a read-only viewer, or if (defensively — this component only ever
+ * Review Focus 1 (session-expiry recovery), the Calendar's way (suite review R3): when a 401 is
+ * about to send the user to sign in while the form is dirty, its fields are kept in
+ * `sessionStorage` with the release version they were based on (unsavedDocumentStorage.ts), and
+ * restored, with "Your unsaved changes were restored.", when the same user opens the same release
+ * again. Nothing is kept for any other reason, so changes discarded with Leave never come back
+ * (ReleaseEditorPage also clears this release's kept drafts on Leave). A restored draft based on
+ * an older version saves with that version, so the server's 409 stops it overwriting newer
+ * content. Never written for a read-only viewer, or if (defensively — this component only ever
  * renders inside the authenticated area) no user is signed in.
  *
  * Fix round 1, finding 1: the user id is part of the draft key — on a shared machine, user B
- * signing in on the same tab must never be handed user A's unsaved text. An expired session
- * (a 401) leaves the draft in place for the *same* user to recover; a different user's drafts
- * are simply never readable under their own key. Explicit sign-out additionally wipes every
- * draft outright (SessionContext.tsx's `signOut`), so a stale draft can't resurface even for a
- * returning version of the same person on a machine other people also use.
+ * signing in on the same tab must never be handed user A's unsaved text. Explicit sign-out wipes
+ * every draft outright (SessionContext.tsx's `signOut`).
  */
 export function DocumentLanguageForm({ view, setView, documentId, languageId, readOnly }: DocumentLanguageFormProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
@@ -72,10 +73,18 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   // Compared against what it was seeded from, not the live view (useSeededForm.ts), so a change
   // made elsewhere (another section's Reload, a background refresh) never reads as an edit here.
   // A restored session-expiry draft seeds the form but not the baseline, so it counts as dirty.
-  const { form, setForm, dirty: edited, reseed, staleVersion } = useSeededForm<FormState>(fromView(view, documentId, languageId), view.version, () => {
-    if (!canPersistDraft || !draftKey) return fromView(view, documentId, languageId);
-    return loadDraft<FormState>(draftKey) ?? fromView(view, documentId, languageId);
-  });
+  const [restored] = useState(() => (canPersistDraft && draftKey ? loadDraft<FormState>(draftKey) : null));
+  // A restored draft based on an older version than the release now has: saved with that version,
+  // so the server refuses it (409, Reload) rather than letting it overwrite the newer content.
+  // Dropped once this form re-seeds from the server (its own save, or Reload).
+  const [staleDraftVersion, setStaleDraftVersion] = useState<number | null>(() => (restored && restored.version !== view.version ? restored.version : null));
+  const seeded = useSeededForm<FormState>(fromView(view, documentId, languageId), view.version, () => restored?.form ?? fromView(view, documentId, languageId));
+  const { form, setForm, dirty: edited } = seeded;
+  const reseed = (next: FormState, version: number) => {
+    setStaleDraftVersion(null);
+    seeded.reseed(next, version);
+  };
+  const pinVersion = staleDraftVersion ?? seeded.staleVersion;
   const dirty = !readOnly && edited;
   const languageLabel = LANGUAGE_NAME[languageId];
 
@@ -100,7 +109,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
           contacts: form.contacts.map((c) => c.trim()).filter((c) => c !== ""),
         },
         "PUT",
-        staleVersion,
+        pinVersion,
         { quiet: true },
       )
       .then((next) => {
@@ -115,12 +124,24 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   const barLabel = `Save ${languageLabel} content${doc ? ` (Document ${doc.sortIndex + 1})` : ""}`;
   useRegisterDirty(`document-${documentId}-${languageId}`, dirty, !readOnly && doc && lang ? { label: barLabel, save: doSave } : undefined);
 
+  // A 401 is about to send the user to sign in (RequireAuth unmounts this page first, so the
+  // leave-page guard can't ask): keep the unsaved changes, and the version they were based on, for
+  // when they come back.
+  const latest = useRef({ dirty, form, version: pinVersion ?? view.version });
+  latest.current = { dirty, form, version: pinVersion ?? view.version };
+  const releaseId = view.id;
   useEffect(() => {
-    if (!canPersistDraft || !draftKey) return;
-    if (dirty) saveDraft(draftKey, form);
-    else clearDraft(draftKey);
+    if (!canPersistDraft || userId === null) return;
+    const key = { userId, releaseId, documentId, languageId };
+    return onUnauthorized(() => {
+      if (latest.current.dirty) saveDraft(key, { version: latest.current.version, form: latest.current.form });
+    });
+  }, [canPersistDraft, userId, releaseId, documentId, languageId]);
+  // Back to clean (saved, reloaded, or the edits taken back out): nothing left to keep.
+  useEffect(() => {
+    if (canPersistDraft && draftKey && !dirty) clearDraft(draftKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, canPersistDraft]);
+  }, [dirty, canPersistDraft]);
 
   if (!doc || !lang) return <p role="alert">This document or language no longer exists.</p>;
 
@@ -149,6 +170,12 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
 
   return (
     <div className="gcpe-document-language" role="group" aria-label={`${languageLabel} document content`}>
+      {restored && dirty && (
+        <p role="status" className="gcpe-notice">
+          Your unsaved changes were restored.
+          {staleDraftVersion !== null && " This release has changed since you made them, so saving them will ask you to reload first."}
+        </p>
+      )}
       {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
       {section.problems && (
         <ul role="alert" className="gcpe-release-editor__problems">

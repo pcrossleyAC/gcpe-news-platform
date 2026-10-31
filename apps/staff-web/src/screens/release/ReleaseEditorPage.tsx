@@ -22,6 +22,7 @@ import { FilesSection } from "./documents/FilesSection";
 import { SimilarReleasesPanel } from "./SimilarReleasesPanel";
 import { SideBar } from "./sidebar/SideBar";
 import { SaveQueueContext, useSaveQueueController } from "./saveQueue";
+import { clearReleaseDrafts } from "./documents/unsavedDocumentStorage";
 
 /**
  * `/hub/releases/:id` (task-3-brief.md): loads the view once, holds it in one piece of state
@@ -193,7 +194,15 @@ export function ReleaseEditorPage(): React.JSX.Element {
                 buttons={
                   <>
                     <Button onPress={() => guard.blocker.reset?.()}>Stay</Button>
-                    <Button danger onPress={() => guard.blocker.proceed?.()}>
+                    <Button
+                      danger
+                      onPress={() => {
+                        // Suite review R3: discarded means discarded. A draft kept from a 401 and
+                        // restored here must not come back the next time the release is opened.
+                        if (session.user) clearReleaseDrafts(session.user.id, view.id);
+                        guard.blocker.proceed?.();
+                      }}
+                    >
                       Leave
                     </Button>
                   </>
