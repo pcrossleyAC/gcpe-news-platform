@@ -119,7 +119,9 @@ export function CalendarUserScreen(): React.JSX.Element {
   const [linkEmail, setLinkEmail] = useState("");
   const [preview, setPreview] = useState<OpenActivities | null>(null);
   /** Whose message is on screen: one at a time, so a newer message never sits beside a stale one. */
-  const [shown, setShown] = useState<"page" | "profile" | "access" | null>(null);
+  const [shown, setShown] = useState<"page" | "profile" | "access" | `rank:${string}` | null>(null);
+  /** The last rank change's result, shown beside that ministry's select (it saves on change: form-order audit #17). */
+  const [rankResult, setRankResult] = useState<{ ministryKey: string; ok: boolean; text: string } | null>(null);
   const latest = useRef(0);
   useDocumentTitle(detail?.user.displayName ?? (notFound ? "Calendar user" : null));
 
@@ -215,12 +217,19 @@ export function CalendarUserScreen(): React.JSX.Element {
     setShown("page");
   };
 
-  const setRank = async (ministryKey: string, value: string) => {
+  const setRank = async (ministryKey: string, label: string, value: string) => {
+    const show = (r: { ok: boolean; text: string }) => {
+      setRankResult({ ministryKey, ...r });
+      setShown(`rank:${ministryKey}`);
+    };
     try {
       await apiFetch(`/calendar/api/users/${u.id}/comm-contacts/${encodeURIComponent(ministryKey)}`, { method: "PUT", body: { rank: value === "" ? null : Number(value) } });
-      done("Saved the comm-contact rank.");
+      const rank = RANK_OPTIONS.find((r) => r.value === value)?.label ?? value;
+      show({ ok: true, text: `Saved: ${rank} for ${label}.` });
+      reload();
     } catch (caught) {
-      fail(caught);
+      // The server's own reason when it gives one; otherwise a plain line.
+      show({ ok: false, text: caught instanceof ApiError && caught.status < 500 ? messagesOf(caught).join(" ") : "The rank wasn't saved. Try again." });
     }
   };
   const showPreview = async () => {
@@ -293,16 +302,31 @@ export function CalendarUserScreen(): React.JSX.Element {
         const o = byKey.get(k);
         const label = `${o?.displayName ?? k}${o?.abbreviation ? ` (${o.abbreviation})` : ""}`;
         const current = detail.commContacts.find((c) => c.ministryKey === k && c.isActive);
+        const result = shown === `rank:${k}` && rankResult?.ministryKey === k ? rankResult : null;
         return (
           <div key={k}>
             <label htmlFor={`rank-${k}`}>{`Comm contact rank for ${label}`}</label>
-            <select id={`rank-${k}`} value={current?.rank ? String(current.rank) : ""} onChange={(e) => void setRank(k, e.target.value)}>
+            <select
+              id={`rank-${k}`}
+              value={current?.rank ? String(current.rank) : ""}
+              onChange={(e) => void setRank(k, label, e.target.value)}
+              aria-describedby={result ? (result.ok ? `rank-${k}-result` : `rank-${k}-error`) : undefined}
+            >
               {RANK_OPTIONS.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
                 </option>
               ))}
             </select>
+            {/* Mounted from the start, empty, so a screen reader hears the first Saved too (as the Hub's Announcer). */}
+            <p id={`rank-${k}-result`} role="status" className="gcpe-hint">
+              {result?.ok ? result.text : ""}
+            </p>
+            {result && !result.ok && (
+              <p id={`rank-${k}-error`} role="alert">
+                {result.text}
+              </p>
+            )}
           </div>
         );
       })}

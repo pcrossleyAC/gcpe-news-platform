@@ -35,7 +35,7 @@ The phone number shows under the person's name in the list's **Comm Contact** co
 A rank makes the person a comm contact for that ministry, so editors can choose them as an activity's **Comm Contact**. The page has one **Comm contact rank for** box for each of their ministries.
 
 1. Choose a rank: **Comm Director**, **Comm Manager**, **Sr. PAO**, **PAO**, **Jr. PAO** or **Other**.
-2. The rank saves as soon as you choose it. You see "Saved the comm-contact rank."
+2. The rank saves as soon as you choose it. Beside the box you see, for example, "Saved: Comm Director for Health (HLTH)." If it doesn't save, the same place says why, such as "The rank wasn't saved. Try again."
 
 Choose **Not a comm contact** to stop offering them. Activities that already have them as comm contact keep them, but can't be cloned until they have an active comm contact.
 

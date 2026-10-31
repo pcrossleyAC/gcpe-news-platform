@@ -28,9 +28,16 @@ You don't see deleted activities. Reviewing deletions is for HQ Administrators.
 
 Review marks the activity **Reviewed** and clears its "Changed: needs review" marks. It shows on **Updates** as "reviewed activity".
 
-If you have unsaved changes, save or cancel them first: the page says "Save or cancel your changes to review or clone."
+If you have unsaved changes, save or cancel them first: the page says "Save or cancel your changes to review or clone, or choose Save and review." **Save and review** is described below.
 
 If you see "Someone else changed this activity — reload to see their changes", choose **Reload**, check the new change, then choose **Review** again.
+
+## Save and review
+
+When you change an activity yourself, your save marks your own changes "Changed: needs review". **Save and review**, beside **Save**, saves your changes and then marks the activity **Reviewed**, as **Save** followed by **Review** would. You go back to where you opened it, and see, for example, "Saved and reviewed HLTH-21." ⌘S or Ctrl+S is still a plain **Save**.
+
+- If the save finds a problem, nothing is reviewed and your changes stay on screen.
+- If the save works but the review doesn't, the activity stays saved and open, and the page says so, for example "Saved HLTH-21, but it wasn't marked reviewed: someone changed it in between. Reload to see their change, then choose Review."
 
 You review one activity at a time. **Review selected**, which reviews many at once from the list, is for HQ Administrators.
 

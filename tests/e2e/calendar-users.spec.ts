@@ -34,7 +34,7 @@ test.describe("Calendar users", () => {
     await expect(page.getByRole("status").filter({ hasText: "Saved contact details." })).toHaveText("Saved contact details.");
 
     await page.getByLabel("Comm contact rank for Health (HLTH)").selectOption("4");
-    await expect(page.getByRole("status").filter({ hasText: "Saved the comm-contact rank." })).toHaveText("Saved the comm-contact rank.");
+    await expect(page.getByRole("status").filter({ hasText: "Saved: PAO for Health (HLTH)." })).toHaveText("Saved: PAO for Health (HLTH).");
     await expectNoSeriousA11yViolations(page, "Calendar user");
 
     // Deactivate first lists the user's open activities (none here); its own button confirms.

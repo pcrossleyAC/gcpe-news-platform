@@ -37,7 +37,15 @@ describe("the activity's actions (spec addendum §8.2)", () => {
     await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
     expect(screen.getByRole("button", { name: "Review" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clone" })).toBeDisabled();
+    expect(screen.getByText("Save or cancel your changes to review or clone, or choose Save and review.")).toBeInTheDocument();
+  });
+
+  it("without Save and review (an editor who can only clone), the hint is the plain one", async () => {
+    stubActivity([], { view: view({ can: { edit: true, clone: true, delete: false, review: false } }) });
+    renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
     expect(screen.getByText("Save or cancel your changes to review or clone.")).toBeInTheDocument();
+    expect(screen.queryByText(/choose Save and review/)).toBeNull();
   });
 
   it("Review sends the version and goes back", async () => {

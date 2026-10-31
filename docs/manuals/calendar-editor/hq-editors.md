@@ -47,7 +47,7 @@ If you see "The LA status of 2 activities was cleared before a later batch faile
 These are for HQ advanced users, whose manual is the Calendar advanced user manual:
 
 - see other ministries' activities marked **Confidential (not for Look Ahead)**;
-- **Review** an activity;
+- **Review** an activity, or **Save and review** it;
 - **Corporate Queries**, under **Saved views**;
 - the **Confidential filter** above the list.
 
