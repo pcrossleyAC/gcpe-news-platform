@@ -276,9 +276,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   with the old header, columns and confidentiality footer.
 - **All Calendar users** — Month and Week show the same filter as a calendar.
 - **HQ Editor and above** — Clear LA Status for the next N days (8 by default).
-- **HQ Advanced and above** — Corporate Queries and the Look Ahead filter.
-- **HQ Advanced and above** — Searching the Executive Summary only finds it for users who can see
-  that field.
 
 ## Phase 5e-1 — Activity files
 
@@ -307,12 +304,10 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Calendar editors** — Records shows when the tenant turns on the Records section (off for BC, as in legacy, see Q51). Files are added several at a time, and each is checked and saved straight away.
 - **HQ Editor and above** — The Look Ahead fieldset follows the activity: the section is worked out from the category, Issue, confirmation and comm materials. Choose another to override it (marked "Override"); "Use the inferred section" undoes that.
 - **HQ Editor and above** — Fields changed since the last review say "Changed: needs review".
-- **HQ Advanced and above** — Review marks the activity reviewed and brings you back. Review and Clone wait until you've saved or cancelled your own changes.
 - **All Calendar users** — "BC Gov News" on an activity lists its releases. If you also have an NRMS role, each one links to the release.
 - **All staff** — Who you're signed in as, and Sign out, are at the right-hand end of the header bar.
 - **All staff** — A section's own screens (Releases' Drafts/Scheduled/Published, Website, Subscribers, Calendar) are a row of tabs above the page heading; the one you're on is bold and underlined.
 - **NRMS editors** — Release history and published copies show times in BC time, like "Today 9:49 AM", not raw timestamps.
-- **All Calendar users** — The list's filter is under "Filters", open when the page loads; close it to see more results. New activity, Review selected, Clear LA Status, Excel export and List/Month/Week sit above the results.
 
 ## Phase 5f — Updates feed
 
