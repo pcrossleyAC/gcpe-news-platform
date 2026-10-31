@@ -1,0 +1,4994 @@
+import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p>You run the screens under <strong>Administration</strong> in the side menu. This map lists each screen, what it controls and who else notices when you change it.</p>
+<h2>The admin map</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Screen in the side menu</th>
+<th>What it controls</th>
+<th>Who else it affects</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Users</strong></td>
+<td>Who can sign in to the Hub, and which roles they hold.</td>
+<td>The person you change. Role changes reach them within 10 minutes.</td>
+<td><a href="/hub/help/manuals/core-admin/users">Users</a></td>
+</tr>
+<tr>
+<td><strong>Calendar access</strong></td>
+<td>Each person&#39;s Calendar role and ministries.</td>
+<td>The person you change, within a minute. Calendar administrators use this screen too.</td>
+<td><a href="/hub/help/manuals/core-admin/calendar-access">Calendar access</a></td>
+</tr>
+<tr>
+<td><strong>Organizations</strong></td>
+<td>Ministries: names, ministers, contacts, page links, abbreviations, HQ and public settings, deactivation and hand-over.</td>
+<td>The public site&#39;s ministry pages, subscribers, Calendar users, release editors. Site editors can edit ministry details here too.</td>
+<td><a href="/hub/help/manuals/core-admin/organizations">Organizations</a></td>
+</tr>
+<tr>
+<td><strong>Organizations</strong> &gt; <strong>Cabinet change</strong></td>
+<td>A new cabinet&#39;s renames, new ministries and hand-overs, published together.</td>
+<td>Everyone who uses a ministry: the public site, subscribers, staff, the Calendar, draft releases.</td>
+<td><a href="/hub/help/manuals/core-admin/cabinet-change">Cabinet change</a></td>
+</tr>
+<tr>
+<td><strong>Government terms</strong></td>
+<td>The dates of each government term.</td>
+<td>The public archive, which lists releases by term.</td>
+<td><a href="/hub/help/manuals/core-admin/government-terms">Government terms</a></td>
+</tr>
+<tr>
+<td><strong>Sectors, themes and tags</strong></td>
+<td>The sector, theme and tag lists.</td>
+<td>The public site, the subscribe page and the release editor, within a minute.</td>
+<td><a href="/hub/help/manuals/core-admin/sectors-themes-and-tags">Sectors, themes and tags</a></td>
+</tr>
+<tr>
+<td><strong>Release page titles</strong></td>
+<td>The page titles a new release can choose, such as News Release.</td>
+<td>Release editors creating a release.</td>
+<td><a href="/hub/help/manuals/core-admin/release-page-titles">Release page titles</a></td>
+</tr>
+<tr>
+<td><strong>Media list names</strong></td>
+<td>Which media lists exist and their names.</td>
+<td>News On Demand staff who manage list members, and release editors choosing lists.</td>
+<td><a href="/hub/help/manuals/core-admin/media-list-names">Media list names</a></td>
+</tr>
+<tr>
+<td><strong>Error log</strong></td>
+<td>Nothing: it shows the system&#39;s recent errors.</td>
+<td>Nobody.</td>
+<td><a href="/hub/help/manuals/core-admin/error-log">Error log</a></td>
+</tr>
+<tr>
+<td><strong>Website</strong> &gt; <strong>Project Blue Bridge</strong></td>
+<td>The public site&#39;s mourning switch. The rest of <strong>Website</strong> is view-only for you.</td>
+<td>Every visitor to the public site, and every Core administrator by email.</td>
+<td><a href="/hub/help/manuals/core-admin/website-project-blue-bridge">Website and Project Blue Bridge</a></td>
+</tr>
+</tbody></table></div>
+<p>When a new government takes office, you use <strong>Government terms</strong> and <strong>Cabinet change</strong> together. <a href="/hub/help/manuals/topic/new-government">When a new government takes office</a> gives the order.</p>
+<h2>What you see in the side menu</h2>
+<p>A Core administrator sees every screen under <strong>Administration</strong>. Under <strong>Work</strong> you see <strong>Website</strong> and nothing else, unless your account also holds other roles. To work on releases, subscribers or the Calendar, give your own account the role you need on <strong>Users</strong> or <strong>Calendar access</strong>.</p>
+`,changed:"2026-10-30"},s={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Users</strong> decides who can sign in to the Hub and what each person can do there. Only Core administrators see it.</p>
+<p>The table lists every staff account with its <strong>Name</strong>, <strong>Email</strong>, <strong>Sign-in</strong> (<strong>Password</strong> or <strong>Microsoft</strong>), <strong>Roles</strong> and <strong>Status</strong>. A person with Calendar access also shows a line such as &quot;Calendar: Editor (HLTH)&quot;; you change that on <a href="/hub/help/manuals/core-admin/calendar-access">Calendar access</a>.</p>
+<h2>Find someone</h2>
+<ol>
+<li>Type part of a name or email address in <strong>Filter users</strong>. You can also type a single word of a role, such as Editor or Admin. Full badge names such as &quot;NRMS Site editor&quot; don&#39;t match.</li>
+<li>The table narrows as you type, and the count shows &quot;Showing 3 of 24 users&quot;. Type <strong>active</strong> or <strong>inactive</strong> to list people by status.</li>
+</ol>
+<h2>Add a user</h2>
+<p>Add the person before they first sign in. Without an account, sign-in tells them &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;</p>
+<ol>
+<li>Under <strong>Add a user</strong>, enter their <strong>Email</strong>. For Microsoft sign-in, use their Microsoft sign-in name, which is usually their government email address.</li>
+<li>Enter their <strong>Display name</strong>.</li>
+<li>Under <strong>Roles</strong>, tick each role they need. Each box shows the role&#39;s name and what it allows.</li>
+<li>To let them sign in with a password, tick <strong>Set a password now</strong> and enter a <strong>Password (at least 12 characters)</strong>. Leave it unticked for people who sign in with Microsoft.</li>
+<li>Choose <strong>Add user</strong>. The person appears in the table.</li>
+</ol>
+<p>Nobody is emailed. Tell the person their account is ready.</p>
+<h3>What each role allows</h3>
+<p>The table shows roles as short badges. Each box starts with the role&#39;s system name: the area, a dot, then the role&#39;s words run together with no spaces (so <strong>NRMS Site editor</strong> appears as NRMS, a dot and SiteEditor). Then it says what the role allows.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Badge</th>
+<th>What it allows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Core Admin</strong></td>
+<td>Manage staff users, Project Blue Bridge, and the error log. It also opens every screen under <strong>Administration</strong>.</td>
+</tr>
+<tr>
+<td><strong>NRMS Editor</strong></td>
+<td>Create, edit, and publish news releases.</td>
+</tr>
+<tr>
+<td><strong>NRMS Site editor</strong></td>
+<td>Edit the public website&#39;s carousel, pins, Live Feed, links, and files.</td>
+</tr>
+<tr>
+<td><strong>NRMS Viewer</strong></td>
+<td>View news releases and the website, with no editing.</td>
+</tr>
+<tr>
+<td><strong>NoD Viewer</strong></td>
+<td>Search News on Demand subscribers and see their history, read-only.</td>
+</tr>
+<tr>
+<td><strong>NoD Editor</strong></td>
+<td>Add, edit, deactivate and delete News on Demand subscribers.</td>
+</tr>
+<tr>
+<td><strong>NoD Admin</strong></td>
+<td>Everything a NoD Editor can do, plus News on Demand operations and list categories.</td>
+</tr>
+<tr>
+<td><strong>Distribution Send</strong></td>
+<td>Send media distribution emails.</td>
+</tr>
+</tbody></table></div>
+<p>Calendar roles are not on this screen. Give them on <a href="/hub/help/manuals/core-admin/calendar-access">Calendar access</a>.</p>
+<h2>Change someone&#39;s account</h2>
+<ol>
+<li>Find the person and choose <strong>Edit</strong> on their row. Their settings open under the row.</li>
+<li>Make one change, then choose the button beside it:<ul>
+<li>To rename them, change the display name and choose <strong>Save name</strong>.</li>
+<li>To change what they can do, tick or untick roles and choose <strong>Save roles</strong>. Saving replaces all their roles with the ticked ones.</li>
+<li>To set a new password, type it and choose <strong>Set password</strong>. You see &quot;Password updated.&quot; This only appears for people who sign in with a password.</li>
+</ul>
+</li>
+<li>Choose <strong>Close</strong> on their row when you are done. Anything you typed but did not save stays there until you leave the page.</li>
+</ol>
+<h2>Deactivate or reactivate someone</h2>
+<ol>
+<li>Choose <strong>Edit</strong> on their row.</li>
+<li>Switch <strong>Active</strong> off. The Hub asks &quot;Deactivate {name}?&quot; and explains &quot;They can&#39;t sign in until reactivated.&quot;</li>
+<li>Choose <strong>Deactivate</strong>. You see &quot;Saved&quot; beside the switch.</li>
+</ol>
+<p>To bring them back, switch <strong>Active</strong> on. It saves straight away, with no question.</p>
+<h2>Link a person who has no email</h2>
+<p>People brought in from the old Calendar without an email show &quot;No email&quot; and &quot;Inactive until linked to an email.&quot; They can&#39;t sign in.</p>
+<ol>
+<li>Choose <strong>Edit</strong> on their row.</li>
+<li>Enter their address in <strong>Email for {name}</strong>.</li>
+<li>Choose <strong>Link and activate</strong>. Their email is set and they become active. If they sign in with a password, set one for them as well.</li>
+</ol>
+<h2>Unlink Microsoft sign-in</h2>
+<p>After a person&#39;s first Microsoft sign-in, their <strong>Sign-in</strong> shows <strong>Microsoft</strong> and their password stops working. Unlink them when their Microsoft account was replaced, or when sign-in tells them &quot;Your account needs an administrator to check it.&quot;</p>
+<ol>
+<li>Choose <strong>Edit</strong> on their row. It shows &quot;Sign-in: Microsoft (Entra)&quot;.</li>
+<li>Choose <strong>Unlink Microsoft sign-in</strong>, then <strong>Unlink</strong> to confirm.</li>
+<li>Ask them to sign in with Microsoft again. Their next Microsoft sign-in links them again by their email address.</li>
+</ol>
+<p>Until they do, they are back on password sign-in, and any password they had before works again.</p>
+<h2>What happens next</h2>
+<ul>
+<li>Role changes and deactivation reach the person within 10 minutes. They take effect at once if the person reloads the Hub or comes back to its tab.</li>
+<li>A deactivated person is signed out at that point and can&#39;t sign in again.</li>
+<li>No change on this screen sends an email.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;a user with that email already exists&quot;</td>
+<td>Someone already has that address. Filter the table to find them.</td>
+</tr>
+<tr>
+<td>&quot;use at least 12 characters&quot;</td>
+<td>The password is too short.</td>
+</tr>
+<tr>
+<td>&quot;you can&#39;t remove your own admin access&quot;</td>
+<td>You tried to take Core Admin off yourself, or to deactivate yourself. Ask another Core administrator.</td>
+</tr>
+<tr>
+<td>&quot;this user signs in with Microsoft; unlink them first&quot;</td>
+<td>Passwords can&#39;t be set for Microsoft sign-in. Unlink them first if they really need a password.</td>
+</tr>
+<tr>
+<td>&quot;set an email before activating this user&quot;</td>
+<td>The person has no email. Use <strong>Link and activate</strong>.</td>
+</tr>
+<tr>
+<td>&quot;this user already has an email&quot;</td>
+<td>The person was linked already. Reload the page.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},o={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Calendar access</strong> gives staff a Calendar role and the ministries they work for. Calendar administrators and Calendar system administrators use this screen too, but with limits that don&#39;t apply to you.</p>
+<p>The table shows each person&#39;s <strong>Name</strong>, <strong>Email</strong>, <strong>Calendar role</strong> and <strong>Ministries</strong>. Inactive people are hidden until you tick <strong>Show inactive users, including those with no email</strong>.</p>
+<h2>The Calendar roles</h2>
+<p>From lowest to highest: <strong>Read Only</strong>, <strong>Editor</strong>, <strong>Advanced</strong>, <strong>Administrator</strong>, <strong>System Administrator</strong>. Each person has one role or <strong>No Calendar access</strong>. What each role can do in the Calendar is in the Calendar manuals.</p>
+<p>Members of an HQ organization see every ministry in the Calendar. GCPE Headquarters, GCPE Media Relations and the Office of the Premier are usually HQ. You decide which organizations are HQ on <a href="/hub/help/manuals/core-admin/organizations">Organizations</a>.</p>
+<h2>Give or change someone&#39;s Calendar access</h2>
+<p>The person needs a Hub account first. Add them on <a href="/hub/help/manuals/core-admin/users">Users</a> if they have none.</p>
+<ol>
+<li>Type part of their name or email in <strong>Find a user by name or email</strong>.</li>
+<li>Choose <strong>Edit</strong> on their row.</li>
+<li>Choose their <strong>Calendar role</strong>.</li>
+<li>Under <strong>Ministries</strong>, tick every ministry they work for. HQ organizations are marked &quot;\u2014 HQ&quot;. A role needs at least one ministry.</li>
+<li>Choose <strong>Save Calendar access</strong>. You see &quot;Saved Calendar access for {name}.&quot;</li>
+</ol>
+<p>Saving replaces the person&#39;s whole ministry list with what is ticked.</p>
+<h2>Remove someone&#39;s Calendar access</h2>
+<ol>
+<li>Choose <strong>Edit</strong> on their row.</li>
+<li>Choose <strong>No Calendar access</strong> in <strong>Calendar role</strong>.</li>
+<li>Choose <strong>Save Calendar access</strong>.</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>The change reaches the Calendar within a minute.</li>
+<li>A person whose role was removed sees &quot;You don&#39;t have Calendar access&quot; on their next click in the Calendar. They are not signed out of the Hub.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>Limits that apply to other administrators</h2>
+<p>You may change anyone, including yourself. Calendar administrators and Calendar system administrators can&#39;t, and the screen shows them a note instead of <strong>Edit</strong>:</p>
+<ul>
+<li>&quot;You can&#39;t change your own Calendar access.&quot;</li>
+<li>&quot;Only a System Administrator or a Core admin can change this user&#39;s access.&quot;</li>
+<li>&quot;Only an HQ Administrator, a System Administrator or a Core admin can change this user&#39;s access.&quot;</li>
+<li>&quot;Only a Core admin can give Calendar access to an inactive user who has none.&quot;</li>
+</ul>
+<p>When one of them sends a request like this to you, make the change yourself.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;choose at least one ministry for a Calendar role&quot;</td>
+<td>Tick a ministry, or choose <strong>No Calendar access</strong>.</td>
+</tr>
+<tr>
+<td>&quot;unknown or inactive ministry: health&quot;</td>
+<td>The named ministry (shown by its short web name) was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},r={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Organizations</strong> holds every ministry: its name, minister, media contacts and page links, and the settings that decide who sees it. Site editors also open this screen, but they can only edit a ministry&#39;s details. Adding, deactivating, handing over and the <strong>HQ</strong> and <strong>Public</strong> settings are yours alone.</p>
+<p>The table shows each ministry&#39;s <strong>Name</strong>, <strong>Abbreviation</strong>, <strong>Minister</strong>, <strong>Active</strong>, <strong>HQ</strong> and <strong>Public</strong>. A ministry that isn&#39;t public has a &quot;Not public&quot; badge. Inactive ministries are hidden until you tick <strong>Show inactive organizations</strong>.</p>
+<p>For a new cabinet, prepare all the ministry changes together on <a href="/hub/help/manuals/core-admin/cabinet-change">Cabinet change</a> instead of one at a time here.</p>
+<h2>Edit a ministry</h2>
+<ol>
+<li>Choose <strong>Edit</strong> on the ministry&#39;s row. The form opens above the table.</li>
+<li>Change what you need:<ul>
+<li><strong>Ministry name (required)</strong> and <strong>Additional display name</strong>, which shows in brackets under the ministry on the Media Contacts page.</li>
+<li><strong>Sort order</strong>: a whole number that places the ministry in lists.</li>
+<li><strong>Minister name</strong> (with the title, such as &quot;Honourable Jane Doe&quot;), <strong>Minister summary</strong>, <strong>Minister email</strong> and <strong>Minister photo URL</strong>. Upload the photo under <strong>Website</strong> &gt; <strong>Files</strong> first, then paste its address. A preview appears once the address starts with https://.</li>
+<li><strong>Minister biography</strong>: shown on the minister&#39;s biography page, linked as Read Bio. <strong>Clear the biography</strong> removes that page. After you rename the minister, a note warns &quot;The biography still describes the previous minister.&quot;</li>
+<li><strong>Meet the Team links</strong>, <strong>Media contacts</strong> (<strong>Primary contact</strong>, <strong>Alternate contact</strong>, <strong>After-hours phone</strong>) and <strong>Ministry page links</strong> (<strong>Ministry website</strong>, <strong>Photos (Flickr) address</strong>, <strong>Videos (YouTube) address</strong>, <strong>Featured Topics</strong>, <strong>Featured Services</strong>).</li>
+<li>Only you see the last three fields: <strong>Abbreviation</strong>, <strong>Parent ministry</strong> and <strong>Active</strong>.</li>
+</ul>
+</li>
+<li>Choose <strong>Save</strong>. You see &quot;Saved. The public ministry pages update within a few minutes.&quot;</li>
+</ol>
+<p>The public page shows the alternate contact only when there is a primary contact.</p>
+<h3>The abbreviation</h3>
+<p>Every release number contains the lead ministry&#39;s abbreviation, as in 2026HLTH0001. Use 2 to 10 capital letters or digits. No two active ministries may share one. A release can&#39;t be approved until its lead ministry has an abbreviation: release editors see &quot;The lead ministry has no abbreviation in Core; add one before approving.&quot; Changing it affects only releases approved from then on.</p>
+<h2>Add a ministry</h2>
+<ol>
+<li>Choose <strong>Add ministry</strong>.</li>
+<li>Enter the <strong>Ministry name (required)</strong>. Below it you see the public web address made from the name, such as &quot;Web address: /site/ministries/health/&quot;. The web address can&#39;t be changed later, even if you rename the ministry.</li>
+<li>Enter the <strong>Abbreviation</strong> if you have it.</li>
+<li>Choose <strong>Create ministry</strong>. The edit form opens so you can fill in the minister and contacts.</li>
+</ol>
+<h2>Decide who sees a ministry</h2>
+<p>Tick or untick the boxes on the ministry&#39;s row. Each change saves at once and shows &quot;Saved&quot;.</p>
+<ul>
+<li><strong>Public</strong> ticked: the ministry is on the public ministry list and the subscribe page. Unticking asks &quot;Remove {ministry} from the public site?&quot; Choose <strong>Remove from public site</strong> to confirm.</li>
+<li><strong>HQ</strong> ticked: everyone in this organization sees every ministry in the Corporate Calendar and gets its HQ-only fields and actions. Ticking asks &quot;Make {ministry} an HQ organization?&quot; Choose <strong>Make HQ</strong> to confirm. Unticking takes that view away from every member at once.</li>
+</ul>
+<h2>Deactivate a ministry, or hand it over to another</h2>
+<p>Use a hand-over when a ministry is replaced: merged, split or renamed into a new one. A plain rename needs no hand-over: change the name with <strong>Edit</strong>. The web address, subscribers and history stay.</p>
+<ol>
+<li>Choose <strong>Deactivate</strong> on the ministry&#39;s row. A panel titled &quot;Deactivate {ministry}&quot; opens.</li>
+<li>In <strong>Has a successor?</strong>, choose the ministry that takes over its work. For a split, choose <strong>Add another successor</strong> and pick the next one. Staff, Calendar activities and draft releases go to the first successor.</li>
+<li>Under &quot;What moves to {successor}&quot;, untick anything that should stay behind. Each box shows how many it moves:<ul>
+<li>&quot;Send {ministry}&#39;s web pages to {successor}&quot; is always on.</li>
+<li>&quot;Move {n} subscribers to {successors}.&quot; Subscribers are added to every successor.</li>
+<li>&quot;Move {n} staff from {ministry} to {successor}.&quot;</li>
+<li>&quot;Move {n} upcoming Calendar activities and {n} comm contacts to {successor}.&quot;</li>
+<li>&quot;Move {n} draft releases to {successor}.&quot; Approved and scheduled releases don&#39;t move. They are listed with links so you can change their lead ministry yourself.</li>
+<li>&quot;Let {successor} use the abbreviation {abbreviation}.&quot; This appears when the successor has no abbreviation. If it has one, tick &quot;Replace {successor}&#39;s abbreviation \u2026 with \u2026&quot; first.</li>
+</ul>
+</li>
+<li>Choose <strong>Deactivate and hand over</strong>. You see &quot;{ministry} is deactivated. Its pages now send visitors to {successor}. Moves to other services finish shortly.&quot;</li>
+</ol>
+<p>While a count loads it says &quot;counting\u2026&quot;. &quot;count unavailable&quot; means it couldn&#39;t be loaded; you can still go ahead.</p>
+<p>To deactivate with nothing moved, leave <strong>Has a successor?</strong> at <strong>No successor</strong> and choose <strong>Deactivate</strong>. The panel warns that the ministry disappears from the public site, its subscribers stop receiving news, and they are not moved anywhere. Unticking <strong>Active</strong> in the edit form does the same.</p>
+<h3>Set a successor later</h3>
+<p>For a ministry that is already inactive, tick <strong>Show inactive organizations</strong> and choose <strong>Set successor\u2026</strong> on its row. The panel works the same way. Choose <strong>Set successor</strong> to finish.</p>
+<h2>Reactivate a ministry</h2>
+<ol>
+<li>Tick <strong>Show inactive organizations</strong>.</li>
+<li>Choose <strong>Reactivate</strong> on its row. You see &quot;{ministry} is active again.&quot;</li>
+</ol>
+<p>Reactivating stops its pages sending visitors to the successor. It does not move anyone back. It also doesn&#39;t change <strong>Public</strong>: if you see &quot;It isn&#39;t public: tick Public to list it on the public site.&quot;, tick <strong>Public</strong> when it should be listed.</p>
+<h2>What happens next</h2>
+<ul>
+<li>Saved details reach the public Ministries page and each ministry&#39;s own page within a few minutes.</li>
+<li>After a hand-over, the old ministry&#39;s public web addresses send visitors to the successor. If the successor is later handed over too, the old addresses go straight to the newest ministry.</li>
+<li>Subscribers, staff, Calendar activities and drafts move in the background shortly after. If they haven&#39;t moved after a few minutes, tell the support team.</li>
+<li>A deactivated ministry can&#39;t be added to anyone&#39;s Calendar access. People who already have it keep it.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;No changes to save.&quot;</td>
+<td>Nothing in the form changed.</td>
+</tr>
+<tr>
+<td>&quot;That abbreviation is already used by {ministry}.&quot;</td>
+<td>Another active ministry has it. Choose another, or change that ministry&#39;s first.</td>
+</tr>
+<tr>
+<td>&quot;Use 2 to 10 capital letters or digits, e.g. HLTH.&quot;</td>
+<td>The abbreviation has the wrong form.</td>
+</tr>
+<tr>
+<td>&quot;A ministry with this name already exists ({web name}).&quot;</td>
+<td>Use a different name, or edit the existing ministry.</td>
+</tr>
+<tr>
+<td>&quot;{ministry} already exists but is inactive. Use Reactivate on its row.&quot;</td>
+<td>Reactivate it instead of adding it again.</td>
+</tr>
+<tr>
+<td>&quot;Use at least one letter or number in the name.&quot;</td>
+<td>The name has no letters or digits to make a web address from.</td>
+</tr>
+<tr>
+<td>&quot;{third ministry} already uses the abbreviation {abbreviation}. Untick \u2026&quot;</td>
+<td>During a hand-over, a third ministry holds the old abbreviation. Untick &quot;Let {successor} use the abbreviation&quot; or change that ministry&#39;s abbreviation first.</td>
+</tr>
+<tr>
+<td>&quot;{ministry} can&#39;t be reactivated while {successor} uses its abbreviation \u2026&quot;</td>
+<td>The successor took the abbreviation. Give one of them a different abbreviation first.</td>
+</tr>
+<tr>
+<td>&quot;Choose an active ministry as successor.&quot;</td>
+<td>Pick a successor before choosing <strong>Set successor</strong>. Inactive ministries can&#39;t be successors.</td>
+</tr>
+<tr>
+<td>&quot;{successor} already leads back to {ministry}; that would loop.&quot;</td>
+<td>That successor was itself handed over to this ministry. Choose a different successor.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},a=null,i=null,d={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Sectors, themes and tags</strong> keeps the three lists that release editors use to file releases. The public site has a page for each one, and subscribers can follow them.</p>
+<p>Choose <strong>Sectors</strong>, <strong>Themes</strong> or <strong>Tags</strong> under <strong>Show</strong> to see one list. Each row has a <strong>Key</strong>, a <strong>Name</strong>, an <strong>Order</strong> and an <strong>Active</strong> box. The key is part of the public web address and never changes.</p>
+<h2>Rename, reorder or retire entries</h2>
+<p>You can change several rows, even across the three lists, and save them together.</p>
+<ol>
+<li>Change the <strong>Name</strong> or <strong>Order</strong> on any row. Order is a whole number; lower numbers come first.</li>
+<li>To retire an entry, untick <strong>Active</strong>. To bring one back, tick it again.</li>
+<li>Changed rows show &quot;Unsaved&quot;, and a note below the table counts them, such as &quot;2 rows have unsaved changes&quot;.</li>
+<li>Choose <strong>Save changes</strong>. If you retired anything, the Hub asks &quot;Retire {name}?&quot; and explains that it leaves the public site&#39;s lists, the subscribe page and the release editor&#39;s choices. Choose <strong>Retire</strong>.</li>
+</ol>
+<p>You see &quot;Saved {n} changes.&quot;</p>
+<h2>Add a sector, theme or tag</h2>
+<ol>
+<li>Choose the list under <strong>Show</strong>.</li>
+<li>Under <strong>Add a sector</strong> (or theme, or tag), enter the <strong>Name</strong>. The <strong>Key</strong> fills in from the name; you can change it. Use lowercase letters, numbers and hyphens.</li>
+<li>Choose <strong>Add sector</strong> (or <strong>Add theme</strong>, <strong>Add tag</strong>). You see &quot;Added {name} ({key}).&quot;</li>
+</ol>
+<p>The new entry goes to the end of the list and is active. Adding never changes an entry that already exists. If the key is taken, you see a message beside the form and nothing is added.</p>
+<h2>What happens next</h2>
+<ul>
+<li>Changes reach the public site, the subscribe page and the release editor within a minute.</li>
+<li>A retired entry leaves those lists. Releases already filed under it keep it.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Name is required.&quot;</td>
+<td>Enter a name.</td>
+</tr>
+<tr>
+<td>&quot;Name is too long (at most 100 characters).&quot;</td>
+<td>Shorten the name.</td>
+</tr>
+<tr>
+<td>&quot;Order must be a whole number.&quot;</td>
+<td>Enter a number such as 3.</td>
+</tr>
+<tr>
+<td>&quot;Keys use lowercase letters, numbers and hyphens (at most 100).&quot;</td>
+<td>Fix the key.</td>
+</tr>
+<tr>
+<td>&quot;A sector with the key health already exists: Health.&quot; (or &quot;A theme\u2026&quot;, &quot;A tag\u2026&quot;)</td>
+<td>The key is taken, and the message names the entry that has it. Choose another key. To bring a retired entry back, tick <strong>Active</strong> on its row.</td>
+</tr>
+<tr>
+<td>&quot;That key is already used. To bring a retired one back, tick Active on its row.&quot;</td>
+<td>You renamed or changed a row, and the key matches another entry except for capital letters. Use the existing row.</td>
+</tr>
+<tr>
+<td>&quot;{n} rows couldn&#39;t be saved \u2014 see the message on those rows.&quot;</td>
+<td>The other rows were saved. Fix the rows with a message and save again.</td>
+</tr>
+<tr>
+<td>&quot;No changes to save.&quot;</td>
+<td>Nothing was changed.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},h=null,l=null,g=null,c={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p>In <strong>Website</strong>, the one thing only you can change is <strong>Project Blue Bridge</strong>: the switch that puts the public site into mourning when the King dies. Everything else in <strong>Website</strong> is view-only for you.</p>
+<h2>What you can and can&#39;t change in Website</h2>
+<p>You can open every <strong>Website</strong> tab: <strong>Carousel</strong>, <strong>Emergency pins</strong>, <strong>Live Feed</strong>, <strong>What&#39;s featured where</strong>, <strong>Resource links</strong>, <strong>Files</strong>, <strong>Website log</strong> and <strong>Site settings</strong>. You see what is live, but there are no <strong>Save</strong> or <strong>Publish</strong> buttons.</p>
+<p>Site editors make those changes. If your work needs them, give your own account the <strong>NRMS Site editor</strong> role on <a href="/hub/help/manuals/core-admin/users">Users</a>.</p>
+<p><strong>Website log</strong> lists every change to the public site&#39;s content: who, when and what. Use it to check who changed something.</p>
+<h2>Turn Project Blue Bridge on or off</h2>
+<p>Turn it on only with approval from the Intergovernmental Relations Secretariat (IGRS). The same steps turn it off.</p>
+<ol>
+<li>Open <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Project Blue Bridge</strong>. The page shows &quot;Project Blue Bridge is currently OFF.&quot; (or ON).</li>
+<li>Choose the <strong>Project Blue Bridge</strong> switch. A box asks &quot;Turn Project Blue Bridge on?&quot; and repeats the warning &quot;Do not click OK unless you have approval from IGRS&quot;.</li>
+<li>Type KING CHARLES III in <strong>Type KING CHARLES III to confirm</strong>, in capitals, exactly.</li>
+<li>Tick <strong>IGRS has approved this change</strong>.</li>
+<li>Choose <strong>Confirm turn on</strong> (or <strong>Confirm turn off</strong>). Until steps 3 and 4 are done, the button stays greyed out.</li>
+</ol>
+<p>The page then shows &quot;Project Blue Bridge is currently ON.&quot;</p>
+<p>The banner&#39;s wording is on <strong>Site settings</strong> &gt; <strong>Site identity</strong>, which site editors change.</p>
+<h2>What happens next</h2>
+<ul>
+<li>The public site changes to its mourning theme, with a black banner announcing the King&#39;s death. The home page changes within a few minutes; older pages follow over the following minutes, newest first.</li>
+<li>Every active Core administrator gets an email such as &quot;Project Blue Bridge turned ON on {site}&quot;, saying who changed it and when.</li>
+<li>The change is listed in <strong>Website log</strong>.</li>
+<li>Turning it off puts the site back the same way.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Someone else changed this \u2014 reload to see their changes.&quot;</td>
+<td>Someone else changed the switch while you had the page open. Choose <strong>Reload</strong> and check its state.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},u=null,p={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p>The carousel is the set of slides at the top of the public home page. Visitors see one slide at a time and move between them with <strong>Previous</strong> and <strong>Next</strong>; the slides don&#39;t turn by themselves.</p>
+<p><strong>Carousel</strong> has three parts:</p>
+<ul>
+<li><strong>Live</strong>: the slides visitors see now.</li>
+<li><strong>Next</strong>: a copy you can prepare ahead, with a time when it replaces the live slides. There is at most one.</li>
+<li><strong>Past</strong>: the last five sets that were replaced, for reference. You can&#39;t change them.</li>
+</ul>
+<p>Each slide has a <strong>Headline</strong>, <strong>Summary</strong>, <strong>Action URL</strong> (where the slide&#39;s link goes), <strong>Action label</strong> (the link&#39;s words), <strong>Facebook post URL</strong>, <strong>Justify</strong> (<strong>Left</strong> or <strong>Right</strong>) and an image.</p>
+<h2>Change the live slides</h2>
+<p>Changes to the live slides go to the public home page when you publish them.</p>
+<ol>
+<li>Change what you need in a slide&#39;s fields.</li>
+<li>To move a slide, choose <strong>Move up</strong> or <strong>Move down</strong> on it, or drag it by its handle.</li>
+<li>To remove a slide, choose <strong>Remove</strong> on it, then <strong>Confirm remove</strong>. It leaves the live slides when you publish.</li>
+<li>To add a slide, choose <strong>Add slide</strong> and fill in its fields.</li>
+<li>Choose <strong>Publish carousel changes</strong>. A box asks &quot;Publish these carousel changes now?&quot;</li>
+<li>Choose <strong>Publish carousel changes</strong> again to confirm.</li>
+</ol>
+<p>Leave <strong>Action label</strong> empty to use the standard link words, set on <a href="/hub/help/manuals/nrms-site-editor/footer-and-navigation">Navigation and labels</a>.</p>
+<h2>Add or change a slide&#39;s image</h2>
+<p>Use a JPEG or PNG image of up to 2 MB.</p>
+<ol>
+<li>Choose the slide&#39;s <strong>Image (JPEG or PNG, up to 2 MB)</strong> button and pick the file.</li>
+<li>The image appears beside the slide.</li>
+</ol>
+<p>On a live slide, the new image goes live without <strong>Publish carousel changes</strong>, within a few minutes. A new slide gets its image box only after it is published or saved: the slide shows &quot;Publish the carousel changes to add this slide&#39;s image.&quot;</p>
+<h2>Prepare the next slides</h2>
+<ol>
+<li>Under <strong>Next</strong>, enter the <strong>Date</strong> and <strong>Time (BC time)</strong> in <strong>Go live at (BC time)</strong>.</li>
+<li>Choose <strong>Create next carousel</strong>. It starts as a copy of the live slides, images included.</li>
+<li>Change, add, remove and reorder slides as above.</li>
+<li>Choose <strong>Save carousel</strong>. Nothing changes on the public site.</li>
+</ol>
+<p>At the go-live time, the next slides replace the live ones by themselves, and the old live slides move to <strong>Past</strong>. To change the time, enter a new one in <strong>Go live at (BC time)</strong> and choose <strong>Save carousel</strong>.</p>
+<p>To switch now instead, choose <strong>Make live now</strong>, then <strong>Confirm make live</strong>.</p>
+<p>To throw the next slides away, choose <strong>Delete next carousel</strong>, then <strong>Confirm delete</strong>. This can&#39;t be undone.</p>
+<h2>What happens next</h2>
+<ul>
+<li>The public home page shows published changes within a few minutes.</li>
+<li>Every change is listed in <strong>Website log</strong> under <strong>Carousel</strong>, with your name.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;invalid request&quot;</td>
+<td>A web address doesn&#39;t start with http:// or https://. Check <strong>Action URL</strong> and <strong>Facebook post URL</strong> on every slide.</td>
+</tr>
+<tr>
+<td>&quot;Keep the action label to 40 characters or fewer, in plain text.&quot;</td>
+<td>Shorten the <strong>Action label</strong>, and remove any &lt; or &gt; characters.</td>
+</tr>
+<tr>
+<td>&quot;Choose a go-live time in the future.&quot;</td>
+<td>The go-live time has already passed.</td>
+</tr>
+<tr>
+<td>&quot;Upload a JPEG or PNG image.&quot;</td>
+<td>The file isn&#39;t a JPEG or PNG image.</td>
+</tr>
+<tr>
+<td>&quot;request entity too large&quot;</td>
+<td>The image is bigger than 2 MB. Make it smaller and try again.</td>
+</tr>
+<tr>
+<td>&quot;Someone else changed this \u2014 reload to see their changes.&quot;</td>
+<td>Another site editor saved these slides while you had the page open. Choose <strong>Reload</strong>. Your unsaved changes are lost, so make them again.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},m={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p><strong>Emergency pins</strong> holds two emergency notices, <strong>Primary</strong> and <strong>Secondary</strong>. A pinned notice shows on the public home page under the <strong>Emergency information</strong> heading, above the news. An unpinned one is kept here but not shown.</p>
+<p>Each notice has the same fields as a carousel slide: headline, summary, action URL, action label, Facebook post URL, justify and an image.</p>
+<h2>Write a notice</h2>
+<ol>
+<li>Fill in the notice&#39;s fields, such as <strong>Primary headline</strong> and <strong>Primary summary</strong>.</li>
+<li>Choose <strong>Save primary pin</strong> (or <strong>Save secondary pin</strong>).</li>
+</ol>
+<p>If the notice is already pinned, the change goes to the public site when you save.</p>
+<h2>Pin or unpin a notice</h2>
+<p>Save the notice first. Pinning reloads the notice, and any change you haven&#39;t saved is lost.</p>
+<ol>
+<li>Choose the switch beside <strong>Primary is not pinned</strong>. It saves at once, with no question, and now reads <strong>Primary is pinned</strong>.</li>
+<li>To take the notice down, choose the switch again.</li>
+</ol>
+<h2>Add or change the image</h2>
+<ol>
+<li>Choose <strong>Primary image (JPEG or PNG, up to 2 MB)</strong> and pick the file.</li>
+<li>The image appears above the button. It saves at once. On a pinned notice, the public site changes too.</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>The public home page shows the change within a few minutes.</li>
+<li>Every save, pin and unpin is listed in <strong>Website log</strong> under <strong>Emergency pins</strong>.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Add a headline before pinning.&quot;</td>
+<td>The saved notice has no headline. Enter one, choose <strong>Save primary pin</strong>, then pin it.</td>
+</tr>
+<tr>
+<td>&quot;invalid request&quot;</td>
+<td>A web address doesn&#39;t start with http:// or https://. Check the action URL and the Facebook post URL.</td>
+</tr>
+<tr>
+<td>&quot;Keep the action label to 40 characters or fewer, in plain text.&quot;</td>
+<td>Shorten the action label, and remove any &lt; or &gt; characters.</td>
+</tr>
+<tr>
+<td>&quot;Upload a JPEG or PNG image.&quot;</td>
+<td>The file isn&#39;t a JPEG or PNG image.</td>
+</tr>
+<tr>
+<td>&quot;request entity too large&quot;</td>
+<td>The image is bigger than 2 MB.</td>
+</tr>
+<tr>
+<td>&quot;Someone else changed this \u2014 reload to see their changes.&quot;</td>
+<td>Another site editor changed this notice while you had the page open. Choose <strong>Reload</strong>.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},b={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p><strong>Live Feed</strong> controls the public site&#39;s <strong>Live Webcast</strong> button, which plays a live stream such as a news conference.</p>
+<ul>
+<li><strong>M3U URL</strong> is the address of the stream itself. It is needed to turn the feed on.</li>
+<li><strong>Manifest URL</strong> is optional. The public site doesn&#39;t use it.</li>
+</ul>
+<p>Both addresses come from whoever runs the webcast.</p>
+<h2>Turn the Live Feed on</h2>
+<ol>
+<li>Enter the <strong>M3U URL</strong>, and the <strong>Manifest URL</strong> if you have one.</li>
+<li>Switch <strong>Live Feed on</strong> on.</li>
+<li>Choose <strong>Save Live Feed</strong>.</li>
+</ol>
+<p>The <strong>Live Webcast</strong> button shows on every page while <strong>Live Feed on</strong> is switched on. Pages that are already open pick up the change within a minute. Turn the feed off when the webcast ends.</p>
+<p>The wording around the webcast, such as the button&#39;s label and the text shown when nothing is live, is on <a href="/hub/help/manuals/nrms-site-editor/footer-and-navigation">Navigation and labels</a> and <a href="/hub/help/manuals/nrms-site-editor/page-text">Page text</a>.</p>
+<h2>Turn the Live Feed off</h2>
+<ol>
+<li>Switch <strong>Live Feed on</strong> off.</li>
+<li>Choose <strong>Save Live Feed</strong>.</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>The button shows or goes within a few minutes.</li>
+<li><strong>Website log</strong> lists &quot;Turned the Live Feed on&quot;, &quot;Turned the Live Feed off&quot; or &quot;Changed the Live Feed URLs&quot;, with your name.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Add the M3U playlist URL before turning the Live Feed on.&quot;</td>
+<td>Enter the <strong>M3U URL</strong> first.</td>
+</tr>
+<tr>
+<td>&quot;Live Feed URLs must be https:// or empty.&quot;</td>
+<td>Both addresses must start with https://.</td>
+</tr>
+<tr>
+<td>&quot;Someone else changed this \u2014 reload to see their changes.&quot;</td>
+<td>Another site editor saved the Live Feed while you had the page open. Choose <strong>Reload</strong>.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},y=null,v={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p><strong>Files</strong> holds documents and images the public can open at a fixed web address, such as a media guide or a minister&#39;s photo. You can upload any type of file of up to 512 MB.</p>
+<p>The list shows the 50 newest files, each linked to its public address. To find an older one, type part of its name in <strong>Search files</strong> and choose <strong>Search</strong>.</p>
+<h2>Upload a file</h2>
+<ol>
+<li>Choose <strong>Upload a file (any type, up to 512 MB)</strong> and pick the file.</li>
+<li>The file appears at the top of the list when the upload finishes.</li>
+</ol>
+<p>The file&#39;s public name is made from your file name: in lower case, with spaces and any character other than letters, digits, dots, hyphens and underscores turned into hyphens. For example, &quot;Media Guide 2026.PDF&quot; becomes media-guide-2026.pdf. Its public address ends in /files/ and that name, as in /files/media-guide-2026.pdf.</p>
+<p>PDFs, images, Office documents, audio, video and text open in the visitor&#39;s browser. Anything else, such as a web page, an SVG drawing or a program, is downloaded, never shown on the site.</p>
+<p>To use a file elsewhere, such as a minister&#39;s photo on <a href="/hub/help/manuals/nrms-site-editor/site-editor-organizations">Organizations</a> or a link on <a href="/hub/help/manuals/nrms-site-editor/resource-links">Resource links</a>, open it from the list and copy the full address from your browser&#39;s address bar.</p>
+<h2>Replace a file</h2>
+<p>Replacing keeps the file&#39;s name and address, so every link to it keeps working.</p>
+<ol>
+<li>Upload a file with the same name. A box says &quot;A file named &quot;{name}&quot; already exists&quot;.</li>
+<li>Choose <strong>Replace it</strong>. To keep the old file instead, choose <strong>Cancel</strong> and rename your file.</li>
+</ol>
+<p>Visitors may see the old copy for up to a minute.</p>
+<h2>Delete a file</h2>
+<ol>
+<li>Choose <strong>Delete {name}</strong> beside the file.</li>
+<li>A box asks &quot;Delete {name}?&quot; and warns &quot;This deletes the file from the public site. It can&#39;t be undone.&quot;</li>
+<li>Choose <strong>Confirm delete</strong>.</li>
+</ol>
+<p>Links to a deleted file stop working. Check that nothing still points to it first.</p>
+<h2>What happens next</h2>
+<ul>
+<li><strong>Website log</strong> lists each upload, replacement and deletion under <strong>Files</strong>, with the file&#39;s name and yours.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;{name}: A file can be at most 512 MB.&quot;</td>
+<td>The file is too big to upload.</td>
+</tr>
+<tr>
+<td>&quot;The file is empty.&quot;</td>
+<td>The file has nothing in it. Check you picked the right one.</td>
+</tr>
+<tr>
+<td>&quot;{name}&quot; is a reserved Windows device name; rename the file.</td>
+<td>Names such as con, aux, nul or prn can&#39;t be used. Rename the file and upload it again.</td>
+</tr>
+<tr>
+<td>&quot;invalid request&quot;</td>
+<td>If this happens just after the Hub was updated, reload the page and try again. A page left open from before the update sends the file in a way the Hub no longer accepts.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},f=null,w={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p><strong>Website</strong> &gt; <strong>Site settings</strong> lists the screens that set how the public site looks and reads: <strong>Banner</strong>, <strong>Footer</strong>, <strong>Social links</strong>, <strong>Theme</strong>, <strong>Ministry pages</strong>, <strong>Media contacts page</strong>, <strong>Page text</strong>, <strong>Navigation and labels</strong> and <strong>Site identity</strong>. They all save and publish the same way. <strong>Settings history</strong> lists everything published so far.</p>
+<h2>Your draft</h2>
+<p>You have one private draft that covers all of these screens. Other site editors have their own, and nobody else sees yours.</p>
+<ul>
+<li><strong>Save draft</strong> keeps your changes in your draft. The public site doesn&#39;t change.</li>
+<li><strong>Publish</strong> puts your whole draft live: the changes on this screen, and any you saved as a draft on other settings screens.</li>
+<li><strong>Discard draft</strong> throws your draft away, on every settings screen, with no question. The screen then shows what is live: &quot;Draft discarded. Showing what is live.&quot;</li>
+</ul>
+<p>The foot of each screen says where you are. &quot;Draft saved \xB7 not yet live&quot; means you have a draft; &quot;No unpublished changes&quot; means you don&#39;t. The next line shows the live revision, who published it and when.</p>
+<h2>Publish a change</h2>
+<ol>
+<li>Make the change on the settings screen.</li>
+<li>If you like, type a <strong>Note for the history log (optional)</strong>, such as &quot;Election notice&quot;. It shows in <strong>Settings history</strong> and <strong>Website log</strong>.</li>
+<li>Choose <strong>Publish</strong>. You see &quot;Published revision 5. Visitors see it within a few minutes.&quot; (with the new number).</li>
+</ol>
+<p>If the draft has a problem, nothing is published. You see &quot;Draft saved, but it has problems to fix before it can be published.&quot; Each problem shows under its field. A problem on another settings screen shows in a list headed &quot;Other parts of the draft have problems that block publishing:&quot;, with the name of that screen. Fix it there, or choose <strong>Discard draft</strong> to start again from what is live.</p>
+<h2>If someone else published first</h2>
+<p>When another site editor publishes while you are working, your <strong>Publish</strong> doesn&#39;t go through. You see &quot;Someone published while you were editing&quot;, with who published and when, and &quot;Nothing of yours was published, and your draft is saved.&quot; It also lists the screens where your draft differs.</p>
+<p>Choose one:</p>
+<ul>
+<li><strong>Keep my banner, on top of their version</strong> (the button names the screen you are on, such as &quot;Keep my footer&quot;): your changes on this screen are added to what they published. Changes you saved on other screens are set aside, and the message names them. Check the result, then choose <strong>Publish</strong>.</li>
+<li><strong>Discard mine, use theirs</strong>: your draft is thrown away and the screen shows what is live.</li>
+</ul>
+<h2>Bring back an earlier version</h2>
+<p><strong>Settings history</strong> lists every published revision, newest first, with <strong>Revision</strong>, <strong>When</strong>, <strong>Who</strong> and <strong>Note</strong>. The live one is marked <strong>Live</strong>.</p>
+<ol>
+<li>Choose <strong>Restore\u2026</strong> on the revision you want.</li>
+<li>A box asks &quot;Restore revision 1?&quot; and lists the screens it would change, such as &quot;Compared with what is live now, this changes: Footer.&quot; If the banner changes, it says what the banner would be.</li>
+<li>Choose <strong>Restore revision 1</strong>. You see &quot;Revision 1 is live again, as revision 6.&quot;</li>
+</ol>
+<p>Nothing is ever deleted. A restore is published as a new revision, so you can undo it by restoring the one before. Restoring also throws away your own draft.</p>
+<h2>What happens next</h2>
+<ul>
+<li>Visitors see a published change within a few minutes. Colours and the banner show quickest. A footer change reaches every page over the following minutes.</li>
+<li><strong>Website log</strong> lists each publish under <strong>Site settings</strong>, such as &quot;Published revision 5: Election notice&quot;.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Nothing was restored: revision {n} was published while you were looking. Check it and try again.&quot;</td>
+<td>Someone published while the restore box was open. The list is now up to date.</td>
+</tr>
+<tr>
+<td>&quot;Revision {n} can&#39;t be restored: it doesn&#39;t pass the checks the site settings must meet now.&quot;</td>
+<td>The old revision breaks a rule added since. Make the change by hand instead.</td>
+</tr>
+<tr>
+<td>&quot;Revision {n} no longer exists.&quot;</td>
+<td>Reload the page.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t load the site settings.&quot;</td>
+<td>Reload the page. If it keeps happening, tell the support team.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},q={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p>The banner is a notice across the top of every public page, such as planned maintenance or an emergency. Open it from <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Banner</strong>. Like every site setting, it changes the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
+<h2>Put up a banner</h2>
+<ol>
+<li>Under <strong>Banner type</strong>, choose <strong>Information</strong> or <strong>Emergency</strong>. Emergency uses the emergency banner colour, set on <a href="/hub/help/manuals/nrms-site-editor/theme-colours">Theme colours</a>.</li>
+<li>Type the <strong>Message</strong>: plain text, up to 300 characters. The count shows below the box.</li>
+<li>To add a link, choose <strong>+ Add a link</strong>, then fill in <strong>Link text</strong> and <strong>Web address</strong>. Add more the same way. <strong>Remove link 1</strong> takes one away.</li>
+<li>To show it later, enter <strong>Show from</strong>. To take it down by itself, enter <strong>Hide after</strong>. Both are BC time. Leave <strong>Show from</strong> blank to show it at once, and <strong>Hide after</strong> blank to keep it up until you turn it off.</li>
+<li>Tick <strong>Visitors can close the banner</strong> to give it a close button (\xD7).</li>
+<li>Check the <strong>Preview</strong>. It shows roughly how the banner looks.</li>
+<li>Choose <strong>Publish</strong>.</li>
+</ol>
+<p>The banner switches on and off by itself at the <strong>Show from</strong> and <strong>Hide after</strong> times. You don&#39;t need to publish again at those times.</p>
+<h2>Take the banner down</h2>
+<ol>
+<li>Under <strong>Banner type</strong>, choose <strong>Off</strong>. The preview says &quot;The banner is off, so visitors don&#39;t see it.&quot; The message and links are kept for next time.</li>
+<li>Choose <strong>Publish</strong>.</li>
+</ol>
+<h2>What visitors see</h2>
+<ul>
+<li>The banner shows within a few minutes of publishing.</li>
+<li>It needs JavaScript in the visitor&#39;s browser.</li>
+<li>While Project Blue Bridge is on, its own black banner shows instead, and yours is hidden.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Enter a message, or turn the banner off.&quot;</td>
+<td><strong>Banner type</strong> is Information or Emergency, but <strong>Message</strong> is empty.</td>
+</tr>
+<tr>
+<td>&quot;Keep the message to 300 characters or fewer.&quot;</td>
+<td>Shorten the message.</td>
+</tr>
+<tr>
+<td>&quot;Use plain text. Add links below instead of HTML.&quot;</td>
+<td>The message has &lt; or &gt; in it. Put links in the link boxes.</td>
+</tr>
+<tr>
+<td>&quot;The end time must be after the start time.&quot;</td>
+<td><strong>Hide after</strong> is not later than <strong>Show from</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Enter the link text.&quot;</td>
+<td>A link has a web address but no words.</td>
+</tr>
+<tr>
+<td>&quot;Must start with https:// or / (a page on this site).&quot;</td>
+<td>A link&#39;s web address is missing, starts with http://, or has a space in it.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},C={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p><strong>Theme colours</strong> sets the public site&#39;s colours: <strong>Header and buttons</strong>, <strong>Text on the header and buttons</strong>, <strong>Accent</strong>, <strong>Body text</strong>, <strong>Secondary text</strong>, <strong>Panels</strong>, <strong>Page background</strong>, <strong>Borders</strong>, <strong>Information banner</strong>, <strong>Emergency banner</strong> and <strong>Section bar colour (Connect page)</strong>. Open it from <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Theme</strong>.</p>
+<h2>Change a colour</h2>
+<ol>
+<li>Type the colour&#39;s code, such as #013366, in its box. Or choose the colour square beside it and pick a colour.</li>
+<li>Check the badge beside the colour. &quot;Readable 7.7:1&quot; means text on it is easy to read. &quot;Too faint 2.3:1&quot; means it isn&#39;t.</li>
+<li>Check the <strong>Preview</strong>. It shows the colours you are editing, not the live ones.</li>
+<li>Choose <strong>Publish</strong>. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</li>
+</ol>
+<p>A colour that is too faint can be saved in your draft, but it can&#39;t be published. Pick a darker shade until every badge says Readable.</p>
+<p><strong>Reset to defaults</strong> puts the standard colours back in the boxes. You see &quot;Colours reset to the defaults. Save or publish to keep them.&quot; Nothing changes on the site until you publish.</p>
+<h2>What visitors see</h2>
+<p>New colours show within a few minutes of publishing.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Use a colour like #013366.&quot;</td>
+<td>The code must be # and six letters or digits.</td>
+</tr>
+<tr>
+<td>&quot;Too faint to read behind white text (2.3:1, needs 4.5:1). Pick a darker shade.&quot;</td>
+<td>Text on or in this colour would be hard to read. The message says where: on the page background, on panels, on the header, as link text or behind white text.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},k={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p>Two settings screens set the wording around every public page: <strong>Footer</strong> for the footer&#39;s links, and <strong>Navigation and labels</strong> for the menu, buttons and headings. Open them from <strong>Website</strong> &gt; <strong>Site settings</strong>. Both change the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
+<h2>Footer</h2>
+<p>The screen is titled <strong>Footer links</strong>.</p>
+<ul>
+<li><strong>Help text</strong>: a short line in the footer, plain text, up to 200 characters.</li>
+<li><strong>Help links</strong>, <strong>Connect with Us links</strong> and <strong>More Info links</strong>: the footer&#39;s link lists.</li>
+<li><strong>Copyright holder</strong>: shown as &quot;\xA9 2026 Government of British Columbia&quot;, with the current year added for you.</li>
+<li><strong>Land acknowledgement</strong>: shown in a band above the footer on every page. Leave it empty to hide the band.</li>
+</ul>
+<p>To change a list:</p>
+<ol>
+<li>Choose <strong>+ Add a link</strong> under the list, then fill in <strong>Link text</strong> and <strong>Web address</strong>.</li>
+<li>Use <strong>Move link 1 up</strong>, <strong>Move link 1 down</strong> and <strong>Remove link 1</strong> to arrange it.</li>
+<li>Choose <strong>Publish</strong>.</li>
+</ol>
+<p>A footer column shows only when it has links. Its heading is on <strong>Navigation and labels</strong>.</p>
+<p>A footer change reaches every page over the following minutes, not all at once.</p>
+<h2>Navigation and labels</h2>
+<p>Every wording box is required, except the two footer headings.</p>
+<ul>
+<li><strong>Header</strong>: <strong>News menu label</strong>, <strong>Live webcast button label</strong>, up to 4 <strong>Header links</strong> after the news menu, and <strong>Show the search box in the header</strong>.</li>
+<li><strong>Footer headings</strong>: <strong>Footer: Connect with Us column heading</strong> and <strong>Footer: More Info column heading</strong>. Leave one blank for no heading.</li>
+<li><strong>Page labels</strong>: headings and link words on the home page and news lists, such as <strong>Resources heading</strong>, <strong>Emergency information heading</strong> and <strong>Load more news button label</strong>. The hint under each box says where it appears. Two are never shown on screen; screen readers read them aloud: <strong>Slideshow name (read aloud by screen readers)</strong> and <strong>Home page main heading (hidden, for screen readers)</strong>.</li>
+<li><strong>Slide link label (when a slide has none)</strong>: the link words for a carousel slide or emergency notice whose own <strong>Action label</strong> is empty.</li>
+<li><strong>Listing titles</strong>: the titles of the releases, stories, factsheets and updates pages.</li>
+</ul>
+<p>Change the wording, then choose <strong>Publish</strong>.</p>
+<p>The site&#39;s name and logo in the header are not set here. The support team sets them.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Enter text for this field.&quot;</td>
+<td>A required box is empty.</td>
+</tr>
+<tr>
+<td>&quot;Keep it to 60 characters or fewer.&quot;</td>
+<td>Shorten the wording. The limit depends on the box.</td>
+</tr>
+<tr>
+<td>&quot;Use plain text.&quot;</td>
+<td>Remove &lt; and &gt; from the wording.</td>
+</tr>
+<tr>
+<td>&quot;Keep the list to 4 or fewer.&quot;</td>
+<td>There are more than 4 header links.</td>
+</tr>
+<tr>
+<td>&quot;Enter the link text.&quot;</td>
+<td>A link has a web address but no words.</td>
+</tr>
+<tr>
+<td>&quot;Must start with https:// or / (a page on this site).&quot;</td>
+<td>A link&#39;s web address is missing, starts with http://, or has a space in it.</td>
+</tr>
+<tr>
+<td>&quot;Enter who holds the copyright.&quot;</td>
+<td><strong>Copyright holder</strong> is empty.</td>
+</tr>
+<tr>
+<td>&quot;Keep the help text to 200 characters or fewer.&quot;</td>
+<td>Shorten <strong>Help text</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Keep the land acknowledgement to 1000 characters or fewer.&quot;</td>
+<td>Shorten <strong>Land acknowledgement</strong>.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},T=null,A={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p>Two settings screens set the wording that every ministry shares. A single ministry&#39;s own details, such as its minister and contacts, are on <a href="/hub/help/manuals/nrms-site-editor/site-editor-organizations">Organizations</a>. Both screens change the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
+<h2>Ministry page headings</h2>
+<p><strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Ministry pages</strong> sets the seven headings on every ministry&#39;s public page: <strong>More from this Ministry heading</strong>, <strong>Ministry website heading</strong>, <strong>Ministry photos heading</strong>, <strong>Ministry videos heading</strong>, <strong>Featured topics heading</strong>, <strong>Featured services heading</strong> and <strong>Media contacts heading</strong>.</p>
+<ol>
+<li>Change the heading.</li>
+<li>Choose <strong>Publish</strong>.</li>
+</ol>
+<p>Each heading is required: plain text, up to 60 characters. <strong>Reset to defaults</strong> puts the standard headings back in the boxes. You see &quot;Headings reset to the defaults. Save or publish to keep them.&quot;</p>
+<p>The ministry pages change within a few minutes.</p>
+<h2>Media contacts page</h2>
+<p><strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Media contacts page</strong> sets the public page that lists media contacts.</p>
+<ul>
+<li><strong>Page heading</strong> (required), <strong>Contact line heading</strong> and <strong>List heading</strong>.</li>
+<li><strong>Introduction</strong>: formatted text with bold, italic, lists and links. Include the 24-hour media line number here.</li>
+<li><strong>Other media contacts</strong>: contacts that aren&#39;t a ministry&#39;s, such as a central media line. Each ministry&#39;s own contacts come from its <strong>Organizations</strong> form.</li>
+</ul>
+<p>To add another contact:</p>
+<ol>
+<li>Choose <strong>Add contact</strong>.</li>
+<li>Fill in <strong>Group</strong> and <strong>Name</strong> (both required), and if you like <strong>Group link</strong>, <strong>Subgroup</strong>, <strong>Phone</strong>, <strong>Cell</strong> and <strong>Email</strong>.</li>
+<li>Under <strong>Placement</strong>, choose <strong>Above the ministries</strong> or <strong>Below the ministries</strong>.</li>
+<li>Use <strong>Move contact 1 up</strong>, <strong>Move contact 1 down</strong> or <strong>Remove contact 1</strong> to arrange the list. You can have up to 30.</li>
+<li>Choose <strong>Publish</strong>.</li>
+</ol>
+<p>A contact row left completely blank is dropped when you save.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Enter a heading.&quot;</td>
+<td>A ministry page heading is empty.</td>
+</tr>
+<tr>
+<td>&quot;Use plain text, 60 characters or fewer.&quot;</td>
+<td>Shorten the ministry page heading, and remove any &lt; or &gt; characters.</td>
+</tr>
+<tr>
+<td>&quot;Enter text for this field.&quot;</td>
+<td>A required box, such as <strong>Page heading</strong>, <strong>Group</strong> or <strong>Name</strong>, is empty.</td>
+</tr>
+<tr>
+<td>&quot;Enter an email address like <a href="mailto:name@gov.bc.ca">name@gov.bc.ca</a>.&quot;</td>
+<td>Fix the contact&#39;s <strong>Email</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Must start with https:// or / (a page on this site).&quot;</td>
+<td>Fix the contact&#39;s <strong>Group link</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Keep the list to 30 or fewer.&quot;</td>
+<td>Remove a contact.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},S=null,x=null,W={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p><strong>Organizations</strong> holds each ministry&#39;s public details: its name, minister, biography, media contacts and page links. They appear on the public Ministries page and on each ministry&#39;s own page.</p>
+<p>The table shows each ministry&#39;s <strong>Name</strong>, <strong>Abbreviation</strong>, <strong>Minister</strong> and <strong>Active</strong>. A ministry left off the public site has a &quot;Not public&quot; badge. If any ministries are inactive, tick <strong>Show inactive organizations</strong> to list them too.</p>
+<p>Core administrators add, deactivate and hand over ministries, and set each one&#39;s abbreviation and whether it is public.</p>
+<h2>Edit a ministry</h2>
+<ol>
+<li>Choose <strong>Edit</strong> on the ministry&#39;s row. The form opens above the table.</li>
+<li>Change what you need:<ul>
+<li><strong>Ministry name (required)</strong>, and <strong>Additional display name</strong>, which shows in brackets under the ministry on the Media Contacts page, such as (Child Care).</li>
+<li><strong>Sort order</strong>: a whole number that places the ministry in lists.</li>
+<li><strong>Minister name</strong>, with the title, such as &quot;Honourable Jane Doe&quot; or &quot;Premier Jane Doe&quot;. If you leave it empty, the ministry shows no minister.</li>
+<li><strong>Minister summary</strong> and <strong>Minister email</strong>.</li>
+<li><strong>Minister photo URL</strong>. Upload the photo on <a href="/hub/help/manuals/nrms-site-editor/website-files">Files</a> first, then paste its full address here. A preview appears once the address starts with https://.</li>
+<li><strong>Minister biography</strong>: shown on the minister&#39;s biography page, linked as Read Bio from the ministry page. <strong>Clear the biography</strong> empties it, and the biography page goes when you save.</li>
+<li><strong>Meet the Team links</strong>: shown as Meet the Team on the ministry page.</li>
+<li>Under <strong>Media contacts</strong>: <strong>Primary contact</strong> and <strong>Alternate contact</strong> (each with <strong>Name</strong>, <strong>Phone</strong>, <strong>Cell</strong> and <strong>Email</strong>), and <strong>After-hours phone</strong>. <strong>Phone</strong> shows as Direct on the ministry page.</li>
+<li>Under <strong>Ministry page links</strong>: <strong>Ministry website</strong>, <strong>Photos (Flickr) address</strong>, <strong>Videos (YouTube) address</strong>, <strong>Featured Topics</strong> and <strong>Featured Services</strong>.</li>
+</ul>
+</li>
+<li>Choose <strong>Save</strong>. You see &quot;Saved. The public Ministries page updates when the site next rebuilds.&quot;</li>
+</ol>
+<p><strong>Cancel</strong> closes the form without saving.</p>
+<p>The public page shows the alternate contact only when there is a primary contact. The form warns &quot;The public page shows the alternate only with a primary contact.&quot;</p>
+<p>After you rename the minister, a note warns &quot;The biography still describes the previous minister.&quot; Update or clear the biography too.</p>
+<p>When a new government takes office, you update every minister&#39;s name, photo and biography. <a href="/hub/help/manuals/topic/new-government">When a new government takes office</a> gives the order.</p>
+<h2>What happens next</h2>
+<ul>
+<li>Saved details reach the public site within a few minutes.</li>
+<li>Nobody is emailed.</li>
+<li>Changing a minister here doesn&#39;t change their contact record in Media Hub. Update that by hand.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;No changes to save.&quot;</td>
+<td>Nothing in the form changed.</td>
+</tr>
+<tr>
+<td>&quot;Enter a ministry name.&quot;</td>
+<td><strong>Ministry name (required)</strong> is empty.</td>
+</tr>
+<tr>
+<td>&quot;Enter a whole number.&quot;</td>
+<td><strong>Sort order</strong> must be a whole number, such as 10.</td>
+</tr>
+<tr>
+<td>&quot;Enter the full address, starting with https://, to see a preview.&quot;</td>
+<td>The photo address is incomplete.</td>
+</tr>
+<tr>
+<td>&quot;This address didn&#39;t load an image. Check that it&#39;s the right URL.&quot;</td>
+<td>The photo address doesn&#39;t lead to an image. Check it on <strong>Files</strong>.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},H={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<p>You write news releases, stories, factsheets and media advisories, approve them, and publish them now or at a set time. Publishing puts a release on the public news site and emails the subscribers and media lists it is meant for.</p>
+<h2>The everyday path</h2>
+<ol>
+<li><a href="/hub/help/manuals/nrms-editor/editor-start-a-release">Start a release</a> with <strong>New release</strong>.</li>
+<li><a href="/hub/help/manuals/nrms-editor/editor-write-a-release">Write it</a>: the text, page details and categories. <strong>Save changes</strong> saves everything you changed.</li>
+<li><a href="/hub/help/manuals/nrms-editor/editor-files-and-media">Add photos, video and files</a> if it has any.</li>
+<li><a href="/hub/help/manuals/nrms-editor/editor-approve-and-publish">Approve it, then publish it now or schedule it</a>. Each step asks you to confirm and says who will be emailed.</li>
+<li><a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct it, unpublish it or delete it</a> if you need to.</li>
+</ol>
+<p><a href="/hub/help/manuals/nrms-editor/editor-what-happens-next">Who is emailed, and when it goes public</a> sums up what each step does.</p>
+<h2>What only you can do</h2>
+<p>Release viewers can open every release, the folders and <strong>Search</strong>, but can&#39;t change anything. These are yours:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What you do there</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Releases</strong> &gt; <strong>New release</strong></td>
+<td>Start a release, or start one from a Calendar activity on <strong>Forecast</strong>.</td>
+<td><a href="/hub/help/manuals/nrms-editor/editor-start-a-release">Start a release</a></td>
+</tr>
+<tr>
+<td>The release itself</td>
+<td>Change its text, details, categories, media and files, and save.</td>
+<td><a href="/hub/help/manuals/nrms-editor/editor-write-a-release">Write a release</a></td>
+</tr>
+<tr>
+<td><strong>Actions</strong>, on the release</td>
+<td><strong>Approve</strong>, <strong>Publish now</strong>, <strong>Schedule</strong>, <strong>Cancel schedule</strong>, <strong>Return to draft</strong>, <strong>Unpublish</strong> and <strong>Delete</strong>.</td>
+<td><a href="/hub/help/manuals/nrms-editor/editor-approve-and-publish">Approve, publish and schedule</a></td>
+</tr>
+<tr>
+<td><strong>Top / Feature</strong>, on a published release</td>
+<td>Put a release in a Top or Feature spot on the home page or a ministry, sector or theme page.</td>
+<td><a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct, unpublish or delete</a></td>
+</tr>
+<tr>
+<td><strong>Similar published releases</strong>, on the release</td>
+<td>Look for published releases like the one you&#39;re writing.</td>
+<td><a href="/hub/help/manuals/nrms-editor/editor-write-a-release">Write a release</a></td>
+</tr>
+</tbody></table></div>
+<p>The <a href="/hub/help/manuals/nrms-viewer">Releases viewer manual</a> covers reading releases.</p>
+<h2>What you see in the side menu</h2>
+<p>At the top is <strong>Find a release</strong>. Under <strong>Work</strong> you see <strong>Releases</strong>, <strong>Search</strong> and <strong>Website</strong>. On <strong>Website</strong> you see only <strong>What&#39;s featured where</strong> and <strong>Website log</strong>; both only show information. See <a href="/hub/help/manuals/nrms-editor/editor-featured-and-log">What&#39;s featured where and the Website log</a>.</p>
+<p>The carousel, emergency notices, banner, footer and ministry pages belong to site editors. The Site editor manual covers them; ask a site editor for changes there.</p>
+<p>You may also see <strong>Subscribers</strong> or <strong>Calendar</strong> if you have a role there. Those have their own manuals.</p>
+<h2>Signing in</h2>
+<p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
+`,changed:"2026-10-30"},M={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<p><strong>Releases</strong> has four tabs. <strong>Releases</strong> in the side menu opens the tab you had open last, or <strong>Drafts</strong>.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>What it lists</th>
+<th>In what order</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Forecast</strong></td>
+<td>Releases planned or scheduled from now on, and the Calendar activities a release may be planned for.</td>
+<td>By time.</td>
+</tr>
+<tr>
+<td><strong>Drafts</strong></td>
+<td>Releases not yet scheduled or published: drafts, approved releases and failed ones.</td>
+<td>Those planned for today or earlier first, then those with no planned time, then later ones.</td>
+</tr>
+<tr>
+<td><strong>Scheduled</strong></td>
+<td>Releases set to publish at a time.</td>
+<td>Soonest first.</td>
+</tr>
+<tr>
+<td><strong>Published</strong></td>
+<td>Releases on the public site, and advisories that have been sent.</td>
+<td>Newest first.</td>
+</tr>
+</tbody></table></div>
+<p>Each row shows the type, the page title (when it says more than the type), the lead ministry, the status, the date, the Calendar activity it is linked to, and on <strong>Drafts</strong> who changed it last. Choose the headline to open the release.</p>
+<p>To see one kind only, choose it in <strong>Type</strong>: <strong>Release</strong>, <strong>Story</strong>, <strong>Factsheet</strong> or <strong>Advisory</strong>. The Hub remembers your choice on every tab. If nothing matches, choose <strong>Show every type</strong>.</p>
+<p>Each page shows 25 releases. Use <strong>Previous</strong> and <strong>Next</strong> to move between pages.</p>
+<h2>What the status means</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Draft</strong></td>
+<td>Not yet approved.</td>
+</tr>
+<tr>
+<td><strong>Approved</strong></td>
+<td>Approved: it has a reference number. It can be published or scheduled.</td>
+</tr>
+<tr>
+<td><strong>Planned</strong></td>
+<td>It has a planned publish date in <strong>Publish settings</strong>, but nothing is committed. A planned release that is approved also shows an <strong>Approved</strong> badge.</td>
+</tr>
+<tr>
+<td><strong>Scheduled</strong></td>
+<td>It will publish at the time shown.</td>
+</tr>
+<tr>
+<td><strong>Publishing...</strong></td>
+<td>Its time has come and it is going out now.</td>
+</tr>
+<tr>
+<td><strong>Republishing...</strong></td>
+<td>A saved correction is going out.</td>
+</tr>
+<tr>
+<td><strong>Published</strong></td>
+<td>It is on the public site. An advisory shows <strong>Sent</strong> instead.</td>
+</tr>
+<tr>
+<td><strong>Unpublishing...</strong></td>
+<td>It is being taken down.</td>
+</tr>
+<tr>
+<td><strong>Failed</strong></td>
+<td>Publishing didn&#39;t work. Open it to see why.</td>
+</tr>
+</tbody></table></div>
+<p>A <strong>Flickr alert</strong> badge means the release went out without its Flickr photo. See <a href="/hub/help/manuals/nrms-editor/editor-files-and-media">Photos, video and files</a>.</p>
+<h2>The Forecast</h2>
+<p><strong>Forecast</strong> shows what is coming, so you can see what is already planned before you start something new.</p>
+<p>Calendar activities appear only if you have Calendar access, and only the ones you can see in the Calendar. They must be confirmed, not confidential, start from now on, and have a category starting with &quot;Approved&quot;. An activity that already has a release planned or scheduled is shown as that release instead. Without Calendar access the tab says &quot;Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it.&quot;</p>
+<p>Choose <strong>Start a release</strong> under an activity to start a release from it. See <a href="/hub/help/manuals/nrms-editor/editor-start-a-release">Start a release</a>.</p>
+`,changed:"2026-10-30"},R=null,N={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<p>At the top of a release you see its type, status, reference number and headline. Below that, under &quot;Before this can be approved:&quot; and &quot;Before this can be published:&quot;, is what is still missing.</p>
+<p>On a wide screen, the release is on the left, and <strong>Actions</strong>, <strong>Publish settings</strong> and <strong>Release info</strong> are on the right. On a narrow screen they come one after another.</p>
+<h2>Save your changes</h2>
+<p>You can change several parts of the release, then save them all at once.</p>
+<ol>
+<li>Make your changes. Each part you changed says <strong>Unsaved</strong> beside its heading.</li>
+<li>A bar along the bottom lists them: &quot;You have unsaved changes in: \u2026&quot;.</li>
+<li>Choose <strong>Save changes</strong> in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too.</li>
+<li>The bar says &quot;All changes saved.&quot; for a moment, then goes. The button you pressed keeps keyboard focus.</li>
+</ol>
+<p>If one part can&#39;t be saved, the bar says &quot;Couldn&#39;t save page details. See why in that section.&quot; Choose the link to go to the message. Parts after it are not saved yet and keep your changes.</p>
+<p>While anything is unsaved, <strong>Approve</strong>, <strong>Publish now</strong> and <strong>Schedule</strong> are greyed out, with &quot;Save your changes to \u2026 first.&quot; under them.</p>
+<p>If you try to leave with unsaved changes, a box asks &quot;Leave anyway and discard them?&quot; Choose <strong>Stay</strong> to go back, or <strong>Leave</strong> to lose them. If your sign-in runs out while you are writing, sign in again in the same browser tab: the text you typed in a document comes back.</p>
+<p>&quot;Someone else changed this \u2014 reload to see their changes.&quot; means another person saved this release after you opened it. Choose <strong>Reload</strong>. Copy anything you typed first, because reloading shows their version.</p>
+<p><strong>If the release is already published, saving any change republishes it at once.</strong> See <a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct, unpublish or delete</a>.</p>
+<h2>Documents</h2>
+<p>A release has one or more documents, such as the news release and a backgrounder. Each has an <strong>English</strong> tab, and a <strong>French</strong> tab once you add one.</p>
+<p>Each document has a <strong>Page title</strong>, <strong>Organizations</strong>, <strong>Headline</strong>, <strong>Subheadline</strong>, <strong>Byline</strong>, <strong>Body</strong> and <strong>Contacts</strong>. With the <strong>Formal</strong> layout, <strong>Organizations</strong> must be filled in before you can publish.</p>
+<p>The <strong>Body</strong> toolbar has <strong>Bold</strong>, <strong>Italic</strong>, <strong>Bulleted list</strong>, <strong>Numbered list</strong>, <strong>Link</strong> and <strong>Insert asset</strong>. Pasted text keeps only that formatting.</p>
+<p>To show a video or photo inside the body:</p>
+<ol>
+<li>Put the cursor where it should go.</li>
+<li>Choose <strong>Insert asset</strong>.</li>
+<li>Paste a YouTube, Flickr or SoundCloud link and choose <strong>OK</strong>.</li>
+</ol>
+<p>Up to 10 links in one body show as media. Others show as plain links, and so does a Flickr photo that isn&#39;t public when you save.</p>
+<p>To add a contact, choose <strong>Add contact</strong> and type it in <strong>Contact 1</strong>. The first line is its title. A document can have up to 20.</p>
+<p>To work with documents:</p>
+<ul>
+<li><strong>Add document</strong>: enter its <strong>Page title</strong>, choose its <strong>Layout</strong>, then choose <strong>Add</strong>.</li>
+<li><strong>Move up</strong> or <strong>Move down</strong>, or drag the handle, to change the order.</li>
+<li><strong>Remove</strong>, then <strong>Confirm remove</strong>, deletes the document and its French text. This can&#39;t be undone. A release always keeps one document.</li>
+</ul>
+<h2>French text</h2>
+<ol>
+<li>Choose <strong>Add French translation</strong> on the document.</li>
+<li>Choose the <strong>French</strong> tab and fill it in. Once the French tab exists, its headline, body and organizations must be filled in before you can publish.</li>
+<li>To take it away, choose <strong>Remove French translation</strong>, then <strong>Confirm remove</strong>. This can&#39;t be undone.</li>
+</ol>
+<p>A French PDF goes under <strong>Files</strong> instead. See <a href="/hub/help/manuals/nrms-editor/editor-files-and-media">Photos, video and files</a>.</p>
+<h2>Page details</h2>
+<ul>
+<li><strong>URL key</strong>: the last part of the release&#39;s public address. A release or advisory gets one when it is approved. A story&#39;s or factsheet&#39;s comes from its headline, and you can change it until it is scheduled.</li>
+<li><strong>Redirect URL</strong>: fill this in only to send visitors to another page instead.</li>
+<li><strong>Location</strong>: the place at the start of the release, up to 50 characters.</li>
+<li><strong>Summary</strong>: what subscribers see in their email. It fills itself from the start of the body, and <strong>Documents</strong> shows &quot;(auto)&quot; until you change it.</li>
+<li><strong>Social media summary</strong> and <strong>Keywords</strong>.</li>
+</ul>
+<p>Advisories have no summary, social media summary or keywords.</p>
+<h2>Categories</h2>
+<p><strong>Categories</strong> shows what is ticked. Choose <strong>Edit categories</strong> to change the <strong>Ministries</strong>, <strong>Lead ministry</strong>, <strong>Sectors</strong>, <strong>Themes</strong> and <strong>Tags</strong>.</p>
+<p>These decide which subscribers are emailed and which public pages list the release. You need at least one ministry and one sector to publish, and a lead ministry when you tick more than one.</p>
+<h2>Similar published releases</h2>
+<p>Use it to check whether something like this has gone out before.</p>
+<ol>
+<li>Save first: it compares the release as last saved.</li>
+<li>Choose <strong>Open similar-release search</strong>, then <strong>Find similar</strong>.</li>
+<li>You see up to 10 published releases, each with its date, lead ministry, <strong>AI match</strong> or <strong>Text match</strong>, and a link that opens the public page in a new tab.</li>
+</ol>
+<p>Nothing is sent until you choose <strong>Find similar</strong>. Where the site uses AI matching, the panel says &quot;Sends this draft&#39;s text to the AI service to compare.&quot; If that service isn&#39;t available, you get text matches and the panel says so.</p>
+<h2>Release info</h2>
+<ul>
+<li><strong>Key</strong> and <strong>Reference (NEWS number)</strong>, or &quot;(none yet)&quot;.</li>
+<li><strong>View on site</strong> opens the public page. It works only while the release is published.</li>
+<li><strong>View PDF</strong> opens the release as a PDF.</li>
+<li><strong>Email me a copy</strong> emails the release to you. You see &quot;Sent to&quot; and your address.</li>
+<li><strong>History</strong> lists what was done and by whom. Tick <strong>Show all</strong> to include every edit. <strong>Published copies</strong> lists each time it went out.</li>
+</ul>
+`,changed:"2026-10-30"},E={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<p>Advisories have no media asset, translations or media files.</p>
+<h2>The main photo or video</h2>
+<p><strong>Media asset</strong> holds the one photo or video shown with the release.</p>
+<ol>
+<li>Paste a YouTube or Flickr link, or <a href="https://news.gov.bc.ca/live">https://news.gov.bc.ca/live</a>, into <strong>Asset URL</strong>.</li>
+<li>Enter <strong>Alt text</strong>: a short description of the photo or video for people who can&#39;t see it, up to 149 characters.</li>
+<li>Choose <strong>Save changes</strong>.</li>
+</ol>
+<p>Under the heading you then see what it is: &quot;YouTube video.&quot;, &quot;Live broadcast embed.&quot; or, for a Flickr photo, one of these:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Public on Flickr.&quot;</td>
+<td>Ready.</td>
+</tr>
+<tr>
+<td>&quot;Private \u2014 will be made public when the release publishes.&quot;</td>
+<td>Leave it. Publishing makes it public.</td>
+</tr>
+<tr>
+<td>&quot;This photo no longer exists on Flickr.&quot;</td>
+<td>Check the link, or choose another photo.</td>
+</tr>
+<tr>
+<td>&quot;Flickr can&#39;t be reached right now.&quot;</td>
+<td>Try again later. You can still publish; see below.</td>
+</tr>
+</tbody></table></div>
+<p>Links that are refused when you save:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Facebook is no longer supported due to privacy concerns. Use YouTube or Flickr URLs instead.&quot;</td>
+<td>Use a YouTube or Flickr link.</td>
+</tr>
+<tr>
+<td>&quot;Use a YouTube or Flickr URL, or <a href="https://news.gov.bc.ca/live">https://news.gov.bc.ca/live</a>.&quot;</td>
+<td>Other sites can&#39;t be used.</td>
+</tr>
+<tr>
+<td>&quot;That Flickr link doesn&#39;t point to a photo.&quot;</td>
+<td>Use the link to one photo, not an album or profile.</td>
+</tr>
+</tbody></table></div>
+<h2>If Flickr is down when the release publishes</h2>
+<ul>
+<li>At the publish time, the Hub tries to make the photo public for up to 2 minutes.</li>
+<li>If it can&#39;t, it goes out up to 2 minutes late, without the photo. The release and its row in the folders show a <strong>Flickr alert</strong>, and an alert email goes to the people set up to receive Flickr alerts.</li>
+<li>The Hub keeps trying for 24 hours. When the photo becomes public, the release republishes with it by itself. Nobody is emailed again.</li>
+<li>If it still fails after 24 hours, the alert says &quot;The release is live without it \u2014 re-add or replace the photo.&quot; Change the <strong>Asset URL</strong> and save.</li>
+</ul>
+<h2>Translations and media files</h2>
+<p><strong>Files</strong> holds files people can open from the public release.</p>
+<ul>
+<li><strong>Translations</strong>: PDFs, such as the release in French or another language. Choose <strong>Upload a translation (PDF)</strong> and pick the file.</li>
+<li><strong>Media files</strong>: PDF, PNG or JPEG files, such as a photo or a fact sheet. Choose <strong>Upload a media file</strong> and pick the file. <strong>Includes additional media assets</strong> in <strong>Media asset</strong> is ticked for you.</li>
+</ul>
+<p>Each file can be up to 25 MB. A file is saved as soon as it is uploaded; you don&#39;t need <strong>Save changes</strong>. Choose a file&#39;s name to open it.</p>
+<p>Files can be opened by the public only while the release is published. Before then, and after an unpublish, only Hub staff can open them.</p>
+<p>To remove a file, choose <strong>Remove</strong> and its name, then <strong>Confirm remove</strong>. This can&#39;t be undone.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;This file isn&#39;t a PDF.&quot;</td>
+<td>Translations must be PDFs.</td>
+</tr>
+<tr>
+<td>&quot;Upload a PDF, PNG or JPEG file.&quot;</td>
+<td>Media files must be one of those.</td>
+</tr>
+<tr>
+<td>&quot;The file is empty.&quot;</td>
+<td>Pick the file again.</td>
+</tr>
+<tr>
+<td>&quot;request entity too large&quot;</td>
+<td>The file is over 25 MB. Make it smaller.</td>
+</tr>
+</tbody></table></div>
+<p>Uploading or removing a file on a published release republishes it at once, as a correction.</p>
+`,changed:"2026-10-30"},I={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<p>A release goes from <strong>Draft</strong> to <strong>Approved</strong>, then out now or at a set time. <strong>Actions</strong> shows only the buttons that fit the release&#39;s status. Each step acts on the release as saved, so save your changes first.</p>
+<p>When a button is greyed out, the reasons are listed under it, such as &quot;Approve is unavailable until:&quot; and &quot;Choose at least one ministry.&quot;. Each reason links to the part of the release to fix.</p>
+<h2>Approve</h2>
+<ol>
+<li>Choose <strong>Approve</strong>. A box asks &quot;Approve this release?&quot;</li>
+<li>If the release still has placeholder text, such as &quot;TBD&quot;, &quot;TBC&quot;, &quot;to come&quot;, &quot;XX&quot; or &quot;[insert&quot;, the box lists where. Fix it, or choose <strong>Approve anyway</strong> if it is meant to be there.</li>
+<li>Choose <strong>Approve</strong>.</li>
+</ol>
+<p>The release gets a reference number, such as NEWS-00010. A release or advisory also gets its release number, such as 2026HLTH0003-000008, which becomes its public address. <strong>Publish now</strong> and <strong>Schedule</strong> appear. Nobody is emailed.</p>
+<p>To approve, a release needs at least one ministry, and a lead ministry when it has more than one. &quot;This ministry is no longer active. Change the lead ministry to its successor before approving.&quot; means the lead ministry was replaced; choose the new one in <strong>Categories</strong>.</p>
+<h2>Publish now</h2>
+<ol>
+<li>Choose <strong>Publish now</strong>. A box asks &quot;Publish this release now?&quot; and lists what will happen:<ul>
+<li>where it is published, such as &quot;Publishes to news.gov.bc.ca now.&quot;;</li>
+<li>which media distribution lists it is sent to, or &quot;No media distribution lists.&quot;;</li>
+<li>which News On Demand subscribers are emailed, such as &quot;Emails News on Demand subscribers who follow any of: Health \u2014 and everyone subscribed to all news.&quot;, or &quot;News on Demand subscribers will not be emailed.&quot;</li>
+</ul>
+</li>
+<li>Check the list. Choose <strong>Publish now</strong>.</li>
+</ol>
+<p>The status shows <strong>Publishing...</strong>, then <strong>Published</strong>, usually within a minute. The page updates by itself: &quot;This page updates on its own until the release is done \u2014 no need to reload.&quot;</p>
+<h2>Schedule</h2>
+<ol>
+<li>Choose <strong>Schedule</strong>. If the release has a planned publish date still ahead, the date and time are filled in from it.</li>
+<li>Enter the <strong>Date</strong> and <strong>Time (BC time)</strong>. A time that has passed shows &quot;Choose a time in the future, or use Publish now.&quot;</li>
+<li>Choose <strong>Confirm schedule</strong>. A box asks, for example, &quot;Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?&quot; and lists who will be emailed, as for <strong>Publish now</strong>.</li>
+<li>Choose <strong>Schedule</strong>.</li>
+</ol>
+<p>The release moves to <strong>Scheduled</strong>. At that time it publishes by itself and the emails go out. Until then nothing is public: not the page, not its files, not the emails.</p>
+<p>You can still change a scheduled release. What goes out is the release as saved at the publish time.</p>
+<h2>The planned publish date</h2>
+<p><strong>Planned publish date (not yet committed)</strong>, in <strong>Publish settings</strong>, is only a plan: nothing happens at that time. It shows on <strong>Forecast</strong> and makes the status <strong>Planned</strong>. Choose <strong>Clear planned date</strong> to remove it. Only <strong>Schedule</strong> commits a time.</p>
+<h2>Who is emailed</h2>
+<p>Set this in <strong>Publish settings</strong> before you publish.</p>
+<ul>
+<li><strong>Send to News On Demand subscribers</strong>: ticked for releases, unticked for stories and factsheets, and not available for advisories.</li>
+<li><strong>Send to media distribution lists</strong>: tick it, then tick the lists. A retired list a release already had shows &quot;(retired)&quot; and gets nothing.</li>
+</ul>
+<p>See <a href="/hub/help/manuals/nrms-editor/editor-what-happens-next">Who is emailed, and when it goes public</a>.</p>
+<h2>Take back an approval or a schedule</h2>
+<ul>
+<li><strong>Cancel schedule</strong> stops a scheduled release from going out. It goes back to <strong>Drafts</strong> as approved, and its time stays as the planned date. It doesn&#39;t ask first.</li>
+<li><strong>Return to draft</strong> makes an approved or scheduled release a draft again. A box asks &quot;Return this release to draft?&quot; and says it gives up its reference number and release number; it gets new ones when it is approved again. Choose <strong>Return to draft</strong>. This is only for a release that has never been published.</li>
+</ul>
+<h2>If publishing fails</h2>
+<p>The status shows <strong>Failed</strong> and the release goes back to <strong>Drafts</strong>. A red box headed &quot;This release failed&quot; says why. Fix it, save, and choose <strong>Publish now</strong> or <strong>Schedule</strong> again.</p>
+<p>Other refusals you may see:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Set a URL key in Page details before this can be published.&quot;</td>
+<td>A story or factsheet needs a URL key.</td>
+</tr>
+<tr>
+<td>&quot;The lead ministry has no abbreviation yet. Ask an administrator to add one, then approve again.&quot;</td>
+<td>Ask a Core administrator to add the ministry&#39;s abbreviation, then approve.</td>
+</tr>
+<tr>
+<td>&quot;That number is already in use \u2014 try again.&quot;</td>
+<td>Two releases were approved at the same moment. Approve again.</td>
+</tr>
+<tr>
+<td>&quot;The publish time is more than 5 minutes in the past.&quot;</td>
+<td>Choose a later time.</td>
+</tr>
+<tr>
+<td>&quot;A live release&#39;s correction goes out immediately \u2014 choose Publish now.&quot;</td>
+<td>A failed correction of a published release can&#39;t be scheduled.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<p>Publishing emails people. Publishing again after an unpublish emails only people who weren&#39;t reached the first time. Saving, approving, scheduling, correcting and unpublishing don&#39;t email anyone.</p>
+<h2>When you publish</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>What</th>
+<th>Who or where</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Public news site</td>
+<td>The release&#39;s own page, and the home, ministry, sector, theme and tag pages that list it. Not for advisories.</td>
+<td>Usually within a couple of minutes of the publish time.</td>
+</tr>
+<tr>
+<td>News On Demand, as it happens</td>
+<td>Active subscribers who chose As it happens and either follow any of the release&#39;s ministries, sectors, themes or tags, or subscribe to all news.</td>
+<td>Soon after it publishes.</td>
+</tr>
+<tr>
+<td>News On Demand, daily digest</td>
+<td>The same people, if they chose the digest.</td>
+<td>The next digest, at 5:00 pm BC time.</td>
+</tr>
+<tr>
+<td>Media distribution lists</td>
+<td>Every member of each list you ticked. They get the full text.</td>
+<td>Soon after it publishes.</td>
+</tr>
+<tr>
+<td>The Calendar</td>
+<td>The linked activity shows the new status.</td>
+<td>Within a minute.</td>
+</tr>
+</tbody></table></div>
+<p>Subscribers are emailed only if <strong>Send to News On Demand subscribers</strong> is ticked. If nobody follows the release&#39;s ministries, sectors, themes or tags, it publishes normally and no subscriber email is sent.</p>
+<p>A reporter on a media list you ticked who also gets As-it-happens emails gets one email, the media version. If they chose the daily digest, the release is also in their digest.</p>
+<p>Subscriber emails show the release&#39;s <strong>Summary</strong> from <strong>Page details</strong>, not its subheadline. Replies to a release email go to the news office&#39;s reply address.</p>
+<p>Advisories are never sent to subscribers or put on the public site. They go only to their media lists, and once sent they can&#39;t be taken back.</p>
+<h2>When you correct a published release</h2>
+<p>Saving any change republishes it at once, with no box asking first. The status shows <strong>Republishing...</strong>, then <strong>Published</strong>.</p>
+<ul>
+<li>The public page shows the change within a couple of minutes.</li>
+<li>Nobody is emailed again. People already emailed keep the first version; the 5 pm digest carries the corrected one if you correct it before 5 pm.</li>
+<li>Media lists can&#39;t be changed on a release or factsheet once it has gone out.</li>
+</ul>
+<h2>When you unpublish</h2>
+<ul>
+<li>The release&#39;s page and its files come off the public site, and it leaves the lists on other pages.</li>
+<li>It leaves any Top or Feature spot it held.</li>
+<li>Emails not yet sent are stopped, and it stays out of later digests. Emails already sent can&#39;t be recalled.</li>
+<li>It goes back to <strong>Drafts</strong> as approved, with the same numbers and web address. Its status shows <strong>Planned</strong>, because it keeps its old publish time as a plan.</li>
+</ul>
+<h2>When you publish it again after an unpublish</h2>
+<p>The release goes back on the public site at the same address. People who already got it aren&#39;t emailed again.</p>
+<p>If you unpublished it before all its emails had gone out, the media list members and As-it-happens subscribers it hadn&#39;t reached are emailed when you publish it again. Daily-digest subscribers get it only if it is back on the site before the 5 pm digest that would have carried it: 5 pm on the day it first went out, or the next day if it first went out after 5 pm.</p>
+<p>The <strong>Publish now</strong> box says so, with the date. Once that 5 pm has passed, it says &quot;That time has passed, so daily digest subscribers who didn&#39;t get it then won&#39;t.&quot;</p>
+<h2>Embargoes</h2>
+<p>There is no separate embargo setting. <strong>Schedule</strong> is the embargo: until the scheduled time, the public page, the files and the emails don&#39;t exist outside the Hub. Anyone with Hub access can read the release before then.</p>
+`,changed:"2026-10-30"},F={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<h2>Correct a published release</h2>
+<ol>
+<li>Open the release and make the change.</li>
+<li>Choose <strong>Save changes</strong>.</li>
+</ol>
+<p>It republishes at once: no box asks first. The status shows <strong>Republishing...</strong>, then <strong>Published</strong>, usually within a minute. <strong>History</strong> shows &quot;Republished to \u2026&quot;; with <strong>Show all</strong> ticked it also shows &quot;Edited after publishing \u2014 will republish&quot;. The public page shows the change within a couple of minutes. Nobody is emailed again.</p>
+<p>Uploading or removing a file counts as a correction too. If a correction fails, the release shows &quot;This release failed&quot; and stays on the public site as it was. Fix the problem, save, then choose <strong>Publish now</strong>. A failed correction can&#39;t be scheduled.</p>
+<h2>Top and Feature spots</h2>
+<p>Each place on the public site has one Top and one Feature spot: the home page, and each ministry, sector and theme page. A release can take them only while it is published.</p>
+<ol>
+<li>Open the release. <strong>Top / Feature</strong> says where it is now, such as &quot;Feature on Home&quot;, or &quot;Not in a Top or Feature slot anywhere.&quot;</li>
+<li>Choose <strong>Change Top / Feature</strong>. You see <strong>Home</strong> and each ministry, sector and theme the release is filed under, as saved.</li>
+<li>Switch <strong>Top</strong> or <strong>Feature</strong> on or off for a place.</li>
+</ol>
+<p>It changes at once, without <strong>Save changes</strong>, and doesn&#39;t republish the release or email anyone. Switching a spot on takes it over from whichever release had it. To see every spot at once, go to <strong>Website</strong> &gt; <strong>What&#39;s featured where</strong>.</p>
+<h2>Unpublish</h2>
+<p>Advisories can&#39;t be unpublished.</p>
+<ol>
+<li>Choose <strong>Unpublish</strong>. A box asks &quot;Unpublish this release?&quot;</li>
+<li>Choose <strong>Confirm unpublish</strong>.</li>
+</ol>
+<p>The status shows <strong>Unpublishing...</strong>, then the release goes back to <strong>Drafts</strong>, usually within a minute. Its page and files come off the public site, it leaves any Top or Feature spot, and emails not yet sent are stopped. See <a href="/hub/help/manuals/nrms-editor/editor-what-happens-next">Who is emailed, and when it goes public</a>.</p>
+<p>To put it back, choose <strong>Publish now</strong> or <strong>Schedule</strong>. It keeps its numbers and its web address.</p>
+<h2>Delete</h2>
+<p>You can delete a draft, an approved release or a failed one. A published release, including one whose correction failed, must be unpublished first; until then it has no <strong>Delete</strong>.</p>
+<ol>
+<li>Choose <strong>Delete</strong>. A box asks &quot;Delete this release?&quot;</li>
+<li>Choose <strong>Confirm delete</strong>. You are taken to <strong>Drafts</strong>.</li>
+</ol>
+<ul>
+<li>A draft that was never approved is deleted for good: &quot;This draft has never been approved \u2014 deleting it is permanent and can&#39;t be undone.&quot;</li>
+<li>A release with a reference number disappears from the folders and <strong>Search</strong>, but its record is kept: &quot;This release has a reference number (NEWS-00010) \u2014 deleting it hides it from the lists but keeps the record.&quot;</li>
+</ul>
+`,changed:"2026-10-30"},O={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<h2>Open a release you know</h2>
+<ol>
+<li>Type into <strong>Find a release</strong>, at the top of the side menu, one of:<ul>
+<li>its reference number, such as NEWS-00007, or just 00007;</li>
+<li>its release number or URL key, such as 2026HLTH0003-000008;</li>
+<li>its public web address.</li>
+</ul>
+</li>
+<li>Choose <strong>Find</strong>.</li>
+</ol>
+<p>The release opens. If nothing has that number, you get <strong>Search</strong> results for what you typed instead.</p>
+<p>On screens without their own search or filter box, Ctrl+K (Command+K on a Mac) takes you to <strong>Find a release</strong>.</p>
+<h2>Search</h2>
+<ol>
+<li>Choose <strong>Search</strong> in the side menu.</li>
+<li>Type part of the headline, exactly as it appears, in <strong>Search</strong>.</li>
+<li>To narrow it, choose a <strong>Ministry</strong> or <strong>Sector</strong>. On its own, without words in <strong>Search</strong>, this does nothing.</li>
+<li>Choose <strong>Search</strong>.</li>
+</ol>
+<p>Typing a reference number, release number or web address here opens the release directly, as <strong>Find a release</strong> does.</p>
+<p>Before you search, <strong>Search</strong> lists the five most recently published releases.</p>
+<p>Results include drafts, scheduled and published releases, newest first, 20 to a page. Deleted releases don&#39;t appear. If nothing matches, you see &quot;No releases match&quot; and your words; if a ministry or sector is chosen, choose <strong>Clear ministry and sector filters</strong> to try again without them.</p>
+<p>Search looks at headlines only. To find a release by other words, use <strong>Similar published releases</strong> on a release, or the public site&#39;s own search.</p>
+<p>To find the releases linked to a Calendar activity, search for its reference with a ministry prefix, such as HLTH-123. If no release is linked to it, or you can&#39;t see that activity in the Calendar, you also get the releases with those words in the headline, so COVID-19 finds headlines that mention COVID-19.</p>
+`,changed:"2026-10-30"},D={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<p>On <strong>Website</strong> you see two tabs. Both only show information.</p>
+<h2>What&#39;s featured where</h2>
+<p>The table lists each place on the public site that has a Top or Feature release: <strong>Home</strong>, and each ministry, sector or theme page. <strong>Top</strong> and <strong>Feature</strong> show the release&#39;s headline. A dash means the spot is empty. If nothing is set anywhere, the tab says &quot;Nothing is currently Top or Feature anywhere.&quot;</p>
+<p>Choose a headline to open the release. You set Top and Feature on the release itself; see <a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct, unpublish or delete</a>.</p>
+<h2>Website log</h2>
+<p><strong>Website log</strong> lists every change to the public site&#39;s content, newest first: <strong>When</strong>, <strong>Who</strong>, <strong>Area</strong> and <strong>What</strong>. It shows the latest 200 entries. Your Top and Feature changes appear under <strong>Features</strong>, such as &quot;Set as Top for Home&quot;.</p>
+<p>To see one kind of change, choose it in <strong>Filter by area</strong>. Choose <strong>(all)</strong> to see everything again.</p>
+<p>The other areas, such as <strong>Carousel</strong> and <strong>Site settings</strong>, are changed by site editors.</p>
+`,changed:"2026-10-30"},P={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+<h2>Keyboard shortcuts</h2>
+<p>On a Mac, use Command instead of Ctrl. The shortcuts work from inside text boxes too.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Ctrl+S</td>
+<td>On a release, saves every part you changed, the same as <strong>Save changes</strong>.</td>
+</tr>
+<tr>
+<td>Ctrl+Enter</td>
+<td>On <strong>New release</strong>, the same as <strong>Create release</strong>.</td>
+</tr>
+<tr>
+<td>Ctrl+K</td>
+<td>Goes to the search or filter box: <strong>Type</strong> on the folders, the <strong>Search</strong> box on <strong>Search</strong>, and <strong>Find a release</strong> everywhere else.</td>
+</tr>
+<tr>
+<td>Esc</td>
+<td>Closes a box or an open panel. Focus goes back to the button that opened it.</td>
+</tr>
+</tbody></table></div>
+<p>In a box that asks you to confirm, Enter and Esc work as usual.</p>
+<h2>Help</h2>
+<p><strong>Help</strong>, at the top of every screen, opens the page of this manual for the screen you are on. On a screen this manual doesn&#39;t cover, it opens the Help page.</p>
+<p>The Help page has:</p>
+<ul>
+<li><strong>Manuals</strong>: the manuals you can open.</li>
+<li><strong>How do I\u2026</strong>: short answers for common tasks.</li>
+<li><strong>Keyboard shortcuts</strong>: the full list.</li>
+<li><strong>Glossary</strong>: what terms such as <strong>Planned publish date</strong> and <strong>Media distribution lists</strong> mean.</li>
+</ul>
+`,changed:"2026-10-30"},U={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
+<p>You can open every news release, story, factsheet and advisory in the Hub: drafts, scheduled releases and published ones. You can&#39;t change them. If something needs changing, ask a release editor.</p>
+<h2>What you can do</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What you do there</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Releases</strong></td>
+<td>See the drafts, scheduled and published releases, and what is coming up on <strong>Forecast</strong>.</td>
+<td><a href="/hub/help/manuals/nrms-viewer/viewer-release-folders">The release folders</a></td>
+</tr>
+<tr>
+<td>The release itself</td>
+<td>Read its text, details and files, open its PDF or public page, and email yourself a copy.</td>
+<td><a href="/hub/help/manuals/nrms-viewer/viewer-read-a-release">Read a release</a></td>
+</tr>
+<tr>
+<td><strong>Find a release</strong> and <strong>Search</strong></td>
+<td>Open a release by its number, or find it by its headline.</td>
+<td><a href="/hub/help/manuals/nrms-viewer/viewer-find-a-release">Find a release</a></td>
+</tr>
+<tr>
+<td><strong>Website</strong></td>
+<td>See which releases are featured on the public site, and every change made to the site.</td>
+<td><a href="/hub/help/manuals/nrms-viewer/viewer-featured-and-log">What&#39;s featured where and the Website log</a></td>
+</tr>
+</tbody></table></div>
+<p>Release editors also see <strong>New release</strong>, <strong>Actions</strong> and <strong>Similar published releases</strong>. You don&#39;t. They have their own manual, the Releases editor manual.</p>
+<h2>What you see in the side menu</h2>
+<p>At the top is <strong>Find a release</strong>. Under <strong>Work</strong> you see <strong>Releases</strong>, <strong>Search</strong> and <strong>Website</strong>.</p>
+<p>You may also see <strong>Subscribers</strong> or <strong>Calendar</strong> if you have a role there. Those have their own manuals.</p>
+<h2>Signing in</h2>
+<p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
+`,changed:"2026-10-30"},Y={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
+<p><strong>Releases</strong> has four tabs. <strong>Releases</strong> in the side menu opens the tab you had open last, or <strong>Drafts</strong>.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>What it lists</th>
+<th>In what order</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Forecast</strong></td>
+<td>Releases planned or scheduled from now on, and the Calendar activities a release may be planned for.</td>
+<td>By time.</td>
+</tr>
+<tr>
+<td><strong>Drafts</strong></td>
+<td>Releases not yet scheduled or published: drafts, approved releases and failed ones.</td>
+<td>Those planned for today or earlier first, then those with no planned time, then later ones.</td>
+</tr>
+<tr>
+<td><strong>Scheduled</strong></td>
+<td>Releases set to publish at a time.</td>
+<td>Soonest first.</td>
+</tr>
+<tr>
+<td><strong>Published</strong></td>
+<td>Releases on the public site, and advisories that have been sent.</td>
+<td>Newest first.</td>
+</tr>
+</tbody></table></div>
+<p>Each row shows the type, the lead ministry, the status and the date. It also shows the page title if it isn&#39;t the same as the type, and the Calendar activity it is linked to. On <strong>Drafts</strong> it shows who changed it last. Choose the headline to open the release.</p>
+<p>To see one kind only, choose it in <strong>Type</strong>: <strong>Release</strong>, <strong>Story</strong>, <strong>Factsheet</strong> or <strong>Advisory</strong>. The Hub remembers your choice on every tab. If nothing matches, choose <strong>Show every type</strong>.</p>
+<p>Each page shows 25 releases. Use <strong>Previous</strong> and <strong>Next</strong> to move between pages.</p>
+<h2>What the status means</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Draft</strong></td>
+<td>Not yet approved.</td>
+</tr>
+<tr>
+<td><strong>Approved</strong></td>
+<td>Approved and given a reference number, but not yet published or scheduled.</td>
+</tr>
+<tr>
+<td><strong>Planned</strong></td>
+<td>It has a planned publish date, but nothing is committed. A planned release that is approved also shows an <strong>Approved</strong> badge.</td>
+</tr>
+<tr>
+<td><strong>Scheduled</strong></td>
+<td>It will publish at the time shown.</td>
+</tr>
+<tr>
+<td><strong>Publishing...</strong></td>
+<td>Its time has come and it is going out now.</td>
+</tr>
+<tr>
+<td><strong>Republishing...</strong></td>
+<td>A correction is going out.</td>
+</tr>
+<tr>
+<td><strong>Published</strong></td>
+<td>It is on the public site. An advisory shows <strong>Sent</strong> instead.</td>
+</tr>
+<tr>
+<td><strong>Unpublishing...</strong></td>
+<td>It is being taken off the public site.</td>
+</tr>
+<tr>
+<td><strong>Failed</strong></td>
+<td>Publishing didn&#39;t work. Open it to see why.</td>
+</tr>
+</tbody></table></div>
+<p>A <strong>Flickr alert</strong> badge means the release went out without its Flickr photo.</p>
+<h2>The Forecast</h2>
+<p><strong>Forecast</strong> shows what is coming up.</p>
+<p>Calendar activities appear only if you have Calendar access, and only the ones you can see in the Calendar. Choose an activity&#39;s title to open it in the Calendar. An activity that already has a release planned or scheduled is shown as that release instead. Without Calendar access, the tab says &quot;Calendar activities are listed here for people with Calendar access. Ask a Calendar administrator if you need it.&quot;</p>
+`,changed:"2026-10-30"},Q={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
+<p>You see a release just as a release editor does, but you can&#39;t change anything and there is nothing to save.</p>
+<p>At the top are its type, status, reference number and headline. A draft may also list what is still missing, under &quot;Before this can be approved:&quot; or &quot;Before this can be published:&quot;. Those lists are for the release editor.</p>
+<p>If you see &quot;This page updates on its own until the release is done \u2014 no need to reload.&quot;, the release is being published or taken off the site. Its status changes by itself.</p>
+<p>On a wide screen, the release is on the left, and <strong>Publish settings</strong> and <strong>Release info</strong> are on the right. On a narrow screen they come one after another.</p>
+<h2>The release</h2>
+<ul>
+<li><strong>Documents</strong>: each document&#39;s page title, headline, body and contacts. If a document has French text, choose its <strong>French</strong> tab to read it.</li>
+<li><strong>Page details</strong>: the URL key, location, summary, social media summary and keywords.</li>
+<li><strong>Categories</strong>: the ministries, sectors, themes and tags it is filed under. Choose <strong>Show categories</strong> to see every choice.</li>
+<li><strong>Top / Feature</strong>: where the release is a Top or Feature on the public site, such as &quot;Top on Home&quot;. Choose <strong>Show Top / Feature</strong> to see every place.</li>
+<li><strong>Media asset</strong>: the photo or video shown with the release, if it has one.</li>
+<li><strong>Files</strong>: translations and media files. Choose a file&#39;s name to open it.</li>
+</ul>
+<h2>Publish settings</h2>
+<p><strong>Publish settings</strong> shows the planned publish date, if there is one. It also shows whether the release goes to News On Demand subscribers, and which media distribution lists it is sent to.</p>
+<h2>Release info</h2>
+<ul>
+<li><strong>Key</strong> and <strong>Reference (NEWS number)</strong>, or &quot;(none yet)&quot;.</li>
+<li><strong>View on site</strong> opens the public page in a new tab. It works only while the release is published.</li>
+<li><strong>View PDF</strong> opens the release as a PDF in a new tab.</li>
+<li><strong>Email me a copy</strong> emails the release to you. You see &quot;Sent to&quot; and your address. The release&#39;s <strong>History</strong> records that you did.</li>
+<li><strong>History</strong> lists what was done and by whom. Tick <strong>Show all</strong> to include every edit.</li>
+<li><strong>Published copies</strong> lists each time it went out.</li>
+</ul>
+<p>If you see &quot;This release doesn&#39;t exist, or has been deleted.&quot;, it was deleted, or the link you followed is wrong.</p>
+<h2>The public news site</h2>
+<p><strong>View on site</strong> takes you to the public news site. The site has a page for every ministry, sector, theme and tag, each with its latest 20 posts and an RSS feed. Older news is in the archive, one page per month. Each ministry page also shows its minister, its media contacts, the ministry&#39;s website, and its featured topics and services.</p>
+<p>The site&#39;s <strong>Search</strong> page searches every published post. You can narrow it by <strong>Ministry</strong>, <strong>Sector</strong>, <strong>Content</strong> or <strong>Date</strong>. Each ministry and sector page links to it.</p>
+<p>The <strong>Connect</strong> page lists the government&#39;s social media accounts and the site&#39;s RSS feeds.</p>
+`,changed:"2026-10-30"},B={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
+<h2>Open a release you know</h2>
+<ol>
+<li>Type into <strong>Find a release</strong>, at the top of the side menu, one of:<ul>
+<li>its reference number, such as NEWS-00007, or just 00007;</li>
+<li>its release number or URL key, such as 2026HLTH0003-000008;</li>
+<li>its public web address.</li>
+</ul>
+</li>
+<li>Choose <strong>Find</strong>.</li>
+</ol>
+<p>The release opens. If nothing has that number, you get <strong>Search</strong> results for what you typed instead.</p>
+<h2>Search</h2>
+<ol>
+<li>Choose <strong>Search</strong> in the side menu.</li>
+<li>Type part of the headline in <strong>Search</strong>, word for word. Capitals don&#39;t matter.</li>
+<li>To narrow it, choose a <strong>Ministry</strong> or <strong>Sector</strong>. On its own, without words in <strong>Search</strong>, this does nothing.</li>
+<li>Choose <strong>Search</strong>.</li>
+</ol>
+<p>Typing a reference number, release number or web address here opens the release directly, as <strong>Find a release</strong> does.</p>
+<p>Before you search, <strong>Search</strong> lists the five most recently published releases.</p>
+<p>Results include drafts, scheduled and published releases, newest first, 20 to a page. Deleted releases don&#39;t appear. If nothing matches, you see &quot;No releases match&quot; and your words. If a ministry or sector is chosen, choose <strong>Clear ministry and sector filters</strong> to try again without them.</p>
+<p>Search looks at headlines only. To find a published release by other words, use the public site&#39;s own <strong>Search</strong> page.</p>
+<p>To find the releases linked to a Calendar activity, search for its reference with a ministry prefix, such as HLTH-123. If no release is linked to it, or you can&#39;t see that activity in the Calendar, you also get the releases with those words in the headline. So COVID-19 finds headlines that mention COVID-19.</p>
+`,changed:"2026-10-30"},z={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
+<p>On <strong>Website</strong> you see two tabs. Both only show information.</p>
+<h2>What&#39;s featured where</h2>
+<p>The table lists each place on the public site that has a Top or Feature release: <strong>Home</strong>, and each ministry, sector or theme page. <strong>Top</strong> and <strong>Feature</strong> show the release&#39;s headline. A dash means the spot is empty. If nothing is set anywhere, the tab says &quot;Nothing is currently Top or Feature anywhere.&quot;</p>
+<p>Choose a headline to open the release. Release editors choose the Top and Feature releases.</p>
+<h2>Website log</h2>
+<p><strong>Website log</strong> lists every change to the public site&#39;s content, newest first: <strong>When</strong>, <strong>Who</strong>, <strong>Area</strong> and <strong>What</strong>. It shows the latest 200 entries.</p>
+<p>To see one kind of change, choose it in <strong>Filter by area</strong>, such as <strong>Features</strong> or <strong>Carousel</strong>. Choose <strong>(all)</strong> to see everything again.</p>
+<p>Release editors make the <strong>Features</strong> changes. Site editors make the others.</p>
+`,changed:"2026-10-30"},G={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
+<h2>Keyboard shortcuts</h2>
+<p>On a Mac, use Command instead of Ctrl.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Ctrl+K</td>
+<td>Goes to the search or filter box: <strong>Type</strong> on the folders, the <strong>Search</strong> box on <strong>Search</strong>, and <strong>Find a release</strong> everywhere else.</td>
+</tr>
+<tr>
+<td>Esc</td>
+<td>Closes an open panel, such as <strong>Show categories</strong>, or a menu.</td>
+</tr>
+</tbody></table></div>
+<p>The Help page lists other shortcuts, such as Ctrl+S to save. On the release screens they do nothing for you, because there is nothing for you to change.</p>
+<h2>Help</h2>
+<p><strong>Help</strong>, at the top of every screen, opens the page of this manual for the screen you are on. On a screen this manual doesn&#39;t cover, it opens the Help page.</p>
+<p>The Help page has:</p>
+<ul>
+<li><strong>Manuals</strong>: the manuals you can open.</li>
+<li><strong>How do I\u2026</strong>: short answers for common tasks. Some of them, such as starting or publishing a release, need a release editor.</li>
+<li><strong>Keyboard shortcuts</strong>: the full list.</li>
+<li><strong>Glossary</strong>: what terms such as <strong>Planned publish date</strong> and <strong>Media distribution lists</strong> mean.</li>
+</ul>
+`,changed:"2026-10-30"},K={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+<p>You run News On Demand, the service that emails news releases to the public and to reporters. You decide which lists people can subscribe to, you can stop and start all outgoing email, and you watch bounces.</p>
+<h2>What only you can do</h2>
+<p>Subscribers editors and Subscribers viewers can open the same screens, but only you can change these.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>What it controls</th>
+<th>Who notices</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Subscribers</strong> &gt; <strong>Lists and categories</strong></td>
+<td>Which lists the public can choose, and their order.</td>
+<td>People signing up on the public site, and staff adding subscribers. Existing subscribers keep their lists.</td>
+<td><a href="/hub/help/manuals/nod-admin/lists-and-categories">Lists and categories</a></td>
+</tr>
+<tr>
+<td><strong>Subscribers</strong> &gt; <strong>Operations</strong></td>
+<td>Pausing News On Demand sending or all email, the daily bounce summary, which soft bounces count, and the retention purge.</td>
+<td>Every subscriber and reporter. A pause holds their email until you resume.</td>
+<td><a href="/hub/help/manuals/nod-admin/subscriber-operations">Operations</a></td>
+</tr>
+</tbody></table></div>
+<p><strong>Operations</strong> is in the <strong>Subscribers</strong> menu for you only.</p>
+<h2>What you share with Subscribers editors</h2>
+<p>Subscribers editors can do these as well. Subscribers viewers can only look.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>What you do there</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Find subscribers</strong></td>
+<td>Search, change preferences and email addresses, deactivate, delete.</td>
+<td><a href="/hub/help/manuals/nod-admin/find-and-change-subscribers">Find and change subscribers</a></td>
+</tr>
+<tr>
+<td><strong>Add a subscriber</strong></td>
+<td>Sign someone up without a confirmation email.</td>
+<td><a href="/hub/help/manuals/nod-admin/add-a-subscriber">Add a subscriber</a></td>
+</tr>
+<tr>
+<td><strong>Media lists</strong></td>
+<td>Add and remove reporters, and fix flagged members.</td>
+<td><a href="/hub/help/manuals/nod-admin/subscriber-media-lists">Media lists</a></td>
+</tr>
+<tr>
+<td><strong>Reports</strong></td>
+<td>Counts, unsubscribes and sends, with CSV downloads.</td>
+<td><a href="/hub/help/manuals/nod-admin/subscriber-reports">Reports</a></td>
+</tr>
+</tbody></table></div>
+<p>The <a href="/hub/help/manuals/nod-editor">Subscribers editor manual</a> and the <a href="/hub/help/manuals/nod-viewer">Subscribers viewer manual</a> are written for those roles.</p>
+<h2>Before you start</h2>
+<ul>
+<li><a href="/hub/help/manuals/nod-admin/who-gets-which-email">Who gets which email</a> explains what each subscriber receives and when.</li>
+<li><a href="/hub/help/manuals/nod-admin/bounces">Bounces</a> explains how bounced email disables a subscriber, and what the daily bounce summary tells you.</li>
+</ul>
+<p>Subscriber records are personal information. Search for, download and keep addresses only when your work needs them.</p>
+<h2>What you see in the side menu</h2>
+<p>Under <strong>Work</strong> you see <strong>Subscribers</strong>. Its tabs are <strong>Find subscribers</strong>, <strong>Add a subscriber</strong>, <strong>Lists and categories</strong>, <strong>Media lists</strong>, <strong>Reports</strong> and <strong>Operations</strong>.</p>
+<p>Media list names are set by Core administrators on their <strong>Media list names</strong> screen. Ask a Core administrator to add, rename or retire a media list.</p>
+`,changed:"2026-10-30"},V={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+<p>Only <strong>Active</strong> subscribers get news email. <strong>Pending</strong>, <strong>Disabled</strong> and <strong>Unsubscribed or deleted</strong> subscribers get none.</p>
+<h2>News releases</h2>
+<p>Each subscriber chooses lists and a timing. Lists are ministries, sectors, themes and tags. <strong>All news</strong> covers every release that names a ministry.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Timing</th>
+<th>What they get</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>As it happens</strong></td>
+<td>One email for each matching release, soon after it is published.</td>
+</tr>
+<tr>
+<td><strong>Daily digest</strong></td>
+<td>One email at 5:00 pm BC time listing the matching releases since the last digest. Media advisories are left out. No matching releases means no digest.</td>
+</tr>
+<tr>
+<td><strong>As it happens and daily digest</strong></td>
+<td>Both.</td>
+</tr>
+<tr>
+<td><strong>None (media lists only)</strong></td>
+<td>No news release email. This person is here only for media lists.</td>
+</tr>
+</tbody></table></div>
+<p>A correction to a release never emails anyone again. If a release is unpublished, anything not yet sent is stopped, and it stays out of later digests.</p>
+<h2>Emergency alerts</h2>
+<p>Alerts posted by Emergency Info BC are checked every 5 minutes. A new alert goes at once to everyone active on the <strong>Emergency Info BC Alerts</strong> list, whatever timing they chose. An alert edited later is not sent again.</p>
+<h2>Media lists</h2>
+<p>Release editors choose media lists for a release. Each member of those lists gets the full-text media version. A reporter who is also an <strong>As it happens</strong> subscriber for that release gets one email, the media version, not two.</p>
+<h2>Emails about the subscription itself</h2>
+<p>People who sign up on the public site get an email asking them to confirm. They have no record here until they do. They also get an email when they ask to change their preferences or address. These emails still go out while sending is paused.</p>
+<p>Nothing you do on the <strong>Subscribers</strong> screens emails the subscriber. Adding, changing, deactivating and deleting are all silent. Tell the person yourself if they need to know.</p>
+`,changed:"2026-10-30"},j={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+<p><strong>Find subscribers</strong> lists everyone who has signed up or been added, 50 to a page. From a subscriber&#39;s record you change their lists, their address and whether they get email.</p>
+<h2>Find someone</h2>
+<ol>
+<li>Type part of their address in <strong>Email contains</strong>.</li>
+<li>To narrow the list, choose a <strong>Status</strong>.</li>
+<li>Choose <strong>Search</strong>.</li>
+<li>Choose an address to open that subscriber&#39;s record. <strong>Back to results</strong> on the record returns you to the same results.</li>
+</ol>
+<p>The <strong>Status</strong> column shows one of these:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Status</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Pending</strong></td>
+<td>Never confirmed. They get nothing. Rare; such records are deleted after 10 days when the retention purge is on.</td>
+</tr>
+<tr>
+<td><strong>Active</strong></td>
+<td>They get the email they chose.</td>
+</tr>
+<tr>
+<td><strong>Disabled</strong></td>
+<td>They get nothing. Staff deactivated them, or their email kept bouncing. Their lists are kept.</td>
+</tr>
+<tr>
+<td><strong>Unsubscribed or deleted</strong></td>
+<td>They get nothing. Only they can subscribe again.</td>
+</tr>
+</tbody></table></div>
+<p>&quot;(needs attention)&quot; after a status means a media list member has a problem to fix on <strong>Media lists</strong>.</p>
+<h2>Read a subscriber&#39;s record</h2>
+<p>The record shows <strong>Status</strong>, <strong>Source</strong>, <strong>Registered</strong> and, once they have left, <strong>Ended</strong>.</p>
+<ul>
+<li><strong>Disabled \u2014 after repeated bounces</strong> means bounces disabled them. <strong>Disabled \u2014 by staff</strong> means someone deactivated them.</li>
+<li><strong>Bounced emails counted (last 15 days)</strong> shows how close they are to being disabled. See <a href="/hub/help/manuals/nod-admin/bounces">Bounces</a>.</li>
+<li><strong>Media lists</strong> names the media lists they are on. Change those on <strong>Media lists</strong>.</li>
+<li><strong>History</strong> lists every change: when, what, who, and details. Adding a <strong>Disabled</strong> record to a media list also shows &quot;Added to a media list while Disabled. News release email stays off&quot;. &quot;Subscriber&quot; means the person did it themselves. &quot;Bounce processing&quot; and &quot;Media Hub sync&quot; are automatic. The most recent 500 entries are shown.</li>
+</ul>
+<h2>Change their lists or timing</h2>
+<ol>
+<li>Open their record. <strong>Preferences</strong> shows for <strong>Active</strong> and <strong>Disabled</strong> subscribers.</li>
+<li>Tick <strong>As it happens</strong>, <strong>Daily digest</strong>, or both.</li>
+<li>Under <strong>Lists</strong>, tick <strong>All news</strong>, or tick the lists they want. Lists they have that are no longer offered show under <strong>No longer offered</strong>. They keep those unless you untick them.</li>
+<li>Choose <strong>Save preferences</strong>. You see &quot;Preferences saved.&quot;</li>
+</ol>
+<p>The change applies to the next email. Nobody is emailed about it.</p>
+<h2>Change their email address</h2>
+<ol>
+<li>Open their record.</li>
+<li>Enter the address in <strong>New email</strong> and again in <strong>Confirm new email</strong>.</li>
+<li>Choose <strong>Change email</strong>. You see &quot;Email address changed. No confirmation email was sent.&quot; and the new address shows at the top of the record.</li>
+</ol>
+<p>No confirmation email is sent. Links in emails already sent to the old address stop working, except the unsubscribe links.</p>
+<p>If the new address once unsubscribed from a media list this person is on, the Hub asks &quot;That address unsubscribed&quot;. Choose <strong>Change anyway</strong> only if they have asked to get media releases there again. It counts as adding them back to those lists.</p>
+<p>For a Media Hub contact, the record says &quot;This address is managed in Media Hub. Change it there.&quot; The address can&#39;t be changed here.</p>
+<h2>Deactivate or activate someone</h2>
+<ol>
+<li>Open their record.</li>
+<li>Choose <strong>Deactivate</strong>. The Hub asks &quot;Deactivate this subscriber?&quot; and explains &quot;They receive nothing until activated again. Their lists, including media lists, are kept.&quot;</li>
+<li>Choose <strong>Confirm deactivate</strong>. Their status becomes <strong>Disabled \u2014 by staff</strong>.</li>
+</ol>
+<p>To bring back a <strong>Disabled</strong> subscriber, choose <strong>Activate</strong>. It happens at once, without a question. You see &quot;Activated. Their bounce count starts again.&quot;</p>
+<h2>Delete someone</h2>
+<p>Delete when a person asks to stop all email, or when an address must be removed.</p>
+<ol>
+<li>Open their record.</li>
+<li>Choose <strong>Delete</strong>. The Hub asks &quot;Delete this subscriber?&quot; and explains &quot;They stop receiving email and are removed from every media list. Only they can subscribe again.&quot;</li>
+<li>Choose <strong>Confirm delete</strong>.</li>
+</ol>
+<p>What this does:</p>
+<ul>
+<li>Their status becomes <strong>Unsubscribed or deleted</strong> at once. Staff can&#39;t undo it, and <strong>Add a subscriber</strong> refuses their address while the record exists.</li>
+<li>They are taken off every media list. Deleting isn&#39;t an unsubscribe, so it doesn&#39;t by itself make the Hub ask when you add them to a media list later.</li>
+<li>The record, with their address and history, stays until the retention purge removes it. When the purge is on, it permanently deletes these records 90 days after they ended. See <a href="/hub/help/manuals/nod-admin/subscriber-operations">Operations</a>.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<p>A <strong>Pending</strong> subscriber&#39;s record has only <strong>Delete</strong>.</p>
+<h2>Change several at once</h2>
+<ol>
+<li>Search for the subscribers.</li>
+<li>Tick the box beside each one. The box in the heading row ticks the whole page.</li>
+<li>Choose <strong>Activate selected</strong>, <strong>Deactivate selected</strong> or <strong>Delete selected</strong>. The button shows how many you ticked.</li>
+<li>Read the question, then choose <strong>Confirm activate</strong>, <strong>Confirm deactivate</strong> or <strong>Confirm delete</strong>.</li>
+</ol>
+<p>Only the ticked rows on the page you are looking at are changed. A message such as &quot;1 changed. 1 skipped: already in that state.&quot; tells you the result. Rows are skipped when they are already in that state, or when their status doesn&#39;t allow it, such as activating someone who unsubscribed.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;The two email addresses don&#39;t match.&quot;</td>
+<td>Type the same address in both boxes.</td>
+</tr>
+<tr>
+<td>&quot;Another subscriber record already has that address.&quot;</td>
+<td>Choose <strong>Open that record</strong> to see it. Two records can&#39;t share an address.</td>
+</tr>
+<tr>
+<td>&quot;This address is managed in Media Hub. Change it there.&quot;</td>
+<td>Update the contact in Media Hub. The nightly Media Hub sync brings the change here.</td>
+</tr>
+<tr>
+<td>&quot;Choose As It Happens, Daily Digest, or both.&quot;</td>
+<td>A subscriber with lists needs a timing.</td>
+</tr>
+<tr>
+<td>&quot;Choose at least one list, or all news.&quot;</td>
+<td>Tick a list or <strong>All news</strong>. Only someone on a media list can have no lists here.</td>
+</tr>
+<tr>
+<td>&quot;This subscriber&#39;s status changed; reload.&quot;</td>
+<td>Someone else changed them. Reload the page.</td>
+</tr>
+<tr>
+<td>&quot;Subscriber not found.&quot;</td>
+<td>The record was removed by the retention purge, or the address in your browser is wrong.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},J=null,X={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+<p><strong>Lists and categories</strong> decides which lists people can choose when they subscribe, and the order they see them in. Each list shows how many active subscribers it has.</p>
+<p>The categories are <strong>Ministries</strong>, <strong>Sectors</strong>, <strong>Themes</strong>, <strong>Tags</strong>, <strong>Emergency Info BC</strong> and <strong>Media distribution lists</strong>. List names come from elsewhere and can&#39;t be changed here:</p>
+<ul>
+<li>Ministry, sector, theme and tag names are set by Core administrators.</li>
+<li>Media list names, order and status are set by Core administrators on <strong>Media list names</strong>. Under <strong>Media distribution lists</strong> the screen says &quot;Media lists aren&#39;t changed here. Core administrators set these on Media list names.&quot;</li>
+</ul>
+<p>The <strong>Offered</strong> column shows whether people can choose each list:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Offered</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Yes</strong></td>
+<td>People can choose it.</td>
+</tr>
+<tr>
+<td><strong>No</strong></td>
+<td>You stopped offering it.</td>
+</tr>
+<tr>
+<td><strong>No (retired)</strong></td>
+<td>The list was retired where its name is set, such as a ministry that no longer exists.</td>
+</tr>
+<tr>
+<td><strong>No (category not offered)</strong></td>
+<td>You stopped offering its whole category.</td>
+</tr>
+<tr>
+<td><strong>No (media list)</strong></td>
+<td>A media list. People never choose media lists themselves.</td>
+</tr>
+</tbody></table></div>
+<h2>Stop offering a list or a category</h2>
+<ol>
+<li>Untick <strong>Offer</strong> and the list&#39;s name, such as <strong>Offer Seniors</strong>, on its row. To stop a whole category, untick <strong>Offer</strong> and the category&#39;s name under its heading.</li>
+<li>&quot;Saved&quot; appears beside the box. There is no question first.</li>
+</ol>
+<p>The list disappears from the public subscribe page and from the staff <strong>Lists</strong> choices. People who already have it keep it, and still get its releases.</p>
+<p>To offer it again, tick the box again.</p>
+<h2>Change the order</h2>
+<ol>
+<li>Choose <strong>Move</strong> and the list&#39;s name with <strong>up</strong> or <strong>down</strong>, such as <strong>Move Finance up</strong>.</li>
+<li>You see &quot;Finance moved up.&quot;</li>
+</ol>
+<p>Categories move the same way, with <strong>Move Ministries up</strong> and so on. The public subscribe page shows lists in this order.</p>
+<h2>What happens next</h2>
+<ul>
+<li>Changes apply at once.</li>
+<li>Nobody&#39;s subscription is removed, and nobody is emailed.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;The lists changed while you were looking. They&#39;ve been reloaded; try again.&quot;</td>
+<td>Someone else changed the order, or a list was added. Try the move again.</td>
+</tr>
+<tr>
+<td>&quot;Media lists aren&#39;t changed here. Core administrators set these on Media list names.&quot;</td>
+<td>Media lists can&#39;t be offered or reordered here.</td>
+</tr>
+<tr>
+<td>&quot;Not saved: Couldn&#39;t save. Try again.&quot;</td>
+<td>The change didn&#39;t save. Try again.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},Z={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+<p><strong>Media lists</strong> holds the reporters on each media list. Release editors pick these lists on a release, and every member gets the full-text media version.</p>
+<p>The table shows each list&#39;s <strong>Members</strong>, how many <strong>Need attention</strong>, and its <strong>Status</strong>. A <strong>Retired</strong> list can no longer be put on a release. Core administrators add, rename and retire lists on <strong>Media list names</strong>.</p>
+<p>Choose a list&#39;s name to open it.</p>
+<h2>Add a reporter from Media Hub</h2>
+<ol>
+<li>Open the list.</li>
+<li>Under <strong>Add from Media Hub</strong>, type a name, email or outlet in <strong>Name, email or outlet</strong>.</li>
+<li>Choose <strong>Search Media Hub</strong>. Each contact shows their addresses, with the preferred one marked.</li>
+<li>Choose <strong>Add</strong> and the address you want. You see &quot;Added to the list.&quot;</li>
+</ol>
+<h2>Add an address by hand</h2>
+<p>Use this for people who aren&#39;t in Media Hub.</p>
+<ol>
+<li>Open the list.</li>
+<li>Under <strong>Add an address by hand</strong>, enter the <strong>Email address</strong>.</li>
+<li>Choose <strong>Add to list</strong>. You see &quot;Added to the list.&quot;</li>
+</ol>
+<h2>What adding does</h2>
+<ul>
+<li>The reporter is not emailed. They get the next release sent to this list.</li>
+<li>A new address gets a record that receives media email only.</li>
+<li>An address that is already <strong>Active</strong> keeps its news release email as it was.</li>
+<li>If the address already has a record that is <strong>Disabled</strong> or <strong>Unsubscribed or deleted</strong>, adding makes it <strong>Active</strong> again, for media email only. <strong>As it happens</strong>, <strong>Daily digest</strong> and their news lists are switched off. Media lists they were already on are kept.</li>
+<li>For a <strong>Disabled</strong> person, their bounce count starts again, and <strong>History</strong> shows &quot;Added to a media list while Disabled. News release email stays off&quot;, with what was switched off under <strong>Detail</strong>.</li>
+<li>When the address was <strong>Disabled</strong>, you see &quot;Added to the list. Their news release email stays off; open their record to turn it on.&quot; instead of &quot;Added to the list.&quot;</li>
+<li>If a <strong>Disabled</strong> person also wants news release email again, choose <strong>open their record</strong> in that message. Tick <strong>As it happens</strong> or <strong>Daily digest</strong> and their lists, then choose <strong>Save preferences</strong>.</li>
+<li>When you add someone, the Hub may ask &quot;This person unsubscribed&quot; and say when. It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose <strong>Add anyway</strong>. Adding them back clears the question for this list, unless they unsubscribe again.</li>
+</ul>
+<h2>Remove a reporter</h2>
+<ol>
+<li>Open the list.</li>
+<li>Choose <strong>Remove</strong> and their address on their row. The Hub asks &quot;Remove [their address] from this list?&quot; and explains &quot;If this is their last list and they were added only for media lists, they stop receiving email altogether.&quot;</li>
+<li>Choose <strong>Confirm remove</strong>. You see &quot;Removed from the list.&quot;</li>
+</ol>
+<p>Nobody is emailed. If it was their last list and they were added only for media lists, their status becomes <strong>Unsubscribed or deleted</strong>. Removing them isn&#39;t an unsubscribe, so it doesn&#39;t by itself make the Hub ask when you add them back.</p>
+<h2>Fix a member who needs attention</h2>
+<p>A flagged member shows the reason under <strong>Needs attention</strong>:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>What happened</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Bouncing</strong></td>
+<td>Their last 10 emails in 15 days all bounced. They are still on the list and still sent email.</td>
+</tr>
+<tr>
+<td><strong>Media Hub email removed</strong></td>
+<td>The address they use was removed from their Media Hub contact.</td>
+</tr>
+<tr>
+<td><strong>Media Hub email belongs to another subscriber</strong></td>
+<td>Media Hub moved them to an address another record already has.</td>
+</tr>
+<tr>
+<td><strong>Media Hub email isn&#39;t valid</strong></td>
+<td>Media Hub has an address that isn&#39;t a real email address.</td>
+</tr>
+<tr>
+<td><strong>Media Hub email opted out of a media list this member is on</strong></td>
+<td>Media Hub moved them to an address that unsubscribed from one of their lists, so they were kept at their old address.</td>
+</tr>
+</tbody></table></div>
+<p>To fix a bouncing member:</p>
+<ol>
+<li>Check with Media Relations that their mailbox works again.</li>
+<li>Choose <strong>Resolve</strong> and their address. The Hub asks &quot;Clear the bouncing flag?&quot;</li>
+<li>Choose <strong>Clear flag</strong>. You see &quot;Resolved. Their bounce count starts again.&quot;</li>
+</ol>
+<p>To fix a Media Hub problem:</p>
+<ol>
+<li>Choose <strong>Resolve</strong> and their address. <strong>Resolve this member</strong> shows their Media Hub addresses.</li>
+<li>Choose the address to use, then <strong>Use this email</strong>. You see &quot;Email updated and flag cleared.&quot;</li>
+<li>Or choose <strong>Clear the flag only</strong> to keep their current address. For an opted-out address, the next Media Hub sync flags them again. Update the contact in Media Hub instead, or remove them and add them again.</li>
+</ol>
+<h2>Left this list</h2>
+<p>This section lists people who left this list, with when they left and whether they are <strong>Back on the list</strong>. The screen explains &quot;They unsubscribed, or left it in the old system.&quot; Someone you removed in the Hub isn&#39;t listed. The most recent 200 are shown.</p>
+<h2>Media Hub sync</h2>
+<p>Every night, News On Demand picks up changed Media Hub contacts. <strong>Media Hub sync</strong> shows when it last ran and what it changed.</p>
+<p>To run it now, choose <strong>Sync with Media Hub now</strong>. You see &quot;Sync finished.&quot; and its counts. A long sync may stop part-way and carry on at the next scheduled run.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;That isn&#39;t a valid email address.&quot;</td>
+<td>Check the address.</td>
+</tr>
+<tr>
+<td>&quot;Media Hub isn&#39;t responding. Try again, or add the address by hand.&quot;</td>
+<td>Media Hub is down.</td>
+</tr>
+<tr>
+<td>&quot;Media Hub isn&#39;t set up on this site. Add the address by hand instead.&quot;</td>
+<td>This site has no Media Hub connection.</td>
+</tr>
+<tr>
+<td>&quot;That contact or email is no longer in Media Hub.&quot;</td>
+<td>Search Media Hub again.</td>
+</tr>
+<tr>
+<td>&quot;A sync is already running. Try again in a few minutes.&quot;</td>
+<td>Wait for the running sync to finish.</td>
+</tr>
+<tr>
+<td>&quot;That address belongs to another subscriber. Choose another email, or remove this member.&quot;</td>
+<td>Pick a different address.</td>
+</tr>
+<tr>
+<td>&quot;This member changed while you were looking. Close this, and try again.&quot;</td>
+<td>Someone else changed them. Close the box and try again.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t remove. Try again.&quot;</td>
+<td>The removal didn&#39;t save.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},_=null,$={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+<p><strong>Operations</strong> stops and starts outgoing email, sets who gets the daily bounce summary, and controls the retention purge. Only Subscribers administrators see it.</p>
+<h2>Pause News On Demand sending</h2>
+<p>Pause this to hold news email, for example during an election period or while a problem is fixed.</p>
+<ol>
+<li>Under <strong>News On Demand sending</strong>, choose <strong>Pause News On Demand sending</strong>. The Hub asks &quot;Pause News On Demand sending?&quot; and explains &quot;News On Demand keeps recording releases and building emails but holds them until you resume. Nothing is dropped.&quot; and says who is emailed about it.</li>
+<li>Choose <strong>Confirm pause</strong>. You see &quot;News On Demand sending paused.&quot; and the section shows <strong>Paused</strong>.</li>
+</ol>
+<p>While paused, no as-it-happens, digest, emergency alert or media list email leaves News On Demand. Confirmation emails to people signing up still go out.</p>
+<p>To resume, choose <strong>Resume News On Demand sending</strong>, then <strong>Confirm resume</strong>. The Hub warns that held emails start going out straight away.</p>
+<h2>Pause Distribution</h2>
+<p>Distribution is the service that sends email for every app. Pause it only when email from all of them must stop.</p>
+<ol>
+<li>Under <strong>Distribution</strong>, choose <strong>Pause Distribution</strong>. The Hub asks &quot;Pause Distribution?&quot; and explains &quot;No email goes out from any app, except system notices, until you resume. Queued email is kept.&quot; and says who is emailed about it.</li>
+<li>Choose <strong>Confirm pause</strong>. You see &quot;Distribution paused.&quot;</li>
+</ol>
+<p>System notices still go out while paused. These include sign-up confirmations, manage-subscription links, the bounce summary and the pause emails themselves.</p>
+<p>To resume, choose <strong>Resume Distribution</strong>, then <strong>Confirm resume</strong>. The Hub warns that queued email starts going out straight away.</p>
+<h2>Before you resume after a long pause</h2>
+<p>Everything held goes out when you resume, however old it is. After a long pause, decide first whether old releases should still be sent. An email held more than 24 hours that then fails to send is not tried again.</p>
+<h2>Who is told</h2>
+<p>Each pause and resume emails the operations inbox with your name and the time, and the question says &quot;The operations inbox is emailed.&quot; If this site has no operations inbox, nobody is emailed, and the question says &quot;No one is emailed about it.&quot; Subscribers are never told.</p>
+<h2>Bounce summary</h2>
+<p>The bounce summary is a daily email at 8:00 am listing bounced subscribers. It is sent only when there were bounces. See <a href="/hub/help/manuals/nod-admin/bounces">Bounces</a> for what it contains.</p>
+<p>The section shows where it goes now:</p>
+<ul>
+<li>&quot;Using the server default:&quot; followed by an address means no one has chosen an address here, so the site&#39;s own address is used. The box is empty on purpose.</li>
+<li>&quot;No address is set, so no summary is sent.&quot; means nobody gets it.</li>
+</ul>
+<p>To send it somewhere else:</p>
+<ol>
+<li>Enter the address in <strong>Bounce summary email</strong>.</li>
+<li>Choose <strong>Save address</strong>. You see &quot;Bounce summary address saved.&quot;</li>
+</ol>
+<p>To go back to the site&#39;s own address, choose <strong>Use the server default</strong>. You see &quot;Using the server default again.&quot; Saving the box empty does the same.</p>
+<h2>Soft bounces counted as hard</h2>
+<p>A soft bounce is a temporary failure, such as a full mailbox. Its code starts with 4. Soft bounces never count toward disabling a subscriber, except the codes you list here. Those count like a hard bounce from the next bounce on, never for earlier ones.</p>
+<ol>
+<li>Enter codes in <strong>Soft codes counted as hard</strong>, such as 4.2.2, separated by commas.</li>
+<li>Choose <strong>Save codes</strong>. You see &quot;Soft bounce codes saved.&quot;</li>
+</ol>
+<p>Leave the box empty to count none.</p>
+<h2>Emergency alerts feed</h2>
+<p>This section shows when the Emergency Info BC feed was last checked and how many alerts were new. Nothing here can be changed. A warning means the last check failed; it tries again every 5 minutes by itself.</p>
+<p>The first time a feed is read, its alerts are recorded without emailing anyone. Only alerts posted after that are sent.</p>
+<h2>Retention purge</h2>
+<p>The retention purge permanently deletes old personal information. Leave it <strong>Off</strong> until the business has set retention rules.</p>
+<p>When on, every night at 3:00 am it deletes:</p>
+<ul>
+<li>sign-ups that were never confirmed, after 10 days;</li>
+<li>people who unsubscribed or were deleted more than 90 days ago, with their history and delivery records.</li>
+</ul>
+<p>It never deletes subscribers disabled by bounces. When it deletes someone who had left a media list by unsubscribing, it keeps that they left the list, without their address, so adding that address back still asks first.</p>
+<p><strong>If it ran now, it would delete</strong> shows the counts before you turn it on. While it is on, the section also shows how its last run went. While it is off, no last run is shown.</p>
+<ol>
+<li>Choose <strong>Turn on the retention purge</strong>. The Hub asks &quot;Turn on the retention purge?&quot; and says how many subscribers and links the next run deletes &quot;for good, and keeps doing so every night. This can&#39;t be undone.&quot;</li>
+<li>Choose <strong>Turn on purge</strong>. You see &quot;Retention purge turned on.&quot;</li>
+</ol>
+<p>Deleted records can&#39;t be brought back. To stop it, choose <strong>Turn off the retention purge</strong>, then <strong>Turn off purge</strong>. Nothing more is deleted.</p>
+<p>Links in sent emails are cleared every night 10 days after they expire, whether the purge is on or off. They stopped working long before.</p>
+<p>Records imported from the old system that had already ended are kept until 90 days after the import.</p>
+<h2>Test bounce upload</h2>
+<p>This section shows on test sites only, where every email is redirected and real bounces never arrive.</p>
+<ol>
+<li>Choose a bounce message file under <strong>Bounce message (.eml)</strong>, or paste it in <strong>Or paste the message</strong>.</li>
+<li>Choose <strong>Upload bounce</strong>. You see &quot;Uploaded. Bounce processing picks it up within 15 minutes.&quot;</li>
+</ol>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Distribution isn&#39;t responding. Nothing changed.&quot;</td>
+<td>Distribution is down. Try again shortly.</td>
+</tr>
+<tr>
+<td>&quot;Distribution isn&#39;t responding, so its state is unknown. Reload the page shortly.&quot;</td>
+<td>The Hub can&#39;t tell whether Distribution is paused.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t change it. Nothing changed.&quot;</td>
+<td>The change didn&#39;t save. Try again.</td>
+</tr>
+<tr>
+<td>&quot;Enter a valid email address.&quot;</td>
+<td>Check the bounce summary address.</td>
+</tr>
+<tr>
+<td>&quot;Enter codes like 4.2.2, separated by commas.&quot;</td>
+<td>Only codes starting with 4 can be listed.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t save. Try again.&quot;</td>
+<td>The setting didn&#39;t save.</td>
+</tr>
+<tr>
+<td>&quot;Choose a .eml file or paste a message first.&quot;</td>
+<td>Add a bounce message before uploading.</td>
+</tr>
+<tr>
+<td>&quot;That file is over 1 MB.&quot;</td>
+<td>Bounce messages can be up to 1 MB.</td>
+</tr>
+<tr>
+<td>&quot;This site doesn&#39;t use the test mailbox.&quot;</td>
+<td>Bounces on this site come from the real mailbox.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},tt={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+<p>A bounce is an email that comes back undelivered. A hard bounce means the address doesn&#39;t work, such as a mailbox that no longer exists. A soft bounce is temporary, such as a full mailbox.</p>
+<h2>When a subscriber is disabled</h2>
+<p>When a subscriber&#39;s last 10 emails within 15 days have all hard-bounced, News On Demand acts on its own:</p>
+<ul>
+<li>A subscriber who is not on any media list is disabled. Their status becomes <strong>Disabled \u2014 after repeated bounces</strong>, and they get nothing more. Their record and lists are kept. The retention purge never deletes them.</li>
+<li>A media list member is never disabled. They are flagged <strong>Bouncing</strong> on <strong>Media lists</strong> and keep being sent email. Tell Media Relations.</li>
+</ul>
+<p>A daily digest counts as one email, however many releases it lists. Soft bounces don&#39;t count, unless their code is listed under <strong>Soft bounces counted as hard</strong> on <a href="/hub/help/manuals/nod-admin/subscriber-operations">Operations</a>.</p>
+<p>A subscriber&#39;s record shows <strong>Bounced emails counted (last 15 days)</strong> once any have bounced.</p>
+<h2>Bring a bounced subscriber back</h2>
+<ul>
+<li>They can sign up again on the public site. The confirmation email reaching them proves the mailbox works.</li>
+<li>Or, once you know the mailbox works, open their record and choose <strong>Activate</strong>. Their bounce count starts again.</li>
+</ul>
+<p>For a bouncing media list member, choose <strong>Resolve</strong> on the list. See <a href="/hub/help/manuals/nod-admin/subscriber-media-lists">Media lists</a>.</p>
+<h2>The daily bounce summary</h2>
+<p>The summary is emailed at 8:00 am to the address set on <strong>Operations</strong>, with the subject &quot;News On Demand - Bounce Manager&quot; and the date. It is sent only when something bounced since the last one.</p>
+<p>It has these parts:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Part</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Bounce reports processed</td>
+<td>The totals, including auto-replies and other messages that weren&#39;t bounces.</td>
+</tr>
+<tr>
+<td><strong>Hard bounces</strong>: count toward 10 in 15 days</td>
+<td>One line per bounce: the address, the code and the outcome, such as recorded, disabled or flagged.</td>
+</tr>
+<tr>
+<td><strong>Soft bounces</strong>: not counted, usually no action needed</td>
+<td>Usually nothing to do.</td>
+</tr>
+<tr>
+<td><strong>Unrecorded bounces</strong>: not counted; check the bounce mailbox</td>
+<td>Bounces that matched no news email, such as a bounced sign-up confirmation. If an address keeps appearing and the line says &quot;NoD subscriber&quot;, find and delete that subscriber.</td>
+</tr>
+</tbody></table></div>
+<p>A line in bold is a media list member. Tell Media Relations each time one appears, even if they are already flagged. The soft and unrecorded parts stop at 500 lines each and say how many more there were; the rest are in the bounce mailbox.</p>
+`,changed:"2026-10-30"},et={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+<p>You look after the people who get news release email from News On Demand: you find and change subscribers, add them, keep the media lists up to date and download reports.</p>
+<p>Subscriber records are personal information. Search for, download and keep addresses only when your work needs them.</p>
+<h2>What only you can do</h2>
+<p>Subscribers viewers can open the same screens and see the same records, but can&#39;t change anything. These are yours:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What you do there</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A subscriber&#39;s record</td>
+<td>Change their lists, timing and address. <strong>Deactivate</strong>, <strong>Activate</strong> and <strong>Delete</strong>.</td>
+<td><a href="/hub/help/manuals/nod-editor/editor-find-and-change-subscribers">Find and change subscribers</a></td>
+</tr>
+<tr>
+<td><strong>Find subscribers</strong></td>
+<td>Tick several subscribers and activate, deactivate or delete them at once.</td>
+<td><a href="/hub/help/manuals/nod-editor/editor-find-and-change-subscribers">Find and change subscribers</a></td>
+</tr>
+<tr>
+<td><strong>Add a subscriber</strong></td>
+<td>Sign someone up without a confirmation email.</td>
+<td><a href="/hub/help/manuals/nod-editor/editor-add-a-subscriber">Add a subscriber</a></td>
+</tr>
+<tr>
+<td>A media list</td>
+<td>Add and remove reporters, fix flagged members, and choose <strong>Sync with Media Hub now</strong>.</td>
+<td><a href="/hub/help/manuals/nod-editor/editor-media-lists">Media lists</a></td>
+</tr>
+<tr>
+<td><strong>Reports</strong></td>
+<td>Download the files that contain email addresses.</td>
+<td><a href="/hub/help/manuals/nod-editor/editor-subscriber-reports">Reports</a></td>
+</tr>
+</tbody></table></div>
+<p>The <a href="/hub/help/manuals/nod-viewer">Subscribers viewer manual</a> is written for viewers.</p>
+<h2>What you can&#39;t do</h2>
+<p>Subscribers administrators decide which lists people can choose, and in what order, on <strong>Lists and categories</strong>. You can see that screen but not change it. See <a href="/hub/help/manuals/nod-editor/editor-lists-and-categories">Lists and categories</a>.</p>
+<p>Only Subscribers administrators can use <strong>Operations</strong>. It pauses and resumes outgoing email and holds the bounce settings. If email needs to stop, ask a Subscribers administrator. The Subscribers administrator manual covers it.</p>
+<p>Core administrators add, rename and retire media lists. Ask one if a list is missing or its name is wrong.</p>
+<h2>Before you start</h2>
+<ul>
+<li><a href="/hub/help/manuals/nod-editor/editor-who-gets-which-email">Who gets which email</a> explains what each subscriber receives and when.</li>
+<li><a href="/hub/help/manuals/nod-editor/editor-bounces">Bounces</a> explains how bounced email disables a subscriber.</li>
+</ul>
+<p>Nothing you do on the <strong>Subscribers</strong> screens emails the subscriber. Tell the person yourself if they need to know.</p>
+<h2>What you see in the side menu</h2>
+<p>Under <strong>Work</strong> you see <strong>Subscribers</strong>. Its tabs are <strong>Find subscribers</strong>, <strong>Add a subscriber</strong>, <strong>Lists and categories</strong>, <strong>Media lists</strong> and <strong>Reports</strong>.</p>
+<p>You may also see <strong>Releases</strong> or <strong>Calendar</strong> if you have a role there. Those have their own manuals.</p>
+<h2>Keyboard shortcuts</h2>
+<p>On a Mac use Command (\u2318); on Windows use Ctrl.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>\u2318K or Ctrl+K</td>
+<td>On <strong>Find subscribers</strong>, goes to <strong>Email contains</strong>.</td>
+</tr>
+<tr>
+<td>\u2318S or Ctrl+S</td>
+<td>On a subscriber&#39;s record, saves their preferences, the same as <strong>Save preferences</strong>.</td>
+</tr>
+</tbody></table></div>
+<h2>Signing in</h2>
+<p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
+`,changed:"2026-10-30"},nt={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+<p>Only <strong>Active</strong> subscribers get news email. <strong>Disabled</strong> and <strong>Unsubscribed or deleted</strong> subscribers get none.</p>
+<h2>News releases</h2>
+<p>Each subscriber chooses lists and a timing. Lists are ministries, sectors, themes and tags. <strong>All news</strong> covers every release that names a ministry.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Timing</th>
+<th>What they get</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>As it happens</strong></td>
+<td>One email for each matching release, soon after it is published.</td>
+</tr>
+<tr>
+<td><strong>Daily digest</strong></td>
+<td>One email at 5:00 pm BC time listing the matching releases since the last digest. Media advisories are left out. No matching releases means no digest.</td>
+</tr>
+<tr>
+<td><strong>As it happens and daily digest</strong></td>
+<td>Both.</td>
+</tr>
+<tr>
+<td><strong>None (media lists only)</strong></td>
+<td>No news release email. This person is here only for media lists.</td>
+</tr>
+</tbody></table></div>
+<p>A correction to a release never emails anyone again. If a release is unpublished, anything not yet sent is stopped, and it stays out of later digests.</p>
+<h2>Emergency alerts</h2>
+<p>Alerts posted by Emergency Info BC are checked every 5 minutes. A new alert goes at once to everyone active on the <strong>Emergency Info BC Alerts</strong> list, whatever timing they chose. An alert edited later is not sent again.</p>
+<h2>Media lists</h2>
+<p>Release editors choose media lists for a release. Each member of those lists gets the full-text media version. A reporter who is also an <strong>As it happens</strong> subscriber for that release gets one email, the media version, not two.</p>
+<h2>Emails about the subscription itself</h2>
+<p>People who sign up on the public site get an email asking them to confirm. They have no record here until they do, so the <strong>Pending</strong> choice under <strong>Status</strong> on <strong>Find subscribers</strong> finds no one. They also get an email when they ask to change their preferences or address.</p>
+<p>Nothing you do on the <strong>Subscribers</strong> screens emails the subscriber. Adding, changing, deactivating, deleting and media list changes are all silent. Tell the person yourself if they need to know.</p>
+<p>A Subscribers administrator can pause News On Demand sending. While it is paused, release, digest, alert and media list email waits, and goes out when they resume. Confirmation emails to people signing up still go out.</p>
+`,changed:"2026-10-30"},st={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+<p><strong>Find subscribers</strong> lists everyone who has signed up or been added, 50 to a page, in address order. From a subscriber&#39;s record you change their lists, their address and whether they get email.</p>
+<h2>Find someone</h2>
+<ol>
+<li>Type part of their address in <strong>Email contains</strong>.</li>
+<li>To narrow the list, choose a <strong>Status</strong>.</li>
+<li>Choose <strong>Search</strong>.</li>
+<li>Choose an address to open that subscriber&#39;s record. <strong>Back to results</strong> on the record returns you to the same results.</li>
+</ol>
+<p>The <strong>Status</strong> column shows one of these:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Status</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Active</strong></td>
+<td>They get the email they chose.</td>
+</tr>
+<tr>
+<td><strong>Disabled</strong></td>
+<td>They get nothing. Staff deactivated them, or their email kept bouncing. Their lists are kept.</td>
+</tr>
+<tr>
+<td><strong>Unsubscribed or deleted</strong></td>
+<td>They get nothing. Only they can subscribe again.</td>
+</tr>
+<tr>
+<td><strong>Pending</strong></td>
+<td>Never confirmed. You shouldn&#39;t see it: people who sign up on the public site get a record only once they confirm.</td>
+</tr>
+</tbody></table></div>
+<p>&quot;(needs attention)&quot; after a status means a media list member has a problem to fix on <strong>Media lists</strong>.</p>
+<p>The <strong>Timing</strong> column shows <strong>None (media lists only)</strong> for someone who is here only for media lists.</p>
+<h2>Read a subscriber&#39;s record</h2>
+<p>The record shows <strong>Status</strong>, <strong>Source</strong>, <strong>Registered</strong> and, once they have left, <strong>Ended</strong>.</p>
+<ul>
+<li><strong>Disabled \u2014 after repeated bounces</strong> means bounces disabled them. <strong>Disabled \u2014 by staff</strong> means someone deactivated them.</li>
+<li><strong>Source</strong> says how they came: <strong>Signed up themselves</strong>, <strong>Added by staff</strong>, <strong>Media Hub contact</strong> or <strong>Added to a media list by staff</strong>.</li>
+<li><strong>Media lists</strong> names the media lists they are on. Change those on <strong>Media lists</strong>.</li>
+<li><strong>Bounced emails counted (last 15 days)</strong> shows how close they are to being disabled. It appears once an email has bounced. See <a href="/hub/help/manuals/nod-editor/editor-bounces">Bounces</a>.</li>
+<li><strong>History</strong> opens a list of every change: <strong>When</strong>, <strong>What</strong>, <strong>Who</strong> and <strong>Detail</strong>. &quot;Subscriber&quot; means the person did it themselves. &quot;Bounce processing&quot; and &quot;Media Hub sync&quot; are automatic. &quot;Admin API&quot; means a system tool made the change, not a person using the Hub. Staff changes show the staff member&#39;s name. The most recent 500 entries are shown.</li>
+</ul>
+<h2>Change their lists or timing</h2>
+<ol>
+<li>Open their record. <strong>Preferences</strong> shows for <strong>Active</strong> and <strong>Disabled</strong> subscribers.</li>
+<li>Tick <strong>As it happens</strong>, <strong>Daily digest</strong>, or both.</li>
+<li>Under <strong>Lists</strong>, tick <strong>All news</strong>, or tick the lists they want. Lists they have that are no longer offered show under <strong>No longer offered</strong>. They keep those unless you untick them.</li>
+<li>Choose <strong>Save preferences</strong>. You see &quot;Preferences saved.&quot;</li>
+</ol>
+<p>The change applies to the next email. Nobody is emailed about it. Saving doesn&#39;t activate a <strong>Disabled</strong> subscriber; choose <strong>Activate</strong> for that.</p>
+<h2>Change their email address</h2>
+<ol>
+<li>Open their record.</li>
+<li>Enter the address in <strong>New email</strong> and again in <strong>Confirm new email</strong>.</li>
+<li>Choose <strong>Change email</strong>. You see &quot;Email address changed. No confirmation email was sent.&quot; and the new address shows at the top of the record.</li>
+</ol>
+<p>What this does:</p>
+<ul>
+<li>No confirmation email is sent.</li>
+<li>Links in emails already sent to the old address stop working, such as the link to change preferences. The unsubscribe links in those emails still work.</li>
+<li><strong>History</strong> shows &quot;Email address changed by staff&quot;. It doesn&#39;t record either address.</li>
+</ul>
+<p>If the new address once unsubscribed from a media list this person is on, the Hub asks &quot;That address unsubscribed&quot; and says when. Choose <strong>Change anyway</strong> only if they have asked to get media releases there again. It counts as adding them back to those lists.</p>
+<p>For a Media Hub contact, the record says &quot;This address is managed in Media Hub. Change it there.&quot; instead of offering <strong>Change email</strong>.</p>
+<h2>Deactivate or activate someone</h2>
+<p>Deactivate when someone should get nothing for a while, but keep their lists.</p>
+<ol>
+<li>Open their record.</li>
+<li>Choose <strong>Deactivate</strong>. The Hub asks &quot;Deactivate this subscriber?&quot; and explains &quot;They receive nothing until activated again. Their lists, including media lists, are kept.&quot;</li>
+<li>Choose <strong>Confirm deactivate</strong>. Their status becomes <strong>Disabled \u2014 by staff</strong>.</li>
+</ol>
+<p>To bring back a <strong>Disabled</strong> subscriber, choose <strong>Activate</strong>. It happens at once, without a question. You see &quot;Activated. Their bounce count starts again.&quot; They get the lists and timing shown under <strong>Preferences</strong>.</p>
+<h2>Delete someone</h2>
+<p>Delete when a person asks to stop all email, or when an address must be removed.</p>
+<ol>
+<li>Open their record.</li>
+<li>Choose <strong>Delete</strong>. The Hub asks &quot;Delete this subscriber?&quot; and explains &quot;They stop receiving email and are removed from every media list. Only they can subscribe again.&quot;</li>
+<li>Choose <strong>Confirm delete</strong>. The record shows &quot;Unsubscribed or deleted on&quot; and the date and time.</li>
+</ol>
+<p>What this does:</p>
+<ul>
+<li>Their status becomes <strong>Unsubscribed or deleted</strong> at once. You can&#39;t undo it. <strong>Add a subscriber</strong> refuses their address while the record exists.</li>
+<li>They are taken off every media list. Adding them to a media list again later doesn&#39;t ask about an unsubscribe. See <a href="/hub/help/manuals/nod-editor/editor-media-lists">Media lists</a>.</li>
+<li>The record, with their address and history, stays. When a Subscribers administrator has the retention purge on, it is removed for good 90 days after they ended.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>Change several at once</h2>
+<ol>
+<li>Search for the subscribers.</li>
+<li>Tick the box beside each one. The box in the heading row ticks the whole page.</li>
+<li>Choose <strong>Activate selected</strong>, <strong>Deactivate selected</strong> or <strong>Delete selected</strong>. The button shows how many you ticked, such as <strong>Delete selected (2)</strong>.</li>
+<li>Read the question, then choose <strong>Confirm activate</strong>, <strong>Confirm deactivate</strong> or <strong>Confirm delete</strong>.</li>
+</ol>
+<p>Only the ticked rows on the page you are looking at are changed. A message such as &quot;1 changed. 1 skipped: already in that state.&quot; gives the result. A skipped row isn&#39;t an error:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Skipped because</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>already in that state</td>
+<td>They were already active, disabled or deleted.</td>
+</tr>
+<tr>
+<td>not allowed from their status</td>
+<td>For example, activating someone who unsubscribed.</td>
+</tr>
+<tr>
+<td>no longer exist</td>
+<td>The record was removed.</td>
+</tr>
+<tr>
+<td>couldn&#39;t change \u2013 try again</td>
+<td>Something went wrong for that row. Try it again.</td>
+</tr>
+</tbody></table></div>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;The two email addresses don&#39;t match.&quot;</td>
+<td>Type the same address in both boxes.</td>
+</tr>
+<tr>
+<td>&quot;Another subscriber record already has that address.&quot;</td>
+<td>Choose <strong>Open that record</strong> to see it. Two records can&#39;t share an address.</td>
+</tr>
+<tr>
+<td>&quot;This address is managed in Media Hub. Change it there.&quot;</td>
+<td>Update the contact in Media Hub. The nightly Media Hub sync brings the change here.</td>
+</tr>
+<tr>
+<td>&quot;Choose As It Happens, Daily Digest, or both.&quot;</td>
+<td>A subscriber with lists needs a timing.</td>
+</tr>
+<tr>
+<td>&quot;Choose at least one list, or all news.&quot;</td>
+<td>Tick a list or <strong>All news</strong>. Only someone on a media list can have no lists here.</td>
+</tr>
+<tr>
+<td>&quot;This subscriber&#39;s status changed; reload.&quot;</td>
+<td>Someone else changed them. Reload the page.</td>
+</tr>
+<tr>
+<td>&quot;Subscriber not found.&quot;</td>
+<td>The record has been removed for good, or the address in your browser is wrong.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},ot=null,rt={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+<p><strong>Media lists</strong> holds the reporters on each media list. Release editors pick these lists on a release, and every member gets the full-text media version.</p>
+<p>The table shows each list&#39;s <strong>Members</strong>, how many <strong>Need attention</strong>, and its <strong>Status</strong>. A <strong>Retired</strong> list can&#39;t be put on a release, and nothing is sent to it, even from a release that already had it. Core administrators add, rename and retire lists.</p>
+<p>Choose a list&#39;s name to open it. Each member shows their <strong>Email</strong>, their <strong>Source</strong> (<strong>Media Hub</strong>, <strong>Added by hand</strong> or <strong>Subscriber</strong>) and any problem under <strong>Needs attention</strong>.</p>
+<h2>Add a reporter from Media Hub</h2>
+<ol>
+<li>Open the list.</li>
+<li>Under <strong>Add from Media Hub</strong>, type a name, email or outlet in <strong>Name, email or outlet</strong>.</li>
+<li>Choose <strong>Search Media Hub</strong>. Each contact shows their outlet and their addresses, such as &quot;(workplace, preferred)&quot;.</li>
+<li>Choose <strong>Add</strong> and the address you want. You see &quot;Added to the list.&quot;</li>
+</ol>
+<h2>Add an address by hand</h2>
+<p>Use this for people who aren&#39;t in Media Hub.</p>
+<ol>
+<li>Open the list.</li>
+<li>Under <strong>Add an address by hand</strong>, enter the <strong>Email address</strong>.</li>
+<li>Choose <strong>Add to list</strong>. You see &quot;Added to the list.&quot;</li>
+</ol>
+<h2>What adding does</h2>
+<p>Nobody is emailed. The reporter gets the next release sent to this list. What else happens depends on the address:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>The address</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Has no record</td>
+<td>A new record is made for media email only. Its <strong>Source</strong> is &quot;Media Hub contact&quot;, or &quot;Added to a media list by staff&quot; for an address added by hand.</td>
+</tr>
+<tr>
+<td>Is <strong>Active</strong></td>
+<td>They keep their news release email as it was.</td>
+</tr>
+<tr>
+<td>Is <strong>Disabled</strong></td>
+<td>See the next section.</td>
+</tr>
+<tr>
+<td>Is <strong>Unsubscribed or deleted</strong></td>
+<td>They become <strong>Active</strong> for media email only. Their timing and news lists are taken off. If they unsubscribed themselves, the Hub may ask first; see below.</td>
+</tr>
+</tbody></table></div>
+<h3>Adding a Disabled subscriber</h3>
+<p>Being added to a media list is not a request for news release email. So when the address is <strong>Disabled</strong>:</p>
+<ul>
+<li>They become <strong>Active</strong>, and get media email only.</li>
+<li>Their <strong>As it happens</strong> and <strong>Daily digest</strong> timing and their news lists are taken off. Media lists they were already on are kept.</li>
+<li>Their bounce count starts again.</li>
+<li><strong>History</strong> shows &quot;Added to a media list while Disabled. News release email stays off&quot;. <strong>Detail</strong> lists the timing and lists they had.</li>
+<li>You see &quot;Added to the list. Their news release email stays off; open their record to turn it on.&quot; instead of &quot;Added to the list.&quot;</li>
+</ul>
+<p>If the person has also asked for news release email again:</p>
+<ol>
+<li>Choose <strong>open their record</strong> in that message.</li>
+<li>Tick <strong>As it happens</strong> or <strong>Daily digest</strong>, and their lists.</li>
+<li>Choose <strong>Save preferences</strong>.</li>
+</ol>
+<h3>If they unsubscribed</h3>
+<p>When you add someone, the Hub may ask &quot;This person unsubscribed&quot; and say when. It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose <strong>Add anyway</strong>. Adding them back clears the question for this list, unless they unsubscribe again.</p>
+<p>If they haven&#39;t asked to get media releases again, choose <strong>Cancel</strong>.</p>
+<h2>Remove a reporter</h2>
+<ol>
+<li>Open the list.</li>
+<li>Choose <strong>Remove</strong> and their address on their row. The Hub asks &quot;Remove [their address] from this list?&quot; and explains &quot;If this is their last list and they were added only for media lists, they stop receiving email altogether.&quot;</li>
+<li>Choose <strong>Confirm remove</strong>. You see &quot;Removed from the list.&quot;</li>
+</ol>
+<p>Nobody is emailed. If it was their last list and they were added only for media lists, their status becomes <strong>Unsubscribed or deleted</strong>, and <strong>History</strong> shows &quot;Ended: removed from their last media list&quot;. Removing them isn&#39;t an unsubscribe, so it doesn&#39;t by itself make the Hub ask when you add them back.</p>
+<h2>Fix a member who needs attention</h2>
+<p>A flagged member shows the reason under <strong>Needs attention</strong>:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>What happened</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Bouncing</strong></td>
+<td>Their last 10 emails in 15 days all bounced. They are still on the list and still sent email.</td>
+</tr>
+<tr>
+<td><strong>Media Hub email removed</strong></td>
+<td>The address they use was removed from their Media Hub contact.</td>
+</tr>
+<tr>
+<td><strong>Media Hub email belongs to another subscriber</strong></td>
+<td>Media Hub moved them to an address another record already has.</td>
+</tr>
+<tr>
+<td><strong>Media Hub email isn&#39;t valid</strong></td>
+<td>Media Hub has an address that isn&#39;t a real email address.</td>
+</tr>
+<tr>
+<td><strong>Media Hub email opted out of a media list this member is on</strong></td>
+<td>Media Hub moved them to an address that unsubscribed from one of their lists, so they were kept at their old address.</td>
+</tr>
+</tbody></table></div>
+<p>To fix a bouncing member:</p>
+<ol>
+<li>Check with Media Relations that their mailbox works again.</li>
+<li>Choose <strong>Resolve</strong> and their address. The Hub asks &quot;Clear the bouncing flag?&quot; and explains &quot;Do this once their mailbox works again. Their bounce count starts again from now.&quot;</li>
+<li>Choose <strong>Clear flag</strong>. You see &quot;Resolved. Their bounce count starts again.&quot;</li>
+</ol>
+<p>To fix a Media Hub problem:</p>
+<ol>
+<li>Choose <strong>Resolve</strong> and their address. <strong>Resolve this member</strong> shows their Media Hub addresses under <strong>Choose the email to use</strong>.</li>
+<li>Choose the address to use, then <strong>Use this email</strong>. You see &quot;Email updated and flag cleared.&quot;</li>
+<li>Or choose <strong>Clear the flag only</strong> to keep their current address. You see &quot;Flag cleared.&quot;</li>
+</ol>
+<p>For <strong>Media Hub email opted out of a media list this member is on</strong>, <strong>Clear the flag only</strong> lasts only until the next Media Hub sync, which flags them again. You see &quot;Flag cleared until the next Media Hub sync.&quot; To fix it for good, choose another of their addresses, update the contact in Media Hub, or remove them and add them again, confirming the unsubscribe.</p>
+<h2>Left this list</h2>
+<p>This section lists people who left this list, with when they left and whether they are <strong>Back on the list</strong>. The screen explains &quot;They unsubscribed, or left it in the old system.&quot; Someone you removed in the Hub isn&#39;t listed. The most recent 200 are shown.</p>
+<h2>Media Hub sync</h2>
+<p>Every night, News On Demand picks up changed Media Hub contacts. <strong>Media Hub sync</strong> on <strong>Media lists</strong> shows when it last ran and what it changed.</p>
+<p>To run it now, choose <strong>Sync with Media Hub now</strong>. You see &quot;Sync finished.&quot; and its counts. A long sync may stop part-way: you then see &quot;Sync stopped part-way and carries on at the next scheduled run.&quot;</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;That isn&#39;t a valid email address.&quot;</td>
+<td>Check the address.</td>
+</tr>
+<tr>
+<td>&quot;Media Hub isn&#39;t responding. Try again, or add the address by hand.&quot;</td>
+<td>Media Hub is down.</td>
+</tr>
+<tr>
+<td>&quot;Media Hub isn&#39;t set up on this site. Add the address by hand instead.&quot;</td>
+<td>This site has no Media Hub connection.</td>
+</tr>
+<tr>
+<td>&quot;That contact or email is no longer in Media Hub.&quot;</td>
+<td>Search Media Hub again.</td>
+</tr>
+<tr>
+<td>&quot;A sync is already running. Try again in a few minutes.&quot;</td>
+<td>Wait for the running sync to finish.</td>
+</tr>
+<tr>
+<td>&quot;That address belongs to another subscriber. Choose another email, or remove this member.&quot;</td>
+<td>Pick a different address.</td>
+</tr>
+<tr>
+<td>&quot;That address opted out of a media list this member is on. Choose another email, update the contact in Media Hub, or remove them and add them again, confirming the opt-out.&quot;</td>
+<td>The address you chose unsubscribed from one of their lists. Pick a different address.</td>
+</tr>
+<tr>
+<td>&quot;This member changed while you were looking. Close this, and try again.&quot;</td>
+<td>Someone else changed them. Close the box and try again.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t remove. Try again.&quot;</td>
+<td>The removal didn&#39;t save.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},at=null,it={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+<p><strong>Lists and categories</strong> shows every list people can subscribe to, how many active subscribers each one has, and whether it is offered. You can look but not change it: Subscribers administrators decide what is offered and in what order.</p>
+<p>At the top, <strong>All news</strong> shows how many active subscribers chose all news. Under each category, such as <strong>Ministries</strong> or <strong>Tags</strong>, each list shows <strong>Active subscribers</strong> and <strong>Offered</strong>:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Offered</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Yes</strong></td>
+<td>People can choose it on the public site, and you can tick it under <strong>Lists</strong> on a subscriber&#39;s record.</td>
+</tr>
+<tr>
+<td><strong>No</strong></td>
+<td>A Subscribers administrator stopped offering it.</td>
+</tr>
+<tr>
+<td><strong>No (retired)</strong></td>
+<td>The list was retired where its name is set, such as a ministry that no longer exists.</td>
+</tr>
+<tr>
+<td><strong>No (category not offered)</strong></td>
+<td>A Subscribers administrator stopped offering its whole category.</td>
+</tr>
+<tr>
+<td><strong>No (media list)</strong></td>
+<td>A media list. People never choose media lists themselves. Manage its members on <strong>Media lists</strong>.</td>
+</tr>
+</tbody></table></div>
+<p>A subscriber who already has a list that is no longer offered keeps it, and still gets its releases. On their record it shows under <strong>No longer offered</strong>.</p>
+<p>List names come from elsewhere. Core administrators set the names of ministries, sectors, themes, tags and media lists.</p>
+`,changed:"2026-10-30"},dt={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+<p>A bounce is an email that comes back undelivered. A hard bounce means the address doesn&#39;t work, such as a mailbox that no longer exists. A soft bounce is temporary, such as a full mailbox.</p>
+<h2>When a subscriber is disabled</h2>
+<p>When a subscriber&#39;s last 10 emails within 15 days have all hard-bounced, News On Demand acts on its own:</p>
+<ul>
+<li>A subscriber who is not on any media list is disabled. Their status becomes <strong>Disabled \u2014 after repeated bounces</strong>, and they get nothing more. Their record and lists are kept.</li>
+<li>A media list member is never disabled. They are flagged <strong>Bouncing</strong> on <strong>Media lists</strong> and keep being sent media and news release email. Tell Media Relations.</li>
+</ul>
+<p>A daily digest counts as one email, however many releases it lists. Soft bounces don&#39;t count, unless a Subscribers administrator has chosen to count that kind.</p>
+<p>A subscriber&#39;s record shows <strong>Bounced emails counted (last 15 days)</strong> once any have bounced. Their <strong>History</strong> shows &quot;An email bounced&quot; for each hard bounce. The bounce that reaches the limit shows &quot;Disabled after repeated bounces&quot; or &quot;Flagged: repeated bounces&quot; instead.</p>
+<h2>Bring a bounced subscriber back</h2>
+<ul>
+<li>They can sign up again on the public site. The confirmation email reaching them proves the mailbox works.</li>
+<li>Or, once you know the mailbox works, open their record and choose <strong>Activate</strong>. Their bounce count starts again.</li>
+</ul>
+<p>For a bouncing media list member, choose <strong>Resolve</strong> on the list. See <a href="/hub/help/manuals/nod-editor/editor-media-lists">Media lists</a>.</p>
+<p>Subscribers administrators choose where the daily bounce summary is emailed.</p>
+`,changed:"2026-10-30"},ht={html:`<p><strong>Who this is for:</strong> Subscribers viewers (NoD.Viewer).</p>
+<p>You can look up the people who get news release email from News On Demand: their records, the media lists and the reports. You can&#39;t change anything, and you can&#39;t download email addresses. If something needs changing, ask a Subscribers editor.</p>
+<p>Subscriber records are personal information. Look up addresses only when your work needs them.</p>
+<h2>What you can do</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What you do there</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Find subscribers</strong></td>
+<td>Find someone by their address, and open their record and history.</td>
+<td><a href="/hub/help/manuals/nod-viewer/nod-viewer-find-subscribers">Find a subscriber</a></td>
+</tr>
+<tr>
+<td><strong>Media lists</strong></td>
+<td>See who is on each media list, who left it, and who needs attention.</td>
+<td><a href="/hub/help/manuals/nod-viewer/nod-viewer-media-lists">Media lists</a></td>
+</tr>
+<tr>
+<td><strong>Lists and categories</strong></td>
+<td>See which lists people can choose, and how many active subscribers each has.</td>
+<td><a href="/hub/help/manuals/nod-viewer/nod-viewer-lists-and-categories">Lists and categories</a></td>
+</tr>
+<tr>
+<td><strong>Reports</strong></td>
+<td>See who receives what, who left, and what was sent. Download the counts.</td>
+<td><a href="/hub/help/manuals/nod-viewer/nod-viewer-reports">Reports</a></td>
+</tr>
+</tbody></table></div>
+<p>To answer &quot;why isn&#39;t this person getting our email?&quot;, see <a href="/hub/help/manuals/nod-viewer/nod-viewer-who-gets-which-email">Who gets which email</a>.</p>
+<h2>What you can&#39;t do</h2>
+<ul>
+<li>Subscribers editors add subscribers, change their lists, timing and address, and deactivate or delete them. They also add and remove media list members. Their manual is the Subscribers editor manual.</li>
+<li>Subscribers administrators decide which lists are offered, and pause and resume email on <strong>Operations</strong>. Their manual is the Subscribers administrator manual.</li>
+</ul>
+<p>If you open <strong>Add a subscriber</strong> or <strong>Operations</strong> by its address, you see &quot;You don&#39;t have permission to add subscribers.&quot; or &quot;You don&#39;t have permission to use Operations.&quot;</p>
+<h2>What you see in the side menu</h2>
+<p>Under <strong>Work</strong> you see <strong>Subscribers</strong>. Its tabs are <strong>Find subscribers</strong>, <strong>Lists and categories</strong>, <strong>Media lists</strong> and <strong>Reports</strong>.</p>
+<p>You may also see <strong>Releases</strong> or <strong>Calendar</strong> if you have a role there. Those have their own manuals.</p>
+<h2>Keyboard shortcuts and Help</h2>
+<p>On <strong>Find subscribers</strong>, \u2318K on a Mac or Ctrl+K on Windows goes to <strong>Email contains</strong>.</p>
+<p><strong>Help</strong>, at the top of every screen, opens the page of this manual for the screen you are on. The Help page also lists the keyboard shortcuts. Shortcuts that save, such as \u2318S or Ctrl+S, do nothing for you on the <strong>Subscribers</strong> screens.</p>
+<h2>Signing in</h2>
+<p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
+`,changed:"2026-10-30"},lt=null,gt=null,ct=null,ut=null,pt=null,mt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+<p>You run the Corporate Calendar: who can use it, the choices offered on activities, and which comm contact looks after each activity. If you belong to an HQ organization, you also review what the ministries enter.</p>
+<h2>Which administrator you are</h2>
+<p>Your role, and whether one of your ministries is an HQ organization such as GCPE Headquarters, decide what you can do.</p>
+<ul>
+<li><strong>Administrator</strong>: you manage Calendar users and their access. You transfer and delete activities of your own ministries.</li>
+<li><strong>HQ Administrator</strong>: an Administrator or system administrator whose ministries include an HQ organization. You see every ministry&#39;s activities, deleted ones included. You review activities, and you can transfer and delete activities of any ministry.</li>
+<li><strong>System Administrator</strong>: everything an Administrator can do, plus every lookup, the <strong>Undelivered events</strong> tab, and giving the <strong>System Administrator</strong> role. You can also change the access of HQ staff.</li>
+</ul>
+<h2>What only you can do</h2>
+<p>Calendar advanced users, editors and read-only users can&#39;t do any of this.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What you do there</th>
+<th>Who can</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Calendar access</strong></td>
+<td>Give or change a person&#39;s Calendar role and ministries.</td>
+<td>Every administrator, with limits.</td>
+<td><a href="/hub/help/manuals/calendar-admin/calendar-admin-access">Calendar access</a></td>
+</tr>
+<tr>
+<td><strong>Calendar</strong> &gt; <strong>Users</strong></td>
+<td>Keep contact details and comm-contact ranks. Deactivate, reactivate or link people who use only the Calendar.</td>
+<td>Every administrator.</td>
+<td><a href="/hub/help/manuals/calendar-admin/calendar-users">Calendar users</a></td>
+</tr>
+<tr>
+<td><strong>Calendar</strong> &gt; <strong>Transfer</strong></td>
+<td>Move every activity of one comm contact to another.</td>
+<td>Every administrator. HQ Administrators across ministries.</td>
+<td><a href="/hub/help/manuals/calendar-admin/calendar-transfer">Transfer activities</a></td>
+</tr>
+<tr>
+<td><strong>Calendar</strong> &gt; <strong>Lookups</strong></td>
+<td>The choices offered on activities, such as HQ tags and event planners.</td>
+<td>Administrators change 4 lookups. System administrators change all 11.</td>
+<td><a href="/hub/help/manuals/calendar-admin/calendar-lookups">Calendar lookups</a></td>
+</tr>
+<tr>
+<td><strong>Delete</strong> on an activity</td>
+<td>Delete an activity.</td>
+<td>Every administrator.</td>
+<td><a href="/hub/help/manuals/calendar-admin/calendar-delete-activity">Delete an activity</a></td>
+</tr>
+<tr>
+<td>The activity list</td>
+<td><strong>Review selected</strong>, deleted activities and the <strong>Exec Look Ahead</strong> report.</td>
+<td>HQ Administrators.</td>
+<td><a href="/hub/help/manuals/calendar-admin/calendar-hq-review">HQ review</a></td>
+</tr>
+<tr>
+<td><strong>Calendar</strong> &gt; <strong>Undelivered events</strong></td>
+<td>Send again activity changes that Releases refused.</td>
+<td>System administrators.</td>
+<td><a href="/hub/help/manuals/calendar-admin/calendar-undelivered-events">Undelivered events</a></td>
+</tr>
+</tbody></table></div>
+<h2>What you share with other Calendar users</h2>
+<p>Everyone with Calendar access uses the list, filters, <strong>My Queries</strong>, <strong>Updates</strong>, <strong>Excel export</strong> and the <strong>Look Ahead</strong>, <strong>30/60/90</strong> and <strong>Planning</strong> reports. Editors and above create, change and clone their ministries&#39; activities. HQ staff at Advanced and above also have <strong>Corporate Queries</strong>, the <strong>Look Ahead filter</strong> and <strong>Review</strong>.</p>
+<p>The <a href="/hub/help/manuals/calendar-advanced">Calendar advanced user manual</a>, the <a href="/hub/help/manuals/calendar-editor">Calendar editor manual</a> and the <a href="/hub/help/manuals/calendar-readonly">Calendar read-only manual</a> cover that work.</p>
+<h2>Where your changes show up</h2>
+<ul>
+<li>Role, ministry and account changes reach the Calendar within a minute.</li>
+<li>Activity changes reach <strong>Releases</strong> within a minute. Release editors who also have Calendar access see confirmed activities with an &quot;Approved&quot; category on the <strong>Forecast</strong> tab, and can plan a release from them. Confidential and deleted activities never appear there.</li>
+<li>Nothing in this manual emails anyone.</li>
+</ul>
+<h2>What you see in the side menu</h2>
+<p>Under <strong>Work</strong> you see <strong>Calendar</strong>. Under <strong>Administration</strong> you see <strong>Calendar access</strong>.</p>
+<p>The Calendar&#39;s tabs are <strong>Calendar</strong>, <strong>Updates</strong>, <strong>Lookups</strong>, <strong>Users</strong> and <strong>Transfer</strong>. System administrators also see <strong>Undelivered events</strong>.</p>
+`,changed:"2026-10-30"},bt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+<p><strong>Calendar access</strong>, under <strong>Administration</strong> in the side menu, gives a person a Calendar role and the ministries they work for. Each person has one role or <strong>No Calendar access</strong>.</p>
+<p>The table shows everyone with a Hub account: <strong>Name</strong>, <strong>Email</strong>, <strong>Calendar role</strong> and <strong>Ministries</strong>. Inactive people are hidden until you tick <strong>Show inactive users, including those with no email</strong>.</p>
+<h2>What you can give</h2>
+<ul>
+<li>The roles, lowest to highest, are <strong>Read Only</strong>, <strong>Editor</strong>, <strong>Advanced</strong>, <strong>Administrator</strong> and <strong>System Administrator</strong>.</li>
+<li>Administrators can give any role up to <strong>Administrator</strong>. Only system administrators can give <strong>System Administrator</strong>.</li>
+<li>You can give any ministry, not just your own.</li>
+<li>HQ organizations are marked &quot;\u2014 HQ&quot; in the ministry list. Their members see every ministry in the Calendar. Only HQ Administrators and system administrators are offered them.</li>
+<li>HQ Administrator isn&#39;t a separate role: give <strong>Administrator</strong> and tick an HQ ministry.</li>
+</ul>
+<h2>Give or change someone&#39;s access</h2>
+<p>The person needs a Hub account first. Only a Core administrator can add one.</p>
+<ol>
+<li>Type part of their name or email in <strong>Find a user by name or email</strong>.</li>
+<li>Choose <strong>Edit</strong> on their row.</li>
+<li>Choose their <strong>Calendar role</strong>.</li>
+<li>Under <strong>Ministries</strong>, tick every ministry they work for. A role needs at least one ministry.</li>
+<li>Choose <strong>Save Calendar access</strong>. You see &quot;Saved Calendar access for&quot; followed by their name.</li>
+</ol>
+<p>Saving replaces the person&#39;s whole ministry list with what is ticked.</p>
+<p>You can make the same change from the person&#39;s page on <strong>Calendar</strong> &gt; <strong>Users</strong>: choose <strong>Edit Calendar access for</strong> followed by their name.</p>
+<h2>Remove someone&#39;s access</h2>
+<ol>
+<li>Choose <strong>Edit</strong> on their row.</li>
+<li>Choose <strong>No Calendar access</strong> in <strong>Calendar role</strong>.</li>
+<li>Choose <strong>Save Calendar access</strong>.</li>
+</ol>
+<p>Their activities keep them as comm contact. To hand those activities to someone else, use <a href="/hub/help/manuals/calendar-admin/calendar-transfer">Transfer activities</a>.</p>
+<h2>What happens next</h2>
+<ul>
+<li>The change reaches the Calendar within a minute.</li>
+<li>A person whose access was removed sees &quot;You don&#39;t have Calendar access. Ask a Calendar administrator.&quot; on their next click in the Calendar. They stay signed in to the Hub.</li>
+<li>Release editors see Calendar activities on the <strong>Forecast</strong> only if they have Calendar access, and only the activities that access lets them see.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>When Edit isn&#39;t offered</h2>
+<p>Some rows show a note instead of <strong>Edit</strong>.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Note</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;You can&#39;t change your own Calendar access.&quot;</td>
+<td>Ask another administrator or a Core administrator.</td>
+</tr>
+<tr>
+<td>&quot;Only a System Administrator or a Core admin can change this user&#39;s access.&quot;</td>
+<td>The person is a system administrator and you are an Administrator.</td>
+</tr>
+<tr>
+<td>&quot;Only an HQ Administrator, a System Administrator or a Core admin can change this user&#39;s access.&quot;</td>
+<td>The person belongs to an HQ organization and you don&#39;t.</td>
+</tr>
+<tr>
+<td>&quot;Only a Core admin can give Calendar access to an inactive user who has none.&quot;</td>
+<td>The person&#39;s Hub account is inactive and has no Calendar role. Ask a Core administrator.</td>
+</tr>
+</tbody></table></div>
+<p>If you have no ministry yourself, the Calendar shows &quot;You aren&#39;t in any ministry yet, so there are no activities to show you. Ask another Calendar administrator or a Core administrator to add your ministry.&quot; You can&#39;t add it yourself.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;choose at least one ministry for a Calendar role&quot;</td>
+<td>Tick a ministry, or choose <strong>No Calendar access</strong>.</td>
+</tr>
+<tr>
+<td>&quot;unknown or inactive ministry: health&quot;</td>
+<td>The named ministry (shown by its short web name) was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},yt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+<p><strong>Calendar</strong> &gt; <strong>Users</strong> lists everyone with Calendar access, one row for each of their ministries: <strong>Name</strong>, <strong>Ministry</strong>, <strong>Comm contact</strong>, <strong>Calendar role</strong> and <strong>Active</strong>.</p>
+<ul>
+<li>Type a name or a ministry abbreviation in <strong>Find by name or ministry</strong> to narrow the list.</li>
+<li>Tick <strong>Show inactive users, including those with no email</strong> or <strong>Show users without Calendar access</strong> to see more people.</li>
+<li>Choose a name to open that person&#39;s page.</li>
+</ul>
+<p>If two old Calendar accounts had the same email address, they are now one user.</p>
+<p>A person&#39;s page has four parts: <strong>Calendar access</strong>, <strong>Contact details</strong>, <strong>Comm contact</strong> and <strong>Account</strong>. Changes to access and accounts reach the Calendar within a minute. Contact details and ranks take effect at once.</p>
+<h2>Change their Calendar access</h2>
+<p>Choose <strong>Edit Calendar access for</strong> followed by their name. The choices and limits are the same as on <a href="/hub/help/manuals/calendar-admin/calendar-admin-access">Calendar access</a>. Where you can&#39;t change their access, the page says why instead.</p>
+<h2>Contact details</h2>
+<ol>
+<li>Fill in <strong>Phone</strong> (up to 20 characters), <strong>Mobile</strong> (12 digits and hyphens, like 250-555-0100), <strong>Job title</strong> and <strong>Description</strong>. Leave any of them empty if you like.</li>
+<li>Choose <strong>Save contact details</strong>. You see &quot;Saved contact details.&quot;</li>
+</ol>
+<p>The phone number shows under the person&#39;s name in the list&#39;s <strong>Comm. Contact</strong> column and in the Excel export.</p>
+<h2>Comm-contact rank</h2>
+<p>A rank makes the person a comm contact for that ministry, so editors can choose them as an activity&#39;s <strong>Comm Contact</strong>. The page has one <strong>Comm contact rank for</strong> box for each of their ministries.</p>
+<ol>
+<li>Choose a rank: <strong>Comm Director</strong>, <strong>Comm Manager</strong>, <strong>Sr. PAO</strong>, <strong>PAO</strong>, <strong>Jr. PAO</strong> or <strong>Other</strong>.</li>
+<li>The rank saves as soon as you choose it. You see &quot;Saved the comm-contact rank.&quot;</li>
+</ol>
+<p>Choose <strong>Not a comm contact</strong> to stop offering them. Activities that already have them as comm contact keep them, but can&#39;t be cloned until they have an active comm contact.</p>
+<p>&quot;Give this user a ministry first.&quot; means they have no ministry yet. Give them one under <strong>Calendar access</strong>, wait a minute, then reload the page.</p>
+<h2>Deactivate someone</h2>
+<p>Deactivating closes the person&#39;s Hub account. They can&#39;t sign in again until reactivated, and the Hub signs them out within 10 minutes.</p>
+<ol>
+<li>Under <strong>Account</strong>, choose <strong>Deactivate</strong> followed by their name.</li>
+<li>The page shows their <strong>Open activities</strong>: every activity where they are the comm contact that isn&#39;t deleted and hasn&#39;t ended, even if you set them to <strong>Not a comm contact</strong>.<ul>
+<li>The activities you can transfer are listed. Only the first 500 are listed.</li>
+<li>Activities in ministries you don&#39;t belong to are counted, not listed, for example &quot;2 more in ministries you don&#39;t belong to. Ask an HQ Administrator to transfer them.&quot; This includes activities only shared with your ministry.</li>
+<li>&quot;No open activities.&quot; means there are none at all.</li>
+</ul>
+</li>
+<li>To hand the listed activities over first, choose <strong>Transfer their activities first</strong>, or <strong>Transfer the listed activities first</strong> when some are in other ministries. See <a href="/hub/help/manuals/calendar-admin/calendar-transfer">Transfer activities</a>. For the ones in other ministries, ask an HQ Administrator.</li>
+<li>Choose <strong>Deactivate</strong>, or <strong>Deactivate anyway</strong> when they have open activities. You see that the person &quot;is deactivated. The Calendar picks this up within a minute.&quot;</li>
+</ol>
+<p>Deactivating doesn&#39;t move their activities. Each one keeps them as comm contact and can still be saved, but can&#39;t be cloned until it has an active comm contact. Editors can&#39;t choose them as a comm contact any more.</p>
+<p>Nobody is emailed, including the person.</p>
+<h2>Reactivate someone</h2>
+<p>Choose <strong>Reactivate</strong> followed by their name. You see that the person &quot;is reactivated. The Calendar picks this up within a minute.&quot; Their ranks come back as they were.</p>
+<h2>Link someone with no email</h2>
+<p>People brought in from the old Calendar without an email show &quot;No email \u2014 inactive&quot;. Their page says &quot;This user was imported without an email. Linking sets their email and activates them.&quot;</p>
+<ol>
+<li>Enter their work address in <strong>Email</strong>.</li>
+<li>Choose <strong>Link and activate</strong>. You see that the person &quot;is linked and active. The Calendar picks this up within a minute.&quot;</li>
+</ol>
+<p>They can then sign in with Microsoft using that address.</p>
+<h2>Who you can deactivate, reactivate or link</h2>
+<p>Only people who use nothing in the Hub but the Calendar, and whose Calendar access you could change. You can&#39;t deactivate yourself, so the button isn&#39;t shown on your own page.</p>
+<p>For anyone else you can&#39;t change, <strong>Account</strong> says why instead of showing the button. The message names the button it replaces: deactivate, reactivate or link.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Only a Core administrator can deactivate someone who also has other Hub roles.&quot;</td>
+<td>The person also works in Releases or Subscribers. Ask a Core administrator.</td>
+</tr>
+<tr>
+<td>&quot;Only a Core administrator can reactivate someone who has no Calendar role.&quot;</td>
+<td>The person has no Calendar role. Ask a Core administrator.</td>
+</tr>
+<tr>
+<td>&quot;Only an HQ Administrator, a System Administrator or a Core administrator can deactivate someone in an HQ organization.&quot;</td>
+<td>The person belongs to an HQ organization and you don&#39;t.</td>
+</tr>
+<tr>
+<td>&quot;Only a System Administrator or a Core administrator can deactivate a System Administrator.&quot;</td>
+<td>The person is a system administrator and you are an Administrator.</td>
+</tr>
+</tbody></table></div>
+<p>If the person&#39;s access changed a moment ago, the same message can appear after you choose the button instead.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;at most 20 characters&quot;</td>
+<td>Shorten the phone number.</td>
+</tr>
+<tr>
+<td>&quot;use 12 digits and hyphens, like 250-555-0100&quot;</td>
+<td>Fix the mobile number, or leave it empty.</td>
+</tr>
+<tr>
+<td>&quot;job title: at most 100 characters&quot;</td>
+<td>Shorten the job title.</td>
+</tr>
+<tr>
+<td>&quot;description: at most 2000 characters&quot;</td>
+<td>Shorten the description.</td>
+</tr>
+<tr>
+<td>&quot;Health isn&#39;t one of this user&#39;s ministries in the Calendar yet. Save their ministries first.&quot;</td>
+<td>That ministry was only just given. Wait a minute, reload, and choose the rank again.</td>
+</tr>
+<tr>
+<td>&quot;A user with that email already exists.&quot;</td>
+<td>When linking: another Hub account has that address. Ask a Core administrator.</td>
+</tr>
+<tr>
+<td>&quot;This user isn&#39;t in the Calendar.&quot;</td>
+<td>The address you opened isn&#39;t a Calendar user. Go back to <strong>All Calendar users</strong>.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},vt=null,ft={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+<p><strong>Calendar</strong> &gt; <strong>Lookups</strong> holds the choices offered on activities, such as categories, cities and HQ tags. Choose a lookup to see its rows. Rows are never deleted: you stop offering a row by making it inactive.</p>
+<h2>Who can change which lookup</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Lookup</th>
+<th>Extra boxes</th>
+<th>Who can change it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Event planners</strong></td>
+<td><strong>Phone</strong>, <strong>Job title</strong></td>
+<td>Every administrator</td>
+</tr>
+<tr>
+<td><strong>HQ initiatives</strong></td>
+<td><strong>Short name</strong></td>
+<td>Every administrator</td>
+</tr>
+<tr>
+<td><strong>HQ tags</strong></td>
+<td>none</td>
+<td>Every administrator</td>
+</tr>
+<tr>
+<td><strong>Digital (videographers)</strong></td>
+<td><strong>Job title</strong></td>
+<td>Every administrator</td>
+</tr>
+<tr>
+<td><strong>Categories</strong>, <strong>Cities</strong>, <strong>Comm materials</strong>, <strong>NR distributions</strong>, <strong>NR origins</strong>, <strong>Premier requested</strong></td>
+<td>none</td>
+<td>System administrators</td>
+</tr>
+<tr>
+<td><strong>Government representatives</strong></td>
+<td><strong>Description</strong></td>
+<td>System administrators</td>
+</tr>
+</tbody></table></div>
+<p>For Administrators, the system administrators&#39; lookups are marked &quot;(read only)&quot; and say, for example, &quot;Only a System Administrator can change categories.&quot;</p>
+<p>Changes show on activities the next time someone opens one.</p>
+<h2>Add a row</h2>
+<ol>
+<li>Open the lookup.</li>
+<li>Under <strong>Add</strong>, such as <strong>Add an HQ tag</strong>, type the <strong>Name</strong> and any extra boxes.</li>
+<li>Choose <strong>Add</strong>. You see &quot;Added&quot; and the name.</li>
+</ol>
+<p>A new row goes to the end of the list.</p>
+<p>Editors also add HQ tags by typing a new one in an activity&#39;s <strong>HQ Tags</strong>. It then appears here too.</p>
+<h2>Change or stop offering a row</h2>
+<ol>
+<li>Choose <strong>Edit</strong> followed by the row&#39;s name.</li>
+<li>Change the name or the extra boxes.</li>
+<li>To stop offering it, untick <strong>Active</strong>. To offer it again, tick it.</li>
+<li>Choose <strong>Save</strong>. You see &quot;Saved&quot; and the name.</li>
+</ol>
+<p>An inactive row shows <strong>Inactive</strong> under <strong>Status</strong>. Activities that already have it keep it. Nobody can choose it for another activity.</p>
+<p>Renaming a row renames it on every activity that has it.</p>
+<h2>Change the order</h2>
+<p>Choose <strong>Move</strong> followed by the row&#39;s name and <strong>up</strong> or <strong>down</strong>. You see, for example, &quot;Moved Housing up.&quot; Activities offer the rows in this order.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;an active row with that name already exists&quot;</td>
+<td>Two active rows can&#39;t share a name, whatever the capitals. Use the existing row, or make it inactive first. The same applies when you make an inactive row active again.</td>
+</tr>
+<tr>
+<td>&quot;enter a name&quot;</td>
+<td>The name is empty.</td>
+</tr>
+<tr>
+<td>&quot;the list changed since you loaded it: reload and try again&quot;</td>
+<td>Someone else added a row while you were moving one. Reload the page.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},wt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+<p>Only administrators see <strong>Delete</strong> on an activity. You can delete an activity your ministry leads. HQ Administrators can delete any activity. A ministry that is only shared on an activity can&#39;t delete it.</p>
+<h2>Delete an activity</h2>
+<ol>
+<li>Open the activity from the list.</li>
+<li>Choose <strong>Delete</strong>. The Hub asks, for example, &quot;Delete HLTH-2?&quot; and explains &quot;It leaves the list for everyone but HQ Administrators, who can review the deletion. Any unsaved changes are discarded.&quot;</li>
+<li>Choose <strong>Delete</strong>. You are back on the list and see &quot;Deleted HLTH-2.&quot;</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>The activity leaves the list, <strong>Updates</strong> and the Excel export for everyone except HQ Administrators, and leaves every PDF report. Unless you are an HQ Administrator, you can&#39;t open it again either.</li>
+<li>HQ Administrators see it struck through in the list, waiting for them to review the deletion. See <a href="/hub/help/manuals/calendar-admin/calendar-hq-review">HQ review</a>.</li>
+<li>It leaves the <strong>Forecast</strong> in <strong>Releases</strong>, and no release can be linked to it from then on.</li>
+<li>A deletion can&#39;t be undone. To bring an activity back, create it again.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>When Delete isn&#39;t offered</h2>
+<ul>
+<li>The activity is led by another ministry, or only shared with yours.</li>
+<li>It is during the daily change freeze, and you aren&#39;t in an HQ organization. The page shows the freeze message.</li>
+<li>Someone else is editing it.</li>
+<li>It is already deleted.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Someone else changed this activity \u2014 reload to see their changes&quot;</td>
+<td>Someone saved it after you opened it. Choose <strong>Reload</strong>, check it, then delete.</td>
+</tr>
+<tr>
+<td>&quot;This activity is deleted&quot;</td>
+<td>Someone deleted it first.</td>
+</tr>
+<tr>
+<td>&quot;This activity is no longer available.&quot;</td>
+<td>It was deleted, or moved out of your ministries, after you opened it.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},qt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin) who belong to an HQ organization.</p>
+<p>HQ reviews what the ministries enter. This page is for HQ Administrators: Administrators and system administrators whose ministries include an HQ organization. <strong>Review</strong> and <strong>Corporate Queries</strong> are shared with HQ advanced users. <strong>Review selected</strong>, deleted activities and the <strong>Exec Look Ahead</strong> are yours alone.</p>
+<p>For the list&#39;s filters, saved queries, columns and reports, see <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-list">The activity list</a>.</p>
+<h2>What you see</h2>
+<ul>
+<li>Every ministry&#39;s activities, confidential ones included.</li>
+<li>Cells changed since the last review are shaded in the list. Screen readers hear &quot;(changed, needs review)&quot;.</li>
+<li>Deleted activities. A deletion waiting for your review shows struck through in the list while the filter&#39;s <strong>Status</strong> is <strong>Any status</strong> or <strong>Changed</strong>. On <strong>Updates</strong>, its lines are marked &quot;(deleted)&quot;.</li>
+</ul>
+<h2>Review one activity</h2>
+<ol>
+<li>Open the activity from the list.</li>
+<li>Choose <strong>Review</strong>. You are back on the list and see, for example, &quot;Reviewed HLTH-1.&quot;</li>
+</ol>
+<p>Review marks the activity <strong>Reviewed</strong> and clears its &quot;changed&quot; marks. If you have unsaved changes, save or cancel them first; the page says &quot;Save or cancel your changes to review or clone.&quot;</p>
+<h2>Review a deletion</h2>
+<p>A deleted activity opens read-only and says &quot;This activity is deleted. HQ Administrators can review the deletion; nothing else can change it.&quot; Its only action is <strong>Review</strong>.</p>
+<p>Reviewing it takes it off the list&#39;s default view. The activity stays deleted. A corporate query with <strong>Deleted</strong> ticked still finds it.</p>
+<h2>Review several at once</h2>
+<ol>
+<li>In the list, tick the box beside each activity number, such as <strong>Select HLTH-1</strong>.</li>
+<li>Choose <strong>Review selected</strong>. The button shows how many are ticked, up to 500 at a time.</li>
+<li>You see, for example, &quot;Reviewed 3 activities.&quot;</li>
+</ol>
+<p>An activity someone changed after your list loaded is skipped, and named: &quot;1 skipped because it changed since the list loaded: HLTH-2.&quot; Open it, check the change, and review it again.</p>
+<p>If you see &quot;Only 100 of 300 activities were reviewed before a later batch failed&quot;, tick the rest and choose <strong>Review selected</strong> again.</p>
+<h2>Corporate Queries</h2>
+<p>A corporate query lists every ministry&#39;s upcoming activities by status. It replaces your filter while it runs.</p>
+<ol>
+<li>Open <strong>Saved views</strong>.</li>
+<li>Under <strong>Corporate Queries</strong>, choose <strong>Show all</strong> or <strong>For the next</strong> a number of days.</li>
+<li>Under <strong>With status of</strong>, tick <strong>New</strong>, <strong>Changed</strong>, <strong>Reviewed</strong>, <strong>Deleted</strong>, <strong>LA New</strong> or <strong>LA Changed</strong>.</li>
+<li>Choose <strong>Run corporate query</strong>. The list says &quot;Showing a corporate query.&quot; with what it shows.</li>
+<li>Choose <strong>Back to the filter</strong> to return to your own filter.</li>
+</ol>
+<p><strong>Changed</strong> also finds deletions waiting for review. <strong>Deleted</strong> finds every deletion, reviewed or not.</p>
+<p>The <strong>Look Ahead filter</strong> above the list narrows it to <strong>Look Ahead Only</strong> or <strong>Not for Look Ahead Only</strong>. <strong>Show All</strong> turns it off.</p>
+<h2>Exec Look Ahead</h2>
+<p>The <strong>Exec Look Ahead</strong> is a PDF report only HQ Administrators can make.</p>
+<ol>
+<li>Set the list&#39;s filter to the dates and activities you want.</li>
+<li>Open <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Exec Look Ahead</strong>. You see &quot;Preparing your Exec Look Ahead report\u2026&quot; and then &quot;The Exec Look Ahead report has downloaded.&quot;</li>
+</ol>
+<p>Each activity shows its title, summary, significance, city and venue, and when it was last updated. With no <strong>To</strong> date the report covers one month and adds the Long Term Outlook. Deleted activities are never in it.</p>
+<p>The report is marked &quot;DRAFT ONLY - NOT FOR CIRCULATION&quot;. Share it only with people who may see every ministry&#39;s plans.</p>
+`,changed:"2026-10-30"},Ct={html:`<p><strong>Who this is for:</strong> Calendar system administrators (Calendar.SysAdmin).</p>
+<p><strong>Calendar</strong> &gt; <strong>Undelivered events</strong> lists activity changes the Calendar couldn&#39;t send to another app for 24 hours. Only system administrators see this tab.</p>
+<p>The Calendar sends every new, changed or deleted activity to <strong>Releases</strong>. Releases uses it for the <strong>Forecast</strong>, for linking a release to an activity, and for the activity details a new release fills in. While a change is undelivered, Releases still shows that activity as it was before.</p>
+<p>&quot;Nothing is waiting: every event was delivered.&quot; means all is well.</p>
+<h2>What the table shows</h2>
+<p>The newest are first. &quot;Only the 200 most recent are listed.&quot; means there are more.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Column</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Event</strong></td>
+<td>What happened: activity.created, activity.updated or activity.deleted.</td>
+</tr>
+<tr>
+<td><strong>About</strong></td>
+<td>Which activity: activity:12 is the activity numbered 12, such as HLTH-12.</td>
+</tr>
+<tr>
+<td><strong>To</strong></td>
+<td>The app that didn&#39;t accept it: nrms is <strong>Releases</strong>.</td>
+</tr>
+<tr>
+<td><strong>Attempts</strong></td>
+<td>How many times the Calendar tried.</td>
+</tr>
+<tr>
+<td><strong>Last error</strong></td>
+<td>The last reason it failed, such as HTTP 503.</td>
+</tr>
+<tr>
+<td><strong>Queued</strong></td>
+<td>When the change was made, in BC time.</td>
+</tr>
+</tbody></table></div>
+<p>The table never shows an activity&#39;s own text.</p>
+<h2>Send one again</h2>
+<p>Before you retry, check that Releases is working, or ask your operations team.</p>
+<ol>
+<li>Choose <strong>Retry</strong> on its row. The button shows &quot;Retrying\u2026&quot; until the Calendar answers.</li>
+<li>You see &quot;Queued for delivery again.&quot; and the row leaves the table. The Calendar tries once more within the next minute.</li>
+</ol>
+<p>If it fails again, it comes straight back to the table, without another 24 hours of tries. Reload the page after a minute to check. If it is back, Releases is still refusing it: have that fixed before you retry again.</p>
+<p>Retrying an old change is safe. If a newer change to the same activity has already reached Releases, the newer one stays.</p>
+`,changed:"2026-10-30"},kt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+<p>You plan the Corporate Calendar: the government-wide schedule of announcements and events. You add and change activities, follow what changed on <strong>Updates</strong>, and make reports.</p>
+<h2>Ministry or HQ</h2>
+<p>Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.</p>
+<ul>
+<li><strong>In a ministry:</strong> you see your ministries&#39; activities and the activities shared with them. You add and change your ministries&#39; activities. You can do exactly what a Calendar editor can.</li>
+<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, including those marked <strong>Not for Look Ahead</strong>. You add and change any ministry&#39;s activities, and the daily change freeze doesn&#39;t stop you. You also review activities and run corporate queries.</li>
+</ul>
+<h2>What you can do that editors and read-only users can&#39;t</h2>
+<p>Calendar read-only users look at activities, <strong>Updates</strong> and reports, but can&#39;t add or change anything. Calendar editors add and change activities as you do.</p>
+<p>In an HQ organization, Advanced gives you four things that HQ editors don&#39;t have:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What you do there</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>The activity list</td>
+<td>See other ministries&#39; activities marked <strong>Not for Look Ahead</strong>.</td>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-list">The activity list</a></td>
+</tr>
+<tr>
+<td><strong>Saved views</strong> &gt; <strong>Corporate Queries</strong></td>
+<td>List every ministry&#39;s upcoming activities by status.</td>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a></td>
+</tr>
+<tr>
+<td><strong>Look Ahead filter</strong>, above the list</td>
+<td>Show only the activities for the Look Ahead, or only those not for it.</td>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a></td>
+</tr>
+<tr>
+<td><strong>Review</strong>, on an activity</td>
+<td>Mark the activity reviewed.</td>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a></td>
+</tr>
+</tbody></table></div>
+<p>In a ministry that isn&#39;t HQ, Advanced gives you nothing more than Editor.</p>
+<p>To see what the others can do, read the <a href="/hub/help/manuals/calendar-editor">Calendar editor manual</a> and the <a href="/hub/help/manuals/calendar-readonly">Calendar read-only manual</a>.</p>
+<h2>What you can&#39;t do</h2>
+<p>Ask a Calendar administrator to:</p>
+<ul>
+<li>delete an activity;</li>
+<li>give or change someone&#39;s Calendar access;</li>
+<li>change the choices offered on activities, such as categories, cities and HQ tags;</li>
+<li>move activities from one comm contact to another.</li>
+</ul>
+<p>HQ Administrators also review deletions, review many activities at once and make the <strong>Exec Look Ahead</strong> report. The Calendar administrator manual covers this work.</p>
+<h2>Your help pages</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-list">The activity list</a></td>
+<td>Filters, saved queries, columns, Month and Week, the watchlist and the Excel export.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-updates">Updates</a></td>
+<td>Recent changes to the activities you can see.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-activity">Add or change an activity</a></td>
+<td>New activity, Save, Clone, files and <strong>View changes</strong>.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-fields">Activity fields</a></td>
+<td>What each field is for, and which ones you must fill in.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-lock-and-freeze">The edit lock and the daily change freeze</a></td>
+<td>When an activity opens read-only, and why.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a></td>
+<td>The HQ tools.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-reports">Reports</a></td>
+<td>The <strong>Look Ahead</strong>, <strong>30/60/90</strong> and <strong>Planning</strong> reports.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-releases">Releases and the Forecast</a></td>
+<td>How activities and news releases are linked.</td>
+</tr>
+</tbody></table></div>
+<h2>Who sees an activity</h2>
+<ul>
+<li>Its lead ministry, and every ministry ticked in <strong>Shared With</strong>, see it.</li>
+<li>HQ organizations see every ministry&#39;s activities.</li>
+<li>An activity marked <strong>Not for Look Ahead</strong> is seen only by its lead and shared ministries, and by HQ advanced users and HQ Administrators. HQ editors don&#39;t see other ministries&#39; ones.</li>
+<li>Only the lead ministry and HQ can change an activity. A ministry it is only shared with can open it but not change it.</li>
+<li>A deleted activity leaves the Calendar for everyone except HQ Administrators.</li>
+</ul>
+<h2>What you see in the side menu</h2>
+<p>Under <strong>Work</strong> you see <strong>Calendar</strong>. Its tabs are <strong>Calendar</strong> and <strong>Updates</strong>.</p>
+<p>You may also see <strong>Releases</strong> or <strong>Subscribers</strong> if you have a role there. Those have their own manuals.</p>
+<h2>When the list is empty</h2>
+<p>&quot;You aren&#39;t in any ministry yet, so there are no activities to show you. Ask a Calendar administrator.&quot; means your Calendar access has no ministry. A Calendar administrator adds it.</p>
+<p>&quot;You don&#39;t have Calendar access. Ask a Calendar administrator.&quot; means your Calendar access was removed. You stay signed in to the Hub.</p>
+<h2>Keyboard shortcuts</h2>
+<p>On a Mac use Command (\u2318); on Windows use Ctrl.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>\u2318K or Ctrl+K</td>
+<td>On the activity list, opens <strong>Filters</strong> and goes to <strong>Search for</strong>.</td>
+</tr>
+<tr>
+<td>\u2318S or Ctrl+S</td>
+<td>On an activity, saves it, the same as <strong>Save</strong>.</td>
+</tr>
+<tr>
+<td>\u2318Enter or Ctrl+Enter</td>
+<td>On a new activity, saves it.</td>
+</tr>
+</tbody></table></div>
+<h2>Signing in</h2>
+<p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
+`,changed:"2026-10-30"},Tt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+<p><strong>Calendar</strong> lists the activities you can see, from today on, earliest first. The first 30 show. More load as you scroll down, or when you choose <strong>Show more</strong> (the button names how many).</p>
+<p>Two kinds of activity are left out until you ask for them:</p>
+<ul>
+<li>Awareness dates. Choose <strong>Awareness Day / Week / Month</strong> in <strong>Category</strong> to see them.</li>
+<li>Activities led by the consultations ministry, shown as <strong>CITENG</strong>. To see them, choose a ministry in <strong>Lead Ministry</strong>: in a ministry, choose your own (this also lists activities shared with it); in an HQ organization, choose <strong>CITENG</strong>.</li>
+</ul>
+<p>Both kinds always show under <strong>My Watchlist Only</strong>.</p>
+<h2>Read the list</h2>
+<ul>
+<li>Choose an activity&#39;s title to open it. When you come back, its row is brought into view.</li>
+<li>The <strong>Activity Id</strong> column shows the ministry and number, such as HLTH-12. It also shows <strong>Reviewed</strong> when HQ has reviewed the activity, <strong>Shared</strong> when it is shared with other ministries, and <strong>Release</strong> when a news release is linked to it.</li>
+<li>Under the title you see when it was last updated, by whom, and when it was created.</li>
+<li><strong>Not for Look Ahead</strong> under <strong>Categories</strong> marks an activity kept out of the Look Ahead. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-overview">Who sees an activity</a>.</li>
+<li>Point at the date to see the scheduling considerations, at the title to see the significance, and at <strong>Comm. Materials</strong> to see the origin and distribution.</li>
+<li>Choose a column heading to sort by it, except <strong>Premier</strong>. Choose it again to reverse the order.</li>
+<li><strong>What the column names mean</strong>, under the list, explains the short names.</li>
+</ul>
+<h2>Filter the list</h2>
+<ol>
+<li>Open <strong>Filters</strong>. The line beside it shows the filter in use, or &quot;No filters&quot;.</li>
+<li>Fill in what you want. You can use <strong>From</strong>, <strong>To</strong>, <strong>This day only</strong>, <strong>Search for</strong>, <strong>HQ Tags</strong>, <strong>Issue</strong>, <strong>Date Confirmed</strong>, <strong>Status</strong>, <strong>Category</strong>, <strong>Lead Ministry</strong>, <strong>Comm Contact</strong>, <strong>Representative</strong>, <strong>Initiative</strong>, <strong>Premier Requested</strong> and <strong>Distribution</strong>.</li>
+<li>Under <strong>Display</strong>, choose <strong>Show All</strong>, <strong>My Ministries&#39; Activities Only</strong>, <strong>My Activities Only</strong> or <strong>My Watchlist Only</strong>.</li>
+<li>Choose <strong>Apply filters</strong>.</li>
+</ol>
+<p>What some choices do:</p>
+<ul>
+<li><strong>Search for</strong> takes an activity number, such as HLTH-12345, or words in the title, summary, city and other text. An activity number finds that activity whatever the other filters and dates say. A plain number without the ministry counts as an activity number only above 10,000; a smaller one, such as a year, is searched as a word.</li>
+<li><strong>Lead Ministry</strong> also finds activities shared with that ministry.</li>
+<li><strong>My Ministries&#39; Activities Only</strong> shows activities your ministries lead, not those only shared with them.</li>
+<li><strong>My Activities Only</strong> shows activities where you are the comm contact.</li>
+<li><strong>My Watchlist Only</strong> shows the activities you have starred.</li>
+</ul>
+<p><strong>Reset</strong> empties the filter. Choose <strong>Apply filters</strong> to run it.</p>
+<p>The Hub keeps your <strong>Display</strong> choice for next time. To share a filtered list, copy the page address. If the link uses HQ tools you don&#39;t have, the list opens without them.</p>
+<h2>Save a filter</h2>
+<p>Under <strong>Saved views</strong>, <strong>My Queries</strong> keeps filters you use often. Only you see them.</p>
+<ol>
+<li>Set the filter and choose <strong>Apply filters</strong>.</li>
+<li>Open <strong>Saved views</strong>.</li>
+<li>Type a name in <strong>Name for this filter</strong>.</li>
+<li>Choose <strong>Save query</strong>. You see, for example, &quot;Saved the query \u201CMy week\u201D.&quot;</li>
+</ol>
+<p>To run a saved filter, choose its name. <strong>Saved views</strong> then shows, for example, &quot;Running \u201CMy week\u201D&quot;. Each query also has <strong>Rename</strong>, <strong>Up</strong>, <strong>Down</strong> and <strong>Delete</strong>.</p>
+<p>&quot;Your queries changed in another tab, so they were reloaded.&quot; means you changed them somewhere else. Try again.</p>
+<h2>Columns</h2>
+<ol>
+<li>Choose <strong>Columns</strong>.</li>
+<li>Tick or untick the columns under <strong>Show these columns</strong>.</li>
+</ol>
+<p>The Hub keeps your choice for next time. <strong>Activity Id</strong> always shows. At first, <strong>HQ Tags</strong>, <strong>Ministry</strong>, <strong>Status</strong> and <strong>Translations</strong> are hidden.</p>
+<h2>Month and Week</h2>
+<p>Choose <strong>Month</strong> or <strong>Week</strong> to see the same filter as a calendar. An activity that runs several days shows on each of them. Use <strong>Previous month</strong>, <strong>Today</strong> and <strong>Next month</strong> (or <strong>Previous week</strong> and <strong>Next week</strong>) to move. Choose <strong>List</strong> to go back.</p>
+<p>At most 1,000 activities fit. &quot;Only the first 1,000 activities are shown. Narrow the filter to see the rest.&quot; means there are more.</p>
+<h2>Watch an activity</h2>
+<p>Choose the star beside an activity to add it to your watchlist. Choose it again to remove it. Point at the star to see who else watches it, or &quot;Nobody watches this yet&quot;.</p>
+<p>Use <strong>My Watchlist Only</strong> in <strong>Filters</strong> to list your starred activities. The star also works during the daily change freeze.</p>
+<h2>Excel export</h2>
+<ol>
+<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Excel export</strong>. A spreadsheet of the activities your filter finds downloads, up to 10,000.</li>
+</ol>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;More than 10,000 activities match: narrow the filter and export again&quot;</td>
+<td>Narrow the dates or the filter.</td>
+</tr>
+<tr>
+<td>&quot;Other exports are running: try again in a few seconds&quot;</td>
+<td>Wait a moment and try again.</td>
+</tr>
+</tbody></table></div>
+<p>For the PDF reports in the same panel, see <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-reports">Reports</a>.</p>
+<h2>The freeze line</h2>
+<p>&quot;Daily change freeze.&quot; at the top of the list says when no changes can be made. While the freeze applies to you, it shows as a <strong>Change freeze</strong> warning and <strong>New activity</strong> is hidden. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-lock-and-freeze">The edit lock and the daily change freeze</a>.</p>
+<h2>HQ tools</h2>
+<p>If you are in an HQ organization, you also see the <strong>Look Ahead filter</strong>, <strong>Corporate Queries</strong> under <strong>Saved views</strong>, and <strong>LA status</strong>. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a>.</p>
+<p>For <strong>Review selected</strong>, deleted activities, the <strong>Exec Look Ahead</strong> and other administrator tasks, see the Calendar administrator manual.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;From must be on or before To.&quot;</td>
+<td>Fix the dates.</td>
+</tr>
+<tr>
+<td>&quot;No activities match.&quot;</td>
+<td>Nothing fits the filter. Widen it, or choose <strong>Reset</strong>.</td>
+</tr>
+<tr>
+<td>&quot;(no longer available)&quot; in a filter box</td>
+<td>The filter names a choice that was removed. Choose another.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t save your list settings.&quot;</td>
+<td>Your column or display choice wasn&#39;t kept. Try again.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},At={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+<p><strong>Calendar</strong> &gt; <strong>Updates</strong> lists recent changes to the activities you can see, newest first. It opens on <strong>Today&#39;s updates</strong>. <strong>Latest 5 updates</strong> shows the five newest.</p>
+<p>Each line says when, who, and what they did: &quot;added activity&quot;, &quot;changed activity&quot;, &quot;reviewed activity&quot;, &quot;deleted activity&quot; or &quot;added new clone&quot;. Then come the activity&#39;s number, its title and its dates as they are now. Point at the title to see the summary.</p>
+<p>Choose the activity&#39;s number to open it. <strong>Save</strong> or <strong>Cancel</strong> there brings you back to the same updates.</p>
+<h2>Find older updates</h2>
+<ol>
+<li>Fill in <strong>From</strong> and <strong>To</strong>. <strong>From</strong> starts at yesterday. Both days are included. Leave either one empty to leave that end open.</li>
+<li>To narrow it, choose an <strong>Update type</strong>: <strong>Changed</strong>, <strong>Added</strong>, <strong>Deleted</strong>, <strong>Reviewed</strong> or <strong>Cloned</strong>.</li>
+<li>To narrow it further, type in <strong>Search for</strong>: words in the activity&#39;s title or summary, or the name of who made the change.</li>
+<li>Choose <strong>Search</strong>.</li>
+</ol>
+<p>To see one activity&#39;s updates, type its number above 10,000, such as HLTH-20001, in <strong>Search for</strong>. Shorter numbers, and words like COVID-19, are searched as text.</p>
+<p>At most 1,000 updates show at once. &quot;Showing the newest 1,000. Narrow the dates or the search to see older updates.&quot; means there were more.</p>
+<h2>What isn&#39;t here</h2>
+<ul>
+<li>Changes from before the new Calendar started. Open the activity and choose <strong>View changes</strong>: older changes are marked &quot;from legacy log&quot;.</li>
+<li>Transfers between comm contacts, and <strong>Clear LA Status</strong>. Those show only on the activity&#39;s <strong>View changes</strong>.</li>
+<li>Activities you can no longer see. When an activity is marked <strong>Not for Look Ahead</strong>, moved to another ministry or deleted, its updates leave the list for anyone who can&#39;t see it now.</li>
+<li>Changes to the <strong>Look Ahead</strong> fields, unless you see those fields. In an HQ organization you do.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;From must be on or before To.&quot;</td>
+<td>Fix the dates.</td>
+</tr>
+<tr>
+<td>&quot;No updates.&quot;</td>
+<td>Nothing changed in that time, or nothing matches the search.</td>
+</tr>
+<tr>
+<td>&quot;Activity not found: it doesn&#39;t exist, or you can&#39;t see it.&quot;</td>
+<td>Check the number.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},St={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+<p>You add activities for your ministries, and change the activities your ministries lead. In an HQ organization you can add and change any ministry&#39;s activities. What each field is for is on <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-fields">Activity fields</a>.</p>
+<h2>Add an activity</h2>
+<ol>
+<li>On <strong>Calendar</strong>, choose <strong>New activity</strong>.</li>
+<li>Fill in the fields. The times start at 8:00 AM to 6:00 PM. If you have only one ministry, it is already the <strong>Lead Ministry</strong>.</li>
+<li>Choose <strong>Save</strong>. You see, for example, &quot;Created HLTH-21.&quot; The activity stays open, so you can add files.</li>
+</ol>
+<p><strong>New activity</strong> is hidden during the daily change freeze, unless you are in an HQ organization.</p>
+<h2>Change an activity</h2>
+<ol>
+<li>Open the activity: choose its title in the list or the calendar, or its number on <strong>Updates</strong>.</li>
+<li>Make your changes. As soon as you change something, the activity is yours to edit: anyone else who opens it sees it read-only until you finish.</li>
+<li>Choose <strong>Save</strong>. You are back where you came from and see, for example, &quot;Saved HLTH-21.&quot;</li>
+</ol>
+<p><strong>Cancel</strong> goes back without saving. If you have unsaved changes, the Hub asks &quot;You have unsaved changes to this activity. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> or <strong>Leave</strong>.</p>
+<h2>If Save finds a problem</h2>
+<p>A box at the top, &quot;Fix these to save&quot;, lists each problem. Choose one to go to its field. Nothing is saved until they are fixed.</p>
+<p>A start or end date in the past is only a warning: &quot;The start date is in the past.&quot; or &quot;The end date is in the past.&quot; The activity still saves.</p>
+<h2>What happens when you save</h2>
+<ul>
+<li>A new activity is <strong>New</strong>. Saving a change to most fields makes it <strong>Changed</strong>, until HQ reviews it.</li>
+<li>HQ sees which fields changed, marked &quot;Changed: needs review&quot;.</li>
+<li>The change reaches <strong>Releases</strong> within a minute. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-releases">Releases and the Forecast</a>.</li>
+<li>Every change is kept in <strong>View changes</strong>.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>Activities you can only view</h2>
+<p>&quot;Your ministry is shared on this activity: you can view it but not change it.&quot; means another ministry leads it. The fields are read-only, each checklist shows only what is ticked (or &quot;None&quot;), and the button is <strong>Back</strong>.</p>
+<p>An activity also opens read-only while someone else is editing it, or during the daily change freeze. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-lock-and-freeze">The edit lock and the daily change freeze</a>.</p>
+<h2>Clone an activity</h2>
+<p><strong>Clone</strong> makes a new activity from this one, for the same lead ministry and comm contact.</p>
+<ol>
+<li>Open the activity.</li>
+<li>Choose <strong>Clone</strong>. The new activity opens, and you see, for example, &quot;Cloned HLTH-21 as HLTH-22.&quot;</li>
+<li>Check it, change what differs, and choose <strong>Save</strong>.</li>
+</ol>
+<p>The clone starts as <strong>New</strong>. It copies the activity&#39;s fields except these:</p>
+<ul>
+<li>the release date and time are emptied;</li>
+<li><strong>Internal notes</strong> is emptied;</li>
+<li><strong>News Subscribe</strong> is emptied;</li>
+<li>of the <strong>HQ Tags</strong>, only &quot;30-60-90&quot; is kept;</li>
+<li>the <strong>Executive Summary</strong> is set to &quot;**&quot;;</li>
+<li>files and linked releases stay with the original.</li>
+</ul>
+<p>If you have unsaved changes, <strong>Clone</strong> waits: &quot;Save or cancel your changes to review or clone.&quot; Clone isn&#39;t offered during the daily change freeze, unless you are in an HQ organization.</p>
+<h2>Add files</h2>
+<p>The <strong>Records</strong> section appears only when it is turned on for your Calendar. When it shows:</p>
+<ol>
+<li>Save a new activity first. Until then it says &quot;Save the activity first to add files.&quot;</li>
+<li>Under <strong>Records</strong>, choose <strong>Add files</strong> and pick one or more files.</li>
+<li>Each file is added straight away, on its own. You see, for example, &quot;Added 2 files.&quot;</li>
+</ol>
+<p>A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50. A file with the same name replaces the old one.</p>
+<p>To remove a file, choose <strong>Remove</strong> beside it, then <strong>Remove</strong> again in the &quot;The file is deleted from this activity.&quot; box.</p>
+<p>Adding or removing a file doesn&#39;t touch your unsaved changes to the fields. Like saving, it isn&#39;t possible while someone else is editing the activity, or during the daily change freeze unless you are in an HQ organization. A file opens only for people who can see its activity.</p>
+<h2>View changes</h2>
+<p><strong>View changes</strong> lists every change to the activity, newest first. Each entry says when, who and what they did, such as &quot;changed it&quot;, &quot;created it as a clone&quot;, &quot;reviewed it&quot;, &quot;transferred it&quot; or &quot;cleared its LA status&quot;. A table shows each field before and after. Changes brought over from the old Calendar are marked &quot;from legacy log&quot;.</p>
+<p>Choose <strong>Back to the activity</strong> to return.</p>
+<h2>Delete an activity</h2>
+<p>You can&#39;t delete activities, so <strong>Delete</strong> isn&#39;t offered. Ask a Calendar administrator of the lead ministry, or an HQ Administrator.</p>
+<h2>If your session runs out</h2>
+<p>If you are signed out while you have unsaved changes, sign in again and open the same activity. It says &quot;Your unsaved changes were restored.&quot; Signing out yourself discards them.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;It doesn&#39;t exist, or you can&#39;t see it.&quot; (under &quot;Activity not found&quot;)</td>
+<td>Check the number. The activity may be led by a ministry you&#39;re not in, or be marked <strong>Not for Look Ahead</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Someone else changed this activity \u2014 reload to see their changes&quot;</td>
+<td>Someone saved it after you opened it. Choose <strong>Reload</strong>. If you have unsaved changes, it asks &quot;Reload and lose your changes? The activity as it is now replaces them.&quot; Choose <strong>Reload</strong>, then make your change again, or <strong>Keep editing</strong>.</td>
+</tr>
+<tr>
+<td>&quot;This activity is no longer available.&quot;</td>
+<td>It was deleted, or moved out of your ministries, after you opened it.</td>
+</tr>
+<tr>
+<td>&quot;This activity is deleted&quot;</td>
+<td>Someone deleted it while you were editing. Your changes stay on the page but can&#39;t be saved.</td>
+</tr>
+<tr>
+<td>&quot;You can only choose one of your ministries&quot;</td>
+<td>Choose one of your own ministries as the <strong>Lead Ministry</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Choose a comm contact of the lead ministry&quot;</td>
+<td>The comm contact belongs to another ministry. Choose another.</td>
+</tr>
+<tr>
+<td>&quot;That comm contact is no longer active&quot; or &quot;That person&#39;s account is inactive&quot;</td>
+<td>Choose another comm contact. An activity that already has them still saves, but can&#39;t be cloned.</td>
+</tr>
+<tr>
+<td>&quot;That category is no longer in use&quot;</td>
+<td>Choose another category.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t save. Your changes are still here; try again.&quot;</td>
+<td>Something went wrong on the way. Choose <strong>Save</strong> again.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},xt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+<p>An activity&#39;s fields are in sections: <strong>Overview</strong>, <strong>Planning</strong>, <strong>Ministry</strong>, <strong>Schedule</strong>, <strong>Release</strong>, <strong>Event</strong> and, when turned on, <strong>Records</strong>. In an HQ organization you also see <strong>Look Ahead</strong>. A &quot;?&quot; beside a field explains it.</p>
+<h2>What you must fill in</h2>
+<p>Fields marked &quot;(required)&quot; must be filled in before you can save:</p>
+<ul>
+<li><strong>Category</strong>, <strong>Title</strong>, <strong>Comm Contact</strong> and <strong>Lead Ministry</strong>;</li>
+<li><strong>Start date</strong> and <strong>End date</strong>, and both times unless you tick <strong>All Day</strong>;</li>
+<li><strong>Summary</strong>, <strong>Significance</strong> and <strong>Scheduling considerations</strong>. In an HQ organization these three are optional.</li>
+</ul>
+<p>A category that is a release, such as <strong>Approved Release</strong>, also needs <strong>Origin</strong>, <strong>Distribution</strong> and at least one <strong>Comm Materials</strong>. The message says, for example, &quot;Choose the origin: this category is a release&quot;.</p>
+<h2>Overview</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Category</strong></td>
+<td>The kind of activity. <strong>HQ Placeholder</strong> is offered only to HQ.</td>
+</tr>
+<tr>
+<td><strong>Not for Look Ahead</strong></td>
+<td>Tick it to keep the activity out of the Look Ahead. Only its lead and shared ministries, HQ advanced users and HQ Administrators then see it, and it isn&#39;t offered on the releases <strong>Forecast</strong>.</td>
+</tr>
+<tr>
+<td><strong>Title</strong></td>
+<td>Up to 100 characters.</td>
+</tr>
+<tr>
+<td><strong>Summary</strong></td>
+<td>Up to 700 characters.</td>
+</tr>
+<tr>
+<td><strong>Issue</strong></td>
+<td>Tick it if the activity is an issue.</td>
+</tr>
+<tr>
+<td><strong>Significance</strong></td>
+<td>Why it matters. Up to 500 characters.</td>
+</tr>
+<tr>
+<td><strong>Lead Organization</strong></td>
+<td>The organization leading it, when that isn&#39;t the lead ministry, such as a partner. Up to 80 characters.</td>
+</tr>
+<tr>
+<td><strong>HQ Initiatives &amp; Leads</strong></td>
+<td>Tick the initiatives it supports.</td>
+</tr>
+<tr>
+<td><strong>HQ Tags</strong></td>
+<td>Type a tag and choose <strong>Add tag</strong>, or press Enter. Existing tags are suggested as you type. A new tag is created when you save. Up to 20. Choose \xD7 beside a tag to remove it.</td>
+</tr>
+</tbody></table></div>
+<h2>Planning</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Comm Contact</strong></td>
+<td>The communications person responsible. Only the lead ministry&#39;s active comm contacts are offered, so choose the <strong>Lead Ministry</strong> first.</td>
+</tr>
+<tr>
+<td><strong>Key activity</strong></td>
+<td>Tick it for a key activity.</td>
+</tr>
+<tr>
+<td><strong>Strategy</strong></td>
+<td>Up to 500 characters.</td>
+</tr>
+<tr>
+<td><strong>Comm Materials</strong></td>
+<td>The products planned, such as a news release.</td>
+</tr>
+<tr>
+<td><strong>Internal notes</strong></td>
+<td>Up to 4,000 characters.</td>
+</tr>
+</tbody></table></div>
+<h2>Ministry</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Lead Ministry</strong></td>
+<td>One of your ministries. In an HQ organization, any active ministry. Some ministries can&#39;t lead activities and aren&#39;t offered. Changing it empties <strong>Comm Contact</strong> if the contact belongs to another ministry.</td>
+</tr>
+<tr>
+<td><strong>Cross-Government</strong></td>
+<td>Tick it for a cross-government activity. It doesn&#39;t change who sees the activity.</td>
+</tr>
+<tr>
+<td><strong>Shared With</strong></td>
+<td>Tick the other ministries that should see it. They can open it but not change it.</td>
+</tr>
+</tbody></table></div>
+<h2>Look Ahead</h2>
+<p>Only HQ sees this section. Other users&#39; saves leave it as it is.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 4 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Executive Summary</strong></td>
+<td>Shown in HQ&#39;s Look Ahead report. Up to 2,000 characters.</td>
+</tr>
+<tr>
+<td><strong>LA Status</strong></td>
+<td><strong>None</strong>, <strong>New</strong> or <strong>Changed</strong>. HQ&#39;s Look Ahead flags the activity NEW or CHANGED.</td>
+</tr>
+<tr>
+<td><strong>LA Section</strong></td>
+<td>Where the activity goes in the Look Ahead. It is worked out from the category, <strong>Issue</strong>, <strong>Dates Confirmed</strong> and <strong>Comm Materials</strong>, and says &quot;Inferred from the activity&quot;. Choose another section to override it; it then says &quot;Override&quot; and offers <strong>Use the inferred section</strong>. Awareness dates and activities led by Citizen Engagement (CITENG) keep a fixed section, which can&#39;t be overridden.</td>
+</tr>
+<tr>
+<td><strong>Long Term Outlook</strong></td>
+<td>Tick it to list the activity in the Look Ahead&#39;s Long Term Outlook.</td>
+</tr>
+</tbody></table></div>
+<p>An activity marked <strong>Not for Look Ahead</strong> whose section is overridden needs an <strong>Executive Summary</strong>.</p>
+<h2>Schedule</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 5 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Start date</strong>, <strong>Start time</strong></td>
+<td>Times go in 5-minute steps.</td>
+</tr>
+<tr>
+<td><strong>End date</strong>, <strong>End time</strong></td>
+<td>The end can&#39;t be before the start.</td>
+</tr>
+<tr>
+<td><strong>All Day</strong></td>
+<td>Hides the times.</td>
+</tr>
+<tr>
+<td><strong>Dates Confirmed</strong></td>
+<td>Tick it once the date is firm. Only confirmed activities are offered on the releases <strong>Forecast</strong>.</td>
+</tr>
+<tr>
+<td><strong>Potential Dates</strong></td>
+<td>A general timeline, like &quot;late June&quot;. No numbers, TBC or TBD. Up to 50 characters.</td>
+</tr>
+<tr>
+<td><strong>Scheduling considerations</strong></td>
+<td>Anything that affects the timing. Up to 500 characters.</td>
+</tr>
+</tbody></table></div>
+<h2>Release</h2>
+<p>Some categories, such as <strong>TV / Radio</strong> and <strong>Awareness Day / Week / Month</strong>, have no release. For those this section is hidden, and choosing one empties the release date and time.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 6 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Release date</strong>, <strong>Release time</strong></td>
+<td>When the news release goes out. Fill in both, or neither. It can&#39;t be after the end date.</td>
+</tr>
+<tr>
+<td><strong>Origin</strong>, <strong>Distribution</strong></td>
+<td>Where the release comes from, and how widely it goes.</td>
+</tr>
+<tr>
+<td><strong>Translations Required</strong></td>
+<td>The languages needed.</td>
+</tr>
+<tr>
+<td><strong>Sectors</strong>, <strong>Themes</strong>, <strong>News Subscribe</strong></td>
+<td>The release&#39;s topics. A release editor can copy them into a release.</td>
+</tr>
+<tr>
+<td><strong>BC Gov News</strong></td>
+<td>The news releases linked to this activity. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-releases">Releases and the Forecast</a>.</td>
+</tr>
+</tbody></table></div>
+<h2>Event</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 7 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Premier Requested</strong></td>
+<td>Whether the Premier was asked to take part, such as <strong>Yes</strong>, <strong>No</strong> or <strong>Invited</strong>.</td>
+</tr>
+<tr>
+<td><strong>Representative</strong></td>
+<td>Who represents government at the activity.</td>
+</tr>
+<tr>
+<td><strong>At BC Legislature</strong></td>
+<td>Tick it if it takes place there.</td>
+</tr>
+<tr>
+<td><strong>City</strong>, <strong>Venue</strong></td>
+<td>Where it takes place. When you choose the city for places not on the list, <strong>Other City</strong> appears: type the city there. Venue and Other City take up to 55 characters.</td>
+</tr>
+<tr>
+<td><strong>Event Planner</strong>, <strong>Digital</strong></td>
+<td>Who plans the event, and the videographer.</td>
+</tr>
+</tbody></table></div>
+<p>For <strong>Records</strong>, see <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-activity">Add or change an activity</a>.</p>
+<h2>Choices no longer in use</h2>
+<p>A choice that has been retired shows &quot;(no longer in use)&quot; when an activity already has it. The activity keeps it. You can&#39;t choose it for another activity.</p>
+<h2>Long text from the old Calendar</h2>
+<p>Some activities brought over from the old Calendar have longer text than the limits allow. They still save. The limits apply only to text you change.</p>
+`,changed:"2026-10-30"},Wt=null,Ht={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced) who belong to an HQ organization.</p>
+<p>HQ reviews what the ministries enter. If none of your ministries is an HQ organization, you don&#39;t see these tools.</p>
+<h2>What HQ sees</h2>
+<ul>
+<li>Every ministry&#39;s activities, including those marked <strong>Not for Look Ahead</strong>.</li>
+<li>On an activity, each field changed since the last review says &quot;Changed: needs review&quot;.</li>
+<li>The <strong>Look Ahead</strong> section on every activity. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-fields">Activity fields</a>.</li>
+<li><strong>Search for</strong> in the list&#39;s <strong>Filters</strong> also searches the <strong>Executive Summary</strong>.</li>
+</ul>
+<p>You don&#39;t see deleted activities. Reviewing deletions is for HQ Administrators.</p>
+<h2>Review an activity</h2>
+<ol>
+<li>Open the activity.</li>
+<li>Check what changed. <strong>View changes</strong> shows each change before and after.</li>
+<li>Choose <strong>Review</strong>. You are back on the list and see, for example, &quot;Reviewed HLTH-21.&quot;</li>
+</ol>
+<p>Review marks the activity <strong>Reviewed</strong> and clears its &quot;Changed: needs review&quot; marks. It shows on <strong>Updates</strong> as &quot;reviewed activity&quot;.</p>
+<p>If you have unsaved changes, save or cancel them first: the page says &quot;Save or cancel your changes to review or clone.&quot;</p>
+<p>If you see &quot;Someone else changed this activity \u2014 reload to see their changes&quot;, choose <strong>Reload</strong>, check the new change, then choose <strong>Review</strong> again.</p>
+<p>You review one activity at a time. <strong>Review selected</strong>, which reviews many at once from the list, is for HQ Administrators.</p>
+<h2>Run a corporate query</h2>
+<p>A corporate query lists every ministry&#39;s upcoming activities by status. It replaces your filter while it runs.</p>
+<ol>
+<li>Open <strong>Saved views</strong>.</li>
+<li>Under <strong>Corporate Queries</strong>, choose <strong>Show all</strong>, or <strong>For the next</strong> and a number of days. It starts at 8.</li>
+<li>Under <strong>With status of</strong>, tick any of <strong>New</strong>, <strong>Changed</strong>, <strong>Reviewed</strong>, <strong>Deleted</strong>, <strong>LA New</strong> and <strong>LA Changed</strong>. <strong>New</strong> and <strong>Changed</strong> start ticked.</li>
+<li>Choose <strong>Run corporate query</strong>. Above the list you see, for example, &quot;Showing a corporate query. Every ministry&#39;s activities: next 8 days, New and Changed.&quot;</li>
+<li>Choose <strong>Back to the filter</strong> to return to your own filter.</li>
+</ol>
+<p><strong>Deleted</strong> finds nothing for you, since you can&#39;t see deleted activities.</p>
+<h2>The Look Ahead filter</h2>
+<p>The <strong>Look Ahead filter</strong> above the list narrows the list, and the reports made from it:</p>
+<ul>
+<li><strong>Look Ahead Only</strong> shows activities that aren&#39;t marked <strong>Not for Look Ahead</strong>.</li>
+<li><strong>Not for Look Ahead Only</strong> shows only those that are.</li>
+<li><strong>Show All</strong> turns it off.</li>
+</ul>
+<h2>Clear LA Status</h2>
+<p>HQ editors can do this too. It clears <strong>LA New</strong> and <strong>LA Changed</strong>, so the next Look Ahead flags only what is new or changed since.</p>
+<ol>
+<li>Choose <strong>LA status</strong> above the list.</li>
+<li>In <strong>Days ahead (Clear LA Status)</strong>, enter a number of days. It starts at 8.</li>
+<li>Choose <strong>Clear LA Status</strong>. The Hub asks, for example, &quot;Clear the LA status of 3 activities?&quot; and explains &quot;Every activity you can see that starts up to 8 days ahead, past ones included, loses its LA New or LA Changed status. Each change is recorded in the activity&#39;s history.&quot;</li>
+<li>Choose <strong>Clear LA Status</strong>. You see, for example, &quot;Cleared the LA status of 3 activities.&quot;</li>
+</ol>
+<p>With nothing to clear, you see, for example, &quot;No activities up to 8 days ahead have an LA status to clear.&quot;</p>
+<p>It doesn&#39;t show on <strong>Updates</strong>. Each activity&#39;s <strong>View changes</strong> says &quot;cleared its LA status&quot;.</p>
+<p>If you see &quot;The LA status of 2 activities was cleared before a later batch failed. Run Clear LA Status again to finish.&quot;, choose <strong>Clear LA Status</strong> again.</p>
+<h2>What isn&#39;t yours</h2>
+<p>The <strong>Exec Look Ahead</strong> report, <strong>Review selected</strong> and reviewing deletions are for HQ Administrators. Deleting an activity is for Calendar administrators.</p>
+`,changed:"2026-10-30"},Mt=null,Rt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+<p>Release editors plan news releases from Calendar activities in <strong>Releases</strong>. A release can be linked to an activity, and the activity then shows that release.</p>
+<h2>BC Gov News on an activity</h2>
+<p><strong>BC Gov News</strong>, at the end of the <strong>Release</strong> section, lists the releases linked to the activity, or says &quot;No releases are linked to this activity.&quot;</p>
+<p>Each line gives the release&#39;s type, its number when it has one, its status and its date, such as &quot;Release: Draft&quot;. The status is <strong>Draft</strong>, <strong>Approved</strong>, <strong>Scheduled</strong>, <strong>Published</strong> or <strong>Failed</strong>. It changes within a minute of the change in <strong>Releases</strong>.</p>
+<ul>
+<li>A release being corrected or taken down still shows <strong>Published</strong> until that is done.</li>
+<li>A deleted release disappears from the list.</li>
+<li>If you also have a role in <strong>Releases</strong>, each line opens the release. Otherwise it is plain text.</li>
+</ul>
+<p>In the activity list, <strong>Release</strong> in the <strong>Activity Id</strong> column means a release is linked.</p>
+<h2>Which activities release editors see</h2>
+<p>Release editors see Calendar activities on <strong>Releases</strong> &gt; <strong>Forecast</strong> only if they also have Calendar access, and only the activities that access lets them see. An activity appears there when all of these are true:</p>
+<ul>
+<li>its category starts with &quot;Approved&quot;, such as <strong>Approved Release</strong>;</li>
+<li><strong>Dates Confirmed</strong> is ticked;</li>
+<li>it isn&#39;t marked <strong>Not for Look Ahead</strong>;</li>
+<li>it starts from now on, and isn&#39;t deleted.</li>
+</ul>
+<p>From the <strong>Forecast</strong>, a release editor can start a release for the activity. The release can copy the activity&#39;s start, city, lead and shared ministries, sectors, themes and <strong>News Subscribe</strong> topics.</p>
+<h2>What your changes do</h2>
+<ul>
+<li>Your changes reach <strong>Releases</strong> within a minute.</li>
+<li>Changing an activity doesn&#39;t change a release already linked to it. What was copied into the release stays as it was. Tell the release editor if the release needs to change.</li>
+<li>Marking an activity <strong>Not for Look Ahead</strong> takes it off the <strong>Forecast</strong>. A release editor who types its number sees, for example, &quot;Calendar activity 3: its details aren&#39;t shown to you.&quot;</li>
+<li>A deleted activity leaves the <strong>Forecast</strong>, and no release can be linked to it from then on.</li>
+<li>Nobody is emailed.</li>
+</ul>
+`,changed:"2026-10-30"},Nt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+<p>You keep your ministry&#39;s activities in the Corporate Calendar up to date. The Corporate Calendar is the government-wide plan of announcements and events. You add and change activities, follow what changed on <strong>Updates</strong>, and make reports.</p>
+<h2>Ministry or HQ</h2>
+<p>Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.</p>
+<ul>
+<li><strong>In a ministry:</strong> you see your ministries&#39; activities and the activities shared with them. You add and change your ministries&#39; activities.</li>
+<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, except other ministries&#39; ones marked <strong>Not for Look Ahead</strong>. You add and change any ministry&#39;s activities you can see, and the daily change freeze doesn&#39;t stop you. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-hq">If you are an HQ editor</a>.</li>
+</ul>
+<h2>What you can do that read-only users can&#39;t</h2>
+<p>Calendar read-only users see the list, <strong>Updates</strong>, activities and reports, but can&#39;t change anything. These are yours:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What you do there</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>New activity</strong>, above the list</td>
+<td>Add an activity.</td>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-activity">Add or change an activity</a></td>
+</tr>
+<tr>
+<td>An activity</td>
+<td>Change it and choose <strong>Save</strong>.</td>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-activity">Add or change an activity</a></td>
+</tr>
+<tr>
+<td><strong>Clone</strong>, on an activity</td>
+<td>Make a new activity from it.</td>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-activity">Add or change an activity</a></td>
+</tr>
+<tr>
+<td><strong>Records</strong>, on an activity</td>
+<td>Add and remove files, when your Calendar has this section.</td>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-activity">Add or change an activity</a></td>
+</tr>
+<tr>
+<td><strong>LA status</strong>, above the list</td>
+<td>HQ editors only: clear the Look Ahead&#39;s NEW and CHANGED flags.</td>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-hq">If you are an HQ editor</a></td>
+</tr>
+</tbody></table></div>
+<p>To see what a read-only user can do, read the <a href="/hub/help/manuals/calendar-readonly">Calendar read-only manual</a>.</p>
+<h2>What you can&#39;t do</h2>
+<p>Ask a Calendar administrator to:</p>
+<ul>
+<li>delete an activity;</li>
+<li>give or change someone&#39;s Calendar access;</li>
+<li>change the choices offered on activities, such as categories, cities and HQ tags;</li>
+<li>move activities from one comm contact to another.</li>
+</ul>
+<p>Reviewing activities, corporate queries and the <strong>Look Ahead filter</strong> are for HQ advanced users. Their manual is the Calendar advanced user manual. Calendar administrators have the Calendar administrator manual.</p>
+<h2>Your help pages</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-list">The activity list</a></td>
+<td>What sits above the list, filters, saved queries, columns, Month and Week, the watchlist and the Excel export.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-updates">Updates</a></td>
+<td>Recent changes to the activities you can see.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-activity">Add or change an activity</a></td>
+<td><strong>New activity</strong>, <strong>Save</strong>, <strong>Clone</strong>, files and <strong>View changes</strong>.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-fields">Activity fields</a></td>
+<td>What each field is for, and which ones you must fill in.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-lock-and-freeze">The edit lock and the daily change freeze</a></td>
+<td>When an activity opens read-only, and why.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-hq">If you are an HQ editor</a></td>
+<td>What changes when you are in an HQ organization.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-reports">Reports</a></td>
+<td>The <strong>Look Ahead</strong>, <strong>30/60/90</strong> and <strong>Planning</strong> reports.</td>
+</tr>
+<tr>
+<td><a href="/hub/help/manuals/calendar-editor/calendar-editor-releases">Releases and the Forecast</a></td>
+<td>How activities and news releases are linked.</td>
+</tr>
+</tbody></table></div>
+<h2>Who sees an activity</h2>
+<ul>
+<li>Its lead ministry, and every ministry ticked in <strong>Shared With</strong>, see it.</li>
+<li>HQ organizations see every ministry&#39;s activities.</li>
+<li>An activity marked <strong>Not for Look Ahead</strong> is seen only by its lead and shared ministries, and by HQ advanced users and HQ administrators. HQ editors don&#39;t see other ministries&#39; ones.</li>
+<li>Only the lead ministry and HQ can change an activity. A ministry it is only shared with can open it but not change it.</li>
+<li>A deleted activity leaves the Calendar for everyone except HQ administrators.</li>
+</ul>
+<h2>What you see in the side menu</h2>
+<p>Under <strong>Work</strong> you see <strong>Calendar</strong>. Its tabs are <strong>Calendar</strong> and <strong>Updates</strong>.</p>
+<p>You may also see <strong>Releases</strong> or <strong>Subscribers</strong> if you have a role there. Those have their own manuals.</p>
+<h2>When the list is empty</h2>
+<p>&quot;You aren&#39;t in any ministry yet, so there are no activities to show you. Ask a Calendar administrator.&quot; means your Calendar access has no ministry. A Calendar administrator adds it.</p>
+<p>&quot;You don&#39;t have Calendar access. Ask a Calendar administrator.&quot; means your Calendar access was removed. You stay signed in to the Hub.</p>
+<h2>Keyboard shortcuts</h2>
+<p>On a Mac use Command (\u2318); on Windows use Ctrl.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>\u2318K or Ctrl+K</td>
+<td>On the activity list, opens <strong>Filters</strong> and goes to <strong>Search for</strong>.</td>
+</tr>
+<tr>
+<td>\u2318S or Ctrl+S</td>
+<td>On an activity, saves it, the same as <strong>Save</strong>.</td>
+</tr>
+<tr>
+<td>\u2318Enter or Ctrl+Enter</td>
+<td>On a new activity, saves it.</td>
+</tr>
+</tbody></table></div>
+<h2>Signing in</h2>
+<p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
+`,changed:"2026-10-30"},Et={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+<p><strong>Calendar</strong> lists the activities you can see, from today on, earliest first. The first 30 show. More load as you scroll down, or when you choose <strong>Show more</strong> (the button names how many).</p>
+<p>Two kinds of activity are left out until you ask for them:</p>
+<ul>
+<li>Awareness dates. Choose <strong>Awareness Day / Week / Month</strong> in <strong>Category</strong> to see them.</li>
+<li>Activities led by the consultations ministry, shown as <strong>CITENG</strong>. To see them, choose a ministry in <strong>Lead Ministry</strong>: in a ministry, choose your own (this also lists activities shared with it); in an HQ organization, choose <strong>CITENG</strong>.</li>
+</ul>
+<p>Both kinds always show under <strong>My Watchlist Only</strong>.</p>
+<h2>What sits above the list</h2>
+<p>From the top:</p>
+<ol>
+<li>The daily change freeze line. See <strong>The freeze line</strong> below.</li>
+<li><strong>Filters</strong> and <strong>Saved views</strong>, which open when you choose them.</li>
+<li><strong>New activity</strong>, on the left. <strong>List</strong>, <strong>Month</strong> and <strong>Week</strong>, on the right.</li>
+<li><strong>Columns</strong> and <strong>Export and reports</strong>. HQ editors also see <strong>LA status</strong> here.</li>
+</ol>
+<p><strong>New activity</strong> is hidden during the daily change freeze, unless you are an HQ editor. To add an activity, see <a href="/hub/help/manuals/calendar-editor/calendar-editor-activity">Add or change an activity</a>.</p>
+<h2>Read the list</h2>
+<ul>
+<li>Choose an activity&#39;s title to open it. When you come back, its row is brought into view.</li>
+<li>The <strong>Activity Id</strong> column shows the ministry and number, such as HLTH-12. It also shows <strong>Reviewed</strong> when HQ has reviewed the activity, <strong>Shared</strong> when it is shared with other ministries, and <strong>Release</strong> when a news release is linked to it.</li>
+<li>Under the title you see when it was last updated, by whom, and when it was created.</li>
+<li><strong>Not for Look Ahead</strong> under <strong>Categories</strong> marks an activity kept out of the Look Ahead. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-overview">Who sees an activity</a>.</li>
+<li>Point at the date to see the scheduling considerations, at the title to see the significance, and at <strong>Comm. Materials</strong> to see the origin and distribution.</li>
+<li>Choose a column heading to sort by it, except <strong>Premier</strong>. Choose it again to reverse the order.</li>
+<li><strong>What the column names mean</strong>, under the list, explains the short names.</li>
+</ul>
+<h2>Filter the list</h2>
+<ol>
+<li>Open <strong>Filters</strong>. The line beside it shows the filter in use, or &quot;No filters&quot;.</li>
+<li>Fill in what you want. You can use <strong>From</strong>, <strong>To</strong>, <strong>This day only</strong>, <strong>Search for</strong>, <strong>HQ Tags</strong>, <strong>Issue</strong>, <strong>Date Confirmed</strong>, <strong>Status</strong>, <strong>Category</strong>, <strong>Lead Ministry</strong>, <strong>Comm Contact</strong>, <strong>Representative</strong>, <strong>Initiative</strong>, <strong>Premier Requested</strong> and <strong>Distribution</strong>.</li>
+<li>Under <strong>Display</strong>, choose <strong>Show All</strong>, <strong>My Ministries&#39; Activities Only</strong>, <strong>My Activities Only</strong> or <strong>My Watchlist Only</strong>.</li>
+<li>Choose <strong>Apply filters</strong>.</li>
+</ol>
+<p>What some choices do:</p>
+<ul>
+<li><strong>Search for</strong> takes an activity number, such as HLTH-12345, or words in the title, summary, city and other text. An activity number finds that activity whatever the other filters and dates say. A plain number without the ministry counts as an activity number only above 10,000; a smaller one, such as a year, is searched as a word.</li>
+<li><strong>Lead Ministry</strong> offers your own ministries, or every ministry if you are in an HQ organization. It also finds activities shared with that ministry.</li>
+<li><strong>My Ministries&#39; Activities Only</strong> shows activities your ministries lead, not those only shared with them.</li>
+<li><strong>My Activities Only</strong> shows activities where you are the comm contact.</li>
+<li><strong>My Watchlist Only</strong> shows the activities you have starred.</li>
+</ul>
+<p><strong>Reset</strong> empties the filter. Choose <strong>Apply filters</strong> to run it.</p>
+<p>The Hub keeps your <strong>Display</strong> choice for next time. To share a filtered list, copy the page address. If a colleague&#39;s link uses HQ tools you don&#39;t have, the list opens without them.</p>
+<h2>Save a filter</h2>
+<p>Under <strong>Saved views</strong>, <strong>My Queries</strong> keeps filters you use often. Only you see them.</p>
+<ol>
+<li>Set the filter and choose <strong>Apply filters</strong>.</li>
+<li>Open <strong>Saved views</strong>.</li>
+<li>Type a name in <strong>Name for this filter</strong>.</li>
+<li>Choose <strong>Save query</strong>. You see, for example, &quot;Saved the query \u201CMy week\u201D.&quot;</li>
+</ol>
+<p>To run a saved filter, choose its name. <strong>Saved views</strong> then shows, for example, &quot;Running \u201CMy week\u201D&quot;. Each query also has <strong>Rename</strong>, <strong>Up</strong>, <strong>Down</strong> and <strong>Delete</strong>.</p>
+<p>&quot;Your queries changed in another tab, so they were reloaded.&quot; means you changed them somewhere else. Try again.</p>
+<h2>Columns</h2>
+<ol>
+<li>Choose <strong>Columns</strong>.</li>
+<li>Tick or untick the columns under <strong>Show these columns</strong>.</li>
+</ol>
+<p>The Hub keeps your choice for next time. <strong>Activity Id</strong> always shows. At first, <strong>HQ Tags</strong>, <strong>Ministry</strong>, <strong>Status</strong> and <strong>Translations</strong> are hidden.</p>
+<h2>Month and Week</h2>
+<p>Choose <strong>Month</strong> or <strong>Week</strong> to see the same filter as a calendar. An activity that runs several days shows on each of them. Use <strong>Previous month</strong>, <strong>Today</strong> and <strong>Next month</strong> (or <strong>Previous week</strong> and <strong>Next week</strong>) to move. Choose <strong>List</strong> to go back.</p>
+<p>At most 1,000 activities fit. &quot;Only the first 1,000 activities are shown. Narrow the filter to see the rest.&quot; means there are more.</p>
+<h2>Watch an activity</h2>
+<p>Choose the star beside an activity to add it to your watchlist. Choose it again to remove it. Point at the star to see who else watches it, or &quot;Nobody watches this yet&quot;.</p>
+<p>Use <strong>My Watchlist Only</strong> in <strong>Filters</strong> to list your starred activities. The star also works during the daily change freeze.</p>
+<h2>Excel export</h2>
+<ol>
+<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Excel export</strong>. A spreadsheet of the activities your filter finds downloads, up to 10,000.</li>
+</ol>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;More than 10,000 activities match: narrow the filter and export again&quot;</td>
+<td>Narrow the dates or the filter.</td>
+</tr>
+<tr>
+<td>&quot;Other exports are running: try again in a few seconds&quot;</td>
+<td>Wait a moment and try again.</td>
+</tr>
+</tbody></table></div>
+<p>For the PDF reports in the same panel, see <a href="/hub/help/manuals/calendar-editor/calendar-editor-reports">Reports</a>.</p>
+<h2>The freeze line</h2>
+<p>&quot;Daily change freeze.&quot; at the top of the list says when no changes can be made. While the freeze applies to you, it shows as a <strong>Change freeze</strong> warning and <strong>New activity</strong> is hidden. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-lock-and-freeze">The edit lock and the daily change freeze</a>.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;From must be on or before To.&quot;</td>
+<td>Fix the dates.</td>
+</tr>
+<tr>
+<td>&quot;No activities match.&quot;</td>
+<td>Nothing fits the filter. Widen it, or choose <strong>Reset</strong>.</td>
+</tr>
+<tr>
+<td>&quot;(no longer available)&quot; in a filter box</td>
+<td>The filter names a choice that was removed. Choose another.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t save your list settings.&quot;</td>
+<td>Your column or display choice wasn&#39;t kept. Try again.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},It=null,Lt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+<p>You add activities for your ministries, and change the activities your ministries lead. In an HQ organization you can add and change any ministry&#39;s activities you can see. What each field is for is on <a href="/hub/help/manuals/calendar-editor/calendar-editor-fields">Activity fields</a>.</p>
+<h2>Add an activity</h2>
+<ol>
+<li>On <strong>Calendar</strong>, choose <strong>New activity</strong>.</li>
+<li>Fill in the fields. The times start at 8:00 AM to 6:00 PM. If you have only one ministry, it is already the <strong>Lead Ministry</strong>.</li>
+<li>Choose <strong>Save</strong>. You see, for example, &quot;Created HLTH-21.&quot; The activity stays open, so you can add files.</li>
+</ol>
+<p><strong>New activity</strong> is hidden during the daily change freeze, unless you are in an HQ organization.</p>
+<h2>Change an activity</h2>
+<ol>
+<li>Open the activity: choose its title in the list or the calendar, or its number on <strong>Updates</strong>.</li>
+<li>Make your changes. As soon as you change something, the activity is yours to edit: anyone else who opens it sees it read-only until you finish.</li>
+<li>Choose <strong>Save</strong>. You are back where you came from and see, for example, &quot;Saved HLTH-21.&quot;</li>
+</ol>
+<p><strong>Cancel</strong> goes back without saving. If you have unsaved changes, the Hub asks &quot;You have unsaved changes to this activity. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> or <strong>Leave</strong>.</p>
+<h2>If Save finds a problem</h2>
+<p>A box at the top, &quot;Fix these to save&quot;, lists each problem, such as &quot;Enter a title&quot; or &quot;Choose a comm contact&quot;. Choose one to go to its field. Nothing is saved until they are fixed.</p>
+<p>A start or end date in the past is only a warning: &quot;The start date is in the past.&quot; or &quot;The end date is in the past.&quot; The activity still saves.</p>
+<h2>What happens when you save</h2>
+<ul>
+<li>A new activity is <strong>New</strong>. Saving a change to most fields makes it <strong>Changed</strong>, until HQ reviews it.</li>
+<li>HQ sees which fields changed, marked &quot;Changed: needs review&quot;.</li>
+<li>Everyone who can see the activity sees your change straight away, in the list, on <strong>Updates</strong> and in reports.</li>
+<li>The change reaches <strong>Releases</strong> within a minute. A release already linked to the activity doesn&#39;t change. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-releases">Releases and the Forecast</a>.</li>
+<li>Every change is kept in <strong>View changes</strong>.</li>
+<li>Nobody is emailed. Tell people yourself if they need to know.</li>
+</ul>
+<h2>Activities you can only view</h2>
+<p>&quot;Your ministry is shared on this activity: you can view it but not change it.&quot; means another ministry leads it. The fields are read-only, each checklist shows only what is ticked (or &quot;None&quot;), and the button is <strong>Back</strong>.</p>
+<p>An activity also opens read-only while someone else is editing it, or during the daily change freeze. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-lock-and-freeze">The edit lock and the daily change freeze</a>.</p>
+<h2>Clone an activity</h2>
+<p><strong>Clone</strong> makes a new activity from this one, for the same lead ministry and comm contact.</p>
+<ol>
+<li>Open the activity.</li>
+<li>Choose <strong>Clone</strong>. The new activity opens, and you see, for example, &quot;Cloned HLTH-21 as HLTH-22.&quot;</li>
+<li>Check it, change what differs, and choose <strong>Save</strong>.</li>
+</ol>
+<p>The clone is saved as soon as you choose <strong>Clone</strong>, and starts as <strong>New</strong>. It copies the activity&#39;s fields except these:</p>
+<ul>
+<li>the release date and time are emptied;</li>
+<li><strong>Internal notes</strong> is emptied;</li>
+<li><strong>News Subscribe</strong> is emptied;</li>
+<li>of the <strong>HQ Tags</strong>, only &quot;30-60-90&quot; is kept;</li>
+<li>files and linked releases stay with the original.</li>
+</ul>
+<p>If you have unsaved changes, <strong>Clone</strong> waits: &quot;Save or cancel your changes to review or clone.&quot; <strong>Clone</strong> isn&#39;t offered during the daily change freeze, unless you are in an HQ organization.</p>
+<h2>Add files</h2>
+<p>The <strong>Records</strong> section appears only when it is turned on for your Calendar. When it shows:</p>
+<ol>
+<li>Save a new activity first. Until then it says &quot;Save the activity first to add files.&quot;</li>
+<li>Under <strong>Records</strong>, choose <strong>Add files</strong> and pick one or more files.</li>
+<li>Each file is added straight away, on its own. You see, for example, &quot;Added 2 files.&quot;</li>
+</ol>
+<p>A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50. A file with the same name replaces the old one.</p>
+<p>To remove a file, choose <strong>Remove</strong> beside it, then <strong>Remove</strong> again in the &quot;The file is deleted from this activity.&quot; box.</p>
+<p>Adding or removing a file doesn&#39;t touch your unsaved changes to the fields. Like saving, it isn&#39;t possible while someone else is editing the activity, or during the daily change freeze unless you are in an HQ organization. A file opens only for people who can see its activity.</p>
+<h2>View changes</h2>
+<p><strong>View changes</strong> lists every change to the activity, newest first. Each entry says when, who and what they did, such as &quot;created it&quot;, &quot;changed it&quot;, &quot;created it as a clone&quot;, &quot;reviewed it&quot;, &quot;transferred it&quot; or &quot;cleared its LA status&quot;. A table shows each field before and after. Changes brought over from the old Calendar are marked &quot;from legacy log&quot;.</p>
+<p>Choose <strong>Back to the activity</strong> to return.</p>
+<h2>Delete an activity</h2>
+<p>You can&#39;t delete activities, so <strong>Delete</strong> isn&#39;t offered. Ask a Calendar administrator of the lead ministry, or an HQ administrator.</p>
+<h2>If your session runs out</h2>
+<p>If you are signed out while you have unsaved changes, sign in again and open the same activity. It says &quot;Your unsaved changes were restored.&quot; Signing out yourself discards them.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;It doesn&#39;t exist, or you can&#39;t see it.&quot; (under &quot;Activity not found&quot;)</td>
+<td>Check the number. The activity may be led by a ministry you&#39;re not in, or it was deleted.</td>
+</tr>
+<tr>
+<td>&quot;Someone else changed this activity \u2014 reload to see their changes&quot;</td>
+<td>Someone saved it after you opened it. Choose <strong>Reload</strong>. If you have unsaved changes, it asks &quot;Reload and lose your changes? The activity as it is now replaces them.&quot; Choose <strong>Reload</strong>, then make your change again, or <strong>Keep editing</strong>.</td>
+</tr>
+<tr>
+<td>&quot;This activity is no longer available.&quot;</td>
+<td>It was deleted, or moved out of your ministries, after you opened it.</td>
+</tr>
+<tr>
+<td>&quot;This activity is deleted&quot;</td>
+<td>Someone deleted it while you were editing. Your changes stay on the page but can&#39;t be saved.</td>
+</tr>
+<tr>
+<td>&quot;You can only choose one of your ministries&quot;</td>
+<td>Choose one of your own ministries as the <strong>Lead Ministry</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Choose a comm contact of the lead ministry&quot;</td>
+<td>The comm contact belongs to another ministry. Choose another.</td>
+</tr>
+<tr>
+<td>&quot;That comm contact is no longer active&quot; or &quot;That person&#39;s account is inactive&quot;</td>
+<td>Choose another comm contact. An activity that already has them still saves, but can&#39;t be cloned.</td>
+</tr>
+<tr>
+<td>&quot;That category is no longer in use&quot;</td>
+<td>Choose another category.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t save. Your changes are still here; try again.&quot;</td>
+<td>Something went wrong on the way. Choose <strong>Save</strong> again.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},Ft={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+<p>An activity&#39;s fields are in sections: <strong>Overview</strong>, <strong>Planning</strong>, <strong>Ministry</strong>, <strong>Schedule</strong>, <strong>Release</strong>, <strong>Event</strong> and, when turned on, <strong>Records</strong>. HQ editors also see <strong>Look Ahead</strong>. A &quot;?&quot; beside a field explains it.</p>
+<h2>What you must fill in</h2>
+<p>Fields marked &quot;(required)&quot; must be filled in before you can save:</p>
+<ul>
+<li><strong>Category</strong>, <strong>Title</strong>, <strong>Comm Contact</strong> and <strong>Lead Ministry</strong>;</li>
+<li><strong>Start date</strong> and <strong>End date</strong>, and both times unless you tick <strong>All Day</strong>;</li>
+<li><strong>Summary</strong>, <strong>Significance</strong> and <strong>Scheduling considerations</strong>. For HQ editors these three are optional.</li>
+</ul>
+<p>A category that is a release, such as <strong>Approved Release</strong>, also needs <strong>Origin</strong>, <strong>Distribution</strong> and at least one <strong>Comm Materials</strong>. The message says, for example, &quot;Choose the origin: this category is a release&quot;.</p>
+<h2>Overview</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Category</strong></td>
+<td>The kind of activity. <strong>HQ Placeholder</strong> is offered only to HQ editors and above.</td>
+</tr>
+<tr>
+<td><strong>Not for Look Ahead</strong></td>
+<td>Tick it to keep the activity out of the Look Ahead. Only its lead and shared ministries, HQ advanced users and HQ administrators then see it, and it isn&#39;t offered on the releases <strong>Forecast</strong>.</td>
+</tr>
+<tr>
+<td><strong>Title</strong></td>
+<td>Up to 100 characters.</td>
+</tr>
+<tr>
+<td><strong>Summary</strong></td>
+<td>Up to 700 characters.</td>
+</tr>
+<tr>
+<td><strong>Issue</strong></td>
+<td>Tick it if the activity is an issue.</td>
+</tr>
+<tr>
+<td><strong>Significance</strong></td>
+<td>Why it matters. Up to 500 characters.</td>
+</tr>
+<tr>
+<td><strong>Lead Organization</strong></td>
+<td>The organization leading it, when that isn&#39;t the lead ministry, such as a partner. Up to 80 characters.</td>
+</tr>
+<tr>
+<td><strong>HQ Initiatives &amp; Leads</strong></td>
+<td>Tick the initiatives it supports.</td>
+</tr>
+<tr>
+<td><strong>HQ Tags</strong></td>
+<td>Type a tag and choose <strong>Add tag</strong>, or press Enter. Existing tags are suggested as you type. A new tag is created when you save. Up to 20. Choose \xD7 beside a tag to remove it.</td>
+</tr>
+</tbody></table></div>
+<h2>Planning</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Comm Contact</strong></td>
+<td>The communications person responsible. Only the lead ministry&#39;s active comm contacts are offered, so choose the <strong>Lead Ministry</strong> first.</td>
+</tr>
+<tr>
+<td><strong>Key activity</strong></td>
+<td>Tick it for a key activity.</td>
+</tr>
+<tr>
+<td><strong>Strategy</strong></td>
+<td>Up to 500 characters.</td>
+</tr>
+<tr>
+<td><strong>Comm Materials</strong></td>
+<td>The products planned, such as a news release.</td>
+</tr>
+<tr>
+<td><strong>Internal notes</strong></td>
+<td>Up to 4,000 characters.</td>
+</tr>
+</tbody></table></div>
+<h2>Ministry</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Lead Ministry</strong></td>
+<td>One of your ministries. In an HQ organization, any active ministry. Some ministries can&#39;t lead activities and aren&#39;t offered. Changing it empties <strong>Comm Contact</strong> if the contact belongs to another ministry.</td>
+</tr>
+<tr>
+<td><strong>Cross-Government</strong></td>
+<td>Tick it for a cross-government activity. It doesn&#39;t change who sees the activity.</td>
+</tr>
+<tr>
+<td><strong>Shared With</strong></td>
+<td>Tick the other ministries that should see it. They can open it but not change it.</td>
+</tr>
+</tbody></table></div>
+<h2>Look Ahead</h2>
+<p>Only HQ editors and above see this section. When a ministry editor saves, it stays as it is.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 4 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Executive Summary</strong></td>
+<td>Shown in HQ&#39;s Look Ahead report. Up to 2,000 characters.</td>
+</tr>
+<tr>
+<td><strong>LA Status</strong></td>
+<td><strong>None</strong>, <strong>New</strong> or <strong>Changed</strong>. HQ&#39;s Look Ahead flags the activity NEW or CHANGED.</td>
+</tr>
+<tr>
+<td><strong>LA Section</strong></td>
+<td>Where the activity goes in the Look Ahead. It is worked out from the category, <strong>Issue</strong>, <strong>Dates Confirmed</strong> and <strong>Comm Materials</strong>, and says &quot;Inferred from the activity&quot;. Choose another section to override it; it then says &quot;Override&quot; and offers <strong>Use the inferred section</strong>. Awareness dates and activities led by the ministry shown as <strong>CITENG</strong> keep a fixed section, which can&#39;t be overridden.</td>
+</tr>
+<tr>
+<td><strong>Long Term Outlook</strong></td>
+<td>Tick it to list the activity in the Look Ahead&#39;s Long Term Outlook.</td>
+</tr>
+</tbody></table></div>
+<p>A clone&#39;s <strong>Executive Summary</strong> is set to &quot;**&quot;.</p>
+<p>An activity marked <strong>Not for Look Ahead</strong> whose section is overridden needs an <strong>Executive Summary</strong>.</p>
+<h2>Schedule</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 5 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Start date</strong>, <strong>Start time</strong></td>
+<td>Times go in 5-minute steps.</td>
+</tr>
+<tr>
+<td><strong>End date</strong>, <strong>End time</strong></td>
+<td>The end can&#39;t be before the start.</td>
+</tr>
+<tr>
+<td><strong>All Day</strong></td>
+<td>Hides the times.</td>
+</tr>
+<tr>
+<td><strong>Dates Confirmed</strong></td>
+<td>Tick it once the date is firm. Only confirmed activities are offered on the releases <strong>Forecast</strong>.</td>
+</tr>
+<tr>
+<td><strong>Potential Dates</strong></td>
+<td>A general timeline, like &quot;late June&quot;. No numbers, TBC or TBD. Up to 50 characters.</td>
+</tr>
+<tr>
+<td><strong>Scheduling considerations</strong></td>
+<td>Anything that affects the timing. Up to 500 characters.</td>
+</tr>
+</tbody></table></div>
+<h2>Release</h2>
+<p>Some categories, such as <strong>TV / Radio</strong> and <strong>Awareness Day / Week / Month</strong>, have no release. For those this section is hidden, and choosing one empties the release date and time.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 6 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Release date</strong>, <strong>Release time</strong></td>
+<td>When the news release goes out. Fill in both, or neither. It can&#39;t be after the end date.</td>
+</tr>
+<tr>
+<td><strong>Origin</strong>, <strong>Distribution</strong></td>
+<td>Where the release comes from, and how widely it goes.</td>
+</tr>
+<tr>
+<td><strong>Translations Required</strong></td>
+<td>The languages needed.</td>
+</tr>
+<tr>
+<td><strong>Sectors</strong>, <strong>Themes</strong>, <strong>News Subscribe</strong></td>
+<td>The release&#39;s topics. A release editor can copy them into a release.</td>
+</tr>
+<tr>
+<td><strong>BC Gov News</strong></td>
+<td>The news releases linked to this activity. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-releases">Releases and the Forecast</a>.</td>
+</tr>
+</tbody></table></div>
+<h2>Event</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 7 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Premier Requested</strong></td>
+<td>Whether the Premier was asked to take part, such as <strong>Yes</strong>, <strong>No</strong> or <strong>Invited</strong>.</td>
+</tr>
+<tr>
+<td><strong>Representative</strong></td>
+<td>Who represents government at the activity.</td>
+</tr>
+<tr>
+<td><strong>At BC Legislature</strong></td>
+<td>Tick it if it takes place there.</td>
+</tr>
+<tr>
+<td><strong>City</strong>, <strong>Venue</strong></td>
+<td>Where it takes place. When you choose the city for places not on the list, <strong>Other City</strong> appears: type the city there. Venue and Other City take up to 55 characters.</td>
+</tr>
+<tr>
+<td><strong>Event Planner</strong>, <strong>Digital</strong></td>
+<td>Who plans the event, and the videographer.</td>
+</tr>
+</tbody></table></div>
+<p>For <strong>Records</strong>, see <a href="/hub/help/manuals/calendar-editor/calendar-editor-activity">Add or change an activity</a>.</p>
+<h2>Choices no longer in use</h2>
+<p>A choice that has been retired shows &quot;(no longer in use)&quot; when an activity already has it. The activity keeps it. You can&#39;t choose it for another activity.</p>
+<h2>Long text from the old Calendar</h2>
+<p>Some activities brought over from the old Calendar have longer text than the limits allow. They still save. The limits apply only to text you change.</p>
+`,changed:"2026-10-30"},Ot={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+<p>Two things can open an activity read-only even though you may change it: someone else editing it, and the daily change freeze.</p>
+<h2>When someone else is editing</h2>
+<p>Only one person edits an activity at a time. The first person to change a field holds the edit lock. Anyone else who opens the activity sees, for example, &quot;Pat Example is editing this activity (since 2:15 PM). It opens for editing when they save or cancel, or after 15 minutes without input.&quot;</p>
+<p>The page stays read-only. It opens for you by itself, without a reload, once they save, cancel or leave it alone for 15 minutes.</p>
+<h2>When your lock lapses</h2>
+<p>If you leave the page alone for 15 minutes, your lock lapses and you see &quot;Your edit lock lapsed. Save will work only if no one else has taken it or changed the activity.&quot; Your changes stay on the page. Choose <strong>Save</strong>: it works if nobody else changed the activity. If someone did, you are asked to reload.</p>
+<h2>When it is open in another tab</h2>
+<p>&quot;You&#39;re editing this activity in another tab.&quot; means you are editing it in another tab or window. Choose <strong>Continue here</strong> to edit it in this one instead.</p>
+<h2>The daily change freeze</h2>
+<p>Every day from 4pm to 5pm BC time, only HQ can make changes. The list and each activity show &quot;You cannot make content changes between 4pm-5pm. Contact the Corp Cal Manager to have emerging or urgent updates made for you during this time.&quot;</p>
+<p>During the freeze, unless you are in an HQ organization:</p>
+<ul>
+<li><strong>New activity</strong> is hidden.</li>
+<li>Activities open read-only, with a <strong>Change freeze</strong> warning.</li>
+<li><strong>Clone</strong> isn&#39;t offered, and files can&#39;t be added or removed.</li>
+<li>A save you started before 4pm and send after 4pm is refused with the same message. Your changes stay on the page. Save again at 5pm.</li>
+</ul>
+<p>These still work during the freeze: the list, filters, <strong>My Queries</strong>, the star, <strong>Updates</strong>, <strong>View changes</strong>, the Excel export and the reports.</p>
+<p>For an urgent change during the freeze, contact the Corp Cal Manager at GCPE HQ.</p>
+<p>If you are an HQ editor, the freeze doesn&#39;t apply to you. You see the times on the list, but you can keep working.</p>
+`,changed:"2026-10-30"},Dt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor) who belong to an HQ organization, such as GCPE Headquarters.</p>
+<p>If none of your ministries is an HQ organization, nothing on this page applies to you.</p>
+<h2>What HQ editors can do that ministry editors can&#39;t</h2>
+<ul>
+<li>See every ministry&#39;s activities. Other ministries&#39; activities marked <strong>Not for Look Ahead</strong> stay hidden from you.</li>
+<li>Add an activity for any active ministry, and change any activity you can see.</li>
+<li>Keep working during the daily change freeze, 4pm to 5pm.</li>
+<li>Save without <strong>Summary</strong>, <strong>Significance</strong> and <strong>Scheduling considerations</strong>: for you they are optional.</li>
+<li>Choose the <strong>HQ Placeholder</strong> category.</li>
+<li>See and change the <strong>Look Ahead</strong> section on every activity. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-fields">Activity fields</a>.</li>
+<li>See &quot;Changed: needs review&quot; beside each field changed since HQ last reviewed the activity.</li>
+<li>Search the <strong>Executive Summary</strong>: <strong>Search for</strong> in the list&#39;s <strong>Filters</strong> also looks there.</li>
+<li>Clear LA Status, described below.</li>
+</ul>
+<p>Your <strong>Look Ahead</strong> report also differs. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-reports">Reports</a>.</p>
+<h2>Clear LA Status</h2>
+<p>This clears <strong>LA New</strong> and <strong>LA Changed</strong>, so the next Look Ahead flags only what is new or changed since.</p>
+<ol>
+<li>Choose <strong>LA status</strong> above the list.</li>
+<li>In <strong>Days ahead (Clear LA Status)</strong>, enter a number of days. It starts at 8.</li>
+<li>Choose <strong>Clear LA Status</strong>. The Hub asks, for example, &quot;Clear the LA status of 3 activities?&quot; and explains &quot;Every activity you can see that starts up to 8 days ahead, past ones included, loses its LA New or LA Changed status. Each change is recorded in the activity&#39;s history.&quot;</li>
+<li>Choose <strong>Clear LA Status</strong>. You see, for example, &quot;Cleared the LA status of 3 activities.&quot;</li>
+</ol>
+<p>It clears only activities you can see, so it skips other ministries&#39; activities marked <strong>Not for Look Ahead</strong>.</p>
+<p>With nothing to clear, you see, for example, &quot;No activities up to 8 days ahead have an LA status to clear.&quot;</p>
+<p>It doesn&#39;t show on <strong>Updates</strong>. Each activity&#39;s <strong>View changes</strong> says &quot;cleared its LA status&quot;.</p>
+<p>If you see &quot;The LA status of 2 activities was cleared before a later batch failed. Run Clear LA Status again to finish.&quot;, choose <strong>Clear LA Status</strong> again.</p>
+<h2>What HQ editors can&#39;t do</h2>
+<p>These are for HQ advanced users, whose manual is the Calendar advanced user manual:</p>
+<ul>
+<li>see other ministries&#39; activities marked <strong>Not for Look Ahead</strong>;</li>
+<li><strong>Review</strong> an activity;</li>
+<li><strong>Corporate Queries</strong>, under <strong>Saved views</strong>;</li>
+<li>the <strong>Look Ahead filter</strong> above the list.</li>
+</ul>
+<p>HQ administrators also review deletions, review many activities at once and make the <strong>Exec Look Ahead</strong> report. Deleting an activity is for Calendar administrators.</p>
+`,changed:"2026-10-30"},Pt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+<p>The <strong>Look Ahead</strong>, <strong>30/60/90</strong> and <strong>Planning</strong> reports are PDFs of the activities your list&#39;s filter finds. They list activities in date order, whatever the list is sorted by.</p>
+<h2>Make a report</h2>
+<ol>
+<li>Set the list&#39;s filter to the dates and activities you want. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-list">The activity list</a>.</li>
+<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Look Ahead</strong>, <strong>30/60/90</strong> or <strong>Planning</strong>. You see, for example, &quot;Preparing your Look Ahead report\u2026&quot;.</li>
+<li>Wait a few seconds. The PDF downloads by itself and you see &quot;The Look Ahead report has downloaded.&quot;</li>
+</ol>
+<p>One report is prepared at a time. If you leave the page before it downloads, make it again.</p>
+<h2>What each report holds</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Report</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Look Ahead</strong></td>
+<td>Upcoming activities in sections, such as Events, Speeches and Releases, Issues and Reports, and Awareness Dates. With no <strong>To</strong> date it covers 60 days and adds the Long Term Outlook.</td>
+</tr>
+<tr>
+<td><strong>30/60/90</strong></td>
+<td>One table for each month, from the start of the <strong>From</strong> month. With no <strong>To</strong> date it covers about 90 days.</td>
+</tr>
+<tr>
+<td><strong>Planning</strong></td>
+<td>One line for each activity: its schedule, title and summary, significance and number.</td>
+</tr>
+</tbody></table></div>
+<ul>
+<li>A report holds only activities you can see. Deleted activities are never in it.</li>
+<li>Reports include Awareness dates even when the list leaves them out.</li>
+<li>Each activity number in a report links to the activity in the Hub.</li>
+<li>Each report is marked &quot;DRAFT AND CONFIDENTIAL&quot;. Share it only with people who may see those activities.</li>
+</ul>
+<h2>If you are an HQ editor</h2>
+<ul>
+<li>Your Look Ahead puts each activity in its <strong>LA Section</strong>, shows its <strong>Executive Summary</strong> when it has one, and flags it NEW or CHANGED from its <strong>LA Status</strong>. Its Long Term Outlook lists only activities ticked <strong>Long Term Outlook</strong>.</li>
+<li>Ministry editors&#39; Look Aheads show no Executive Summary and no NEW or CHANGED flags.</li>
+<li>The <strong>Exec Look Ahead</strong> report is for HQ administrators. You don&#39;t see it.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Too many activities match: narrow the filter and run the report again&quot;</td>
+<td>More than 5,000 activities. Narrow the dates or the filter.</td>
+</tr>
+<tr>
+<td>&quot;Too many days in the range: narrow the filter and run the report again&quot;</td>
+<td>A Look Ahead covers at most a year. Choose a nearer <strong>To</strong> date.</td>
+</tr>
+<tr>
+<td>&quot;Too many months in the range: narrow the filter and run the report again&quot;</td>
+<td>A 30/60/90 covers at most a year. Choose a nearer <strong>To</strong> date.</td>
+</tr>
+<tr>
+<td>&quot;Too many rows to print: narrow the filter and run the report again&quot;</td>
+<td>The PDF would be too long. Narrow the filter.</td>
+</tr>
+<tr>
+<td>&quot;Other reports are being prepared: try again in a few seconds&quot;</td>
+<td>Wait a moment and try again.</td>
+</tr>
+<tr>
+<td>&quot;The report took too long to prepare: narrow the filter and run it again.&quot;</td>
+<td>Narrow the filter.</td>
+</tr>
+<tr>
+<td>&quot;The report couldn&#39;t be prepared. Try again.&quot;</td>
+<td>Try again. If it keeps failing, tell your Calendar administrator.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},Ut=null,Yt={html:`<p><strong>Who this is for:</strong> Calendar read-only users (Calendar.ReadOnly).</p>
+<p>You can see activities in the Corporate Calendar, the government-wide plan of announcements and events. You can&#39;t add, change or delete them. If an activity needs changing, ask a Calendar editor of its ministry.</p>
+<h2>What you can do</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What you do there</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Calendar</strong></td>
+<td>Find activities, filter and save filters, see them by month or week, and star the ones you follow.</td>
+<td><a href="/hub/help/manuals/calendar-readonly/calendar-readonly-list">The activity list</a></td>
+</tr>
+<tr>
+<td><strong>Updates</strong></td>
+<td>See what changed recently.</td>
+<td><a href="/hub/help/manuals/calendar-readonly/calendar-readonly-updates">Updates</a></td>
+</tr>
+<tr>
+<td>An activity</td>
+<td>Read its details, files and linked releases, and see every change made to it.</td>
+<td><a href="/hub/help/manuals/calendar-readonly/calendar-readonly-activity">Read an activity</a></td>
+</tr>
+<tr>
+<td><strong>Export and reports</strong></td>
+<td>Download a spreadsheet or a PDF report.</td>
+<td><a href="/hub/help/manuals/calendar-readonly/calendar-readonly-reports">Reports</a></td>
+</tr>
+</tbody></table></div>
+<p>Calendar editors also add, change and clone activities. Their manual is the Calendar editor manual. HQ advanced users and Calendar administrators have their own manuals too.</p>
+<h2>Who sees an activity</h2>
+<p>Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you see.</p>
+<ul>
+<li><strong>In a ministry:</strong> you see the activities your ministries lead, and the ones shared with them.</li>
+<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, except other ministries&#39; ones marked <strong>Not for Look Ahead</strong>.</li>
+</ul>
+<p>Deleted activities leave the Calendar for you.</p>
+<h2>What you see in the side menu</h2>
+<p>Under <strong>Work</strong> you see <strong>Calendar</strong>. Its tabs are <strong>Calendar</strong> and <strong>Updates</strong>.</p>
+<p>You may also see <strong>Releases</strong> or <strong>Subscribers</strong> if you have a role there. Those have their own manuals.</p>
+<h2>When the list is empty</h2>
+<p>&quot;You aren&#39;t in any ministry yet, so there are no activities to show you. Ask a Calendar administrator.&quot; means your Calendar access has no ministry. A Calendar administrator adds it.</p>
+<p>&quot;You don&#39;t have Calendar access. Ask a Calendar administrator.&quot; means your Calendar access was removed. You stay signed in to the Hub.</p>
+<h2>Older activities</h2>
+<p>Activities that ended before the move to this Calendar weren&#39;t brought over, except awareness dates. If you need an older one, ask a Calendar administrator.</p>
+<h2>Keyboard shortcut</h2>
+<p>On the activity list, \u2318K on a Mac or Ctrl+K on Windows opens <strong>Filters</strong> and goes to <strong>Search for</strong>.</p>
+<h2>Signing in</h2>
+<p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
+`,changed:"2026-10-30"},Qt=null,Bt=null,zt={html:`<p><strong>Who this is for:</strong> Calendar read-only users (Calendar.ReadOnly).</p>
+<p>Open an activity by choosing its title in the list or the calendar, or its number on <strong>Updates</strong>. It says &quot;You can view this activity but not change it.&quot; Every field is read-only, and each checklist shows only what is ticked, or &quot;None&quot;.</p>
+<p>Under the heading you see its status (<strong>New</strong>, <strong>Changed</strong> or <strong>Reviewed</strong>), when it was last updated and by whom. A &quot;?&quot; beside a field explains it.</p>
+<h2>Leave an activity</h2>
+<p>Choose <strong>Back</strong>. You return to where you came from:</p>
+<ul>
+<li>From the list, you see the same filter, and the activity&#39;s row is brought into view and marked, if it is among the first activities loaded.</li>
+<li>From <strong>Month</strong> or <strong>Week</strong>, you see the same calendar.</li>
+<li>From <strong>Updates</strong>, you see the same updates.</li>
+</ul>
+<h2>Files</h2>
+<p>The <strong>Records</strong> section appears only when it is turned on for your Calendar. It lists the activity&#39;s files, or &quot;No files yet.&quot; Choose a file&#39;s name to open it. Only people who can see the activity can open its files.</p>
+<h2>Linked news releases</h2>
+<p><strong>BC Gov News</strong>, at the end of the <strong>Release</strong> section, lists the news releases linked to the activity, or says &quot;No releases are linked to this activity.&quot;</p>
+<p>Each line gives the release&#39;s type, its number when it has one, its status and its date, such as &quot;Release: Draft&quot;. The status is <strong>Draft</strong>, <strong>Approved</strong>, <strong>Scheduled</strong>, <strong>Published</strong> or <strong>Failed</strong>. If you also have a role in <strong>Releases</strong>, each line opens the release. Otherwise it is plain text.</p>
+<p>Some categories, such as <strong>TV / Radio</strong> and <strong>Awareness Day / Week / Month</strong>, have no release, so the <strong>Release</strong> section is hidden.</p>
+<h2>View changes</h2>
+<p><strong>View changes</strong> lists every change to the activity, newest first. Each entry says when, who and what they did, such as &quot;created it&quot;, &quot;changed it&quot;, &quot;created it as a clone&quot;, &quot;reviewed it&quot;, &quot;transferred it&quot; or &quot;cleared its LA status&quot;. A table shows each field before and after. Changes brought over from the old Calendar are marked &quot;from legacy log&quot;.</p>
+<p>Choose <strong>Back to the activity</strong> to return.</p>
+<h2>Watch it</h2>
+<p>The star beside <strong>View changes</strong> adds the activity to your watchlist. See <a href="/hub/help/manuals/calendar-readonly/calendar-readonly-list">The activity list</a>.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;It doesn&#39;t exist, or you can&#39;t see it.&quot; (under &quot;Activity not found&quot;)</td>
+<td>Check the number. The activity may be led by a ministry you&#39;re not in, it may have been deleted, or, if you are in an HQ organization, another ministry may have marked it <strong>Not for Look Ahead</strong>. This is also what you see if you open an old link to an activity you can no longer see. Choose <strong>Back to the Calendar</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t load this activity.&quot;</td>
+<td>Reload the page.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},Gt=null,Kt={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin), with one part for site editors (NRMS.SiteEditor).</p>
+<p>The Hub dates the archive, builds its pages and sends old ministry addresses to the new ones by itself. You enter one date and, where ministries change, prepare one cabinet change.</p>
+<h2>At a glance</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>When</th>
+<th>Who</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>The swearing-in date is announced</td>
+<td>Core administrator</td>
+<td><strong>Government terms</strong> &gt; <strong>Start new government term</strong>, and enter the date.</td>
+</tr>
+<tr>
+<td>Before the swearing-in</td>
+<td>Core administrator</td>
+<td><strong>Organizations</strong> &gt; <strong>Cabinet change</strong>: add the renames, new ministries and hand-overs, preview them, then schedule them for the swearing-in time.</td>
+</tr>
+<tr>
+<td>Swearing-in day</td>
+<td>Nobody</td>
+<td>The term changes over at midnight Pacific. A scheduled cabinet change publishes by itself.</td>
+</tr>
+<tr>
+<td>After the swearing-in</td>
+<td>Site editors</td>
+<td>Minister photos and biographies on <strong>Organizations</strong>, and the banner on <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Site banner</strong>. Update minister contact records in Media Hub by hand.</td>
+</tr>
+</tbody></table></div>
+<h2>1. Start the new term</h2>
+<p>Core administrators only.</p>
+<ol>
+<li>Open <strong>Government terms</strong> and choose <strong>Start new government term</strong>.</li>
+<li>Enter the <strong>Start date (required)</strong>, normally the swearing-in date, and choose <strong>Continue</strong>.</li>
+<li>Read the dates in the question, then choose <strong>Confirm</strong>.</li>
+</ol>
+<p>The start date decides where every release is listed in the public archive: releases published from that day are listed under the new term. You can fix a wrong date later with <strong>Edit</strong>. <a href="/hub/help/manuals/core-admin/government-terms">Government terms</a> has the details.</p>
+<h2>2. Prepare the ministry changes</h2>
+<p>Core administrators only.</p>
+<ol>
+<li>Open <strong>Organizations</strong> and choose the <strong>Cabinet change</strong> link.</li>
+<li>Add each change: <strong>Rename or change a ministry</strong>, <strong>Add a new ministry</strong> or <strong>Hand over a ministry</strong>. To merge ministries, add the new ministry first, then hand each old one over to it.</li>
+<li>Choose <strong>Preview</strong> and fix anything listed under &quot;Fix these before publishing&quot;.</li>
+<li>Choose <strong>Schedule\u2026</strong>, enter the swearing-in date and time (BC time), and choose <strong>Schedule</strong>.</li>
+</ol>
+<p>Nothing changes for anyone until it publishes. <a href="/hub/help/manuals/core-admin/cabinet-change">Cabinet change</a> has the details. A single ministry can also be handed over on its own from <strong>Organizations</strong>; see <a href="/hub/help/manuals/core-admin/organizations">Organizations</a>.</p>
+<h2>3. On the day</h2>
+<p>Nobody needs to do anything.</p>
+<ul>
+<li>At midnight Pacific on the start date, the public archive gets a page for the new term and its current-term link points there.</li>
+<li>At the scheduled time, the cabinet change publishes: all of it or none of it. The public Ministries page updates within a few minutes. Old ministry addresses send visitors to their successors. Subscribers, staff, Calendar activities and draft releases move shortly after.</li>
+<li>If the cabinet change can&#39;t publish, it goes back to a draft. <strong>Cabinet change</strong> shows &quot;This change wasn&#39;t published&quot; with the reason. Nothing is half done: fix it and publish it.</li>
+</ul>
+<h2>4. After the swearing-in: site editors</h2>
+<ol>
+<li>On <strong>Organizations</strong>, choose <strong>Edit</strong> on each ministry and update the <strong>Minister name</strong>, <strong>Minister photo URL</strong> and <strong>Minister biography</strong>. Upload photos under <strong>Website</strong> &gt; <strong>Files</strong> first. See <a href="/hub/help/manuals/nrms-site-editor/site-editor-organizations">Organizations</a>.</li>
+<li>Take down or change any election notice on <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Site banner</strong>, and publish. See <a href="/hub/help/manuals/nrms-site-editor/site-banner">Site banner</a>.</li>
+<li>Update the ministers&#39; contact records in Media Hub. The Hub does not change them.</li>
+</ol>
+`,changed:"2026-10-30"},Vt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":c,"site-editor-overview":u,carousel:p,"emergency-pins":m,"live-feed":b,"resource-links":y,"website-files":v,"featured-and-website-log":f,"site-settings":w,"site-banner":q,"theme-colours":C,"footer-and-navigation":k,"social-links":T,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":E,"editor-approve-and-publish":I,"editor-what-happens-next":L,"editor-correct-unpublish-delete":F,"editor-find-a-release":O,"editor-featured-and-log":D,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":K,"who-gets-which-email":V,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ct,"nod-viewer-lists-and-categories":ut,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":bt,"calendar-users":yt,"calendar-transfer":vt,"calendar-lookups":ft,"calendar-delete-activity":wt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":kt,"calendar-advanced-list":Tt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Et,"calendar-editor-updates":It,"calendar-editor-activity":Lt,"calendar-editor-fields":Ft,"calendar-editor-lock-and-freeze":Ot,"calendar-editor-hq":Dt,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Kt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",bt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",Tt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",kt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",wt as"calendar-delete-activity",Lt as"calendar-editor-activity",Ft as"calendar-editor-fields",Dt as"calendar-editor-hq",Et as"calendar-editor-list",Ot as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",It as"calendar-editor-updates",qt as"calendar-hq-review",ft as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",vt as"calendar-transfer",Ct as"calendar-undelivered-events",yt as"calendar-users",p as carousel,n as"core-admin-overview",Vt as default,ot as"editor-add-a-subscriber",I as"editor-approve-and-publish",dt as"editor-bounces",F as"editor-correct-unpublish-delete",D as"editor-featured-and-log",E as"editor-files-and-media",O as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",L as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",f as"featured-and-website-log",j as"find-and-change-subscribers",k as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",b as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Kt as"new-government",K as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ut as"nod-viewer-lists-and-categories",ct as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",y as"resource-links",d as"sectors-themes-and-tags",q as"site-banner",W as"site-editor-organizations",u as"site-editor-overview",x as"site-identity",w as"site-settings",T as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",v as"website-files",c as"website-project-blue-bridge",V as"who-gets-which-email"};
