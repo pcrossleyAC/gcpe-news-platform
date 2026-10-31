@@ -522,6 +522,7 @@ One page with legacy's fieldsets and fields. **Amended 2026-10-30 (owner: "parit
   - content checked against the claimed type (`packages/storage` sniffing, as NRMS);
   - 25 MB per file (C153);
   - a file with the same name replaces the old one, as legacy (`Activity.aspx.cs:1436-1437`).
+    Amendment 2026-10-31 (owner approved, suite review CAL-5): the Hub asks first, "A file named X is already attached (added … by …). Replace it?", with **Replace** and **Cancel**; Cancel adds nothing from that pick, and a replacement is reported as "Replaced X." The server's rule is unchanged.
 - **Delete:** removing a file from the list.
 - **Download:** `GET /calendar/api/activities/:id/files/:fileId`, checked against `visible()`. A file of an activity the user can't see is a 404 (C138). It is served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`.
 - **History:** adding and removing files write history. They raise no needs-review flag, as legacy.

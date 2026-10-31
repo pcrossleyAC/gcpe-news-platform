@@ -76,7 +76,9 @@ The **Records** section appears only when it is turned on for your Calendar. Whe
 2. Under **Records**, choose **Add files** and pick one or more files.
 3. Each file is added straight away, on its own. You see, for example, "Added 2 files."
 
-A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50. A file with the same name replaces the old one.
+A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50.
+
+A file with the same name as one already attached replaces it, but only after you agree. The Hub asks, for example, "A file named Briefing note.docx is already attached (added Oct 12, 2026 by Pat Smith). Replace it? The old file is deleted." Choose **Replace**, and you see "Replaced Briefing note.docx." Choose **Cancel**, and you see "Nothing was added.": none of the files you picked is added.
 
 To remove a file, choose **Remove** beside it, then **Remove** again in the "The file is deleted from this activity." box.
 
