@@ -73,6 +73,7 @@ NRMS's own database. These tables replace Phase 2's `releases.content` JSON. A m
   - All counters advance inside one transaction holding row locks (C4).
 - **Slugs.**
   - Story and Factsheet keys come from the first English headline and stay editable until the release is scheduled.
+    *Amended 2026-10-31 (owner, suite review R2):* once a release has ever been public (the same test Return to Draft uses: a release date, an atom id or a publication record), its key is fixed. A headline edit no longer regenerates it and a key change is refused, even while it is approved again after an unpublish, so a republish goes out under the same address and NoD doesn't email everyone a second time.
   - The generator reproduces legacy's tested behaviour: lowercase; strip punctuation; transliterate diacritics (Métis→metis, K'ómoks→komoks, l'absentéisme→labsenteisme); hyphens; at most 100 characters; never blank.
   - Collisions get `-1`, `-2`, ….
 - **Publish.**

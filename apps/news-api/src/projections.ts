@@ -18,6 +18,7 @@ import {
 import { CATEGORY_CHANGE_KIND, recordChanges } from "./changes";
 import { categories, categoryFeatures, governmentTerms, home, posts, resourceLinks, siteSettings, slides } from "./db/schema";
 import { deleteSemanticRows } from "./embeddings/rows";
+import { RELATED_LIMIT } from "./embeddings/worker";
 import { embeddingTextHash } from "./embeddings/source-text";
 import { searchTextFor } from "./search/search-text";
 import type { SlideImageFetcher } from "./slide-images";
@@ -122,6 +123,15 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
   if (origin === "legacy" && existing?.origin === "event") {
     return { skippedEventOwned: true };
   }
+  if (!r.publishFlags.toWeb) {
+    // Suite review R1 (owner, 2026-10-31): a release that isn't for the web (every Advisory —
+    // legacy never put one on news.gov) is never stored as published, so no page, listing,
+    // search, feed, sitemap or API read can show it. NoD gets the same event for its sends.
+    // A key that was public before (stored by an older build, or a flag changed on republish)
+    // comes off the site the same way an unpublish takes it off.
+    if (existing) await unpublishRelease(tx, existing.key, { onlyIfPublished: true });
+    return { skippedEventOwned: false };
+  }
   const key = existing?.key ?? r.key;
   const searchText = searchTextFor(r);
   const values = {
@@ -186,17 +196,73 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
   return { skippedEventOwned: false };
 }
 
-export async function unpublishRelease(tx: Tx, key: string): Promise<void> {
+/** `onlyIfPublished`: a row that is already off the site changes nothing and records nothing. */
+export async function unpublishRelease(tx: Tx, key: string, opts: { onlyIfPublished?: boolean } = {}): Promise<void> {
   const rows = await tx
     .update(posts)
     .set({ isPublished: false })
-    .where(sql`lower(${posts.key}) = lower(${key})`)
+    .where(and(sql`lower(${posts.key}) = lower(${key})`, opts.onlyIfPublished ? eq(posts.isPublished, true) : undefined))
     .returning({ key: posts.key });
   if (rows.length === 0) return;
   const keys = rows.map((r) => r.key);
+  const referrers = await relatedBandReferrers(tx, keys);
   await deleteSemanticRows(tx, keys);
   await notifyUpdate(tx, "PostUpdate", keys);
-  await recordChanges(tx, keys.map((k) => ({ kind: "post.unpublished" as const, key: k })));
+  await recordChanges(tx, [
+    ...keys.map((k) => ({ kind: "post.unpublished" as const, key: k })),
+    ...referrers.map((k) => ({ kind: "post.upserted" as const, key: k })),
+  ]);
+}
+
+/** How many of a ministry's latest posts the public site's related-band fallback reads (public-site builder.ts MINISTRY_LATEST_COUNT). */
+const MINISTRY_LATEST_WINDOW = 4;
+
+/**
+ * Published posts whose rendered page may link one of `keys` in its related band (fix round 1,
+ * review M1), so an unpublish can re-render them: the band reads the post's semantic list
+ * (post_related), else the newest posts sharing its lead ministry and a tag (search/related.ts),
+ * else its lead ministry's latest posts (public-site builder.ts). For the last two, a page can
+ * only show the gone post if it was rendered while the gone post was among its newest matches:
+ * so the pages are those among the next RELATED_LIMIT posts after it sharing its lead ministry and
+ * one of its tags, and those led by a ministry it is listed under among the next
+ * MINISTRY_LATEST_WINDOW posts of that ministry's listing. (A page re-rendered later for another
+ * reason during that time isn't found; a whole-site rebuild covers it.) Sorted, gone keys excluded.
+ */
+export async function relatedBandReferrers(tx: Tx, keys: string[]): Promise<string[]> {
+  if (keys.length === 0) return [];
+  const { rows } = await tx.execute<{ key: string }>(sql`
+    WITH gone AS (
+      SELECT p.key, p.lead_ministry_key, p.index_keys, p.publish_date FROM posts p
+      WHERE lower(p.key) IN (SELECT lower(value) FROM jsonb_array_elements_text(${JSON.stringify(keys)}::jsonb))
+    ), semantic AS (
+      SELECT r.post_key AS key FROM post_related r
+      WHERE EXISTS (SELECT 1 FROM unnest(r.related_keys) k JOIN gone g ON lower(k) = lower(g.key))
+    ), text_mode AS (
+      SELECT w.key FROM gone g
+      CROSS JOIN LATERAL unnest(g.index_keys) AS t(ik)
+      CROSS JOIN LATERAL (
+        SELECT p.key FROM posts p
+        WHERE p.is_published AND p.index_keys @> ARRAY[t.ik] AND lower(p.lead_ministry_key) = lower(g.lead_ministry_key)
+          AND p.publish_date >= g.publish_date AND lower(p.key) <> lower(g.key)
+        ORDER BY p.publish_date, p.key LIMIT ${RELATED_LIMIT}
+      ) w
+      WHERE t.ik LIKE 'tags:%'
+    ), fallback AS (
+      SELECT w.key FROM gone g
+      CROSS JOIN LATERAL unnest(g.index_keys) AS m(ik)
+      CROSS JOIN LATERAL (
+        SELECT p.key, p.lead_ministry_key FROM posts p
+        WHERE p.is_published AND p.index_keys @> ARRAY[m.ik] AND p.publish_date >= g.publish_date AND lower(p.key) <> lower(g.key)
+        ORDER BY p.publish_date, p.key LIMIT ${MINISTRY_LATEST_WINDOW}
+      ) w
+      WHERE m.ik LIKE 'ministries:%' AND lower(w.lead_ministry_key) = substr(m.ik, 12)
+    )
+    SELECT p.key FROM posts p
+    WHERE p.is_published
+      AND p.key IN (SELECT key FROM semantic UNION SELECT key FROM text_mode UNION SELECT key FROM fallback)
+      AND lower(p.key) NOT IN (SELECT lower(key) FROM gone)
+    ORDER BY p.key`);
+  return rows.map((r) => r.key);
 }
 
 /** `[key, ...parents]` with each parent resolved to its stored casing, deduplicated case-insensitively. */

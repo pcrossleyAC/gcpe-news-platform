@@ -19,14 +19,14 @@ You can change several parts of the release, then save them all at once.
 
 1. Make your changes. Each part you changed says **Unsaved** beside its heading.
 2. A bar along the bottom lists them: "You have unsaved changes in: …".
-3. Choose **Save changes** in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too.
+3. Choose **Save changes** in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too. On a published release the button reads **Save and republish**, because saving puts the change on the public site: see [Correct, feature, unpublish or delete](manual:editor-correct-unpublish-delete).
 4. The bar says "All changes saved." for a moment, then goes.
 
 If one part can't be saved, the bar says "Couldn't save page details. See why in that section." Choose the link to go to the message. Parts after it are not saved yet and keep your changes.
 
 While anything is unsaved, **Approve**, **Publish now** and **Schedule** are greyed out, with "Save your changes to … first." under them.
 
-If you try to leave with unsaved changes, a box asks "Leave anyway and discard them?" Choose **Stay** to go back, or **Leave** to lose them. If your sign-in runs out while you are writing, sign in again in the same browser tab: the text you typed in a document comes back.
+If you try to leave with unsaved changes, a box asks "Leave anyway and discard them?" Choose **Stay** to go back, or **Leave** to lose them; they don't come back the next time you open the release. If your sign-in runs out while you are writing, sign in again in the same browser tab: the text you typed in a document comes back, with "Your unsaved changes were restored." If someone changed the release in the meantime, it also says saving them will ask you to reload first, so your older text can't overwrite their newer changes. Reloading shows their version instead of yours, so copy anything you want to keep before you choose **Reload**.
 
 "Someone else changed this — reload to see their changes." means another person saved this release after you opened it. Choose **Reload**. Copy anything you typed first, because reloading shows their version.
 
@@ -75,7 +75,7 @@ A French PDF goes under **Files** instead. See [Photos, video and files](manual:
 
 ## Page details
 
-- **URL key**: the last part of the release's public address. A release or advisory gets one when it is approved. A story's or factsheet's comes from its headline, and you can change it until it is scheduled.
+- **URL key**: the last part of the release's public address. A release or advisory gets one when it is approved. A story's or factsheet's comes from its headline, and you can change it until it is scheduled. Once a story or factsheet has been published, its URL key never changes, even after an unpublish: changing the headline leaves it as it is, and the box says "This Story has been published, so its URL key can't change." (or Factsheet).
 - **Redirect URL**: fill this in only to send visitors to another page instead.
 - **Location**: the place at the start of the release, up to 50 characters.
 - **Summary**: what subscribers see in their email. It fills itself from the start of the body. **Documents** shows it, with "(auto)" until you change it, and an **Edit it in Page details** link.

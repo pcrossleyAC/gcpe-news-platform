@@ -2,19 +2,21 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { indexKeysFor, type SubscriberConfig } from "@gcpe/events";
 import { wallClockToInstant } from "@gcpe/config";
-import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
-import { flickrJobs, newsReleases, organizations, releasePublications } from "../db/schema";
+import { approveProblems, POST_KIND, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
+import { flickrJobs, newsReleases, organizations } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
 import { ReleaseRuleError, ReleaseStateError } from "./errors";
 import { emitLinkChange, linkStateOf } from "./link-events";
 import { bcYear, nextCounter, pad } from "./numbering";
 import { assertPublishable, toReleaseRecord } from "./record";
-import { loadView, mutateRelease, type Actor } from "./store";
+import { hasBeenPublic, loadView, mutateRelease, type Actor } from "./store";
 
 export interface WorkflowDeps {
   timeZone: string;
   countSubscribers?: (listKeys: string[]) => Promise<number>;
   countMediaContacts?: (listKeys: string[]) => Promise<number>;
+  /** NoD's breakdown of who a first publish reaches (suite review R6; clients.ts releaseAudience). */
+  releaseAudience?: (q: { listKeys: string[]; mediaListKeys: string[]; toSubscribers: boolean; postKind: string }) => Promise<{ asItHappens: number; digest: number; mediaContacts: number }>;
   /** PUBLIC_FILES_BASE — only affects the size check here (absolute file URLs are longer). */
   filesBase?: string;
   /** Who gets release.status_changed (the Calendar); unset → enqueued for no one. */
@@ -140,6 +142,58 @@ async function mediaContactCount(v: ReleaseView, deps: WorkflowDeps): Promise<{ 
   }
 }
 
+/** One audience's count for the publish dialogs: `count` null when it couldn't be worked out. */
+export interface AudienceCount {
+  count: number | null;
+}
+
+/** Who a first publish reaches. Each is null when this publish doesn't email that audience. */
+export interface AudiencePreview {
+  /** News on Demand subscribers emailed As it happens when it goes out (anyone also on one of
+   * its media lists gets the media email instead). */
+  asItHappens: AudienceCount | null;
+  /** Daily digest subscribers who get it in the next 5 pm digest after it goes out. */
+  digest: AudienceCount | null;
+  /** Media contacts on its media lists. */
+  mediaContacts: AudienceCount | null;
+}
+
+/**
+ * Suite review R6 (fix round 1): who a first publish of this release reaches, from NoD's own
+ * send rules (apps/nod/src/audience.ts, pinned there against real sends), for the Publish now
+ * and Schedule dialogs before anything is sent. Read-only: nothing stored, no history line.
+ * `{ count: null }` when NoD isn't set up here or doesn't answer. Null overall for an unknown
+ * release.
+ */
+export async function audiencePreview(db: Db, id: string, deps: WorkflowDeps): Promise<AudiencePreview | null> {
+  const v = await loadView(db, id);
+  if (!v) return null;
+  const rules = typeRules(v.type);
+  const firstPublish = v.releasedAt === null;
+  const subscribersOn = firstPublish && rules.nodAllowed && v.publishOptions.toSubscribers;
+  const listsOn = firstPublish && rules.mediaListsAllowed && v.publishOptions.toMediaLists && v.mediaListKeys.length > 0;
+  if (!subscribersOn && !listsOn) return { asItHappens: null, digest: null, mediaContacts: null };
+  let counts: { asItHappens: number; digest: number; mediaContacts: number } | null = null;
+  if (deps.releaseAudience) {
+    try {
+      counts = await deps.releaseAudience({
+        listKeys: indexKeysFor({ ministryKeys: v.ministries, sectorKeys: v.sectors, tagKeys: v.tags, themeKeys: v.themes }),
+        mediaListKeys: listsOn ? v.mediaListKeys.map(mediaListKey) : [],
+        toSubscribers: subscribersOn,
+        postKind: POST_KIND[v.type],
+      });
+    } catch {
+      console.error("[nrms] release audience unavailable");
+    }
+  }
+  const of = (n: number | undefined): AudienceCount => ({ count: counts && typeof n === "number" ? n : null });
+  return {
+    asItHappens: subscribersOn ? of(counts?.asItHappens) : null,
+    digest: subscribersOn ? of(counts?.digest) : null,
+    mediaContacts: listsOn ? of(counts?.mediaContacts) : null,
+  };
+}
+
 export async function schedule(db: Db, id: string, input: ScheduleInput, actor: Actor, deps: WorkflowDeps): Promise<ReleaseView> {
   const before = await loadView(db, id);
   const subscribers = before ? await subscriberCount(before, deps) : null;
@@ -233,10 +287,7 @@ export async function returnToDraft(db: Db, id: string, version: number, actor: 
   return mutateRelease(
     db, id, version, actor,
     async (tx, row) => {
-      // Ever public: releasedAt, or (a legacy import with no ReleaseDateTime) an atomId — stamped on
-      // every publish and carried by imports — or a publication row. Its key is then a public URL.
-      const published = row.releasedAt !== null || row.atomId !== null ||
-        (await tx.select({ id: releasePublications.id }).from(releasePublications).where(eq(releasePublications.releaseId, id)).limit(1)).length > 0;
+      const published = await hasBeenPublic(tx, row);
       if (!row.reference || !RETURNABLE_STATUSES.has(row.status) || row.live || published) {
         throw new ReleaseStateError("Only an approved release that hasn't been published can go back to draft.");
       }

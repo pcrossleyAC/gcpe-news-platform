@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { localStore } from "@gcpe/storage";
 import { createNrmsTestDb } from "../../../nrms/test/helpers";
-import { findSiteFileByName } from "../../../nrms/src/website/files";
+import { deleteFile, findSiteFileByName } from "../../../nrms/src/website/files";
 import { createLegacyFilesClient, LEGACY_FILES_USER_AGENT, parseBlobList, runLegacyFilesCopy, type LegacyFilesClientOptions, type LegacyFilesTarget } from "./copy";
 import { parseLegacyFilesArgs, parseSasUrl } from "./options";
 import { nrmsSiteFilesTarget } from "./target";
@@ -337,6 +337,14 @@ describe("into NRMS site files (end to end, real NRMS database and store)", () =
     ]);
     const again = await runLegacyFilesCopy({ client, target }, { listed: await client.list(), dryRun: false, refresh: false, concurrency: 1 });
     expect(again).toMatchObject({ imported: 0, skipped: 2 });
+    // Suite review W2: a file staff deleted in the Hub stays deleted, even on a --refresh run.
+    const [report] = (await tdb.pool.query("SELECT id FROM site_files WHERE name = 'Report.pdf'")).rows as { id: string }[];
+    await deleteFile(tdb.db, store, report!.id, { id: "editor", name: "Editor" });
+    for (const refresh of [false, true]) {
+      const after = await runLegacyFilesCopy({ client, target }, { listed: await client.list(), dryRun: false, refresh, concurrency: 1 });
+      expect(after).toMatchObject({ imported: 0, failed: [] });
+      expect(await findSiteFileByName(tdb.db, "report.pdf")).toBeNull();
+    }
   });
 });
 

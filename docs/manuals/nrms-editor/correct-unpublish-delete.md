@@ -11,10 +11,10 @@ topics: []
 
 ## Correct a published release
 
-1. Open the release and make the change.
-2. Choose **Save changes**.
+1. Open the release and make the change. The bar along the bottom says "Saving republishes this release on the public site."
+2. Choose **Save and republish**.
 
-It republishes at once: no box asks first. The status shows **Republishing...**, then **Published**, usually within a minute. **History** shows "Republished to …"; with **Show all** ticked it also shows "Edited after publishing — will republish". The public page shows the change within a couple of minutes. Nobody is emailed again.
+It republishes at once: no box asks first. Pressing Enter in a one-line field or Ctrl+S (Command+S on a Mac) saves and republishes too, so finish the whole correction before you press either. The status shows **Republishing...**, then **Published**, usually within a minute. **History** shows "Republished to …"; with **Show all** ticked it also shows "Edited after publishing — will republish". The public page shows the change within a couple of minutes. Nobody is emailed again.
 
 Uploading or removing a file counts as a correction too. If a correction fails, the release shows "This release failed" and stays on the public site as it was. Fix the problem, save, then choose **Publish now**. **Schedule** isn't offered: a failed correction goes out at once.
 
@@ -37,7 +37,7 @@ Advisories can't be unpublished.
 
 The status shows **Unpublishing...**, then the release goes back to **Drafts**, usually within a minute. Its page and files come off the public site, it leaves any Top or Feature spot, and emails not yet sent are stopped. See [Who is emailed, and when it goes public](manual:editor-what-happens-next).
 
-To put it back, choose **Publish now** or **Schedule**. It keeps its numbers and its web address.
+To put it back, choose **Publish now** or **Schedule**. It keeps its numbers and its web address, even if you change its headline while it is off the site.
 
 ## Delete
 

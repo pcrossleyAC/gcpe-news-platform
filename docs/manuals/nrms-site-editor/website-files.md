@@ -50,6 +50,8 @@ Visitors may see the old copy for up to a minute.
 
 Links to a deleted file stop working. Check that nothing still points to it first.
 
+This includes files brought over from the old news.gov site: once you delete one, its address no longer opens the old site's copy either, in any mix of capital and small letters. Uploading the file again gives it the public name described under **Upload a file**. If that is the same name, the address works again.
+
 ## What happens next
 
 - **Website log** lists each upload, replacement and deletion under **Files**, with the file's name and yours.

@@ -229,6 +229,18 @@ describe("GET /api/subscribers/count", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ count: 1 });
   });
+  // Suite review R6: the Publish dialogs' breakdown, by the senders' own rules (audience.test.ts
+  // pins it against real sends). Same roles as the count.
+  it("release-audience answers emailed now, digest and media counts; validates its keys; same roles", async () => {
+    const q = "/api/subscribers/release-audience?lists=ministries:health&media=&subscribers=true&kind=releases";
+    const res = await request(app).get(q).set("authorization", `Bearer ${subscriberCountService}`);
+    expect(res.status).toBe(200);
+    // count-all and count-health are As it happens (addSubscriber's default) and not digest.
+    expect(res.body).toEqual({ asItHappens: 2, digest: 0, mediaContacts: 0 });
+    expect((await request(app).get(q).set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).get("/api/subscribers/release-audience?lists=bogus&kind=releases").set("authorization", `Bearer ${editor}`)).status).toBe(400);
+    expect((await request(app).get("/api/subscribers/release-audience?lists=ministries:health&media=ministries:health&kind=releases").set("authorization", `Bearer ${editor}`)).status).toBe(400);
+  });
 });
 
 describe("POST /api/emergency-items", () => {

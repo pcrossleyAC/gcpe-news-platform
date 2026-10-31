@@ -19,7 +19,7 @@ import { startSiteLoop, switchCarousels } from "./website/carousel";
 import { seedGovernmentTerms, syncGovernmentTerms } from "./government-terms";
 import { ensureSlideImageFiles } from "./website/slide-images";
 import { isReleaseFilePublic } from "./media/files";
-import { findSiteFileByName } from "./website/files";
+import { findSiteFileByName, isDeletedSiteFileName } from "./website/files";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
 const optionalSetting = z
@@ -254,6 +254,9 @@ export interface AppHandle {
   /** The site file `/files/<name>` names, case-insensitively (website/files.ts `findSiteFileByName`):
    * how the stack serves an imported legacy file whose name isn't its storage key. */
   siteFileByName(name: string): Promise<{ name: string; storageKey: string } | null>;
+  /** Staff deleted a site file of this name (any case) in the Hub (website/files.ts
+   * `isDeletedSiteFileName`): the stack answers 404 for it, never the legacy fallback. */
+  siteFileDeleted(name: string): Promise<boolean>;
   /** Closers that must run *before* the http server closes. NRMS has none — always empty —
    * but the field exists on every app's AppHandle so main.ts (and the stack) can build the
    * shutdown order uniformly: `[...closeBeforeServer, httpServer, ...closers]`, with no
@@ -276,16 +279,17 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   // runtime's tzdata disagrees with the tenant's pinned self-check (as the News API does).
   const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
-  const countSubscribers = parsed.NOD_URL
+  const nod = parsed.NOD_URL
     ? nodClient({
         baseUrl: parsed.NOD_URL,
         getToken: serviceTokenProvider(nodServiceTokenOptions(parsed, auth.local)),
-      }).countSubscribers
+      })
     : undefined;
+  const countSubscribers = nod?.countSubscribers;
   const filesBase = parsed.PUBLIC_FILES_BASE;
   // Media contact count calls the same NoD count endpoint as the subscriber count — workflow.ts
   // supplies the `media-distribution-lists:<key>` keys, NoD counts whatever keys it's given.
-  const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, filesBase };
+  const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, releaseAudience: nod?.releaseAudience, filesBase };
   const store = localStore(parsed.STORAGE_DIR, "/files/");
   const slideFiles = { store, filesBase };
   const siteSettingsDefaults = loadSiteSettingsDefaults(parsed.TENANT_CONFIG, tenant.site.theme);
@@ -391,6 +395,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     },
     releaseFileIsPublic: (storageKey) => isReleaseFilePublic(db, storageKey),
     siteFileByName: (name) => findSiteFileByName(db, name),
+    siteFileDeleted: (name) => isDeletedSiteFileName(db, name),
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });

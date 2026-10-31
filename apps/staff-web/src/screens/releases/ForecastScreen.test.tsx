@@ -77,6 +77,14 @@ describe("ForecastScreen (spec addendum §11; Releases.aspx's Forecast folder)",
     expect(screen.getByRole("heading", { level: 1, name: "Forecast" })).toBeInTheDocument();
   });
 
+  // Suite review R8: a planned release stays listed for the rest of its day after its time passes
+  // (the server keeps it); the row says its planned time has passed.
+  it("a planned release whose time has passed says so", async () => {
+    const passed = release({ status: "approved", statusText: "Planned", publishAt: new Date(Date.now() - 3600_000).toISOString(), headline: "Planned, not scheduled" });
+    renderForecast({ forecast: page({ items: [{ kind: "release", at: passed.publishAt!, release: passed }], total: 1 }) });
+    expect(await screen.findByText("Planned time passed – not published")).toBeInTheDocument();
+  });
+
   it("an Editor can start a release from an activity; a Viewer can't", async () => {
     renderForecast({ roles: ["NRMS.Viewer"] });
     await screen.findByText("Victoria - Sample clinic opening");

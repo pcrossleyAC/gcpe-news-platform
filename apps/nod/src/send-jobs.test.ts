@@ -161,7 +161,7 @@ describe("sendDueJobs", () => {
     expect(distribution.send).toHaveBeenCalledTimes(1);
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.idempotencyKey).toBe(`${job.id}:0`);
-    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{oneClickUnsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
     expect(req.recipients.map((r) => r.email).sort()).toEqual(["alex@example.com", "sam@example.com"]);
 
     const updated = (await tdb.db.select().from(sendJobs))[0]!;
@@ -664,7 +664,7 @@ describe("sendDueJobs", () => {
   // Per-recipient links (Task 3): each active recipient gets a manage link of their own and
   // the stable one-click unsubscribe URL; the List-Unsubscribe header carries the placeholder
   // Distribution substitutes per recipient.
-  it("each recipient gets their own manage and one-click URLs, and the List-Unsubscribe header uses the placeholder", async () => {
+  it("each recipient gets their own manage, Unsubscribe page and one-click URLs, and the List-Unsubscribe header uses the one-click placeholder", async () => {
     const alex = await insertSubscriber(tdb.db, "alex-links@example.com");
     const sam = await insertSubscriber(tdb.db, "sam-links@example.com");
     const job = await insertJob(tdb.db, "release-links");
@@ -680,12 +680,16 @@ describe("sendDueJobs", () => {
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
-    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{oneClickUnsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
     expect(req.recipients).toHaveLength(2);
     const manageUrls = req.recipients.map((r) => r.substitutions.manageUrl);
     for (const url of manageUrls) expect(url).toContain("token=");
     expect(manageUrls[0]).not.toBe(manageUrls[1]);
-    for (const r of req.recipients) expect(r.substitutions.unsubscribeUrl).toMatch(new RegExp(`^${SUBSCRIBE_API_URL}/OneClickUnsubscribe/`));
+    for (const r of req.recipients) {
+      // N1: the header's one-click URL is the API; the body's Unsubscribe link is the public page.
+      expect(r.substitutions.oneClickUnsubscribeUrl).toMatch(new RegExp(`^${SUBSCRIBE_API_URL}/OneClickUnsubscribe/`));
+      expect(r.substitutions.unsubscribeUrl).toMatch(/^https:\/\/news\.example\/subscribe\/unsubscribe\/\?token=/);
+    }
   });
 
   it("uses the job's priority", async () => {
@@ -766,10 +770,11 @@ describe("sendDueJobs", () => {
 
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.priority).toBe("media");
-    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{oneClickUnsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
     expect(req.recipients).toHaveLength(1);
     expect(req.recipients[0]!.substitutions.manageUrl).toContain("token=");
-    expect(req.recipients[0]!.substitutions.unsubscribeUrl).toMatch(new RegExp(`^${SUBSCRIBE_API_URL}/OneClickUnsubscribe/`));
+    expect(req.recipients[0]!.substitutions.oneClickUnsubscribeUrl).toMatch(new RegExp(`^${SUBSCRIBE_API_URL}/OneClickUnsubscribe/`));
+    expect(req.recipients[0]!.substitutions.unsubscribeUrl).toMatch(/^https:\/\/news\.example\/subscribe\/unsubscribe\/\?token=/);
   });
 
   // Recipients come from job_recipients (one row per subscriber per job), not from deliveries
@@ -1190,13 +1195,13 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
           subject: job.subject,
           html: job.html,
           text: job.text,
-          headers: { "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+          headers: { "List-Unsubscribe": "<{{oneClickUnsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
           recipients,
         }),
       );
 
-    const { manageUrlLen, unsubscribeUrlLen } = placeholderLinkLengths(LINKS);
-    const placeholderSubs = { manageUrl: "x".repeat(manageUrlLen), unsubscribeUrl: "x".repeat(unsubscribeUrlLen) };
+    const { manageUrlLen, unsubscribeUrlLen, oneClickUnsubscribeUrlLen } = placeholderLinkLengths(LINKS);
+    const placeholderSubs = { manageUrl: "x".repeat(manageUrlLen), unsubscribeUrl: "x".repeat(unsubscribeUrlLen), oneClickUnsubscribeUrl: "x".repeat(oneClickUnsubscribeUrlLen) };
     // The whole (unsplit, chunk_index "0") 2-recipient request, as the probe at n=1 would
     // measure it: once with no substitutions at all (the old bug) and once with real-sized
     // placeholders (the fix).

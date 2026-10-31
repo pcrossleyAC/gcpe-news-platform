@@ -14,21 +14,12 @@
  * or (America/Vancouver from 2026-11-01) has switched to a permanent fixed offset.
  */
 
-interface CalendarDate {
-  year: number;
-  month: number; // 1-12
-  day: number;
-}
+import { formatInZone, zonedParts } from "./bcTime";
 
-function calendarDateOf(date: Date, timeZone: string): CalendarDate {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
-  const get = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
-  return { year: get("year"), month: get("month"), day: get("day") };
-}
-
-/** A day index with no DST of its own — safe to subtract across any real-world transition. */
+/** A day index with no DST of its own — safe to subtract across any real-world transition.
+ * The Y-M-D comes from format/bcTime.ts, so it is right even on a browser with old tzdata. */
 function dayNumber(date: Date, timeZone: string): number {
-  const { year, month, day } = calendarDateOf(date, timeZone);
+  const { year, month, day } = zonedParts(date, timeZone);
   return Date.UTC(year, month - 1, day) / 86_400_000;
 }
 
@@ -44,9 +35,9 @@ export function relativeDay(iso: string, now: Date, timeZone: string): string {
   if (diffDays === -1) return "Yesterday";
   if (diffDays === 1) return "Tomorrow";
   if (Math.abs(diffDays) <= WEEKDAY_WINDOW_DAYS) {
-    return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long" }).format(target);
+    return formatInZone(target, timeZone, { weekday: "long" });
   }
-  return new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(target);
+  return formatInZone(target, timeZone, { month: "short", day: "numeric", year: "numeric" });
 }
 
 /** {@link relativeDay}'s wording plus a `h:mm a` time, e.g. `Today 2:30 PM`. With `withDate`, a
@@ -54,8 +45,8 @@ export function relativeDay(iso: string, now: Date, timeZone: string): string {
 export function formatWhen(iso: string, now: Date, timeZone: string, opts: { withDate?: boolean } = {}): string {
   const target = new Date(iso);
   let day = relativeDay(iso, now, timeZone);
-  if (opts.withDate && WEEKDAYS.has(day)) day = `${day}, ${new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric" }).format(target)}`;
-  const time = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(target);
+  if (opts.withDate && WEEKDAYS.has(day)) day = `${day}, ${formatInZone(target, timeZone, { month: "short", day: "numeric" })}`;
+  const time = formatInZone(target, timeZone, { hour: "numeric", minute: "2-digit", hour12: true });
   return `${day} ${time}`;
 }
 

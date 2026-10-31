@@ -490,7 +490,10 @@ them as NRMS site files, so they appear in the Hub under **Website > Files** and
 them at `/files/<name>` in any letter case. A `/files/<path>` that is neither an NRMS file nor a
 site file gets a `302` to legacy's Azure front door: **on by owner decision (2026-10-29)**, relying
 on Azure staying up after cutover. `LEGACY_FILES_FALLBACK=false` in `gcpe.env` turns the 302 off
-(the site's 404 instead); `LEGACY_FILES_ORIGIN` moves it. Release files (`/files/releases/…`) are
+(the site's 404 instead); `LEGACY_FILES_ORIGIN` moves it. A name staff deleted under **Website >
+Files** is never redirected: it gets the site's 404 in any letter case, and a later copy run doesn't
+import it again; uploading a file served under that name lifts this (NRMS migration `0022`; details
+in `siteground.md`, "Legacy /files import"). Release files (`/files/releases/…`) are
 never looked up or redirected: Q17 still decides them. Get a **read + list SAS URL** for the legacy
 `files` container from whoever holds the legacy Azure storage account. It is a secret: type it in,
 don't store it in `gcpe.env`. Run the import after the last legacy import and before DNS moves, then
@@ -1342,7 +1345,7 @@ Hash`) on each server; T4's first row still prints `200`. To see expiry dates:
 
 | Task | How |
 |---|---|
-| Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, `cmd /c rmdir C:\gcpe\current`, `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. |
+| Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, `cmd /c rmdir C:\gcpe\current`, `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. One exception to watch: News API migration `0012_unpublish_advisories` takes Advisories off the public site, and a release older than it puts an Advisory published or corrected after the rollback back on the site. |
 | Change a setting | Edit `C:\gcpe\config\gcpe.env` as Administrator, then `Restart-Service gcpe-stack`. |
 | Restart | `Restart-Service gcpe-stack` (IIS doesn't need restarting). |
 | Health | `https://<internal host>/stack/health`; `curl.exe http://127.0.0.1:3000/stack/health` on the server skips IIS. |

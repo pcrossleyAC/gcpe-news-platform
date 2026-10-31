@@ -326,9 +326,10 @@ function decodeMetaHeader(v: string): string {
 
 /** Where imported files go: NRMS site files (target.ts), or a fake in tests. */
 export interface LegacyFilesTarget {
-  /** A site file of that name exists, in any letter case. */
+  /** A site file of that name exists, in any letter case, or staff deleted one of that name in the Hub. */
   exists(name: string): Promise<boolean>;
-  import(file: { name: string; bytes: Buffer; contentType: string; createdAt: Date; replace: boolean }): Promise<"imported" | "replaced" | "exists">;
+  /** `deleted`: staff deleted a file of that name in the Hub, so it stays deleted (suite review W2). */
+  import(file: { name: string; bytes: Buffer; contentType: string; createdAt: Date; replace: boolean }): Promise<"imported" | "replaced" | "exists" | "deleted">;
 }
 
 export interface LegacyFilesCopyOptions {
@@ -368,7 +369,7 @@ export interface LegacyFilesCopyReport {
   imported: number;
   replaced: number;
   bytes: number;
-  /** Already a site file of that name (any case; a staff upload included): left alone. */
+  /** Already a site file of that name (any case; a staff upload included), or one staff deleted in the Hub: left alone. */
   skipped: number;
   notFound: string[];
   failed: { name: string; status?: number; reason: string }[];
@@ -510,7 +511,7 @@ export async function runLegacyFilesCopy(
         if (outcome === "imported") report.imported++;
         else if (outcome === "replaced") report.replaced++;
         else report.skipped++;
-        if (outcome !== "exists") report.bytes += f.bytes.length;
+        if (outcome === "imported" || outcome === "replaced") report.bytes += f.bytes.length;
       } catch (e) {
         report.failed.push({ name, reason: deps.client.redact(e instanceof Error ? e.message : String(e)) });
       }

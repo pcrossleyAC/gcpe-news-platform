@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
+import { formatInZone, formatToPartsInZone } from "../../../format/bcTime";
 import { Button } from "../../../shared/BusyButton";
 import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
@@ -31,8 +32,8 @@ export function scheduleText(local: string): string {
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = time.split(":").map(Number);
   const at = new Date(Date.UTC(y!, mo! - 1, d!, h!, mi!));
-  const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(at);
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(at).map((x) => [x.type, x.value]));
+  const day = formatInZone(at, "UTC", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const p = Object.fromEntries(formatToPartsInZone(at, "UTC", { hour: "numeric", minute: "2-digit", hour12: true }).map((x) => [x.type, x.value]));
   return `${day} at ${p.hour}:${p.minute} ${p.dayPeriod} Pacific time`;
 }
 
@@ -54,6 +55,9 @@ function useServerZoneOffset(enabled: boolean): number | null {
   }, [enabled]);
   return offset;
 }
+
+/** Cancel schedule's dialog warns when the publish is due within this many minutes. */
+const CANCEL_SOON_MINUTES = 30;
 
 /** apps/nrms/src/releases/service.ts's DELETABLE_STATUSES (and, like the server, never while live). */
 const DELETABLE_STATUSES = new Set(["draft", "approved", "failed"]);
@@ -120,6 +124,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const [scheduleConfirmOpen, setScheduleConfirmOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   // After a successful Publish now, Approve or Return to draft its button leaves the page (the
   // release moved on), so focus goes to the Actions heading rather than falling to <body>.
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -202,13 +207,25 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
     setSchedulerOpen(true);
   };
   const prefilled = scheduleValue !== null && view.publishAt !== null && scheduleValue.instant === view.publishAt;
+  // Suite review R5: a planned publish date still ahead (Publish settings) is often an embargo;
+  // Publish now's dialog names it. A live release's publishAt is when it went out, never ahead.
+  const plannedLater = !view.live && view.publishAt && Date.parse(view.publishAt) > Date.now() ? view.publishAt : null;
   const publishNow = () =>
     void section.save("/schedule", { version: view.version, publishAt: "now" }, "POST").then((next) => {
       if (!next) return;
       setPublishOpen(false);
       setFocusHeading(true);
     });
-  const cancelSchedule = () => void section.save("/cancel", { version: view.version }, "POST");
+  const cancelSchedule = () =>
+    void section.save("/cancel", { version: view.version }, "POST").then((next) => {
+      if (!next) return;
+      setCancelOpen(false);
+      setFocusHeading(true);
+    });
+  // Suite review R10: Cancel schedule asks first, naming the time, and says how soon it's due when
+  // that's close (a mistaken cancel minutes before means it quietly doesn't go out).
+  const minutesToGo = canCancel && cancelOpen && view.publishAt ? Math.floor((Date.parse(view.publishAt) - Date.now()) / 60_000) : null;
+  const cancelSoon = minutesToGo !== null && minutesToGo < CANCEL_SOON_MINUTES;
   const unpublish = () =>
     void section.save("/unpublish", { version: view.version }, "POST").then((next) => {
       if (next) setUnpublishOpen(false);
@@ -331,6 +348,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
               </Button>
               <Modal isDismissable>
                 <AlertDialog
+                  variant={plannedLater ? "warning" : undefined}
                   title="Publish this release now?"
                   buttons={
                     <>
@@ -343,6 +361,11 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                     </>
                   }
                 >
+                  {plannedLater && (
+                    <p>
+                      <strong>This release is planned for {dateTimeText(plannedLater, timeZone)}.</strong> Publishing now puts it out early.
+                    </p>
+                  )}
                   <PublishConsequences view={view} timeZone={timeZone} />
                   <ActionErrors section={section} />
                 </AlertDialog>
@@ -396,9 +419,38 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
         )}
 
         {canCancel && (
-          <Button variant="secondary" onPress={cancelSchedule} isPending={section.saving}>
-            Cancel schedule
-          </Button>
+          <DialogTrigger isOpen={cancelOpen} onOpenChange={setCancelOpen}>
+            <Button variant="secondary" isPending={section.saving}>
+              Cancel schedule
+            </Button>
+            <Modal isDismissable>
+              <AlertDialog
+                variant={cancelSoon ? "warning" : undefined}
+                title={view.publishAt ? `Cancel the publish on ${dateTimeText(view.publishAt, timeZone)}?` : "Cancel the scheduled publish?"}
+                buttons={
+                  <>
+                    <Button variant="secondary" onPress={() => setCancelOpen(false)} isPending={section.saving}>
+                      Keep schedule
+                    </Button>
+                    <Button onPress={cancelSchedule} isPending={section.saving} pendingLabel="Cancelling…">
+                      Cancel schedule
+                    </Button>
+                  </>
+                }
+              >
+                {cancelSoon && (
+                  <p>
+                    <strong>
+                      {minutesToGo! <= 0 ? "It's due to go out now." : `It's due to go out in ${minutesToGo} minute${minutesToGo === 1 ? "" : "s"}.`}
+                    </strong>{" "}
+                    If you cancel, it won&rsquo;t go out then.
+                  </p>
+                )}
+                <p>It goes back to Drafts as approved. You can schedule it again or publish it from there.</p>
+                <ActionErrors section={section} />
+              </AlertDialog>
+            </Modal>
+          </DialogTrigger>
         )}
 
         {canUnpublish && (
@@ -620,15 +672,16 @@ export function digestCutoffFor(releasedAt: string, timeZone: string): string {
 }
 
 /** "Oct 1, 2026" in the tenant's zone. */
-const dayText = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
+const dayText = (iso: string, timeZone: string) => formatInZone(iso, timeZone, { month: "short", day: "numeric", year: "numeric" });
 
 /**
  * What Publish now (or, given `at`, Schedule) will do, from the release as saved (publishing is blocked while anything is
  * unsaved, so saved is what goes out): the public site it goes on, the media distribution lists
- * it's sent to (by name), and whose News on Demand inboxes it reaches. NoD has no "how many
- * subscribers would get this" endpoint, so it names the categories subscribers follow instead
- * of a count. Names come from the same lists the Categories and Publish settings sections read;
- * if a lookup fails, the keys are shown instead.
+ * it's sent to (by name), and whose News on Demand inboxes it reaches: the categories subscribers
+ * follow, and on a first publish about how many subscribers and media contacts that is (suite
+ * review R6: the counts the publish itself stores, from `GET .../audience`, worked out as the
+ * dialog opens). Names come from the same lists the Categories and Publish settings sections read;
+ * if a lookup fails, the keys are shown instead; if the counts can't be had, it says so.
  *
  * Who is emailed (apps/nod/src/items.ts, as-it-happens.ts, media-send.ts):
  * - first publish: the media lists and News on Demand subscribers;
@@ -661,6 +714,21 @@ function PublishConsequences({
   const subscribersOn = rules.nodAllowed && view.publishOptions.toSubscribers;
   const toLists = !correction && listsOn;
   const toSubscribers = !correction && subscribersOn;
+
+  // undefined while counting; null when the counts couldn't be fetched.
+  const [audience, setAudience] = useState<Audience | null | undefined>(undefined);
+  const countable = (toLists || toSubscribers) && !again;
+  useEffect(() => {
+    if (!countable) return;
+    let active = true;
+    apiFetch<Audience>(`/nrms/api/releases/${view.id}/audience`).then(
+      (a) => active && setAudience(a),
+      () => active && setAudience(null),
+    );
+    return () => {
+      active = false;
+    };
+  }, [countable, view.id]);
 
   useEffect(() => {
     let active = true;
@@ -722,6 +790,36 @@ function PublishConsequences({
           ? `Emails News on Demand subscribers who follow ${followed.length > 0 ? `any of: ${listText([...new Set(followed)])}` : "this release's categories"}${view.ministries.length > 0 ? " — and everyone subscribed to all news" : ""}.`
           : "News on Demand subscribers will not be emailed."}
       </li>
+      {countable && <li>{audienceText(audience, toSubscribers, toLists, atInstant ? "when it goes out" : "now")}</li>}
     </ul>
   );
+}
+
+/** `GET /nrms/api/releases/:id/audience` (apps/nrms/src/releases/workflow.ts audiencePreview,
+ * from NoD's own send rules): null for an audience this publish doesn't email; `count` null when
+ * NoD couldn't say. */
+interface Audience {
+  asItHappens: { count: number | null } | null;
+  digest: { count: number | null } | null;
+  mediaContacts: { count: number | null } | null;
+}
+
+/** "Emails about 40,000 News on Demand subscribers and about 312 media contacts now. About 1,200
+ * daily digest subscribers get it in the next 5 PM digest." `when` is "now" or "when it goes out". */
+function audienceText(audience: Audience | null | undefined, toSubscribers: boolean, toLists: boolean, when: string): string {
+  if (audience === undefined) return "Counting how many people it reaches…";
+  if (audience === null) return "How many people it reaches isn't available right now.";
+  const num = (n: number) => n.toLocaleString("en-CA");
+  const about = (a: { count: number | null } | null, what: string) => (a?.count != null ? `about ${num(a.count)} ${what}` : `${what} (count unavailable)`);
+  const now = [toSubscribers ? about(audience.asItHappens, "News on Demand subscribers") : null, toLists ? about(audience.mediaContacts, "media contacts") : null].filter(Boolean);
+  const sentences = [`Emails ${now.join(" and ")} ${when}.`];
+  if (toSubscribers) {
+    const d = audience.digest?.count;
+    sentences.push(
+      d != null
+        ? `About ${num(d)} daily digest subscriber${d === 1 ? " gets" : "s get"} it in the next 5 PM digest.`
+        : "Daily digest subscribers get it in the next 5 PM digest (count unavailable).",
+    );
+  }
+  return sentences.join(" ");
 }

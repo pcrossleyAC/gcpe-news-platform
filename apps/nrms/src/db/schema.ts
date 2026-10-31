@@ -509,6 +509,17 @@ export const siteFiles = pgTable("site_files", {
   createdBy: text("created_by").notNull(),
 });
 
+/**
+ * Names of deleted site files, lowercased (suite review W2). The stack's /files gate answers 404
+ * for one of these instead of 302ing to legacy's copy of the same name, and a legacy copy run
+ * doesn't import it again. A Hub upload served under the name removes it.
+ */
+export const siteFileTombstones = pgTable("site_file_tombstones", {
+  nameLower: text("name_lower").primaryKey(),
+  deletedAt: tz("deleted_at").notNull().defaultNow(),
+  deletedBy: text("deleted_by").notNull(),
+});
+
 export type SiteLogArea = "carousel" | "pins" | "live-feed" | "blue-bridge" | "links" | "files" | "features" | "settings";
 
 export const siteLog = pgTable(
