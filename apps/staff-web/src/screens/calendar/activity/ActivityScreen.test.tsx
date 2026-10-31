@@ -779,12 +779,16 @@ describe("the activity editor (spec addendum §8.2)", () => {
   describe("signed out mid-edit", () => {
     const signedOutOnSave = (url: string, init?: RequestInit) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(401, { error: "Sign in again" }) : undefined);
     const drafts = () => Object.keys(sessionStorage).filter((k) => k.startsWith("gcpe-calendar-draft:"));
-    /** Types a change, then the session expires on Save: the user is sent to sign in. */
+    /** Types a change, then the session expires on Save: the Hub explains (suite review H1) and
+     * the user chooses Sign in again. */
     async function loseTheSession() {
       stubActivity([], { other: signedOutOnSave });
       const { router } = renderActivity("/calendar/activities/20001?return=%2Fcalendar");
       await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
       await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      const ended = await screen.findByRole("alertdialog", { name: "Your session has ended" });
+      expect(ended).toHaveTextContent("Your unsaved changes are kept on this computer and come back after you sign in again.");
+      await userEvent.click(within(ended).getByRole("button", { name: "Sign in again" }));
       await waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"));
       cleanup();
       vi.unstubAllGlobals();
@@ -877,6 +881,12 @@ describe("the activity editor (spec addendum §8.2)", () => {
         await user.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
         expired = true;
         await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+        // Kept at once, while the screen stays with the changes on it (suite review H1).
+        await screen.findByRole("alertdialog", { name: "Your session has ended" });
+        expect(drafts()).toHaveLength(1);
+        // (Behind the dialog, so hidden from the accessibility tree while it's open.)
+        expect(screen.getByRole("textbox", { name: "Venue", hidden: true })).toHaveValue("Sample hall");
+        await user.click(screen.getByRole("button", { name: "Sign in again" }));
         await waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"));
         expect(drafts()).toHaveLength(1);
       } finally {

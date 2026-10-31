@@ -97,8 +97,8 @@ describe("SessionContext: checking in when the tab comes back", () => {
   });
 
   function Who(): React.JSX.Element {
-    const { user } = useSession();
-    return <p>{user ? `Signed in as ${user.name}` : "Signed out"}</p>;
+    const { user, ended } = useSession();
+    return <p>{user ? `${ended ? "Session ended for" : "Signed in as"} ${user.name}` : "Signed out"}</p>;
   }
   const signedIn = () => jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@example.test", roles: [] }, expiresAt: new Date().toISOString() });
   const showTab = () => {
@@ -118,7 +118,50 @@ describe("SessionContext: checking in when the tab comes back", () => {
     await screen.findByText("Signed in as Pat");
     expired = true;
     showTab();
-    expect(await screen.findByText("Signed out")).toBeInTheDocument();
+    expect(await screen.findByText("Session ended for Pat")).toBeInTheDocument();
+  });
+
+  // Suite review H1 (owner 2026-10-31): a Hub tab left in the background stays signed in.
+  it("keeps checking in every ten minutes while the tab is hidden", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+      const fetch = vi.fn(async () => signedIn());
+      vi.stubGlobal("fetch", fetch);
+      render(
+        <SessionProvider>
+          <Who />
+        </SessionProvider>,
+      );
+      await screen.findByText("Signed in as Pat");
+      await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+      expect(fetch).toHaveBeenCalledTimes(2);
+      await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+      expect(fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    }
+  });
+
+  // H1: the screen isn't taken away the moment the session ends (it may hold unsaved changes):
+  // the person stays known, the session is marked ended, and signing in again elsewhere (another
+  // tab) is picked up by the next check-in.
+  it("a 401 marks the session ended without forgetting who it was; a later good check-in resumes it", async () => {
+    let expired = false;
+    vi.stubGlobal("fetch", vi.fn(async () => (expired ? jsonResponse(401, { error: "Sign in" }) : signedIn())));
+    render(
+      <SessionProvider>
+        <Who />
+      </SessionProvider>,
+    );
+    await screen.findByText("Signed in as Pat");
+    expired = true;
+    showTab();
+    await screen.findByText("Session ended for Pat");
+    expired = false;
+    showTab();
+    expect(await screen.findByText("Signed in as Pat")).toBeInTheDocument();
   });
 
   it.each([

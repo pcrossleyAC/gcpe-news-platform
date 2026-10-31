@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
-import { Header, InlineAlert } from "@bcgov/design-system-react-components";
+import { AlertDialog, Header, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { Button } from "../shared/Button";
 import { useSession } from "../session/SessionContext";
 import { hasAnyReadRole, NAV_GROUPS } from "./nav";
@@ -11,6 +11,8 @@ import { AnnouncerProvider } from "../shared/Announcer";
 import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 import { useEscapeClosesPanels } from "../shared/escapeClosesPanels";
 import { helpFor, helpTargetFor } from "../manuals/help-target";
+import { useUnsavedChangesState } from "../shared/LeaveGuard";
+import { useSignInAgain } from "../session/RequireAuth";
 
 export { helpFor };
 
@@ -42,10 +44,21 @@ export function AppShell(): React.JSX.Element {
   };
   const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => item.show(session)) })).filter((g) => g.items.length > 0);
 
-  const onSignOut = async () => {
+  const unsaved = useUnsavedChangesState();
+  // Suite review H1: Sign out asks first when the screen has unsaved changes.
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const signOut = async () => {
+    setConfirmSignOut(false);
     await session.signOut();
     navigate("/sign-in", { replace: true });
   };
+  const onSignOut = () => {
+    if (unsaved?.anyDirty) setConfirmSignOut(true);
+    else void signOut();
+  };
+  // H1: the session ended while this screen had unsaved changes (RequireAuth kept it on screen
+  // and explained in a dialog). This notice stays until they sign in again.
+  const signInAgain = useSignInAgain();
 
   return (
     <AnnouncerProvider>
@@ -100,6 +113,20 @@ export function AppShell(): React.JSX.Element {
           {/* Fix round 1, finding 3: persistent — not closeable — since it stays true for the
            * whole session; the only real fix is updating the browser. The title is what the design
            * system's alert names itself by (its aria-labelledby always points at a title). */}
+          {session.ended && (
+            <InlineAlert
+              variant="danger"
+              role="alert"
+              isCloseable={false}
+              title="Your session has ended"
+              description="Nothing on this page can be saved until you sign in again."
+              buttons={
+                <Button size="small" variant="secondary" onPress={signInAgain}>
+                  Sign in again
+                </Button>
+              }
+            />
+          )}
           {tzMismatch && (
             <InlineAlert
               variant="warning"
@@ -112,6 +139,24 @@ export function AppShell(): React.JSX.Element {
           <Outlet />
         </main>
       </div>
+      <Modal isOpen={confirmSignOut} onOpenChange={(open) => { if (!open) setConfirmSignOut(false); }} isDismissable>
+        <AlertDialog
+          role="alertdialog"
+          aria-label="Unsaved changes"
+          variant="warning"
+          title="Unsaved changes"
+          buttons={
+            <>
+              <Button onPress={() => setConfirmSignOut(false)}>Stay</Button>
+              <Button danger onPress={() => void signOut()}>
+                Sign out
+              </Button>
+            </>
+          }
+        >
+          <p>You have unsaved changes on this page. Sign out anyway and discard them?</p>
+        </AlertDialog>
+      </Modal>
     </AnnouncerProvider>
   );
 }

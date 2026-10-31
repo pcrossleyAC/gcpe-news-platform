@@ -414,7 +414,11 @@ describe("ReleaseEditorPage", () => {
     await user.type(headline, "Unsaved after 401");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    // The 401 above signs the user out; RequireAuth sends them to /sign-in?return=...
+    // The 401 above ends the session; the page stays and explains (suite review H1), and Sign in
+    // again goes to /sign-in?return=...
+    const ended = await screen.findByRole("alertdialog", { name: "Your session has ended" });
+    expect(ended).toHaveTextContent("Your unsaved changes are kept on this computer and come back after you sign in again.");
+    await user.click(within(ended).getByRole("button", { name: "Sign in again" }));
     await screen.findByRole("heading", { name: "Sign in" });
     await user.type(await screen.findByLabelText(/user name/i), "pat");
     await user.type(screen.getByLabelText(/password/i), "whatever123");
