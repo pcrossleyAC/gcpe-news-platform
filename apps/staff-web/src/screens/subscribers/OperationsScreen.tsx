@@ -66,12 +66,13 @@ function OperationsPanels(): React.JSX.Element {
       {message && <p role="status">{message}</p>}
       {ops && (
         <>
+          {/* Who hears about a pause or resume: NOD_OPS_EMAIL, when one is set up (settings.ts). */}
           <PauseControl
             title="News On Demand sending"
             paused={ops.nod.paused}
             path="/nod/api/settings"
-            pauseBody="News On Demand keeps recording releases and building emails but holds them until you resume. Nothing is dropped. The operations inbox is emailed."
-            resumeBody="Held emails start going out straight away. The operations inbox is emailed."
+            pauseBody={`News On Demand keeps recording releases and building emails but holds them until you resume. Nothing is dropped. ${whoIsEmailed(ops)}`}
+            resumeBody={`Held emails start going out straight away. ${whoIsEmailed(ops)}`}
             onDone={done}
           >
             <p>{`Last daily digest: ${ops.nod.lastDigestCutoff ? formatWhen(ops.nod.lastDigestCutoff, new Date(), timeZone) : "none yet"}.`}</p>
@@ -81,8 +82,8 @@ function OperationsPanels(): React.JSX.Element {
               title="Distribution"
               paused={ops.distribution.paused}
               path="/nod/api/distribution"
-              pauseBody="No email goes out from any app, except system notices, until you resume. Queued email is kept. The operations inbox is emailed."
-              resumeBody="Queued email starts going out straight away. The operations inbox is emailed."
+              pauseBody={`No email goes out from any app, except system notices, until you resume. Queued email is kept. ${whoIsEmailed(ops)}`}
+              resumeBody={`Queued email starts going out straight away. ${whoIsEmailed(ops)}`}
               onDone={done}
             />
           ) : (
@@ -101,6 +102,8 @@ function OperationsPanels(): React.JSX.Element {
     </div>
   );
 }
+
+const whoIsEmailed = (ops: OperationsStatus) => (ops.opsEmailSet ? "The operations inbox is emailed." : "No one is emailed about it.");
 
 function PauseControl(props: {
   title: string;
@@ -295,7 +298,8 @@ function PurgeControl({ purge, timeZone, onDone }: { purge: PurgeStatus; timeZon
       </ul>
       <p>{`Expired links in sent emails are cleared every night, on or off (${count(p.expiredSendLinks)} waiting).`}</p>
       <p>{`Next run: ${formatWhen(purge.nextRunAt, new Date(), timeZone)}.`}</p>
-      {last && (
+      {/* While it's off, an old run would read as if it still runs. */}
+      {purge.enabled && last && (
         <p>
           {`Last run (${formatWhen(last.cutoff, new Date(), timeZone)}): ${last.finished ? "finished" : "still going"}; deleted ` +
             `${plural(last.counts.pendingSubscribers + last.counts.endedSubscribers, "subscriber")} and ${plural(last.counts.unusedLinks + last.counts.expiredSendLinks, "link")}.`}

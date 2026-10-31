@@ -115,6 +115,12 @@ export interface MediaOptOutPage {
   truncated: boolean;
 }
 export type AddMemberBody = { email: string; confirmOptOut?: boolean } | { mediaHubContactId: number; emailRef: string; confirmOptOut?: boolean };
+/** apps/nod/src/media-members.ts addMediaMember: `newsEmailOff` when a Disabled address was made media-only. */
+export interface AddMemberResult {
+  subscriberId: string;
+  created: boolean;
+  newsEmailOff: boolean;
+}
 
 /** apps/nod/src/media-hub/contract.ts */
 export interface MediaHubEmail {
@@ -197,4 +203,5 @@ export interface OperationsStatus {
   softCodesCounted: string[];
   purge: PurgeStatus;
   emergencyFeed: EmergencyFeedStatus;
+  opsEmailSet: boolean;
 }

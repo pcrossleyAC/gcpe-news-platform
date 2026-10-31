@@ -89,9 +89,18 @@ describe("ListsScreen", () => {
       expect(calls).toContainEqual({ url: "/nod/api/list-categories/ministries/list-order", method: "PUT", body: { listKeys: ["ministries:energy", "ministries:health", "ministries:old"] } }),
     );
     expect(screen.queryByRole("checkbox", { name: "Offer Budget" })).toBeNull();
-    // getByText matches an element's own text nodes only, so the sentence around the link is
-    // checked through the link itself.
-    expect(screen.getByRole("link", { name: "Media list names" })).toHaveAttribute("href", "/media-list-names");
+    // A NoD Admin can't open Media list names, so it's named, not linked.
+    expect(screen.getByText("Media lists aren't changed here. Core administrators set these on Media list names.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Media list names" })).toBeNull();
+    expect(document.body).not.toHaveTextContent("NRMS");
+  });
+
+  it("a Core administrator gets the Media list names link", async () => {
+    stub(["NoD.Admin", "Core.Admin"]);
+    renderIt();
+    const link = await screen.findByRole("link", { name: "Media list names" });
+    expect(link).toHaveAttribute("href", "/media-list-names");
+    expect(link.parentElement).toHaveTextContent("Media lists aren't changed here. Core administrators set these on Media list names.");
   });
 
   it("the category's Offer checkbox says Saved beside it too", async () => {
@@ -122,7 +131,7 @@ describe("ListsScreen", () => {
     expect(screen.queryByRole("button", { name: /Move/ })).toBeNull();
   });
 
-  it("Offered means the list is active, switched on and in a category that's switched on; media lists are managed in NRMS", async () => {
+  it("Offered means the list is active, switched on and in a category that's switched on; media lists say so", async () => {
     const view: StaffListsView = {
       allNews: 0,
       categories: [
@@ -140,7 +149,7 @@ describe("ListsScreen", () => {
     expect(screen.getByRole("row", { name: /Energy 3 No$/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /Old ministry \(retired in Core\) 0 No \(retired\)/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /Energy sector 5 No \(category not offered\)/ })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /Budget 9 Managed in NRMS/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Budget 9 No \(media list\)/ })).toBeInTheDocument();
   });
 
   it("an earlier, slower reload never replaces a later one", async () => {

@@ -15,7 +15,7 @@ topics: []
 
 Pause this to hold news email, for example during an election period or while a problem is fixed.
 
-1. Under **News On Demand sending**, choose **Pause News On Demand sending**. The Hub asks "Pause News On Demand sending?" and explains "News On Demand keeps recording releases and building emails but holds them until you resume. Nothing is dropped. The operations inbox is emailed."
+1. Under **News On Demand sending**, choose **Pause News On Demand sending**. The Hub asks "Pause News On Demand sending?" and explains "News On Demand keeps recording releases and building emails but holds them until you resume. Nothing is dropped." and says who is emailed about it.
 2. Choose **Confirm pause**. You see "News On Demand sending paused." and the section shows **Paused**.
 
 While paused, no as-it-happens, digest, emergency alert or media list email leaves News On Demand. Confirmation emails to people signing up still go out.
@@ -26,7 +26,7 @@ To resume, choose **Resume News On Demand sending**, then **Confirm resume**. Th
 
 Distribution is the service that sends email for every app. Pause it only when email from all of them must stop.
 
-1. Under **Distribution**, choose **Pause Distribution**. The Hub asks "Pause Distribution?" and explains "No email goes out from any app, except system notices, until you resume. Queued email is kept. The operations inbox is emailed."
+1. Under **Distribution**, choose **Pause Distribution**. The Hub asks "Pause Distribution?" and explains "No email goes out from any app, except system notices, until you resume. Queued email is kept." and says who is emailed about it.
 2. Choose **Confirm pause**. You see "Distribution paused."
 
 System notices still go out while paused. These include sign-up confirmations, manage-subscription links, the bounce summary and the pause emails themselves.
@@ -39,7 +39,7 @@ Everything held goes out when you resume, however old it is. After a long pause,
 
 ## Who is told
 
-Each pause and resume emails the operations inbox with your name and the time. If this site has no operations inbox, nobody is emailed. Subscribers are never told.
+Each pause and resume emails the operations inbox with your name and the time, and the question says "The operations inbox is emailed." If this site has no operations inbox, nobody is emailed, and the question says "No one is emailed about it." Subscribers are never told.
 
 ## Bounce summary
 
@@ -83,7 +83,7 @@ When on, every night at 3:00 am it deletes:
 
 It never deletes subscribers disabled by bounces. When it deletes someone who had left a media list by unsubscribing, it keeps that they left the list, without their address, so adding that address back still asks first.
 
-**If it ran now, it would delete** shows the counts before you turn it on.
+**If it ran now, it would delete** shows the counts before you turn it on. While it is on, the section also shows how its last run went. While it is off, no last run is shown.
 
 1. Choose **Turn on the retention purge**. The Hub asks "Turn on the retention purge?" and says how many subscribers and links the next run deletes "for good, and keeps doing so every night. This can't be undone."
 2. Choose **Turn on purge**. You see "Retention purge turned on."

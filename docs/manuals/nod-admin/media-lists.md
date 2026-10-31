@@ -34,9 +34,11 @@ Use this for people who aren't in Media Hub.
 
 - The reporter is not emailed. They get the next release sent to this list.
 - A new address gets a record that receives media email only.
-- If the address already has a record that is **Disabled** or **Unsubscribed or deleted**, adding makes it **Active** again. A person who had unsubscribed gets media email only.
-- A **Disabled** person keeps their old news lists, so they also start getting news release email again, even if staff deactivated them. History shows only "Added to a media list". A person disabled by bounces keeps their old bounce count, so further bounces flag them **Bouncing**, and they keep being sent media and news release email.
-- Before adding, check the address on **Find subscribers**. If it is **Disabled**, ask whether they want news release email again. If not, add them, then straight away open their record, untick **As it happens**, **Daily digest** and their lists, and choose **Save preferences**. This can't be done before adding: a record with no lists is refused unless it is on a media list.
+- An address that is already **Active** keeps its news release email as it was.
+- If the address already has a record that is **Disabled** or **Unsubscribed or deleted**, adding makes it **Active** again, for media email only. **As it happens**, **Daily digest** and their news lists are switched off. Media lists they were already on are kept.
+- For a **Disabled** person, their bounce count starts again, and **History** shows "Added to a media list while Disabled. News release email stays off", with what was switched off under **Detail**.
+- When the address was **Disabled**, you see "Added to the list. Their news release email stays off; open their record to turn it on." instead of "Added to the list."
+- If a **Disabled** person also wants news release email again, choose **open their record** in that message. Tick **As it happens** or **Daily digest** and their lists, then choose **Save preferences**.
 - If the person left this list by unsubscribing, the Hub asks "This person unsubscribed" and says when. Choose **Add anyway** only if they have asked to get media releases again.
 
 ## Remove a reporter

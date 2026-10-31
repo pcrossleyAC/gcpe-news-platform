@@ -25,6 +25,7 @@ const OPS: OperationsStatus = {
     checkedAt: "2026-10-07T18:00:00.000Z",
     result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, failed: 0, error: null },
   },
+  opsEmailSet: true,
 };
 
 type Call = { url: string; method: string; body: unknown };
@@ -93,9 +94,39 @@ describe("OperationsScreen", () => {
     await user.click(within(nod).getByRole("button", { name: "Pause News On Demand sending" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Nothing is dropped");
+    expect(dialog).toHaveTextContent("The operations inbox is emailed.");
     await user.click(within(dialog).getByRole("button", { name: "Confirm pause" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/settings/pause", method: "POST", body: undefined }));
     expect(calls.filter((c) => c.url === "/nod/api/operations").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("with no operations inbox set up, the pause and resume dialogs say no one is emailed", async () => {
+    stub(["NoD.Admin"], { ...OPS, opsEmailSet: false, distribution: { paused: true } });
+    renderIt();
+    const user = userEvent.setup();
+    const nod = await screen.findByRole("region", { name: "News On Demand sending" });
+    await user.click(within(nod).getByRole("button", { name: "Pause News On Demand sending" }));
+    let dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("No one is emailed about it.");
+    expect(dialog).not.toHaveTextContent("operations inbox");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    const dist = screen.getByRole("region", { name: "Distribution" });
+    await user.click(within(dist).getByRole("button", { name: /^Resume/ }));
+    dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("No one is emailed about it.");
+    expect(dialog).not.toHaveTextContent("operations inbox");
+  });
+
+  it("an off purge doesn't show a last run", async () => {
+    stub(["NoD.Admin"], {
+      ...OPS,
+      purge: { ...OPS.purge, lastRun: { cutoff: "2026-10-07T10:00:00.000Z", counts: { pendingSubscribers: 1, endedSubscribers: 4, unusedLinks: 2, expiredSendLinks: 3 }, finished: true, enabled: true } },
+    });
+    renderIt();
+    const purge = await screen.findByRole("region", { name: "Retention purge" });
+    expect(within(purge).getByText("Off")).toBeInTheDocument();
+    expect(purge).not.toHaveTextContent("Last run");
   });
 
   it("Distribution unavailable: says so, offers no Distribution button, NoD controls still work", async () => {

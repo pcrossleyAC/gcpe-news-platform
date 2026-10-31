@@ -15,12 +15,15 @@ export interface OperationsStatus {
   softCodesCounted: string[];
   purge: PurgeStatus;
   emergencyFeed: EmergencyFeedStatus;
+  /** Whether a pause or resume emails an operations inbox (NOD_OPS_EMAIL); never the address. */
+  opsEmailSet: boolean;
 }
 
 export interface OperationsOptions {
   bounceSummaryFallback: string | null;
   timeZone: string;
   emergencyFeedUrl: string | null;
+  opsEmail: string | null;
 }
 
 export async function getOperations(
@@ -49,5 +52,5 @@ export async function getOperations(
     getPurgeStatus(db, opts.timeZone),
     getEmergencyFeedStatus(db, opts.emergencyFeedUrl),
   ]);
-  return { nod, distribution: dist, bounceSource, bounceSummary, softCodesCounted, purge, emergencyFeed };
+  return { nod, distribution: dist, bounceSource, bounceSummary, softCodesCounted, purge, emergencyFeed, opsEmailSet: Boolean(opts.opsEmail) };
 }

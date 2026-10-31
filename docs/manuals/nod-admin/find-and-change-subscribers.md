@@ -36,7 +36,7 @@ The record shows **Status**, **Source**, **Registered** and, once they have left
 - **Disabled — after repeated bounces** means bounces disabled them. **Disabled — by staff** means someone deactivated them.
 - **Bounced emails counted (last 15 days)** shows how close they are to being disabled. See [Bounces](manual:bounces).
 - **Media lists** names the media lists they are on. Change those on **Media lists**.
-- **History** lists every change: when, what, who, and details. The exception is adding a record to a media list: History shows only "Added to a media list", even when that made the person **Active** again. "Subscriber" means the person did it themselves. "Bounce processing" and "Media Hub sync" are automatic. The most recent 500 entries are shown.
+- **History** lists every change: when, what, who, and details. Adding a **Disabled** record to a media list also shows "Added to a media list while Disabled. News release email stays off". "Subscriber" means the person did it themselves. "Bounce processing" and "Media Hub sync" are automatic. The most recent 500 entries are shown.
 
 ## Change their lists or timing
 
@@ -51,7 +51,7 @@ The change applies to the next email. Nobody is emailed about it.
 
 1. Open their record.
 2. Enter the address in **New email** and again in **Confirm new email**.
-3. Choose **Change email**. The new address shows at the top of the record.
+3. Choose **Change email**. You see "Email address changed. No confirmation email was sent." and the new address shows at the top of the record.
 
 No confirmation email is sent. Links in emails already sent to the old address stop working, except the unsubscribe links.
 
