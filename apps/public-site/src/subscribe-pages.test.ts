@@ -307,7 +307,7 @@ describe("unsubscribe page outcomes", () => {
     expect(page.alert()).toBe("");
     await page.click();
     expect(page.calls).toEqual([`UnsubscribeSubscriber/${encodeURIComponent(HMAC_TOKEN)}`]);
-    expect(page.status()).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
+    expect(page.status()).toBe("You're unsubscribed.");
     expect(page.alert()).toBe("");
     expect(page.button.disabled).toBe(true);
   });
@@ -362,7 +362,7 @@ describe("unsubscribe page outcomes", () => {
     expect(page.alert()).toBe("");
     await page.click();
     expect(page.calls).toEqual([`CheckEmailActivationToken/${MANAGE_TOKEN}`, `UnsubscribeSubscriber/${MANAGE_TOKEN}`]);
-    expect(page.status()).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
+    expect(page.status()).toBe("You're unsubscribed.");
   });
 
   it("a manage-page link: the button waits for the link check, and a failed check says so instead of offering it", async () => {

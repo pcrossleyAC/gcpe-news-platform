@@ -170,7 +170,7 @@ describe("the Unsubscribe link in a subscriber email", () => {
     (doc.getElementById("confirm-unsubscribe") as HTMLButtonElement).click();
     await until(() => !!doc.getElementById("message")!.textContent || !!doc.getElementById("message-alert")!.textContent);
     expect(doc.getElementById("message-alert")!.textContent).toBe("");
-    expect(doc.getElementById("message")!.textContent).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
+    expect(doc.getElementById("message")!.textContent).toBe("You're unsubscribed.");
     expect(calls).toHaveLength(1);
     expect(await statusOf(id)).toBe("deleted");
   });
@@ -182,7 +182,7 @@ describe("the Unsubscribe link in a subscriber email", () => {
     expectButtonOffered(doc);
     (doc.getElementById("confirm-unsubscribe") as HTMLButtonElement).click();
     await until(() => !!doc.getElementById("message")!.textContent || !!doc.getElementById("message-alert")!.textContent);
-    expect(doc.getElementById("message")!.textContent).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
+    expect(doc.getElementById("message")!.textContent).toBe("You're unsubscribed.");
     expect(await statusOf(id)).toBe("deleted");
   });
 

@@ -258,7 +258,7 @@ const SUBSCRIBE_SCRIPT = `(() => {
         done = false;
       }
       if (done) {
-        say("You're unsubscribed. You won't get any more email from BC Gov News On Demand.", "status");
+        say("You're unsubscribed.", "status");
       } else {
         btn.disabled = false;
         help.hidden = false;
