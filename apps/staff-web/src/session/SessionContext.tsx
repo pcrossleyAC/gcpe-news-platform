@@ -16,6 +16,8 @@ interface SessionState {
   loading: boolean;
   /** The server stopped accepting this person's session (a 401) after they had signed in. */
   ended: boolean;
+  /** How many 401s there have been since: each new one brings the explanation back. */
+  endedCount: number;
 }
 
 export interface SessionValue {
@@ -27,6 +29,8 @@ export interface SessionValue {
    * until they sign in again. RequireAuth and the shell explain it. A later check-in that finds
    * the session good again (signed in in another tab) clears it. */
   ended: boolean;
+  /** Goes up with every 401 after sign-in (fix round 1, I1), so RequireAuth explains again each time. */
+  endedCount: number;
   roles: string[];
   loading: boolean;
   has(role: string): boolean;
@@ -49,7 +53,7 @@ interface LoginResponse {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const [state, setState] = useState<SessionState>({ user: null, loading: true, ended: false });
+  const [state, setState] = useState<SessionState>({ user: null, loading: true, ended: false, endedCount: 0 });
 
   const loadSession = useCallback(async () => {
     try {
@@ -65,7 +69,9 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
    * failure or a 5xx changes nothing: the next check-in tries again. */
   const checkIn = useCallback(() => {
     apiFetch<LoginResponse>("/core/auth/session").then(
-      ({ user }) => setState((s) => ({ ...s, user, loading: false, ended: false })),
+      // Fix round 1 (M2): someone else signing in in another tab doesn't take over a screen kept
+      // from an ended session with the first person's typing on it: it stays ended.
+      ({ user }) => setState((s) => (s.ended && s.user && s.user.id !== user.id ? s : { ...s, user, loading: false, ended: false })),
       () => undefined,
     );
   }, []);
@@ -94,7 +100,12 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   // back there after they sign in again — is RequireAuth's job alone, via the
   // /hub/sign-in?return=<path> it redirects to (constraints.md Review Focus 1). The person isn't
   // forgotten (H1): a screen with unsaved changes stays as it was while RequireAuth explains.
-  useEffect(() => onUnauthorized(() => setState((s) => (s.user ? { ...s, ended: true } : s))), []);
+  // Each refused save (not a background read, which would bring the dialog back every few
+  // seconds on a polling screen) counts, so RequireAuth explains again (fix round 1, I1).
+  useEffect(
+    () => onUnauthorized((_returnTo, { byUser }) => setState((s) => (s.user ? { ...s, ended: true, endedCount: s.endedCount + (byUser || !s.ended ? 1 : 0) } : s))),
+    [],
+  );
 
   const signIn = useCallback(async (username: string, password: string) => {
     const { user } = await apiFetch<LoginResponse>("/core/auth/login", { method: "POST", body: { username, password } });
@@ -120,6 +131,7 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     () => ({
       user: state.user,
       ended: state.ended,
+      endedCount: state.endedCount,
       roles: state.user?.roles ?? [],
       loading: state.loading,
       has: (role: string) => state.user?.roles.includes(role) ?? false,

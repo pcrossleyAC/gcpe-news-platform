@@ -147,6 +147,34 @@ describe("SessionContext: checking in when the tab comes back", () => {
   // H1: the screen isn't taken away the moment the session ends (it may hold unsaved changes):
   // the person stays known, the session is marked ended, and signing in again elsewhere (another
   // tab) is picked up by the next check-in.
+  // Fix round 1 (M2): someone else signed in in another tab doesn't take over the kept screen.
+  it("a later check-in as someone else leaves the session ended", async () => {
+    let who: "pat" | "none" | "sam" = "pat";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        who === "none"
+          ? jsonResponse(401, { error: "Sign in" })
+          : who === "pat"
+            ? signedIn()
+            : jsonResponse(200, { user: { id: "user-b", name: "Sam", email: "sam@example.test", roles: [] }, expiresAt: new Date().toISOString() }),
+      ),
+    );
+    render(
+      <SessionProvider>
+        <Who />
+      </SessionProvider>,
+    );
+    await screen.findByText("Signed in as Pat");
+    who = "none";
+    showTab();
+    await screen.findByText("Session ended for Pat");
+    who = "sam";
+    showTab();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText("Session ended for Pat")).toBeInTheDocument();
+  });
+
   it("a 401 marks the session ended without forgetting who it was; a later good check-in resumes it", async () => {
     let expired = false;
     vi.stubGlobal("fetch", vi.fn(async () => (expired ? jsonResponse(401, { error: "Sign in" }) : signedIn())));

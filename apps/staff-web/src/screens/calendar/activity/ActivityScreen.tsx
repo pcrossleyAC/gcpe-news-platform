@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { checkActivity, friendlySpan, inferLookAhead, type ActivityFields, type ActivityView, type ClonePrefill, type EditorOptions, type FieldError, type HqSection } from "@gcpe/calendar-contract";
-import { ApiError, onUnauthorized } from "../../../api/client";
+import { ApiError, onUnauthorized, SESSION_ENDED_MESSAGE } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { useShortcut } from "../../../shared/shortcuts";
@@ -362,7 +362,7 @@ function ActivityEditor({ me, config, options, view: initial, clone, returnTo, n
   const reviewRefusal = (e: unknown): { text: string; conflict: boolean } | null => {
     const saved = `Saved ${minIdOf(view!)}, but it wasn't marked reviewed:`;
     if (!(e instanceof ApiError)) return { text: `${saved} couldn't reach the server. Choose Review to try again.`, conflict: false };
-    if (e.status === 401) return null;
+    if (e.status === 401) return { text: `${saved} ${SESSION_ENDED_MESSAGE}`, conflict: false };
     if (e.status === 409 && e.code === "version_conflict") return { text: `${saved} someone changed it in between. Reload to see their change, then choose Review.`, conflict: true };
     return { text: `${saved} ${e.message}`, conflict: false };
   };

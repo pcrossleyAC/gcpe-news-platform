@@ -46,7 +46,14 @@ export class ApiError extends Error {
   }
 }
 
-export type UnauthorizedListener = (returnTo: string) => void;
+/** What every 401 says on screen (suite review G fix round 1, I1): a screen kept after its session
+ * ended shows a refusal's message where it shows errors, and the server's own words for a 401
+ * ("missing bearer token") mean nothing to staff. The sign-in page words its own failures. */
+export const SESSION_ENDED_MESSAGE = "Your session has ended. Sign in again to save — your changes are still here.";
+
+/** `byUser`: the refused request was something the user did (a save, a download), not a
+ * background read (a check-in, a poll), so it is worth explaining again. */
+export type UnauthorizedListener = (returnTo: string, info: { byUser: boolean }) => void;
 const unauthorizedListeners = new Set<UnauthorizedListener>();
 
 /** Subscribes to apiFetch's 401s (SessionContext's own use); returns an unsubscribe function. */
@@ -55,13 +62,13 @@ export function onUnauthorized(listener: UnauthorizedListener): () => void {
   return () => unauthorizedListeners.delete(listener);
 }
 
-function notifyUnauthorized(returnTo: string): void {
-  for (const listener of unauthorizedListeners) listener(returnTo);
+function notifyUnauthorized(returnTo: string, byUser: boolean): void {
+  for (const listener of unauthorizedListeners) listener(returnTo, { byUser });
 }
 
 /** For a call that can't go through {@link apiFetch} (a file download): its 401 is treated the same way. */
-export function reportUnauthorized(): void {
-  notifyUnauthorized(currentReturnPath());
+export function reportUnauthorized(byUser = true): void {
+  notifyUnauthorized(currentReturnPath(), byUser);
 }
 
 export interface ApiFetchInit extends Omit<RequestInit, "body"> {
@@ -115,7 +122,7 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
   }
 
   if (!res.ok) {
-    if (res.status === 401) notifyUnauthorized(currentReturnPath());
+    if (res.status === 401) notifyUnauthorized(currentReturnPath(), !SAFE_METHODS.has(method));
     const errObj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
     // The Website section's 422s (apps/nrms/src/website/errors.ts's SiteRuleError,
     // mapped in apps/nrms/src/http/routes.ts's handleError) send `{ errors: string[] }` with no
@@ -127,7 +134,14 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
       : Array.isArray(errObj.errors)
         ? (errObj.errors as string[])
         : undefined;
-    const message = typeof errObj.error === "string" ? errObj.error : problems ? problems.join(" ") : text || `Request failed (${res.status})`;
+    const message =
+      res.status === 401
+        ? SESSION_ENDED_MESSAGE
+        : typeof errObj.error === "string"
+          ? errObj.error
+          : problems
+            ? problems.join(" ")
+            : text || `Request failed (${res.status})`;
     throw new ApiError({
       status: res.status,
       message,

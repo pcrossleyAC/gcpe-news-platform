@@ -258,11 +258,12 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     const signIn = vi.fn();
     const stop = onUnauthorized(signIn);
     try {
-      await expect(downloadExport(DEFAULT_LIST_QUERY)).rejects.toThrow("Sign in again");
+      // Fix round 1 (I1): plain words, not the server's.
+      await expect(downloadExport(DEFAULT_LIST_QUERY)).rejects.toThrow("Your session has ended. Sign in again to save — your changes are still here.");
     } finally {
       stop();
     }
-    expect(signIn).toHaveBeenCalledWith(`${window.location.pathname}${window.location.search}`);
+    expect(signIn).toHaveBeenCalledWith(`${window.location.pathname}${window.location.search}`, { byUser: true });
   });
 
   it("an export downloads the workbook for the current query", async () => {

@@ -870,6 +870,20 @@ describe("the activity editor (spec addendum §8.2)", () => {
       expect(drafts()).toHaveLength(0);
     });
 
+    // Fix round 1 (I1): staying on the activity after the session ended, Save says why in plain words.
+    it("after Stay on this page, Save says the session has ended, and the dialog comes back", async () => {
+      stubActivity([], { other: signedOutOnSave });
+      renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+      await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Your session has ended" })).getByRole("button", { name: "Stay on this page" }));
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("alertdialog", { name: "Your session has ended" })).toBeInTheDocument();
+      expect(screen.getByText("Your session has ended. Sign in again to save — your changes are still here.")).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Venue", hidden: true })).toHaveValue("Sample hall");
+    });
+
     it("a 401 on the session check-in keeps the changes before signing out", async () => {
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
       vi.useFakeTimers({ shouldAdvanceTime: true });

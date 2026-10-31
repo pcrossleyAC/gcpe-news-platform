@@ -11,13 +11,13 @@ topics: []
 
 ## Staying signed in
 
-While a Hub tab is open, it keeps you signed in, even when the tab sits behind other windows. Your session can still end: when you sign out in another tab or window, when your computer has been asleep or offline for a while (it can be as little as a few minutes, and is never more than an hour), or when an administrator changes your account.
+While a Hub tab is open, it keeps you signed in, even when the tab sits behind other windows. Your session can still end: when you sign out in another tab or window, when your computer has been asleep or offline for a while (it can be as little as a few minutes, and is never more than an hour), when the browser has put a tab it hasn't shown for a long time to sleep, or when an administrator changes your account.
 
 ## When your session ends
 
 If the screen you are on has nothing unsaved, the Hub goes to the sign-in page, which says "Your session ended. Sign in to carry on where you left off." Once you sign in, you are back where you were.
 
-If the screen has unsaved changes, it stays as it was, and a box says "Your session has ended". Nothing can be saved until you sign in again.
+If the screen has unsaved changes, it stays as it was, and a box says "Your session has ended". Nothing can be saved until you sign in again: if you choose a button that saves, the screen says "Your session has ended. Sign in again to save — your changes are still here." and the box comes back.
 
 - Choose **Sign in again** to go to the sign-in page. Afterwards you come back to the same screen. Changes to a release's documents and to a Calendar activity are kept on this computer and come back, with "Your unsaved changes were restored." Other unsaved changes are lost.
 - Choose **Stay on this page** to copy what you need first. "Your session has ended" stays at the top of the page, with its own **Sign in again**.

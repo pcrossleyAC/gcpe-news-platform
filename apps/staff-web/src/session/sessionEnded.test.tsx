@@ -9,12 +9,14 @@ import { RequireAuth } from "./RequireAuth";
 import { AppShell } from "../shell/AppShell";
 import { SignIn } from "../screens/SignIn";
 import { LeavePageGuard } from "../shared/LeaveGuard";
+import { apiFetch } from "../api/client";
 import { saveDraft, loadDraft } from "../screens/release/documents/unsavedDocumentStorage";
 import axe from "axe-core";
 
 /** A stand-in edit screen: one field, guarded by the Hub's shared leave-page rule. */
 function EditScreen(): React.JSX.Element {
   const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
   return (
     <>
       <h1>Edit something</h1>
@@ -23,6 +25,10 @@ function EditScreen(): React.JSX.Element {
         <input value={text} onChange={(e) => setText(e.target.value)} />
       </label>
       <Link to="/elsewhere">Somewhere else</Link>
+      <button type="button" onClick={() => apiFetch("/core/api/thing", { method: "PUT", body: { text } }).then(() => setError("Saved"), (e: Error) => setError(e.message))}>
+        Save
+      </button>
+      {error && <p role="alert">{error}</p>}
       <LeavePageGuard dirty={text !== ""} />
     </>
   );
@@ -40,6 +46,7 @@ function stub() {
           : jsonResponse(401, { error: "not signed in" });
       }
       if (url === "/core/auth/logout") return new Response(null, { status: 204 });
+      if (url === "/core/api/thing") return sessionOk ? jsonResponse(200, {}) : jsonResponse(401, { error: "missing bearer token" });
       if (url === "/core/auth/methods") return jsonResponse(200, { entra: false, local: true });
       if (url === "/core/api/time-zone-check") return jsonResponse(200, { timeZone: "America/Vancouver" });
       if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
@@ -108,6 +115,40 @@ describe("when the session ends (suite review H1)", () => {
     expect(router.state.location.pathname).toBe("/sign-in");
     expect(router.state.location.search).toBe(`?return=${encodeURIComponent("/edit")}`);
     expect(screen.getByText("Your session ended. Sign in to carry on where you left off.")).toBeInTheDocument();
+  });
+
+  // Fix round 1 (I1): staying on the page after the session ended, a Save says why it can't, in
+  // plain words, and the dialog comes back on each new refusal.
+  it("after Stay on this page, Save says the session has ended and the dialog comes back", async () => {
+    stub();
+    renderHub();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Bio" }), "Half-written bio");
+    sessionOk = false;
+    showTab();
+    await user.click(within(await screen.findByRole("alertdialog", { name: "Your session has ended" })).getByRole("button", { name: "Stay on this page" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alertdialog", { name: "Your session has ended" })).toBeInTheDocument();
+    expect(screen.getByText("Your session has ended. Sign in again to save — your changes are still here.")).toBeInTheDocument();
+    expect(screen.queryByText(/bearer/)).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Bio", hidden: true })).toHaveValue("Half-written bio");
+  });
+
+  it("a background check-in refused again doesn't bring the dialog back", async () => {
+    stub();
+    renderHub();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Bio" }), "x");
+    sessionOk = false;
+    showTab();
+    await user.click(within(await screen.findByRole("alertdialog", { name: "Your session has ended" })).getByRole("button", { name: "Stay on this page" }));
+    const calls = vi.mocked(fetch).mock.calls.length;
+    showTab();
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(calls));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByRole("alert", { name: "Your session has ended" })).toBeInTheDocument();
   });
 
   it("with nothing unsaved, goes straight to sign-in, which says why", async () => {

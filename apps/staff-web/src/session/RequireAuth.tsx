@@ -42,7 +42,7 @@ export function useSignInAgain(): () => void {
   return () => {
     // Screens that keep unsaved changes through a sign-in (release documents, the Calendar
     // activity) keep them as they are now, not as they were when the session ended.
-    reportUnauthorized();
+    reportUnauthorized(false);
     const go = () => void navigate(signInPath(location), { replace: true });
     if (unsaved) unsaved.leaveWithoutAsking(go);
     else go();
@@ -50,15 +50,16 @@ export function useSignInAgain(): () => void {
 }
 
 function SessionEndedGate({ children }: { children: ReactNode }): React.JSX.Element {
-  const { ended } = useSession();
+  const { ended, endedCount } = useSession();
   const unsaved = useUnsavedChangesState();
   const location = useLocation();
   const signInAgain = useSignInAgain();
-  // Explained once per ending; the shell's notice stays after "Stay on this page".
+  // Explained again on each new refusal (fix round 1, I1: a Save that can't go through, including
+  // the Calendar's, which say nothing of their own); the shell's notice stays after "Stay on this page".
   const [seen, setSeen] = useState(false);
   useEffect(() => {
-    if (!ended) setSeen(false);
-  }, [ended]);
+    setSeen(false);
+  }, [ended, endedCount]);
 
   if (ended && !unsaved?.anyDirty) return <Navigate to={signInPath(location)} replace />;
   return (
