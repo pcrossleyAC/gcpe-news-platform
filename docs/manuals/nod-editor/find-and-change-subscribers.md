@@ -87,7 +87,7 @@ Delete when a person asks to stop all email, or when an address must be removed.
 What this does:
 
 - Their status becomes **Unsubscribed or deleted** at once. You can't undo it. **Add a subscriber** refuses their address while the record exists.
-- They are taken off every media list. Adding them to a media list again later doesn't ask about an unsubscribe. See [Media lists](manual:editor-media-lists).
+- They are taken off every media list. Deleting isn't an unsubscribe, so it doesn't by itself make the Hub ask when you add them to a media list later. See [Media lists](manual:editor-media-lists).
 - The record, with their address and history, stays. When a Subscribers administrator has the retention purge on, it is removed for good 90 days after they ended.
 - Nobody is emailed.
 

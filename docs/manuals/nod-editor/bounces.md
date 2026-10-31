@@ -20,7 +20,7 @@ When a subscriber's last 10 emails within 15 days have all hard-bounced, News On
 
 A daily digest counts as one email, however many releases it lists. Soft bounces don't count, unless a Subscribers administrator has chosen to count that kind.
 
-A subscriber's record shows **Bounced emails counted (last 15 days)** once any have bounced. Their **History** shows "An email bounced" for each hard bounce. The bounce that reaches the limit shows "Disabled after repeated bounces" or "Flagged: repeated bounces" instead.
+A subscriber's record shows **Bounced emails counted (last 15 days)** once any have bounced. Their **History** shows "An email bounced" for each bounce that counts. The bounce that reaches the limit shows "Disabled after repeated bounces" or "Flagged: repeated bounces" instead.
 
 ## Bring a bounced subscriber back
 
