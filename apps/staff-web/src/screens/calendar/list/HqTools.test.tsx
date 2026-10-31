@@ -10,6 +10,9 @@ import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, listCalls, openListTool, qOf, renderList,
 import { REVIEW_SELECTED_MAX, ReviewSelected } from "./HqTools";
 
 const ROWS = [row({ id: 20001, version: 3 }), row({ id: 20002, version: 5, title: "Sample second" })];
+/** Review selected asks first, naming how many (UCFlexiGrid.ascx:4-22; suite review CAL-6). */
+const confirmReview = async (user: ReturnType<typeof userEvent.setup>, n: number) =>
+  user.click(within(await screen.findByRole("alertdialog", { name: `Review ${n} ${n === 1 ? "activity" : "activities"}?` })).getByRole("button", { name: "Review" }));
 const hq = (calls: Call[], other?: (url: string, init?: RequestInit) => Response | undefined) =>
   stubFetch(calls, { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, page: () => ({ rows: ROWS, total: 2, offset: 0 }), other });
 
@@ -40,6 +43,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     await user.click(await screen.findByRole("checkbox", { name: "Select HLTH-20001" }));
     await user.click(screen.getByRole("checkbox", { name: "Select HLTH-20002" }));
     await user.click(screen.getByRole("button", { name: "Review selected (2)" }));
+    await confirmReview(user, 2);
     expect(await screen.findByText("Reviewed 1 activity. 1 skipped because it changed since the list loaded: HLTH-20002.")).toBeInTheDocument();
     const post = calls.find((c) => c.url === "/calendar/api/activities/review-selected")!;
     expect(JSON.parse(String(post.init!.body))).toEqual({ items: [{ id: 20001, version: 3 }, { id: 20002, version: 5 }] });
@@ -62,6 +66,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     await user.click(await screen.findByRole("checkbox", { name: "Select HLTH-20001" }));
     await user.click(screen.getByRole("checkbox", { name: "Select HLTH-20002" }));
     await user.click(screen.getByRole("button", { name: "Review selected (2)" }));
+    await confirmReview(user, 2);
     expect(await screen.findByText("Only 1 of 2 activities were reviewed before a later batch failed. Select the rest and review them again.")).toBeInTheDocument();
     await openListTool("LA status");
     await user.click(screen.getByRole("button", { name: "Clear LA Status" }));
@@ -76,7 +81,30 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     await user.click(await screen.findByRole("checkbox", { name: "Select HLTH-20001" }));
     await user.click(screen.getByRole("checkbox", { name: "Select HLTH-20002" }));
     await user.click(screen.getByRole("button", { name: "Review selected (2)" }));
+    await confirmReview(user, 2);
     expect(await screen.findByRole("alert")).toHaveTextContent("Only 0 of 2 activities were reviewed before a later batch failed, and 1 was skipped. Select the rest and review them again.");
+  });
+
+  it("asks first, naming how many; Cancel reviews nothing", async () => {
+    const calls: Call[] = [];
+    hq(calls);
+    renderList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "Select HLTH-20001" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select HLTH-20002" }));
+    await user.click(screen.getByRole("button", { name: "Review selected (2)" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Review 2 activities?" });
+    expect(dialog).toHaveTextContent("Their “Changed: needs review” marks are cleared and they become Reviewed. This can’t be undone.");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(calls.some((c) => c.url === "/calendar/api/activities/review-selected")).toBe(false);
+    expect(screen.getByRole("button", { name: "Review selected (2)" })).toBeEnabled();
+  });
+
+  it("is a secondary button, so New activity stays the one primary action", async () => {
+    hq([]);
+    renderList();
+    await screen.findByText("Sample listed");
+    expect(screen.getByRole("button", { name: "Review selected (0)" }).className).toMatch(/\bsecondary\b/);
   });
 
   it("more than 500 selected can't be reviewed at once", () => {

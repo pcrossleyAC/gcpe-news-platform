@@ -72,6 +72,10 @@ describe("accessibility: the activity list in every state", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: "Select HLTH-20001" }));
     await user.click(screen.getByRole("button", { name: "Review selected (1)" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Review 1 activity?" });
+    // The dialog itself: the page behind it is aria-hidden while it is open.
+    expect(await seriousViolations(confirm)).toEqual([]);
+    await user.click(within(confirm).getByRole("button", { name: "Review" }));
     await screen.findByText(/before a later batch failed/);
     expect(await seriousViolations(container)).toEqual([]);
   });

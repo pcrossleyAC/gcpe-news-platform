@@ -14,13 +14,15 @@ import type { ActivityFields } from "@gcpe/calendar-contract";
 const PREFIX = "gcpe-calendar-draft";
 
 export interface ActivityDraft {
-  activityId: number | "new";
+  /** A clone's unsaved form is kept apart from a plain new activity's. */
+  activityId: DraftId;
   /** The version the changes were based on; null for a new activity. */
   version: number | null;
   fields: ActivityFields;
 }
 
-const storageKey = (userId: string, activityId: number | "new") => `${PREFIX}:${userId}:${activityId}`;
+export type DraftId = number | "new" | `clone-${number}`;
+const storageKey = (userId: string, activityId: DraftId) => `${PREFIX}:${userId}:${activityId}`;
 
 /** Unavailable in some browsers' private modes: every call here degrades to "no draft". */
 function storage(): Storage | null {
@@ -39,7 +41,7 @@ export function saveActivityDraft(userId: string, draft: ActivityDraft): void {
   }
 }
 
-export function loadActivityDraft(userId: string, activityId: number | "new"): ActivityDraft | null {
+export function loadActivityDraft(userId: string, activityId: DraftId): ActivityDraft | null {
   try {
     const raw = storage()?.getItem(storageKey(userId, activityId));
     if (!raw) return null;
@@ -50,7 +52,7 @@ export function loadActivityDraft(userId: string, activityId: number | "new"): A
   }
 }
 
-export function clearActivityDraft(userId: string, activityId: number | "new"): void {
+export function clearActivityDraft(userId: string, activityId: DraftId): void {
   try {
     storage()?.removeItem(storageKey(userId, activityId));
   } catch {

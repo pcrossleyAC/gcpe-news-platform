@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { DEFAULT_LIST_QUERY, type ReportJobView } from "@gcpe/calendar-contract";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { REPORT_WAIT_MAX_MS, runReport } from "./api";
-import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, never, openListTool, renderList, stubFetch, type Call } from "./fixtures";
+import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, never, openListTool, PREFS, renderList, stubFetch, type Call } from "./fixtures";
 import { ReportButtons } from "./Reports";
 
 const ID = "AbCdEfGhIjKlMnOpQrSt_-";
@@ -26,6 +26,37 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  describe("says which filter the output uses (suite review CAL-3)", () => {
+    const panel = () => within(document.getElementById("list-tool-export")!);
+    it("with nothing narrowing the list, says so", async () => {
+      stubFetch([]);
+      renderList();
+      await screen.findByText("Sample listed");
+      await openListTool("Export and reports");
+      expect(panel().getByText("Uses your list filter: none (every activity you can see).")).toBeInTheDocument();
+      expect(panel().queryByRole("note")).toBeNull();
+    });
+
+    it("names a Display choice kept from last time, and warns about it", async () => {
+      stubFetch([], { preferences: { ...PREFS, display: "my_watchlist" } });
+      renderList();
+      await screen.findByText("Sample listed");
+      await openListTool("Export and reports");
+      expect(panel().getByText("Uses your list filter: My Watchlist Only.")).toBeInTheDocument();
+      expect(panel().getByText("Display is set to My Watchlist Only, which the list keeps from last time, so other activities are left out.")).toBeInTheDocument();
+    });
+
+    it("warns that an activity number in Search for is all a report will hold", async () => {
+      stubFetch([]);
+      const q = { ...DEFAULT_LIST_QUERY, filter: { ...DEFAULT_LIST_QUERY.filter, quickSearch: "HLTH-20001", from: "2026-11-01" } };
+      renderList(`/calendar?q=${encodeURIComponent(JSON.stringify(q))}`);
+      await screen.findByText("Sample listed");
+      await openListTool("Export and reports");
+      expect(panel().getByText("Uses your list filter: Activity number: HLTH-20001 only.")).toBeInTheDocument();
+      expect(panel().getByText("Search for holds an activity number, so only that activity is included: the dates and other filters are ignored.")).toBeInTheDocument();
+    });
   });
 
   it("an Editor gets Look Ahead, 30/60/90 and Planning; an HQ Administrator also the Exec Look Ahead", async () => {

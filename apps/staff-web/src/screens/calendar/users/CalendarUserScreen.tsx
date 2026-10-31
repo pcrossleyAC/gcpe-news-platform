@@ -13,6 +13,8 @@ import { canonicalId, checkCalendarGrant, type CalendarGrantRefusal } from "../.
 import { RANK_OPTIONS, type CalendarUserDetail, type OpenActivities, type Profile } from "./types";
 
 const LAG = "The Calendar picks this up within a minute.";
+/** How often, and how many times (about 90 seconds), the page asks whether the Calendar has caught up with Core's ministries (suite review CAL-9). Tests shorten it. */
+export const catchUp = { everyMs: 3_000, tries: 30 };
 
 /** What the Account section does for this user: the verb in its button. */
 type AccountAction = "deactivate" | "reactivate" | "link";
@@ -123,6 +125,8 @@ export function CalendarUserScreen(): React.JSX.Element {
   /** The last rank change's result, shown beside that ministry's select (it saves on change: form-order audit #17). */
   const [rankResult, setRankResult] = useState<{ ministryKey: string; ok: boolean; text: string } | null>(null);
   const latest = useRef(0);
+  /** Reads made while the Calendar's ministries still differ from Core's; past catchUp.tries it stops asking. */
+  const [catchUpTries, setCatchUpTries] = useState(0);
   useDocumentTitle(detail?.user.displayName ?? (notFound ? "Calendar user" : null));
 
   const reload = useCallback(() => {
@@ -146,6 +150,35 @@ export function CalendarUserScreen(): React.JSX.Element {
     );
   }, [id]);
   useEffect(() => reload(), [reload]);
+  /** The Calendar's copy alone, while it catches up: Core's list, the authority, was just read. */
+  const refreshCalendar = useCallback(() => {
+    const call = latest.current;
+    apiFetch<CalendarUserDetail>(`/calendar/api/users/${encodeURIComponent(id)}`).then(
+      (d) => {
+        if (call === latest.current) setDetail(d);
+      },
+      // A failed try is just a try; the next one, or the page's own reload, asks again.
+      () => {},
+    );
+  }, [id]);
+
+  // Core's ministries are the authority; the Calendar's copy arrives about a minute later. While they
+  // differ (ministries just given or taken away), ask the Calendar again every few seconds, so the
+  // rank boxes follow without a reload. Each new difference gets a fresh budget of tries.
+  const coreNow = detail ? coreUsers.find((c) => canonicalId(c.id) === canonicalId(detail.user.id)) : undefined;
+  const sameKeys = (a: readonly string[], b: readonly string[]) => [...a].sort().join("\n") === [...b].sort().join("\n");
+  const settingUp = !!detail && !!coreNow && !sameKeys(coreNow.organizationKeys, detail.user.ministryKeys);
+  useEffect(() => {
+    if (!settingUp) setCatchUpTries(0);
+  }, [settingUp]);
+  useEffect(() => {
+    if (!settingUp || catchUpTries >= catchUp.tries) return;
+    const t = setTimeout(() => {
+      setCatchUpTries((n) => n + 1);
+      refreshCalendar();
+    }, catchUp.everyMs);
+    return () => clearTimeout(t);
+  }, [settingUp, catchUpTries, detail, refreshCalendar]);
 
   if (notFound) {
     return (
@@ -297,7 +330,15 @@ export function CalendarUserScreen(): React.JSX.Element {
       <ProfileForm userId={u.id} profile={detail.profile} onSaved={done} showMessages={shown === "profile"} onFailed={() => setShown("profile")} />
 
       <h2>Comm contact</h2>
-      {u.ministryKeys.length === 0 && <p>Give this user a ministry under Calendar access (Edit Calendar access) first.</p>}
+      {/* Mounted from the start, so a screen reader hears when the Calendar is still setting them up. */}
+      <p role="status" className="gcpe-hint">
+        {settingUp
+          ? catchUpTries < catchUp.tries
+            ? "Updating their ministries in the Calendar… This page catches up by itself in a moment."
+            : "The Calendar hasn't picked up their ministry changes yet. Reload the page in a minute."
+          : ""}
+      </p>
+      {u.ministryKeys.length === 0 && !settingUp && <p>Give this user a ministry under Calendar access (Edit Calendar access) first.</p>}
       {u.ministryKeys.map((k) => {
         const o = byKey.get(k);
         const label = `${o?.displayName ?? k}${o?.abbreviation ? ` (${o.abbreviation})` : ""}`;

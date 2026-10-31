@@ -71,6 +71,18 @@ export interface ActivityView {
   releases: ReleaseLinkView[];
 }
 
+/**
+ * GET /activities/:id/clone: the New activity form's values for a copy of the activity, exactly what
+ * the server's clone copies (spec addendum §7.1 Clone). Nothing is created until the form is saved
+ * with `clonedFrom` (owner, 2026-10-31). `lookAhead` is present only for users who see that fieldset.
+ */
+export interface ClonePrefill {
+  sourceId: number;
+  /** "HLTH-21", for the form's notice. */
+  sourceLabel: string;
+  fields: ActivityFields;
+}
+
 export interface ActivityChangeView {
   id: number;
   at: string;

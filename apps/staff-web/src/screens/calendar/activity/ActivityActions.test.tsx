@@ -114,27 +114,6 @@ describe("the activity's actions (spec addendum §8.2)", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Activity HLTH-20001" })).toBeInTheDocument();
   });
 
-  it("a refused Clone names the fields the server named", async () => {
-    stubActivity([], {
-      other: (url, init) =>
-        url === `${ACTIVITY}/clone` && init?.method === "POST" ? jsonResponse(422, { error: "Fix the fields named", errors: [{ field: "contactMinistryKey", message: "That ministry is no longer active" }] }) : undefined,
-    });
-    renderActivity("/calendar/activities/20001");
-    await userEvent.click(await screen.findByRole("button", { name: "Clone" }));
-    expect(await within(screen.getByRole("region", { name: "Activity actions" })).findByRole("alert")).toHaveTextContent("That ministry is no longer active");
-  });
-
-  it("Clone opens the clone", async () => {
-    stubActivity([], {
-      view: (id) => view({ id }),
-      other: (url, init) => (url === `${ACTIVITY}/clone` && init?.method === "POST" ? jsonResponse(201, { id: 20009, activity: view({ id: 20009 }), warnings: [] }) : undefined),
-    });
-    renderActivity("/calendar/activities/20001");
-    await userEvent.click(await screen.findByRole("button", { name: "Clone" }));
-    expect(await screen.findByRole("heading", { level: 1, name: "Activity HLTH-20009" })).toBeInTheDocument();
-    expect(screen.getByText("Cloned HLTH-20001 as HLTH-20009.")).toBeInTheDocument();
-  });
-
   it("a deleted activity offers HQ only Review", async () => {
     stubActivity([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, view: view({ isDeleted: true, can: { edit: false, clone: false, delete: false, review: true } }) });
     renderActivity("/calendar/activities/20001");

@@ -277,6 +277,7 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
     });
     renderActivity("/calendar/activities/20001");
     await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample new.pdf"), new File(["%PDF"], "Sample more.pdf"), new File(["%PDF"], "SAMPLE 3.PDF")]);
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Replace SAMPLE 3.PDF?" })).getByRole("button", { name: "Replace" }));
     expect(await screen.findByText("Sample more.pdf: An activity holds at most 50 files. Remove one first.")).toBeInTheDocument();
     expect(sent(calls)).toEqual(["Sample new.pdf", "SAMPLE 3.PDF"]);
   });
@@ -294,9 +295,68 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
     });
     renderActivity("/calendar/activities/20001");
     await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample a.pdf"), new File(["%PDF"], "Sample b.pdf"), new File(["%PDF"], "Sample brief.pdf")]);
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Replace Sample brief.pdf?" })).getByRole("button", { name: "Replace" }));
     expect(await screen.findByText("Sample b.pdf: An activity holds at most 50 files. Remove one first.")).toBeInTheDocument();
     expect(screen.getByText("Sample a.pdf: An activity holds at most 50 files. Remove one first.")).toBeInTheDocument();
     expect(sent(calls)).toEqual(["Sample a.pdf", "Sample brief.pdf"]);
+  });
+
+  describe("a file with the name of one already attached (suite review CAL-5)", () => {
+    const replacing = (calls: Call[]) =>
+      stubActivity(calls, {
+        config: ON,
+        view: view({ files: [FILE] }),
+        other: (url, init) => (url === FILES && init?.method === "POST" ? jsonResponse(201, [{ ...FILE, id: 7 }, { ...FILE, id: 8, fileName: "Sample other.pdf" }]) : undefined),
+      });
+
+    it("asks before replacing it, naming who added the old one; Replace sends it and says Replaced", async () => {
+      const calls: Call[] = [];
+      replacing(calls);
+      renderActivity("/calendar/activities/20001");
+      await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "sample BRIEF.pdf")]);
+      const dialog = await screen.findByRole("alertdialog", { name: "Replace sample BRIEF.pdf?" });
+      expect(dialog).toHaveTextContent("A file named Sample brief.pdf is already attached (added Nov 2, 2026 by Robin Staff). Replace it? The old file is deleted.");
+      expect(sent(calls)).toEqual([]);
+      await userEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+      const records = screen.getByRole("group", { name: "Records" });
+      await waitFor(() => expect(within(records).getByRole("status")).toHaveTextContent("Replaced sample BRIEF.pdf."));
+      expect(sent(calls)).toEqual(["sample BRIEF.pdf"]);
+    });
+
+    it("Cancel sends nothing, from the whole pick, and says so", async () => {
+      const calls: Call[] = [];
+      replacing(calls);
+      renderActivity("/calendar/activities/20001");
+      await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample other.pdf"), new File(["%PDF"], "Sample brief.pdf")]);
+      const dialog = await screen.findByRole("alertdialog", { name: "Replace Sample brief.pdf?" });
+      expect(dialog).toHaveTextContent("Cancel adds none of the files you picked.");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(within(screen.getByRole("group", { name: "Records" })).getByRole("status")).toHaveTextContent("Nothing was added.");
+      expect(sent(calls)).toEqual([]);
+      expect(calls.filter((c) => c.url.endsWith("/lock") && c.init?.method === "PUT")).toHaveLength(0);
+    });
+
+    it("Escape closes the question as Cancel does: nothing sent, and it says so", async () => {
+      const calls: Call[] = [];
+      replacing(calls);
+      renderActivity("/calendar/activities/20001");
+      await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample brief.pdf")]);
+      await screen.findByRole("alertdialog", { name: "Replace Sample brief.pdf?" });
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(within(screen.getByRole("group", { name: "Records" })).getByRole("status")).toHaveTextContent("Nothing was added.");
+      expect(sent(calls)).toEqual([]);
+    });
+
+    it("a mixed pick adds the new file and replaces the other, and says both", async () => {
+      const calls: Call[] = [];
+      replacing(calls);
+      renderActivity("/calendar/activities/20001");
+      await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample other.pdf"), new File(["%PDF"], "Sample brief.pdf")]);
+      await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Replace Sample brief.pdf?" })).getByRole("button", { name: "Replace" }));
+      await waitFor(() => expect(within(screen.getByRole("group", { name: "Records" })).getByRole("status")).toHaveTextContent("Added 1 file. Replaced Sample brief.pdf."));
+      expect(sent(calls)).toEqual(["Sample other.pdf", "Sample brief.pdf"]);
+    });
   });
 
   it("after a remove, the keyboard lands on Add files", async () => {

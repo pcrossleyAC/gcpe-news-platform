@@ -2,7 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { z } from "zod";
 import { createActivitySchema, safeString, updateActivitySchema, type ActivityView, type WriteResponse } from "@gcpe/calendar-contract";
 import { clearLaStatus, countLaStatus, reviewSelected } from "../activities/bulk";
-import { cloneActivity } from "../activities/clone";
+import { cloneActivity, clonePrefill } from "../activities/clone";
 import { createActivity } from "../activities/create";
 import { deleteActivity } from "../activities/delete";
 import { ActivityNotFoundError } from "../activities/errors";
@@ -84,6 +84,8 @@ export function activityRoutes(deps: ApiDeps): Router {
     res.json(await writeResponse(deps, req, id, out.warnings));
   }));
   r.get("/activities/:id/changes", run(async (req, res) => void res.json(await readChanges(deps, req.calendar!, idOf(req)))));
+  // The Clone form's values; nothing is created until it is saved with clonedFrom (owner, 2026-10-31).
+  r.get("/activities/:id/clone", run(async (req, res) => void res.json(await clonePrefill(deps, req.calendar!, idOf(req)))));
   r.post("/activities/:id/clone", run(async (req, res) => {
     emptySchema.parse(req.body ?? {});
     const out = await cloneActivity(deps, req.calendar!, idOf(req));

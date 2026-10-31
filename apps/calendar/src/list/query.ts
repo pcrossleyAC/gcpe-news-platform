@@ -1,7 +1,7 @@
 import { and, eq, inArray, notInArray, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
 import {
-  ACTIVITY_STATUSES, LEVEL, LIST_PAGE_SIZE, type CalendarRules, type CorporateQuery, type HqStatus, type ListDisplay, type ListFilter, type ListQuery, type ListSort,
+  ACTIVITY_STATUSES, ID_SEARCH_FLOOR, idSearchOf, LEVEL, LIST_PAGE_SIZE, type CalendarRules, type CorporateQuery, type HqStatus, type ListDisplay, type ListFilter, type ListQuery, type ListSort,
 } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { ActivityForbiddenError } from "../activities/errors";
@@ -38,18 +38,8 @@ export async function scopeOf(db: DbOrTx, deps: ApiDeps, actor: CalendarActor): 
 
 /** Legacy clamps earlier dates (ActivityDAO.cs:172-173). */
 const EARLIEST = "2011-01-01";
-/** Legacy searched by id only above this; a smaller number is a word, such as a year (ActivityDAO.cs:68-76). */
-export const ID_SEARCH_FLOOR = 10_000;
-const INT4_MAX = 2_147_483_647;
-
-/** The activity a quick search names: a bare number above 10,000, or the list's "ABBR-123" at any size. */
-export function idSearchOf(term: string): number | null {
-  const m = /^(?:([A-Za-z][A-Za-z0-9]*)-)?(\d{1,10})$/.exec(term.trim());
-  if (!m) return null;
-  const n = Number(m[2]);
-  if (n < 1 || n > INT4_MAX) return null;
-  return m[1] !== undefined || n > ID_SEARCH_FLOOR ? n : null;
-}
+// The id search's rule is shared with the Hub's filter summary (suite review CAL-3).
+export { ID_SEARCH_FLOOR, idSearchOf };
 
 /** A LIKE pattern that matches `term` literally: backslash is Postgres's default LIKE escape. */
 export const containsPattern = (term: string) => `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

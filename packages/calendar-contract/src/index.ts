@@ -3,6 +3,7 @@ export * from "./clean";
 export * from "./editor";
 export * from "./enums";
 export * from "./feed";
+export * from "./filter-summary";
 export * from "./format";
 export * from "./freeze";
 export * from "./input";

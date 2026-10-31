@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
-import { DEFAULT_LIST_QUERY, listQuerySchema, type ListDisplay, type ListOptions, type ListPreferences, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
+import { DEFAULT_LIST_QUERY, filterSummary, filterWarnings, listQuerySchema, type ListDisplay, type ListOptions, type ListPreferences, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { useSession } from "../../../session/SessionContext";
 import { canManageCalendarAccess } from "../../admin/calendar-access/calendar-roles";
@@ -64,6 +64,21 @@ function FreezeNotice({ freeze }: { freeze: CalendarConfigView["freeze"] }) {
 }
 
 type ListTool = "columns" | "export" | "la";
+
+/**
+ * Above the export and report buttons: the filter they will use, in the Filters summary's words,
+ * and a warning for what can narrow them unnoticed (suite review CAL-3). What they include doesn't change.
+ */
+function OutputFilter({ query, options }: { query: ListQuery; options: ListOptions }): React.JSX.Element {
+  return (
+    <div>
+      <p>{`Uses your list filter: ${filterSummary(query, options)}.`}</p>
+      {filterWarnings(query).map((w) => (
+        <InlineAlert key={w} variant="warning" description={w} />
+      ))}
+    </div>
+  );
+}
 
 /**
  * The list's secondary tools, each behind a disclosure on one quiet line beside the Look Ahead
@@ -295,6 +310,7 @@ export function ActivityListScreen(): React.JSX.Element {
             label: "Export and reports",
             content: (
               <>
+                <OutputFilter query={query} options={options} />
                 <ExportButton query={query} />
                 <ReportButtons query={query} execLookAhead={config.list.execLookAhead} />
               </>
