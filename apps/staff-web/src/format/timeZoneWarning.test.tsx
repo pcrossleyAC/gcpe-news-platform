@@ -1,71 +1,88 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useTimeZoneWarning } from "./timeZoneWarning";
+import { formatInZone, isCorrectingTimes, setServerZoneRule } from "./bcTime";
+import { BC_TZ_CHECK, playOldRulesBrowser } from "./oldRulesBrowser.testkit";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-const TZ_CHECK_AT = "2026-12-15T20:00:00Z";
-const VANCOUVER_OFFSET_MINUTES = -420; // UTC-7, permanent BC time from 2026-11-01
+const answer = (body: unknown) => vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, body)));
+const nineAm = () => formatInZone("2026-11-03T16:00:00Z", "America/Vancouver", { hour: "numeric", minute: "2-digit", hour12: true }).replace(/\s/g, " ");
 
-describe("useTimeZoneWarning (fix round 1, finding 3; fix round 2, bug 2)", () => {
+describe("useTimeZoneWarning", () => {
+  let undo: (() => void) | null = null;
   afterEach(() => {
+    undo?.();
+    undo = null;
+    setServerZoneRule(null);
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     cleanup();
   });
 
-  it("no warning when GET /config has no tzCheck", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { timeZone: "America/Vancouver" })));
+  it("no warning when the check has no tzCheck, and it settles", async () => {
+    answer({ timeZone: "America/Vancouver" });
     const { result } = renderHook(() => useTimeZoneWarning());
-    await act(async () => {});
-    expect(result.current).toBe(false);
+    expect(result.current.settled).toBe(false);
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.warning).toBeNull();
   });
 
-  it("no warning when GET /config has no timeZone", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { tzCheck: { at: TZ_CHECK_AT, offsetMinutes: VANCOUVER_OFFSET_MINUTES } })));
+  it("no warning when the check has no timeZone", async () => {
+    answer({ tzCheck: BC_TZ_CHECK });
     const { result } = renderHook(() => useTimeZoneWarning());
-    await act(async () => {});
-    expect(result.current).toBe(false);
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.warning).toBeNull();
   });
 
-  // Fix round 2, bug 2: this is the regression test for the original bug — the test
-  // environment's own zone (vitest.config.ts sets TZ=UTC) is itself "a device in another
-  // zone" relative to Vancouver. The fix must compare the browser's *Vancouver-specific*
-  // answer (via Intl with an explicit timeZone), never the device's own default-zone offset
-  // (Date.prototype.getTimezoneOffset, which this test deliberately never touches) — so a
-  // UTC-zoned device with otherwise-correct tzdata must see no banner.
-  it("no false warning for a device in a different zone, when its tzdata for the tenant zone is correct", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(200, { timeZone: "America/Vancouver", tzCheck: { at: TZ_CHECK_AT, offsetMinutes: VANCOUVER_OFFSET_MINUTES } })),
-    );
+  // The test environment's own zone (TZ=UTC) is itself "a device in another zone": the check
+  // must ask the browser about Vancouver specifically, never the device's own offset.
+  it("an up-to-date browser in another zone: no warning, no correction", async () => {
+    answer({ timeZone: "America/Vancouver", tzCheck: BC_TZ_CHECK });
     const { result } = renderHook(() => useTimeZoneWarning());
-    await act(async () => {});
-    expect(result.current).toBe(false);
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.warning).toBeNull();
+    expect(isCorrectingTimes()).toBe(false);
   });
 
-  it("warns when the browser's own Intl answer for the tenant zone disagrees with the server's (stale tzdata, e.g. still -8h for a post-switch Vancouver date)", async () => {
-    const RealDateTimeFormat = Intl.DateTimeFormat;
-    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (this: unknown, locale?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
-      if (options?.timeZone === "America/Vancouver" && options.timeZoneName === "longOffset") {
-        return { formatToParts: () => [{ type: "timeZoneName", value: "GMT-08:00" }] } as unknown as Intl.DateTimeFormat;
-      }
-      return new RealDateTimeFormat(locale, options);
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(200, { timeZone: "America/Vancouver", tzCheck: { at: TZ_CHECK_AT, offsetMinutes: VANCOUVER_OFFSET_MINUTES } })),
-    );
+  it("an old-rules browser: corrects the times by the server's rule and says so", async () => {
+    undo = playOldRulesBrowser();
+    expect(nineAm()).toBe("8:00 AM");
+    answer({ timeZone: "America/Vancouver", tzCheck: BC_TZ_CHECK });
     const { result } = renderHook(() => useTimeZoneWarning());
-    await waitFor(() => expect(result.current).toBe(true));
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current).toEqual({ settled: true, warning: "corrected", generation: 0 });
+    expect(nineAm()).toBe("9:00 AM");
   });
 
-  it("fails safe (no warning) if the config fetch fails", async () => {
+  it("an old-rules browser and a server that can't say since when: the warning only", async () => {
+    undo = playOldRulesBrowser();
+    answer({ timeZone: "America/Vancouver", tzCheck: { ...BC_TZ_CHECK, fixedSince: null } });
+    const { result } = renderHook(() => useTimeZoneWarning());
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.warning).toBe("stale");
+    expect(isCorrectingTimes()).toBe(false);
+  });
+
+  it("a slow check: the screen shows after the wait, and redraws when the correction arrives", async () => {
+    vi.useFakeTimers();
+    undo = playOldRulesBrowser();
+    let reply: (r: Response) => void = () => {};
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => (reply = resolve))));
+    const { result } = renderHook(() => useTimeZoneWarning());
+    await act(async () => vi.advanceTimersByTime(3000));
+    expect(result.current).toEqual({ settled: true, warning: null, generation: 0 });
+    await act(async () => reply(jsonResponse(200, { timeZone: "America/Vancouver", tzCheck: BC_TZ_CHECK })));
+    expect(result.current).toEqual({ settled: true, warning: "corrected", generation: 1 });
+  });
+
+  it("fails safe (no warning) if the check fails, and still settles", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(500, { error: "nope" })));
     const { result } = renderHook(() => useTimeZoneWarning());
-    await act(async () => {});
-    expect(result.current).toBe(false);
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.warning).toBeNull();
   });
 });
