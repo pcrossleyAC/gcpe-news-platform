@@ -35,7 +35,7 @@ Subscribers editors fix these. Tell one, or Media Relations for a bouncing repor
 
 ## Left this list
 
-This section lists people who left the list, with when they left (**Left**) and whether they are **Back on the list**. The screen explains "They unsubscribed, or left it in the old system." Someone removed by staff in the Hub isn't listed. If more than 200 have left, you see "Showing the most recent 200."
+This section lists people who left the list, with when they left (**Left**) and whether they are **Back on the list**. The screen explains "They unsubscribed, asked staff to stop their email, or left it in the old system." Someone staff removed from the list, or deleted for another reason, isn't listed. If more than 200 have left, you see "Showing the most recent 200."
 
 ## Media Hub sync
 

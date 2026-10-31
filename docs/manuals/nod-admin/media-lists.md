@@ -43,7 +43,7 @@ If the address is already on the list, nothing changes and you see "Already on t
 - For a **Disabled** person, their bounce count starts again, and **History** shows "Added to a media list while Disabled. News release email stays off", with what was switched off under **Detail**.
 - When the address was **Disabled**, you see "Added to the list. Their news release email stays off; open their record to turn it on." instead of "Added to the list."
 - If a **Disabled** person also wants news release email again, choose **open their record** in that message. Tick **As it happens** or **Daily digest** and their lists, then choose **Save preferences**.
-- When you add someone, the Hub may ask "This person unsubscribed" and explain "Our records show they left [when]: they unsubscribed, or left it in the old system. Add them only if they've asked to receive media releases again." It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose **Add anyway**. Adding them back clears the question for this list, unless they unsubscribe again.
+- When you add someone, the Hub may ask "This person unsubscribed" and explain "Our records show they left [when]: they unsubscribed, asked staff to stop their email, or left it in the old system. Add them only if they've asked to receive media releases again." It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose **Add anyway**. Adding them back clears the question for this list, unless they unsubscribe again.
 
 ## Remove a reporter
 
@@ -79,7 +79,7 @@ To fix a Media Hub problem:
 
 ## Left this list
 
-This section lists people who left this list, with when they left and whether they are **Back on the list**. The screen explains "They unsubscribed, or left it in the old system." Someone you removed in the Hub isn't listed. The most recent 200 are shown.
+This section lists people who left this list, with when they left and whether they are **Back on the list**. The screen explains "They unsubscribed, asked staff to stop their email, or left it in the old system." Someone you removed from the list, or deleted for another reason, isn't listed. The most recent 200 are shown.
 
 ## Media Hub sync
 

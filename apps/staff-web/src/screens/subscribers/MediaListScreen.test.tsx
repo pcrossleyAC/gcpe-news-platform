@@ -94,7 +94,7 @@ describe("MediaListScreen", () => {
     expect(within(members).getByRole("row", { name: /lee@example\.test Disabled: gets nothing Added by hand Bouncing/ })).toBeInTheDocument();
     expect(screen.getByText("1 member gets this list’s email. 1 more is Disabled and gets nothing until someone activates them on their record.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Left this list" })).toBeInTheDocument();
-    expect(screen.getByText("They unsubscribed, or left it in the old system.")).toBeInTheDocument();
+    expect(screen.getByText("They unsubscribed, asked staff to stop their email, or left it in the old system.")).toBeInTheDocument();
     expect(screen.queryByText(/by unsubscribing/)).toBeNull();
     const opted = screen.getByRole("table", { name: "Left this list" });
     expect(within(opted).getByRole("row", { name: /gone@example\.test .* No/ })).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("MediaListScreen", () => {
     const dialog = await screen.findByRole("alertdialog");
     // Leaves imported from the old system can't tell an unsubscribe from a removal, so the
     // question doesn't claim they unsubscribed.
-    expect(dialog).toHaveTextContent(/^This person unsubscribed.*Our records show they left .+: they unsubscribed, or left it in the old system\. Add them only if they've asked to receive media releases again\./);
+    expect(dialog).toHaveTextContent(/^This person unsubscribed.*Our records show they left .+: they unsubscribed, asked staff to stop their email, or left it in the old system\. Add them only if they've asked to receive media releases again\./);
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(calls.filter((c) => c.method === "POST" && c.url.endsWith("/members"))).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "Add to list" }));

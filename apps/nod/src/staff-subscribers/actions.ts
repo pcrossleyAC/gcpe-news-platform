@@ -14,6 +14,7 @@ import { replacePublicSubscriptions } from "../subscribers";
 import { writeHistory } from "../subscribe/history";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { normaliseEmail } from "../subscribe/info";
+import { endLockedSubscriber } from "../subscribe/journeys";
 import { expireSessionLinks } from "../subscribe/links";
 
 export class SubscriberNotFoundError extends Error {
@@ -105,13 +106,25 @@ export async function setStatus(db: Db, id: string, to: "active" | "disabled", a
   });
 }
 
-/** Staff delete = unsubscribe on the subscriber's behalf: `deleted`, `ended_at` set. Media
- * memberships go too (a deleted subscriber is sent nothing, so keeping them would only inflate
- * list counts), recorded as staff removals — never `media-list-opted-out`/`unsubscribed`,
- * which mean the person themselves opted out and make a later media re-add need confirmOptOut. */
-export async function deleteSubscriber(db: Db, id: string, actor: string): Promise<{ changed: boolean }> {
+/** Staff delete: `deleted`, `ended_at` set. Media memberships go too (a deleted subscriber is
+ * sent nothing, so keeping them would only inflate list counts).
+ *
+ * `askedToStop` (N5, owner 2026-10-31): the person asked staff to stop their email, which is a
+ * withdrawal of consent like their own unsubscribe. It ends them exactly as an unsubscribe does
+ * (journeys.ts `endLockedSubscriber`: history `unsubscribed` and `media-list-opted-out` per list,
+ * with the staff member as actor), so a later media re-add asks first (opt-outs.ts) and the
+ * purge keeps the opt-out (`keepMediaOptOuts`).
+ *
+ * Otherwise (a duplicate, a test record, a cleanup) it's a plain delete: memberships are
+ * recorded as staff removals, never `media-list-opted-out`/`unsubscribed`, so a re-add needs no
+ * confirmOptOut. */
+export async function deleteSubscriber(db: Db, id: string, actor: string, opts: { askedToStop?: boolean } = {}): Promise<{ changed: boolean }> {
   return withLockedSubscriber(db, id, null, async (tx, s) => {
     if (s.status === "deleted") return { changed: false };
+    if (opts.askedToStop) {
+      await endLockedSubscriber(tx, s, actor);
+      return { changed: true };
+    }
     await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, id));
     await writeHistory(tx, id, actor, "staff-deleted");
     const removed = await tx

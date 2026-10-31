@@ -78,16 +78,23 @@ To bring back a **Disabled** subscriber, choose **Activate**. It happens at once
 
 ## Delete someone
 
-Delete when a person asks to stop all email, or when an address must be removed.
+Delete when a person asks to stop all email, or when a record must be removed.
 
 1. Open their record.
 2. Choose **Delete**. The Hub asks "Delete this subscriber?" and explains "They stop receiving email and are removed from every media list. Only they can subscribe again."
-3. Choose **Confirm delete**. The record shows "Unsubscribed or deleted on" and the date and time.
+3. Under **Why are you deleting them?**, choose one:
+   - **They asked us to stop sending them email**: for a person who phoned, wrote or emailed to say stop. The Hub explains "This is kept as their unsubscribe. If anyone adds them to a media list later, the Hub asks first."
+   - **Something else, such as a duplicate or test record**: for cleaning up records.
+
+   If you choose neither, you see "Choose why you’re deleting them." and nothing is deleted.
+4. Choose **Confirm delete**. The record shows "Unsubscribed or deleted on" and the date and time.
 
 What this does:
 
 - Their status becomes **Unsubscribed or deleted** at once. You can't undo it. **Add a subscriber** refuses their address while the record exists.
-- They are taken off every media list. Deleting isn't an unsubscribe, so it doesn't by itself make the Hub ask when you add them to a media list later. See [Media lists](manual:editor-media-lists).
+- They are taken off every media list.
+- With **They asked us to stop sending them email**, it counts as their unsubscribe, as if they had unsubscribed themselves. **History** shows "Unsubscribed" and "Left a media list" with your name, and they appear under **Left this list** on each media list they were on. If anyone later adds them to any media list, the Hub asks "This person unsubscribed" first. This is kept even after the retention purge removes the record. On **Recent unsubscribes** they show as "Unsubscribed".
+- With **Something else**, deleting isn't an unsubscribe, so it doesn't by itself make the Hub ask when you add them to a media list later. **History** shows "Deleted by staff". See [Media lists](manual:editor-media-lists).
 - The record, with their address and history, stays. When a Subscribers administrator has the retention purge on, it is removed for good 90 days after they ended.
 - Nobody is emailed.
 
@@ -97,6 +104,8 @@ What this does:
 2. Tick the box beside each one. The box in the heading row ticks the whole page.
 3. Choose **Activate selected**, **Deactivate selected** or **Delete selected**. The button shows how many you ticked, such as **Delete selected (2)**.
 4. Read the question, then choose **Confirm activate**, **Confirm deactivate** or **Confirm delete**.
+
+**Delete selected** is always the **Something else** kind of delete. If a person asked to stop their email, delete them from their own record and choose **They asked us to stop sending them email**, so it's kept as their unsubscribe.
 
 Only the ticked rows on the page you are looking at are changed. A message such as "1 changed. 1 skipped: already in that state." gives the result. A skipped row isn't an error:
 

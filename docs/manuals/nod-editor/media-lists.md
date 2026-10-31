@@ -63,7 +63,7 @@ If the person has also asked for news release email again:
 
 ### If they unsubscribed
 
-When you add someone, the Hub may ask "This person unsubscribed" and explain "Our records show they left [when]: they unsubscribed, or left it in the old system. Add them only if they've asked to receive media releases again." It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose **Add anyway**. Adding them back clears the question for this list, unless they unsubscribe again.
+When you add someone, the Hub may ask "This person unsubscribed" and explain "Our records show they left [when]: they unsubscribed, asked staff to stop their email, or left it in the old system. Add them only if they've asked to receive media releases again." It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose **Add anyway**. Adding them back clears the question for this list, unless they unsubscribe again.
 
 If they haven't asked to get media releases again, choose **Cancel**.
 
@@ -103,7 +103,7 @@ For **Media Hub email opted out of a media list this member is on**, **Clear the
 
 ## Left this list
 
-This section lists people who left this list, with when they left and whether they are **Back on the list**. The screen explains "They unsubscribed, or left it in the old system." Someone you removed in the Hub isn't listed. The most recent 200 are shown.
+This section lists people who left this list, with when they left and whether they are **Back on the list**. The screen explains "They unsubscribed, asked staff to stop their email, or left it in the old system." Someone you removed from the list, or deleted for another reason, isn't listed. The most recent 200 are shown.
 
 ## Media Hub sync
 

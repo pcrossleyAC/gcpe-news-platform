@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useParams } from "react-router";
-import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, InlineAlert, Modal, Radio, RadioGroup, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
@@ -382,13 +382,24 @@ function DeleteSection({ detail, onDeleted, setNotice }: { detail: SubscriberDet
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // N5: why they're being deleted. "asked" keeps it as their unsubscribe (a media list re-add
+  // then asks first); "other" is the plain cleanup delete. No default, so it's a real choice.
+  const [why, setWhy] = useState<"asked" | "other" | null>(null);
+  const [whyError, setWhyError] = useState<string | null>(null);
+  const onOpenChange = (o: boolean) => {
+    setOpen(o);
+    setWhy(null);
+    setWhyError(null);
+    setError(null);
+  };
 
   const confirmDelete = async () => {
+    if (!why) return setWhyError("Choose why you’re deleting them.");
     setBusy(true);
     setError(null);
     setNotice(() => null);
     try {
-      await apiFetch(`/nod/api/subscribers/${detail.id}`, { method: "DELETE" });
+      await apiFetch(`/nod/api/subscribers/${detail.id}`, { method: "DELETE", body: { askedToStop: why === "asked" } });
       setOpen(false);
       onDeleted();
     } catch (caught) {
@@ -399,7 +410,7 @@ function DeleteSection({ detail, onDeleted, setNotice }: { detail: SubscriberDet
   };
 
   return (
-    <DialogTrigger isOpen={open} onOpenChange={setOpen}>
+    <DialogTrigger isOpen={open} onOpenChange={onOpenChange}>
       <Button variant="secondary" danger isPending={busy}>
         Delete
       </Button>
@@ -420,6 +431,21 @@ function DeleteSection({ detail, onDeleted, setNotice }: { detail: SubscriberDet
           }
         >
           <p>They stop receiving email and are removed from every media list. Only they can subscribe again.</p>
+          <RadioGroup
+            label="Why are you deleting them?"
+            value={why ?? ""}
+            onChange={(v) => {
+              setWhy(v === "asked" ? "asked" : "other");
+              setWhyError(null);
+            }}
+            isRequired
+            isInvalid={whyError !== null}
+            errorMessage={whyError ?? undefined}
+          >
+            <Radio value="asked">They asked us to stop sending them email</Radio>
+            <Radio value="other">Something else, such as a duplicate or test record</Radio>
+          </RadioGroup>
+          {why === "asked" && <p>This is kept as their unsubscribe. If anyone adds them to a media list later, the Hub asks first.</p>}
           {error && <InlineAlert variant="danger" role="alert" description={error} />}
         </AlertDialog>
       </Modal>

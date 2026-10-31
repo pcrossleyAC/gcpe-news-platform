@@ -25,7 +25,7 @@ function receivingSummary(members: MediaMember[]): string {
 }
 
 /**
- * `/hub/subscribers/media-lists/:key`: one media list's members, who left it (unsubscribed, or left it in legacy),
+ * `/hub/subscribers/media-lists/:key`: one media list's members, who left it (unsubscribed, asked staff to stop, or left it in legacy),
  * and, for Editors, add (by hand or from Media Hub), remove and resolve. The h1 and title are
  * the static "Media list"; the list name is shown below it (no async titles). Re-adding someone
  * whose records show they may have unsubscribed since they were last added may ask first, and
@@ -230,7 +230,7 @@ export function MediaListScreen(): React.JSX.Element {
 
       <section aria-labelledby="opted-out-heading">
         <h2 id="opted-out-heading">Left this list</h2>
-        <p>They unsubscribed, or left it in the old system.</p>
+        <p>They unsubscribed, asked staff to stop their email, or left it in the old system.</p>
         {optOuts && optOuts.items.length === 0 && <p>Nobody has.</p>}
         {optOuts && optOuts.items.length > 0 && (
           <TableScroll label="Left this list">
@@ -276,7 +276,7 @@ export function MediaListScreen(): React.JSX.Element {
               </>
             }
           >
-            <p>{`Our records show they left ${optOutPrompt.at ? formatWhen(optOutPrompt.at, new Date(), timeZone) : "earlier"}: they unsubscribed, or left it in the old system. Add them only if they've asked to receive media releases again.`}</p>
+            <p>{`Our records show they left ${optOutPrompt.at ? formatWhen(optOutPrompt.at, new Date(), timeZone) : "earlier"}: they unsubscribed, asked staff to stop their email, or left it in the old system. Add them only if they've asked to receive media releases again.`}</p>
             {actionError && <InlineAlert variant="danger" role="alert" description={actionError} />}
           </AlertDialog>
         </Modal>
