@@ -7,7 +7,7 @@ import { GLOSSARY, type GlossaryArea } from "../../shared/glossary";
 import { isApplePlatform, SHORTCUTS, shortcutText, shortcutWords } from "../../shared/shortcuts";
 import { hasAnyReadRole } from "../../shell/nav";
 import { MANUALS, visibleManuals } from "../../manuals/catalog";
-import { canManageWebsite, canReadWebsite } from "../website/access";
+import { canEditWebsite, canReadWebsite } from "../website/access";
 import { canEditSubscribers, canReadSubscribers } from "../subscribers/access";
 import { canEditReleases } from "../release/access";
 import { canChangeCalendar, hasCalendarRole } from "../calendar/access";
@@ -84,7 +84,7 @@ const HOW_TO: HowTo[] = [
     show: canReadWebsite,
     items: [
       {
-        show: canManageWebsite,
+        show: canEditWebsite,
         text: (
           <>
             <strong>Change the banner, footer and other site settings:</strong> make your changes, Save draft ({mod("S")}), then Publish. Nothing is live until you publish. Settings history lists every published revision and can restore one.
@@ -92,10 +92,10 @@ const HOW_TO: HowTo[] = [
         ),
       },
       {
-        show: canManageWebsite,
+        show: canEditWebsite,
         text: (
           <>
-            <strong>Change the home page carousel:</strong> edit the next carousel and save it; it goes live at its Go live at time, or choose Make live now. Changes to the live carousel publish at once, so it asks first.
+            <strong>Change the home page carousel:</strong> edit the next carousel and save it; it goes live at its Go live at time, or choose Make live now. Changes to the live carousel reach the public home page within a few minutes, so it asks first.
           </>
         ),
       },

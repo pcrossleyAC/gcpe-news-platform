@@ -100,6 +100,16 @@ describe("HelpScreen", () => {
     for (const p of EDITOR_ONLY) expect(siteEditor).not.toContain(p);
     cleanup();
 
+    // A Core administrator sees Website view-only, so the Website change pointers aren't theirs.
+    renderHelp(["Core.Admin"]);
+    const coreAdmin = await pointers();
+    for (const p of SITE_EDITOR_ONLY) expect(coreAdmin).not.toContain(p);
+    cleanup();
+    renderHelp(["Core.Admin", "NRMS.SiteEditor"]);
+    const coreSiteEditor = await pointers();
+    for (const p of SITE_EDITOR_ONLY) expect(coreSiteEditor).toContain(p);
+    cleanup();
+
     renderHelp(["NoD.Viewer"]);
     expect(await pointers()).not.toContain("Change what someone gets:");
     cleanup();
@@ -117,6 +127,12 @@ describe("HelpScreen", () => {
     renderHelp(["Calendar.Editor"]);
     const calendarEditor = await pointers();
     for (const p of [...CALENDAR_CHANGE, ...CALENDAR_ALL]) expect(calendarEditor).toContain(p);
+  });
+
+  it("says changes to the live carousel reach the public home page within a few minutes, as the carousel's own dialog does", async () => {
+    renderHelp(["NRMS.SiteEditor"]);
+    const pointer = (await screen.findByText("Change the home page carousel:")).closest("li")!;
+    expect(pointer).toHaveTextContent("Changes to the live carousel reach the public home page within a few minutes, so it asks first.");
   });
 
   it("a link to one glossary entry lands on it", async () => {
