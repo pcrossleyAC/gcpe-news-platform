@@ -20,7 +20,7 @@ topics: []
 
 Each row shows the type, the lead ministry, the status and the date. It also shows the page title if it isn't the same as the type, and the Calendar activity it is linked to. On **Drafts** it shows who changed it last. Choose the headline to open the release.
 
-To see one kind only, choose it in **Type**: **Release**, **Story**, **Factsheet** or **Advisory**. The Hub remembers your choice on every tab. If nothing matches, choose **Show every type**.
+To see one kind only, choose it in **Type**: **Release**, **Story**, **Factsheet** or **Advisory**. Updates, an older kind, show only under **All**. The Hub remembers your choice on every tab. If nothing matches, choose **Show every type**.
 
 Each page shows 25 releases. Use **Previous** and **Next** to move between pages.
 
@@ -35,7 +35,7 @@ Each page shows 25 releases. Use **Previous** and **Next** to move between pages
 | **Publishing...** | Its time has come and it is going out now. |
 | **Republishing...** | A correction is going out. |
 | **Published** | It is on the public site. An advisory shows **Sent** instead. |
-| **Unpublishing...** | It is being taken off the public site. |
+| **Unpublishing...** | It is being taken off the public site. An advisory shows **Unscheduling...** instead. |
 | **Failed** | Publishing didn't work. Open it to see why. |
 
 A **Flickr alert** badge means the release went out without its Flickr photo.

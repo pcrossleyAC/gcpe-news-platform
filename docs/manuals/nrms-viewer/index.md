@@ -31,3 +31,5 @@ You may also see **Subscribers** or **Calendar** if you have a role there. Those
 ## Signing in
 
 Choose **Sign in with Microsoft** and use your government Microsoft account. You need a Hub account first: if you see "Your account hasn't been set up. Contact an administrator.", ask a Core administrator to add you. Signing out of the Hub doesn't sign you out of Microsoft.
+
+If the sign-in page also shows **User name** and **Password**, you can sign in with those instead: fill them in and choose **Sign in**.

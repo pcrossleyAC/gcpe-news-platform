@@ -15,7 +15,7 @@ On a Mac, use Command instead of Ctrl.
 
 | Keys | What it does |
 |---|---|
-| Ctrl+K | Goes to the search or filter box: **Type** on the folders, the **Search** box on **Search**, and **Find a release** everywhere else. |
+| Ctrl+K | Goes to the search or filter box: **Type** on **Drafts**, **Scheduled** and **Published**, the **Search** box on **Search**, and **Find a release** everywhere else. |
 | Esc | Closes an open panel, such as **Show categories**, or a menu. |
 
 The Help page lists other shortcuts, such as Ctrl+S to save. On the release screens they do nothing for you, because there is nothing for you to change.
@@ -27,6 +27,6 @@ The Help page lists other shortcuts, such as Ctrl+S to save. On the release scre
 The Help page has:
 
 - **Manuals**: the manuals you can open.
-- **How do I…**: short answers for common tasks. Some of them, such as starting or publishing a release, need a release editor.
+- **How do I…**: short answers for common tasks you can do.
 - **Keyboard shortcuts**: the full list.
 - **Glossary**: what terms such as **Planned publish date** and **Media distribution lists** mean.
