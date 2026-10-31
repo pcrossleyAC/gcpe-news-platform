@@ -137,7 +137,7 @@ describe("staff subscriber actions", () => {
     const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, subscriberId));
     expect(history.filter((h) => h.action !== "media-list-added").map((h) => [h.action, h.actor, h.detail]).sort()).toEqual([
       ["media-list-opted-out", ACTOR, "media-distribution-lists:budget"],
-      ["unsubscribed", ACTOR, ""],
+      ["unsubscribed", ACTOR, "asked staff"],
     ]);
     // The list they were on, and any other media list: both ask first, as for a self-unsubscribe.
     await expect(addMediaMember(tdb.db, "budget", { email: "stop@example.test", source: "manual-media" }, ACTOR)).rejects.toBeInstanceOf(OptedOutError);

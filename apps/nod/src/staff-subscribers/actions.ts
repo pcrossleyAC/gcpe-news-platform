@@ -122,7 +122,7 @@ export async function deleteSubscriber(db: Db, id: string, actor: string, opts: 
   return withLockedSubscriber(db, id, null, async (tx, s) => {
     if (s.status === "deleted") return { changed: false };
     if (opts.askedToStop) {
-      await endLockedSubscriber(tx, s, actor);
+      await endLockedSubscriber(tx, s, actor, undefined, "asked staff");
       return { changed: true };
     }
     await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, id));

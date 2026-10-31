@@ -93,7 +93,7 @@ What this does:
 
 - Their status becomes **Unsubscribed or deleted** at once. You can't undo it. **Add a subscriber** refuses their address while the record exists.
 - They are taken off every media list.
-- With **They asked us to stop sending them email**, it counts as their unsubscribe, as if they had unsubscribed themselves. **History** shows "Unsubscribed" and "Left a media list" with your name, and they appear under **Left this list** on each media list they were on. If anyone later adds them to any media list, the Hub asks "This person unsubscribed" first. This is kept even after the retention purge removes the record. On **Recent unsubscribes** they show as "Unsubscribed".
+- With **They asked us to stop sending them email**, it counts as their unsubscribe, as if they had unsubscribed themselves. **History** shows "Unsubscribed", with "asked staff" under **Detail**, and "Left a media list", both with your name, and they appear under **Left this list** on each media list they were on. If anyone later adds them to any media list, the Hub asks "This person unsubscribed" first. This is kept even after the retention purge removes the record. On **Recent unsubscribes** they show as "Unsubscribed".
 - With **Something else**, deleting isn't an unsubscribe, so it doesn't by itself make the Hub ask when you add them to a media list later. **History** shows "Deleted by staff". See [Media lists](manual:editor-media-lists).
 - The record, with their address and history, stays. When a Subscribers administrator has the retention purge on, it is removed for good 90 days after they ended.
 - Nobody is emailed.

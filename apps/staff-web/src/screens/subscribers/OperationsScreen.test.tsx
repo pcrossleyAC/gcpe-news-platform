@@ -151,7 +151,7 @@ describe("OperationsScreen", () => {
     renderIt();
     const out = await screen.findByRole("region", { name: "Outgoing news email" });
     const failed = within(out).getByRole("table", { name: "Failed news email" });
-    expect(within(failed).getByRole("row", { name: /^Wildfire update Media list 40 .*Gave up after 3 tries\. Distribution said: Distribution 400: bad request/ })).toBeInTheDocument();
+    expect(within(failed).getByRole("row", { name: /^Wildfire update Media list 40 .*Gave up after 3 tries\. What went wrong: Distribution 400: bad request/ })).toBeInTheDocument();
     expect(out).toHaveTextContent("Failed email isn’t sent again by itself.");
   });
 
@@ -186,6 +186,30 @@ describe("OperationsScreen", () => {
     ]);
     await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/held-email/cancel", method: "POST", body: { jobIds: [J1, J2, J3] } }));
+  });
+
+  it("review M3: a partial cancel says some had already started going out", async () => {
+    stub(["NoD.Admin"], HELD, { cancel: () => jsonResponse(200, { cancelledJobs: 2, cancelledEmails: 5 }) });
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel all held email" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel held email" }));
+    expect(await screen.findByText("Cancelled 5 held emails. Some had already started going out, so they weren’t cancelled.")).toBeInTheDocument();
+  });
+
+  it("review M5: cancelling held emergency alerts says so in the question", async () => {
+    const alert = group({ jobIds: [J5], kind: "emergency", title: "Evacuation order", itemKey: "e1", emails: 300 });
+    stub(["NoD.Admin"], { ...HELD, outgoing: { ...HELD.outgoing, held: { ...HELD.outgoing.held, groups: [...HELD.outgoing.held.groups, alert] } } });
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel all held email" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("This includes 1 emergency alert.");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    await user.click(within(out).getByRole("button", { name: "Cancel held email: Budget 2027 (As it happens)" }));
+    expect(await screen.findByRole("alertdialog")).not.toHaveTextContent("emergency alert.");
   });
 
   it("N3: if sending was resumed meanwhile, the dialog says nothing was cancelled", async () => {

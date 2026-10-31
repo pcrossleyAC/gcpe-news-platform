@@ -94,7 +94,8 @@ describe("outgoing news email (N3)", () => {
     const rows = await tdb.db.select({ id: sendJobs.id, status: sendJobs.status }).from(sendJobs).where(inArray(sendJobs.id, [a, b, sent, claimed]));
     expect(Object.fromEntries(rows.map((r) => [r.id, r.status]))).toEqual({ [a]: "cancelled", [b]: "pending", [sent]: "sent", [claimed]: "pending" });
     const log = await tdb.db.select().from(operationsLog);
-    expect(log.map((l) => [l.actor, l.action, l.detail])).toEqual([["Avery Admin", "held-email-cancelled", "1 send job, 2 emails"]]);
+    // Review I1: the log says which releases, not only totals.
+    expect(log.map((l) => [l.actor, l.action, l.detail])).toEqual([["Avery Admin", "held-email-cancelled", '1 send job, 2 emails: As it happens r1 "Budget 2027" (2 emails)']]);
 
     // Already cancelled: nothing more, and nothing logged.
     expect(await cancelHeldEmail(tdb.db, [a], "Avery Admin")).toEqual({ cancelledJobs: 0, cancelledEmails: 0 });
@@ -103,5 +104,43 @@ describe("outgoing news email (N3)", () => {
     await tdb.db.update(nodSettings).set({ paused: false }).where(eq(nodSettings.id, 1));
     await expect(cancelHeldEmail(tdb.db, [b], "Avery Admin")).rejects.toBeInstanceOf(NotPausedError);
     expect((await tdb.db.select({ status: sendJobs.status }).from(sendJobs).where(eq(sendJobs.id, b)))[0]!.status).toBe("pending");
+  });
+
+  it("the cancel log names each release and digest day, and stays under its cap with 'and N more'", async () => {
+    await item("r1", "Budget 2027");
+    const a = await job({ jobKey: "as_it_happens:r1", itemKey: "r1", kind: "as_it_happens" }, [subs[0]!]);
+    const cutoff = "2026-10-20T00:00:00.000Z";
+    const d1 = await job({ jobKey: `digest:${cutoff}:aaaa`, kind: "digest", priority: "digest" }, [subs[0]!]);
+    const d2 = await job({ jobKey: `digest:${cutoff}:bbbb`, kind: "digest", priority: "digest" }, [subs[1]!]);
+    await tdb.db.insert(deliveries).values([
+      { itemKey: "r1", subscriberId: subs[0]!, mode: "digest", jobId: d1 },
+      { itemKey: "r1", subscriberId: subs[1]!, mode: "digest", jobId: d2 },
+    ]);
+    await cancelHeldEmail(tdb.db, [a, d1, d2], "Avery Admin");
+    const [first] = await tdb.db.select().from(operationsLog);
+    expect(first!.detail).toBe('3 send jobs, 3 emails: As it happens r1 "Budget 2027" (1 email); Daily digest 2026-10-20 (1 release, 2 emails)');
+
+    await tdb.db.delete(operationsLog);
+    const ids: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      await item(`long${i}`, `A very long release title number ${i} `.repeat(4));
+      ids.push(await job({ jobKey: `as_it_happens:long${i}`, itemKey: `long${i}`, kind: "as_it_happens" }, [subs[0]!]));
+    }
+    await cancelHeldEmail(tdb.db, ids, "Avery Admin");
+    const [log] = await tdb.db.select().from(operationsLog);
+    expect(log!.detail.length).toBeLessThanOrEqual(2000);
+    expect(log!.detail).toMatch(/^60 send jobs, 60 emails: As it happens long0 /);
+    expect(log!.detail).toMatch(/; and \d+ more$/);
+  });
+
+  it("review M1: recipients a partly sent job already handed to Distribution aren't counted as held or cancelled", async () => {
+    await item("r1", "Budget 2027");
+    const a = await job({ jobKey: "as_it_happens:r1", itemKey: "r1", kind: "as_it_happens", attempts: 1 }, [subs[0]!, subs[1]!]);
+    await tdb.db.insert(deliveries).values([
+      { itemKey: "r1", subscriberId: subs[0]!, mode: "as_it_happens", jobId: a, attemptedAt: new Date() },
+      { itemKey: "r1", subscriberId: subs[1]!, mode: "as_it_happens", jobId: a },
+    ]);
+    expect((await getOutgoing(tdb.db)).held).toMatchObject({ emails: 1 });
+    expect(await cancelHeldEmail(tdb.db, [a], "Avery Admin")).toEqual({ cancelledJobs: 1, cancelledEmails: 1 });
   });
 });

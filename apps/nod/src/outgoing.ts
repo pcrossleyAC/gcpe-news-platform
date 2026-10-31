@@ -7,7 +7,7 @@
  * or holds jobs waiting to retry. "Failed" is a job the sender gave up on (send-jobs.ts: not
  * retryable, or 24 hours old), which until now only reached the server log.
  */
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { writeOpsLog } from "./settings";
 
@@ -66,18 +66,21 @@ type JobRow = {
 
 const iso = (d: string | Date) => new Date(d).toISOString();
 
-/** One query per status: each job with its title, recipient count and (for a digest) items. */
-async function jobRows(db: DbOrTx, status: "pending" | "failed", activeOnly: boolean): Promise<JobRow[]> {
-  const window = status === "failed" ? sql`AND j.created_at > now() - ${`${FAILED_DAYS} days`}::interval` : sql``;
+/** Each job matching `where`, with its title, recipient count and (for a digest) items. Held
+ * counts only active recipients not yet handed to Distribution: a job retried after an earlier
+ * attempt handed off some parts sends only the rest (send-jobs.ts stamps `attempted_at`). */
+async function jobRows(db: DbOrTx, where: SQL, held: boolean): Promise<JobRow[]> {
+  const notYetSent = sql`AND s.status = 'active'
+               AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.job_id = r.job_id AND d.subscriber_id = r.subscriber_id AND d.attempted_at IS NOT NULL)`;
   const { rows } = await db.execute<JobRow>(sql`
     SELECT j.id, j.kind, j.item_key, j.job_key, j.created_at, j.attempts, j.last_error, i.title,
            (SELECT count(*) FROM job_recipients r JOIN subscribers s ON s.id = r.subscriber_id
-             WHERE r.job_id = j.id ${activeOnly ? sql`AND s.status = 'active'` : sql``})::int AS emails,
+             WHERE r.job_id = j.id ${held ? notYetSent : sql``})::int AS emails,
            CASE WHEN j.kind = 'digest'
                 THEN (SELECT array_agg(DISTINCT d.item_key) FROM deliveries d WHERE d.job_id = j.id) END AS item_keys
       FROM send_jobs j
       LEFT JOIN items i ON i.key = j.item_key
-     WHERE j.status = ${status} ${window}
+     WHERE ${where}
      ORDER BY j.created_at, j.id`);
   return rows;
 }
@@ -120,8 +123,8 @@ function group(rows: JobRow[]): (OutgoingGroup & { itemKeys: Set<string> })[] {
 const strip = ({ itemKeys: _, ...g }: OutgoingGroup & { itemKeys: Set<string> }): OutgoingGroup => g;
 
 export async function getOutgoing(db: DbOrTx): Promise<OutgoingStatus> {
-  const held = group(await jobRows(db, "pending", true));
-  const failed = group(await jobRows(db, "failed", false))
+  const held = group(await jobRows(db, sql`j.status = 'pending'`, true));
+  const failed = group(await jobRows(db, sql`j.status = 'failed' AND j.created_at > now() - ${`${FAILED_DAYS} days`}::interval`, false))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, FAILED_LIMIT);
   const items = new Set<string>();
@@ -137,7 +140,34 @@ export async function getOutgoing(db: DbOrTx): Promise<OutgoingStatus> {
   };
 }
 
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+const plural = (n: number, one: string) => `${n.toLocaleString("en-CA")} ${one}${n === 1 ? "" : "s"}`;
+
+/** The operations log's detail is plain text with no length limit in the schema; kept to this so
+ * one cancel of a long pause stays a readable row. */
+export const CANCEL_LOG_MAX = 2000;
+const KIND_WORDS: Record<OutgoingKind, string> = { as_it_happens: "As it happens", emergency: "Emergency alert", media: "Media list", digest: "Daily digest" };
+
+/** "N send jobs, N emails: As it happens <key> "<title>" (N emails); Daily digest <day> (N releases, N emails)",
+ * cut at {@link CANCEL_LOG_MAX} with "and N more" (review I1: the record says what was cancelled). */
+function cancelLogDetail(groups: OutgoingGroup[], jobs: number, emails: number): string {
+  const head = `${plural(jobs, "send job")}, ${plural(emails, "email")}: `;
+  const parts = groups.map((g) =>
+    g.kind === "digest"
+      ? `Daily digest ${(g.digestCutoff ?? g.createdAt).slice(0, 10)} (${plural(g.releases, "release")}, ${plural(g.emails, "email")})`
+      : `${KIND_WORDS[g.kind]} ${g.itemKey ?? "(no release)"} "${g.title ?? ""}" (${plural(g.emails, "email")})`,
+  );
+  let out = head;
+  for (let i = 0; i < parts.length; i++) {
+    const sep = i === 0 ? "" : "; ";
+    const rest = parts.length - i - 1;
+    const tail = rest > 0 ? `; and ${rest} more` : "";
+    if (out.length + sep.length + parts[i]!.length + tail.length > CANCEL_LOG_MAX) {
+      return `${out}${i === 0 ? "" : "; "}and ${parts.length - i} more`;
+    }
+    out += sep + parts[i];
+  }
+  return out;
+}
 
 /**
  * Cancels the given send jobs that are still held, so a resume won't send them. Only while NoD is
@@ -152,6 +182,8 @@ export async function cancelHeldEmail(db: Db, jobIds: string[], actor: string): 
   return db.transaction(async (tx) => {
     const { rows: settings } = await tx.execute<{ paused: boolean }>(sql`SELECT paused FROM nod_settings WHERE id = 1 FOR SHARE`);
     if (!settings[0]?.paused) throw new NotPausedError();
+    // Counted before the update, so the log records the emails each cancelled row held.
+    const before = await jobRows(tx, sql`j.id = ANY(${sql.param(jobIds)}::uuid[])`, true);
     const { rows } = await tx.execute<{ id: string }>(sql`
       UPDATE send_jobs SET status = 'cancelled', locked_until = NULL
        WHERE id = ANY(${sql.param(jobIds)}::uuid[])
@@ -159,11 +191,10 @@ export async function cancelHeldEmail(db: Db, jobIds: string[], actor: string): 
          AND (locked_until IS NULL OR locked_until < now())
       RETURNING id`);
     if (rows.length === 0) return { cancelledJobs: 0, cancelledEmails: 0 };
-    const { rows: counted } = await tx.execute<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM job_recipients r JOIN subscribers s ON s.id = r.subscriber_id
-       WHERE r.job_id = ANY(${sql.param(rows.map((r) => r.id))}::uuid[]) AND s.status = 'active'`);
-    const emails = counted[0]?.n ?? 0;
-    await writeOpsLog(tx, actor, "held-email-cancelled", `${plural(rows.length, "send job")}, ${plural(emails, "email")}`);
+    const cancelledIds = new Set(rows.map((r) => r.id));
+    const groups = group(before.filter((r) => cancelledIds.has(r.id))).map(strip);
+    const emails = groups.reduce((n, g) => n + g.emails, 0);
+    await writeOpsLog(tx, actor, "held-email-cancelled", cancelLogDetail(groups, rows.length, emails));
     return { cancelledJobs: rows.length, cancelledEmails: emails };
   });
 }

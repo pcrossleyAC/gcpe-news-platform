@@ -151,13 +151,16 @@ function OutgoingPanel({ outgoing, paused, timeZone, onDone }: { outgoing: Outgo
   const cancel = async (groups: OutgoingGroup[]) => {
     setBusy(true);
     setError(null);
+    const jobIds = groups.flatMap((g) => g.jobIds);
     try {
       const r = await apiFetch<{ cancelledJobs: number; cancelledEmails: number }>("/nod/api/operations/held-email/cancel", {
         method: "POST",
-        body: { jobIds: groups.flatMap((g) => g.jobIds) },
+        body: { jobIds },
       });
       setCancelling(null);
-      onDone(r.cancelledJobs === 0 ? "Nothing was cancelled: that email had already gone out or been cancelled." : `Cancelled ${plural(r.cancelledEmails, "held email")}.`);
+      // Some may have been claimed by a send that started just before the pause (review M3).
+      const partly = r.cancelledJobs < jobIds.length ? " Some had already started going out, so they weren’t cancelled." : "";
+      onDone(r.cancelledJobs === 0 ? "Nothing was cancelled: that email had already gone out or been cancelled." : `Cancelled ${plural(r.cancelledEmails, "held email")}.${partly}`);
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 409
@@ -169,6 +172,7 @@ function OutgoingPanel({ outgoing, paused, timeZone, onDone }: { outgoing: Outgo
     }
   };
   const chosenEmails = cancelling?.reduce((n, g) => n + g.emails, 0) ?? 0;
+  const alerts = cancelling?.filter((g) => g.kind === "emergency").length ?? 0;
   const chosenReleases = cancelling ? (cancelling.length === held.groups.length ? held.releases : cancelling.reduce((n, g) => n + g.releases, 0)) : 0;
   return (
     <section aria-labelledby="ops-outgoing">
@@ -242,7 +246,7 @@ function OutgoingPanel({ outgoing, paused, timeZone, onDone }: { outgoing: Outgo
                     <td>{KIND_LABELS[g.kind]}</td>
                     <td>{count(g.emails)}</td>
                     <td>{formatWhen(g.createdAt, new Date(), timeZone, { withDate: true })}</td>
-                    <td>{`Gave up after ${plural(g.attempts, "try", "tries")}. Distribution said: ${g.lastError ?? "nothing"}`}</td>
+                    <td>{`Gave up after ${plural(g.attempts, "try", "tries")}. What went wrong: ${g.lastError ?? "not recorded"}`}</td>
                   </tr>
                 ))}
               </tbody>
@@ -267,7 +271,10 @@ function OutgoingPanel({ outgoing, paused, timeZone, onDone }: { outgoing: Outgo
               </>
             }
           >
-            <p>{`${plural(chosenEmails, "email")} for ${plural(chosenReleases, "release")} won’t be sent. This can’t be undone.`}</p>
+            <p>
+              {`${plural(chosenEmails, "email")} for ${plural(chosenReleases, "release")} won’t be sent. This can’t be undone.`}
+              {alerts > 0 && ` This includes ${plural(alerts, "emergency alert")}.`}
+            </p>
             <ul>
               {cancelling.map((g) => (
                 <li key={g.jobIds[0]}>{`${groupLabel(g, timeZone)}: ${plural(g.emails, "email")}`}</li>
