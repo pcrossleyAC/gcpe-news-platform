@@ -201,6 +201,8 @@ describe("DocumentLanguageForm", () => {
     renderForm(releaseView({ ...BASE, version: 4 }));
     expect(await screen.findByLabelText("Headline")).toHaveValue("Stale headline");
     expect(screen.getByText(/this release has changed since/i)).toBeInTheDocument();
+    // Reload shows the newer version and drops the restored text, so it says to copy it first.
+    expect(screen.getByText(/Copy anything you want to keep before you reload\./)).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();

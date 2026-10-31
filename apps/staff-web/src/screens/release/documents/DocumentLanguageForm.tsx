@@ -174,7 +174,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
       {restored && dirty && (
         <p role="status" className="gcpe-notice">
           Your unsaved changes were restored.
-          {staleDraftVersion !== null && " This release has changed since you made them, so saving them will ask you to reload first."}
+          {staleDraftVersion !== null && " This release has changed since you made them, so saving them will ask you to reload first, which shows the newer version instead. Copy anything you want to keep before you reload."}
         </p>
       )}
       {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}

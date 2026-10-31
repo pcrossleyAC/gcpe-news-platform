@@ -26,7 +26,7 @@ If one part can't be saved, the bar says "Couldn't save page details. See why in
 
 While anything is unsaved, **Approve**, **Publish now** and **Schedule** are greyed out, with "Save your changes to … first." under them.
 
-If you try to leave with unsaved changes, a box asks "Leave anyway and discard them?" Choose **Stay** to go back, or **Leave** to lose them; they don't come back the next time you open the release. If your sign-in runs out while you are writing, sign in again in the same browser tab: the text you typed in a document comes back, with "Your unsaved changes were restored." If someone changed the release in the meantime, it also says saving them will ask you to reload first, so your older text can't overwrite their newer changes.
+If you try to leave with unsaved changes, a box asks "Leave anyway and discard them?" Choose **Stay** to go back, or **Leave** to lose them; they don't come back the next time you open the release. If your sign-in runs out while you are writing, sign in again in the same browser tab: the text you typed in a document comes back, with "Your unsaved changes were restored." If someone changed the release in the meantime, it also says saving them will ask you to reload first, so your older text can't overwrite their newer changes. Reloading shows their version instead of yours, so copy anything you want to keep before you choose **Reload**.
 
 "Someone else changed this — reload to see their changes." means another person saved this release after you opened it. Choose **Reload**. Copy anything you typed first, because reloading shows their version.
 
