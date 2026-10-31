@@ -108,7 +108,6 @@ async function pair(deps: ApiDeps, actor: CalendarActor, fromId: number, toId: n
 /**
  * A's non-deleted activities the caller can see. A ministry Administrator moves only those A's
  * ministry leads: one only shared with their ministry stays with the ministry that leads it.
- * users.ts's movableSql is the same rule for the deactivation preview: change both together.
  */
 const inScope = (actor: CalendarActor, from: TransferContact) =>
   and(eq(activities.commContactId, from.id), isNull(activities.deletedAt), visibleSql(actor), actor.isHq ? undefined : eq(activities.contactMinistryKey, from.ministryKey));

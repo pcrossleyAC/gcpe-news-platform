@@ -14,8 +14,8 @@ export function orgLabel(o: OrgOption): string {
 /** Why the screen won't open a user's editor, in the screen's words; the server sends its own on a refused save. */
 export const LOCKED_MESSAGES: Partial<Record<CalendarGrantRefusal, string>> = {
   "own-access": "You can’t change your own Calendar access.",
-  "target-above-ceiling": "Only a System Administrator or a Core admin can change this user’s access.",
-  "hq-target": "Only an HQ Administrator, a System Administrator or a Core admin can change this user’s access.",
+  "target-above-ceiling": "Only a System Administrator or a Core administrator can change this user’s access.",
+  "hq-target": "Only an HQ Administrator, a System Administrator or a Core administrator can change this user’s access.",
 };
 
 /**
@@ -25,19 +25,22 @@ export const LOCKED_MESSAGES: Partial<Record<CalendarGrantRefusal, string>> = {
  */
 export function lockedMessage(refusal: CalendarGrantRefusal | null, actor: Actor, user: Pick<CalendarAccessUser, "isActive" | "calendarRole">): string | null {
   if (refusal) return LOCKED_MESSAGES[refusal] ?? "You can’t change this user’s access.";
-  if (!actor.roles.includes("Core.Admin") && !user.isActive && user.calendarRole === null) return "Only a Core admin can give Calendar access to an inactive user who has none.";
+  if (!actor.roles.includes("Core.Admin") && !user.isActive && user.calendarRole === null) return "Only a Core administrator can give Calendar access to an inactive user who has none.";
   return null;
 }
 
 /**
  * A 400 for unknown or inactive ministries names them in `keys`. Only keys this save submitted
- * are shown, so the message never repeats anything the user didn't type or pick.
+ * are shown, so the message never repeats anything the user didn't type or pick; each is named as
+ * the ministry list shows it (its key only if the list doesn't have it).
  */
-export function saveMessages(caught: unknown, submitted: readonly string[]): string[] {
+export function saveMessages(caught: unknown, submitted: readonly string[], orgs: readonly OrgOption[] = []): string[] {
   const keys = caught instanceof ApiError && caught.status === 400 ? (caught.body as { keys?: unknown } | undefined)?.keys : undefined;
   if (!Array.isArray(keys)) return messagesOf(caught);
-  const named = submitted.filter((k) => keys.includes(k));
-  return named.length ? [`${(caught as ApiError).message}: ${named.join(", ")}`] : messagesOf(caught);
+  const names = submitted.filter((k) => keys.includes(k)).map((k) => orgs.find((o) => o.key === k)?.displayName ?? k);
+  if (!names.length) return messagesOf(caught);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return [names.length === 1 ? `${list} is no longer active or doesn’t exist. Untick it, then save again.` : `${list} are no longer active or don’t exist. Untick them, then save again.`];
 }
 
 /** What checkCalendarGrant needs about the actor, worked out from the session and the actor's own row. */
@@ -96,7 +99,7 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel, showMessage
       await apiFetch(`/core/api/calendar-access/${user.id}`, { method: "PUT", body: { role: role === "" ? null : role, organizationKeys: keys } });
       onSaved(`Saved Calendar access for ${user.displayName}.`);
     } catch (caught) {
-      setMessages(saveMessages(caught, keys));
+      setMessages(saveMessages(caught, keys, orgs));
       onFailed?.();
     } finally {
       setBusy(false);

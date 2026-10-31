@@ -46,12 +46,10 @@ Choose **Not a comm contact** to stop offering them. Activities that already hav
 Deactivating closes the person's Hub account. They can't sign in again until reactivated, and the Hub signs them out within 10 minutes.
 
 1. Under **Account**, choose **Deactivate** followed by their name.
-2. The page shows their **Open activities**: every activity where they are the comm contact that isn't deleted and hasn't ended, even if you set them to **Not a comm contact**.
-   - The activities you can transfer are listed. Only the first 500 are listed.
-   - Activities in ministries you don't belong to are counted, not listed, for example "2 more in ministries you don't belong to. Ask an HQ Administrator to transfer them." This includes activities only shared with your ministry.
-   - "No open activities." means there are none at all.
-3. To hand the listed activities over first, choose **Transfer their activities first**, or **Transfer the listed activities first** when some are in other ministries. See [Transfer activities](manual:calendar-transfer). For the ones in other ministries, ask an HQ Administrator.
-4. Choose **Deactivate**, or **Deactivate anyway** when they have open activities. You see that the person "is deactivated. The Calendar picks this up within a minute."
+2. The page lists their **Open activities**: activities you can see where they are the comm contact, that aren't deleted and haven't ended, even if you set them to **Not a comm contact**. Only the first 500 are listed.
+3. If they also work for ministries you don't belong to, the page says "They also work for ministries you don't belong to. Ask an HQ Administrator to check and transfer their activities there." You can't see their activities in those ministries, so the page doesn't say whether there are any. With none listed, it says "No open activities in your ministries." instead of "No open activities."
+4. To hand the listed activities over first, choose **Transfer their activities first**. See [Transfer activities](manual:calendar-transfer).
+5. Choose **Deactivate**, or **Deactivate anyway** when activities are listed. You see that the person "is deactivated. The Calendar picks this up within a minute."
 
 Deactivating doesn't move their activities. Each one keeps them as comm contact and can still be saved, but can't be cloned until it has an active comm contact. Editors can't choose them as a comm contact any more.
 

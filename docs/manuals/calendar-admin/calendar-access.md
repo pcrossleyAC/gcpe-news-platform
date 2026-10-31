@@ -57,9 +57,9 @@ Some rows show a note instead of **Edit**.
 | Note | What it means |
 |---|---|
 | "You can't change your own Calendar access." | Ask another administrator or a Core administrator. |
-| "Only a System Administrator or a Core admin can change this user's access." | The person is a system administrator and you are an Administrator. |
-| "Only an HQ Administrator, a System Administrator or a Core admin can change this user's access." | The person belongs to an HQ organization and you don't. |
-| "Only a Core admin can give Calendar access to an inactive user who has none." | The person's Hub account is inactive and has no Calendar role. Ask a Core administrator. |
+| "Only a System Administrator or a Core administrator can change this user's access." | The person is a system administrator and you are an Administrator. |
+| "Only an HQ Administrator, a System Administrator or a Core administrator can change this user's access." | The person belongs to an HQ organization and you don't. |
+| "Only a Core administrator can give Calendar access to an inactive user who has none." | The person's Hub account is inactive and has no Calendar role. Ask a Core administrator. |
 
 If you have no ministry yourself, the Calendar shows "You aren't in any ministry yet, so there are no activities to show you. Ask another Calendar administrator or a Core administrator to add your ministry." You can't add it yourself.
 
@@ -68,4 +68,4 @@ If you have no ministry yourself, the Calendar shows "You aren't in any ministry
 | Message | What it means |
 |---|---|
 | "choose at least one ministry for a Calendar role" | Tick a ministry, or choose **No Calendar access**. |
-| "unknown or inactive ministry: health" | The named ministry (shown by its short web name) was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save. |
+| "Health is no longer active or doesn't exist. Untick it, then save again." | The named ministry was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save. |

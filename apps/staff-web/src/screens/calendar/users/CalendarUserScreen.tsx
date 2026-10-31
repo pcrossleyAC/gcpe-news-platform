@@ -46,8 +46,6 @@ function accountMessages(caught: unknown, verb: AccountAction): string[] {
   return plain ? [plain] : messagesOf(caught).map(sentence);
 }
 
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
-
 function Alerts({ messages }: { messages: string[] }): React.JSX.Element {
   return (
     <>
@@ -187,7 +185,7 @@ export function CalendarUserScreen(): React.JSX.Element {
   const accountRefusal = (() => {
     if (!core || actor.roles.includes("Core.Admin")) return null;
     if (core.calendarRole === null) return refusalText("no-calendar-role", verb);
-    if (core.hasOtherRoles) return refusalText("other-roles", verb);
+    if (core.hasOtherRoles ?? false) return refusalText("other-roles", verb);
     const r = checkCalendarGrant({
       actorId: actor.id,
       actorRoles: actor.roles,
@@ -201,6 +199,10 @@ export function CalendarUserScreen(): React.JSX.Element {
     // The other refusals can't arise for a change that keeps the role; the server's own words cover them.
     return r ? (refusalText(r, verb) ?? `You can’t ${verb} this person.`) : null;
   })();
+  // Whether the user works for a ministry the administrator doesn't: the page already shows their
+  // ministries, so saying so reveals nothing. An HQ administrator sees every ministry's activities.
+  const actorKeys = new Set(coreUsers.find((c) => canonicalId(c.id) === canonicalId(actor.id))?.organizationKeys ?? []);
+  const otherMinistries = !actor.isHq && [...u.ministryKeys, ...detail.commContacts.map((c) => c.ministryKey)].some((k) => !actorKeys.has(k));
   const done = (msg: string) => {
     setStatus(msg);
     setMessages([]);
@@ -315,6 +317,7 @@ export function CalendarUserScreen(): React.JSX.Element {
             <DeactivatePreview
               name={u.displayName}
               preview={preview}
+              otherMinistries={otherMinistries}
               onDeactivate={() => {
                 setPreview(null);
                 void setActive(false);
@@ -338,17 +341,24 @@ export function CalendarUserScreen(): React.JSX.Element {
 }
 
 /**
- * Before deactivating: the open activities Transfer can move for this administrator, listed, and a
- * count of the rest (in ministries they don't belong to), which only an HQ Administrator can move.
+ * Before deactivating: the open activities this administrator can see. Nothing about the rest, not
+ * even a count (it would reveal confidential activities); when the user also works for ministries
+ * the administrator doesn't, the preview says so and who can check them.
  */
-function DeactivatePreview({ name, preview, onDeactivate, onCancel }: { name: string; preview: OpenActivities; onDeactivate(): void; onCancel(): void }): React.JSX.Element {
+function DeactivatePreview({ name, preview, otherMinistries, onDeactivate, onCancel }: {
+  name: string;
+  preview: OpenActivities;
+  otherMinistries: boolean;
+  onDeactivate(): void;
+  onCancel(): void;
+}): React.JSX.Element {
   const listed = preview.activities.length;
-  const other = preview.otherCount;
   return (
     <section aria-label={`Before deactivating ${name}`}>
       <h3>Open activities</h3>
-      {listed === 0 && other === 0 && <p>No open activities.</p>}
-      {listed > 0 && (
+      {listed === 0 ? (
+        <p>{otherMinistries ? "No open activities in your ministries." : "No open activities."}</p>
+      ) : (
         <>
           <p>{name} is the comm contact for these activities. Deactivating doesn&rsquo;t move them.</p>
           <ul>
@@ -357,23 +367,14 @@ function DeactivatePreview({ name, preview, onDeactivate, onCancel }: { name: st
             ))}
           </ul>
           {preview.truncated && <p>Only the first 500 are listed.</p>}
+          <p>
+            <Link to="/calendar/transfer">Transfer their activities first</Link>
+          </p>
         </>
       )}
-      {other > 0 &&
-        (listed > 0 ? (
-          <p>{`${other} more in ${plural(other, "a ministry", "ministries")} you don’t belong to. Ask an HQ Administrator to transfer ${plural(other, "it", "them")}.`}</p>
-        ) : (
-          <p>
-            {`${name} is the comm contact for ${other} open ${plural(other, "activity", "activities")} in ${plural(other, "a ministry", "ministries")} you don’t belong to. Deactivating doesn’t move ${plural(other, "it", "them")}. Ask an HQ Administrator to transfer ${plural(other, "it", "them")}.`}
-          </p>
-        ))}
-      {listed > 0 && (
-        <p>
-          <Link to="/calendar/transfer">{other > 0 ? "Transfer the listed activities first" : "Transfer their activities first"}</Link>
-        </p>
-      )}
+      {otherMinistries && <p>They also work for ministries you don&rsquo;t belong to. Ask an HQ Administrator to check and transfer their activities there.</p>}
       <Button variant="secondary" onPress={onDeactivate}>
-        {listed + other === 0 ? "Deactivate" : "Deactivate anyway"}
+        {listed === 0 ? "Deactivate" : "Deactivate anyway"}
       </Button>
       <Button variant="tertiary" onPress={onCancel}>
         Cancel

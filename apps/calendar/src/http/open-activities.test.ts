@@ -31,44 +31,44 @@ describe("a user's open activities, before deactivating (spec addendum §8.5)", 
     expect(res.body.activities.map((a: { id: number }) => a.id)).toEqual([today, later, undated]);
     expect(res.body.activities[0]).toMatchObject({ reference: `HLTH-${today}`, title: "Sample today", startDate: "2026-11-03" });
     expect(res.body.truncated).toBe(false);
-    expect(res.body.otherCount).toBe(0);
   });
 
-  it("an activity in a ministry the Administrator doesn't belong to is only counted, never described", async () => {
+  it("lists only what the Administrator can see, with no count or detail of the rest", async () => {
     const c = w.contact.financeEditor;
     const hidden = await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", isConfidential: true, title: "Sample hidden" });
     const other = await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", title: "Sample other ministry" });
-    // Only shared with the Administrator's ministry: they can see it, but Transfer moves only what their ministry leads.
+    // Only shared with the Administrator's ministry: they can see it, so it is listed.
     const shared = await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", title: "Sample shared" });
     await tdb.db.insert(activitySharedWith).values({ activityId: shared, ministryKey: "health" });
-    // Neither counts: one has ended, one is deleted.
+    // Neither is open: one has ended, one is deleted.
     await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", title: "Sample ended", startAt: new Date("2026-11-02T17:00:00Z"), endAt: new Date("2026-11-02T18:00:00Z") });
     await insertRaw(tdb.db, { commContactId: c, contactMinistryKey: "finance", title: "Sample gone", deletedAt: FIXED_NOW });
 
     const ministry = await open("admin", w.as.financeEditor.id);
     expect(ministry.status).toBe(200);
-    expect(ministry.body).toEqual({ activities: [], truncated: false, otherCount: 3 });
+    // Exactly the visible one: no count of the others (it would reveal confidential activities).
+    expect(Object.keys(ministry.body).sort()).toEqual(["activities", "truncated"]);
+    expect(ministry.body.activities.map((a: { id: number }) => a.id)).toEqual([shared]);
     const raw = JSON.stringify(ministry.body);
-    for (const leak of ["Sample", "finance", "FIN", String(hidden), String(other), String(shared)]) expect(raw).not.toContain(leak);
+    for (const leak of ["Sample hidden", "Sample other ministry", `"id":${hidden},`, `-${hidden}"`, `"id":${other},`, `-${other}"`, "otherCount"]) expect(raw).not.toContain(leak);
 
     const hq = await open("hqAdmin", w.as.financeEditor.id);
     expect(hq.body.activities.map((a: { id: number }) => a.id).sort()).toEqual([hidden, other, shared].sort());
-    expect(hq.body.otherCount).toBe(0);
   });
 
   it("a user who is nobody's comm contact has none at all", async () => {
-    expect((await open("admin", w.as.readOnly.id)).body).toEqual({ activities: [], truncated: false, otherCount: 0 });
+    expect((await open("admin", w.as.readOnly.id)).body).toEqual({ activities: [], truncated: false });
   });
 
-  it("still lists activities after the user was set to Not a comm contact, as Transfer still moves them", async () => {
+  it("still lists activities after the user was set to Not a comm contact", async () => {
     const put = (rank: number | null) => call(app, "put", `/api/users/${w.as.advanced.id}/comm-contacts/health`, w.as.admin.cookie, { rank });
     const id = await insertRaw(tdb.db, { commContactId: w.contact.retiredHealth, title: "Sample retired contact's" });
     expect((await put(2)).status).toBe(200);
     expect((await put(null)).status).toBe(200);
     const res = await open("admin", w.as.advanced.id);
-    expect(res.body).toMatchObject({ truncated: false, otherCount: 0 });
+    expect(res.body.truncated).toBe(false);
     expect(res.body.activities.map((a: { id: number }) => a.id)).toEqual([id]);
-    // The preview lists exactly what Transfer would move from that comm contact.
+    // Transfer still moves it from that comm contact.
     const transfer = await call(app, "get", `/api/transfer/preview?from=${w.contact.retiredHealth}&to=${w.contact.editorHealth}`, w.as.admin.cookie);
     expect(transfer.body.count).toBe(1);
   });

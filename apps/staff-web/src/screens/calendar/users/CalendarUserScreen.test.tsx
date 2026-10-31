@@ -13,7 +13,7 @@ const DETAIL: CalendarUserDetail = {
   profile: { phone: "250-555-0100", mobile: null, jobTitle: null, description: null },
   commContacts: [{ ministryKey: "health", rank: 4, isActive: true }],
 };
-let openActivities: OpenActivities = { activities: [], truncated: false, otherCount: 0 };
+let openActivities: OpenActivities = { activities: [], truncated: false };
 const CORE_USERS = [
   { id: "a1", email: "pat@x.invalid", displayName: "Pat", isActive: true, calendarRole: "Calendar.Administrator", organizationKeys: ["health"] },
   { id: "u1", email: "robin.staff@example.test", displayName: "Robin Staff", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"] },
@@ -73,7 +73,7 @@ describe("CalendarUserScreen", () => {
     cleanup();
     vi.unstubAllGlobals();
     sessionStorage.clear();
-    openActivities = { activities: [], truncated: false, otherCount: 0 };
+    openActivities = { activities: [], truncated: false };
   });
 
   it("shows the user and saves contact details", async () => {
@@ -113,7 +113,7 @@ describe("CalendarUserScreen", () => {
   });
 
   it("deactivates through Core's Calendar route", async () => {
-    openActivities = { activities: [], truncated: false, otherCount: 0 };
+    openActivities = { activities: [], truncated: false };
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(calls);
     renderAt("u1");
@@ -127,7 +127,7 @@ describe("CalendarUserScreen", () => {
   });
 
   it("lists the user's open activities before deactivating, with a way to Transfer them", async () => {
-    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: "2026-11-10T17:00:00.000Z", endAt: null, startDate: "2026-11-10", endDate: null }], truncated: false, otherCount: 0 };
+    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: "2026-11-10T17:00:00.000Z", endAt: null, startDate: "2026-11-10", endDate: null }], truncated: false };
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(calls);
     renderAt("u1");
@@ -142,7 +142,7 @@ describe("CalendarUserScreen", () => {
   });
 
   it("deactivates a user with no open activities after saying so; Cancel deactivates nobody", async () => {
-    openActivities = { activities: [], truncated: false, otherCount: 0 };
+    openActivities = { activities: [], truncated: false };
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(calls);
     renderAt("u1");
@@ -170,7 +170,7 @@ describe("CalendarUserScreen", () => {
   });
 
   it("shows Core's refusal for a user with other roles in plain words", async () => {
-    openActivities = { activities: [], truncated: false, otherCount: 0 };
+    openActivities = { activities: [], truncated: false };
     stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, OTHER_ROLES_REFUSAL) : undefined));
     renderAt("u1");
     const user = userEvent.setup();
@@ -195,7 +195,7 @@ describe("CalendarUserScreen", () => {
   });
 
   it("shows Core's refusal after a preview listing open activities, and the user stays active", async () => {
-    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: "2026-11-10T17:00:00.000Z", endAt: null, startDate: "2026-11-10", endDate: null }], truncated: false, otherCount: 0 };
+    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: "2026-11-10T17:00:00.000Z", endAt: null, startDate: "2026-11-10", endDate: null }], truncated: false };
     stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, OTHER_ROLES_REFUSAL) : undefined));
     renderAt("u1");
     const user = userEvent.setup();
@@ -257,7 +257,7 @@ describe("CalendarUserScreen", () => {
     stub([], dormant);
     renderAt("u3");
     await screen.findByRole("heading", { level: 1, name: "Dale Dormant" });
-    expect(screen.getByText("Only a Core admin can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
+    expect(screen.getByText("Only a Core administrator can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit Calendar access for Dale Dormant" })).toBeNull();
   });
 
@@ -269,30 +269,49 @@ describe("CalendarUserScreen", () => {
     expect(screen.queryByRole("button", { name: "Deactivate Pat" })).toBeNull();
   });
 
-  it("counts open activities in ministries the Administrator doesn't belong to, without a Transfer link", async () => {
-    openActivities = { activities: [], truncated: false, otherCount: 2 };
-    stub([]);
+  const twoMinistries: CalendarUserDetail = { ...DETAIL, user: { ...DETAIL.user, ministryKeys: ["finance", "health"] } };
+  const LINE = "They also work for ministries you don’t belong to. Ask an HQ Administrator to check and transfer their activities there.";
+  const openPreview = async () => {
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    return screen.findByRole("region", { name: "Before deactivating Robin Staff" });
+  };
+
+  it("says when they also work for ministries the Administrator doesn't, even with nothing listed", async () => {
+    stub([], twoMinistries);
     renderAt("u1");
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
-    const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
-    expect(within(preview).getByText("Robin Staff is the comm contact for 2 open activities in ministries you don’t belong to. Deactivating doesn’t move them. Ask an HQ Administrator to transfer them.")).toBeInTheDocument();
+    const preview = await openPreview();
+    expect(within(preview).getByText("No open activities in your ministries.")).toBeInTheDocument();
+    expect(within(preview).getByText(LINE)).toBeInTheDocument();
     expect(within(preview).queryByText("No open activities.")).toBeNull();
-    expect(within(preview).queryByRole("link")).toBeNull();
+    // The button follows only what is listed.
+    expect(within(preview).getByRole("button", { name: "Deactivate" })).toBeInTheDocument();
+  });
+
+  it("lists the visible activities and still says they work for other ministries", async () => {
+    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: null, endAt: null, startDate: null, endDate: null }], truncated: false };
+    stub([], twoMinistries);
+    renderAt("u1");
+    const preview = await openPreview();
+    expect(within(preview).getByText("HLTH-41 — Sample launch — no date")).toBeInTheDocument();
+    expect(within(preview).getByText(LINE)).toBeInTheDocument();
+    expect(within(preview).getByRole("link", { name: "Transfer their activities first" })).toHaveAttribute("href", "/calendar/transfer");
     expect(within(preview).getByRole("button", { name: "Deactivate anyway" })).toBeInTheDocument();
   });
 
-  it("lists what Transfer can move and counts the rest", async () => {
-    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: null, endAt: null, startDate: null, endDate: null }], truncated: false, otherCount: 1 };
+  it("says nothing about other ministries to an HQ Administrator, or when every ministry is the Administrator's", async () => {
+    const hqActor = CORE_USERS.map((c) => (c.id === "a1" ? { ...c, organizationKeys: ["gcpe-hq"] } : c));
+    stub([], twoMinistries, (url) => (url === "/core/api/calendar-access" ? jsonResponse(200, hqActor) : undefined));
+    renderAt("u1");
+    let preview = await openPreview();
+    expect(within(preview).getByText("No open activities.")).toBeInTheDocument();
+    expect(within(preview).queryByText(LINE)).toBeNull();
+    cleanup();
+    vi.unstubAllGlobals();
     stub([]);
     renderAt("u1");
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
-    const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
-    expect(within(preview).getByText("HLTH-41 — Sample launch — no date")).toBeInTheDocument();
-    expect(within(preview).getByText("1 more in a ministry you don’t belong to. Ask an HQ Administrator to transfer it.")).toBeInTheDocument();
-    expect(within(preview).getByRole("link", { name: "Transfer the listed activities first" })).toHaveAttribute("href", "/calendar/transfer");
-    expect(within(preview).getByRole("button", { name: "Deactivate anyway" })).toBeInTheDocument();
+    preview = await openPreview();
+    expect(within(preview).getByText("No open activities.")).toBeInTheDocument();
+    expect(within(preview).queryByText(LINE)).toBeNull();
   });
 
   it.each([
