@@ -35,8 +35,9 @@ export function ReleaseSendsReportScreen(): React.JSX.Element {
     <div className="gcpe-reports">
       <h1>Sends per release</h1>
       <p>
-        As-it-happens and media-list emails for each release or alert published in the range. Not sent means not yet handed to
-        Distribution, including sends still going out. Daily digest emails are in Daily digest runs.
+        As-it-happens and media-list emails for each release or alert published in the range, and any corrected copies emailed
+        again to the people who got it. Not sent means not yet handed to Distribution, including sends still going out. Daily digest
+        emails are in Daily digest runs.
       </p>
       <HandedOffNote />
       <RangeForm key={formKey} from={shown.from} to={shown.to} onApply={apply} />
@@ -56,9 +57,10 @@ export function ReleaseSendsReportScreen(): React.JSX.Element {
                     <th scope="col" rowSpan={2}>Type</th>
                     <th scope="colgroup" colSpan={4}>As it happens</th>
                     <th scope="colgroup" colSpan={4}>Media lists</th>
+                    <th scope="colgroup" colSpan={4}>Corrected copies</th>
                   </tr>
                   <tr>
-                    {["aih", "media"].flatMap((g) => COLUMNS.map((c) => <th key={`${g}-${c}`} scope="col">{c}</th>))}
+                    {["aih", "media", "corrected"].flatMap((g) => COLUMNS.map((c) => <th key={`${g}-${c}`} scope="col">{c}</th>))}
                   </tr>
                 </thead>
                 <tbody>
@@ -69,6 +71,7 @@ export function ReleaseSendsReportScreen(): React.JSX.Element {
                       <td>{r.type}</td>
                       <ModeCells c={r.asItHappens} />
                       <ModeCells c={r.media} />
+                      <ModeCells c={r.corrected ?? { recipients: 0, handedOffNotBounced: 0, bounced: 0, notSent: 0 }} />
                     </tr>
                   ))}
                 </tbody>

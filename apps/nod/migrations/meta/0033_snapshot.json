@@ -1,5 +1,5 @@
 {
-  "id": "78a84b72-46e3-4b51-b86b-a511fb24f427",
+  "id": "44af7a8f-88ce-4b75-9d0e-5a287ca29d3d",
   "prevId": "66ede277-6f5f-48ab-aeef-5dbd55a30459",
   "version": "7",
   "dialect": "postgresql",
@@ -63,13 +63,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "correction": {
-          "name": "correction",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         }
       },
       "indexes": {
@@ -220,13 +213,12 @@
         }
       },
       "compositePrimaryKeys": {
-        "deliveries_item_key_subscriber_id_mode_correction_pk": {
-          "name": "deliveries_item_key_subscriber_id_mode_correction_pk",
+        "deliveries_item_key_subscriber_id_mode_pk": {
+          "name": "deliveries_item_key_subscriber_id_mode_pk",
           "columns": [
             "item_key",
             "subscriber_id",
-            "mode",
-            "correction"
+            "mode"
           ]
         }
       },
@@ -235,11 +227,7 @@
       "checkConstraints": {
         "deliveries_mode_check": {
           "name": "deliveries_mode_check",
-          "value": "\"deliveries\".\"mode\" IN ('as_it_happens','digest','media','correction')"
-        },
-        "deliveries_correction_check": {
-          "name": "deliveries_correction_check",
-          "value": "(\"deliveries\".\"mode\" = 'correction') = (\"deliveries\".\"correction\" > 0)"
+          "value": "\"deliveries\".\"mode\" IN ('as_it_happens','digest','media') OR \"deliveries\".\"mode\" ~ '^correction:[1-9][0-9]*$'"
         }
       },
       "isRLSEnabled": false
@@ -382,6 +370,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "corrections_sent": {
+          "name": "corrections_sent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {
@@ -1085,6 +1080,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "send_jobs_item_key_idx": {
+          "name": "send_jobs_item_key_idx",
+          "columns": [
+            {
+              "expression": "item_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

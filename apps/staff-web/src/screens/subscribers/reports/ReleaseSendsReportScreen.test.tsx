@@ -17,7 +17,7 @@ describe("ReleaseSendsReportScreen", () => {
   it("shows each release's counts by mode in BC time, with the range the server used and its CSV", async () => {
     stubReports(["NoD.Viewer"]);
     renderAt(PATTERN, PATTERN, <ReleaseSendsReportScreen />);
-    expect(await screen.findByRole("row", { name: /^2026-10-06 09:30 Budget 2027 News release 4 1 2 1 1 1 0 0$/ })).toBeInTheDocument();
+    expect(await screen.findByRole("row", { name: /^2026-10-06 09:30 Budget 2027 News release 4 1 2 1 1 1 0 0 3 2 0 1$/ })).toBeInTheDocument();
     expect(screen.getByLabelText("From (BC date)")).toHaveValue("2026-09-08");
     expect(screen.getByLabelText("To (BC date)")).toHaveValue("2026-10-07");
     expect(screen.getByRole("link", { name: "Download (CSV)" })).toHaveAttribute("href", "/nod/api/reports/release-sends.csv?from=2026-09-08&to=2026-10-07");
@@ -50,7 +50,9 @@ describe("ReleaseSendsReportScreen", () => {
     stubReports(["NoD.Viewer"]);
     renderAt(PATTERN, PATTERN, <ReleaseSendsReportScreen />);
     await screen.findByRole("row", { name: /Budget 2027/ });
-    expect(screen.getAllByRole("columnheader", { name: "Handed off, not bounced" })).toHaveLength(2);
+    expect(screen.getAllByRole("columnheader", { name: "Handed off, not bounced" })).toHaveLength(3);
+    // Owner decision 2026-10-31: corrected copies have their own columns.
+    expect(screen.getByRole("columnheader", { name: "Corrected copies" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: /delivered/i })).toBeNull();
     expect(screen.getByText(/counts emails handed to Distribution, minus bounces/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Distribution sent and bounced" })).toHaveAttribute("href", "/subscribers/reports/distribution");

@@ -104,6 +104,9 @@ export const items = pgTable(
     // `normalizeLinkIdentity`); null for releases. Rows from before it existed are filled in by
     // the ingester's next check (emergency/ingest.ts), since the normalising is done in code.
     linkIdentity: text("link_identity"),
+    // The highest correction number NoD has made corrected copies for (owner decision 2026-10-31):
+    // NRMS repeats its latest request on every later republish, and only a higher number is acted on.
+    correctionsSent: integer("corrections_sent").notNull().default(0),
   },
   (t) => [
     index("items_published_at_idx").on(t.publishedAt),
@@ -119,10 +122,13 @@ export const items = pgTable(
 );
 export type ItemRow = typeof items.$inferSelect;
 
-// "correction": a corrected copy of a release someone already got, asked for when it was
-// republished (owner decision 2026-10-31); `correction` is then that resend's number.
-export const DELIVERY_MODES = ["as_it_happens", "digest", "media", "correction"] as const;
-export type DeliveryMode = (typeof DELIVERY_MODES)[number];
+export const DELIVERY_MODES = ["as_it_happens", "digest", "media"] as const;
+/** A first send's mode, or `correction:<n>`: the n-th corrected copy of a release someone already
+ * got, asked for when it was republished (owner decision 2026-10-31). The number lives in the mode
+ * so the primary key (item, subscriber, mode) gives one copy per person per correction. */
+export type DeliveryMode = (typeof DELIVERY_MODES)[number] | `correction:${number}`;
+/** The mode of correction `n`'s copies. */
+export const correctionMode = (n: number): DeliveryMode => `correction:${n}`;
 
 export const deliveries = pgTable(
   "deliveries",
@@ -146,15 +152,11 @@ export const deliveries = pgTable(
     // The bounce's own status code/string (e.g. "5.1.1", or legacy's numeric "550"), from
     // whichever bounce -- hard or soft -- first set it for this delivery.
     bounceStatus: text("bounce_status"),
-    // 0 for every first send (as_it_happens/digest/media); for a corrected copy (mode
-    // 'correction'), the release's correction number (1, 2, ...), so each correction is its own
-    // send: one corrected copy per person per correction, without touching the first send's rows.
-    correction: integer("correction").notNull().default(0),
   },
   (t) => [
-    primaryKey({ columns: [t.itemKey, t.subscriberId, t.mode, t.correction] }),
-    check("deliveries_mode_check", sql`${t.mode} IN ('as_it_happens','digest','media','correction')`),
-    check("deliveries_correction_check", sql`(${t.mode} = 'correction') = (${t.correction} > 0)`),
+    primaryKey({ columns: [t.itemKey, t.subscriberId, t.mode] }),
+    // NOT VALID in migration 0033 (rows before it are all first sends): no full-table scan.
+    check("deliveries_mode_check", sql`${t.mode} IN ('as_it_happens','digest','media') OR ${t.mode} ~ '^correction:[1-9][0-9]*$'`),
     // Filtered by the per-part attempted_at stamp (send-jobs.ts's sendAllChunks), the digest
     // claim's own read of this job's items, withdrawItem/createItemSend's deletes, and the
     // ON DELETE SET NULL FK check on sendJobs — none of which had an index to use.
@@ -222,6 +224,9 @@ export const sendJobs = pgTable(
   },
   (t) => [
     uniqueIndex("send_jobs_job_key_idx").on(t.jobKey),
+    // One release's jobs: withdrawing it, re-rendering its waiting email after a correction, and
+    // the sends-per-release report's corrected copies.
+    index("send_jobs_item_key_idx").on(t.itemKey),
     // Digest-run report (reports/digest-runs.ts): a run's jobs by their shared key prefix,
     // `digest:<cutoff ISO>:` -- 32 characters, digest.ts's DIGEST_JOB_PREFIX_LENGTH, which the
     // report's query must spell as the same literal for Postgres to match this expression.

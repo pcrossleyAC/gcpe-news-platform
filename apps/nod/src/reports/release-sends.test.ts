@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
-import { deliveries, items, subscribers } from "../db/schema";
+import { deliveries, items, sendJobs, subscribers } from "../db/schema";
 import { resolveRange, localDate } from "./range";
 import { RELEASE_SENDS_CSV_HEADER, releaseSendBatches, releaseSendCsvRow, releaseSendsPage, releaseSendsSql } from "./release-sends";
 import { csvLine } from "./csv";
@@ -39,6 +39,19 @@ describe("sends per release", () => {
       { itemKey: "r2", subscriberId: s1!.id, mode: "as_it_happens", ...sent },
       { itemKey: "e1", subscriberId: s1!.id, mode: "as_it_happens", ...sent },
     ]);
+    // Owner decision 2026-10-31: corrected copies of r1 (one to subscribers, one to media lists).
+    const [cs, cm] = await tdb.db
+      .insert(sendJobs)
+      .values([
+        { jobKey: "correction:1:as_it_happens:r1", kind: "correction", itemKey: "r1" },
+        { jobKey: "correction:1:media:r1", kind: "correction_media", priority: "media", itemKey: "r1" },
+      ])
+      .returning({ id: sendJobs.id });
+    await tdb.db.insert(deliveries).values([
+      { itemKey: "r1", subscriberId: s1!.id, mode: "correction:1", jobId: cs!.id, ...sent },
+      { itemKey: "r1", subscriberId: s3!.id, mode: "correction:1", jobId: cs!.id },
+      { itemKey: "r1", subscriberId: s2!.id, mode: "correction:1", jobId: cm!.id, ...sent, bounceStatus: "5.1.1" },
+    ]);
   });
   afterAll(async () => tdb.drop());
 
@@ -53,6 +66,8 @@ describe("sends per release", () => {
     expect(r1.title).toBe(HOSTILE);
     expect(r1.asItHappens).toEqual({ recipients: 4, handedOffNotBounced: 1, bounced: 2, notSent: 1 });
     expect(r1.media).toEqual({ recipients: 1, handedOffNotBounced: 1, bounced: 0, notSent: 0 });
+    expect(r1.corrected).toEqual({ recipients: 3, handedOffNotBounced: 1, bounced: 1, notSent: 1 });
+    expect(page.items[0]!.corrected).toEqual({ recipients: 0, handedOffNotBounced: 0, bounced: 0, notSent: 0 });
   });
 
   it("batches the same rows for the CSV, with the hostile title neutralised", async () => {
@@ -60,12 +75,13 @@ describe("sends per release", () => {
     for await (const b of releaseSendBatches(tdb.db, range(), 1)) all.push(...b);
     expect(all.map((r) => r.itemKey)).toEqual(["e1", "r1"]);
     const line = csvLine(releaseSendCsvRow(all[1]!, BC));
-    expect(line).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2},"'=HYPERLINK\(""http:\/\/x"",""y""\)",News release,4,1,2,1,1,1,0,0\r\n$/);
+    expect(line).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2},"'=HYPERLINK\(""http:\/\/x"",""y""\)",News release,4,1,2,1,1,1,0,0,3,1,1,1\r\n$/);
   });
 
   it("names the count what it is: handed to Distribution and not bounced, not delivered", () => {
     expect(RELEASE_SENDS_CSV_HEADER).toContain("As it happens: handed off, not bounced");
     expect(RELEASE_SENDS_CSV_HEADER).toContain("Media: handed off, not bounced");
+    expect(RELEASE_SENDS_CSV_HEADER).toContain("Corrected copies: handed off, not bounced");
     expect(RELEASE_SENDS_CSV_HEADER.join(",")).not.toMatch(/delivered/i);
   });
 

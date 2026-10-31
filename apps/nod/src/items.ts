@@ -132,6 +132,9 @@ export interface ItemHandlerOptions {
    * "email it again" request, once the item is up to date -- correction.ts's
    * `createCorrectionSends`. Never called without one, so a plain republish emails nobody again. */
   onEmailAgain?: (tx: Tx, r: ReleaseRecord, emailAgain: EmailAgain) => Promise<unknown>;
+  /** Review I4: called once a correction has refreshed the item, before any corrected copy is
+   * made -- correction.ts's `rerenderWaitingEmail`, so email still waiting goes out corrected. */
+  onRefreshed?: (tx: Tx, r: ReleaseRecord) => Promise<unknown>;
 }
 
 /**
@@ -149,6 +152,7 @@ export function itemHandlers(opts: ItemHandlerOptions): (e: EventEnvelope) => Ev
   const onReleaseUpdated: EventHandler = async (tx, event) => {
     const r = event.data as ReleaseRecord & { emailAgain?: EmailAgain };
     const refreshed = await refreshReleaseItem(tx, r, opts.publicSiteUrl);
+    if (refreshed && opts.onRefreshed) await opts.onRefreshed(tx, r);
     if (refreshed && r.emailAgain && opts.onEmailAgain) await opts.onEmailAgain(tx, r, r.emailAgain);
   };
   const onReleaseUnpublished: EventHandler = async (tx, event) => {

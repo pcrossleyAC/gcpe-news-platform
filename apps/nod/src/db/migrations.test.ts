@@ -64,20 +64,31 @@ describe("0033 corrected copies", () => {
   let tdb: TestDatabase | undefined;
   afterEach(async () => tdb?.drop());
 
-  it("keeps every first-send delivery as correction 0, one row per (item, subscriber, mode) as before, and lets corrections add their own", async () => {
+  // Review I1 (fix round 1): no primary-key rebuild and no full-table check scan on deliveries,
+  // so the migration takes its lock for milliseconds. A corrected copy's mode carries its number.
+  it("leaves the primary key and first sends alone, allows only 'correction:<n>' modes, without scanning the table", async () => {
     tdb = await createTestDatabase({ migrationsFolder: nodMigrations, upTo: "0032_items_link_identity_index" });
     await tdb.db.execute(sql`
       INSERT INTO subscribers (id, email, status) VALUES ('00000000-0000-0000-0000-000000000021', 'a@example.test', 'active');
+      INSERT INTO items (key, kind, title, url, published_at) VALUES ('K1', 'release', 'T', 'https://x.test', now());
       INSERT INTO deliveries (item_key, subscriber_id, mode) VALUES ('K1', '00000000-0000-0000-0000-000000000021', 'media');`);
     await tdb.migrate();
-    const d = await tdb.db.execute<{ mode: string; correction: number }>(sql`SELECT mode, correction FROM deliveries`);
-    expect(d.rows).toEqual([{ mode: "media", correction: 0 }]);
-    // A first send's ON CONFLICT DO NOTHING still dedupes exactly as before.
-    const again = await tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode) VALUES ('K1', '00000000-0000-0000-0000-000000000021', 'media') ON CONFLICT DO NOTHING RETURNING 1`);
-    expect(again.rows).toHaveLength(0);
-    await tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode, correction) VALUES
-      ('K1', '00000000-0000-0000-0000-000000000021', 'correction', 1), ('K1', '00000000-0000-0000-0000-000000000021', 'correction', 2)`);
-    await expect(tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode, correction) VALUES ('K1', '00000000-0000-0000-0000-000000000021', 'correction', 0)`)).rejects.toThrow();
-    await expect(tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode, correction) VALUES ('K2', '00000000-0000-0000-0000-000000000021', 'media', 1)`)).rejects.toThrow();
+    const pk = await tdb.db.execute<{ conname: string }>(sql`SELECT conname FROM pg_constraint WHERE conrelid = 'deliveries'::regclass AND contype = 'p'`);
+    expect(pk.rows).toEqual([{ conname: "deliveries_item_key_subscriber_id_mode_pk" }]);
+    const check = await tdb.db.execute<{ convalidated: boolean }>(sql`SELECT convalidated FROM pg_constraint WHERE conname = 'deliveries_mode_check'`);
+    expect(check.rows).toEqual([{ convalidated: false }]);
+    const cols = await tdb.db.execute<{ column_name: string }>(sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'deliveries' AND column_name = 'correction'`);
+    expect(cols.rows).toHaveLength(0);
+    const sid = "00000000-0000-0000-0000-000000000021";
+    // First-send dedupe is exactly as before.
+    expect((await tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode) VALUES ('K1', ${sid}, 'media') ON CONFLICT DO NOTHING RETURNING 1`)).rows).toHaveLength(0);
+    await tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode) VALUES ('K1', ${sid}, 'correction:1'), ('K1', ${sid}, 'correction:2')`);
+    for (const bad of ["correction", "correction:0", "correction:01", "corrections:1", "bogus"]) {
+      await expect(tdb.db.execute(sql`INSERT INTO deliveries (item_key, subscriber_id, mode) VALUES ('K1', ${sid}, ${bad})`)).rejects.toThrow();
+    }
+    const items = await tdb.db.execute<{ corrections_sent: number }>(sql`SELECT corrections_sent FROM items`);
+    expect(items.rows).toEqual([{ corrections_sent: 0 }]);
+    const idx = await tdb.db.execute<{ indexname: string }>(sql`SELECT indexname FROM pg_indexes WHERE tablename = 'send_jobs' AND indexname = 'send_jobs_item_key_idx'`);
+    expect(idx.rows).toHaveLength(1);
   });
 });

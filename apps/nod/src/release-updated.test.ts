@@ -8,7 +8,7 @@
  * NoD ignores the event's `notify` flag entirely, in both directions.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createApp } from "./app";
@@ -66,7 +66,13 @@ describe("release.updated from nrms produces no NoD send", () => {
 describe("a republish re-emails only when asked", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
-  const distribution = { send: async () => ({ batchId: "00000000-0000-4000-8000-0000000000ab" }) } as unknown as DistributionClient;
+  const sent: { subject: string; emails: string[] }[] = [];
+  const distribution = {
+    send: async (m: { subject: string; recipients: { email: string }[] }) => {
+      sent.push({ subject: m.subject, emails: m.recipients.map((r) => r.email) });
+      return { batchId: "00000000-0000-4000-8000-0000000000ab" };
+    },
+  } as unknown as DistributionClient;
   const LINKS = { pageUrl: "https://news.example/subscribe/manage", subscribeApiUrl: "https://news.example/api/Subscribe", linkSecret: "test-link-secret-at-least-32-chars-long" };
   const RENDER = { siteUrl: "https://news.gov.bc.ca", bannerUrl: null };
 
@@ -111,5 +117,33 @@ describe("a republish re-emails only when asked", () => {
     expect(after.jobs).toEqual([`as_it_happens:${release.key}`, `correction:1:as_it_happens:${release.key}`, `correction:2:as_it_happens:${release.key}`]);
     expect(after.subjects.filter((s) => s?.startsWith("Corrected: "))).toEqual(["Corrected: BC Gov News - Fixed headline", "Corrected: BC Gov News - Fixed headline"]);
     expect(after.deliveries).toBe(3);
+  });
+
+  // Review I2: the event that carried the request may never be applied (overtaken, or given up
+  // on). NRMS repeats its latest request on every later republish; NoD acts on each number once.
+  it("a request carried by a later republish is acted on once", async () => {
+    const r2 = { ...release, key: "CORRECTED-2" };
+    await addSubscriber(tdb.db, { email: "reader2@x.test", lists: "all" });
+    await sendEvent(app, envelope("nrms", "release.published", r2, r2.key));
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    // The release.updated carrying emailAgain seq 1 is lost; the next one carries it again.
+    await sendEvent(app, envelope("nrms", "release.updated", { ...r2, notify: true, emailAgain: emailAgain(1) }, r2.key));
+    await sendEvent(app, envelope("nrms", "release.updated", { ...r2, notify: true, emailAgain: emailAgain(1) }, r2.key));
+    const jobs = await tdb.db.select({ key: sendJobs.jobKey }).from(sendJobs).where(eq(sendJobs.itemKey, r2.key));
+    expect(jobs.map((j) => j.key).sort()).toEqual([`as_it_happens:${r2.key}`, `correction:1:as_it_happens:${r2.key}`]);
+  });
+
+  // Review I4: email still held by a pause goes out once, with the corrected content.
+  it("someone whose first email is still held gets the corrected release once, not the old one and not a corrected copy", async () => {
+    const r3 = { ...release, key: "CORRECTED-3", documents: [{ ...release.documents[0]!, headline: "Wrong date" }] };
+    await tdb.db.execute(sql`UPDATE nod_settings SET paused = true WHERE id = 1`);
+    await sendEvent(app, envelope("nrms", "release.published", r3, r3.key));
+    const fixed = { ...r3, documents: [{ ...r3.documents[0]!, headline: "Right date" }] };
+    await sendEvent(app, envelope("nrms", "release.updated", { ...fixed, notify: true, emailAgain: emailAgain(1) }, r3.key));
+    await tdb.db.execute(sql`UPDATE nod_settings SET paused = false WHERE id = 1`);
+    sent.length = 0;
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    const mine = sent.filter((m) => m.subject.includes("date"));
+    expect(mine.map((m) => m.subject)).toEqual(["BC Gov News - Right date"]);
   });
 });

@@ -5,7 +5,7 @@ import { indexKeysFor } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb } from "../test/helpers";
 import { createItemSending } from "./as-it-happens";
-import { correctionAudience, createCorrectionSends, type CorrectionRequest } from "./correction";
+import { correctionAudience, createCorrectionSends, rerenderWaitingEmail, type CorrectionRequest } from "./correction";
 import { deliveries, lists, nodSettings, operationsLog, sendJobs, subscribers } from "./db/schema";
 import { digestCutoff, runDigestIfDue } from "./digest";
 import type { DistributionClient } from "./distribution-client";
@@ -88,10 +88,12 @@ describe("corrected copies", () => {
     await addSubscriber(db, { email: "mediadigest@x.test", lists: [mk], asItHappens: false, digest: true });
     await addSubscriber(db, { email: "leaver@x.test", lists: [mk] });
     await addSubscriber(db, { email: "paused@x.test", lists: [mk] });
+    await addSubscriber(db, { email: "bounced@x.test", lists: [mk] });
     await addMediaMember(db, "budget", { email: "pubmedia@x.test", source: "manual-media" }, "t");
     await addMediaMember(db, "budget", { email: "mediaonly@x.test", source: "manual-media" }, "t");
     await addMediaMember(db, "budget", { email: "mediadigest@x.test", source: "manual-media" }, "t");
     await addMediaMember(db, "budget", { email: "medialeaver@x.test", source: "manual-media" }, "t");
+    await addMediaMember(db, "budget", { email: "mediabounced@x.test", source: "manual-media" }, "t");
     await addMediaMember(db, "retired", { email: "retiredmedia@x.test", source: "manual-media" }, "t");
 
     const cutoff = digestCutoff(new Date(), TZ);
@@ -112,11 +114,12 @@ describe("corrected copies", () => {
     expect(unsent).toEqual([{ id: paused[0]!.id }]);
     sent.length = 0;
 
-    // Since the first send: one subscriber and one media contact unsubscribed, one subscriber was
-    // disabled, and a new subscriber arrived who never got it.
+    // Since the first send: one subscriber and one media contact unsubscribed, one of each who got
+    // it was disabled (a hard bounce disables), and a new subscriber arrived who never got it.
     await db.update(subscribers).set({ status: "deleted" }).where(eq(subscribers.email, "leaver@x.test"));
     await db.update(subscribers).set({ status: "deleted" }).where(eq(subscribers.email, "medialeaver@x.test"));
-    await db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.email, "nomatch@x.test"));
+    await db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.email, "bounced@x.test"));
+    await db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.email, "mediabounced@x.test"));
     await addSubscriber(db, { email: "newcomer@x.test", lists: [mk], asItHappens: true, digest: true });
   }
 
@@ -124,7 +127,7 @@ describe("corrected copies", () => {
   async function corrected(seq = 1): Promise<Record<string, string[]>> {
     const { rows } = await tdb.db.execute<{ kind: string; email: string }>(sql`
       SELECT j.kind, s.email FROM deliveries d JOIN send_jobs j ON j.id = d.job_id JOIN subscribers s ON s.id = d.subscriber_id
-       WHERE d.mode = 'correction' AND d.correction = ${seq} ORDER BY s.email`);
+       WHERE d.mode = ${`correction:${seq}`} ORDER BY s.email`);
     const out: Record<string, string[]> = {};
     for (const r of rows) (out[r.kind] ??= []).push(r.email);
     return out;
@@ -134,8 +137,9 @@ describe("corrected copies", () => {
     await firstSend();
     const audience = await correctionAudience(tdb.db, audienceInput);
     // Subscribers who got it and are still on it: aih, both, digestonly, mediadigest (leaver
-    // unsubscribed, nomatch disabled, paused never got it, newcomer is new). Media contacts who got
-    // it: pubmedia, mediaonly, mediadigest (medialeaver unsubscribed; the retired list got nothing).
+    // unsubscribed, bounced disabled, nomatch never matched, paused never got it, newcomer is new).
+    // Media contacts who got it: pubmedia, mediaonly, mediadigest (medialeaver unsubscribed,
+    // mediabounced disabled; the retired list got nothing).
     expect(audience).toEqual({ subscribers: 4, mediaContacts: 3, both: 1 });
 
     for (const [i, ticks] of [
@@ -230,5 +234,74 @@ describe("corrected copies", () => {
     await refreshReleaseItem(tdb.db, { ...release, publishFlags: { ...release.publishFlags, toMediaLists: false } }, RENDER.siteUrl);
     expect(await correctionAudience(tdb.db, { ...audienceInput, mediaListKeys: [] })).toEqual({ subscribers: 4, mediaContacts: 0, both: 0 });
     expect(await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request(), RENDER))).toEqual({ subscribers: 4, mediaContacts: 0 });
+  });
+
+  it("an advisory never gets a subscriber copy, whatever the request says", async () => {
+    await firstSend();
+    await tdb.db.execute(sql`UPDATE items SET post_kind = 'advisories' WHERE key = ${release.key}`);
+    expect(await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request(), RENDER))).toEqual({ subscribers: 0, mediaContacts: 3 });
+  });
+
+  // Review I2: NRMS repeats its latest request on every later republish; NoD acts on a number once.
+  it("acts on each correction number once, and never on an older one", async () => {
+    await firstSend();
+    expect(await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request({ seq: 2 }), RENDER))).toEqual({ subscribers: 3, mediaContacts: 3 });
+    expect(await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request({ seq: 2 }), RENDER))).toEqual({ subscribers: 0, mediaContacts: 0 });
+    expect(await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request({ seq: 1 }), RENDER))).toEqual({ subscribers: 0, mediaContacts: 0 });
+    const { rows } = await tdb.db.execute<{ n: number }>(sql`SELECT corrections_sent AS n FROM items WHERE key = ${release.key}`);
+    expect(rows[0]!.n).toBe(2);
+    expect((await tdb.db.select().from(operationsLog)).length).toBe(1);
+  });
+
+  // Review I4: email still waiting (a pause) goes out with the corrected content, not the old.
+  describe("email still waiting when the release is corrected", () => {
+    it("is re-rendered from the corrected release: first sends, corrected copies and digests; one handed off already is left alone", async () => {
+      await firstSend();
+      await tdb.db.update(nodSettings).set({ paused: true }).where(eq(nodSettings.id, 1));
+      // A second release, published while paused: its first sends wait.
+      const other = { ...release, key: "OTHER-1", documents: [{ ...release.documents[0]!, headline: "Old headline" }] };
+      const cutoff = digestCutoff(new Date(), TZ);
+      await tdb.db.update(nodSettings).set({ lastDigestCutoff: new Date(cutoff.getTime() - 24 * HOUR_MS) }).where(eq(nodSettings.id, 1));
+      const { createItemSend } = createItemSending({ render: RENDER });
+      await tdb.db.transaction(async (tx) => {
+        await upsertReleaseItem(tx, { ...other, publishDate: new Date(cutoff.getTime() - HOUR_MS).toISOString() }, RENDER.siteUrl);
+        await createMediaSend(tx, other.key, RENDER);
+        await createItemSend(tx, other.key, "as_it_happens");
+      });
+      await tdb.db.execute(sql`DELETE FROM digest_runs`);
+      await runDigestIfDue(tdb.db, TZ, RENDER);
+      // And a corrected copy of the first release, also waiting.
+      await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request(), RENDER));
+      // One of OTHER-1's jobs had a part handed off before the pause: it must not change.
+      const [handed] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.jobKey, `media:${other.key}`));
+      await tdb.db.update(sendJobs).set({ batchIds: { "0": "00000000-0000-4000-8000-0000000000cd" } }).where(eq(sendJobs.id, handed!.id));
+
+      const fixed = { ...other, documents: [{ ...other.documents[0]!, headline: "Fixed headline" }] };
+      const pendingDigests = async () => (await tdb.db.select().from(sendJobs).where(and(eq(sendJobs.status, "pending"), eq(sendJobs.kind, "digest")))).filter((j) => j.html!.includes(other.key) || j.html!.includes("Old headline"));
+      const digestsBefore = await pendingDigests();
+      expect(digestsBefore.length).toBeGreaterThan(0);
+      let rerendered = 0;
+      await tdb.db.transaction(async (tx) => {
+        await refreshReleaseItem(tx, fixed, RENDER.siteUrl);
+        rerendered = await rerenderWaitingEmail(tx, other.key, RENDER);
+      });
+      expect(rerendered).toBe(1 + digestsBefore.length); // its As-It-Happens job and every digest carrying it
+      const jobs = await tdb.db.select({ key: sendJobs.jobKey, subject: sendJobs.subject }).from(sendJobs).where(eq(sendJobs.status, "pending"));
+      const byKey = Object.fromEntries(jobs.map((j) => [j.key, j]));
+      expect(byKey[`as_it_happens:${other.key}`]!.subject).toBe("BC Gov News - Fixed headline");
+      expect(byKey[`media:${other.key}`]!.subject).toBe("BC Gov News - Old headline");
+      for (const d of await pendingDigests()) {
+        expect(d.html).toContain("Fixed headline");
+        expect(d.html).not.toContain("Old headline");
+      }
+
+      // A corrected copy keeps "Corrected: " when re-rendered.
+      await tdb.db.transaction(async (tx) => {
+        await refreshReleaseItem(tx, { ...release, documents: [{ ...release.documents[0]!, headline: "Second fix" }] }, RENDER.siteUrl);
+        await rerenderWaitingEmail(tx, release.key, RENDER);
+      });
+      const [copy] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.jobKey, `correction:1:as_it_happens:${release.key}`));
+      expect(copy!.subject).toBe("Corrected: BC Gov News - Second fix");
+    });
   });
 });
