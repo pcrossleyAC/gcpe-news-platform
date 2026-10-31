@@ -73,7 +73,7 @@ function stubInvalidPublish(initial: SettingsState, saved: SettingsState, fieldE
 const stateOf = (document: SiteSettings, errors: SettingsState["errors"] = []): SettingsState => ({
   live: { revision: 4, publishedAt: "2026-10-20T17:30:00.000Z", publishedBy: "Sam", note: null },
   document,
-  draft: null,
+  draftSections: [], draft: null,
   baseRevision: 4,
   errors,
 });

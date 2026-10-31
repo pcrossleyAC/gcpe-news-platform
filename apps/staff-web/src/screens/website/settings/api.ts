@@ -23,6 +23,8 @@ export interface SettingsState {
   baseRevision: number | null;
   /** Every problem in `document`, any section. */
   errors: FieldError[];
+  /** Sections where the draft differs from what is live (empty with no draft): what Discard draft throws away. */
+  draftSections: SectionKey[];
 }
 
 /** 409 body: someone published since `baseRevision`. */

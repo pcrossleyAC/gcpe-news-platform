@@ -1,4 +1,5 @@
 import { Link, NavLink, Navigate, Outlet, useLocation } from "react-router";
+import type { SectionKey } from "@gcpe/site-settings";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite, canReadWebsite } from "./access";
@@ -15,18 +16,24 @@ const SECTIONS: { to: string; label: string; manageOnly: boolean }[] = [
 ];
 
 /** The site settings (spec "Hub screens"), behind one "Site settings" tab whose index lists them. */
-export const SITE_SETTINGS: { to: string; label: string; description: string }[] = [
-  { to: "banner", label: "Site banner", description: "The notice shown across the top of the public site." },
-  { to: "footer", label: "Footer links", description: "The links in the public site's footer." },
-  { to: "social", label: "Social links", description: "The social media accounts the public site links to." },
-  { to: "theme", label: "Theme colours", description: "The public site's colours." },
-  { to: "ministry-pages", label: "Ministry page headings", description: "The headings on each ministry's page." },
-  { to: "media-contacts", label: "Media contacts page", description: "The media contacts page and the contacts listed on it." },
-  { to: "page-text", label: "Page text", description: "Text on the public site's own pages, such as its not-found and empty messages." },
-  { to: "navigation", label: "Navigation and labels", description: "The public site's menu, and the labels on its links and buttons." },
-  { to: "identity", label: "Site identity", description: "The site description, the X account and the Project Blue Bridge banner wording." },
+export const SITE_SETTINGS: { to: string; label: string; description: string; section?: SectionKey }[] = [
+  { to: "banner", label: "Site banner", description: "The notice shown across the top of the public site.", section: "banner" },
+  { to: "footer", label: "Footer links", description: "The links in the public site's footer.", section: "footer" },
+  { to: "social", label: "Social links", description: "The social media accounts the public site links to.", section: "connect" },
+  { to: "theme", label: "Theme colours", description: "The public site's colours.", section: "theme" },
+  { to: "ministry-pages", label: "Ministry page headings", description: "The headings on each ministry's page.", section: "ministryPages" },
+  { to: "media-contacts", label: "Media contacts page", description: "The media contacts page and the contacts listed on it.", section: "contactsPage" },
+  { to: "page-text", label: "Page text", description: "Text on the public site's own pages, such as its not-found and empty messages.", section: "pageText" },
+  { to: "navigation", label: "Navigation and labels", description: "The public site's menu, and the labels on its links and buttons.", section: "navigation" },
+  { to: "identity", label: "Site identity", description: "The site description, the X account and the Project Blue Bridge banner wording.", section: "siteIdentity" },
   { to: "settings-history", label: "Settings history", description: "Every published revision of these settings, and restoring an earlier one." },
 ];
+
+/** The settings screen that edits `section`: its on-screen name and its address. */
+export function settingsScreenFor(section: SectionKey): { label: string; path: string } {
+  const screen = SITE_SETTINGS.find((s) => s.section === section)!;
+  return { label: screen.label, path: `/website/${screen.to}` };
+}
 
 /** Listed under "Restricted" on the Site settings index (and last in its page list). */
 export const BLUE_BRIDGE = { to: "blue-bridge", label: "Project Blue Bridge", description: "Its current state. Only Core administrators can turn it on or off, with a confirmation phrase." };

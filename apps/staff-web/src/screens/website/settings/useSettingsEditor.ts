@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SECTION_LABEL, type FieldError, type SectionKey, type SiteSettings } from "@gcpe/site-settings";
+import type { FieldError, SectionKey, SiteSettings } from "@gcpe/site-settings";
 import { ApiError } from "../../../api/client";
 import { useAnnouncer } from "../../../shared/Announcer";
+import { settingsScreenFor } from "../WebsiteScreen";
 import {
   discardSettingsDraft,
   getSettings,
@@ -20,8 +21,8 @@ export const DRAFT_DISCARDED = "Draft discarded. Showing what is live.";
 export const publishedStatus = (revision: number) => `Published revision ${revision}. Visitors see it within a few minutes.`;
 
 const LIST = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
-/** "Banner", "Banner and Theme", "Banner, Theme, and Footer". */
-export const sectionList = (keys: readonly SectionKey[]) => LIST.format(keys.map((k) => SECTION_LABEL[k]));
+/** The sections by their screens' names, as on screen: "Site banner", "Site banner and Theme colours", "Site banner, Theme colours, and Footer links". */
+export const sectionList = (keys: readonly SectionKey[]) => LIST.format(keys.map((k) => settingsScreenFor(k).label));
 
 /** The section a field error belongs to: `footer.moreInfoLinks[2].url` ⇒ `footer`. */
 export const sectionOfField = (field: string) => field.split(/[.[]/, 1)[0] as SectionKey;
@@ -39,6 +40,8 @@ export interface SettingsEditorOptions<K extends SectionKey, F> {
 }
 
 export interface SettingsEditor<F> {
+  /** The section this screen edits. */
+  section: SectionKey;
   state: SettingsState | null;
   loadError: string | null;
   /** The screen's form value; null until the first load. */
@@ -203,7 +206,7 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
       setConflict(null);
       const revision = next.live?.revision ?? next.baseRevision;
       const setAsideText = setAside.length > 0 ? ` Unpublished changes to ${sectionList(setAside)} were set aside.` : "";
-      say(`Your ${SECTION_LABEL[section].toLowerCase()} changes now build on revision ${revision}. Check them, then publish.${setAsideText}`, true);
+      say(`Your ${settingsScreenFor(section).label.toLowerCase()} changes now build on revision ${revision}. Check them, then publish.${setAsideText}`, true);
     });
   };
 
@@ -214,6 +217,7 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
 
   const prefix = `${section}.`;
   return {
+    section,
     state,
     loadError,
     value,
