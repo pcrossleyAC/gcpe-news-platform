@@ -82,11 +82,20 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
     setLookupId(next.activityId);
   };
 
-  // Fix round 1, finding 1: publishing follows the saved flag (publishOptions.toMediaLists), and an
-  // imported release can have lists ticked with it off. Any settings save sets it from the lists
-  // (saveSettings), so until then the section says so and counts as unsaved. Once a release has
-  // gone out it won't email the lists again anyway (workflow.ts), so then there's nothing to say.
-  const mediaFlagOff = rules.mediaListsAllowed && !view.publishOptions.toMediaLists && view.mediaListKeys.length > 0 && view.releasedAt === null;
+  // Fix round 1, finding 1: whether the media email goes out follows the saved flag
+  // (publishOptions.toMediaLists; NoD's items.ts and media-send.ts), and an imported release can
+  // have lists ticked with it off. Any settings save sets it from the lists (saveSettings). Only
+  // lists still offered count: a retired one gets nothing either way (fix round 2, finding 3).
+  // - Never released: the section says so and counts as unsaved, so Save turns it on.
+  // - Released before and now off the site (fix round 2, finding 2): republishing emails whoever
+  //   wasn't reached, and a save would turn it on for lists the old system may already have
+  //   emailed, so it's only said, never forced.
+  // - Live: a correction emails nobody, so there's nothing to say.
+  const activeTicked = view.mediaListKeys.filter((k) => lists.some((l) => l.key === k && l.isActive));
+  const onlyRetired = rules.mediaListsAllowed && view.mediaListKeys.length > 0 && activeTicked.length === 0 && view.mediaListKeys.every((k) => lists.some((l) => l.key === k && !l.isActive));
+  const flagOff = rules.mediaListsAllowed && !view.publishOptions.toMediaLists && activeTicked.length > 0 && !view.live;
+  const mediaFlagOff = flagOff && view.releasedAt === null;
+  const flagOffForRepublish = flagOff && view.releasedAt !== null;
   const dirty = !readOnly && (edited || mediaFlagOff);
   const plannedValue = form.planned;
   const setPlannedValue = (planned: ScheduleValue | null) => setForm((f) => ({ ...f, planned }));
@@ -114,7 +123,9 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           : plannedValue
             ? { plannedPublishAtLocal: plannedValue.local }
             : { plannedPublishAt: null }),
-        toSubscribers: form.toSubscribers,
+        // A type without News On Demand is refused `true` (saveSettings); an imported advisory can
+        // still carry legacy's bit (fix round 2, finding 1), so it's sent off. Nothing else changes.
+        toSubscribers: rules.nodAllowed ? form.toSubscribers : false,
         // The server sets this from the lists itself (saveSettings); sent to match.
         toMediaLists: form.mediaListKeys.length > 0,
         mediaListKeys: form.mediaListKeys,
@@ -199,7 +210,15 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           // to the ticked lists whatever such a box said (saveSettings), so the lists alone decide.
           <fieldset className="gcpe-options" aria-describedby="settings-media-lists-hint">
             <legend>Media distribution lists</legend>
-            {mediaFlagOff ? (
+            {onlyRetired ? (
+              <p id="settings-media-lists-hint" className="gcpe-options__wide gcpe-release-editor__media-warning">
+                {"The ticked lists are retired and won't get the media email."}
+              </p>
+            ) : flagOffForRepublish ? (
+              <p id="settings-media-lists-hint" className="gcpe-options__wide gcpe-release-editor__media-warning">
+                {"As saved, these lists won't get the media email when it's republished."}
+              </p>
+            ) : mediaFlagOff ? (
               <p id="settings-media-lists-hint" className="gcpe-options__wide gcpe-release-editor__media-warning">
                 {readOnly ? "As saved, these lists won't get the media email." : "As saved, these lists won't get the media email. Save Publish settings and they will."}
               </p>

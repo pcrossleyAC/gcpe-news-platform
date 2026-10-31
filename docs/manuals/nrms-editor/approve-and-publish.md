@@ -53,7 +53,7 @@ You can still change a scheduled release. What goes out is the release as saved 
 Set this in **Publish settings** before you publish.
 
 - **Send to News On Demand subscribers**: ticked for releases, unticked for stories and factsheets, and not available for advisories.
-- **Media distribution lists**: tick each list that should get the media email. With none ticked, no media email goes out. On a release brought over from the old system you may see "As saved, these lists won't get the media email. Save Publish settings and they will." **Publish settings** then says **Unsaved**: choose **Save changes** and the ticked lists get it. A retired list a release already had shows "(retired)" and gets nothing.
+- **Media distribution lists**: tick each list that should get the media email. With none ticked, no media email goes out. On a release brought over from the old system you may see "As saved, these lists won't get the media email. Save Publish settings and they will." **Publish settings** then says **Unsaved**: choose **Save changes** and the ticked lists get it. If that release went out before and is now off the site, it says "As saved, these lists won't get the media email when it's republished." instead, and nothing is marked unsaved: the old system may already have emailed those lists. A retired list a release already had shows "(retired)" and gets nothing; if only retired lists are ticked, the section says "The ticked lists are retired and won't get the media email."
 
 See [Who is emailed, and when it goes public](manual:editor-what-happens-next).
 
