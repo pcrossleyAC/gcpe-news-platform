@@ -13,7 +13,7 @@ topics: []
 
 ## Move the activities
 
-1. Choose **From comm contact**. Contacts who are no longer active, or whose account is inactive, are marked "— inactive".
+1. Choose **From comm contact**. Contacts who are no longer active, or whose account is inactive, are marked "— inactive". If you came from **Transfer their activities first** on a user's page, that person is already chosen when they are a comm contact for one ministry.
 2. Choose **To comm contact**. Only active contacts whose ministry can lead an activity are offered.
 3. Choose **Preview**. You see how many will move, such as "4 activities will move from Robin Example (HLTH) to Sam Example (FIN). Their lead ministry becomes Finance."
 4. Choose **Transfer 4 activities** (the button names the count). You see "Transferred 4 activities from Robin Example (HLTH) to Sam Example (FIN)."

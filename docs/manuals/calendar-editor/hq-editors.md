@@ -13,7 +13,7 @@ If none of your ministries is an HQ organization, nothing on this page applies t
 
 ## What HQ editors can do that ministry editors can't
 
-- See every ministry's activities. Other ministries' activities marked **Not for Look Ahead** stay hidden from you.
+- See every ministry's activities. Other ministries' activities marked **Confidential (not for Look Ahead)** stay hidden from you.
 - Add an activity for any active ministry, and change any activity you can see.
 - Keep working during the daily change freeze, 4pm to 5pm.
 - Save without **Summary**, **Significance** and **Scheduling considerations**: for you they are optional.
@@ -34,7 +34,7 @@ This sets **LA Status** back to **None** on activities marked **New** or **Chang
 3. Choose **Clear LA Status**. The Hub asks, for example, "Clear the LA status of 3 activities?" and explains "Every activity you can see that starts up to 8 days ahead, past ones included, loses its LA New or LA Changed status. Each change is recorded in the activity's history."
 4. Choose **Clear LA Status**. You see, for example, "Cleared the LA status of 3 activities."
 
-It clears only activities you can see, so it skips other ministries' activities marked **Not for Look Ahead**.
+It clears only activities you can see, so it skips other ministries' activities marked **Confidential (not for Look Ahead)**.
 
 With nothing to clear, you see, for example, "No activities up to 8 days ahead have an LA status to clear."
 
@@ -46,9 +46,9 @@ If you see "The LA status of 2 activities was cleared before a later batch faile
 
 These are for HQ advanced users, whose manual is the Calendar advanced user manual:
 
-- see other ministries' activities marked **Not for Look Ahead**;
+- see other ministries' activities marked **Confidential (not for Look Ahead)**;
 - **Review** an activity;
 - **Corporate Queries**, under **Saved views**;
-- the **Look Ahead filter** above the list.
+- the **Confidential filter** above the list.
 
 HQ administrators also review deletions, review many activities at once and make the **Exec Look Ahead** report. Deleting an activity is for Calendar administrators.

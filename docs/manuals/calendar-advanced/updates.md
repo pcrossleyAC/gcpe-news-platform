@@ -30,7 +30,7 @@ At most 1,000 updates show at once. "Showing the newest 1,000. Narrow the dates 
 
 - Changes from before the new Calendar started. Open the activity and choose **View changes**: older changes are marked "from legacy log".
 - Transfers between comm contacts, and **Clear LA Status**. Those show only on the activity's **View changes**.
-- Activities you can no longer see. When an activity is marked **Not for Look Ahead**, moved to another ministry or deleted, its updates leave the list for anyone who can't see it now.
+- Activities you can no longer see. When an activity is marked **Confidential (not for Look Ahead)**, moved to another ministry or deleted, its updates leave the list for anyone who can't see it now.
 - Changes to the **Look Ahead** fields, unless you see those fields. In an HQ organization you do.
 
 ## Can't do this?

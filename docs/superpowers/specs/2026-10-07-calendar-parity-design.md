@@ -482,14 +482,13 @@ The Calendar section is part of `apps/staff-web` under `/hub/calendar`. It has t
 
 ### 8.2 Editor (`Activity.aspx`, `Activity.aspx.cs`, `Scripts/activityhelper.ts`)
 
-One page with legacy's fieldsets, in legacy's order:
-- **Overview:** Category, Not for Look Ahead, Title, Summary, Issue, Significance, Lead Organization, HQ Initiatives & Leads, HQ Tags.
+One page with legacy's fieldsets and fields. **Amended 2026-10-30 (owner: "parity in functionality, not parity in the non-sensical stuff too!"; C307):** legacy's order is kept only where it works down the page. Nothing may depend on a field further down, so Ministry now comes before Planning, All Day and Dates Confirmed before the times, and Look Ahead after Event. Legacy's order was Overview, Planning, Ministry, Look Ahead, Schedule, Release, Event, Records, with All Day and Dates Confirmed after the times. The order is now:
+- **Overview:** Category, Confidential (not for Look Ahead; legacy's "Not for Look Ahead" label, C307), Title, Summary, Issue, Significance, Lead Organization, HQ Initiatives & Leads, HQ Tags.
+- **Ministry:** Lead Ministry, Cross-Government, Shared With (every active ministry minus the excludes; saving replaces the whole set). Before Planning, because Comm Contact offers only the lead ministry's contacts.
 - **Planning:** Comm Contact, Key activity, Strategy, Comm Materials, Internal notes.
-- **Ministry:** Lead Ministry, Cross-Government, Shared With (every active ministry minus the excludes; saving replaces the whole set).
-- **Look Ahead:** Executive Summary, LA Status, LA Section with inferred value and override, Long Term Outlook. Shown per §6.
 - **Schedule:**
+  - All Day, Dates Confirmed, before the times All Day hides;
   - Start and End date and time in 5-minute steps, defaulting to 8:00 AM–6:00 PM;
-  - All Day, Dates Confirmed;
   - **Potential Dates**, now shown (C136);
   - Scheduling considerations.
 - **Release:**
@@ -497,6 +496,7 @@ One page with legacy's fieldsets, in legacy's order:
   - "BC Gov News", the linked releases (§11).
   - The fieldset is hidden for the categories legacy hides it for (`activityhelper.ts:170-196`).
 - **Event:** Premier Requested, Representative, At BC Legislature, City, Other City (when City is "Other…"), Venue, Event Planner, Digital.
+- **Look Ahead:** Executive Summary, LA Status, LA Section with inferred value and override, Long Term Outlook. Shown per §6. After every field the section is inferred from (category, Issue, confidential, lead ministry, comm materials, dates confirmed, start and end dates); the hint names them.
 - **Records:** attachments (§8.4). Shown only when `ShowRecordsSection` is on, whatever files the activity has, as legacy (`Activity.aspx.cs:261-262` hides the section whenever the switch is off; Q51). With the switch on, the section stays after its last file is removed.
 
 **Behaviour:**

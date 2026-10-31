@@ -16,7 +16,7 @@ You keep your ministry's activities in the Corporate Calendar up to date. The Co
 Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.
 
 - **In a ministry:** you see your ministries' activities and the activities shared with them. You add and change your ministries' activities.
-- **In an HQ organization:** you see every ministry's activities, except other ministries' ones marked **Not for Look Ahead**. You add and change any ministry's activities you can see. As an HQ editor, the daily change freeze doesn't stop you. See [If you are an HQ editor](manual:calendar-editor-hq).
+- **In an HQ organization:** you see every ministry's activities, except other ministries' ones marked **Confidential (not for Look Ahead)**. You add and change any ministry's activities you can see. As an HQ editor, the daily change freeze doesn't stop you. See [If you are an HQ editor](manual:calendar-editor-hq).
 
 ## What you can do that read-only users can't
 
@@ -40,7 +40,7 @@ Ask a Calendar administrator to:
 - change the choices offered on activities, such as categories, cities and HQ tags;
 - move activities from one comm contact to another.
 
-Reviewing activities, corporate queries and the **Look Ahead filter** are for HQ advanced users. Their manual is the Calendar advanced user manual. Calendar administrators have the Calendar administrator manual.
+Reviewing activities, corporate queries and the **Confidential filter** are for HQ advanced users. Their manual is the Calendar advanced user manual. Calendar administrators have the Calendar administrator manual.
 
 ## Your help pages
 
@@ -59,7 +59,7 @@ Reviewing activities, corporate queries and the **Look Ahead filter** are for HQ
 
 - Its lead ministry, and every ministry ticked in **Shared With**, see it.
 - HQ organizations see every ministry's activities.
-- An activity marked **Not for Look Ahead** is seen only by its lead and shared ministries, and by HQ advanced users and HQ administrators. HQ editors don't see other ministries' ones.
+- An activity marked **Confidential (not for Look Ahead)** is seen only by its lead and shared ministries, and by HQ advanced users and HQ administrators. HQ editors don't see other ministries' ones.
 - Only the lead ministry and HQ can change an activity. A ministry it is only shared with can open it but not change it.
 - A deleted activity leaves the Calendar for everyone except HQ administrators.
 

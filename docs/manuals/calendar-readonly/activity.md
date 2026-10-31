@@ -9,7 +9,9 @@ topics: []
 ---
 **Who this is for:** Calendar read-only users (Calendar.ReadOnly).
 
-Open an activity by choosing its title in the list or the calendar, or its number on **Updates**. It says "You can view this activity but not change it." Every field is read-only, and each checklist shows only what is ticked, or "None".
+Open an activity by choosing its title in the list or the calendar, or its number on **Updates**. It says "You can view this activity but not change it." Every field is read-only, and each checklist shows only what is ticked, or "None". An empty choice also reads "None". Nothing is marked "(required)", since you can't change it.
+
+The sections are **Overview**, **Ministry**, **Planning**, **Schedule**, **Release** and **Event**.
 
 Under the heading you see its status (**New**, **Changed** or **Reviewed**), when it was last updated and by whom. A "?" beside a field explains it.
 
@@ -43,5 +45,5 @@ The star beside **View changes** adds the activity to your watchlist. See [The a
 
 | Message | What it means |
 |---|---|
-| "It doesn't exist, or you can't see it." (under "Activity not found") | Check the number. The activity may be led by a ministry you're not in, it may have been deleted, or, if you are in an HQ organization, another ministry may have marked it **Not for Look Ahead**. This is also what you see if you open an old link to an activity you can no longer see. Choose **Back to the Calendar**. |
+| "It doesn't exist, or you can't see it." (under "Activity not found") | Check the number. The activity may be led by a ministry you're not in, it may have been deleted, or, if you are in an HQ organization, another ministry may have marked it **Confidential (not for Look Ahead)**. This is also what you see if you open an old link to an activity you can no longer see. Choose **Back to the Calendar**. |
 | "Couldn't load this activity." | Reload the page. |

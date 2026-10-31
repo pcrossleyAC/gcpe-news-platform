@@ -36,7 +36,7 @@ One report is prepared at a time. If you leave the page before it downloads, mak
 ## If you are in an HQ organization
 
 - Your Look Ahead puts each activity in its **LA Section**, shows its **Executive Summary** when it has one, and flags it NEW or CHANGED from its **LA Status**. Its Long Term Outlook lists only activities ticked **Long Term Outlook**.
-- A corporate query or the **Look Ahead filter** also narrows the reports.
+- A corporate query or the **Confidential filter** also narrows the reports.
 - The **Exec Look Ahead** report is for HQ Administrators. You don't see it.
 
 ## Can't do this?
