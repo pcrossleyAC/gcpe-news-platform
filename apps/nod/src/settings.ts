@@ -168,7 +168,16 @@ export async function setPaused<R>(
       .where(and(eq(nodSettings.id, 1), ne(nodSettings.paused, paused)))
       .returning({ id: nodSettings.id });
     if (!row) return null; // already in the requested state -- no log, no email
-    if (countReleased) released = await countReleased(tx);
+    // In a savepoint, and never fatal: resuming matters more than the number (a failed query
+    // would otherwise abort this transaction and with it the resume).
+    if (countReleased) {
+      try {
+        released = await tx.transaction((sp) => countReleased(sp));
+      } catch (e) {
+        console.error("[nod] resume: couldn't count the held email it released", safeErrorLabel(e));
+        released = null;
+      }
+    }
     return writeOpsLog(tx, actor, action);
   });
   if (!logged) return { changed: false, released: null };

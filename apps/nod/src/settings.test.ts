@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
@@ -73,6 +73,19 @@ describe("settings", () => {
     expect(again).toEqual({ changed: false, released: null });
     expect(await tdb.db.select().from(operationsLog)).toHaveLength(1);
     expect(distribution.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("resume still happens when counting what it releases fails: no count, setting and log stand", async () => {
+    await tdb.pool.query("UPDATE nod_settings SET paused = true");
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const distribution = stubDistribution();
+    // A failing query, as a real count failure would be: it must not abort the resume's transaction.
+    const result = await setPaused(deps({ distribution }), false, "Jamie Admin", (tx) => tx.execute(sql`SELECT * FROM no_such_table`));
+    expect(result).toEqual({ changed: true, released: null });
+    expect((await tdb.db.select().from(nodSettings))[0]!.paused).toBe(false);
+    expect((await tdb.db.select().from(operationsLog)).map((l) => l.action)).toEqual(["resumed"]);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("resume: sets paused false, writes one operations_log row and sends one ops email; a repeat resume changes nothing", async () => {
