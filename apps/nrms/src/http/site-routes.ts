@@ -22,6 +22,8 @@ import {
   setPinned,
   setSlideImage,
   slideImage,
+  SLIDE_IMAGE_UPLOAD,
+  stageSlideImage,
   type PinSlot,
 } from "../website/carousel";
 import { MAX_SITE_IMAGE_BYTES, type SlideImageFiles } from "../website/slide-images";
@@ -95,7 +97,8 @@ const saveCarouselSchema = z
     version: z.number().int().positive(),
     goLiveAt: dateish.optional(),
     goLiveAtLocal: localDateTime.optional(),
-    slides: z.array(slideInputSchema),
+    // Audit #9: a slide may name an image staged by POST /site/slide-images, set by this save.
+    slides: z.array(slideInputSchema.extend({ imageUpload: z.string().regex(SLIDE_IMAGE_UPLOAD).optional() })),
   })
   .refine((v) => !(v.goLiveAt !== undefined && v.goLiveAtLocal !== undefined), {
     message: "Provide at most one of goLiveAt or goLiveAtLocal.",
@@ -262,6 +265,13 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     }),
   );
 
+  // Audit #9: stages a slide image for the next carousel save (nothing public changes until then).
+  r.post(
+    "/site/slide-images",
+    edit,
+    rawImage,
+    run(async (req, res) => void res.status(201).json(await stageSlideImage(slideFiles, bytesOf(req)))),
+  );
   r.put(
     "/site/slides/:id/image",
     edit,

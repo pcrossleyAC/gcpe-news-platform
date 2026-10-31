@@ -21,6 +21,7 @@ import {
   setPinned,
   setSlideImage,
   slideImage,
+  stageSlideImage,
   switchCarousels,
   type SlideInput,
 } from "./carousel";
@@ -93,6 +94,13 @@ describe("home-page carousel", () => {
     await saveCarousel(tdb.db, next.id, { version: next.version, slides }, editor, subs, TZ, files);
     await makeNextLive(tdb.db, editor, subs, files);
     return next.id;
+  };
+
+  /** Sets live slide images the way the Hub now does (audit #9): staged, then set by the carousel's save. */
+  const setLiveImages = async (images: (Buffer | undefined)[]): Promise<void> => {
+    const { live } = await getCarousels(tdb.db);
+    const uploads = await Promise.all(images.map((b) => (b ? stageSlideImage(files, b).then((r) => r.upload) : undefined)));
+    await saveCarousel(tdb.db, live!.id, { version: live!.version, slides: live!.slides.map((sl, i) => ({ ...sl, ...(uploads[i] ? { imageUpload: uploads[i] } : {}) })) }, editor, subs, TZ, files);
   };
 
   it("1. createNextCarousel copies the live slides (new ids) and refuses a second next carousel", async () => {
@@ -312,13 +320,13 @@ describe("home-page carousel", () => {
     expect(ev!.data.slides!.some((s) => s.headline === "Alert")).toBe(true);
   });
 
-  it("9. setSlideImage with HTML bytes → SiteRuleError; with a PNG → hasImage true and a content-addressed URL in the next emitted snapshot, imageBase64 null", async () => {
+  it("9. a slide image with HTML bytes → SiteRuleError; with a PNG → hasImage true and a content-addressed URL in the next emitted snapshot, imageBase64 null", async () => {
     await seedLiveCarousel([slide("Img")]);
     const { live } = await getCarousels(tdb.db);
     const slideId = live!.slides[0]!.id;
-    await expect(setSlideImage(tdb.db, slideId, HTML, editor, subs, files)).rejects.toThrow(/JPEG or PNG/i);
+    await expect(stageSlideImage(files, HTML)).rejects.toThrow(/JPEG or PNG/i);
 
-    await setSlideImage(tdb.db, slideId, PNG, editor, subs, files);
+    await setLiveImages([PNG]);
     const { live: reloaded } = await getCarousels(tdb.db);
     expect(reloaded!.slides[0]!.hasImage).toBe(true);
     // This is the staff-facing authenticated route, distinct from the public imageUrl below.
@@ -330,6 +338,91 @@ describe("home-page carousel", () => {
     expect(ev!.data.slides![0]!.imageUrl).toBe(`/files/slides/${sha}.png`);
     expect(ev!.data.slides![0]!.imageSha256).toBe(sha);
     expect((await store.get(`slides/${sha}.png`))!.bytes.equals(PNG)).toBe(true);
+  });
+
+  describe("audit #9: a slide's image goes with the carousel's save", () => {
+    const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+
+    it("staging an image stores its file but changes nothing public and logs nothing", async () => {
+      await seedLiveCarousel([slide("Live")]);
+      const events = await slidesEventCount();
+      const log = await lastLog();
+      const { upload } = await stageSlideImage(files, PNG);
+      expect(upload).toBe(`${sha(PNG)}.png`);
+      expect((await store.get(`slides/${sha(PNG)}.png`))!.bytes.equals(PNG)).toBe(true);
+      expect(await slidesEventCount()).toBe(events);
+      expect(await lastLog()).toEqual(log);
+      const { live } = await getCarousels(tdb.db);
+      expect(live!.slides[0]!.hasImage).toBe(false);
+    });
+
+    it("staging refuses a file that isn't a JPEG or PNG", async () => {
+      await expect(stageSlideImage(files, HTML)).rejects.toThrow(SiteRuleError);
+    });
+
+    it("a new slide on the live carousel publishes with its image in one change", async () => {
+      const liveId = await seedLiveCarousel([slide("Old")]);
+      const { live } = await getCarousels(tdb.db);
+      const { upload } = await stageSlideImage(files, PNG);
+      const events = await slidesEventCount();
+      const saved = await saveCarousel(tdb.db, liveId, { version: live!.version, slides: [{ ...slide("Old"), id: live!.slides[0]!.id }, slide("New", { imageUpload: upload })] }, editor, subs, TZ, files);
+      expect(saved.slides.map((s) => [s.headline, s.hasImage])).toEqual([["Old", false], ["New", true]]);
+      expect(await slidesEventCount()).toBe(events + 1);
+      const ev = await lastSlidesEvent();
+      expect(ev!.data.slides![1]!.headline).toBe("New");
+      expect(ev!.data.slides![1]!.imageKey).toBe(`slides/${sha(PNG)}.png`);
+      expect((await slideImage(tdb.db, saved.slides[1]!.id))!.bytes.equals(PNG)).toBe(true);
+    });
+
+    it("an image change on a live slide waits for the carousel's save", async () => {
+      const liveId = await seedLiveCarousel([slide("Live")]);
+      const { live } = await getCarousels(tdb.db);
+      const { upload } = await stageSlideImage(files, PNG);
+      const saved = await saveCarousel(tdb.db, liveId, { version: live!.version, slides: [{ ...slide("Live"), id: live!.slides[0]!.id, imageUpload: upload }] }, editor, subs, TZ, files);
+      expect(saved.slides[0]!.hasImage).toBe(true);
+      expect((await lastSlidesEvent())!.data.slides![0]!.imageKey).toBe(`slides/${sha(PNG)}.png`);
+    });
+
+    it("a slide saved without imageUpload keeps its image", async () => {
+      const liveId = await seedLiveCarousel([slide("Live")]);
+      const { live } = await getCarousels(tdb.db);
+      const { upload } = await stageSlideImage(files, PNG);
+      const once = await saveCarousel(tdb.db, liveId, { version: live!.version, slides: [{ ...slide("Live"), id: live!.slides[0]!.id, imageUpload: upload }] }, editor, subs, TZ, files);
+      const twice = await saveCarousel(tdb.db, liveId, { version: once.version, slides: [{ ...slide("Live again"), id: once.slides[0]!.id }] }, editor, subs, TZ, files);
+      expect(twice.slides[0]!.hasImage).toBe(true);
+    });
+
+    it("an upload that isn't in the store, or isn't a JPEG or PNG under 2 MB, is refused and nothing is saved", async () => {
+      const liveId = await seedLiveCarousel([slide("Live")]);
+      const { live } = await getCarousels(tdb.db);
+      const events = await slidesEventCount();
+      const missing = `${"0".repeat(64)}.png`;
+      await expect(saveCarousel(tdb.db, liveId, { version: live!.version, slides: [slide("New", { imageUpload: missing })] }, editor, subs, TZ, files)).rejects.toThrow(/choose slide 1.s image again/i);
+      // Bytes under a slides/ key that don't match their name (or aren't an image) are refused too.
+      await store.put(`slides/${"1".repeat(64)}.png`, HTML, "image/png");
+      await expect(saveCarousel(tdb.db, liveId, { version: live!.version, slides: [slide("New", { imageUpload: `${"1".repeat(64)}.png` })] }, editor, subs, TZ, files)).rejects.toThrow(SiteRuleError);
+      const big = Buffer.concat([PNG, Buffer.alloc(MAX_SITE_IMAGE_BYTES)]);
+      await store.put(`slides/${sha(big)}.png`, big, "image/png");
+      await expect(saveCarousel(tdb.db, liveId, { version: live!.version, slides: [slide("New", { imageUpload: `${sha(big)}.png` })] }, editor, subs, TZ, files)).rejects.toThrow(/2 MB/);
+      expect(await slidesEventCount()).toBe(events);
+      expect((await getCarousels(tdb.db)).live!.slides.map((s) => s.headline)).toEqual(["Live"]);
+    });
+
+    it("setSlideImage no longer changes a live slide straight away: it's refused and nothing is emitted", async () => {
+      await seedLiveCarousel([slide("Live")]);
+      const { live } = await getCarousels(tdb.db);
+      const events = await slidesEventCount();
+      await expect(setSlideImage(tdb.db, live!.slides[0]!.id, PNG, editor, subs, files)).rejects.toThrow(SiteConflictError);
+      expect(await slidesEventCount()).toBe(events);
+      expect((await getCarousels(tdb.db)).live!.slides[0]!.hasImage).toBe(false);
+    });
+
+    it("setSlideImage still sets a next carousel's slide image", async () => {
+      const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
+      const saved = await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("N")] }, editor, subs, TZ, files);
+      await setSlideImage(tdb.db, saved.slides[0]!.id, PNG, editor, subs, files);
+      expect((await getCarousels(tdb.db)).next!.slides[0]!.hasImage).toBe(true);
+    });
   });
 
   it("10. a past carousel can't be saved", async () => {
@@ -418,15 +511,16 @@ describe("home-page carousel", () => {
   // writing the image, so it can't race a concurrent switch-over and have its write land after
   // the switch has already read (and emitted) the slides without it.
   it("setSlideImage blocks until a concurrent lock on its carousel row is released (minor 3)", async () => {
-    await seedLiveCarousel([slide("Img")]);
-    const { live } = await getCarousels(tdb.db);
-    const slideId = live!.slides[0]!.id;
+    // A next carousel's slide: the race is with the switch-over that makes it live.
+    const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
+    const live = await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("Img")] }, editor, subs, TZ, files);
+    const slideId = live.slides[0]!.id;
 
     const client = await tdb.pool.connect();
     let settled = false;
     try {
       await client.query("BEGIN");
-      await client.query("SELECT id FROM carousels WHERE id = $1 FOR UPDATE", [live!.id]);
+      await client.query("SELECT id FROM carousels WHERE id = $1 FOR UPDATE", [live.id]);
 
       const setPromise = setSlideImage(tdb.db, slideId, PNG, editor, subs, files).then(() => {
         settled = true;
@@ -443,7 +537,7 @@ describe("home-page carousel", () => {
     } finally {
       client.release();
     }
-    const { live: reloaded } = await getCarousels(tdb.db);
+    const { next: reloaded } = await getCarousels(tdb.db);
     expect(reloaded!.slides[0]!.hasImage).toBe(true);
   });
 
@@ -460,11 +554,7 @@ describe("home-page carousel", () => {
 
     it("ten 2 MB slide images save, and the slides event stays small", async () => {
       await seedLiveCarousel(Array.from({ length: 10 }, (_, i) => slide(`S${i}`)));
-      const { live } = await getCarousels(tdb.db);
-
-      for (const s of live!.slides) {
-        await setSlideImage(tdb.db, s.id, bigImage(MAX_SITE_IMAGE_BYTES), editor, subs, files);
-      }
+      await setLiveImages(Array.from({ length: 10 }, () => bigImage(MAX_SITE_IMAGE_BYTES)));
 
       expect(await lastEnvelopeBytes()).toBeLessThan(10 * 1024);
 
@@ -480,13 +570,10 @@ describe("home-page carousel", () => {
 
     it("two slides with the same image share one file", async () => {
       await seedLiveCarousel([slide("A"), slide("B")]);
-      const { live } = await getCarousels(tdb.db);
-      const [a, b] = live!.slides;
       const bytes = bigImage(2048);
       const before = await store.list("slides/");
 
-      await setSlideImage(tdb.db, a!.id, bytes, editor, subs, files);
-      await setSlideImage(tdb.db, b!.id, bytes, editor, subs, files);
+      await setLiveImages([bytes, bytes]);
 
       const ev = await lastSlidesEvent();
       expect(ev!.data.slides![0]!.imageKey).toBe(ev!.data.slides![1]!.imageKey);

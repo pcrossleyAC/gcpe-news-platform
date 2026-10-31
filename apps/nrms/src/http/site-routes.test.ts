@@ -201,6 +201,34 @@ describe("NRMS site HTTP API", () => {
     await request(app).delete(`/api/site/carousels/next?version=${saved.body.version}`).set("cookie", siteEditorCookie).set("x-gcpe-request", "1");
   });
 
+  it("audit #9: POST /site/slide-images stages an image (201, upload name), refuses over 2 MB (413), a non-image (422) and a viewer (403); the carousel PUT sets it", async () => {
+    const stage = (body: Buffer, cookie = siteEditorCookie) =>
+      request(app).post("/api/site/slide-images").set("cookie", cookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream").send(body);
+    expect((await stage(Buffer.alloc(3 * 1024 * 1024, 1))).status).toBe(413);
+    const html = await stage(Buffer.from("<html></html>"));
+    expect(html.status).toBe(422);
+    expect(html.body.errors).toEqual(["Upload a JPEG or PNG image."]);
+    expect((await stage(PNG, viewerCookie)).status).toBe(403);
+    expect((await stage(PNG, editorOnlyCookie)).status).toBe(403);
+    const staged = await stage(PNG);
+    expect(staged.status).toBe(201);
+    expect(staged.body.upload).toMatch(/^[0-9a-f]{64}\.png$/);
+
+    const created = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAt: future() });
+    const bad = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, {
+      version: created.body.version,
+      slides: [{ headline: "H1", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", imageUpload: "../secret.png" }],
+    });
+    expect(bad.status).toBe(400);
+    const saved = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, {
+      version: created.body.version,
+      slides: [{ headline: "H1", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", imageUpload: staged.body.upload }],
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.slides[0]).toMatchObject({ headline: "H1", hasImage: true });
+    await request(app).delete(`/api/site/carousels/next?version=${saved.body.version}`).set("cookie", siteEditorCookie).set("x-gcpe-request", "1");
+  });
+
   it("a cookie-authenticated write without x-gcpe-request is refused with 403", async () => {
     const res = await request(app).post("/api/site/carousels/next").set("cookie", siteEditorCookie).send({ goLiveAt: future() });
     expect(res.status).toBe(403);

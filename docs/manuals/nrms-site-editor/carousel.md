@@ -34,12 +34,12 @@ Leave **Action label** empty to use the standard link words, set on [Navigation 
 
 ## Add or change a slide's image
 
-Use a JPEG or PNG image of up to 2 MB.
+Use a JPEG or PNG image of up to 2 MB. Any slide can take an image, including one you have just added.
 
-1. Choose the slide's **Image (JPEG or PNG, up to 2 MB)** button and pick the file.
-2. The image appears beside the slide.
+1. Choose the slide's **Image (JPEG or PNG, up to 2 MB)** button and pick the file. The slide says "New image chosen:" and the file's name.
+2. On a live slide, choose **Publish carousel changes**, then confirm. The image goes live with your other changes. On the next carousel, choose **Save carousel**.
 
-On a live slide, the new image goes live without **Publish carousel changes**, within a few minutes. A new slide gets its image box only after it is published or saved: the slide shows "Publish the carousel changes to add this slide's image."
+Until then, the slide keeps the image it had.
 
 ## Prepare the next slides
 
@@ -68,4 +68,5 @@ To throw the next slides away, choose **Delete next carousel**, then **Confirm d
 | "Choose a go-live time in the future." | The go-live time has already passed. |
 | "Upload a JPEG or PNG image." | The file isn't a JPEG or PNG image. |
 | "That image is over 2 MB. Choose a smaller image." | Make the image smaller and try again. |
+| "Choose slide 2’s image again." | The image you chose for that slide wasn't kept. Pick the file again, then publish or save. |
 | "Someone else changed this — reload to see their changes." | Another site editor saved these slides while you had the page open. Choose **Reload**. Your unsaved changes are lost, so make them again. |

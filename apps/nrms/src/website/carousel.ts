@@ -10,7 +10,7 @@ import type { Actor } from "../releases/store";
 import { SYSTEM_ACTOR } from "../releases/store";
 import { formatBcDateTime, parseLocalDateTime } from "../releases/workflow";
 import { emitSite, writeSiteLog } from "./events";
-import { publishSlideImage, type SlideImageFiles } from "./slide-images";
+import { MAX_SITE_IMAGE_BYTES, publishSlideImage, slideImageRef, type SlideImageFiles } from "./slide-images";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
 
 /**
@@ -59,6 +59,9 @@ export interface SlideInput {
   actionLabel?: string | undefined;
   facebookPostUrl: string;
   justify: Justify;
+  /** An image staged by {@link stageSlideImage} (its `upload`), set on this slide by this save.
+   * Omitted = keep the slide's current image. */
+  imageUpload?: string | undefined;
 }
 
 export interface PinInput {
@@ -221,10 +224,45 @@ export async function createNextCarousel(
   });
 }
 
+/** The `upload` a staged slide image is named by: its content-addressed file under `slides/`. */
+export const SLIDE_IMAGE_UPLOAD = /^[0-9a-f]{64}\.(png|jpg)$/;
+
 /**
- * Replaces a carousel's slide list in the given order. Existing ids keep their image; an
- * unknown id is refused. Past carousels are read-only. Saving the live carousel emits a
- * `slides` snapshot; saving the next carousel doesn't (nothing public changed).
+ * Audit #9 (owner decision 2026-10-31): a slide's image is chosen first and set by the carousel's
+ * own save, so a new slide can have its image before it is published, and an image change on the
+ * live carousel goes through the same Publish confirmation as its text. Staging writes the file
+ * the image will be served from (content-addressed, so not findable without its hash, exactly as
+ * a next carousel's image already is) and changes no slide, emits nothing and logs nothing.
+ */
+export async function stageSlideImage(files: SlideImageFiles, bytes: Buffer): Promise<{ upload: string }> {
+  const mimeType = await checkImageBytes(bytes);
+  await publishSlideImage(files, bytes, mimeType);
+  return { upload: slideImageRef(files, bytes, mimeType).imageKey.slice("slides/".length) };
+}
+
+/** Reads back each slide's staged image (by position), re-checking it as an upload is checked:
+ * a JPEG or PNG, within the 2 MB cap, stored under its own content hash. */
+async function stagedImages(files: SlideImageFiles, slides: SlideInput[]): Promise<({ bytes: Buffer; mimeType: "image/png" | "image/jpeg" } | undefined)[]> {
+  return Promise.all(
+    slides.map(async (s, i) => {
+      if (s.imageUpload === undefined) return undefined;
+      const again = [`Choose slide ${i + 1}’s image again.`];
+      if (!SLIDE_IMAGE_UPLOAD.test(s.imageUpload)) throw new SiteRuleError(again);
+      const stored = await files.store.get(`slides/${s.imageUpload}`);
+      if (!stored) throw new SiteRuleError(again);
+      if (stored.bytes.length > MAX_SITE_IMAGE_BYTES) throw new SiteRuleError([`Slide ${i + 1}’s image is over 2 MB. Choose a smaller image.`]);
+      const mimeType = await checkImageBytes(stored.bytes);
+      if (slideImageRef(files, stored.bytes, mimeType).imageKey !== `slides/${s.imageUpload}`) throw new SiteRuleError(again);
+      return { bytes: stored.bytes, mimeType };
+    }),
+  );
+}
+
+/**
+ * Replaces a carousel's slide list in the given order. Existing ids keep their image unless the
+ * slide names a staged `imageUpload`; an unknown id is refused. Past carousels are read-only.
+ * Saving the live carousel emits one `slides` snapshot (text and images together); saving the
+ * next carousel doesn't (nothing public changed).
  */
 export async function saveCarousel(
   db: Db,
@@ -235,6 +273,8 @@ export async function saveCarousel(
   timeZone: string,
   files: SlideImageFiles,
 ): Promise<CarouselView> {
+  for (const s of input.slides) checkActionLabel(s.actionLabel ?? "");
+  const images = await stagedImages(files, input.slides);
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(carousels).where(eq(carousels.id, id)).for("update");
     if (!row) throw new SiteNotFoundError("carousel not found");
@@ -244,7 +284,6 @@ export async function saveCarousel(
     const goLiveAt = changingGoLiveAt ? resolveGoLiveAt(input, timeZone) : undefined;
     if (goLiveAt !== undefined) await assertFutureGoLiveAt(tx, goLiveAt);
 
-    for (const s of input.slides) checkActionLabel(s.actionLabel ?? "");
     const existingSlides = await tx.select().from(websiteSlides).where(eq(websiteSlides.carouselId, id));
     const existingIds = new Set(existingSlides.map((s) => s.id));
     const keepIds = new Set<string>();
@@ -259,13 +298,15 @@ export async function saveCarousel(
 
     for (let i = 0; i < input.slides.length; i++) {
       const s = input.slides[i]!;
+      const staged = images[i];
+      const image = staged ? { image: staged.bytes, imageType: staged.mimeType } : {};
       if (s.id) {
         await tx
           .update(websiteSlides)
-          .set({ sortIndex: i, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, ...(s.actionLabel !== undefined ? { actionLabel: s.actionLabel.trim() } : {}), facebookPostUrl: s.facebookPostUrl, justify: s.justify, updatedAt: sql`now()` })
+          .set({ sortIndex: i, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, ...(s.actionLabel !== undefined ? { actionLabel: s.actionLabel.trim() } : {}), facebookPostUrl: s.facebookPostUrl, justify: s.justify, ...image, updatedAt: sql`now()` })
           .where(eq(websiteSlides.id, s.id));
       } else {
-        await tx.insert(websiteSlides).values({ carouselId: id, sortIndex: i, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, actionLabel: (s.actionLabel ?? "").trim(), facebookPostUrl: s.facebookPostUrl, justify: s.justify });
+        await tx.insert(websiteSlides).values({ carouselId: id, sortIndex: i, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, actionLabel: (s.actionLabel ?? "").trim(), facebookPostUrl: s.facebookPostUrl, justify: s.justify, ...image });
       }
     }
 
@@ -287,7 +328,12 @@ export async function checkImageBytes(bytes: Buffer): Promise<"image/png" | "ima
   return type;
 }
 
-/** Sets a carousel slide's image. Emits a `slides` snapshot when the slide belongs to the live carousel. */
+/**
+ * Sets a next carousel's slide image straight away (nothing public changes). A live slide's image
+ * is refused here: it changes only through the carousel's save (`imageUpload`), which the Hub
+ * puts behind its Publish confirmation (audit #9) — this keeps an older open Hub tab, or a direct
+ * call, from putting an image live without it.
+ */
 export async function setSlideImage(db: Db, slideId: string, bytes: Buffer, actor: Actor, subs: SubscriberConfig[], files: SlideImageFiles): Promise<void> {
   const mimeType = await checkImageBytes(bytes);
   // The file must exist before any event names it; writing it ahead of the transaction means a
@@ -301,9 +347,9 @@ export async function setSlideImage(db: Db, slideId: string, bytes: Buffer, acto
     // can't race a concurrent switch-over — without the lock, the switch could read (and emit)
     // the slides before this write lands, permanently missing the image from that snapshot.
     const [carousel] = await tx.select({ state: carousels.state }).from(carousels).where(eq(carousels.id, slide.carouselId)).for("update");
+    if (carousel?.state === "live") throw new SiteConflictError("Images on the live carousel go live with the carousel changes. Reload the page, choose the image again, then publish the carousel changes.");
     await tx.update(websiteSlides).set({ image: bytes, imageType: mimeType, updatedAt: sql`now()` }).where(eq(websiteSlides.id, slideId));
     await writeSiteLog(tx, actor, "carousel", "Updated a slide's image", slide.carouselId);
-    if (carousel?.state === "live") await emitSite(tx, subs, "slides", files);
   });
 }
 
