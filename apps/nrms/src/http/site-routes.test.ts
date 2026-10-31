@@ -641,6 +641,8 @@ describe("NRMS site settings HTTP API", () => {
     const res = await w("post", `${S}/rebase`, siteEditor, { section: "banner", value: banner("Mine") });
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ baseRevision: 1, alsoChangedByThem: [] });
+    // N3: for one release, old open Hub tabs still find setAside (now always empty).
+    expect(res.body.setAside).toEqual([]);
     expect(res.body.document.banner.message).toBe("Mine");
   });
 

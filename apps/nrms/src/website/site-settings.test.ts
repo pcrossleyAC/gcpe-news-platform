@@ -495,6 +495,65 @@ describe("website/site-settings", () => {
       expect(state.document.footer.copyrightHolder).toBe("Jane's holder");
     });
 
+    it("N1: publishing the same screen twice from a stale draft isn't a conflict with my own publish; someone else then changing it is", async () => {
+      await publishBanner(editor, "Live");
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: "Jane's holder" } });
+      expect(await publishSettings(tdb.db, sam, defaults, subs, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: "Sam's holder" } })).toMatchObject({ revision: 2 });
+      expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Urgent"), onlySection: true })).toEqual({ result: "published", revision: 3 });
+      // Both changed the footer, so the draft stays on its old base…
+      const base = (await getSettingsState(tdb.db, jane, defaults)).baseRevision;
+      expect(base).toBe(1);
+      // …and a typo fix on the banner still publishes.
+      expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: base, section: "banner", value: banner("Urgent, fixed"), onlySection: true })).toEqual({ result: "published", revision: 4 });
+      // Sam then changes the banner: now it is a conflict, and nothing is written.
+      await publishBanner(sam, "Sam's banner");
+      const result = await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: base, section: "banner", value: banner("Jane again"), onlySection: true });
+      expect(result).toMatchObject({ result: "conflict", live: { revision: 5, publishedBy: "Sam Editor" }, differing: ["banner"] });
+      expect(await revisionCount()).toBe(5);
+    });
+
+    it("N1: from a stale draft whose other changes don't overlap theirs, the draft is re-based on the new revision and keeps my changes", async () => {
+      await publishBanner(editor, "Live");
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: "Jane's holder" } });
+      const samTheme = { ...defaults.theme, colors: { ...defaults.theme.colors, accent: "#AA5500" } };
+      expect(await publishSettings(tdb.db, sam, defaults, subs, { baseRevision: 1, section: "theme", value: samTheme })).toMatchObject({ revision: 2 });
+      expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Urgent"), onlySection: true })).toMatchObject({ revision: 3 });
+      const state = await getSettingsState(tdb.db, jane, defaults);
+      expect(state.baseRevision).toBe(3);
+      expect(state.draftSections).toEqual(["footer"]);
+      expect(state.document.footer.copyrightHolder).toBe("Jane's holder");
+      expect(state.document.theme).toEqual(samTheme);
+    });
+
+    it("N4: Keep mine doesn't name my own Publish only as changed by them", async () => {
+      await publishBanner(editor, "Live");
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: "Jane's holder" } });
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "theme", value: { ...defaults.theme, colors: { ...defaults.theme.colors, accent: "#112233" } } });
+      expect(await publishSettings(tdb.db, sam, defaults, subs, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: "Sam's holder" } })).toMatchObject({ revision: 2 });
+      expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Urgent"), onlySection: true })).toMatchObject({ revision: 3 });
+      const rebased = await rebaseDraft(tdb.db, jane, defaults, { section: "theme", value: { ...defaults.theme, colors: { ...defaults.theme.colors, accent: "#112233" } } });
+      expect(rebased.alsoChangedByThem).toEqual(["footer"]);
+      expect(rebased.document.banner.message).toBe("Urgent");
+    });
+
+    it("N2: a save from another tab that lands while the publish waits is published, not overwritten", async () => {
+      await publishBanner(editor, "Live");
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "banner", value: banner("Jane") });
+      const other = await tdb.pool.connect();
+      try {
+        await other.query("BEGIN");
+        await other.query("SELECT 1 FROM site_settings_drafts WHERE editor_id = $1 FOR UPDATE", [jane.id]);
+        await other.query("UPDATE site_settings_drafts SET document = jsonb_set(document, '{footer,copyrightHolder}', '\"Other tab\"') WHERE editor_id = $1", [jane.id]);
+        const publishing = publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Jane") });
+        await new Promise((r) => setTimeout(r, 300));
+        await other.query("COMMIT");
+        expect(await publishing).toMatchObject({ result: "published", revision: 2 });
+      } finally {
+        other.release();
+      }
+      expect((await getRevision(tdb.db, 2, defaults))!.document.footer.copyrightHolder).toBe("Other tab");
+    });
+
     it("records the partial publish in the history note, as Restore does (fix round 1)", async () => {
       await publishBanner(editor, "Live");
       await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("A"), onlySection: true });

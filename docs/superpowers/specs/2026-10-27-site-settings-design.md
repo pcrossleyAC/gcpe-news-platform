@@ -286,3 +286,16 @@ the publish bar in "Hub screens":
   them before you publish them." This replaces the "set aside" wording in "Storage and
   publishing — NRMS" and "Hub screens".
 
+### Fix round 2 (owner approved 2026-10-31)
+
+- "Someone else changed this section" is judged revision by revision after the draft's base,
+  leaving out the publisher's own revisions, so a second Publish only on the same screen isn't a
+  conflict with the editor's own first one. Rebase's `alsoChangedByThem` uses the same rule.
+- After a stale Publish only, the draft is re-based on the new revision (new revision plus the
+  editor's other changed sections) unless one of those sections overlaps what someone else
+  changed since the base; then it is left as it was.
+- Publish, Save draft and Rebase read the editor's draft row FOR UPDATE, so a save from another
+  tab is never silently overwritten.
+- For one release, `POST /site/settings/rebase` also returns `setAside: []` for Hub tabs opened
+  before this change.
+

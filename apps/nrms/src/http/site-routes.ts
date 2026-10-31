@@ -474,7 +474,8 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     edit,
     needDefaults,
     json,
-    run(async (req, res) => void res.json(await rebaseDraft(db, actorOf(req), defaults(), sectionInput(sectionBody.parse(req.body))))),
+    // N3 (fix round 2): setAside, always empty now, for Hub tabs opened before this release. Remove in the next one.
+    run(async (req, res) => void res.json({ ...(await rebaseDraft(db, actorOf(req), defaults(), sectionInput(sectionBody.parse(req.body)))), setAside: [] })),
   );
   r.get(
     "/site/settings/history",
