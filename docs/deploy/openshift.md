@@ -156,7 +156,11 @@ Postgres advisory lock; a later run finds nothing to apply):
    is replaced. The same command works as an initContainer.
 
 Migrations are additive, so rolling back to the previous image after a migration is safe (as on
-Windows).
+Windows). News API `0012_unpublish_advisories` changes data, not structure: it takes any Advisory an
+older build put on the public site back off it (`docs/deploy/siteground.md`, "Pages and rebuilds").
+Rolling back past it doesn't put them back. NRMS `0022_site_file_tombstones` adds the table of
+deleted Website file names that stops `/files` falling back to legacy's copy (same guide, "Website
+section").
 
 ## PostgreSQL
 
