@@ -405,6 +405,66 @@ describe("website/site-settings", () => {
     expect(rebased.document.banner.message).toBe("Jane's banner");
   });
 
+  describe("W4: Publish only this screen (owner decision 2026-10-31)", () => {
+    const badFooter = () => ({ ...defaults.footer, moreInfoLinks: defaults.footer.moreInfoLinks.map((l, i) => (i === 0 ? { ...l, url: "javascript:alert(1)" } : l)) });
+
+    it("publishes live plus this section, an invalid section elsewhere in the draft doesn't block it, and the rest of the draft stays", async () => {
+      await publishBanner(editor, "Live");
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "footer", value: badFooter() });
+      // A plain Publish is refused by the footer.
+      expect((await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Urgent") })).result).toBe("invalid");
+
+      const result = await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Urgent"), onlySection: true, note: "Fire" });
+      expect(result).toEqual({ result: "published", revision: 2 });
+
+      const published = await getRevision(tdb.db, 2, defaults);
+      expect(published!.document.banner.message).toBe("Urgent");
+      expect(published!.document.footer).toEqual(defaults.footer);
+      const events = await publishedEvents();
+      expect(events.at(-1)!.data.document.footer).toEqual(defaults.footer);
+
+      const state = await getSettingsState(tdb.db, jane, defaults);
+      expect(state.live?.revision).toBe(2);
+      expect(state.draft).toMatchObject({ baseRevision: 2 });
+      expect(state.baseRevision).toBe(2);
+      expect(state.draftSections).toEqual(["footer"]);
+      expect(state.document.banner.message).toBe("Urgent");
+      expect(state.document.footer.moreInfoLinks[0]!.url).toBe("javascript:alert(1)");
+
+      const log = await tdb.pool.query("SELECT text FROM site_log ORDER BY id DESC LIMIT 1");
+      expect(log.rows).toEqual([{ text: "Published revision 2, Banner only: Fire" }]);
+    });
+
+    it("with nothing else in the draft it removes the draft, as Publish does", async () => {
+      await publishBanner(editor, "Live");
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "banner", value: banner("Draft wording") });
+      expect(await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Final"), onlySection: true })).toEqual({ result: "published", revision: 2 });
+      const state = await getSettingsState(tdb.db, jane, defaults);
+      expect(state.draft).toBeNull();
+      expect(state.document.banner.message).toBe("Final");
+    });
+
+    it("refuses this section's own problems, publishes nothing and keeps the draft", async () => {
+      await publishBanner(editor, "Live");
+      const result = await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "footer", value: badFooter(), onlySection: true });
+      expect(result.result).toBe("invalid");
+      expect(await revisionCount()).toBe(1);
+      expect((await getSettingsState(tdb.db, jane, defaults)).document.footer.moreInfoLinks[0]!.url).toBe("javascript:alert(1)");
+    });
+
+    it("from a stale base is a conflict and writes nothing, so another editor's publish is never undone", async () => {
+      await publishBanner(editor, "Live");
+      await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: "Jane's holder" } });
+      await publishBanner(sam, "Sam's banner");
+      const result = await publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Jane's banner"), onlySection: true });
+      expect(result).toMatchObject({ result: "conflict", live: { revision: 2 } });
+      expect(await revisionCount()).toBe(2);
+      const state = await getSettingsState(tdb.db, jane, defaults);
+      expect(state.draft).toMatchObject({ baseRevision: 1 });
+      expect(state.document.footer.copyrightHolder).toBe("Jane's holder");
+    });
+  });
+
   it("discard removes only my draft", async () => {
     await saveDraft(tdb.db, jane, defaults, { baseRevision: null, section: "banner", value: banner("Jane") });
     await saveDraft(tdb.db, sam, defaults, { baseRevision: null, section: "banner", value: banner("Sam") });

@@ -586,6 +586,17 @@ describe("NRMS site settings HTTP API", () => {
     expect(log.body).toEqual([expect.objectContaining({ area: "settings", text: "Published revision 1: first" })]);
   });
 
+  it("W4: POST /publish with onlySection publishes just that section and keeps the rest of the draft; a non-boolean is a 400", async () => {
+    await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("Live") });
+    await w("put", `${S}/draft`, siteEditor, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: "Draft holder" } });
+    const res = await publish(siteEditor, { baseRevision: 1, section: "banner", value: banner("Urgent"), onlySection: true });
+    expect(res.status).toBe(200);
+    expect(res.body.revision).toBe(2);
+    expect(res.body.state).toMatchObject({ live: { revision: 2 }, draft: { baseRevision: 2 }, draftSections: ["footer"] });
+    expect((await request(app).get(`${S}/history/2`).set("cookie", siteEditor)).body.document.footer.copyrightHolder).toBe(defaults.footer.copyrightHolder);
+    expect((await publish(siteEditor, { baseRevision: 2, section: "banner", value: banner("x"), onlySection: "yes" })).status).toBe(400);
+  });
+
   it("an http link is a 422 with errors and fieldErrors, and nothing is published", async () => {
     const value = { ...defaults.banner, enabled: true, message: "Hi", links: [{ text: "Bad", url: "http://example.com" }] };
     const res = await publish(siteEditor, { baseRevision: null, section: "banner", value });

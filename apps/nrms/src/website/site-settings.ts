@@ -2,6 +2,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
 import {
+  SECTION_LABEL,
   differingSections,
   fillMissingFields,
   siteSettingsSchema,
@@ -144,6 +145,12 @@ export async function saveDraft(
  * Publishes `document` as revision live+1 under the publish lock: invalid ⇒ nothing written;
  * live ≠ `baseRevision` ⇒ conflict, nothing written; else insert, delete the publisher's draft
  * (other editors keep theirs), log, and enqueue `site.settings.published`.
+ *
+ * W4 (owner decision 2026-10-31), `onlySection`: what is published is live (or the defaults)
+ * with only that section taken from `document`, so a stale or invalid change elsewhere in the
+ * draft neither goes live nor blocks it. The publisher's draft is kept for its other sections,
+ * now based on the new revision (the base check above means nothing else changed under it);
+ * with nothing else left in it, it is deleted as usual.
  */
 async function publishDocument(
   tx: Tx,
@@ -153,14 +160,16 @@ async function publishDocument(
   document: SiteSettings,
   baseRevision: number | null,
   note: string | null,
+  onlySection?: SectionKey,
 ): Promise<PublishResult> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${SITE_SETTINGS_PUBLISH_LOCK[0]}, ${SITE_SETTINGS_PUBLISH_LOCK[1]})`);
+  const live = await readLive(tx);
+  if (onlySection) document = { ...fillMissingFields(live?.document ?? defaults, defaults), [onlySection]: document[onlySection] };
   // Drafts are cleaned on save; this also covers a restored revision stored before cleaning.
   document = cleanSettingsRichHtml(document);
   const errors = validateSiteSettings(document);
   if (errors.length > 0) return { result: "invalid", errors };
 
-  const live = await readLive(tx);
   const liveRevision = live?.info.revision ?? null;
   if (live && liveRevision !== baseRevision) return { result: "conflict", live: live.info, differing: differing(document, live.document, defaults) };
   if (!live && baseRevision !== null) return { result: "conflict", live: null, differing: [] };
@@ -170,8 +179,14 @@ async function publishDocument(
     .insert(siteSettingsRevisions)
     .values({ revision, document, publishedById: actor.id, publishedByName: actor.name, note })
     .returning({ publishedAt: siteSettingsRevisions.publishedAt });
-  await tx.delete(siteSettingsDrafts).where(eq(siteSettingsDrafts.editorId, actor.id));
-  await writeSiteLog(tx, actor, "settings", note ? `Published revision ${revision}: ${note}` : `Published revision ${revision}`);
+  const draft = onlySection ? await readDraft(tx, actor) : null;
+  if (draft && differing(draft.document, document, defaults).length > 0) {
+    await tx.update(siteSettingsDrafts).set({ baseRevision: revision, updatedAt: sql`now()` }).where(eq(siteSettingsDrafts.editorId, actor.id));
+  } else {
+    await tx.delete(siteSettingsDrafts).where(eq(siteSettingsDrafts.editorId, actor.id));
+  }
+  const what = onlySection ? `Published revision ${revision}, ${SECTION_LABEL[onlySection]} only` : `Published revision ${revision}`;
+  await writeSiteLog(tx, actor, "settings", note ? `${what}: ${note}` : what);
   await enqueueEvent(
     tx,
     { type: "site.settings.published", source: "nrms", aggregateId: "site:settings", data: { revision, publishedAt: row!.publishedAt.toISOString(), document } },
@@ -180,17 +195,18 @@ async function publishDocument(
   return { result: "published", revision };
 }
 
-/** Saves the draft first (so nothing is lost on invalid or conflict), then publishes it. */
+/** Saves the draft first (so nothing is lost on invalid or conflict), then publishes it — the
+ * whole draft, or with `onlySection` just this screen's section (W4, see {@link publishDocument}). */
 export async function publishSettings(
   db: Db,
   actor: Actor,
   defaults: SiteSettings,
   subs: SubscriberConfig[],
-  input: SectionInput & { baseRevision: number | null; note?: string },
+  input: SectionInput & { baseRevision: number | null; note?: string; onlySection?: boolean },
 ): Promise<PublishResult> {
   const { document } = await saveDraft(db, actor, defaults, input);
   const note = input.note?.trim() || null;
-  return db.transaction((tx) => publishDocument(tx, actor, defaults, subs, document, input.baseRevision, note));
+  return db.transaction((tx) => publishDocument(tx, actor, defaults, subs, document, input.baseRevision, note, input.onlySection ? input.section : undefined));
 }
 
 export async function discardDraft(db: DbOrTx, actor: Actor): Promise<void> {

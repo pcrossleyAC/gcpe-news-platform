@@ -40,6 +40,10 @@ export interface CarouselView {
   goLiveAt: string | null;
   wentLiveAt: string | null;
   version: number;
+  /** W3: when this carousel was made — for a next carousel, when it copied the live slides. */
+  createdAt: string;
+  /** W3: its last change (a save, or going live). */
+  updatedAt: string;
   slides: SlideView[];
 }
 
@@ -80,8 +84,10 @@ export function checkActionLabel(label: string): void {
   if (t.length > 40 || /[<>]/.test(t)) throw new SiteRuleError(["Keep the action label to 40 characters or fewer, in plain text."]);
 }
 
-const slideImageUrl = (id: string) => `/nrms/api/site/slides/${id}/image`;
-const pinImageUrl = (slot: PinSlot) => `/nrms/api/site/pins/${slot}/image`;
+/** W7: the Hub's image addresses carry the row's last change (`?v=`), so a replaced image gets a
+ * new address and the browser can't keep showing the old one from its cache (served `max-age=300`). */
+const slideImageUrl = (id: string, updatedAt: Date) => `/nrms/api/site/slides/${id}/image?v=${updatedAt.getTime()}`;
+const pinImageUrl = (slot: PinSlot, updatedAt: Date) => `/nrms/api/site/pins/${slot}/image?v=${updatedAt.getTime()}`;
 
 type SlideFields = {
   id: string;
@@ -109,12 +115,12 @@ function slideView(s: SlideFields, imageUrl: string): SlideView {
 }
 
 function pinView(row: typeof emergencyPins.$inferSelect): PinView {
-  return { slot: row.slot, pinned: row.pinned, version: row.version, slide: slideView({ ...row, id: row.slideId }, pinImageUrl(row.slot)) };
+  return { slot: row.slot, pinned: row.pinned, version: row.version, slide: slideView({ ...row, id: row.slideId }, pinImageUrl(row.slot, row.updatedAt)) };
 }
 
 async function slidesOf(tx: DbOrTx, carouselId: string): Promise<SlideView[]> {
   const rows = await tx.select().from(websiteSlides).where(eq(websiteSlides.carouselId, carouselId)).orderBy(asc(websiteSlides.sortIndex));
-  return rows.map((r) => slideView(r, slideImageUrl(r.id)));
+  return rows.map((r) => slideView(r, slideImageUrl(r.id, r.updatedAt)));
 }
 
 function carouselView(row: typeof carousels.$inferSelect, slides: SlideView[]): CarouselView {
@@ -124,6 +130,8 @@ function carouselView(row: typeof carousels.$inferSelect, slides: SlideView[]): 
     goLiveAt: row.goLiveAt ? row.goLiveAt.toISOString() : null,
     wentLiveAt: row.wentLiveAt ? row.wentLiveAt.toISOString() : null,
     version: row.version,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
     slides,
   };
 }
