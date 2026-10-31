@@ -14,13 +14,13 @@ topics: []
 ## Excel export
 
 1. Set the list's filter. See [The activity list](manual:calendar-readonly-list).
-2. Choose **Export and reports**.
+2. Choose **Export and reports**. The panel starts by saying which filter it will use, for example "Uses your list filter: Dates: 2026-11-01 to 2026-11-14 · My Watchlist Only." It warns you when something you may not have meant to keep narrows it: a **Display** choice the list keeps from last time, or an activity number in **Search for**, which leaves only that activity and ignores the dates and other filters. Change the filter under **Filters** first if that isn't what you want.
 3. Choose **Excel export**. A spreadsheet of the activities your filter finds downloads, up to 10,000.
 
 ## PDF reports
 
 1. Set the list's filter to the dates and activities you want.
-2. Choose **Export and reports**.
+2. Choose **Export and reports**, and check the filter it says it will use.
 3. Choose **Look Ahead**, **30/60/90** or **Planning**. You see, for example, "Preparing your Look Ahead report…".
 4. Wait a few seconds. The PDF downloads by itself and you see "The Look Ahead report has downloaded."
 
@@ -33,6 +33,7 @@ One report is prepared at a time. If you leave the page before it downloads, mak
 | **Planning** | One line for each activity: its schedule, title and summary, significance and number. |
 
 - Reports list activities in date order, whatever the list is sorted by.
+- Each report, and the Excel export, says under its heading which filter it used, for example "Filter: Dates: 2026-11-01 to 2026-11-14 · Lead Ministry: HLTH", or "Filter: none (every activity you can see)".
 - A report holds only activities you can see. Deleted activities are never in it.
 - Reports include awareness dates even when the list leaves them out.
 - Your Look Ahead shows no Executive Summary and no NEW or CHANGED flags. Those are for HQ editors and above.

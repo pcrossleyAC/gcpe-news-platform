@@ -237,6 +237,21 @@ describe("the 30/60/90 and Planning reports at the built document, through the r
     expect(d.rows).toHaveLength(who === "financeEditor" ? 0 : 5);
     return d;
   };
+  it("every report states the filter it used, under its heading, in the list's words (suite review CAL-3)", async () => {
+    const actor = (await loadCalendarActor(tdb.db, w.as.editor.id))!;
+    const deps = { db: tdb.db, rules: TEST_RULES, subscribers: [], now: () => FIXED_NOW };
+    const headings = (doc: ReportDoc) => doc.blocks.flatMap((b) => (b.kind === "heading" ? [plain(b.runs)] : []));
+    const narrowed = await reportData(deps, actor, q({ display: "my_watchlist", filter: { from: "2046-03-10", to: "2046-03-12", ministryKey: "health" } }));
+    expect(narrowed.filter).toBe("Dates: 2046-03-10 to 2046-03-12 · Lead Ministry: HLTH · My Watchlist Only");
+    for (const kind of REPORT_KINDS.filter((k) => k !== "exec-look-ahead")) {
+      expect(headings(buildReport(kind, narrowed, null)), kind).toContain("Filter: Dates: 2046-03-10 to 2046-03-12 · Lead Ministry: HLTH · My Watchlist Only");
+    }
+    const all = await reportData(deps, actor, q({ filter: { from: "2046-03-10", to: "2046-03-12" } }));
+    expect(headings(buildReport("planning", all, null))).toContain("Filter: Dates: 2046-03-10 to 2046-03-12");
+    const none = await reportData(deps, actor, q({}));
+    expect(headings(buildReport("look-ahead", none, null))).toContain("Filter: none (every activity you can see)");
+  });
+
   const SHOWN: Record<"30-60-90" | "planning", [string, string]> = { "30-60-90": ["SHOWN-strategy", "SHOWN-schedule"], planning: ["SHOWN-schedule", "SHOWN-strategy"] };
 
   const WHO: Role[] = ["readOnly", "editor", "financeEditor", "advanced", "admin", "sysAdmin", "hqReadOnly", "hqEditor", "hqAdvanced", "hqAdmin", "hqSysAdmin"];

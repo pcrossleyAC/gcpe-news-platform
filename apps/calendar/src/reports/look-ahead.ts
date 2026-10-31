@@ -4,7 +4,7 @@ import { ReportTooLargeError, type ReportRow } from "./data";
 import { addMonths, longDay, shortDay, titleDay, updatedLong, weekdayOf } from "./dates";
 import type { Block, Cell, ReportDoc, Run } from "./model";
 import {
-  categoryText, COLOURS, detailedRuns, flagRuns, leadOf, lookAheadText, minIdRuns, rlsLines, type LookAheadTable, type TextContext,
+  categoryText, COLOURS, detailedRuns, filterLine, flagRuns, leadOf, lookAheadText, minIdRuns, rlsLines, type LookAheadTable, type TextContext,
 } from "./text";
 
 /** A Look Ahead covers at most this many days; a longer range is refused before anything is drawn. */
@@ -258,6 +258,7 @@ export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean; maxRow
   const blocks: Block[] = [
     { kind: "banner", organization: c.rules.reports.cover.organization, lines: [...c.rules.reports.cover.lines] },
     heading(title, { size: 14, spaceBefore: 24 }),
+    ...filterLine(c),
     { kind: "heading", runs: [{ text: "Contents:", color: "#808080" }], size: 11, spaceBefore: 6 },
     { kind: "legend", items: legend },
     { kind: "pageBreak" },

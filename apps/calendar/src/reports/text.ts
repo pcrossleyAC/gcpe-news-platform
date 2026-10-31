@@ -2,7 +2,7 @@ import { friendlySpan, sameCategoryName, type CalendarRules } from "@gcpe/calend
 import { addDays, wallClock } from "../time";
 import type { ReportRow } from "./data";
 import { clockTime } from "./dates";
-import type { Run } from "./model";
+import type { HeadingBlock, Run } from "./model";
 
 /** Legacy's report colours (docs/parity/legacy-report-layouts.md, pixel-verified where it says so). */
 export const COLOURS = {
@@ -41,6 +41,13 @@ export interface TextContext {
   today: string;
   /** "https://host" of the staff app, for each row's link; null leaves the CC ID# unlinked. */
   origin: string | null;
+  /** The list filter the report used, in the list's words (filterSummary); printed under the heading when given (suite review CAL-3). */
+  filter?: string;
+}
+
+/** "Filter: …", under a report's heading, so a copy that is short because of a leftover filter says so (suite review CAL-3). */
+export function filterLine(c: Pick<TextContext, "filter">, spaceBefore = 4): HeadingBlock[] {
+  return c.filter === undefined ? [] : [{ kind: "heading", runs: [{ text: `Filter: ${c.filter}`, color: COLOURS.banner }], size: 9, spaceBefore }];
 }
 
 /**

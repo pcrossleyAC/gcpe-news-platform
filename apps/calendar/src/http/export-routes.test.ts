@@ -53,18 +53,20 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
     expect(cells.get("F1")).toBe("Date Range Selected: Mar 01, 2046 to Mar 31, 2046");
     // FIXED_NOW is 11:00 BC on Tuesday 2026-11-03.
     expect(cells.get("K1")).toBe("Printed: Tue, Nov 3 11:00 AM");
-    expect(EXPORT_HEADERS.map((_, i) => cells.get(`${String.fromCharCode(65 + i)}2`))).toEqual([...EXPORT_HEADERS]);
+    // The filter it used, in the list's words, under the heading (suite review CAL-3).
+    expect(cells.get("A2")).toBe("Filter: Dates: 2046-03-01 to 2046-03-31");
+    expect(EXPORT_HEADERS.map((_, i) => cells.get(`${String.fromCharCode(65 + i)}3`))).toEqual([...EXPORT_HEADERS]);
     // HQ Advanced sees every confidential item. Order: start date, end date, start time; the list's sort is ignored.
-    expect([3, 4, 5, 6].map((r) => cells.get(`A${r}`))).toEqual([morning, secret, early, later].map(String));
+    expect([4, 5, 6, 7].map((r) => cells.get(`A${r}`))).toEqual([morning, secret, early, later].map(String));
     // The ID column holds numbers, so Excel sorts and filters it as numbers; a number cell can't hold a formula.
     const { files } = readXlsx(res.body as Buffer);
-    expect(files.get("xl/worksheets/sheet1.xml")).toContain(`<c r="A3" s="1"><v>${morning}</v></c>`);
+    expect(files.get("xl/worksheets/sheet1.xml")).toContain(`<c r="A4" s="1"><v>${morning}</v></c>`);
     expect(files.get("xl/worksheets/sheet1.xml")).not.toContain("<f>");
-    expect(cells.get("E6")).toBe("'=HYPERLINK(\"http://example.test\")");
-    expect(cells.get("F5")).toBe("Sample <b>details</b>");
-    expect(cells.get("G5")).toBe("Sample significance\n\nStrategy: Sample strategy");
-    expect(cells.get("F3")).toBe("Not for Look Ahead Sample details");
-    expect(cells.get("A7")).toBe(CONFIDENTIALITY_NOTICE);
+    expect(cells.get("E7")).toBe("'=HYPERLINK(\"http://example.test\")");
+    expect(cells.get("F6")).toBe("Sample <b>details</b>");
+    expect(cells.get("G6")).toBe("Sample significance\n\nStrategy: Sample strategy");
+    expect(cells.get("F4")).toBe("Not for Look Ahead Sample details");
+    expect(cells.get("A8")).toBe(CONFIDENTIALITY_NOTICE);
   });
 
   it("an id search's heading names the activity, not the filter's dates, which the search ignored", async () => {
@@ -73,7 +75,8 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
     expect(res.status).toBe(200);
     const { cells } = readXlsx(res.body as Buffer);
     expect(cells.get("F1")).toBe(`Activity ID Selected: ${found}`);
-    expect(cells.get("A3")).toBe(String(found));
+    expect(cells.get("A2")).toBe(`Filter: Activity number: HLTH-${found} only`);
+    expect(cells.get("A4")).toBe(String(found));
     const words = readXlsx((await exportAs("editor", { filter: { from: "2046-04-01", to: "2046-04-30", quickSearch: "Sample" } })).body as Buffer);
     expect(words.cells.get("F1")).toBe("Date Range Selected: Apr 01, 2046 to Apr 30, 2046");
   });
@@ -82,7 +85,7 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
     await act("2047-01-10T17:00:00Z", "2047-01-10T18:00:00Z", { title: "Sample open" });
     await act("2047-01-10T17:00:00Z", "2047-01-10T18:00:00Z", { title: "Sample secret", contactMinistryKey: "finance", isConfidential: true });
     const { cells } = readXlsx((await exportAs("hqEditor", { filter: { from: "2047-01-01", to: "2047-01-31" } })).body as Buffer);
-    const titles = [...cells.entries()].filter(([ref]) => /^E\d+$/.test(ref) && ref !== "E2").map(([, v]) => v);
+    const titles = [...cells.entries()].filter(([ref]) => /^E\d+$/.test(ref) && ref !== "E3").map(([, v]) => v);
     expect(titles).toEqual(["Sample open"]);
   });
 
@@ -99,10 +102,10 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
       if (who === "editor") expect(sheet).not.toContain("Sample finance secret");
       else expect(sheet).toContain("Sample finance secret");
     }
-    // Searching for the Executive Summary they can't see finds nothing: column A holds only the banner, the header and the footer.
+    // Searching for the Executive Summary they can't see finds nothing: column A holds only the banner, the filter, the header and the footer.
     const searched = readXlsx((await exportAs("editor", { filter: { from: "2047-02-01", to: "2047-02-28", quickSearch: marker } })).body as Buffer);
     expect([...searched.cells.entries()].filter(([ref]) => /^A\d+$/.test(ref)).map(([, v]) => v)).toEqual([
-      "Sample Province. Corporate Calendar DRAFT & CONFIDENTIAL", "ID", CONFIDENTIALITY_NOTICE,
+      "Sample Province. Corporate Calendar DRAFT & CONFIDENTIAL", `Filter: Dates: 2047-02-01 to 2047-02-28 · Search: “${marker}”`, "ID", CONFIDENTIALITY_NOTICE,
     ]);
   });
 

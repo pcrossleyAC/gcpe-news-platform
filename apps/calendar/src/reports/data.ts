@@ -1,10 +1,11 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
-import type { HqSection, ListQuery, ListRow } from "@gcpe/calendar-contract";
+import { filterSummary, type HqSection, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { inReadSnapshot } from "../activities/store";
 import { activities, activityCategories, activityInitiatives, initiatives } from "../db/schema";
 import type { ApiDeps } from "../http/routes";
+import { listOptions } from "../list/options";
 import { legacyReportOrder, listWhere, scopeOf, type ListScope } from "../list/query";
 import { grouped, rowsWithFactsOf } from "../list/rows";
 import { dbNow } from "../time";
@@ -34,6 +35,8 @@ export interface ReportRow extends ListRow {
 
 export interface ReportData {
   rows: ReportRow[];
+  /** The list filter the rows came from, in the list's words (filterSummary), for the report to state (suite review CAL-3). */
+  filter: string;
   scope: ListScope;
   q: ListQuery;
   /** The database's now: the "Updated" time and every "updated X ago". */
@@ -81,6 +84,7 @@ export function reportData(deps: ApiDeps, actor: CalendarActor, q: ListQuery): P
         .limit(REPORT_ACTIVITY_LIMIT + 1)
     ).map((r) => r.id);
     if (ids.length > REPORT_ACTIVITY_LIMIT) throw new ReportTooLargeError();
-    return { rows: await reportRowsOf(tx, scope, ids), scope, q, now: await dbNow(tx, deps.now) };
+    const filter = filterSummary(q, await listOptions(tx, actor));
+    return { rows: await reportRowsOf(tx, scope, ids), scope, q, filter, now: await dbNow(tx, deps.now) };
   });
 }

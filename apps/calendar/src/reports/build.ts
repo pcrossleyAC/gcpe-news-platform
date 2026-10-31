@@ -17,7 +17,7 @@ export function checkReportRange(kind: ReportKind, q: ListQuery, today: string, 
  */
 export function buildReport(kind: ReportKind, data: ReportData, origin: string | null, o: { maxRows?: number } = {}): ReportDoc {
   const { scope, rows, q, now } = data;
-  const c = { rules: scope.rules, isHq: scope.actor.isHq, now, today: scope.today, origin, rows, q };
+  const c = { rules: scope.rules, isHq: scope.actor.isHq, now, today: scope.today, origin, rows, q, filter: data.filter };
   switch (kind) {
     case "look-ahead":
       return lookAheadDoc({ ...c, consultationsKeys: scope.consultationsKeys }, { detailed: false, ...o });

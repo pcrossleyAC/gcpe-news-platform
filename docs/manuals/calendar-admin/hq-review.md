@@ -67,9 +67,9 @@ The **Confidential filter** above the list (the old Calendar's Look Ahead filter
 The **Exec Look Ahead** is a PDF report only HQ Administrators can make.
 
 1. Set the list's filter to the dates and activities you want.
-2. Open **Export and reports**.
+2. Open **Export and reports**, and check the filter it says it will use, such as "Uses your list filter: none (every activity you can see)." It warns you when a **Display** choice kept from last time, or an activity number in **Search for**, narrows it.
 3. Choose **Exec Look Ahead**. You see "Preparing your Exec Look Ahead report…" and then "The Exec Look Ahead report has downloaded."
 
-Each activity shows its title, summary, significance, city and venue, and when it was last updated. With no **To** date the report covers one month and adds the Long Term Outlook. Deleted activities are never in it.
+Under its heading the report says which filter it used, for example "Filter: Dates: 2026-11-01 to 2026-11-30". Each activity shows its title, summary, significance, city and venue, and when it was last updated. With no **To** date the report covers one month and adds the Long Term Outlook. Deleted activities are never in it.
 
 The report is marked "DRAFT ONLY - NOT FOR CIRCULATION". Share it only with people who may see every ministry's plans.

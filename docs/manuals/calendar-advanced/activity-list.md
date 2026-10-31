@@ -37,7 +37,7 @@ Both kinds always show under **My Watchlist Only**.
 
 What some choices do:
 
-- **Search for** takes an activity number, such as HLTH-12345, or words in the title, summary, city and other text. An activity number finds that activity whatever the other filters and dates say. A plain number without the ministry counts as an activity number only above 10,000; a smaller one, such as a year, is searched as a word.
+- **Search for** takes an activity number, such as HLTH-12345, or words in the title, summary, city and other text. An activity number finds that activity whatever the other filters and dates say; the line beside **Filters** then says, for example, "Activity number: HLTH-12345 only". A plain number without the ministry counts as an activity number only above 10,000; a smaller one, such as a year, is searched as a word.
 - **Lead Ministry** also finds activities shared with that ministry.
 - **My Ministries' Activities Only** shows activities your ministries lead, not those only shared with them.
 - **My Activities Only** shows activities where you are the comm contact.
@@ -83,7 +83,7 @@ Use **My Watchlist Only** in **Filters** to list your starred activities. The st
 
 ## Excel export
 
-1. Choose **Export and reports**.
+1. Choose **Export and reports**. Check the filter it says it will use, such as "Uses your list filter: none (every activity you can see)."
 2. Choose **Excel export**. A spreadsheet of the activities your filter finds downloads, up to 10,000.
 
 | Message | What it means |

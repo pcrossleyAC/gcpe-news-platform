@@ -1,9 +1,10 @@
-import { friendlyDateRange, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
+import { filterSummary, friendlyDateRange, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { inReadSnapshot } from "../activities/store";
 import { activities } from "../db/schema";
 import type { ApiDeps } from "../http/routes";
 import { dbNow } from "../time";
+import { listOptions } from "./options";
 import { idSearchOf, legacyReportOrder, listWhere, scopeOf, type ListScope } from "./query";
 import { rowsOf } from "./rows";
 import { xlsxOf, type Run, type Sheet, type SheetCell } from "./xlsx";
@@ -87,7 +88,8 @@ function rowCells(r: ListRow, scope: ListScope): SheetCell[] {
   ];
 }
 
-export function exportSheet(rows: ListRow[], q: ListQuery, scope: ListScope, now: Date): Sheet {
+/** The workbook's one sheet. `filter` is the list filter in the list's words (filterSummary), stated under the heading (suite review CAL-3). */
+export function exportSheet(rows: ListRow[], q: ListQuery, scope: ListScope, now: Date, filter: string): Sheet {
   const banner = scope.rules.reportBanner.province;
   return {
     name: "Activities",
@@ -100,6 +102,7 @@ export function exportSheet(rows: ListRow[], q: ListQuery, scope: ListScope, now
           { runs: [{ text: printed(now, scope.rules.timeZone) }], style: "heading", span: 4 },
         ],
       },
+      { cells: [{ runs: [{ text: `Filter: ${filter}` }], style: "heading", span: EXPORT_HEADERS.length }] },
       { cells: EXPORT_HEADERS.map((h) => ({ runs: [{ text: h }], style: "header" as const })) },
       ...rows.map((r) => ({ cells: rowCells(r, scope) })),
       { cells: [{ runs: [{ text: CONFIDENTIALITY_NOTICE }], style: "notice", span: 10 }], height: 60 },
@@ -120,6 +123,7 @@ export function exportWorkbook(deps: ApiDeps, actor: CalendarActor, q: ListQuery
         .limit(EXPORT_ROW_LIMIT + 1)
     ).map((r) => r.id);
     if (ids.length > EXPORT_ROW_LIMIT) throw new ExportTooLargeError();
-    return xlsxOf(exportSheet(await rowsOf(tx, scope, ids), q, scope, await dbNow(tx, deps.now)));
+    const filter = filterSummary(q, await listOptions(tx, actor));
+    return xlsxOf(exportSheet(await rowsOf(tx, scope, ids), q, scope, await dbNow(tx, deps.now), filter));
   });
 }
