@@ -1,8 +1,10 @@
 # Staff manuals: how to write a page
 
-The manuals are Markdown pages in folders under `docs/manuals/`, one folder per manual (`core-admin/`, `nrms-site-editor/` and so on). The Hub shows them to staff, and they export to Word. Operations and developer material does not belong here; it goes in `docs/deploy/`.
+The manuals are Markdown pages in folders under `docs/manuals/`, one folder per manual (`core-admin/`, `nrms-site-editor/` and so on). The Hub shows them to staff, and they export to Word.
 
-After you add or edit a page, run `npm run manuals:build` and commit the updated `apps/staff-web/src/manuals/manuals.generated.json`. A test fails when the pages and that file disagree. Files directly in `docs/manuals/` (this README, loose notes) are not pages; only files inside a folder are.
+When you change something staff see or do, change the manual page that covers it. Operations material goes in the deploy guide it concerns, in `docs/deploy/`. Developer material goes in `docs/developer-notes.md`. There is no running-notes file any more: `docs/manuals/running-notes.md` was retired, and a test fails if it comes back.
+
+After you add or edit a page, run `npm run manuals:build` and commit the updated `apps/staff-web/src/manuals/manuals.generated.json`. A test fails when the pages and that file disagree. Files directly in `docs/manuals/`, such as this README, are not pages; only files inside a folder are.
 
 ## The page header
 

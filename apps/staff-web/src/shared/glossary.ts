@@ -3,7 +3,7 @@
  * (shared/HelpToggle.tsx) and the Help page's Glossary (screens/help/HelpScreen.tsx) both read
  * it, so a definition is written once.
  *
- * Each definition comes from what the code and docs say (docs/manuals/running-notes.md,
+ * Each definition comes from what the code and docs say (the staff manuals in docs/manuals/,
  * docs/parity/, the Calendar contract and the legacy names), confirmed by the owner (2026-10-29).
  */
 export type GlossaryArea = "Releases" | "Website" | "Subscribers" | "Calendar";

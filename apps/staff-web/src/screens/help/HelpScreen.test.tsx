@@ -105,6 +105,18 @@ describe("HelpScreen", () => {
     cleanup();
     renderHelp(["NoD.Editor"]);
     expect(await pointers()).toContain("Change what someone gets:");
+    cleanup();
+
+    const CALENDAR_CHANGE = ["Add an activity:", "Edit an activity:", "Change something during the daily change freeze:"];
+    const CALENDAR_ALL = ["Narrow the list:", "Make a report:"];
+    renderHelp(["Calendar.ReadOnly"]);
+    const readOnly = await pointers();
+    for (const p of CALENDAR_ALL) expect(readOnly).toContain(p);
+    for (const p of CALENDAR_CHANGE) expect(readOnly).not.toContain(p);
+    cleanup();
+    renderHelp(["Calendar.Editor"]);
+    const calendarEditor = await pointers();
+    for (const p of [...CALENDAR_CHANGE, ...CALENDAR_ALL]) expect(calendarEditor).toContain(p);
   });
 
   it("a link to one glossary entry lands on it", async () => {

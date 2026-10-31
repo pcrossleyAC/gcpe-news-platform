@@ -11,7 +11,8 @@ owner's GrowBig account, project `boxs.ca`, host `giowm1258`) — the short vers
   resolve. The artifact (`dist/siteground/`, built by `scripts/build-siteground.mjs`) bundles
   every dependency into `stack.js` for exactly this reason.
 - The process is killed after 30–60s idle; the next request cold-starts it (measured locally:
-  a cold start of all six apps completes in well under a second).
+  a cold start of all six apps completes in well under a second). A deploy takes effect only once
+  the old process has idled out (about 60 s).
 - WebSocket upgrades are stripped (SSE still works) — the stack runs with
   `UPDATES_HUB_ENABLED=false` here; there is no live-updates hub in production.
 - The Postgres user SiteGround creates **cannot** `CREATE DATABASE` or `CREATE EXTENSION` —
@@ -56,12 +57,22 @@ deploy, set `DIST_MAIL_REDIRECT_TO` to a mailbox you control (see the env genera
 every message the stack would otherwise send goes there instead, regardless of the real
 recipient, until you deliberately clear it. There is no safe way to "try it against real
 recipients a little bit"; it's redirect-everything or send-to-real-recipients, nothing between.
+While mail is redirected, each message keeps its intended recipient in an `X-Original-To` header
+and a `[to: …]` prefix on its subject.
 
 boxs.ca keeps every Distribution send setting at its default: `DIST_MAIL_RATE_PER_MINUTE`
 (60/min), `DIST_MAIL_CONCURRENCY` (1), and both `DIST_MAIL_REPLY_TO` and NoD's own `NOD_REPLY_TO`
 left unset. A test site has no reason to send fast, and never sets a Reply-To — every message it
 sends is already redirected to `DIST_MAIL_REDIRECT_TO`, so a Reply-To pointed at a real
 government mailbox would put real replies to test mail in front of it.
+
+The other Distribution send settings: `DIST_MAIL_RATE_PER_MINUTE` has a minimum of 1 and no
+"unlimited" value; `DIST_MAIL_CONCURRENCY` is capped by `DIST_SMTP_MAX_CONNECTIONS`;
+`DIST_MESSAGE_ID_DOMAIN` defaults to `DIST_MAIL_FROM`'s own domain; `DIST_INTERNAL_DOMAINS`
+(default `gov.bc.ca,leg.bc.ca`) lists the domains that get the +2 send priority. Production sets
+`NOD_REPLY_TO=gcpe.news@gov.bc.ca`, legacy's own reply address, and keeps `DIST_MAIL_REPLY_TO`
+unset: when set, it becomes the Reply-To of every NoD email that has none of its own (the digest,
+emergency alerts and the subscription emails).
 
 While mail is redirected, `DIST_MAIL_REDIRECT_SEND_CAP` (default 5) limits how many messages any
 one Distribution batch may produce, so testing a release for a ministry with hundreds of
@@ -146,6 +157,34 @@ could redirect that URL elsewhere can't get the ingester to read it instead). EM
 host (confirmed with a single `HEAD` request on 2026-10-07) — configure
 `NOD_EMERGENCY_FEED_URL` as `https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true`
 instead, or every check fails with `error: "redirect"`.
+
+**News On Demand settings** (all optional):
+
+- `NOD_SUBSCRIBE_PAGE_URL`: where subscription emails link (default: the public site's
+  `/subscribe/manage/`). The links last 24 hours. An address gets at most 3 confirmation or manage
+  emails an hour; more requests are quietly ignored.
+- `NOD_BANNER_URL` (`BANNER_URL` in NoD's own settings; the stack strips the `NOD_` prefix): the
+  banner image on every NoD email (As-It-Happens, emergency, digest, and the manage and verify
+  emails). Unset, they show a plain blue "Government of B.C." heading instead.
+- `NOD_OPS_EMAIL`: where pausing and resuming NoD sending and Distribution is emailed. Pause holds
+  every send; nothing is dropped. Pause and resume are logged either way.
+- `NOD_MEDIA_HUB_*`: unset means the stack's own fake Media Hub (made-up contacts), except on real
+  production, where unset means no Media Hub at all: search, add-from-hub and the sync answer 503.
+  Typing a media member's address by hand works either way.
+- `NOD_MEMBERSHIP_API_USERNAME` and `NOD_MEMBERSHIP_API_PASSWORD_HASH`: the login for the legacy
+  Membership tab's lookup (`Subscribe/SubscriberInformation`). The password setting is the hash
+  that `npm run nod:membership-hash` prints, never a plain password. If either is unset, the
+  lookup always answers 503.
+- Bounces: Distribution's `DIST_BOUNCE_SOURCE` is `fake` on every test site, boxs.ca included
+  (`graph` is built but not run live until Q23 is answered). In `graph` mode Distribution also needs
+  all four of `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET` and `BOUNCE_MAILBOX`
+  (`DIST_`-prefixed on the stack), or it refuses to start. NoD's `NOD_BOUNCE_SUMMARY_EMAIL` unset
+  means the daily bounce summary is never sent. Production sets `NOD_DISTRIBUTION_APP_ID`
+  explicitly to NoD's own Entra client id rather than relying on its default.
+
+A fresh NoD has no lists until Core's reference data reaches it: when NoD has no ministry lists,
+the stack asks Core to republish once at startup. The daily digest runs from the tick at 17:00 BC
+time; a missed tick catches up on the next one, in one digest.
 
 **The public site is served at the root** (`https://<domain>/`), so news.gov.bc.ca's
 root-relative URLs (`/releases/<key>`, `/ministries/…`) work unchanged. The generated
@@ -395,6 +434,8 @@ reach NRMS first:
   the admin token so NRMS receives every ministry and category:
   `curl -fsS -X POST https://<domain>/core/api/admin/republish -H "authorization: Bearer <access_token>"`
   (then tick, step 5 below, or wait for the cron job to deliver the events).
+- A fresh NRMS database comes with the default page types (News Release, Information Bulletin,
+  Statement, Backgrounder, Traffic Advisory). Without them no release can be created.
 - After deploying Phase 4c (or on any fresh NoD database, including the first tick after a
   legacy NRMS import run from the CLI — which has no `EVENT_SUBSCRIBERS` to carry the lists
   over as it runs), run NRMS's own media-lists republish once, signed in as `Core.Admin`, so NoD
@@ -542,6 +583,9 @@ The break-glass `admin` account signs in through the same endpoint. To create or
     scripts/siteground-seed-users.sh https://boxs.ca
 
 It asks for the admin password and a password for each test user (12+ characters, input hidden).
+
+The break-glass `admin` has no email address, so "Email me a copy" is disabled for it. Test email
+with a real staff account.
 
 **Revoking access.** A session renews (and its roles refresh) while the user stays active; changing a password or logging out does not end a user's *other* sessions. To cut someone off, deactivate the user — that takes effect at once in Core, and within the cookie's remaining life (at most 1 hour) in other apps. To end every session at once, including break-glass, rotate `SESSION_SECRET` (or `STACK_EVENT_SECRET`, which also re-derives the event secrets).
 
@@ -1410,6 +1454,14 @@ See "NRMS link and Forecast (Phase 5h)" above for how these two commands take th
 **R14 (Phase 7):** legacy stays readable for one HQ administrator for a year after cutover; it's
 the only place to see activities outside the import.
 
+**Checking our reports against legacy's.** `npm run calendar:report-parity -- --csv <file> …
+--part-c <file> --legacy-dir <folder> --out <folder> --cutoff <date> --from <date> --to <date>
+--to-30-60-90 <date>` compares our reports with legacy's PDFs on a survey 08 CSV snapshot.
+Everything it writes holds real activities and people: `--out` must be outside the repository (it
+refuses one inside), in an owner-only folder, and nothing from it goes into the repo, a ticket or
+chat. It drops its throwaway `test_…` databases itself; after a crash, `npm run test:clean-dbs`
+finds them. The first run's results are in `docs/parity/calendar-report-parity.md`.
+
 ## Calendar access (Phase 5a)
 
 - **Migration:** Core's `0002_calendar_access` is additive: a column, a nullable email with a check, two
@@ -1539,6 +1591,8 @@ contact details and comm-contact ranks are untouched.
 
 **No migration.** The Calendar refuses to start if the tenant file has no `calendar` section.
 `config/tenants/bc.json` carries it, and the artifact ships it.
+That section holds the Calendar's settings: the freeze window, the release categories, the Other
+city, the Translations list and the required fields.
 
 **New tick step:** `calendar.lock-sweep`.
 
@@ -1772,6 +1826,7 @@ In semantic mode, each `/stack/tick` (the `news-api.embed` step) embeds up to 50
 - **Backlog:** at one tick a minute, 50 posts a tick, about 100,000 posts take about 33 hours or less to embed the first time — `STACK_LOOPS` (default on) also runs the worker's own internal 60 s loop in the same process, and the two can run back to back, so the real pace can be faster than one tick a minute. Until a post is embedded, search still finds it through the text half of a semantic search, and its related posts use the text fallback.
 - **Changing provider or model** re-embeds every post, at the same pace.
 - **Failures:** a provider failure is logged as `[embeddings] <provider> call failed <label>` and the posts are retried on the next tick. If a batch of several posts fails, the worker splits it and keeps retrying the halves, in the same tick, down to single posts, so one bad post never blocks the healthy ones behind it. A post that still fails alone is skipped by later ticks (until its text changes) rather than retried forever. After three failures in a row with no success between them the worker's breaker opens and the step skips its ticks for 60 seconds — isolating a single bad post among healthy ones is specifically designed not to trip this, since a healthy post's success resets the count. Search has its own breaker, so a failing batch doesn't turn search off.
+- **Timeout:** the worker has its own 5-second provider timeout and its own breaker, separate from search's.
 - **Unpublishing** deletes the post's embedding and related posts in the same transaction, so it disappears from semantic results and related lists at once. That includes a legacy import's unpublish step.
 - **Before turning semantic search on**, make sure the 6a search backfill has run: the worker skips a post whose `search_text` is still NULL, so such a post is never embedded until that backfill fills it in. A plain re-run of the backfill fills only posts with no search text; `--all` recomputes every post's search text. Either way, the worker fills missing embedding hashes itself, so re-running the backfill is never required just for that.
 
@@ -1824,7 +1879,7 @@ Each running process has its own cache and its own cap, so with N processes behi
 
 ### Theme and assets
 
-The public site's colours, font and footer links come from `site.theme` in `config/tenants/<tenant>.json`. Files under `config/site/assets/` are published at `<site>/assets/…`; `SITE_SITE_ASSETS_DIR` overrides the folder (the stack prefixes every public-site variable with `SITE_`) — the BC logo and BC Sans font files themselves aren't committed until Q76 (brand and font licensing) is answered. Test sites serve `robots.txt` with `Disallow: /` and add `<meta name="robots" content="noindex, nofollow">` to every page.
+The public site's colours, font and footer links come from `site.theme` in `config/tenants/<tenant>.json`. A service refuses to start when the theme's text on background, text on surface, or primary text on primary is below 4.5:1 contrast; the error names the pair and the ratio. Files under `config/site/assets/` are published at `<site>/assets/…`; `SITE_SITE_ASSETS_DIR` overrides the folder (the stack prefixes every public-site variable with `SITE_`) — the BC logo and BC Sans font files themselves aren't committed until Q76 (brand and font licensing) is answered. Test sites serve `robots.txt` with `Disallow: /` and add `<meta name="robots" content="noindex, nofollow">` to every page.
 
 ### Pages and rebuilds
 
@@ -1931,6 +1986,7 @@ Both flags live in the tenant config (`config/tenants/<tenant>.json`), under `"f
 - **`semanticSearch`** (public search and related posts). Safe to turn on once an embeddings provider is configured (`NEWSAPI_EMBEDDINGS_PROVIDER` plus the Azure settings, Q70) and the News API's database has pgvector (see "pgvector and the search mode"). `/stack/health` then reports `"newsApiSearch": "semantic"`; it stays `text` on boxs.ca, whose Postgres has no pgvector (Q80).
 - **`staffAi`** (AI matching in "Similar published releases") **sends unpublished draft text to the AI service. Do not turn it on in any environment that holds real drafts until the privacy impact assessment approves it (D4, Q71).** NRMS and the News API each check their own copy of the flag: NRMS only asks for AI matching when its flag is on, and the News API only calls the provider when its own flag, a provider and pgvector are all present. On the stack both read the same `TENANT_CONFIG`; standalone, set it in both apps' tenant files. With it off, the panel still works with text matching, and nothing is sent anywhere but the News API.
 - After turning `staffAi` on, check the News API's start log has no `staff AI is off: missing …` line, then press **Find similar** on a draft: results labelled *AI match* mean the whole path works.
+- With `staffAi` on (and a provider and pgvector), the News API's embedding worker runs even when `semanticSearch` is off, because AI matching compares drafts with published posts' vectors. Search and related posts stay in text mode until `semanticSearch` is also on.
 
 ### Exit checks: site quality and the search spot-check
 
@@ -1938,7 +1994,11 @@ Both run on a developer machine (or in CI), never against boxs.ca. `npm run site
 
 ## Hardening batch 1
 
-**No migration.** **New tick step:** `calendar.orphan-sweep` (after `calendar.lock-sweep`).
+**No migration.** **New tick step:** `calendar.orphan-sweep` (after `calendar.lock-sweep`). It
+deletes Calendar attachment bytes that no attachment references any more (left behind when a
+delete failed after a replace or remove), only once they are a day old, at most 50 per tick. A
+failure logs "[calendar] orphan sweep could not delete a stored file" with the error's type only,
+and it retries on its next pass.
 
 **Hand check on boxs.ca:** run `bash scripts/siteground-website-walkthrough.sh`. Its file upload now sends the name in `X-GCPE-File-Name` and must still pass. Upload a release translation from the editor. The access log line for `POST /nrms/api/releases/<id>/files` must show `?kind=…&version=…` and no file name.
 

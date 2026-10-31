@@ -231,6 +231,12 @@ removed: they predated the single-stack design and nothing deployed them):
   and the News API embeddings worker use `SKIP LOCKED` row claims; the other loops are unverified).
 - The Route splits by path: public paths to the public tier, `/hub` and staff APIs to the staff
   tier, with the same allow list the Windows DMZ proxy applies.
+- An app run on its own loses what the stack wires for it. The public site builder then needs an
+  Entra app registration with the News API's `NewsApi.ChangesRead` app role (`NEWS_API_TOKEN_URL`,
+  `NEWS_API_CLIENT_ID`, `NEWS_API_CLIENT_SECRET`, `NEWS_API_SCOPE`), and the News API needs
+  `AUTH_AUDIENCE`; neither starts without them. NRMS needs `NEWS_API_URL` and an Entra app
+  registration holding the News API's `NewsApi.Similar` app role (the same four `NEWS_API_*`
+  settings) for "Similar published releases"; without `NEWS_API_URL` the panel doesn't appear.
 
 ## How it stays in sync
 

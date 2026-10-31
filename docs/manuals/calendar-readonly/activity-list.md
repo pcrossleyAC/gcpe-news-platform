@@ -1,0 +1,95 @@
+---
+id: calendar-readonly-list
+title: The activity list
+manual: calendar-readonly
+order: 10
+routes: [/calendar]
+screens: [calendar/list]
+topics: []
+---
+**Who this is for:** Calendar read-only users (Calendar.ReadOnly).
+
+**Calendar** lists the activities you can see, from today on, earliest first. The first 30 show. More load as you scroll down, or when you choose **Show more** (the button names how many).
+
+Two kinds of activity are left out until you ask for them:
+
+- Awareness dates. Choose **Awareness Day / Week / Month** in **Category** to see them.
+- Activities led by the consultations ministry, shown as **CITENG**. To see them, choose a ministry in **Lead Ministry**: in a ministry, choose your own (this also lists activities shared with it); in an HQ organization, choose **CITENG**.
+
+Both kinds always show under **My Watchlist Only** when you have starred them.
+
+## What sits above the list
+
+From the top:
+
+1. The daily change freeze line, "Daily change freeze.", which says when editors can't make changes. It doesn't stop anything you do. During the freeze it shows as a **Change freeze** warning.
+2. **Filters** and **Saved views**, which open when you choose them.
+3. **List**, **Month** and **Week**.
+4. **Columns** and **Export and reports**.
+
+## Read the list
+
+- Choose an activity's title to open it. See [Read an activity](manual:calendar-readonly-activity).
+- The **Activity Id** column shows the ministry and number, such as HLTH-12. It also shows **Reviewed** when HQ has reviewed the activity, **Shared** when it is shared with other ministries, and **Release** when a news release is linked to it.
+- Under the title you see when it was last updated, by whom, and when it was created.
+- **Not for Look Ahead** under **Categories** marks an activity kept out of the Look Ahead.
+- Point at the date to see the scheduling considerations, at the title to see the significance, and at **Comm. Materials** to see the origin and distribution.
+- Choose a column heading to sort by it, except **Premier**. Choose it again to reverse the order.
+- **What the column names mean**, under the list, explains the short names.
+
+## Filter the list
+
+1. Open **Filters**. The line beside it shows the filter in use, or "No filters".
+2. Fill in what you want. You can use **From**, **To**, **This day only**, **Search for**, **HQ Tags**, **Issue**, **Date Confirmed**, **Status**, **Category**, **Lead Ministry**, **Comm Contact**, **Representative**, **Initiative**, **Premier Requested** and **Distribution**.
+3. Under **Display**, choose **Show All**, **My Ministries' Activities Only**, **My Activities Only** or **My Watchlist Only**.
+4. Choose **Apply filters**.
+
+What some choices do:
+
+- **Search for** takes an activity number, such as HLTH-12345, or words in the title, summary, city and other text. An activity number finds that activity whatever the other filters and dates say. A plain number without the ministry counts as an activity number only above 10,000; a smaller one, such as a year, is searched as a word.
+- **Lead Ministry** offers your own ministries, or every ministry if you are in an HQ organization. It also finds activities shared with that ministry.
+- **My Ministries' Activities Only** shows activities your ministries lead, not those only shared with them.
+- **My Activities Only** shows activities where you are the comm contact.
+- **My Watchlist Only** shows the activities you have starred.
+
+**Reset** empties the filter. Choose **Apply filters** to run it.
+
+The Hub keeps your **Display** choice for next time. To share a filtered list, copy the page address.
+
+## Save a filter
+
+Under **Saved views**, **My Queries** keeps filters you use often. Only you see them.
+
+1. Set the filter and choose **Apply filters**.
+2. Open **Saved views**.
+3. Type a name in **Name for this filter**.
+4. Choose **Save query**. You see, for example, "Saved the query “My week”."
+
+To run a saved filter, choose its name. **Saved views** then shows, for example, "Running “My week”". Each query also has **Rename**, **Up**, **Down** and **Delete**.
+
+## Columns
+
+1. Choose **Columns**.
+2. Tick or untick the columns under **Show these columns**.
+
+The Hub keeps your choice for next time. **Activity Id** always shows. At first, **HQ Tags**, **Ministry**, **Status** and **Translations** are hidden.
+
+## Month and Week
+
+Choose **Month** or **Week** to see the same filter as a calendar. An activity that runs several days shows on each of them. Use **Previous month**, **Today** and **Next month** (or **Previous week** and **Next week**) to move. Choose **List** to go back.
+
+At most 1,000 activities fit. "Only the first 1,000 activities are shown. Narrow the filter to see the rest." means there are more.
+
+## Watch an activity
+
+Choose the star beside an activity to add it to your watchlist. Choose it again to remove it. Point at the star to see who else watches it, or "Nobody watches this yet".
+
+## Can't do this?
+
+| Message | What it means |
+|---|---|
+| "From must be on or before To." | Fix the dates. |
+| "No activities match." | Nothing fits the filter. Widen it, or choose **Reset**. |
+| "(no longer available)" in a filter box | The filter names a choice that was removed. Choose another. |
+| "Your queries changed in another tab, so they were reloaded." | You changed your saved filters somewhere else. Try again. |
+| "Couldn't save your list settings." | Your column or display choice wasn't kept. Try again. |
