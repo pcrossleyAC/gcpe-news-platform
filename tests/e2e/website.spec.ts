@@ -216,8 +216,12 @@ test.describe("item 12: Website section", () => {
     await page.locator('input[type="file"]').setInputFiles(filePath);
     const link = page.getByRole("link", { name: /e2e-upload-.*\.png/ });
     await expect(link).toBeVisible();
+    // The link is the file's full public address (W1), on the public site's host rather than the
+    // Hub's; fetch the same path from the test stack.
     const href = await link.getAttribute("href");
-    const fileRes = await fetch(`${baseUrl()}${href}`);
+    const { pathname } = new URL(href!, baseUrl());
+    expect(pathname).toMatch(/^\/files\/e2e-upload-.*\.png$/);
+    const fileRes = await fetch(`${baseUrl()}${pathname}`);
     expect(fileRes.status).toBe(200);
   });
 });
