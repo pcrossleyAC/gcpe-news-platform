@@ -296,12 +296,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Phase 5b-1 — Calendar app, lookups, public organizations
 
-- **Administrator** — Hub → Calendar → Lookups lists every Calendar lookup. Administrators change event
-  planners, HQ initiatives, HQ tags and Digital; the other seven (categories, cities, comm materials,
-  government representatives, NR distributions, NR origins, Premier requested) need a System
-  Administrator and are read-only for everyone else.
-- **Administrator** — Lookup rows are never deleted. Untick Active to stop offering a row; it stays on
-  old activities. Two active rows in one lookup can't share a name.
 - **Operations** — The break-glass admin and service tokens have no Calendar access: the Calendar knows
   only users Core has sent it. Sign in as a real user with a Calendar role to use it.
 - **Operations** — The Calendar needs its own database. Until `CALENDAR_DATABASE_URL` is set the stack
@@ -318,20 +312,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Phase 5b-2 — Calendar users, test users, report spike
 
-- **Administrator** — Hub → Calendar → Users lists each user once per ministry, as "Name (Abbreviation) (rank)".
-  Switches add inactive users (including those imported without an email) and users without Calendar access.
-- **Administrator** — On a user's page: contact details (phone is free text up to 20 characters; mobile
-  is either empty or legacy's 12-digit-and-hyphen format, like 250-555-0100), the comm-contact rank for
-  each of their ministries, their Calendar role and ministries, and their account. Role, ministries and
-  account changes reach the Calendar within a minute.
-- **Administrator** — A Calendar Administrator can deactivate, reactivate or link only people whose only
-  access is a Calendar role. Anyone with no Calendar role, or who also uses NRMS or NoD, is a Core
-  admin's to change.
-- **Administrator** — A Calendar Administrator can give a Calendar role to an active person who has
-  none, but not to an inactive one: only a Core admin brings in an inactive person with no Calendar
-  role (most are NRMS imports). The Calendar access and user screens say so instead of offering Edit.
-- **Administrator** — Set a comm-contact rank only after the person's ministry is saved; if the Calendar
-  says the ministry isn't theirs yet, wait a minute and try again.
 - **Operations** — `scripts/siteground-seed-users.sh` now also seeds five Calendar test users
   (cal-admin, cal-sysadmin, cal-hq-admin, cal-editor, cal-readonly @example.test) and gives them Calendar
   access; run it after the public-API seed so their organizations exist. Re-running it resets the
@@ -357,8 +337,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   loaded and says which.
 - **HQ** — Clear LA Status clears the LA status of every activity you can see that starts on or
   before the chosen number of days from today, past ones included.
-- **Administrator** — Deleting an activity hides it from everyone except HQ Administrators, who
-  review the deletion.
 - **Operations** — The Calendar's settings (freeze window, release categories, Other city, the
   Translations list, required fields) are in the tenant file's `calendar` section.
 - **Operations** — The Calendar sends `activity.*` events to NRMS from now on; NRMS ignores them until
@@ -372,26 +350,9 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Phase 5c-2 — Transfer, the deactivation preview, undelivered events
 
-- **Administrator** — Hub → Calendar → Transfer moves every activity of one comm contact (past ones
-  too, not deleted ones) to another and makes the second contact's ministry the lead ministry. It
-  shows how many will move before you confirm. A ministry Administrator can transfer only within
-  their own ministries, and moves only the activities their ministry leads: an activity another
-  ministry leads and shares with theirs stays where it is. HQ Administrators can transfer across
-  ministries. Transfer works during the 4pm-5pm freeze.
-- **Administrator** — Transfer won't move activities to a comm contact whose ministry is inactive
-  or can't lead an activity, or whose person's account is inactive; it says why. The From list
-  marks inactive contacts and inactive people "inactive".
 - **Editor** — An activity can't be given a comm contact whose account is inactive ("That person's
   account is inactive"). An activity that already has that contact keeps it when saved, but can't
   be cloned until it has an active comm contact: a clone is a new assignment.
-- **Administrator** — Deactivating a user first lists their open activities, with a link to
-  Transfer. Deactivating doesn't move them.
-- **System Administrator** — Hub → Calendar → Undelivered events lists events another app didn't
-  accept for 24 hours. Retry sends one again on the next minute's tick; if it comes back, the
-  receiving app is still refusing it.
-- **System Administrator** — Undelivered events lists the 200 most recent and says so when there are
-  more. Each Retry button names the receiving app and when the event was queued, for screen
-  readers, and stays disabled until its retry is answered.
 
 ## Phase 5d — The activity list
 
@@ -414,8 +375,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **All Calendar users** — Excel export downloads what the list shows (up to 10,000 activities),
   with the old header, columns and confidentiality footer.
 - **All Calendar users** — Month and Week show the same filter as a calendar.
-- **HQ Administrator** — Tick rows and Review selected. Rows someone changed since your list loaded
-  are skipped and named. If the screen says only some were reviewed, select the rest and run it again.
 - **HQ Editor and above** — Clear LA Status for the next N days (8 by default).
 - **HQ Advanced and above** — Corporate Queries and the Look Ahead filter.
 - **HQ Advanced and above** — Searching the Executive Summary only finds it for users who can see
@@ -449,14 +408,11 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **HQ Editor and above** — The Look Ahead fieldset follows the activity: the section is worked out from the category, Issue, confirmation and comm materials. Choose another to override it (marked "Override"); "Use the inferred section" undoes that.
 - **HQ Editor and above** — Fields changed since the last review say "Changed: needs review".
 - **HQ Advanced and above** — Review marks the activity reviewed and brings you back. Review and Clone wait until you've saved or cancelled your own changes.
-- **HQ Administrator** — A deleted activity opens read-only, with Review as its only action.
 - **All Calendar users** — "BC Gov News" on an activity lists its releases. If you also have an NRMS role, each one links to the release.
 - **All staff** — Who you're signed in as, and Sign out, are at the right-hand end of the header bar.
 - **All staff** — A section's own screens (Releases' Drafts/Scheduled/Published, Website, Subscribers, Calendar) are a row of tabs above the page heading; the one you're on is bold and underlined.
 - **NRMS editors** — Release history and published copies show times in BC time, like "Today 9:49 AM", not raw timestamps.
 - **All Calendar users** — The list's filter is under "Filters", open when the page loads; close it to see more results. New activity, Review selected, Clear LA Status, Excel export and List/Month/Week sit above the results.
-- **Calendar administrators** — Calendar users is a table: name (opens the user), ministry, comm contact rank, Calendar role and whether active.
-- **Calendar access managers** — Calendar access is a table, one row per person; Edit opens their role and ministries under their row.
 
 ## Phase 5f — Updates feed
 
@@ -470,7 +426,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **All Calendar users** — Transfers and Clear LA Status don't appear in the feed, as in the old Calendar. See the activity's "View changes".
 - **Calendar editors** — When an activity is made confidential, moved to another ministry or deleted, its updates leave the feed for anyone who can no longer see it.
 - **HQ Editor and above** — Changes to an activity's Look Ahead fields show as "changed activity" only to people who see the Look Ahead fieldset.
-- **HQ Administrator** — Deleted activities' updates, the deletion included, show marked "(deleted)". The link opens the activity read-only, with Review.
 
 ## Phase 5g — Reports
 
@@ -481,7 +436,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **All Calendar users** — The Look Ahead has six sections; "Consultations and Dialogues" is gone. With no To date it covers 60 days and adds the Long Term Outlook.
 - **All Calendar users** — Each activity number in a report links to the activity in the Hub.
 - **HQ Editor and above** — Your Look Ahead shows each activity's Executive Summary, when it has one, and its NEW or CHANGED flag. Others see titles and details.
-- **HQ Administrator** — Exec Look Ahead is yours alone. With no To date it covers one month.
 - **Operations** — The Calendar puts each activity on its day with the database's own time-zone data. At startup the stack checks it; if the database's data predates BC's permanent UTC−7 (tzdata 2026b), the error log shows "the Calendar database's time-zone data predates BC's permanent UTC−7", and activities between midnight and 1 a.m. (from 2026-11-01) are listed, exported and reported on the previous day until the database is upgraded. `node stack.js --check` shows the same as `"calendarDbTimeZone"`.
 - **Operations** — Reports render in a worker thread of the stack process, one at a time: `CALENDAR_REPORT_CONCURRENCY` (1), `CALENDAR_REPORT_HEAP_MB` (320), `CALENDAR_REPORT_TIMEOUT_SECONDS` (120), `CALENDAR_REPORT_INLINE_WAIT_MS` (5000). A finished PDF stays in memory for 10 minutes; a restart forgets it.
 - **Developer** — `npm run calendar:report-compare -- --legacy <pdf> --new <pdf> --out <folder outside the repo>` compares two reports' sections and activity order (5i's parity check).
@@ -504,7 +458,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Operations** — `npm run calendar:import -- --cutoff <date>` reads legacy's Calendar database and writes the Calendar's and Core's. `--cutoff` is required; there's no default. Run it first without `--confirm` and read the report before running it again with `--confirm`. The report balances when `legacy` equals the rows it accounts for; exit code `0` is balanced, `2` is not balanced (still completed — read the report), `1` is an error. After a confirmed import: if `CORE_EVENT_SUBSCRIBERS` wasn't set, run Core's republish; then `calendar:replay-to-nrms --confirm` and a tick; then `nrms:replay-activity-links --confirm` and a tick, in that order. A re-run never overwrites a change already made in the Calendar.
 - **Operations** — An unknown legacy ministry, sector, theme or tag stops the import before it writes anything, listed in the report. Fix Core first (import or add the missing one there), then re-run.
 - **All Calendar users** — Activities that ended before the cutoff aren't in the new Calendar, except awareness dates, which come in whatever their age. Their history, favourites and files stay in the old Calendar, which one HQ administrator can read for a year after cutover.
-- **System Administrator** — Legacy users without an email come in inactive. Link them on the Calendar users screen to activate them. Legacy users who shared an email are one user.
 - **All Calendar users** — "View changes" on an imported activity shows the old Calendar's recorded changes (title, dates, city, contact, lead ministry, confirmation), marked "from legacy log".
 - **Developer** — The import lives in `apps/calendar/src/import/` (`cli.ts`, `run.ts`, `scope.ts`, `map.ts`, `apply.ts`, `apply-related.ts`, `history-map.ts`, `report.ts`) and `apps/core/src/import/calendar-users.ts`. Tests run it against a fake source (`createFakeSource`, `@gcpe/legacy-import`) loaded with the synthetic fixture in `apps/calendar/test/legacy-calendar-fixture.ts`. Because the fake source ignores SQL, the scope rule runs twice for real: once in the SQL that narrows what's read, and again in `selectScope`, which is what the tests actually check.
 - **Operations** — `npm run calendar:report-parity -- --csv <file> … --part-c <file> --legacy-dir <folder> --out <folder> --cutoff <date> --from <date> --to <date> --to-30-60-90 <date>` checks our reports against legacy's PDFs on a survey 08 CSV snapshot. Everything it writes holds real activities and people: `--out` must be outside the repository (it refuses one inside) in an owner-only folder, and nothing from it goes into the repo, a ticket or chat. It drops its throwaway `test_…` databases itself; after a crash, `npm run test:clean-dbs` finds them. Results of the first run: `docs/parity/calendar-report-parity.md`.
