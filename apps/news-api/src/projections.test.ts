@@ -475,6 +475,37 @@ describe("projections", () => {
       expect(await changeRows()).toEqual([{ kind: "post.unpublished", key: "R-WEB" }]);
     });
 
+    // Fix round 1 (review M1): other posts' rendered related bands may link the post that went off
+    // the site. Each page that may (semantic list, same-lead tag match, or the lead ministry's
+    // latest-posts fallback while it was among that ministry's newest) is re-rendered.
+    it("an unpublish also re-renders the pages whose related band may link the post", async () => {
+      const at = (d: string) => `2026-10-${d}T09:00:00-07:00`;
+      const post = (key: string, lead: string, d: string, over: Partial<ReleaseRecord> = {}): ReleaseRecord =>
+        ({ ...sampleRelease, key, leadMinistryKey: lead, ministryKeys: [lead], sectorKeys: [], tagKeys: [], publishDate: at(d), ...over });
+      const write = (r: ReleaseRecord) => tdb.db.transaction((tx) => applyRelease(tx, r));
+      await write(post("X-GONE", "health", "05", { tagKeys: ["fires"] }));
+      await write(post("S-SEMANTIC", "finance", "01"));
+      // Same lead ministry and a tag, published after it (its band was built while X was among the newest).
+      await write(post("T-TEXT", "Health", "06", { ministryKeys: ["finance"], tagKeys: ["Fires"] }));
+      // Published before X: its band was built before X existed.
+      await write(post("T-OLDER", "health", "01", { ministryKeys: ["finance"], tagKeys: ["fires"] }));
+      await write(post("T-OTHER-LEAD", "finance", "01", { tagKeys: ["fires"] }));
+      // The health listing's next four posts after X: only those led by health show health's latest.
+      await write(post("F-FALLBACK", "health", "06"));
+      for (const d of ["07", "08", "09"]) await write(post(`A-${d}`, "finance", d, { ministryKeys: ["finance", "health"] }));
+      await write(post("L-LATER", "health", "10"));
+      await write(post("U-UNRELATED", "finance", "05"));
+      await tdb.pool.query("INSERT INTO post_related (post_key, related_keys) VALUES ('S-SEMANTIC', ARRAY['x-gone']), ('U-UNRELATED', ARRAY['A-07'])");
+      await tdb.pool.query("TRUNCATE changes RESTART IDENTITY");
+      await tdb.db.transaction((tx) => unpublishRelease(tx, "x-gone"));
+      expect(await changeRows()).toEqual([
+        { kind: "post.unpublished", key: "X-GONE" },
+        { kind: "post.upserted", key: "F-FALLBACK" },
+        { kind: "post.upserted", key: "S-SEMANTIC" },
+        { kind: "post.upserted", key: "T-TEXT" },
+      ]);
+    });
+
     it("writes nothing for a legacy write refused because NRMS owns the key", async () => {
       await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R-OWN" }));
       await tdb.pool.query("TRUNCATE changes");
