@@ -15,10 +15,11 @@ const day = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", 
 
 /**
  * Whether the page says it instead, once: the freeze or a lock (423), the activity gone (404) or
- * deleted (409), or a sign-in (401). A remove's 404 is only the file gone.
+ * deleted (409). A remove's 404 is only the file gone. A 401 (the session ended) is said here, in
+ * apiFetch's plain words (fix round 2), as the page stays on screen.
  */
 const forThePage = (e: unknown, { fileGone }: { fileGone: boolean }) =>
-  e instanceof ApiError && (e.status === 423 || e.status === 401 || (e.status === 409 && e.code === "deleted") || (e.status === 404 && !fileGone));
+  e instanceof ApiError && (e.status === 423 || (e.status === 409 && e.code === "deleted") || (e.status === 404 && !fileGone));
 
 function messageOf(e: unknown): string {
   if (e instanceof ApiError && e.status === 422) return (e.body as { errors?: FieldError[] } | undefined)?.errors?.[0]?.message ?? e.message;

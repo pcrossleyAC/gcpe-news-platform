@@ -225,6 +225,47 @@ describe("useEditLock (spec addendum §7.5)", () => {
     off();
   });
 
+  // Fix round 2 (I3): a heartbeat is the page's own keep-alive, not something the user did, so a
+  // 401 on it doesn't bring the Your session has ended box back on every keystroke; and none is
+  // sent while the session has ended.
+  it("a heartbeat refused with a 401 is reported as a background request", async () => {
+    let signedIn = true;
+    stub([], () => (signedIn ? ok() : jsonResponse(401, { error: "missing bearer token" })));
+    const seen: boolean[] = [];
+    const off = onUnauthorized((_r, { byUser }) => void seen.push(byUser));
+    const { result } = mount();
+    await act(async () => void (await result.current.touch()));
+    signedIn = false;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      await result.current.touch();
+    });
+    off();
+    expect(seen).toEqual([false]);
+  });
+
+  it("sends no heartbeat while the session has ended, and resumes once it is back", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    let ended = false;
+    const { result, rerender } = renderHook(() => useEditLock({ activityId: 7, initial: null, enabled: true, reload: async () => null, sessionEnded: ended }));
+    await act(async () => void (await result.current.touch()));
+    expect(lockCalls(calls)).toHaveLength(1);
+    ended = true;
+    rerender();
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+        await result.current.touch();
+      });
+    }
+    expect(lockCalls(calls)).toHaveLength(1);
+    ended = false;
+    rerender();
+    await act(async () => void (await result.current.touch()));
+    expect(lockCalls(calls)).toHaveLength(2);
+  });
+
   it("a real network failure gets the generic message; any other 4xx shows the server's own", async () => {
     stub([], () => { throw new TypeError("Failed to fetch"); });
     const { result: net } = mount();

@@ -79,6 +79,9 @@ export interface ApiFetchInit extends Omit<RequestInit, "body"> {
    * Blob; the server judges bytes by magic number, not the declared type). Mutually exclusive
    * with `body`. */
   raw?: BodyInit;
+  /** The page's own keep-alive (the Calendar edit lock's heartbeat), not something the user did:
+   * a 401 on it ends the session but doesn't bring the explanation back (fix round 2, I3). */
+  background?: boolean;
 }
 
 function currentReturnPath(): string {
@@ -97,6 +100,7 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
     throw new Error("apiFetch: provide at most one of body or raw.");
   }
 
+  const { background = false, ...requestInit } = init;
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (!SAFE_METHODS.has(method)) headers.set(CSRF_HEADER, "1");
@@ -109,7 +113,8 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
     body = JSON.stringify(init.body);
   }
 
-  const res = await fetch(path, { ...init, method, headers, credentials: "same-origin", body });
+  const { raw: _raw, body: _body, ...fetchInit } = requestInit;
+  const res = await fetch(path, { ...fetchInit, method, headers, credentials: "same-origin", body });
 
   if (res.status === 204) return undefined as T;
 
@@ -122,7 +127,7 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
   }
 
   if (!res.ok) {
-    if (res.status === 401) notifyUnauthorized(currentReturnPath(), !SAFE_METHODS.has(method));
+    if (res.status === 401) notifyUnauthorized(currentReturnPath(), !SAFE_METHODS.has(method) && !background);
     const errObj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
     // The Website section's 422s (apps/nrms/src/website/errors.ts's SiteRuleError,
     // mapped in apps/nrms/src/http/routes.ts's handleError) send `{ errors: string[] }` with no

@@ -245,7 +245,7 @@ function ActivityEditor({ me, config, options, view: initial, clone, returnTo, n
       return null;
     }
   }, [initial]);
-  const lock = useEditLock({ activityId: initial?.id ?? null, initial: initial?.lock ?? null, enabled: canEdit && !initial?.isDeleted, resumed: restored !== null, reload });
+  const lock = useEditLock({ activityId: initial?.id ?? null, initial: initial?.lock ?? null, enabled: canEdit && !initial?.isDeleted, resumed: restored !== null, reload, sessionEnded: session.ended });
   const frozen = config.freeze.appliesToYou;
   const lockedOut = lock.state.kind === "other" || lock.state.kind === "elsewhere" || lock.state.kind === "gone";
   const readOnly = !canEdit || frozen || lockedOut || !!view?.isDeleted || deletedMeanwhile;

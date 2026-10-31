@@ -89,6 +89,22 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
     expect(screen.getByText("No files yet.")).toBeInTheDocument();
   });
 
+  // Fix round 2: a remove refused because the session ended says so where the user acted.
+  it("a remove refused because the session ended says so in plain words", async () => {
+    stubActivity([], {
+      config: ON,
+      view: view({ files: [FILE] }),
+      other: (url, init) => (url === `${FILES}/5` && init?.method === "DELETE" ? jsonResponse(401, { error: "missing bearer token" }) : undefined),
+    });
+    renderActivity("/calendar/activities/20001");
+    // Something unsaved, so the page stays once the session has ended (with nothing, it goes to sign-in).
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
+    await userEvent.click(await screen.findByRole("button", { name: "Remove Sample brief.pdf" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Remove Sample brief.pdf?" })).getByRole("button", { name: "Remove" }));
+    expect(await screen.findByText("Sample brief.pdf: Your session has ended. Sign in again to save — your changes are still here.")).toBeInTheDocument();
+    expect(screen.queryByText(/bearer/)).toBeNull();
+  });
+
   it("a read-only viewer can download but not add or remove", async () => {
     stubActivity([], { config: ON, view: view({ files: [FILE], can: { edit: false, clone: false, delete: false, review: false } }) });
     renderActivity("/calendar/activities/20001");
