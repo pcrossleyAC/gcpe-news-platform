@@ -54,6 +54,6 @@ A pull request that changes a Hub screen must also change the manual page that d
 - The check looks at changed files under `apps/staff-web/src/screens/`, except test files (`*.test.*`).
 - A page covers a folder when its `screens` header names that folder exactly, or names a folder above it: `admin/organizations` covers `admin/organizations/sub/x.tsx` but not `admin/organizations-x/`.
 - For each changed folder that some page covers, at least one of those pages must also change in the same pull request. Deleting such a page counts as a change. A folder no page names is not checked.
-- A broad entry such as `website` covers every folder under it, so changing any page that names it satisfies the check for all of those folders. Where another page names a narrower folder (`website/settings`), changing either page passes a change there.
+- A broad entry such as `website` covers every folder under it that no page names. Where a page names a narrower folder (`website/settings`), a file there is checked only against the pages naming that narrower folder: a change to `website/settings/BannerScreen.tsx` needs a change to a `website/settings` page (such as `nrms-site-editor/site-banner.md`), and a change to a `website` page alone does not pass it.
 - If the change does not alter what staff see or do, put a line in any commit message of the pull request that says exactly `Manual: no change`. That exempts the whole pull request.
 - The failure message names the folder and the pages to update.

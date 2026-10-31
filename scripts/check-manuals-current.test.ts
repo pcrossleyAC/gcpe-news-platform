@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { missingManualUpdates } from "./check-manuals-current.mjs";
+import { parsePage, readManualPages } from "./manuals-lib.mjs";
 
 const terms = { id: "government-terms", path: "docs/manuals/core-admin/government-terms.md", screens: ["admin/government-terms"] };
 const orgs = { id: "organizations", path: "docs/manuals/core-admin/organizations.md", screens: ["admin/organizations"] };
@@ -67,8 +68,42 @@ describe("missingManualUpdates", () => {
     expect(missingManualUpdates([screen, other.path], [terms, other], [])).toHaveLength(1);
   });
 
+  it("checks a file only against the narrowest folder a page names", () => {
+    const website = { id: "carousel", path: "docs/manuals/nrms-site-editor/carousel.md", screens: ["website"] };
+    const settings = { id: "site-banner", path: "docs/manuals/nrms-site-editor/site-banner.md", screens: ["website/settings"] };
+    const banner = "apps/staff-web/src/screens/website/settings/BannerScreen.tsx";
+    expect(missingManualUpdates([banner, settings.path], [website, settings], [])).toEqual([]);
+    // The broad page doesn't cover a folder that has its own page.
+    const out = missingManualUpdates([banner, website.path], [website, settings], []);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toContain("website/settings (");
+    expect(out[0]).not.toContain("carousel");
+    // A file outside the narrower folder still belongs to the broad one.
+    expect(missingManualUpdates(["apps/staff-web/src/screens/website/CarouselScreen.tsx", settings.path], [website, settings], [])).toHaveLength(1);
+    expect(missingManualUpdates(["apps/staff-web/src/screens/website/CarouselScreen.tsx", website.path], [website, settings], [])).toEqual([]);
+  });
+
   it("ignores changes outside the screens folder", () => {
     expect(missingManualUpdates(["apps/staff-web/src/shell/nav.ts", "README.md"], [terms], [])).toEqual([]);
+  });
+});
+
+describe("missingManualUpdates on the real manual pages", () => {
+  const pages = readManualPages().map(({ path, text }) => {
+    const { header } = parsePage(path, text);
+    return { id: header.id, path, screens: header.screens };
+  });
+  const S = "apps/staff-web/src/screens/";
+  it.each([
+    ["website/settings/BannerScreen.tsx", "docs/manuals/nrms-site-editor/site-banner.md"],
+    ["subscribers/reports/UnsubscribesReportScreen.tsx", "docs/manuals/nod-admin/subscriber-reports.md"],
+    ["subscribers/reports/UnsubscribesReportScreen.tsx", "docs/manuals/nod-viewer/reports.md"],
+  ])("passes a change to %s with %s", (screenFile, page) => {
+    expect(pages.some((p) => p.path === page)).toBe(true);
+    expect(missingManualUpdates([`${S}${screenFile}`, page], pages, [])).toEqual([]);
+  });
+  it("still fails a nested screen changed with only a page for the broad folder", () => {
+    expect(missingManualUpdates([`${S}website/settings/BannerScreen.tsx`, "docs/manuals/nrms-site-editor/carousel.md"], pages, [])).toHaveLength(1);
   });
 });
 
