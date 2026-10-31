@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { jsonResponse } from "../test/jsonResponse";
 import { SessionProvider } from "./session/SessionContext";
 import { routes } from "./router";
+import axe from "axe-core";
 
 // Suite review H3: a screen that crashes. Search stands in for any screen in the shell.
 vi.mock("./screens/search/SearchScreen", () => ({
@@ -24,6 +25,11 @@ function stub() {
       return jsonResponse(404, { error: "not found" });
     }),
   );
+}
+
+async function seriousViolations(container: Element) {
+  const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+  return results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id);
 }
 
 function renderAt(path: string) {
@@ -53,6 +59,7 @@ describe("the Hub's error and not-found pages, inside the shell", () => {
       expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
       expect(screen.queryByText(/Unexpected Application Error/)).toBeNull();
       expect(screen.queryByText("Crashed while showing the screen")).toBeNull();
+      expect(await seriousViolations(document.body)).toEqual([]);
       // The shell is still there.
       expect(screen.getByRole("navigation", { name: "Sections" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
@@ -72,6 +79,7 @@ describe("the Hub's error and not-found pages, inside the shell", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeInTheDocument();
     expect(screen.getByText("There’s no page at this address. The link may be out of date, or the address may have been typed wrong.")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Sections" })).toBeInTheDocument();
+    expect(await seriousViolations(document.body)).toEqual([]);
     await userEvent.setup().click(screen.getByRole("link", { name: "Go to the start page" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/hub/releases/drafts"));
   });
@@ -82,3 +90,17 @@ describe("the Hub's error and not-found pages, inside the shell", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeInTheDocument();
   });
 });
+
+describe("the Hub's error page outside the shell", () => {
+  afterEach(() => cleanup());
+
+  it("has its own header, Reload and a plain link to the start page", async () => {
+    const { HubErrorPage } = await import("./shell/HubMessagePages");
+    const router = createMemoryRouter([{ path: "/", element: <HubErrorPage standalone /> }]);
+    render(<RouterProvider router={router} />);
+    expect(screen.getByRole("heading", { level: 1, name: "Something went wrong" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to the start page" })).toHaveAttribute("href", "/hub/");
+    expect(await seriousViolations(document.body)).toEqual([]);
+  });
+});
+

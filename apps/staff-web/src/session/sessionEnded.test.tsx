@@ -10,6 +10,7 @@ import { AppShell } from "../shell/AppShell";
 import { SignIn } from "../screens/SignIn";
 import { LeavePageGuard } from "../shared/LeaveGuard";
 import { saveDraft, loadDraft } from "../screens/release/documents/unsavedDocumentStorage";
+import axe from "axe-core";
 
 /** A stand-in edit screen: one field, guarded by the Hub's shared leave-page rule. */
 function EditScreen(): React.JSX.Element {
@@ -225,3 +226,50 @@ describe("leaving a screen with unsaved changes, inside the shell (suite review 
     expect(unload()).toBe(false);
   });
 });
+
+/** React Aria makes the page behind a dialog inert in real browsers; jsdom has no `inert`, so axe
+ * sees aria-hidden alone over focusable fields. That one rule is off while a dialog is open, as in
+ * the Calendar and Subscribers dialogs' axe tests; the e2e axe sweep checks a real browser. */
+const WITH_DIALOG = { rules: { "aria-hidden-focus": { enabled: false } } };
+async function seriousViolations(container: Element, options: axe.RunOptions = {}) {
+  const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, ...options });
+  return results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id);
+}
+
+describe("accessibility of the session and leave questions", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("the Your session has ended dialog, the notice it leaves, and sign-in's explanation", async () => {
+    stub();
+    renderHub();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Bio" }), "x");
+    sessionOk = false;
+    showTab();
+    const dialog = await screen.findByRole("alertdialog", { name: "Your session has ended" });
+    expect(await seriousViolations(document.body, WITH_DIALOG)).toEqual([]);
+    await user.click(within(dialog).getByRole("button", { name: "Stay on this page" }));
+    expect(await seriousViolations(document.body)).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Sign in again" }));
+    await screen.findByText("Your session ended. Sign in to carry on where you left off.");
+    expect(await seriousViolations(document.body)).toEqual([]);
+  });
+
+  it("the Sign out and leave-page questions", async () => {
+    stub();
+    renderHub();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Bio" }), "x");
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    const signOut = await screen.findByRole("alertdialog", { name: "Unsaved changes" });
+    expect(await seriousViolations(document.body, WITH_DIALOG)).toEqual([]);
+    await user.click(within(signOut).getByRole("button", { name: "Stay" }));
+    await user.click(screen.getByRole("link", { name: "Somewhere else" }));
+    await screen.findByRole("alertdialog", { name: "Unsaved changes" });
+    expect(await seriousViolations(document.body, WITH_DIALOG)).toEqual([]);
+  });
+});
+

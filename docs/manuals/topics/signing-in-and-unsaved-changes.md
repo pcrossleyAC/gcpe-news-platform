@@ -11,7 +11,7 @@ topics: []
 
 ## Staying signed in
 
-While a Hub tab is open, it keeps you signed in, even when the tab sits behind other windows. Your session can still end: when you sign out in another tab or window, when your computer has been asleep or offline for about an hour, or when an administrator changes your account.
+While a Hub tab is open, it keeps you signed in, even when the tab sits behind other windows. Your session can still end: when you sign out in another tab or window, when your computer has been asleep or offline for a while (it can be as little as a few minutes, and is never more than an hour), or when an administrator changes your account.
 
 ## When your session ends
 
