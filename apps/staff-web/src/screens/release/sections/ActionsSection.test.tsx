@@ -8,6 +8,7 @@ import { useUnsavedChangesGuard } from "../useUnsavedChanges";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { ActionsSection } from "./ActionsSection";
+import { dateTimeText } from "../../calendar/list/dates";
 import { useEscapeClosesPanels } from "../../../shared/escapeClosesPanels";
 import type { DirtySection } from "../useUnsavedChanges";
 
@@ -25,8 +26,9 @@ function renderActions(view: ReleaseView, setView: (v: ReleaseView) => void = ()
 
 /** The Publish now dialog's own lookups (site address, list and category names) plus the POSTs it
  * may send, recorded in `posts`. */
-function publishFetch(posts: { url: string; body: unknown }[], next: ReleaseView) {
+function publishFetch(posts: { url: string; body: unknown }[], next: ReleaseView, audience: unknown = { subscribers: null, mediaContacts: null }) {
   return vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/audience")) return audience instanceof Response ? audience : jsonResponse(200, audience);
     if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.example.test/" });
     if (url === "/nrms/api/media-lists") return jsonResponse(200, [{ key: "regional", displayName: "Regional newspapers", isActive: true }]);
     if (url === "/nrms/api/categories")
@@ -280,6 +282,71 @@ describe("ActionsSection", () => {
     await waitFor(() => expect(dialog).toHaveTextContent("Publishes to news.example.test now."));
     await waitFor(() => expect(dialog).toHaveTextContent("Sends to media distribution lists: Regional newspapers."));
     expect(dialog).toHaveTextContent("Emails News on Demand subscribers who follow any of: Health; Seniors — and everyone subscribed to all news.");
+  });
+
+  // Suite review R6: the counts schedule() stores, shown before anything is sent.
+  describe("how many it reaches", () => {
+    const firstPublish = releaseView({
+      status: "approved", key: "k1", reference: "NEWS-00001",
+      ministries: ["health"], leadMinistryKey: "health", sectors: ["seniors"], themes: [], tags: [],
+      mediaListKeys: ["regional"], publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: true },
+    });
+    const open = async () => {
+      renderActions(firstPublish);
+      await userEvent.setup().click(screen.getByRole("button", { name: "Publish now" }));
+      return screen.findByRole("dialog");
+    };
+
+    it("says about how many subscribers and media contacts it reaches", async () => {
+      vi.stubGlobal("fetch", publishFetch([], firstPublish, { subscribers: { count: 41000 }, mediaContacts: { count: 312 } }));
+      const dialog = await open();
+      await waitFor(() => expect(dialog).toHaveTextContent("Reaches about 41,000 News on Demand subscribers and about 312 media contacts."));
+    });
+
+    it("says when a count isn't available", async () => {
+      vi.stubGlobal("fetch", publishFetch([], firstPublish, { subscribers: { count: null }, mediaContacts: { count: 312 } }));
+      const dialog = await open();
+      await waitFor(() => expect(dialog).toHaveTextContent("Reaches News on Demand subscribers (count unavailable) and about 312 media contacts."));
+    });
+
+    it("says the counts aren't available when they can't be fetched, and still lets it publish", async () => {
+      vi.stubGlobal("fetch", publishFetch([], firstPublish, jsonResponse(500, { error: "down" })));
+      const dialog = await open();
+      await waitFor(() => expect(dialog).toHaveTextContent("How many people it reaches isn't available right now."));
+      expect(within(dialog).getByRole("button", { name: "Publish now" })).toBeEnabled();
+    });
+
+    it("says nothing about counts when nobody is emailed", async () => {
+      const off = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: false } });
+      const fetchMock = publishFetch([], off);
+      vi.stubGlobal("fetch", fetchMock);
+      renderActions(off);
+      await userEvent.setup().click(screen.getByRole("button", { name: "Publish now" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).not.toHaveTextContent(/Reaches|isn't available/);
+      expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/audience"))).toBe(false);
+    });
+  });
+
+  // Suite review R5: Publish now on a release planned for later puts it out early (an embargo).
+  it("the Publish now dialog warns, naming the planned time, when the release is planned for later", async () => {
+    const planned = new Date(Date.now() + 26 * 3600_000).toISOString();
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: planned });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    renderActions(v);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Publish now" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(`This release is planned for ${dateTimeText(planned, "America/Vancouver")}. Publishing now puts it out early.`);
+    expect(within(dialog).getByRole("button", { name: "Publish now" })).toBeEnabled();
+  });
+
+  it("no early-publish warning when the planned time has passed, or there is none", async () => {
+    const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", publishAt: new Date(Date.now() - 3600_000).toISOString() });
+    vi.stubGlobal("fetch", publishFetch([], v));
+    renderActions(v);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Publish now" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).not.toHaveTextContent(/planned for/);
   });
 
   it("the Publish now dialog says nobody is emailed when News on Demand and media lists are off", async () => {
@@ -558,6 +625,42 @@ describe("ActionsSection", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // Suite review R10: Cancel schedule asks first, naming the time, and warns harder near it.
+  describe("Cancel schedule", () => {
+    const scheduledFor = (ms: number) => releaseView({ status: "scheduled", key: "k1", reference: "NEWS-00001", publishAt: new Date(Date.now() + ms).toISOString(), version: 6 });
+
+    it("asks first, naming the time; only its own Cancel schedule POSTs /cancel", async () => {
+      const v = scheduledFor(3 * 86400_000);
+      const posts: { url: string; body: unknown }[] = [];
+      vi.stubGlobal("fetch", publishFetch(posts, releaseView({ status: "approved", version: 7 })));
+      renderActions(v);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Cancel schedule" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(posts).toHaveLength(0);
+      expect(dialog).toHaveTextContent(`Cancel the publish on ${dateTimeText(v.publishAt!, "America/Vancouver")}?`);
+      expect(dialog).toHaveTextContent("It goes back to Drafts as approved.");
+      expect(dialog).not.toHaveTextContent(/due to go out in/);
+
+      await user.click(within(dialog).getByRole("button", { name: "Keep schedule" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(posts).toHaveLength(0);
+
+      await user.click(screen.getByRole("button", { name: "Cancel schedule" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel schedule" }));
+      await waitFor(() => expect(posts).toEqual([{ url: `/nrms/api/releases/${v.id}/cancel`, body: { version: 6 } }]));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("near the time, says how soon it's due to go out", async () => {
+      vi.stubGlobal("fetch", publishFetch([], scheduledFor(10 * 60_000 + 30_000)));
+      renderActions(scheduledFor(10 * 60_000 + 30_000));
+      await userEvent.setup().click(screen.getByRole("button", { name: "Cancel schedule" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("It's due to go out in 10 minutes. If you cancel, it won’t go out then.");
+    });
   });
 
   it("a 409 on an action shows the reload message with a Reload button, and never auto-retries", async () => {

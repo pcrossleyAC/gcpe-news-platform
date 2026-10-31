@@ -140,6 +140,33 @@ async function mediaContactCount(v: ReleaseView, deps: WorkflowDeps): Promise<{ 
   }
 }
 
+/** One audience's count for the publish dialogs: `count` null when it couldn't be worked out. */
+export interface AudienceCount {
+  count: number | null;
+}
+
+/**
+ * Suite review R6: the two counts {@link schedule} stores on a first publish (News on Demand
+ * subscribers and media-list contacts), worked out now so the Publish now and Schedule dialogs
+ * can show them before anything is sent. Read-only: nothing stored, no history line.
+ *
+ * Each is null when that audience isn't emailed on this publish (not a first publish, the option
+ * is off, no lists ticked, or the type never emails it), and `{ count: null }` when it would be
+ * but NoD couldn't be asked (not set up here, down or slow). Null overall for an unknown release.
+ */
+export async function audiencePreview(db: Db, id: string, deps: WorkflowDeps): Promise<{ subscribers: AudienceCount | null; mediaContacts: AudienceCount | null } | null> {
+  const v = await loadView(db, id);
+  if (!v) return null;
+  const rules = typeRules(v.type);
+  const firstPublish = v.releasedAt === null;
+  const subscribersOn = firstPublish && rules.nodAllowed && v.publishOptions.toSubscribers;
+  const listsOn = firstPublish && rules.mediaListsAllowed && v.publishOptions.toMediaLists && v.mediaListKeys.length > 0;
+  return {
+    subscribers: subscribersOn ? ((await subscriberCount(v, deps)) ?? { count: null }) : null,
+    mediaContacts: listsOn ? ((await mediaContactCount(v, deps)) ?? { count: null }) : null,
+  };
+}
+
 export async function schedule(db: Db, id: string, input: ScheduleInput, actor: Actor, deps: WorkflowDeps): Promise<ReleaseView> {
   const before = await loadView(db, id);
   const subscribers = before ? await subscriberCount(before, deps) : null;

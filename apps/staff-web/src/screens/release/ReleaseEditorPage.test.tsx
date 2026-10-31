@@ -613,6 +613,7 @@ describe("ReleaseEditorPage", () => {
           if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "health", name: "Health" }, { key: "sector1", name: "Sector One" }], themes: [], tags: [] });
           if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
           if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+          if (url.endsWith("/audience")) return jsonResponse(200, { subscribers: null, mediaContacts: null });
           const write = Object.entries(writes).find(([suffix]) => url.endsWith(suffix));
           if (write && init?.method && init.method !== "GET") {
             const result = write[1](current, init.body ? JSON.parse(init.body as string) : {});
@@ -659,6 +660,7 @@ describe("ReleaseEditorPage", () => {
       await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
       await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Schedule" }));
       await user.click(await screen.findByRole("button", { name: "Cancel schedule" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel schedule" }));
       const publish = await screen.findByRole("button", { name: "Publish now" });
       await waitFor(() => expect(publish).toBeEnabled());
       expect(screen.queryByText(/Save your changes/)).not.toBeInTheDocument();

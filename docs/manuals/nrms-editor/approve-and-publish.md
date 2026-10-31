@@ -28,7 +28,10 @@ To approve, a release needs at least one ministry, and a lead ministry when it h
 1. Choose **Publish now**. A box asks "Publish this release now?" and lists what will happen:
    - where it is published, such as "Publishes to news.gov.bc.ca now.";
    - which media distribution lists it is sent to, or "No media distribution lists.";
-   - which News On Demand subscribers are emailed, such as "Emails News on Demand subscribers who follow any of: Health — and everyone subscribed to all news.", or "News on Demand subscribers will not be emailed."
+   - which News On Demand subscribers are emailed, such as "Emails News on Demand subscribers who follow any of: Health — and everyone subscribed to all news.", or "News on Demand subscribers will not be emailed.";
+   - about how many people that is, such as "Reaches about 41,000 News on Demand subscribers and about 312 media contacts." If a number can't be worked out just then, it says "(count unavailable)" or "How many people it reaches isn't available right now." You can still publish. A number much bigger than you expect is a sign the wrong categories or lists are ticked.
+
+   If the release has a planned publish date still ahead, the box starts with a warning such as "This release is planned for Nov 3, 2026 10:00 AM. Publishing now puts it out early." If it is under embargo until then, choose **Cancel** and use **Schedule** instead.
 2. Check the list. Choose **Publish now**.
 
 The status shows **Publishing...**, then **Published**, usually within a minute. The page updates by itself: "This page updates on its own until the release is done — no need to reload."
@@ -37,7 +40,7 @@ The status shows **Publishing...**, then **Published**, usually within a minute.
 
 1. Choose **Schedule**. If the release has a planned publish date still ahead, the date and time are filled in from it, and the panel says "Filled in from the planned publish date."
 2. Enter the **Date** and **Time (BC time)**. A time that has passed shows "Choose a time in the future, or use Publish now."
-3. Choose **Confirm schedule**. A box asks, for example, "Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?" and lists who will be emailed, as for **Publish now**.
+3. Choose **Confirm schedule**. A box asks, for example, "Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?" and lists who will be emailed, and about how many people, as for **Publish now**.
 4. Choose **Schedule**.
 
 The release moves to **Scheduled**. At that time it publishes by itself and the emails go out. Until then nothing is public: not the page, not its files, not the emails.
@@ -59,7 +62,7 @@ See [Who is emailed, and when it goes public](manual:editor-what-happens-next).
 
 ## Take back an approval or a schedule
 
-- **Cancel schedule** stops a scheduled release from going out. It goes back to **Drafts** as approved, and its time stays as the planned date. It doesn't ask first.
+- **Cancel schedule** stops a scheduled release from going out. A box asks first, naming the time, for example "Cancel the publish on Nov 3, 2026 10:00 AM?". When the time is less than 30 minutes away it also says how soon, such as "It's due to go out in 10 minutes." Choose **Cancel schedule** to cancel it, or **Keep schedule** to leave it as it is. A cancelled release goes back to **Drafts** as approved, and its time stays as the planned date.
 - **Return to draft** makes an approved or scheduled release a draft again. A box asks "Return this release to draft?" and says it gives up its reference number and release number; it gets new ones when it is approved again. Choose **Return to draft**. This is only for a release that has never been published.
 
 ## If publishing fails
