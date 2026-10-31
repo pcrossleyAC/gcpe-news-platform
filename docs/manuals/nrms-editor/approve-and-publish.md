@@ -31,6 +31,8 @@ To approve, a release needs at least one ministry, and a lead ministry when it h
    - which News On Demand subscribers are emailed, such as "Emails News on Demand subscribers who follow any of: Health — and everyone subscribed to all news.", or "News on Demand subscribers will not be emailed.";
    - how many people that is, such as "Emails about 40,000 News on Demand subscribers and about 312 media contacts now. About 1,200 daily digest subscribers get it in the next 5 PM digest." The first numbers are the people emailed as soon as it goes out; the digest number is the people who get it in that evening's daily digest, while it is still on the site. Someone on one of its media lists who also follows its categories gets only the media email, and is counted once, as a media contact. If a number can't be worked out just then, it says "(count unavailable)" or "How many people it reaches isn't available right now." You can still publish. A number much bigger than you expect is a sign the wrong categories or lists are ticked.
 
+   If the release has gone out before (it was unpublished, or a correction failed), the box also asks **Also email it again?**, with a box each for subscribers and media list contacts who got it and how many people that is. Nothing is ticked to start; leave them unticked and nobody who already got it is emailed again. See [Correct, feature, unpublish or delete](manual:editor-correct-unpublish-delete).
+
    If the release has a planned publish date still ahead, the box starts with a warning such as "This release is planned for Nov 3, 2026 10:00 AM. Publishing now puts it out early." If it is under embargo until then, choose **Cancel** and use **Schedule** instead.
 2. Check the list. Choose **Publish now**.
 
@@ -40,7 +42,7 @@ The status shows **Publishing...**, then **Published**, usually within a minute.
 
 1. Choose **Schedule**. If the release has a planned publish date still ahead, the date and time are filled in from it, and the panel says "Filled in from the planned publish date."
 2. Enter the **Date** and **Time (BC time)**. A time that has passed shows "Choose a time in the future, or use Publish now."
-3. Choose **Confirm schedule**. A box asks, for example, "Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?" and lists who will be emailed, and about how many people, as for **Publish now**.
+3. Choose **Confirm schedule**. A box asks, for example, "Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?" and lists who will be emailed, and about how many people, as for **Publish now**. For a release that has gone out before it also asks **Also email it again?**, as for **Publish now**.
 4. Choose **Schedule**.
 
 The release moves to **Scheduled**. At that time it publishes by itself and the emails go out. Until then nothing is public: not the page, not its files, not the emails.
