@@ -120,7 +120,59 @@ export function utcOffsetMinutes(at: string, timeZone: string): number {
  * stale) can tell. */
 export const TZ_CHECK_AT = "2026-12-15T20:00:00Z";
 
-/** The (instant, server offset) pair `GET /core/api/time-zone-check` and `GET /nrms/api/config` return. */
-export function tzCheckFor(timeZone: string): { at: string; offsetMinutes: number } {
-  return { at: TZ_CHECK_AT, offsetMinutes: utcOffsetMinutes(TZ_CHECK_AT, timeZone) };
+const DAY_MS = 86_400_000;
+/** How far either side of {@link TZ_CHECK_AT} {@link offsetFixedSince} looks: ten years each way. */
+const FIXED_SCAN_DAYS = 3653;
+const fixedSinceCache = new Map<string, string | null>();
+
+/**
+ * The instant since which `timeZone` has kept the UTC offset it has at {@link TZ_CHECK_AT},
+ * by this runtime's own tzdata (the same tzdata `assertTimeZoneRules` checks at startup) — or
+ * `null` when the zone changes its offset again within ten years after that instant (it still
+ * observes daylight saving time, so no single offset can be trusted from any instant on).
+ *
+ * For BC under tzdata 2026b+ this is 2026-03-08T10:00Z: UTC-7 from that spring's switch to
+ * daylight time, kept for good when BC stayed on UTC-7 from 2026-11-01. A browser whose tzdata
+ * predates the change still agrees with the server for every instant up to 2026-11-01 09:00Z,
+ * so the Hub (apps/staff-web/src/format/bcTime.ts) uses this offset only for instants from
+ * here on where the browser's own answer differs.
+ *
+ * Found by stepping a day at a time (no real-world zone changes its offset twice in a day) and
+ * then halving to the second; computed once per zone.
+ */
+export function offsetFixedSince(timeZone: string): string | null {
+  const cached = fixedSinceCache.get(timeZone);
+  if (cached !== undefined) return cached;
+  const at = Date.parse(TZ_CHECK_AT);
+  const fixed = offsetAt(at, timeZone);
+  let since: string | null = null;
+  if (Array.from({ length: FIXED_SCAN_DAYS }, (_, i) => at + (i + 1) * DAY_MS).every((t) => offsetAt(t, timeZone) === fixed)) {
+    let hi = at; // has the fixed offset
+    let lo: number | null = null; // has another one
+    for (let i = 1; i <= FIXED_SCAN_DAYS; i++) {
+      const t = at - i * DAY_MS;
+      if (offsetAt(t, timeZone) !== fixed) {
+        lo = t;
+        break;
+      }
+      hi = t;
+    }
+    if (lo !== null) {
+      let other: number = lo;
+      while (hi - other > 1000) {
+        const mid: number = other + Math.floor((hi - other) / 2000) * 1000;
+        if (offsetAt(mid, timeZone) === fixed) hi = mid;
+        else other = mid;
+      }
+    }
+    since = new Date(hi).toISOString();
+  }
+  fixedSinceCache.set(timeZone, since);
+  return since;
+}
+
+/** The (instant, server offset) pair `GET /core/api/time-zone-check` and `GET /nrms/api/config`
+ * return, plus {@link offsetFixedSince}: the Hub corrects a stale browser with these. */
+export function tzCheckFor(timeZone: string): { at: string; offsetMinutes: number; fixedSince: string | null } {
+  return { at: TZ_CHECK_AT, offsetMinutes: utcOffsetMinutes(TZ_CHECK_AT, timeZone), fixedSince: offsetFixedSince(timeZone) };
 }

@@ -3,6 +3,7 @@ import { InlineAlert } from "@bcgov/design-system-react-components";
 import { isSafeUrl } from "@gcpe/http-kit/url";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
+import { formatInZone } from "../../format/bcTime";
 import { Button } from "../../shared/BusyButton";
 import { SectionDisclosure } from "../../shared/SectionDisclosure";
 
@@ -27,12 +28,12 @@ interface SimilarConfig {
 }
 
 /** Falls back to the raw string on an unparseable `publishDate` rather than letting
- * `Intl.DateTimeFormat` throw (M2: a defensive backstop — the News API response is already
+ * `Intl` throw (M2: a defensive backstop — the News API response is already
  * validated in NRMS before it reaches here). */
 function dateText(iso: string, timeZone: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(d);
+  return formatInZone(d, timeZone, { month: "short", day: "numeric", year: "numeric" });
 }
 
 /** The status region's full text, including the AI-fallback sentence when it applies — folded

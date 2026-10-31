@@ -8,8 +8,19 @@ interface Wall {
   dow: number;
 }
 
+/**
+ * Reads an instant's wall-clock fields in a zone. The default asks this runtime's own `Intl`;
+ * the Hub passes its own (apps/staff-web/src/format/bcTime.ts), which corrects a browser whose
+ * tzdata predates BC's permanent UTC-7 (2026-11-01).
+ */
+export type WallClock = (at: Date, timeZone: string) => { year: number; month: number; day: number; hour: number; minute: number };
+
 const formatters = new Map<string, Intl.DateTimeFormat>();
-function wall(at: Date, timeZone: string): Wall {
+function wall(at: Date, timeZone: string, wallClock?: WallClock): Wall {
+  if (wallClock) {
+    const w = wallClock(at, timeZone);
+    return { y: w.year, m: w.month, d: w.day, hh: w.hour, mm: w.minute, dow: new Date(Date.UTC(w.year, w.month - 1, w.day)).getUTCDay() };
+  }
   let f = formatters.get(timeZone);
   if (!f) {
     f = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -47,6 +58,8 @@ export interface FriendlyDateOptions {
   referenceDay?: string;
   /** The end time after the start time; on by default. The Look Ahead shows the start time only. */
   endTime?: boolean;
+  /** How to read the wall clock; this runtime's `Intl` by default (see {@link WallClock}). */
+  wallClock?: WallClock;
 }
 
 /** A friendly date's text, and legacy's "TBC" or "Time TBD" marker, which the reports colour. */
@@ -61,8 +74,8 @@ export interface FriendlyDateParts {
  */
 export function friendlyDateParts(a: DatedActivity, o: FriendlyDateOptions): FriendlyDateParts {
   if (!a.startAt || !a.endAt) return { text: a.potentialDates || "—", pending: null };
-  const s = wall(new Date(a.startAt), o.timeZone);
-  const e = wall(new Date(a.endAt), o.timeZone);
+  const s = wall(new Date(a.startAt), o.timeZone, o.wallClock);
+  const e = wall(new Date(a.endAt), o.timeZone, o.wallClock);
   const [ry, rm, rd] = (o.referenceDay ?? o.today).split("-").map(Number) as [number, number, number];
   const ref = { y: ry, m: rm, d: rd };
   // An unconfirmed 8 AM to 6 PM day is legacy's "time to be decided" placeholder (IsTimeTBD).
@@ -92,13 +105,13 @@ export function friendlyDateRange(a: DatedActivity, o: FriendlyDateOptions): str
 const count = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
 
 /** Legacy's FriendlyTimeSpan ("updated 3 Days ago by …"; ActivityListProvider.ashx.cs:850-876). */
-export function friendlySpan(at: Date, now: Date, timeZone: string): string {
+export function friendlySpan(at: Date, now: Date, timeZone: string, wallClock?: WallClock): string {
   const ms = Math.max(0, now.getTime() - at.getTime());
   const days = Math.floor(ms / 86_400_000);
   if (days >= 30) return count(Math.floor(days / 30), "Month");
   if (days >= 7) return count(Math.floor(days / 7), "Week");
-  const a = wall(at, timeZone);
-  const b = wall(now, timeZone);
+  const a = wall(at, timeZone, wallClock);
+  const b = wall(now, timeZone, wallClock);
   if (sameDay(a, b)) {
     const hours = Math.floor(ms / 3_600_000);
     return hours > 0 ? count(hours, "Hour") : count(Math.floor(ms / 60_000), "Minute");
