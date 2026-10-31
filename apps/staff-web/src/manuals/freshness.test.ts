@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { compile, readManualPages } from "../../../../scripts/manuals-lib.mjs";
+import { compile, readManualPages, splitForHub } from "../../../../scripts/manuals-lib.mjs";
 import data from "./manuals.generated.json";
+import hub from "./manuals.hub.generated.json";
+import previous from "./manuals.previous.generated.json";
 
 describe("generated manuals", () => {
   it("are up to date with docs/manuals", () => {
@@ -10,5 +12,11 @@ describe("generated manuals", () => {
     const strip = (d: typeof fresh) => d.pages.map(({ id, hash, html, markdown, manual, order }) => ({ id, hash, html, markdown, manual, order }));
     const stale = JSON.stringify(strip(fresh)) !== JSON.stringify(strip(data));
     expect(stale, "Manual pages changed: run npm run manuals:build").toBe(false);
+  });
+
+  it("ship the Hub's copy and the previous versions made from the same build", () => {
+    const split = splitForHub(data);
+    expect(hub, "The Hub's copy is out of date: run npm run manuals:build").toEqual(split.hub);
+    expect(previous, "The previous versions are out of date: run npm run manuals:build").toEqual(split.previous);
   });
 });

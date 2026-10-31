@@ -16,11 +16,14 @@ const HASH_TERMS = "3".repeat(64);
 
 const DATA = {
   pages: [
-    fixturePage({ id: "government-terms", manual: "core-admin", title: "Government terms", changed: "2026-10-05", hash: HASH_TERMS, html: "<p>Terms now.</p>", previous: { html: "<p>Terms before.</p>", changed: "2026-09-01" } }),
-    fixturePage({ id: "brand-new", manual: "core-admin", title: "Brand new page", changed: "2026-10-29", hash: HASH_NEW, html: "<p>Fresh words.</p>", previous: null }),
+    fixturePage({ id: "government-terms", manual: "core-admin", title: "Government terms", changed: "2026-10-05", hash: HASH_TERMS, html: "<p>Terms now.</p>" }),
+    fixturePage({ id: "brand-new", manual: "core-admin", title: "Brand new page", changed: "2026-10-29", hash: HASH_NEW, html: "<p>Fresh words.</p>" }),
     fixturePage({ id: "already-done", manual: "nrms-editor", title: "Already done", changed: "2026-10-20", hash: HASH_OLD, html: "<p>Done.</p>" }),
   ],
 };
+
+/** What the screen loads on its own: each page's previous version (none for a new page). */
+const PREVIOUS = { "government-terms": { html: "<p>Terms before.</p>", changed: "2026-09-01" }, "brand-new": null, "already-done": null };
 
 type Review = { pageId: string; hash: string; reviewedBy: string; reviewedAt: string };
 const STALE: Review = { pageId: "government-terms", hash: "9".repeat(64), reviewedBy: "Old Reviewer", reviewedAt: "2026-09-02T18:00:00.000Z" };
@@ -36,6 +39,8 @@ interface Options {
   recordedAs?: { reviewedBy: string; reviewedAt: string };
   /** Answer the list reload that follows a saved review with this status. */
   reloadStatus?: number;
+  /** How the previous versions load (the screen's own import otherwise). */
+  loadPrevious?: () => Promise<typeof PREVIOUS>;
 }
 
 function renderScreen(roles: string[], reviews: Review[], opts: Options = {}) {
@@ -67,7 +72,7 @@ function renderScreen(roles: string[], reviews: Review[], opts: Options = {}) {
         <RequireAuth>
           <Routes>
             <Route path="/help" element={<HelpScreen />} />
-            <Route path="/help/manuals-review" element={<ManualReviewScreen data={DATA} />} />
+            <Route path="/help/manuals-review" element={<ManualReviewScreen data={DATA} loadPrevious={opts.loadPrevious ?? (async () => PREVIOUS)} />} />
           </Routes>
         </RequireAuth>
       </MemoryRouter>
@@ -118,6 +123,22 @@ describe("ManualReviewScreen", () => {
     expect(within(terms).getByText("Terms before.")).toBeInTheDocument();
     expect(within(terms).getByRole("heading", { name: "Now" })).toBeInTheDocument();
     expect(within(terms).getByText("Terms now.")).toBeInTheDocument();
+  });
+
+  it("waits for the previous versions, which load on their own, before listing the pages", async () => {
+    let resolve: (v: typeof PREVIOUS) => void = () => {};
+    renderScreen(["Core.Admin"], [], { loadPrevious: () => new Promise((r) => (resolve = r)) });
+    expect(await screen.findByText("Loading…")).toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith("/core/api/manual-reviews", expect.anything()));
+    expect(screen.queryByRole("heading", { level: 2, name: "Government terms" })).toBeNull();
+    resolve(PREVIOUS);
+    const terms = (await screen.findByRole("heading", { level: 2, name: "Government terms" })).closest("li")!;
+    expect(within(terms).getByText("Terms before.")).toBeInTheDocument();
+  });
+
+  it("says so when the previous versions can't be loaded", async () => {
+    renderScreen(["Core.Admin"], [], { loadPrevious: () => Promise.reject(new Error("chunk failed")) });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load the reviews. Reload the page to try again.");
   });
 
   it("Mark reviewed sends the page and its hash, then moves the entry to Reviewed with who and when", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compile, parsePage, plainLanguageProblems } from "./manuals-lib.mjs";
+import { compile, parsePage, plainLanguageProblems, splitForHub } from "./manuals-lib.mjs";
 
 const page = (over: Record<string, string> = {}, body = "Hello there.\n") => {
   const h = { id: "one", title: "One", manual: "core-admin", order: "1", routes: "[]", screens: "[]", topics: "[]", ...over };
@@ -186,5 +186,27 @@ describe("the retired running notes", () => {
       existsSync(notes),
       "docs/manuals/running-notes.md was retired: staff notes go in a manual page, operations notes in docs/deploy/ and developer notes in docs/developer-notes.md. See docs/manuals/README.md.",
     ).toBe(false);
+  });
+});
+
+describe("splitForHub", () => {
+  const page = (id: string, previous: { html: string; changed: string } | null) => ({
+    id, title: id, manual: "core-admin", order: 1, routes: [], screens: [], topics: [],
+    markdown: `# ${id}`, html: `<p>${id}</p>`, hash: "h", changed: "2026-10-30", previous,
+  });
+  const data = { pages: [page("a", { html: "<p>old a</p>", changed: "2026-10-01" }), page("b", null)] };
+
+  it("leaves the markdown and the previous version out of the Hub's pages", () => {
+    const { hub } = splitForHub(data);
+    expect(hub.pages.map((p) => p.id)).toEqual(["a", "b"]);
+    for (const p of hub.pages) {
+      expect(p).not.toHaveProperty("markdown");
+      expect(p).not.toHaveProperty("previous");
+      expect(p.html).toBe(`<p>${p.id}</p>`);
+    }
+  });
+
+  it("keeps each page's previous version, by page id, for the review screen", () => {
+    expect(splitForHub(data).previous).toEqual({ a: { html: "<p>old a</p>", changed: "2026-10-01" }, b: null });
   });
 });

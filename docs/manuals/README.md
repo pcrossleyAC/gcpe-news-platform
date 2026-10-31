@@ -4,7 +4,7 @@ The manuals are Markdown pages in folders under `docs/manuals/`, one folder per 
 
 When you change something staff see or do, change the manual page that covers it. Operations material goes in the deploy guide it concerns, in `docs/deploy/`. Developer material goes in `docs/developer-notes.md`. There is no running-notes file any more: `docs/manuals/running-notes.md` was retired, and a test fails if it comes back.
 
-After you add or edit a page, run `npm run manuals:build` and commit the updated `apps/staff-web/src/manuals/manuals.generated.json`. A test fails when the pages and that file disagree. Files directly in `docs/manuals/`, such as this README, are not pages; only files inside a folder are.
+After you add or edit a page, run `npm run manuals:build` and commit the three updated files in `apps/staff-web/src/manuals/`: `manuals.generated.json` (every field; the Word build and the next build read it), `manuals.hub.generated.json` (what the Hub loads, without the markdown or previous versions) and `manuals.previous.generated.json` (the previous versions, which only the review screen loads, in a file of its own). A test fails when the pages and those files disagree. Files directly in `docs/manuals/`, such as this README, are not pages; only files inside a folder are.
 
 ## The page header
 
