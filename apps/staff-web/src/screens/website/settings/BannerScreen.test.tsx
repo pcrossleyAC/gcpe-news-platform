@@ -15,7 +15,7 @@ const DOC: SiteSettings = defaultSiteSettings({
   footerLinks: [{ label: "Home", url: "https://www2.gov.bc.ca/" }],
 });
 
-const NOTHING_LIVE: SettingsState = { live: null, document: DOC, draft: null, baseRevision: null, errors: [] };
+const NOTHING_LIVE: SettingsState = { live: null, document: DOC, draftSections: [], draft: null, baseRevision: null, errors: [] };
 
 interface Call {
   url: string;
@@ -211,7 +211,9 @@ describe("BannerScreen", () => {
     expect(message).toHaveAttribute("aria-invalid", "true");
     expect(message).toHaveAccessibleDescription(expect.stringContaining("Use plain text. Add links below instead of HTML."));
     const other = screen.getByRole("region", { name: "Other parts of the draft have problems that block publishing:" });
-    expect(within(other).getByText("Footer: Must start with https:// or / (a page on this site).")).toBeInTheDocument();
+    // Audit #12: each problem names its screen as on screen, linked.
+    expect(within(other).getByRole("listitem")).toHaveTextContent("Footer links: Must start with https:// or / (a page on this site).");
+    expect(within(other).getByRole("link", { name: "Footer links" })).toHaveAttribute("href", "/website/footer");
   });
 
   it("a 409 shows the conflict panel; keeping mine rebases and says what it builds on", async () => {
@@ -227,14 +229,14 @@ describe("BannerScreen", () => {
 
     const panel = await screen.findByRole("region", { name: "Someone published while you were editing" });
     expect(within(panel).getByText(/^Revision 2 was published by Sam on .*\. Nothing of yours was published, and your draft is saved\.$/)).toBeInTheDocument();
-    expect(within(panel).getByText("Your draft differs from it in: Banner.")).toBeInTheDocument();
+    expect(within(panel).getByText("Your draft differs from it in: Site banner.")).toBeInTheDocument();
     expect(within(panel).getByRole("heading", { name: "Someone published while you were editing" })).toHaveFocus();
 
-    await user.click(within(panel).getByRole("button", { name: "Keep my banner, on top of their version" }));
-    expect(await screen.findByText("Your banner changes now build on revision 2. Check them, then publish. Unpublished changes to Theme were set aside.")).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Keep my site banner, on top of their version" }));
+    expect(await screen.findByText("Your site banner changes now build on revision 2. Check them, then publish. Unpublished changes to Theme colours were set aside.")).toBeInTheDocument();
     expect(calls.find((c) => c.url === "/nrms/api/site/settings/rebase")!.body).toMatchObject({ section: "banner" });
     expect(screen.queryByRole("region", { name: "Someone published while you were editing" })).toBeNull();
-    expect(screen.getByText("Your banner changes now build on revision 2. Check them, then publish. Unpublished changes to Theme were set aside.")).toHaveFocus();
+    expect(screen.getByText("Your site banner changes now build on revision 2. Check them, then publish. Unpublished changes to Theme colours were set aside.")).toHaveFocus();
   });
 
   it("Discard mine, use theirs deletes the draft and shows what is live", async () => {
@@ -319,5 +321,85 @@ describe("BannerScreen", () => {
     expect(await screen.findByText("Draft saved. It isn't live until you publish.")).toBeInTheDocument();
     expect(screen.getByText("Draft saved · not yet live")).toBeInTheDocument();
     expect(screen.getByLabelText("Message")).toHaveValue("Roads closed");
+  });
+
+  describe("audit #12: Publish and Discard draft act on the whole draft", () => {
+    const drafted = (sections: SettingsState["draftSections"]): SettingsState =>
+      withBanner({ ...NOTHING_LIVE, live: { revision: 4, publishedAt: "2026-10-20T17:30:00.000Z", publishedBy: "Sam", note: null }, baseRevision: 4, draft: { baseRevision: 4, updatedAt: "2026-10-27T18:00:00.000Z" }, draftSections: sections }, { enabled: true, message: "Roads closed" });
+
+    it("the bar names every screen in the draft, each a link, and says Publish and Discard draft cover them all", async () => {
+      stub(["NRMS.SiteEditor"], () => undefined, drafted(["banner", "theme", "footer"]));
+      renderScreen();
+      const changes = await screen.findByText(/^Your draft has changes on/);
+      expect(changes).toHaveTextContent("Your draft has changes on: Site banner, Theme colours, and Footer links.");
+      expect(within(changes).getByRole("link", { name: "Theme colours" })).toHaveAttribute("href", "/website/theme");
+      expect(within(changes).getByRole("link", { name: "Footer links" })).toHaveAttribute("href", "/website/footer");
+      expect(within(changes).getByRole("link", { name: "Site banner" })).toHaveAttribute("href", "/website/banner");
+      expect(screen.getByText("Publish and Discard draft apply to your whole draft, on every settings screen, not just this one.")).toBeInTheDocument();
+    });
+
+    it("Discard draft asks first, naming the other screens it will clear; Cancel keeps the draft; confirming discards as before", async () => {
+      let state = drafted(["banner", "theme", "footer"]);
+      const calls = stub(["NRMS.SiteEditor"], (c) => {
+        if (c.url === "/nrms/api/site/settings/draft" && c.method === "DELETE") {
+          state = { ...NOTHING_LIVE, live: state.live, baseRevision: 4 };
+          return new Response(null, { status: 204 });
+        }
+        if (c.url === "/nrms/api/site/settings" && c.method === "GET") return jsonResponse(200, state);
+        return undefined;
+      });
+      renderScreen();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Discard draft" }));
+      let dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("Discard your whole draft?");
+      expect(dialog).toHaveTextContent("This also throws away your draft changes on Theme colours and Footer links. It can’t be undone.");
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+
+      await user.click(screen.getByRole("button", { name: "Discard draft" }));
+      dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "Discard draft" }));
+      expect(await screen.findByText("Draft discarded. Showing what is live.")).toBeInTheDocument();
+      expect(calls.filter((c) => c.method === "DELETE").map((c) => c.url)).toEqual(["/nrms/api/site/settings/draft"]);
+      expect(screen.getByText("No unpublished changes")).toBeInTheDocument();
+    });
+
+    it("fix round 1: with unsaved typing on this screen, Discard draft says that goes too", async () => {
+      stub(["NRMS.SiteEditor"], () => undefined, drafted(["banner", "theme"]));
+      renderScreen();
+      const user = userEvent.setup();
+      const message = await screen.findByLabelText("Message");
+      await user.click(screen.getByRole("button", { name: "Discard draft" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent("This throws away your draft changes on Site banner. This also throws away your draft changes on Theme colours. It can’t be undone.");
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+      await user.type(message, " today");
+      await user.click(screen.getByRole("button", { name: "Discard draft" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent(
+        "This throws away your draft changes on Site banner and anything you haven’t saved on this screen. This also throws away your draft changes on Theme colours. It can’t be undone.",
+      );
+    });
+
+    it("fix round 1: unsaved typing on a screen with nothing in the draft is named on its own", async () => {
+      stub(["NRMS.SiteEditor"], () => undefined, drafted(["theme"]));
+      renderScreen();
+      const user = userEvent.setup();
+      await user.type(await screen.findByLabelText("Message"), "!");
+      await user.click(screen.getByRole("button", { name: "Discard draft" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent("This throws away anything you haven’t saved on this screen. This also throws away your draft changes on Theme colours. It can’t be undone.");
+    });
+
+    it("with only this screen in the draft, Discard draft still asks, and names no other screen", async () => {
+      stub(["NRMS.SiteEditor"], () => undefined, drafted(["banner"]));
+      renderScreen();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Discard draft" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("This throws away your draft changes on Site banner. It can’t be undone.");
+      expect(dialog).not.toHaveTextContent("also");
+    });
   });
 });

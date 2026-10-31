@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Core administrators (Core.Admin).
 
-**Media list names** decides which media lists exist, what they are called and the order they appear in. Release editors pick these lists to send a release to reporters. The reporters on each list are managed by News On Demand staff under **Subscribers** > **Media lists**.
+**Media list names** decides which media lists exist, what they are called and the order they appear in. Release editors pick these lists to send a release to reporters. The reporters on each list are managed by News On Demand staff under **Subscribers** > **Media lists**. If you also have a News on Demand role, the screen's "Subscribers, Media lists" is a link there.
 
 Each row has a **Key**, a **Name**, an **Order** and an **Active** box.
 

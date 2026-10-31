@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
-import { SECTION_LABEL, type SectionKey } from "@gcpe/site-settings";
+import type { SectionKey } from "@gcpe/site-settings";
+import { settingsScreenFor } from "../WebsiteScreen";
 import { Button } from "../../../shared/BusyButton";
 import { formatPublishedAt } from "./format";
 import { sectionList, type SettingsEditor } from "./useSettingsEditor";
@@ -38,7 +39,7 @@ export function ConflictPanel({ editor, section, timeZone }: ConflictPanelProps)
       {differing.length > 0 && <p>{`Your draft differs from it in: ${sectionList(differing)}.`}</p>}
       <div className="gcpe-settings-conflict__actions">
         <Button onPress={() => void editor.rebase()} isPending={busy} pendingLabel={pending === "rebase" ? "Keeping your changes…" : undefined}>
-          {`Keep my ${SECTION_LABEL[section].toLowerCase()}, on top of their version`}
+          {`Keep my ${settingsScreenFor(section).label.toLowerCase()}, on top of their version`}
         </Button>
         <Button variant="secondary" onPress={() => void editor.discard()} isPending={busy} pendingLabel={pending === "discard" ? "Discarding…" : undefined}>
           Discard mine, use theirs

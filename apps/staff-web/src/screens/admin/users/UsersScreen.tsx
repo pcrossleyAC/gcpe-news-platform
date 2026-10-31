@@ -161,45 +161,16 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
   };
 
   const who = user.email ?? `${user.displayName} (no email)`;
+  // Audit #18: four saves in one panel. Name and roles each say what they save and whether they
+  // are saved; the actions that take effect on their own sit apart under Account.
+  const nameUnsaved = displayName !== user.displayName;
+  const rolesUnsaved = [...roles].sort().join() !== [...user.roles].sort().join();
 
   return (
     <div className="gcpe-users__editor" id={id}>
       <h3 className="gcpe-users__who">
         {who} {!user.isActive && "(inactive)"}
       </h3>
-      <p className="gcpe-users__sign-in">Sign-in: {user.signInMethod === "local" ? "Local password" : "Microsoft (Entra)"}</p>
-      {user.signInMethod === "entra" && (
-        <>
-          {unlinkMessages.map((m) => (
-            <p role="alert" key={m}>
-              {m}
-            </p>
-          ))}
-          <p>Unlinking returns this user to password sign-in; any password they had before works again. Their next Microsoft sign-in links them again by email.</p>
-          <Button variant="secondary" onPress={() => setConfirmingUnlink(true)} isPending={busy} aria-label={`Unlink ${who} from Microsoft sign-in`}>
-            Unlink Microsoft sign-in
-          </Button>
-          <Modal isOpen={confirmingUnlink} onOpenChange={(open) => { if (!open) setConfirmingUnlink(false); }} isDismissable>
-            <AlertDialog
-              role="alertdialog"
-              aria-label={`Unlink ${who} from Microsoft sign-in`}
-              variant="warning"
-              title="Unlink Microsoft sign-in?"
-              buttons={
-                <>
-                  <Button onPress={() => setConfirmingUnlink(false)}>Cancel</Button>
-                  <Button danger isPending={busy} onPress={() => void unlink()}>
-                    Unlink
-                  </Button>
-                </>
-              }
-            >
-              <p>{who} will sign in with a password instead, if one was set before. Their next Microsoft sign-in links them again by email.</p>
-            </AlertDialog>
-          </Modal>
-        </>
-      )}
-
       {nameMessages.map((m) => (
         <p role="alert" key={m}>
           {m}
@@ -208,59 +179,16 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
       <div className="gcpe-field-row gcpe-shortcut-scope" ref={nameRow}>
         {/* TextField types `label` as a string, but renders it as the label's content. */}
         <TextField label={(<HiddenPrefixLabel prefix={who} text="display name" />) as unknown as string} value={displayName} onChange={setDisplayName} isReadOnly={busy} />
-        <Button variant="secondary" onPress={() => void saveName()} isPending={busy} shortcut="save">
+        <Button variant="secondary" onPress={() => void saveName()} isPending={busy} shortcut="save" aria-describedby={`${id}-name-saves ${id}-name-unsaved`}>
           Save name
         </Button>
+        <span id={`${id}-name-saves`} className="gcpe-visually-hidden">
+          Saves the display name only.
+        </span>
+        <span id={`${id}-name-unsaved`} className="gcpe-inline-note">
+          {nameUnsaved ? "Name not saved yet." : ""}
+        </span>
       </div>
-
-      {activeMessages.map((m) => (
-        <p role="alert" key={m}>
-          {m}
-        </p>
-      ))}
-      {user.email === null ? (
-        <>
-          <p>Inactive until linked to an email.</p>
-          <LinkForm user={user} onChanged={onChanged} />
-        </>
-      ) : (
-        <div className="gcpe-inline-control">
-          <Switch
-            isSelected={user.isActive}
-            isReadOnly={busy}
-            onChange={(v) => {
-              setActiveSaved(false);
-              if (v) void toggleActive(true);
-              else setConfirmingDeactivate(true);
-            }}
-          >
-            <ShortLabel short="Active" full={`${who} is ${user.isActive ? "active" : "inactive"}`} />
-          </Switch>
-          {/* Always rendered, so the "Saved" that appears in it is announced. */}
-          <span aria-live="polite" className="gcpe-inline-note">
-            {activeSaved ? "Saved" : ""}
-          </span>
-          <Modal isOpen={confirmingDeactivate} onOpenChange={(open) => { if (!open && !busy) setConfirmingDeactivate(false); }} isDismissable>
-            <AlertDialog
-              role="alertdialog"
-              variant="warning"
-              title={`Deactivate ${user.displayName}?`}
-              buttons={
-                <>
-                  <Button variant="secondary" isPending={busy} onPress={() => setConfirmingDeactivate(false)}>
-                    Cancel
-                  </Button>
-                  <Button danger isPending={busy} onPress={() => void toggleActive(false)}>
-                    Deactivate
-                  </Button>
-                </>
-              }
-            >
-              <p>They can&rsquo;t sign in until reactivated.</p>
-            </AlertDialog>
-          </Modal>
-        </div>
-      )}
 
       {rolesMessages.map((m) => (
         <p role="alert" key={m}>
@@ -269,39 +197,133 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
       ))}
       <div className="gcpe-contents gcpe-shortcut-scope" ref={rolesGroup}>
         <RoleCheckboxes selected={roles} onChange={setRoles} idPrefix={`roles-${user.id}`} disabled={busy} />
-        <Button variant="secondary" onPress={() => void saveRoles()} isPending={busy} shortcut="save">
-          Save roles
-        </Button>
+        <div className="gcpe-inline-control">
+          <Button variant="secondary" onPress={() => void saveRoles()} isPending={busy} shortcut="save" aria-describedby={`${id}-roles-saves ${id}-roles-unsaved`}>
+            Save roles
+          </Button>
+          <span id={`${id}-roles-saves`} className="gcpe-visually-hidden">
+            Saves the roles only.
+          </span>
+          <span id={`${id}-roles-unsaved`} className="gcpe-inline-note">
+            {rolesUnsaved ? "Roles not saved yet." : ""}
+          </span>
+        </div>
       </div>
 
-      {user.signInMethod === "local" && (
-        <form onSubmit={savePassword} aria-label={`Set ${who}'s password`}>
-          {passwordMessages.map((m) => (
-            <p role="alert" key={m}>
-              {m}
-            </p>
-          ))}
-          {/* Minors: without this, the field just going blank again on success looked
-           * identical to a failed save that also clears it. */}
-          {passwordSaved && <p role="status">Password updated.</p>}
-          <div className="gcpe-field-row">
-            <TextField
-              label={(<HiddenPrefixLabel prefix={who} text="new password" />) as unknown as string}
-              type="password"
-              value={password}
-              onChange={(v) => {
-                setPassword(v);
-                setPasswordSaved(false);
-              }}
-              isReadOnly={busy}
-              autoComplete="new-password"
-            />
-            <Button variant="secondary" type="submit" isPending={busy} isDisabled={password.length === 0}>
-              Set password
+      <section className="gcpe-users__account" aria-labelledby={`${id}-account`}>
+        <h4 id={`${id}-account`}>Account</h4>
+        <p className="gcpe-hint">Each of these takes effect on its own.</p>
+        <p className="gcpe-users__sign-in">Sign-in: {user.signInMethod === "local" ? "Local password" : "Microsoft (Entra)"}</p>
+        {user.signInMethod === "entra" && (
+          <>
+            {unlinkMessages.map((m) => (
+              <p role="alert" key={m}>
+                {m}
+              </p>
+            ))}
+            <p>Unlinking returns this user to password sign-in; any password they had before works again. Their next Microsoft sign-in links them again by email.</p>
+            <Button variant="secondary" onPress={() => setConfirmingUnlink(true)} isPending={busy} aria-label={`Unlink ${who} from Microsoft sign-in`}>
+              Unlink Microsoft sign-in
             </Button>
+            <Modal isOpen={confirmingUnlink} onOpenChange={(open) => { if (!open) setConfirmingUnlink(false); }} isDismissable>
+              <AlertDialog
+                role="alertdialog"
+                aria-label={`Unlink ${who} from Microsoft sign-in`}
+                variant="warning"
+                title="Unlink Microsoft sign-in?"
+                buttons={
+                  <>
+                    <Button onPress={() => setConfirmingUnlink(false)}>Cancel</Button>
+                    <Button danger isPending={busy} onPress={() => void unlink()}>
+                      Unlink
+                    </Button>
+                  </>
+                }
+              >
+                <p>{who} will sign in with a password instead, if one was set before. Their next Microsoft sign-in links them again by email.</p>
+              </AlertDialog>
+            </Modal>
+          </>
+        )}
+
+        {activeMessages.map((m) => (
+          <p role="alert" key={m}>
+            {m}
+          </p>
+        ))}
+        {user.email === null ? (
+          <>
+            <p>Inactive until linked to an email.</p>
+            <LinkForm user={user} onChanged={onChanged} />
+          </>
+        ) : (
+          <div className="gcpe-inline-control">
+            <Switch
+              isSelected={user.isActive}
+              isReadOnly={busy}
+              onChange={(v) => {
+                setActiveSaved(false);
+                if (v) void toggleActive(true);
+                else setConfirmingDeactivate(true);
+              }}
+            >
+              <ShortLabel short="Active" full={`${who} is ${user.isActive ? "active" : "inactive"}`} />
+            </Switch>
+            {/* Always rendered, so the "Saved" that appears in it is announced. */}
+            <span aria-live="polite" className="gcpe-inline-note">
+              {activeSaved ? "Saved" : ""}
+            </span>
+            <Modal isOpen={confirmingDeactivate} onOpenChange={(open) => { if (!open && !busy) setConfirmingDeactivate(false); }} isDismissable>
+              <AlertDialog
+                role="alertdialog"
+                variant="warning"
+                title={`Deactivate ${user.displayName}?`}
+                buttons={
+                  <>
+                    <Button variant="secondary" isPending={busy} onPress={() => setConfirmingDeactivate(false)}>
+                      Cancel
+                    </Button>
+                    <Button danger isPending={busy} onPress={() => void toggleActive(false)}>
+                      Deactivate
+                    </Button>
+                  </>
+                }
+              >
+                <p>They can&rsquo;t sign in until reactivated.</p>
+              </AlertDialog>
+            </Modal>
           </div>
-        </form>
-      )}
+        )}
+
+        {user.signInMethod === "local" && (
+          <form onSubmit={savePassword} aria-label={`Set ${who}'s password`}>
+            {passwordMessages.map((m) => (
+              <p role="alert" key={m}>
+                {m}
+              </p>
+            ))}
+            {/* Minors: without this, the field just going blank again on success looked
+             * identical to a failed save that also clears it. */}
+            {passwordSaved && <p role="status">Password updated.</p>}
+            <div className="gcpe-field-row">
+              <TextField
+                label={(<HiddenPrefixLabel prefix={who} text="new password" />) as unknown as string}
+                type="password"
+                value={password}
+                onChange={(v) => {
+                  setPassword(v);
+                  setPasswordSaved(false);
+                }}
+                isReadOnly={busy}
+                autoComplete="new-password"
+              />
+              <Button variant="secondary" type="submit" isPending={busy} isDisabled={password.length === 0}>
+                Set password
+              </Button>
+            </div>
+          </form>
+        )}
+      </section>
     </div>
   );
 }

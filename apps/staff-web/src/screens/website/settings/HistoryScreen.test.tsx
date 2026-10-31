@@ -96,7 +96,7 @@ describe("HistoryScreen", () => {
     await user.click(await screen.findByRole("button", { name: "Restore… revision 1" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Restore revision 1?")).toBeInTheDocument();
-    expect(within(dialog).getByText("Compared with what is live now, this changes: Banner.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Compared with what is live now, this changes: Site banner.")).toBeInTheDocument();
     expect(within(dialog).getByText("The banner would be: Off.")).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Restore revision 1" }));
     expect(await screen.findByText("Revision 1 is live again, as revision 4.")).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe("HistoryScreen", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Restore… revision 1" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Compared with what is live now, this changes: Banner and Theme.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Compared with what is live now, this changes: Site banner and Theme colours.")).toBeInTheDocument();
     expect(within(dialog).getByText("The banner would be: Emergency, “Wildfire near town”.")).toBeInTheDocument();
   });
 

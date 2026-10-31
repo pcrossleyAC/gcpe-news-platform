@@ -32,6 +32,10 @@ interface SlideForm {
   actionLabel: string;
   facebookPostUrl: string;
   justify: "left" | "right";
+  /** Audit #9: an image chosen for this slide, staged on the server, set by the next Save/Publish. */
+  imageUpload?: string;
+  /** The chosen file's name, shown beside it (never sent). */
+  imageName?: string;
 }
 
 function toForm(slides: SlideView[]): SlideForm[] {
@@ -62,6 +66,9 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   const isLive = carousel.state === "live";
   const [publishOpen, setPublishOpen] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  // Images being staged: Save/Publish wait for them, so a chosen image can't be left behind.
+  const [staging, setStaging] = useState(0);
+  const busy = section.saving || staging > 0;
   const [addressErrors, setAddressErrors] = useState<Record<string, { actionUrl?: string; facebookPostUrl?: string }>>({});
   const addressProblems = slides.flatMap((slide, i) => Object.values(addressErrors[slide.clientKey] ?? {}).map((m) => `Slide ${i + 1}: ${m}`));
   const { announce } = useAnnouncer();
@@ -107,7 +114,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
           body: {
             version: carousel.version,
             ...(allowGoLiveEdit && goLive ? { goLiveAtLocal: goLive.local } : {}),
-            slides: slides.map(({ clientKey, ...slide }) => slide),
+            slides: slides.map(({ clientKey, imageName, ...slide }) => slide),
           },
         }),
       )
@@ -120,7 +127,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
 
   // ⌘/Ctrl+S saves the next carousel you're in. Not the live one: saving it publishes, which
   // keeps its own button and confirmation.
-  useShortcut("save", canEdit && !isLive ? () => void (section.saving ? undefined : save()) : null, { within: moveFocus.containerRef });
+  useShortcut("save", canEdit && !isLive ? () => void (busy ? undefined : save()) : null, { within: moveFocus.containerRef });
 
   const confirmRemove = () => {
     if (removeIndex === null) return;
@@ -128,19 +135,41 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
     setRemoveIndex(null);
   };
 
-  const uploadImage = async (slideId: string, file: File) => {
+  // Audit #9 (owner decision 2026-10-31), fix round 1: a saved slide on the next carousel keeps
+  // saving its image at once, as before (nothing public changes). A new, unsaved slide (on either
+  // carousel) and any live slide only stage the image: the slide gets it with Save carousel or,
+  // on the live carousel, with the confirmed Publish, so nothing reaches the home page unconfirmed.
+  const stagesImage = (slide: SlideForm) => isLive || !slide.id;
+  const chooseImage = async (slide: SlideForm, slideNumber: number, file: File) => {
+    const { clientKey } = slide;
     setImageError(null);
     if (file.size > MAX_IMAGE_BYTES) {
       setImageError(IMAGE_TOO_BIG);
       return;
     }
+    if (!stagesImage(slide)) {
+      try {
+        await apiFetch(`/nrms/api/site/slides/${slide.id}/image`, { method: "PUT", raw: file });
+        onSaved();
+      } catch (caught) {
+        setImageError(imageUploadMessage(caught));
+      }
+      return;
+    }
+    setStaging((n) => n + 1);
     try {
-      await apiFetch(`/nrms/api/site/slides/${slideId}/image`, { method: "PUT", raw: file });
-      onSaved();
+      // Naming the carousel and slide lets the server log a live carousel's choice.
+      const { upload } = await apiFetch<{ upload: string }>(`/nrms/api/site/slide-images?carouselId=${encodeURIComponent(carousel.id)}&slide=${slideNumber}`, { method: "POST", raw: file });
+      setSlides((s) => s.map((slide) => (slide.clientKey === clientKey ? { ...slide, imageUpload: upload, imageName: file.name } : slide)));
     } catch (caught) {
       setImageError(imageUploadMessage(caught));
+    } finally {
+      setStaging((n) => n - 1);
     }
   };
+  const imageWhen = isLive ? "goes live when you publish the carousel changes" : "is saved when you save the carousel";
+  const imageHint = (slide: SlideForm) =>
+    !stagesImage(slide) ? "The image saves as soon as you choose it." : slide.imageName ? `New image chosen: ${slide.imageName}. It ${imageWhen}.` : `The image ${imageWhen}.`;
 
   return (
     <div className="gcpe-carousel__slides" ref={moveFocus.containerRef}>
@@ -229,42 +258,40 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
               <TextField label={label("action label")} description="The link text. Leave empty for the default set in Navigation and labels." value={slide.actionLabel} onChange={(v) => update(index, { actionLabel: v })} isDisabled={!canEdit} />
               <TextField label={label("Facebook post URL")} value={slide.facebookPostUrl} onChange={(v) => update(index, { facebookPostUrl: v })} isDisabled={!canEdit} isInvalid={addressErrors[slide.clientKey]?.facebookPostUrl !== undefined} errorMessage={addressErrors[slide.clientKey]?.facebookPostUrl} />
               <div className="gcpe-field">
-                <label htmlFor={`slide-${slide.clientKey}-justify`}>
+                <label htmlFor={`slide-${carousel.id}-${slide.clientKey}-justify`}>
                   <HiddenPrefixLabel prefix={prefix} text="justify" />
                 </label>
-                <select id={`slide-${slide.clientKey}-justify`} value={slide.justify} onChange={(e) => update(index, { justify: e.target.value as "left" | "right" })} disabled={!canEdit}>
+                <select id={`slide-${carousel.id}-${slide.clientKey}-justify`} value={slide.justify} onChange={(e) => update(index, { justify: e.target.value as "left" | "right" })} disabled={!canEdit}>
                   <option value="left">Left</option>
                   <option value="right">Right</option>
                 </select>
               </div>
-              {((slide.id && canEdit) || imageUrl) && (
+              {(canEdit || imageUrl) && (
                 <div className="gcpe-carousel__image">
-                  {slide.id && canEdit && (
-                    <label className="gcpe-file-input">
-                      <span>
-                        <HiddenPrefixLabel prefix={prefix} text="image (JPEG or PNG, up to 2 MB)" />
-                      </span>
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          e.target.value = "";
-                          if (file && slide.id) void uploadImage(slide.id, file);
-                        }}
-                      />
-                    </label>
+                  {canEdit && (
+                    <>
+                      <label className="gcpe-file-input">
+                        <span>
+                          <HiddenPrefixLabel prefix={prefix} text="image (JPEG or PNG, up to 2 MB)" />
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg"
+                          aria-describedby={`slide-${carousel.id}-${slide.clientKey}-image-hint`}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (file) void chooseImage(slide, n, file);
+                          }}
+                        />
+                      </label>
+                      <p className="gcpe-hint" id={`slide-${carousel.id}-${slide.clientKey}-image-hint`}>
+                        {imageHint(slide)}
+                      </p>
+                    </>
                   )}
-                  {imageUrl && (
-                    // eslint-disable-next-line jsx-a11y/alt-text
-                    <img src={imageUrl} alt="" width={160} />
-                  )}
+                  {imageUrl && <img src={imageUrl} alt={isLive ? `${prefix} image now live` : `${prefix} saved image`} width={160} />}
                 </div>
-              )}
-              {!slide.id && canEdit && (
-                <p className="gcpe-hint gcpe-carousel__image">
-                  {isLive ? "Publish the carousel changes to add this slide\u2019s image." : "Save the carousel to add this slide\u2019s image."}
-                </p>
               )}
             </div>
           </div>
@@ -282,13 +309,13 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
         </Button>
       )}
       {canEdit && !isLive && (
-        <Button onPress={save} isPending={section.saving} shortcut="save">
+        <Button onPress={save} isPending={busy} shortcut="save">
           Save carousel
         </Button>
       )}
       {canEdit && isLive && (
         <DialogTrigger isOpen={publishOpen} onOpenChange={setPublishOpen}>
-          <Button isPending={section.saving}>Publish carousel changes</Button>
+          <Button isPending={busy}>Publish carousel changes</Button>
           <Modal isDismissable>
             <AlertDialog
               variant="warning"

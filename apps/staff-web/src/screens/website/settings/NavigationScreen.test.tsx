@@ -8,7 +8,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import type { SettingsState } from "./api";
-import { FOOTER_CONNECT_HINT, HEADER_LINKS_HINT, INTRO, LABEL_FIELDS, LABEL_HINTS, LISTING_HINTS, NavigationScreen } from "./NavigationScreen";
+import { FOOTER_CONNECT_HINT, HEADER_LINKS_HINT, INTRO, REQUIRED_NOTE, LABEL_FIELDS, LABEL_HINTS, LISTING_HINTS, NavigationScreen } from "./NavigationScreen";
 
 const BASE: SiteSettings = defaultSiteSettings({
   colors: { primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D", mutedText: "#474543", surface: "#FFFFFF", background: "#FFFFFF", border: "#D8D8D8" },
@@ -30,7 +30,7 @@ const DOC: SiteSettings = { ...BASE, navigation: NAV };
 const stateOf = (document: SiteSettings, errors: SettingsState["errors"] = []): SettingsState => ({
   live: { revision: 4, publishedAt: "2026-10-20T17:30:00.000Z", publishedBy: "Sam", note: null },
   document,
-  draft: null,
+  draftSections: [], draft: null,
   baseRevision: 4,
   errors,
 });
@@ -182,8 +182,9 @@ describe("NavigationScreen", () => {
     stub(["NRMS.SiteEditor"], stateOf(DOC));
     renderScreen();
     expect(await screen.findByText(INTRO)).toBeInTheDocument();
-    expect(INTRO).toMatch(/menu label, the webcast button label, every page label and every listing title are required/);
-    expect(INTRO).toMatch(/footer headings are optional/i);
+    expect(screen.getByText(REQUIRED_NOTE)).toBeInTheDocument();
+    expect(REQUIRED_NOTE).toMatch(/menu label, the webcast button label, every page label and every listing title are required/);
+    expect(REQUIRED_NOTE).toMatch(/footer headings are optional/i);
     expect(screen.getByRole("group", { name: "Header links" })).toHaveAccessibleDescription(HEADER_LINKS_HINT);
     expect(HEADER_LINKS_HINT).toMatch(/up to 4/i);
   });
@@ -195,5 +196,8 @@ describe("NavigationScreen", () => {
     expect(screen.getByRole("checkbox", { name: "Show the search box in the header" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
     expect(screen.queryByRole("button", { name: "+ Add a link" })).toBeNull();
+    // Audit #13: nothing is marked required on a view that can't change it.
+    expect(screen.getByText(INTRO)).toBeInTheDocument();
+    expect(screen.queryByText(REQUIRED_NOTE)).toBeNull();
   });
 });

@@ -17,9 +17,9 @@ You have one private draft that covers all of these screens. Other site editors 
 
 - **Save draft** keeps your changes in your draft. The public site doesn't change.
 - **Publish** puts your whole draft live: the changes on this screen, and any you saved as a draft on other settings screens.
-- **Discard draft** throws your draft away, on every settings screen, with no question. The screen then shows what is live: "Draft discarded. Showing what is live."
+- **Discard draft** throws your whole draft away, on every settings screen. A box asks "Discard your whole draft?" and names the other screens it clears, such as "This also throws away your draft changes on Theme colours and Footer links." If you have typed something on this screen and not saved it, the box says that goes too. Choose **Discard draft** to confirm, or **Cancel**. The screen then shows what is live: "Draft discarded. Showing what is live."
 
-The foot of each screen says where you are. "Draft saved · not yet live" means you have a draft; "No unpublished changes" means you don't. The next line shows the live revision, who published it and when.
+The foot of each screen says where you are. "Draft saved · not yet live" means you have a draft; "No unpublished changes" means you don't. With a draft, "Your draft has changes on:" names each screen it changes, with a link to it. The next line shows the live revision, who published it and when. Above the buttons, "Publish and Discard draft apply to your whole draft, on every settings screen, not just this one."
 
 ## Publish a change
 
@@ -27,7 +27,7 @@ The foot of each screen says where you are. "Draft saved · not yet live" means 
 2. If you like, type a **Note for the history log (optional)**, such as "Election notice". It shows in **Settings history** and **Website log**.
 3. Choose **Publish**. You see "Published revision 5. Visitors see it within a few minutes." (with the new number).
 
-If the draft has a problem, nothing is published. You see "Draft saved, but it has problems to fix before it can be published." Each problem shows under its field. A problem on another settings screen shows in a list headed "Other parts of the draft have problems that block publishing:", with the name of that screen. Fix it there, or choose **Discard draft** to start again from what is live.
+If the draft has a problem, nothing is published. You see "Draft saved, but it has problems to fix before it can be published." Each problem shows under its field. A problem on another settings screen shows in a list headed "Other parts of the draft have problems that block publishing:", led by a link to that screen. Fix it there, or choose **Discard draft** to start again from what is live.
 
 ## If someone else published first
 
@@ -35,7 +35,7 @@ When another site editor publishes while you are working, your **Publish** doesn
 
 Choose one:
 
-- **Keep my banner, on top of their version** (the button names the screen you are on, such as "Keep my footer"): your changes on this screen are added to what they published. Changes you saved on other screens are set aside, and the message names them. Check the result, then choose **Publish**.
+- **Keep my site banner, on top of their version** (the button names the screen you are on, such as "Keep my footer links"): your changes on this screen are added to what they published. Changes you saved on other screens are set aside, and the message names them. Check the result, then choose **Publish**.
 - **Discard mine, use theirs**: your draft is thrown away and the screen shows what is live.
 
 ## Bring back an earlier version
@@ -43,7 +43,7 @@ Choose one:
 **Settings history** lists every published revision, newest first, with **Revision**, **When**, **Who** and **Note**. The live one is marked **Live**.
 
 1. Choose **Restore…** on the revision you want.
-2. A box asks "Restore revision 1?" and lists the screens it would change, such as "Compared with what is live now, this changes: Footer." If the banner changes, it says what the banner would be.
+2. A box asks "Restore revision 1?" and lists the screens it would change, such as "Compared with what is live now, this changes: Footer links." If the banner changes, it says what the banner would be.
 3. Choose **Restore revision 1**. You see "Revision 1 is live again, as revision 6."
 
 Nothing is ever deleted. A restore is published as a new revision, so you can undo it by restoring the one before. Restoring also throws away your own draft.

@@ -183,7 +183,7 @@ describe("website/site-settings", () => {
 
   it("with nothing stored, the state is the defaults with no live revision, draft or errors", async () => {
     const state = await getSettingsState(tdb.db, jane, defaults);
-    expect(state).toEqual({ live: null, document: defaults, draft: null, baseRevision: null, errors: [] });
+    expect(state).toEqual({ live: null, document: defaults, draft: null, baseRevision: null, errors: [], draftSections: [] });
   });
 
   it("first publish becomes revision 1, by the actor, clears the draft, writes history, the log and one event", async () => {
@@ -292,6 +292,20 @@ describe("website/site-settings", () => {
     expect(state.document.footer.copyrightHolder).toBe("Province of B.C.");
     expect(state.draft).toMatchObject({ baseRevision: 1 });
     expect(state.errors).toEqual([]);
+  });
+
+  it("audit #12: draftSections names the sections where my draft differs from what is live, and is empty with no draft", async () => {
+    expect((await getSettingsState(tdb.db, jane, defaults)).draftSections).toEqual([]);
+    await publishBanner(editor, "Live");
+    await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "banner", value: banner("Work in progress") });
+    await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: "Province of B.C." } });
+    // Saving a section unchanged doesn't count it.
+    const state = await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "theme", value: defaults.theme });
+    expect(state.draftSections).toEqual(["banner", "footer"]);
+    // Drafts are per editor: Sam has none.
+    expect((await getSettingsState(tdb.db, sam, defaults)).draftSections).toEqual([]);
+    await discardDraft(tdb.db, jane);
+    expect((await getSettingsState(tdb.db, jane, defaults)).draftSections).toEqual([]);
   });
 
   it("a section value of the wrong shape is a ZodError and saves nothing", async () => {

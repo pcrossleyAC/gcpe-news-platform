@@ -22,6 +22,8 @@ import {
   setPinned,
   setSlideImage,
   slideImage,
+  SLIDE_IMAGE_UPLOAD,
+  stageSlideImage,
   type PinSlot,
 } from "../website/carousel";
 import { MAX_SITE_IMAGE_BYTES, type SlideImageFiles } from "../website/slide-images";
@@ -95,7 +97,8 @@ const saveCarouselSchema = z
     version: z.number().int().positive(),
     goLiveAt: dateish.optional(),
     goLiveAtLocal: localDateTime.optional(),
-    slides: z.array(slideInputSchema),
+    // Audit #9: a slide may name an image staged by POST /site/slide-images, set by this save.
+    slides: z.array(slideInputSchema.extend({ imageUpload: z.string().regex(SLIDE_IMAGE_UPLOAD).optional() })),
   })
   .refine((v) => !(v.goLiveAt !== undefined && v.goLiveAtLocal !== undefined), {
     message: "Provide at most one of goLiveAt or goLiveAtLocal.",
@@ -110,6 +113,7 @@ const savePinSchema = z.object({
   justify: justifySchema,
 });
 const setPinnedSchema = z.object({ version: z.number().int().positive(), pinned: z.boolean() });
+const stageQuerySchema = z.object({ carouselId: z.string().uuid().optional(), slide: z.coerce.number().int().min(1).max(1000).optional() });
 const deleteNextQuerySchema = z.object({ version: z.coerce.number().int().positive() });
 const logQuerySchema = z.object({
   area: z.enum(AREAS as [SiteLogArea, ...SiteLogArea[]]).optional(),
@@ -262,6 +266,18 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     }),
   );
 
+  // Audit #9: stages a slide image for the next carousel save (nothing public changes until then).
+  r.post(
+    "/site/slide-images",
+    edit,
+    rawImage,
+    run(async (req, res) => {
+      // The slide it's for (optional): a live carousel's slide gets a Website log line.
+      const q = stageQuerySchema.parse(req.query);
+      const target = q.carouselId && q.slide ? { db, actor: actorOf(req), carouselId: q.carouselId, slideNumber: q.slide } : undefined;
+      res.status(201).json(await stageSlideImage(slideFiles, bytesOf(req), target));
+    }),
+  );
   r.put(
     "/site/slides/:id/image",
     edit,

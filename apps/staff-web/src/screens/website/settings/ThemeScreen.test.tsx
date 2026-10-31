@@ -22,7 +22,7 @@ interface Call {
 
 function stub(roles: string[], handler: (call: Call) => Response | undefined = () => undefined, document: SiteSettings = DOC) {
   const calls: Call[] = [];
-  const initial: SettingsState = { live: { revision: 4, publishedAt: "2026-10-20T17:30:00.000Z", publishedBy: "Sam", note: null }, document, draft: null, baseRevision: 4, errors: [] };
+  const initial: SettingsState = { live: { revision: 4, publishedAt: "2026-10-20T17:30:00.000Z", publishedBy: "Sam", note: null }, document, draftSections: [], draft: null, baseRevision: 4, errors: [] };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {

@@ -83,6 +83,10 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
     ...view.sectors.map((key) => ({ kind: "sectors" as const, key, label: nameOf(categories.sectors, key) })),
     ...view.themes.map((key) => ({ kind: "themes" as const, key, label: nameOf(categories.themes, key) })),
   ];
+  // Audit #11: ticked here but not saved yet, so not a place the switches can use.
+  const unsavedPlaces: FeaturePlace[] = (["ministries", "sectors", "themes"] as const).flatMap((kind) =>
+    form[kind].filter((key) => !view[kind].includes(key)).map((key) => ({ kind, key, label: nameOf(categories[kind], key) })),
+  );
 
   // The closed disclosure's one line: what's picked right now (unsaved picks included).
   const pickedText = (kind: CategoryKind, terms: Term[]) => {
@@ -176,7 +180,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
       </section>
 
       {/* Its own card: the switches act on the release as saved, not on this form's picks. */}
-      <FeatureSwitches view={view} setView={setView} places={places} readOnly={readOnly} />
+      <FeatureSwitches view={view} setView={setView} places={places} unsavedPlaces={unsavedPlaces} readOnly={readOnly} />
     </>
   );
 }

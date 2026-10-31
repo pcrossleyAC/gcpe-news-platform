@@ -44,6 +44,10 @@ export interface SettingsState {
   draft: { baseRevision: number | null; updatedAt: string } | null;
   baseRevision: number | null;
   errors: FieldError[];
+  /** Audit #12: the sections where the editor's draft differs from what is live (or, before
+   * anything is published, from the defaults), in section order. Empty with no draft. These are
+   * what Discard draft throws away and what Publish puts live. */
+  draftSections: SectionKey[];
 }
 
 export type PublishResult =
@@ -116,6 +120,7 @@ export async function getSettingsState(db: DbOrTx, actor: Actor, defaults: SiteS
     draft: draft ? { baseRevision: draft.baseRevision, updatedAt: draft.updatedAt.toISOString() } : null,
     baseRevision: draft ? draft.baseRevision : (live?.info.revision ?? null),
     errors: validateSiteSettings(document),
+    draftSections: draft ? differingSections(document, fillMissingFields(live?.document ?? defaults, defaults)) : [],
   };
 }
 

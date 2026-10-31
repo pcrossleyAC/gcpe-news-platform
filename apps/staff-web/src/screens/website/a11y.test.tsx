@@ -196,7 +196,7 @@ describe("accessibility — Website section screens", () => {
     const state: SettingsState = {
       live: { revision: 3, publishedAt: "2026-10-27T18:00:00.000Z", publishedBy: "Sam", note: null },
       document: { ...document, banner: { ...document.banner, enabled: true, message: "<b>x</b>", links: [{ text: "More", url: "http://x.invalid" }] } },
-      draft: { baseRevision: 3, updatedAt: "2026-10-27T18:05:00.000Z" },
+      draftSections: [], draft: { baseRevision: 3, updatedAt: "2026-10-27T18:05:00.000Z" },
       baseRevision: 3,
       errors: [
         { field: "banner.message", message: "Use plain text. Add links below instead of HTML." },
@@ -218,7 +218,7 @@ describe("accessibility — Website section screens", () => {
     return {
       live: { revision: 3, publishedAt: "2026-10-27T18:00:00.000Z", publishedBy: "Sam", note: null },
       document: mutate(base),
-      draft: { baseRevision: 3, updatedAt: "2026-10-27T18:05:00.000Z" },
+      draftSections: [], draft: { baseRevision: 3, updatedAt: "2026-10-27T18:05:00.000Z" },
       baseRevision: 3,
       errors,
     };

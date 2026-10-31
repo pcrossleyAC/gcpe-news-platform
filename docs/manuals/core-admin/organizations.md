@@ -20,11 +20,12 @@ For a new cabinet, prepare all the ministry changes together on [Cabinet change]
 1. Choose **Edit** on the ministry's row. The form opens above the table.
 2. Change what you need:
    - **Ministry name (required)** and **Additional display name**, which shows in brackets under the ministry on the Media Contacts page.
+   - **Abbreviation** and **Parent ministry**, straight after the names. Only you see these.
    - **Sort order**: a whole number that places the ministry in lists.
    - **Minister name** (with the title, such as "Honourable Jane Doe"), **Minister summary**, **Minister email** and **Minister photo URL**. Upload the photo under **Website** > **Files** first, then paste its address. A preview appears once the address starts with https://.
    - **Minister biography**: shown on the minister's biography page, linked as Read Bio. **Clear the biography** removes that page. After you rename the minister, a note warns "The biography still describes the previous minister."
    - **Meet the Team links**, **Media contacts** (**Primary contact**, **Alternate contact**, **After-hours phone**) and **Ministry page links** (**Ministry website**, **Photos (Flickr) address**, **Videos (YouTube) address**, **Featured Topics**, **Featured Services**).
-   - Only you see the last three fields: **Abbreviation**, **Parent ministry** and **Active**.
+   - **Active**, last, before **Save**. Only you see it.
 3. Choose **Save**. You see "Saved. The public ministry pages update within a few minutes."
 
 The public page shows the alternate contact only when there is a primary contact.
