@@ -85,7 +85,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     id: "not-for-look-ahead",
     term: "Confidential (not for Look Ahead)",
-    alsoShownAs: ["Not for Look Ahead", "Confidential only", "Not confidential only"],
+    alsoShownAs: ["Not for Look Ahead"],
     area: "Calendar",
     definition:
       "Marks the activity confidential; the old Calendar called it Not for Look Ahead. Only its lead and shared ministries, and HQ Advanced users and above, see it in the list, reports, the updates feed and search. It isn't offered on the releases Forecast. A new activity isn't given a Look Ahead section, but ticking it doesn't take away a section the activity already has. HQ Advanced users and above can narrow the list to confidential activities, or leave them out, with the list's Confidential filter.",

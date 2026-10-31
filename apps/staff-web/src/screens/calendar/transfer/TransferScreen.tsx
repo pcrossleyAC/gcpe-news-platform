@@ -32,6 +32,8 @@ export function TransferScreen(): React.JSX.Element {
   const [contacts, setContacts] = useState<TransferContact[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [from, setFrom] = useState("");
+  /** Opened for someone who is a comm contact for several ministries: From waits, and says why. */
+  const [several, setSeveral] = useState(false);
   const [to, setTo] = useState("");
   const [preview, setPreview] = useState<TransferPreview | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -47,6 +49,7 @@ export function TransferScreen(): React.JSX.Element {
         setContacts(c);
         const theirs = forUser === null ? [] : c.filter((x) => canonicalId(x.userId) === canonicalId(forUser));
         if (theirs.length === 1) setFrom(String(theirs[0]!.id));
+        setSeveral(theirs.length > 1);
       },
       () => call === latest.current && setLoadError("Couldn't load comm contacts."),
     );
@@ -109,7 +112,7 @@ export function TransferScreen(): React.JSX.Element {
         >
           <div className="gcpe-field">
             <label htmlFor="transfer-from">From comm contact</label>
-            <select id="transfer-from" value={from} onChange={choose(setFrom)}>
+            <select id="transfer-from" value={from} onChange={choose(setFrom)} aria-describedby={several && !from ? "transfer-from-hint" : undefined}>
               <option value="">Choose a comm contact</option>
               {contacts.map((c) => (
                 <option key={c.id} value={String(c.id)}>
@@ -117,6 +120,11 @@ export function TransferScreen(): React.JSX.Element {
                 </option>
               ))}
             </select>
+            {several && !from && (
+              <p id="transfer-from-hint" className="gcpe-hint">
+                They are a comm contact for more than one ministry: choose which.
+              </p>
+            )}
           </div>
           <div className="gcpe-field">
             <label htmlFor="transfer-to">To comm contact</label>

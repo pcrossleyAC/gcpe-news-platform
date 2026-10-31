@@ -33,6 +33,7 @@ One report is prepared at a time. If you leave the page before it downloads, mak
 - Unless you are an HQ editor, your Look Ahead shows no Executive Summary and no NEW or CHANGED flags.
 - Each activity number in a report links to the activity in the Hub.
 - Each report is marked "DRAFT AND CONFIDENTIAL". Share it only with people who may see those activities.
+- Reports and the Excel export still mark confidential activities "Not for Look Ahead".
 
 ## If you are an HQ editor
 

@@ -472,7 +472,7 @@ The Calendar section is part of `apps/staff-web` under `/hub/calendar`. It has t
 - **Watchlist:** add or remove from the activity page. The star tooltip lists the display names of the watchers, as legacy does (`Activity.aspx.cs:1519-1535`).
 - **Calendar view:** a month and week view of the current filter, replacing legacy's FullCalendar toggle (`Default.aspx:191-262`).
 - **Corporate queries** (HQ, L ≥ Advanced): status, LA status, deleted, and the next N days (`Default.aspx:628-660`, `ActivityDAO.cs:306-368`).
-- **Look Ahead admin filter:** show all, Look Ahead only, or Not for Look Ahead only, applied inside `visible()` (C127).
+- **Look Ahead admin filter** (now labelled the Confidential filter, C307): show all, Look Ahead only, or Not for Look Ahead only, applied inside `visible()` (C127).
 - **Toolbar:** Review selected; Clear LA Status; Excel Export; Look Ahead, Exec Look Ahead, 30/60/90 and Planning, each as PDF.
 - **Excel export** (`ActivityHandler.ashx.cs:392-527`):
   - an `.xlsx` workbook with legacy's header lines ("Province of BC. Corporate Calendar DRAFT & CONFIDENTIAL", the date range, "Printed:");

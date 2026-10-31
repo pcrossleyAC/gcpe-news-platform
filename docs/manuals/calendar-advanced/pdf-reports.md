@@ -32,6 +32,7 @@ One report is prepared at a time. If you leave the page before it downloads, mak
 - Reports include Awareness dates even when the list leaves them out.
 - Each activity number in a report links to the activity in the Hub.
 - Each report is marked "DRAFT AND CONFIDENTIAL". Share it only with people who may see those activities.
+- Reports and the Excel export still mark confidential activities "Not for Look Ahead".
 
 ## If you are in an HQ organization
 
