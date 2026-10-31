@@ -10,10 +10,19 @@ import { Button } from "../../shared/BusyButton";
 import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
-import { attentionLabel, mediaErrorText, memberSourceLabel } from "./labels";
+import { attentionLabel, mediaErrorText, memberSourceLabel, STATUS_LABELS } from "./labels";
 import { MediaHubSearch } from "./MediaHubSearch";
 import { ResolveDialog } from "./ResolveDialog";
 import type { AddMemberBody, AddMemberResult, MediaListSummary, MediaMember, MediaOptOutPage } from "./types";
+
+/** Only active members are sent a media list's email (N4): say how many, and how many don't. */
+function receivingSummary(members: MediaMember[]): string {
+  const getting = members.filter((m) => m.status === "active").length;
+  const disabled = members.filter((m) => m.status === "disabled").length;
+  const head = `${getting.toLocaleString("en-CA")} ${getting === 1 ? "member gets" : "members get"} this list’s email.`;
+  if (disabled === 0) return head;
+  return `${head} ${disabled.toLocaleString("en-CA")} more ${disabled === 1 ? "is" : "are"} Disabled and ${disabled === 1 ? "gets" : "get"} nothing until someone activates them on their record.`;
+}
 
 /**
  * `/hub/subscribers/media-lists/:key`: one media list's members, who left it (unsubscribed, or left it in legacy),
@@ -70,6 +79,20 @@ export function MediaListScreen(): React.JSX.Element {
       const added = await apiFetch<AddMemberResult>(`${base}/members`, { method: "POST", body });
       setOptOutPrompt(null);
       setEmail("");
+      // Already there: nothing changed (N12). A Disabled member gets nothing, so say so (N4).
+      if (added?.alreadyMember) {
+        setMessage(
+          added.status === "disabled" ? (
+            <>
+              Already on this list, but Disabled, so they get nothing. <Link to={`/subscribers/${added.subscriberId}`}>Open their record</Link> to activate them.
+            </>
+          ) : (
+            "Already on this list."
+          ),
+        );
+        reload();
+        return;
+      }
       // A Disabled address comes onto the list for media email only (owner decision 2026-10-30).
       setMessage(
         added?.newsEmailOff ? (
@@ -139,6 +162,7 @@ export function MediaListScreen(): React.JSX.Element {
       {actionError && !optOutPrompt && !removing && <InlineAlert variant="danger" role="alert" description={actionError} />}
 
       {!members && !loadError && <p>Loading…</p>}
+      {members && members.length > 0 && <p>{receivingSummary(members)}</p>}
       {members && members.length === 0 && <p>No members yet.</p>}
       {members && members.length > 0 && (
         <TableScroll label="Members">
@@ -146,6 +170,7 @@ export function MediaListScreen(): React.JSX.Element {
             <thead>
               <tr>
                 <th scope="col">Email</th>
+                <th scope="col">Status</th>
                 <th scope="col">Source</th>
                 <th scope="col">Needs attention</th>
                 {canEdit && <th scope="col">Actions</th>}
@@ -157,6 +182,7 @@ export function MediaListScreen(): React.JSX.Element {
                   <td>
                     <Link to={`/subscribers/${m.subscriberId}`}>{m.email}</Link>
                   </td>
+                  <td>{m.status === "active" ? STATUS_LABELS.active : m.status === "disabled" ? "Disabled: gets nothing" : STATUS_LABELS[m.status]}</td>
                   <td>{memberSourceLabel(m.source)}</td>
                   <td>{m.needsAttention ? attentionLabel(m.needsAttention) : ""}</td>
                   {canEdit && (

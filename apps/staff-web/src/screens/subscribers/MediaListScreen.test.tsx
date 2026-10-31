@@ -11,8 +11,8 @@ import type { MediaMember } from "./types";
 const ID1 = "11111111-1111-1111-1111-111111111111";
 const ID2 = "22222222-2222-2222-2222-222222222222";
 const MEMBERS: MediaMember[] = [
-  { subscriberId: ID1, email: "sam@riverbend.example.test", source: "media-hub", mediaHubContactId: 42, mediaHubEmailRef: "personal", needsAttention: "email-gone", attentionAt: "2026-10-06T09:00:00.000Z" },
-  { subscriberId: ID2, email: "lee@example.test", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: "bouncing", attentionAt: "2026-10-06T09:00:00.000Z" },
+  { subscriberId: ID1, email: "sam@riverbend.example.test", status: "active", source: "media-hub", mediaHubContactId: 42, mediaHubEmailRef: "personal", needsAttention: "email-gone", attentionAt: "2026-10-06T09:00:00.000Z" },
+  { subscriberId: ID2, email: "lee@example.test", status: "disabled", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: "bouncing", attentionAt: "2026-10-06T09:00:00.000Z" },
 ];
 const OPTED = { items: [{ subscriberId: "33333333-3333-3333-3333-333333333333", email: "gone@example.test", at: "2026-09-01T17:00:00.000Z", member: false }], truncated: false };
 const CONTACT = {
@@ -89,8 +89,10 @@ describe("MediaListScreen", () => {
     stub(["NoD.Viewer"]);
     renderIt();
     const members = await screen.findByRole("table", { name: "Members" });
-    expect(within(members).getByRole("row", { name: /sam@riverbend\.example\.test Media Hub Media Hub email removed/ })).toBeInTheDocument();
-    expect(within(members).getByRole("row", { name: /lee@example\.test Added by hand Bouncing/ })).toBeInTheDocument();
+    expect(within(members).getByRole("row", { name: /sam@riverbend\.example\.test Active Media Hub Media Hub email removed/ })).toBeInTheDocument();
+    // N4: a Disabled member says so on the list, and isn't counted as getting the email.
+    expect(within(members).getByRole("row", { name: /lee@example\.test Disabled: gets nothing Added by hand Bouncing/ })).toBeInTheDocument();
+    expect(screen.getByText("1 member gets this list’s email. 1 more is Disabled and gets nothing until someone activates them on their record.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Left this list" })).toBeInTheDocument();
     expect(screen.getByText("They unsubscribed, or left it in the old system.")).toBeInTheDocument();
     expect(screen.queryByText(/by unsubscribing/)).toBeNull();
@@ -146,6 +148,25 @@ describe("MediaListScreen", () => {
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("Added to the list. Their news release email stays off; open their record to turn it on.");
     expect(within(status).getByRole("link", { name: "open their record" })).toHaveAttribute("href", `/subscribers/${ID2}`);
+  });
+
+  it("N12: adding someone already on the list says so, not \"Added to the list.\"", async () => {
+    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID1, created: false, newsEmailOff: false, alreadyMember: true, status: "active" }) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Email address" }), "sam@riverbend.example.test{Enter}");
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^Already on this list\.$/);
+  });
+
+  it("N12: adding a Disabled person already on the list says they get nothing and links to their record", async () => {
+    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID2, created: false, newsEmailOff: false, alreadyMember: true, status: "disabled" }) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Email address" }), "lee@example.test{Enter}");
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Already on this list, but Disabled, so they get nothing. Open their record to activate them.");
+    expect(within(status).getByRole("link", { name: "Open their record" })).toHaveAttribute("href", `/subscribers/${ID2}`);
   });
 
   it("adding an address whose news email is unchanged just says it was added", async () => {

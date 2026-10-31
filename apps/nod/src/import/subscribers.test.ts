@@ -697,6 +697,9 @@ describe("importing legacy subscribers", () => {
   it("legacy moving a record onto an address with a kept opt-out takes it off those media lists", async () => {
     await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("optedout@example.test"), listKey: ALL_MEDIA_LISTS, optedOutAt: new Date("2026-06-01T17:00:00Z") });
     await run();
+    // A real staff add at the old address (the import already put them on sample-town, and
+    // adding someone already on a list now changes nothing, N12): remove, then add.
+    await removeMediaMember(tdb.db, "sample-town", id(G.subMedia), "staff:jamie");
     await addMediaMember(tdb.db, "sample-town", { email: "journo@example.test", source: "manual-media" }, "staff:jamie");
     const tables = legacyNodTables();
     tables.subscribers = tables.subscribers!.map((s) => (s.SubscriberGuid === G.subMedia ? { ...s, EmailAddress: "optedout@example.test" } : s));

@@ -63,13 +63,13 @@ const HISTORY = {
 };
 
 const MEDIA_LISTS = [
-  { listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 2, needsAttention: 2 },
-  { listKey: "media-distribution-lists:old", key: "old", name: "Old list", active: false, members: 0, needsAttention: 0 },
+  { listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 1, disabled: 1, needsAttention: 2 },
+  { listKey: "media-distribution-lists:old", key: "old", name: "Old list", active: false, members: 0, disabled: 0, needsAttention: 0 },
 ];
 const MEDIA_SYNC = { since: null, at: "2026-10-07T09:00:00.000Z", result: { contacts: 5, updated: 1, flagged: 1, removed: 0, errors: 0 }, running: false };
 const MEDIA_MEMBERS: MediaMember[] = [
-  { subscriberId: "44444444-4444-4444-4444-444444444444", email: "sam@riverbend.example.test", source: "media-hub", mediaHubContactId: 42, mediaHubEmailRef: "personal", needsAttention: "email-gone", attentionAt: "2026-10-06T09:00:00.000Z" },
-  { subscriberId: "55555555-5555-5555-5555-555555555555", email: "lee@example.test", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: "bouncing", attentionAt: "2026-10-06T09:00:00.000Z" },
+  { subscriberId: "44444444-4444-4444-4444-444444444444", email: "sam@riverbend.example.test", status: "active", source: "media-hub", mediaHubContactId: 42, mediaHubEmailRef: "personal", needsAttention: "email-gone", attentionAt: "2026-10-06T09:00:00.000Z" },
+  { subscriberId: "55555555-5555-5555-5555-555555555555", email: "lee@example.test", status: "disabled", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: "bouncing", attentionAt: "2026-10-06T09:00:00.000Z" },
 ];
 const MEDIA_OPTED = { items: [{ subscriberId: "33333333-3333-3333-3333-333333333333", email: "gone@example.test", at: "2026-09-01T17:00:00.000Z", member: false }], truncated: false };
 const OPS: OperationsStatus = {

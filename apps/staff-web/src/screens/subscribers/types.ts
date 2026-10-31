@@ -94,12 +94,16 @@ export interface MediaListSummary {
   key: string;
   name: string;
   active: boolean;
+  /** Members who get the list's email (active only). */
   members: number;
+  /** Disabled members: on the list, sent nothing, not in `members` (N4). */
+  disabled: number;
   needsAttention: number;
 }
 export interface MediaMember {
   subscriberId: string;
   email: string;
+  status: SubscriberStatus;
   source: string;
   mediaHubContactId: number | null;
   mediaHubEmailRef: string | null;
@@ -122,6 +126,9 @@ export interface AddMemberResult {
   subscriberId: string;
   created: boolean;
   newsEmailOff: boolean;
+  /** Already on the list: nothing changed (N12). */
+  alreadyMember?: boolean;
+  status?: SubscriberStatus;
 }
 
 /** apps/nod/src/media-hub/contract.ts */

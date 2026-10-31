@@ -64,6 +64,19 @@ describe("media list members", () => {
     expect(subs).toHaveLength(1);
   });
 
+  it("N12: adding someone already on the list reports alreadyMember, writes no history and changes nothing", async () => {
+    const first = await addMediaMember(tdb.db, "budget", { email: "dup@example.test", source: "manual-media" }, ACTOR);
+    expect(first).toMatchObject({ alreadyMember: false });
+    await tdb.db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.id, first.subscriberId));
+    const again = await addMediaMember(tdb.db, "budget", { email: "Dup@example.test", source: "manual-media" }, ACTOR);
+    expect(again).toEqual({ subscriberId: first.subscriberId, created: false, newsEmailOff: false, alreadyMember: true, status: "disabled" });
+    const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, first.subscriberId));
+    // Already there: a re-add is not an Activate, so a Disabled member stays Disabled.
+    expect(s!.status).toBe("disabled");
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, first.subscriberId));
+    expect(history.map((h) => h.action)).toEqual(["media-list-added"]);
+  });
+
   it("removing the last membership of a manual-media subscriber ends them, writing media-ended (not unsubscribed)", async () => {
     const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "gone@example.test", source: "manual-media" }, ACTOR);
     const removed = await removeMediaMember(tdb.db, "budget", subscriberId, ACTOR);
@@ -216,7 +229,7 @@ describe("media list members", () => {
 
       const before = new Date();
       const result = await addMediaMember(tdb.db, "budget", { email: "off@example.test", source: "manual-media" }, ACTOR);
-      expect(result).toEqual({ subscriberId: self!.id, created: false, newsEmailOff: true });
+      expect(result).toEqual({ subscriberId: self!.id, created: false, newsEmailOff: true, alreadyMember: false, status: "active" });
       const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, self!.id));
       expect(s).toMatchObject({ status: "active", asItHappens: false, digest: false, source: "self", endedAt: null });
       expect(s!.bounceWindowFrom!.getTime()).toBeGreaterThanOrEqual(before.getTime() - 5_000);
@@ -238,7 +251,7 @@ describe("media list members", () => {
       .returning();
     await tdb.db.insert(subscriptions).values({ subscriberId: self!.id, listKey: "ministries:health" });
     const result = await addMediaMember(tdb.db, "budget", { email: "on@example.test", source: "manual-media" }, ACTOR);
-    expect(result).toEqual({ subscriberId: self!.id, created: false, newsEmailOff: false });
+    expect(result).toEqual({ subscriberId: self!.id, created: false, newsEmailOff: false, alreadyMember: false, status: "active" });
     const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, self!.id));
     expect(s).toMatchObject({ status: "active", asItHappens: true, digest: false, bounceWindowFrom: null });
     const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, self!.id));
@@ -259,7 +272,16 @@ describe("media list members", () => {
     await addMediaMember(tdb.db, "budget", { email: "a@example.test", source: "manual-media" }, ACTOR);
     await addMediaMember(tdb.db, "budget", { email: "b@example.test", source: "manual-media" }, ACTOR);
     const rows = await listMediaLists(tdb.db);
-    expect(rows).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 2, needsAttention: 0 }]);
+    expect(rows).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 2, disabled: 0, needsAttention: 0 }]);
+  });
+
+  it("N4: a Disabled member shows as Disabled and isn't counted among the members who get email", async () => {
+    await addMediaMember(tdb.db, "budget", { email: "a@example.test", source: "manual-media" }, ACTOR);
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "b@example.test", source: "manual-media" }, ACTOR);
+    await tdb.db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.id, subscriberId));
+    expect(await listMediaLists(tdb.db)).toMatchObject([{ members: 1, disabled: 1 }]);
+    const members = await listMediaMembers(tdb.db, "budget");
+    expect(members.map((m) => [m.email, m.status])).toEqual([["a@example.test", "active"], ["b@example.test", "disabled"]]);
   });
   it("a remove that waited out a change of address locks the new address before changing anything", async () => {
     const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "old@example.test", source: "manual-media" }, ACTOR);

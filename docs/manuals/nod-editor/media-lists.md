@@ -11,9 +11,11 @@ topics: []
 
 **Media lists** holds the reporters on each media list. Release editors pick these lists on a release, and every member gets the full-text media version.
 
-The table shows each list's **Members**, how many **Need attention**, and its **Status**. A **Retired** list can't be put on a release, and nothing is sent to it, even from a release that already had it. Core administrators add, rename and retire lists.
+The table shows each list's **Members**, how many **Need attention**, and its **Status**. **Members** counts only the members who get the list's email. Disabled members get nothing, so they aren't counted; the cell then adds, for example, "(and 2 Disabled, who get nothing)". A **Retired** list can't be put on a release, and nothing is sent to it, even from a release that already had it. Core administrators add, rename and retire lists.
 
-Choose a list's name to open it. Each member shows their **Email**, their **Source** (**Media Hub**, **Added by hand** or **Subscriber**) and any problem under **Needs attention**.
+Choose a list's name to open it. Each member shows their **Email**, their **Status** (**Active** or **Disabled**), their **Source** (**Media Hub**, **Added by hand** or **Subscriber**) and any problem under **Needs attention**.
+
+Above the members, a line says how many get this list's email, for example "12 members get this list’s email. 2 more are Disabled and get nothing until someone activates them on their record." A Disabled member's **Status** says "Disabled: gets nothing". Disabled members stay on the list but are sent nothing. To start sending to them again, open their record and choose **Activate**.
 
 ## Add a reporter from Media Hub
 
@@ -29,6 +31,8 @@ Use this for people who aren't in Media Hub.
 1. Open the list.
 2. Under **Add an address by hand**, enter the **Email address**.
 3. Choose **Add to list**. You see "Added to the list."
+
+If the address is already on the list, nothing changes and you see "Already on this list." instead. If they're on it but **Disabled**, you see "Already on this list, but Disabled, so they get nothing. Open their record to activate them." Adding them again doesn't activate them.
 
 ## What adding does
 

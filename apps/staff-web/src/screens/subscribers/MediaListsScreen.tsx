@@ -89,7 +89,7 @@ export function MediaListsScreen(): React.JSX.Element {
                 <td>
                   <Link to={`/subscribers/media-lists/${encodeURIComponent(l.key)}`}>{l.name}</Link>
                 </td>
-                <td>{l.members}</td>
+                <td>{l.disabled > 0 ? `${l.members} (and ${l.disabled} Disabled, who get nothing)` : l.members}</td>
                 <td>{l.needsAttention}</td>
                 <td>{l.active ? "Active" : "Retired"}</td>
               </tr>

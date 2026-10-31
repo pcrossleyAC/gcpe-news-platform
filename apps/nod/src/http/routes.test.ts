@@ -370,7 +370,7 @@ describe("/api/media-lists", () => {
     await addMediaMember(tdb.db, "budget", { email: "list-member@example.com", source: "manual-media" }, "test");
     const res = await request(app).get("/api/media-lists").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 1, needsAttention: 0 }]);
+    expect(res.body).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 1, disabled: 0, needsAttention: 0 }]);
   });
 
   it("GET /api/media-lists/:key/members 404s for an unknown media list", async () => {
@@ -382,7 +382,7 @@ describe("/api/media-lists", () => {
     const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "shown@example.com", source: "manual-media" }, "test");
     const res = await request(app).get("/api/media-lists/budget/members").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(200);
-    expect(res.body).toContainEqual({ subscriberId, email: "shown@example.com", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: null, attentionAt: null });
+    expect(res.body).toContainEqual({ subscriberId, email: "shown@example.com", status: "active", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: null, attentionAt: null });
   });
 
   it("POST /api/media-lists/:key/members creates (201) then is idempotent (200); 404s an unknown list", async () => {
