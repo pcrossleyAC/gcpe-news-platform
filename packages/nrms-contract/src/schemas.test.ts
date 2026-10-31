@@ -95,7 +95,8 @@ describe("schemas", () => {
 describe("searchQuerySchema dates", () => {
   it("accepts a real day and refuses an impossible one", () => {
     expect(searchQuerySchema.safeParse({ from: "2024-02-29" }).success).toBe(true);
-    for (const d of ["2026-02-30", "2026-13-01", "2026-04-31"]) {
+    // Year 0000 is no year Postgres accepts as a date.
+    for (const d of ["2026-02-30", "2026-13-01", "2026-04-31", "0000-01-01"]) {
       const r = searchQuerySchema.safeParse({ from: d });
       expect(r.success).toBe(false);
       expect(r.error?.issues[0]?.message).toBe("That isn't a real date.");

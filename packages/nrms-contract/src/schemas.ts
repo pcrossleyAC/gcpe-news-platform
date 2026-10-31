@@ -176,7 +176,8 @@ export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
 /** "2026-09-02" names a real calendar day (not "2026-02-30", which Date.parse rolls over to
  * March 2): the round trip gives the same day back. */
 export function isRealDay(d: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  // Year 0001 at the earliest: Postgres has no year 0000.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d.startsWith("0000")) return false;
   const t = Date.parse(`${d}T00:00:00Z`);
   return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d;
 }
