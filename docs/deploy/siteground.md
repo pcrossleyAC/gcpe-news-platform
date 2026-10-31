@@ -161,7 +161,8 @@ instead, or every check fails with `error: "redirect"`.
 **News On Demand settings** (all optional):
 
 - `NOD_SUBSCRIBE_PAGE_URL`: where subscription emails link (default: the public site's
-  `/subscribe/manage/`). The links last 24 hours. An address gets at most 3 confirmation or manage
+  `/subscribe/manage/`). The links last 24 hours. The Unsubscribe link in news emails opens the
+  `unsubscribe/` page next to it, so keep the two pages side by side if you change this. An address gets at most 3 confirmation or manage
   emails an hour; more requests are quietly ignored.
 - `NOD_BANNER_URL` (`BANNER_URL` in NoD's own settings; the stack strips the `NOD_` prefix): the
   banner image on every NoD email (As-It-Happens, emergency, digest, and the manage and verify
