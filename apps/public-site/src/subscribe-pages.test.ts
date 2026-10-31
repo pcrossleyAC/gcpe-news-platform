@@ -263,3 +263,105 @@ describe("news.gov subscribe page", () => {
     expect(posted).toHaveLength(1);
   });
 });
+
+// N2: the Unsubscribe page says it worked only when it did.
+describe("unsubscribe page outcomes", () => {
+  const HMAC_TOKEN = `0b9f3c1e-2d4a-4b6c-8e0f-1a2b3c4d5e6f.1.${"A".repeat(43)}`;
+  const MANAGE_TOKEN = "m".repeat(43);
+
+  /** Loads the page at `search` and runs its script; `respond` answers each API call. */
+  async function load(search: string, respond: (path: string) => Promise<Response>) {
+    const html = render("subscribe/unsubscribe/index.html");
+    const dom = new JSDOM(html, { url: `https://boxs.example/site/subscribe/unsubscribe/${search}`, runScripts: "outside-only" });
+    const w = dom.window as unknown as { fetch: unknown; eval(s: string): void };
+    const calls: string[] = [];
+    w.fetch = async (url: string) => {
+      const path = String(url).split("/api/Subscribe/")[1]!.split("?")[0]!;
+      calls.push(path);
+      return respond(path);
+    };
+    const script = [...dom.window.document.querySelectorAll("script")].map((s) => s.textContent!).find((t) => t.includes("/api/Subscribe/"))!;
+    w.eval(script);
+    const settle = async () => {
+      for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
+    };
+    await settle();
+    const doc = dom.window.document;
+    const button = doc.getElementById("confirm-unsubscribe") as HTMLButtonElement;
+    const click = async () => {
+      button.click();
+      await settle();
+    };
+    const status = () => doc.getElementById("message")!.textContent;
+    const alert = () => doc.getElementById("message-alert")!.textContent;
+    const visible = (id: string) => !(doc.getElementById(id) as HTMLElement).hidden;
+    return { doc, button, click, status, alert, visible, calls };
+  }
+  const ok = async () => new Response("true", { status: 200, headers: { "content-type": "application/json" } });
+
+  it("a link from an email: nothing happens until the button is pressed, then it says they're unsubscribed", async () => {
+    const page = await load(`?token=${encodeURIComponent(HMAC_TOKEN)}`, ok);
+    expect(page.calls).toEqual([]);
+    expect(page.visible("unsubscribe-form")).toBe(true);
+    await page.click();
+    expect(page.calls).toEqual([`UnsubscribeSubscriber/${encodeURIComponent(HMAC_TOKEN)}`]);
+    expect(page.status()).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
+    expect(page.alert()).toBe("");
+    expect(page.button.disabled).toBe(true);
+  });
+
+  for (const [name, respond] of [
+    ["a server error", async () => new Response(JSON.stringify({ error: "internal error" }), { status: 500 })],
+    ["the rate limit", async () => new Response("slow down", { status: 429 })],
+    ["a proxy error", async () => new Response(JSON.stringify({ error: "subscriptions upstream unavailable" }), { status: 502 })],
+    ["a network failure", async () => Promise.reject(new TypeError("network"))],
+    ["an answer that isn't true", async () => new Response("false", { status: 200 })],
+  ] as const) {
+    it(`${name}: says it didn't work, never "unsubscribed", and the button stays for another try`, async () => {
+      const page = await load(`?token=${encodeURIComponent(HMAC_TOKEN)}`, respond);
+      await page.click();
+      expect(page.status()).toBe("");
+      expect(page.alert()).toBe("We couldn't unsubscribe you. You're still subscribed. Try again in a few minutes.");
+      expect(page.button.disabled).toBe(false);
+      expect(page.visible("unsubscribe-help")).toBe(true);
+    });
+  }
+
+  for (const [name, search] of [
+    ["no token", ""],
+    ["an empty token", "?token="],
+    ["a cut-off link", `?token=${encodeURIComponent(HMAC_TOKEN.slice(0, 50))}`],
+  ] as const) {
+    it(`${name}: no button, no API call, and a way to get a working link`, async () => {
+      const page = await load(search, ok);
+      expect(page.calls).toEqual([]);
+      expect(page.visible("unsubscribe-form")).toBe(false);
+      expect(page.alert()).toBe("This unsubscribe link isn't complete. It may have been cut off in your email.");
+      expect(page.visible("unsubscribe-help")).toBe(true);
+      const help = page.doc.querySelector("#unsubscribe-help a")!;
+      expect(help.getAttribute("href")).toBe("/site/subscribe/manage/");
+      expect(help.textContent).toBe("Manage Subscription");
+    });
+  }
+
+  it("a manage-page link that has expired: says so before the button is offered", async () => {
+    const page = await load(`?token=${MANAGE_TOKEN}`, async (path) => new Response(path.startsWith("CheckEmailActivationToken/") ? "false" : "true", { status: 200 }));
+    expect(page.calls).toEqual([`CheckEmailActivationToken/${MANAGE_TOKEN}`]);
+    expect(page.visible("unsubscribe-form")).toBe(false);
+    expect(page.alert()).toBe("This link has expired.");
+    expect(page.visible("unsubscribe-help")).toBe(true);
+  });
+
+  it("a manage-page link that is still good: the button works", async () => {
+    const page = await load(`?token=${MANAGE_TOKEN}`, ok);
+    expect(page.visible("unsubscribe-form")).toBe(true);
+    await page.click();
+    expect(page.calls).toEqual([`CheckEmailActivationToken/${MANAGE_TOKEN}`, `UnsubscribeSubscriber/${MANAGE_TOKEN}`]);
+    expect(page.status()).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
+  });
+
+  it("the help is hidden until something goes wrong", async () => {
+    const page = await load(`?token=${encodeURIComponent(HMAC_TOKEN)}`, ok);
+    expect(page.visible("unsubscribe-help")).toBe(false);
+  });
+});

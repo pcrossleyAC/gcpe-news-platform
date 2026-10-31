@@ -215,16 +215,49 @@ const SUBSCRIBE_SCRIPT = `(() => {
     });
   }
 
+  // Reached from an email's Unsubscribe link (a stable token that never expires) or from the
+  // manage page's Unsubscribe button (its 24-hour manage link, or an old system's link). Only the
+  // button unsubscribes: mail scanners open links too. The API answers true even for a token it
+  // doesn't know (C50), so the page checks what it can itself: a token cut short in the email, an
+  // expired manage link, and any failed call. It says "unsubscribed" only on a real true.
   if (kind === "unsubscribe") {
-    const token = qs("token");
+    const token = qs("token") || "";
+    const form = document.getElementById("unsubscribe-form");
     const btn = document.getElementById("confirm-unsubscribe");
+    const help = document.getElementById("unsubscribe-help");
+    const STABLE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.\\d{1,9}\\.[A-Za-z0-9_-]{43}$/;
+    const MANAGE = /^(?:[A-Za-z0-9_-]{43}|[A-Za-z0-9_-]{22}2|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
+    const cannot = (text) => {
+      form.hidden = true;
+      help.hidden = false;
+      say(text, "alert");
+    };
+    if (!STABLE.test(token) && !MANAGE.test(token)) {
+      cannot("This unsubscribe link isn't complete. It may have been cut off in your email.");
+    } else if (MANAGE.test(token)) {
+      // If the check itself fails, the button stays: pressing it reports any failure honestly.
+      api("CheckEmailActivationToken/" + encodeURIComponent(token))
+        .then((r) => (r.ok ? r.json() : null))
+        .then((valid) => {
+          if (valid === false) cannot("This link has expired.");
+        })
+        .catch(() => {});
+    }
     btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      let done = false;
       try {
-        await api("UnsubscribeSubscriber/" + encodeURIComponent(token));
-        say("You're unsubscribed.", "status");
-        btn.disabled = true;
+        const r = await api("UnsubscribeSubscriber/" + encodeURIComponent(token));
+        done = r.ok && (await r.json()) === true;
       } catch {
-        say("Something went wrong. Try again.", "alert");
+        done = false;
+      }
+      if (done) {
+        say("You're unsubscribed. You won't get any more email from BC Gov News On Demand.", "status");
+      } else {
+        btn.disabled = false;
+        help.hidden = false;
+        say("We couldn't unsubscribe you. You're still subscribed. Try again in a few minutes.", "alert");
       }
     });
   }
@@ -304,14 +337,21 @@ ${timingCheckboxes(false)}
   return renderPage("Manage your subscription", site, `${bp}/subscribe/manage/`, body, opts, ' data-page="manage"');
 }
 
+/** Opened by the Unsubscribe link in every subscriber email (NoD recipient-links.ts) and by the
+ * manage page's Unsubscribe button, with `?token=`. The help line, hidden until something goes
+ * wrong, points to the manage page, where a new link can be requested by email. */
 function renderUnsubscribePage(site: SiteInfo, opts: PageOptions): string {
+  const bp = basePath(site);
   const body = `<h1>Unsubscribe</h1>
+<div id="unsubscribe-form">
 <p>Press the button below to stop receiving BC Gov News On Demand.</p>
 <button type="button" id="confirm-unsubscribe">Unsubscribe</button>
+</div>
 <p id="message" role="status"></p>
 <p id="message-alert" role="alert"></p>
+<p id="unsubscribe-help" hidden>You can also go to <a href="${e(`${bp}/subscribe/manage/`)}">Manage Subscription</a>, ask for a new link by email, and unsubscribe from there.</p>
 <script>${SUBSCRIBE_SCRIPT}</script>`;
-  return renderPage("Unsubscribe", site, `${basePath(site)}/subscribe/unsubscribe/`, body, opts, ' data-page="unsubscribe"');
+  return renderPage("Unsubscribe", site, `${bp}/subscribe/unsubscribe/`, body, opts, ' data-page="unsubscribe"');
 }
 
 /** Task 7: the three static test pages, written by `writeSubscribePages` on every startup. */
