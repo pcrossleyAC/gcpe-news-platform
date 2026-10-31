@@ -1,7 +1,6 @@
 import type { HubManualsData as ManualsData } from "../../../../scripts/manuals-lib.mjs";
 import type { SessionValue } from "../session/SessionContext";
 import { canEditReleases } from "../screens/release/access";
-import { canEditWebsite } from "../screens/website/access";
 import { MANUALS_DATA, visiblePages } from "./visible-pages";
 
 /** The How do I… anchor for the area you're in (the whole Help page otherwise). */
@@ -32,7 +31,8 @@ const DOES_NOT_FIT: { manual: string; page?: string; when: (s: SessionValue, rou
   { manual: "nrms-editor", when: (s) => !canEditReleases(s) },
   // This page says Website is view-only for a Core administrator, which isn't so for one who is
   // also a site editor: the Site editor's pages fit them, except on the Blue Bridge switch.
-  { manual: "core-admin", page: "website-project-blue-bridge", when: (s, route) => canEditWebsite(s) && route !== "/website/blue-bridge" },
+  // NRMS.SiteEditor is the Website screens' own canEdit and the server's rule (no shared predicate).
+  { manual: "core-admin", page: "website-project-blue-bridge", when: (s, route) => s.has("NRMS.SiteEditor") && route !== "/website/blue-bridge" },
 ];
 
 function fits(page: { manual: string; id: string }, route: string, s: SessionValue): boolean {

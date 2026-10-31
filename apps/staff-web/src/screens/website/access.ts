@@ -17,9 +17,3 @@ export function canReadWebsite(session: SessionValue): boolean {
 export function canManageWebsite(session: SessionValue): boolean {
   return session.has("NRMS.SiteEditor") || session.has("Core.Admin");
 }
-
-/** Can change the Website tabs (the screens' own `canEdit`, and the server's rule). A Core
- * administrator without this role sees them view-only, apart from Project Blue Bridge. */
-export function canEditWebsite(session: SessionValue): boolean {
-  return session.has("NRMS.SiteEditor");
-}
