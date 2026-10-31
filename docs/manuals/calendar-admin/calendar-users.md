@@ -51,7 +51,7 @@ Deactivating closes the person's Hub account. It signs them out at once, everywh
 2. The page lists their **Open activities**: activities you can see where they are the comm contact, that aren't deleted and haven't ended, even if you set them to **Not a comm contact**. Only the first 500 are listed.
 3. If they also work for ministries you don't belong to, the page says "They also work for ministries you don't belong to. Ask an HQ Administrator to check and transfer their activities there." You can't see their activities in those ministries, so the page doesn't say whether there are any. With none listed, it says "No open activities in your ministries." instead of "No open activities."
 4. To hand the listed activities over first, choose **Transfer their activities first**. **Transfer** opens with them already chosen as **From comm contact** when they are a comm contact for one ministry; for several, choose which. See [Transfer activities](manual:calendar-transfer).
-5. Choose **Deactivate**, or **Deactivate anyway** when activities are listed. You see that the person "is deactivated. The Calendar picks this up within a minute."
+5. Choose **Deactivate**, or **Deactivate anyway** when activities are listed. You see that the person "is deactivated and signed out. The Calendar's lists catch up within a minute."
 
 Deactivating doesn't move their activities. Each one keeps them as comm contact and can still be saved, but can't be cloned until it has an active comm contact. Editors can't choose them as a comm contact any more.
 

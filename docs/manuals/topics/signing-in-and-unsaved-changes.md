@@ -17,6 +17,8 @@ A session lasts up to 12 hours from when you signed in, however long the tab sta
 
 **Sign out** ends the session in that browser, including its other tabs. You stay signed in on any other computer or browser where you signed in. If an administrator deactivates your account, you are signed out at once, and signing in again tells you "Your account is not active. Contact a Core administrator."
 
+If the Hub says "The Hub can't check your sign-in right now. Try again in a minute.", you are still signed in and nothing on the screen is lost, but nothing can be saved or opened for now. Wait a minute and try again. The message goes away by itself once the Hub can check again.
+
 ## When your session ends
 
 If the screen you are on has nothing unsaved, the Hub goes to the sign-in page, which says "Your session ended. Sign in to carry on where you left off." Once you sign in, you are back where you were.

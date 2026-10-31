@@ -282,7 +282,9 @@ export function CalendarUserScreen(): React.JSX.Element {
   const setActive = async (isActive: boolean) => {
     try {
       await apiFetch(`/core/api/calendar-access/${u.id}/active`, { method: "PUT", body: { isActive } });
-      done(`${u.displayName} is ${isActive ? "reactivated" : "deactivated"}. ${LAG}`);
+      // Review S M9: a deactivation signs them out at once (Core's session check); only the
+      // Calendar's own lists wait for it.
+      done(isActive ? `${u.displayName} is reactivated. ${LAG}` : `${u.displayName} is deactivated and signed out. The Calendar's lists catch up within a minute.`);
     } catch (caught) {
       fail(caught, (c) => accountMessages(c, isActive ? "reactivate" : "deactivate"));
     }

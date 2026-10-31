@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, onUnauthorized, SESSION_ENDED_MESSAGE } from "./client";
+import { apiFetch, onSignInCheckUnavailable, onUnauthorized, SESSION_ENDED_MESSAGE } from "./client";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -52,6 +52,25 @@ describe("apiFetch", () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(401, { error: "missing bearer token" })));
     const err = await apiFetch("/nrms/api/releases/x", { method: "PUT", body: {} }).catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 401, message: "Your session has ended. Sign in again to save — your changes are still here." });
+  });
+
+  // Review S I1: Core couldn't check the sign-in (its database is slow or down). That is not the
+  // end of the session: no 401 broadcast, a plain message, and the shell is told so it can say so.
+  it("a 503 sign-in check unavailable is plain, tells the shell, and doesn't end the session", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(503, { error: "sign-in check unavailable" })));
+    const ended: string[] = [];
+    let told = 0;
+    const off1 = onUnauthorized((r) => ended.push(r));
+    const off2 = onSignInCheckUnavailable(() => told++);
+    try {
+      const err = await apiFetch("/nrms/api/releases/x", { method: "PUT", body: {} }).catch((e: unknown) => e);
+      expect(err).toMatchObject({ status: 503, message: "The Hub can't check your sign-in right now. Try again in a minute." });
+      expect(ended).toEqual([]);
+      expect(told).toBe(1);
+    } finally {
+      off1();
+      off2();
+    }
   });
 
   it("409 throws an ApiError with status 409 and the server's message", async () => {

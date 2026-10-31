@@ -35,14 +35,21 @@ function EditScreen(): React.JSX.Element {
 }
 
 let sessionOk = true;
-function stub() {
+/** Core can't check the sign-in (review S I1): check-ins and API calls answer 503. */
+let checkDown = false;
+/** What Core says a session lasts (review S M2); null: an older Core that doesn't say. */
+let sessionHours: number | null = 12;
+function stub(hours: number | null = 12) {
   sessionOk = true;
+  checkDown = false;
+  sessionHours = hours;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
+      if (checkDown && (url === "/core/auth/session" || url === "/core/api/thing")) return jsonResponse(503, { error: "sign-in check unavailable" });
       if (url === "/core/auth/session") {
         return sessionOk
-          ? jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@example.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() })
+          ? jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@example.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString(), ...(sessionHours !== null ? { sessionHours } : {}) })
           : jsonResponse(401, { error: "not signed in" });
       }
       if (url === "/core/auth/logout") return new Response(null, { status: 204 });
@@ -117,6 +124,45 @@ describe("when the session ends (suite review H1)", () => {
     expect(router.state.location.pathname).toBe("/sign-in");
     expect(router.state.location.search).toBe(`?return=${encodeURIComponent("/edit")}`);
     expect(screen.getByText("Your session ended. Sign in to carry on where you left off.")).toBeInTheDocument();
+  });
+
+  it("when Core can't check the sign-in, the shell says so plainly, the session hasn't ended, and the notice goes once it can", async () => {
+    stub();
+    renderHub();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Bio" }), "x");
+    checkDown = true;
+    showTab();
+    expect(await screen.findByText("The Hub can't check your sign-in right now. Try again in a minute.")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog", { name: "Your session has ended" })).not.toBeInTheDocument();
+    checkDown = false;
+    showTab();
+    await waitFor(() => expect(screen.queryByText("The Hub can't check your sign-in right now. Try again in a minute.")).not.toBeInTheDocument());
+  });
+
+  // Review S M2: the dialog gives the length Core says (SESSION_MAX_HOURS), and says nothing about
+  // it when Core doesn't.
+  it.each([
+    [8, "Sessions last 8 hours."],
+    [1, "Sessions last 1 hour."],
+  ])("says the session length Core gives (%i)", async (hours, text) => {
+    stub(hours);
+    renderHub();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Bio" }), "x");
+    sessionOk = false;
+    showTab();
+    expect(await screen.findByRole("alertdialog", { name: "Your session has ended" })).toHaveTextContent(text);
+  });
+
+  it("says nothing about the length when Core doesn't give it", async () => {
+    stub(null);
+    renderHub();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Bio" }), "x");
+    sessionOk = false;
+    showTab();
+    expect(await screen.findByRole("alertdialog", { name: "Your session has ended" })).not.toHaveTextContent("Sessions last");
   });
 
   // Fix round 1 (I1): staying on the page after the session ended, a Save says why it can't, in

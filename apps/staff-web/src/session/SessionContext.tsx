@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { apiFetch, onUnauthorized } from "../api/client";
+import { apiFetch, onSignInCheckUnavailable, onUnauthorized } from "../api/client";
 import { clearAllActivityDrafts } from "../screens/calendar/activity/draft";
 import { clearAllDrafts } from "../screens/release/documents/unsavedDocumentStorage";
 
@@ -18,6 +18,10 @@ interface SessionState {
   ended: boolean;
   /** How many 401s there have been since: each new one brings the explanation back. */
   endedCount: number;
+  /** Hours a session lasts, as Core said at the last sign-in or check-in; kept after it ends (review S M2). */
+  sessionHours: number | null;
+  /** Core couldn't check the sign-in (a 503) since the last check-in that got through (review S I1). */
+  checkUnavailable: boolean;
 }
 
 export interface SessionValue {
@@ -32,6 +36,10 @@ export interface SessionValue {
   ended: boolean;
   /** Goes up with every 401 after sign-in (fix round 1, I1), so RequireAuth explains again each time. */
   endedCount: number;
+  /** How many hours a session lasts (Core's SESSION_MAX_HOURS), or null while unknown. */
+  sessionHours: number | null;
+  /** Core can't check the sign-in right now; the shell says so. Not an ended session. */
+  checkUnavailable: boolean;
   roles: string[];
   loading: boolean;
   has(role: string): boolean;
@@ -52,15 +60,18 @@ const RENEW_INTERVAL_MS = 10 * 60_000;
 interface LoginResponse {
   user: SessionUser;
   expiresAt: string;
+  sessionHours?: number;
 }
 
+const hoursOf = (r: LoginResponse, before: number | null) => (typeof r.sessionHours === "number" && r.sessionHours > 0 ? r.sessionHours : before);
+
 export function SessionProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const [state, setState] = useState<SessionState>({ user: null, loading: true, ended: false, endedCount: 0 });
+  const [state, setState] = useState<SessionState>({ user: null, loading: true, ended: false, endedCount: 0, sessionHours: null, checkUnavailable: false });
 
   const loadSession = useCallback(async () => {
     try {
-      const { user } = await apiFetch<LoginResponse>("/core/auth/session");
-      setState((s) => ({ ...s, user, loading: false, ended: false }));
+      const r = await apiFetch<LoginResponse>("/core/auth/session");
+      setState((s) => ({ ...s, user: r.user, loading: false, ended: false, sessionHours: hoursOf(r, s.sessionHours), checkUnavailable: false }));
     } catch {
       setState((s) => ({ ...s, user: null, loading: false, ended: false }));
     }
@@ -73,7 +84,12 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     apiFetch<LoginResponse>("/core/auth/session").then(
       // Fix round 1 (M2): someone else signing in in another tab doesn't take over a screen kept
       // from an ended session with the first person's typing on it: it stays ended.
-      ({ user }) => setState((s) => (s.ended && s.user && s.user.id !== user.id ? s : { ...s, user, loading: false, ended: false })),
+      (r) =>
+        setState((s) =>
+          s.ended && s.user && s.user.id !== r.user.id
+            ? { ...s, checkUnavailable: false }
+            : { ...s, user: r.user, loading: false, ended: false, sessionHours: hoursOf(r, s.sessionHours), checkUnavailable: false },
+        ),
       () => undefined,
     );
   }, []);
@@ -104,14 +120,16 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   // forgotten (H1): a screen with unsaved changes stays as it was while RequireAuth explains.
   // Each refused save (not a background read, which would bring the dialog back every few
   // seconds on a polling screen) counts, so RequireAuth explains again (fix round 1, I1).
+  useEffect(() => onSignInCheckUnavailable(() => setState((s) => (s.checkUnavailable ? s : { ...s, checkUnavailable: true }))), []);
+
   useEffect(
     () => onUnauthorized((_returnTo, { byUser }) => setState((s) => (s.user ? { ...s, ended: true, endedCount: s.endedCount + (byUser || !s.ended ? 1 : 0) } : s))),
     [],
   );
 
   const signIn = useCallback(async (username: string, password: string) => {
-    const { user } = await apiFetch<LoginResponse>("/core/auth/login", { method: "POST", body: { username, password } });
-    setState((s) => ({ ...s, user, loading: false, ended: false }));
+    const r = await apiFetch<LoginResponse>("/core/auth/login", { method: "POST", body: { username, password } });
+    setState((s) => ({ ...s, user: r.user, loading: false, ended: false, sessionHours: hoursOf(r, s.sessionHours), checkUnavailable: false }));
   }, []);
 
   const signOut = useCallback(async () => {
@@ -134,6 +152,8 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       user: state.user,
       ended: state.ended,
       endedCount: state.endedCount,
+      sessionHours: state.sessionHours,
+      checkUnavailable: state.checkUnavailable,
       roles: state.user?.roles ?? [],
       loading: state.loading,
       has: (role: string) => state.user?.roles.includes(role) ?? false,
