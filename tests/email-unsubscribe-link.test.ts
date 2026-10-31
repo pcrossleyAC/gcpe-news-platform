@@ -7,6 +7,7 @@
 // as a browser would (a GET of the public Unsubscribe page, running the page's own script), and
 // pressing its button goes through the real News API proxy to NoD's real Subscribe API and
 // database. The List-Unsubscribe header's one-click POST is checked through the same path.
+import { randomBytes, randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import express from "express";
@@ -18,13 +19,16 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { substitute } from "../apps/distribution/src/substitute";
 import { subscribeRoutes } from "../apps/news-api/src/http/v1/subscribe";
 import { createApp } from "../apps/nod/src/app";
-import { items, jobRecipients, sendJobs, subscribers } from "../apps/nod/src/db/schema";
+import { items, jobRecipients, sendJobs, subscriberLinks, subscribers } from "../apps/nod/src/db/schema";
 import type { DistributionClient, MessageRequest } from "../apps/nod/src/distribution-client";
 import { renderAsItHappens, renderDigest, renderEmergency, renderMedia, type RenderItem, type RenderOptions } from "../apps/nod/src/render";
 import type { RecipientLinkOptions } from "../apps/nod/src/recipient-links";
 import { sendDueJobs } from "../apps/nod/src/send-jobs";
 import { addSubscriber } from "../apps/nod/src/subscribers";
 import type { JourneyDeps } from "../apps/nod/src/subscribe/journeys";
+import { legacyLinkGuid, legacyTokenHash } from "../apps/nod/src/subscribe/legacy-token";
+import { createLink } from "../apps/nod/src/subscribe/links";
+import { newLinkToken, unsubscribeToken } from "../apps/nod/src/subscribe/tokens";
 import { createNodTestDb } from "../apps/nod/test/helpers";
 import { SUBSCRIBE_PAGES } from "../apps/public-site/src/subscribe-pages";
 
@@ -127,6 +131,11 @@ describe("the Unsubscribe link in a subscriber email", () => {
     w.eval(script);
     return { doc: dom.window.document, calls };
   }
+  const expectButtonOffered = (doc: Document) => {
+    expect((doc.getElementById("unsubscribe-form") as HTMLElement).hidden).toBe(false);
+    expect((doc.getElementById("confirm-unsubscribe") as HTMLButtonElement).disabled).toBe(false);
+    expect(doc.getElementById("message-alert")!.textContent).toBe("");
+  };
   const until = async (check: () => boolean) => {
     for (let i = 0; i < 200 && !check(); i++) await new Promise((r) => setTimeout(r, 10));
   };
@@ -154,6 +163,9 @@ describe("the Unsubscribe link in a subscriber email", () => {
     // A mail scanner opening the link must not unsubscribe anyone.
     expect(calls).toEqual([]);
     expect(await statusOf(id)).toBe("active");
+    // The page must accept NoD's real token: a hidden button still fires on click in JSDOM, so
+    // check the page offered it before pressing.
+    expectButtonOffered(doc);
 
     (doc.getElementById("confirm-unsubscribe") as HTMLButtonElement).click();
     await until(() => !!doc.getElementById("message")!.textContent || !!doc.getElementById("message-alert")!.textContent);
@@ -167,10 +179,41 @@ describe("the Unsubscribe link in a subscriber email", () => {
     const { id, out } = await delivered("text-reader@example.test");
     const href = out["daily digest"]!.text.match(/^Unsubscribe: (\S+)$/m)![1]!;
     const { doc } = openInBrowser(href);
+    expectButtonOffered(doc);
     (doc.getElementById("confirm-unsubscribe") as HTMLButtonElement).click();
     await until(() => !!doc.getElementById("message")!.textContent || !!doc.getElementById("message-alert")!.textContent);
     expect(doc.getElementById("message")!.textContent).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
     expect(await statusOf(id)).toBe("deleted");
+  });
+
+  // The page repeats NoD's token formats to spot a cut-off link. If NoD ever changes a format,
+  // every link of that kind would hide its button: check the page against NoD's own generators.
+  it("the page offers the button for every kind of token NoD makes", async () => {
+    const email = "token-shapes@example.test";
+    const { id } = await addSubscriber(tdb.db, { email, lists: "all" });
+    // Old-system links, as legacy-token.ts reads them: .NET UrlTokenEncode (22 + "2") and a bare GUID.
+    const urlToken = `${randomBytes(16).toString("base64url")}2`;
+    const bareGuid = randomUUID();
+    for (const token of [urlToken, bareGuid]) {
+      const guid = legacyLinkGuid(token);
+      expect(guid, token).not.toBeNull();
+      await tdb.db.insert(subscriberLinks).values({ tokenHash: legacyTokenHash(guid!), purpose: "manage", subscriberId: id, email, expiresAt: new Date(Date.now() + 3_600_000) });
+    }
+    const tokens = {
+      "stable, version 1": unsubscribeToken(SECRET, id, 1),
+      "stable, 9-digit version": unsubscribeToken(SECRET, id, 123456789),
+      "manage link": (await createLink(tdb.db, { purpose: "manage", email, subscriberId: id, pending: null })).token,
+      "old system's link": urlToken,
+      "old system's bare GUID": bareGuid,
+    };
+    for (const [name, token] of Object.entries(tokens)) {
+      const { doc, calls } = openInBrowser(`${SITE.baseUrl}/subscribe/unsubscribe/?token=${encodeURIComponent(token)}`);
+      // Manage-link tokens are first checked with the API; wait for that answer.
+      if (!name.startsWith("stable")) await until(() => calls.length === 1 && !(doc.getElementById("confirm-unsubscribe") as HTMLButtonElement).disabled);
+      expect(doc.getElementById("message-alert")!.textContent, name).toBe("");
+      expectButtonOffered(doc);
+    }
+    expect(await statusOf(id)).toBe("active");
   });
 
   it("the List-Unsubscribe header's one-click POST still unsubscribes", async () => {

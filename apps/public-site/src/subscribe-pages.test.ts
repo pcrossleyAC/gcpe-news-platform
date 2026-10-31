@@ -303,6 +303,8 @@ describe("unsubscribe page outcomes", () => {
     const page = await load(`?token=${encodeURIComponent(HMAC_TOKEN)}`, ok);
     expect(page.calls).toEqual([]);
     expect(page.visible("unsubscribe-form")).toBe(true);
+    expect(page.button.disabled).toBe(false);
+    expect(page.alert()).toBe("");
     await page.click();
     expect(page.calls).toEqual([`UnsubscribeSubscriber/${encodeURIComponent(HMAC_TOKEN)}`]);
     expect(page.status()).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
@@ -319,6 +321,7 @@ describe("unsubscribe page outcomes", () => {
   ] as const) {
     it(`${name}: says it didn't work, never "unsubscribed", and the button stays for another try`, async () => {
       const page = await load(`?token=${encodeURIComponent(HMAC_TOKEN)}`, respond);
+      expect(page.visible("unsubscribe-form")).toBe(true);
       await page.click();
       expect(page.status()).toBe("");
       expect(page.alert()).toBe("We couldn't unsubscribe you. You're still subscribed. Try again in a few minutes.");
@@ -355,9 +358,26 @@ describe("unsubscribe page outcomes", () => {
   it("a manage-page link that is still good: the button works", async () => {
     const page = await load(`?token=${MANAGE_TOKEN}`, ok);
     expect(page.visible("unsubscribe-form")).toBe(true);
+    expect(page.button.disabled).toBe(false);
+    expect(page.alert()).toBe("");
     await page.click();
     expect(page.calls).toEqual([`CheckEmailActivationToken/${MANAGE_TOKEN}`, `UnsubscribeSubscriber/${MANAGE_TOKEN}`]);
     expect(page.status()).toBe("You're unsubscribed. You won't get any more email from BC Gov News On Demand.");
+  });
+
+  it("a manage-page link: the button waits for the link check, and a failed check says so instead of offering it", async () => {
+    const pending = await load(`?token=${MANAGE_TOKEN}`, () => new Promise<Response>(() => {}));
+    expect(pending.button.disabled).toBe(true);
+    await pending.click();
+    expect(pending.calls).toEqual([`CheckEmailActivationToken/${MANAGE_TOKEN}`]);
+    expect(pending.status()).toBe("");
+
+    for (const respond of [async () => new Response("oops", { status: 503 }), async () => Promise.reject(new TypeError("network"))]) {
+      const failed = await load(`?token=${MANAGE_TOKEN}`, respond);
+      expect(failed.visible("unsubscribe-form")).toBe(false);
+      expect(failed.alert()).toBe("We couldn't unsubscribe you. You're still subscribed. Try again in a few minutes.");
+      expect(failed.visible("unsubscribe-help")).toBe(true);
+    }
   });
 
   it("the help is hidden until something goes wrong", async () => {

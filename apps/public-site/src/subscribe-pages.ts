@@ -227,6 +227,7 @@ const SUBSCRIBE_SCRIPT = `(() => {
     const help = document.getElementById("unsubscribe-help");
     const STABLE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.\\d{1,9}\\.[A-Za-z0-9_-]{43}$/;
     const MANAGE = /^(?:[A-Za-z0-9_-]{43}|[A-Za-z0-9_-]{22}2|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
+    const FAILED = "We couldn't unsubscribe you. You're still subscribed. Try again in a few minutes.";
     const cannot = (text) => {
       form.hidden = true;
       help.hidden = false;
@@ -235,13 +236,17 @@ const SUBSCRIBE_SCRIPT = `(() => {
     if (!STABLE.test(token) && !MANAGE.test(token)) {
       cannot("This unsubscribe link isn't complete. It may have been cut off in your email.");
     } else if (MANAGE.test(token)) {
-      // If the check itself fails, the button stays: pressing it reports any failure honestly.
+      // The API answers true for an expired manage link without unsubscribing anyone, so the
+      // button waits for the check to say the link is good; a failed check says so instead.
+      btn.disabled = true;
       api("CheckEmailActivationToken/" + encodeURIComponent(token))
         .then((r) => (r.ok ? r.json() : null))
         .then((valid) => {
-          if (valid === false) cannot("This link has expired.");
+          if (valid === true) btn.disabled = false;
+          else if (valid === false) cannot("This link has expired.");
+          else cannot(FAILED);
         })
-        .catch(() => {});
+        .catch(() => cannot(FAILED));
     }
     btn.addEventListener("click", async () => {
       btn.disabled = true;
@@ -257,7 +262,7 @@ const SUBSCRIBE_SCRIPT = `(() => {
       } else {
         btn.disabled = false;
         help.hidden = false;
-        say("We couldn't unsubscribe you. You're still subscribed. Try again in a few minutes.", "alert");
+        say(FAILED, "alert");
       }
     });
   }
