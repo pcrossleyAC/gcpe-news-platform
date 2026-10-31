@@ -122,6 +122,15 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
   if (origin === "legacy" && existing?.origin === "event") {
     return { skippedEventOwned: true };
   }
+  if (!r.publishFlags.toWeb) {
+    // Suite review R1 (owner, 2026-10-31): a release that isn't for the web (every Advisory —
+    // legacy never put one on news.gov) is never stored as published, so no page, listing,
+    // search, feed, sitemap or API read can show it. NoD gets the same event for its sends.
+    // A key that was public before (stored by an older build, or a flag changed on republish)
+    // comes off the site the same way an unpublish takes it off.
+    if (existing) await unpublishRelease(tx, existing.key, { onlyIfPublished: true });
+    return { skippedEventOwned: false };
+  }
   const key = existing?.key ?? r.key;
   const searchText = searchTextFor(r);
   const values = {
@@ -186,11 +195,12 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
   return { skippedEventOwned: false };
 }
 
-export async function unpublishRelease(tx: Tx, key: string): Promise<void> {
+/** `onlyIfPublished`: a row that is already off the site changes nothing and records nothing. */
+export async function unpublishRelease(tx: Tx, key: string, opts: { onlyIfPublished?: boolean } = {}): Promise<void> {
   const rows = await tx
     .update(posts)
     .set({ isPublished: false })
-    .where(sql`lower(${posts.key}) = lower(${key})`)
+    .where(and(sql`lower(${posts.key}) = lower(${key})`, opts.onlyIfPublished ? eq(posts.isPublished, true) : undefined))
     .returning({ key: posts.key });
   if (rows.length === 0) return;
   const keys = rows.map((r) => r.key);

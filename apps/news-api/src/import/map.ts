@@ -107,7 +107,9 @@ export function mapLegacyRelease(
     // (applyRelease's preserveFiles).
     assets: null,
     translations: null,
-    publishFlags: { toWeb: true, toSubscribers: isNewsOnDemand, toMediaLists: hasPublishOption(row.PublishOptions, PUBLISH_OPTIONS.MediaContacts) },
+    // Legacy NewModel.cs: Advisories are never published to the website (nrms-contract's rule;
+    // NRMS's own importer maps them the same way). applyRelease never stores one as published.
+    publishFlags: { toWeb: kind !== "advisories", toSubscribers: isNewsOnDemand, toMediaLists: hasPublishOption(row.PublishOptions, PUBLISH_OPTIONS.MediaContacts) },
     mediaListKeys: [],
     renditions: null,
     timestamp: row.Timestamp.toISOString(),
