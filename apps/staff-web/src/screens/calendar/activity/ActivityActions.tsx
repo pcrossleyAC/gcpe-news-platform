@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import type { ActivityView, FieldError } from "@gcpe/calendar-contract";
 import { ApiError } from "../../../api/client";
@@ -7,12 +7,12 @@ import { Button } from "../../../shared/BusyButton";
 import { WatchStar, type WatchState } from "../list/WatchStar";
 import { activityApi } from "./api";
 import { minIdOf } from "./form";
-import { activityPath, changesPath } from "./paths";
+import { changesPath, clonePath } from "./paths";
 
 /** What a Reload came to: the stored activity shown, the user kept their changes, or the fetch failed. */
 export type ReloadResult = "reloaded" | "kept" | "failed";
 
-/** The server's own reason: a 422 names its fields (a clone's ministry or contact gone inactive), a 404 means the activity has gone. */
+/** The server's own reason: a 422 names its fields, a 404 means the activity has gone. */
 function refusal(e: unknown): string | null {
   if (!(e instanceof ApiError)) return "Couldn't reach the server. Try again.";
   // apiFetch is already sending the user to sign in.
@@ -25,7 +25,8 @@ function refusal(e: unknown): string | null {
 /**
  * Review, Clone, Delete, the watch star and View changes (spec addendum §8.2), each offered only as
  * the view's `can` allows. Review and Clone act on the stored activity, so they wait for unsaved
- * changes to be saved or cancelled; Delete asks first and discards them. The change freeze leaves
+ * changes to be saved or cancelled; Delete asks first and discards them. Clone opens the New
+ * activity form filled from this one, which creates nothing until it is saved (owner, 2026-10-31). The change freeze leaves
  * only Review, the star and View changes (§7.4); a deleted activity offers only Review (§6).
  */
 export function ActivityActions({ view, myName, dirty, frozen, deletable, reload, returnTo, leave, onWatch, saveAndReview = false }: {
@@ -46,6 +47,7 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ text: string; conflict: boolean } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const navigate = useNavigate();
   const ref = minIdOf(view);
   const act = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -82,18 +84,7 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
         </Button>
       )}
       {view.can.clone && !frozen && !view.isDeleted && (
-        <Button
-          variant="secondary"
-          isPending={busy} isDisabled={dirty}
-          onPress={() =>
-            void act(async () => {
-              const r = await activityApi.clone(view.id);
-              // A clone the user can't see (as a save's result can be) is reported from the list.
-              if (r.activity) leave(activityPath(r.id, returnTo), `Cloned ${ref} as ${minIdOf(r.activity)}.`);
-              else leave(returnTo, `Cloned ${ref}.`);
-            })
-          }
-        >
+        <Button variant="secondary" isPending={busy} isDisabled={dirty} onPress={() => navigate(clonePath(view.id, returnTo))}>
           Clone
         </Button>
       )}

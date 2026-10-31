@@ -130,13 +130,16 @@ test.describe("the activity editor, as each role (spec addendum §3 row 5e, §6)
     expect((await fetch(`${baseUrl()}/calendar/api/activities/${id}`, { headers: { cookie } })).status).toBe(404);
   });
 
-  test("System Administrator: clones an activity and lands on the clone", async ({ page, context }) => {
+  test("System Administrator: Clone opens an unsaved copy; Save creates it and lands on the clone", async ({ page, context }) => {
     const f = await listFixture();
     const stamp = stampOf();
     const id = await scratch(f, `Clone ${stamp}`);
     await useCookie(context, await sessionOf(CAL_SYSADMIN_EMAIL));
     await page.goto(activityUrl(id));
     await page.getByRole("button", { name: "Clone" }).click();
+    await expect(page.getByText(`This is an unsaved copy of HLTH-${id}.`, { exact: false })).toBeVisible();
+    await expect(titleBox(page)).toHaveValue(`Clone ${stamp}`);
+    await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(new RegExp(`^Cloned HLTH-${id} as HLTH-\\d+\\.$`))).toBeVisible();
     expect(Number(/activities\/(\d+)/.exec(page.url())![1])).not.toBe(id);
     await expect(titleBox(page)).toHaveValue(`Clone ${stamp}`);

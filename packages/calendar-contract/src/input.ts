@@ -88,6 +88,11 @@ export const activityFieldsSchema = z
   .strict();
 export type ActivityFields = z.infer<typeof activityFieldsSchema>;
 
-export const createActivitySchema = activityFieldsSchema;
+/**
+ * A create. `clonedFrom` names the activity a Clone form was filled from (owner, 2026-10-31): the
+ * new activity's history records it, and what the clone carried over is checked as a clone's.
+ */
+export const createActivitySchema = activityFieldsSchema.extend({ clonedFrom: id.optional() }).strict();
+export type CreateActivityInput = z.infer<typeof createActivitySchema>;
 export const updateActivitySchema = activityFieldsSchema.extend({ version: z.number().int().positive(), tabId: safeString().min(1).max(100).nullable() }).strict();
 export type UpdateActivityInput = z.infer<typeof updateActivitySchema>;

@@ -49,7 +49,11 @@ export const EDITOR_OPTIONS: EditorOptions = {
     { key: "finance", abbreviation: "FIN", name: "Sample Finance", isActive: true },
     { key: "gcpe-hq", abbreviation: "HQ", name: "Sample HQ", isActive: true },
   ],
-  commContacts: [{ id: 11, ministryKey: "health", name: "Robin Staff", rank: 4, isActive: true }, { id: 12, ministryKey: "finance", name: "Kim Finance", rank: 1, isActive: true }],
+  commContacts: [
+    { id: 11, userId: "u1", ministryKey: "health", name: "Robin Staff", rank: 4, isActive: true },
+    { id: 12, userId: "u2", ministryKey: "finance", name: "Kim Finance", rank: 1, isActive: true },
+    { id: 13, userId: "u3", ministryKey: "health", name: "Pat Health", rank: 1, isActive: true },
+  ],
   sectors: [{ key: "sample-sector", name: "Sample sector", isActive: true }],
   themes: [{ key: "sample-theme", name: "Sample theme", isActive: true }],
   tags: [{ key: "sample-tag", name: "Sample news tag", isActive: true }],

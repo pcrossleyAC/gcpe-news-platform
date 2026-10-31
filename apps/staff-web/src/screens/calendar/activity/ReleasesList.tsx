@@ -7,6 +7,16 @@ const STATUS: Record<string, string> = {
   draft: "Draft", approved: "Approved", scheduled: "Scheduled", publishing: "Publishing", published: "Published", unpublishing: "Unpublishing", failed: "Failed",
 };
 
+/** "Release 2031HLTH0001: Scheduled, Nov 10, 2031 9:00 AM": the release's type, reference, status and time. */
+export function releaseLabel(r: ReleaseLinkView, timeZone: string): string {
+  const at = r.releasedAt ?? r.publishAt;
+  return `${TYPE_LABEL[r.type as ReleaseType] ?? r.type}${r.reference ? ` ${r.reference}` : ""}: ${STATUS[r.status] ?? r.status}${at ? `, ${dateTimeText(at, timeZone)}` : ""}`;
+}
+
+/** Statuses of a release that is still to go out: changing the activity's timing doesn't move it. */
+const NOT_OUT = new Set(["draft", "approved", "scheduled", "publishing", "failed"]);
+export const plannedReleases = (releases: readonly ReleaseLinkView[]) => releases.filter((r) => NOT_OUT.has(r.status));
+
 /** "BC Gov News" (spec addendum §8.2, §11): the releases linked to this activity. The link is for NRMS users; NRMS guards the release itself. */
 export function ReleasesList({ releases, timeZone, canOpen }: { releases: readonly ReleaseLinkView[]; timeZone: string; canOpen: boolean }): React.JSX.Element {
   return (
@@ -17,8 +27,7 @@ export function ReleasesList({ releases, timeZone, canOpen }: { releases: readon
       ) : (
         <ul>
           {releases.map((r) => {
-            const at = r.releasedAt ?? r.publishAt;
-            const label = `${TYPE_LABEL[r.type as ReleaseType] ?? r.type}${r.reference ? ` ${r.reference}` : ""}: ${STATUS[r.status] ?? r.status}${at ? `, ${dateTimeText(at, timeZone)}` : ""}`;
+            const label = releaseLabel(r, timeZone);
             return (
               <li key={r.releaseId}>
                 <span className={`gcpe-release-swatch gcpe-release-swatch--${r.type}`} aria-hidden="true" />

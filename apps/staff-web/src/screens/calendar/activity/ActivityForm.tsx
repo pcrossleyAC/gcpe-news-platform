@@ -5,7 +5,7 @@ import type { CalendarConfigView } from "../list/types";
 import { CheckField, CheckList, DateTimeField, ReadOnlyForm, SelectField, TagField, TextField } from "./fields";
 import {
   categoryChoices, commContactChoices, fieldId, inferredLabel, leadMinistryChoices, lookupChoices, needsReviewOf, SECTION_LABELS, sharedWithChoices,
-  termChoices, translationChoices, withAllDay, withCategory, withMinistry,
+  termChoices, translationChoices, withAllDay, withCategory, withMinistry, withMyContact,
 } from "./form";
 
 export type Change = (patch: Partial<ActivityFields> | ((f: ActivityFields) => ActivityFields)) => void;
@@ -27,6 +27,12 @@ export interface ActivityFormProps {
   release: ReactNode;
   /** Records, after Event. */
   records: ReactNode;
+  /**
+   * A new activity's legacy prefills (Activity.aspx:1528-1537, Activity.aspx.cs:339-368): End date
+   * follows Start date, and Comm Contact is the user for each lead ministry they are a contact of,
+   * until the user sets each one; `chose` says they have.
+   */
+  prefill?: { endFollowsStart: boolean; contactFollowsMinistry: boolean; myUserId: string; chose: (what: "end" | "contact") => void };
 }
 
 const str = (v: number | string | null) => (v === null ? "" : String(v));
@@ -70,14 +76,20 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
 
       <fieldset className="gcpe-fieldset">
         <legend>Ministry</legend>
-        <SelectField id={id("contactMinistryKey")} label="Lead Ministry" required value={f.contactMinistryKey ?? ""} onChange={(v) => change((x) => withMinistry(x, v || null, o))} options={leadMinistryChoices(o, rules, p.me, s?.contactMinistryKey ?? null)} empty="Choose the lead ministry" error={err("contactMinistryKey")} />
+        <SelectField id={id("contactMinistryKey")} label="Lead Ministry" required value={f.contactMinistryKey ?? ""} onChange={(v) => change((x) => {
+          const next = withMinistry(x, v || null, o);
+          return p.prefill?.contactFollowsMinistry ? withMyContact(next, o, p.prefill.myUserId) : next;
+        })} options={leadMinistryChoices(o, rules, p.me, s?.contactMinistryKey ?? null)} empty="Choose the lead ministry" error={err("contactMinistryKey")} />
         <CheckField id={id("isCrossGovernment")} label="Cross-Government" checked={f.isCrossGovernment} onChange={(v) => change({ isCrossGovernment: v })} />
         <CheckList readOnly={p.readOnly} id={id("sharedWithKeys")} label="Shared With" values={f.sharedWithKeys} onChange={(v) => change({ sharedWithKeys: v })} options={sharedWithChoices(o, rules, s?.sharedWithKeys ?? [])} error={err("sharedWithKeys")} />
       </fieldset>
 
       <fieldset className="gcpe-fieldset">
         <legend>Planning</legend>
-        <SelectField id={id("commContactId")} label="Comm Contact" help="comm-contact" required value={str(f.commContactId)} onChange={(v) => change({ commContactId: num(v) })} options={commContactChoices(o, f.contactMinistryKey, s?.commContactId ?? null)} empty={f.contactMinistryKey ? "Choose a comm contact" : "Choose the lead ministry first"} error={err("commContactId")} />
+        <SelectField id={id("commContactId")} label="Comm Contact" help="comm-contact" required value={str(f.commContactId)} onChange={(v) => {
+          p.prefill?.chose("contact");
+          change({ commContactId: num(v) });
+        }} options={commContactChoices(o, f.contactMinistryKey, s?.commContactId ?? null)} empty={f.contactMinistryKey ? "Choose a comm contact" : "Choose the lead ministry first"} error={err("commContactId")} />
         <CheckField id={id("isMilestone")} label="Key activity" checked={f.isMilestone} onChange={(v) => change({ isMilestone: v })} />
         <TextField id={id("strategy")} label="Strategy" multiline required={rules.required.strategy} value={f.strategy} onChange={(v) => change({ strategy: v })} error={err("strategy")} review={rev("strategy")} />
         <CheckList readOnly={p.readOnly} id={id("commMaterialIds")} label="Comm Materials" help="comm-materials" required={isRelease} values={f.commMaterialIds.map(String)} onChange={(v) => change({ commMaterialIds: v.map(Number) })} options={lookupChoices(o.commMaterials, s?.commMaterialIds ?? [])} error={err("commMaterialIds")} review={rev("commMaterialIds")} />
@@ -88,8 +100,11 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
         <legend>Schedule</legend>
         <CheckField id={id("isAllDay")} label="All Day" checked={f.isAllDay} onChange={(v) => change((x) => withAllDay(x, v))} />
         <CheckField id={id("isConfirmed")} label="Dates Confirmed" checked={f.isConfirmed} onChange={(v) => change({ isConfirmed: v })} />
-        <DateTimeField idDate={id("startDate")} idTime={id("startTime")} label="Start" required date={f.startDate} time={f.startTime} onDate={(v) => change({ startDate: v })} onTime={(v) => change({ startTime: v })} showTime={!f.isAllDay} dateError={err("startDate")} timeError={err("startTime")} review={rev("startDate")} />
-        <DateTimeField idDate={id("endDate")} idTime={id("endTime")} label="End" required date={f.endDate} time={f.endTime} onDate={(v) => change({ endDate: v })} onTime={(v) => change({ endTime: v })} showTime={!f.isAllDay} dateError={err("endDate")} timeError={err("endTime")} review={rev("endDate")} />
+        <DateTimeField idDate={id("startDate")} idTime={id("startTime")} label="Start" required date={f.startDate} time={f.startTime} onDate={(v) => change(p.prefill?.endFollowsStart && v ? { startDate: v, endDate: v } : { startDate: v })} onTime={(v) => change({ startTime: v })} showTime={!f.isAllDay} dateError={err("startDate")} timeError={err("startTime")} review={rev("startDate")} />
+        <DateTimeField idDate={id("endDate")} idTime={id("endTime")} label="End" required date={f.endDate} time={f.endTime} onDate={(v) => {
+          p.prefill?.chose("end");
+          change({ endDate: v });
+        }} onTime={(v) => change({ endTime: v })} showTime={!f.isAllDay} dateError={err("endDate")} timeError={err("endTime")} review={rev("endDate")} />
         <TextField id={id("potentialDates")} label="Potential Dates" value={f.potentialDates} onChange={(v) => change({ potentialDates: v })} error={err("potentialDates")} review={rev("potentialDates")} hint="A general timeline, like winter or late June: no numbers, TBC or TBD." />
         <TextField id={id("schedule")} label="Scheduling considerations" multiline required={rules.required.scheduling && !relax} value={f.schedule} onChange={(v) => change({ schedule: v })} error={err("schedule")} review={rev("schedule")} />
         {!p.readOnly && warnings.length > 0 && (

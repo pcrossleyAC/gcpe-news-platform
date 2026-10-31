@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
-import { checkActivity, friendlySpan, inferLookAhead, type ActivityFields, type ActivityView, type EditorOptions, type FieldError, type HqSection } from "@gcpe/calendar-contract";
+import { checkActivity, friendlySpan, inferLookAhead, type ActivityFields, type ActivityView, type ClonePrefill, type EditorOptions, type FieldError, type HqSection } from "@gcpe/calendar-contract";
 import { ApiError, onUnauthorized } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -15,11 +15,11 @@ import { useSession } from "../../../session/SessionContext";
 import { ActivityActions, type ReloadResult } from "./ActivityActions";
 import { ActivityForm, type Change } from "./ActivityForm";
 import { activityApi } from "./api";
-import { clearActivityDraft, loadActivityDraft, saveActivityDraft } from "./draft";
-import { bodyOf, errorsByField, fieldId, initialOverride, lookAheadInputOf, minIdOf, newActivityFields, withInferredSection } from "./form";
+import { clearActivityDraft, loadActivityDraft, saveActivityDraft, type DraftId } from "./draft";
+import { bodyOf, errorsByField, fieldId, initialOverride, lookAheadInputOf, minIdOf, newActivityFields, withInferredSection, withMyContact } from "./form";
 import { LockBanner } from "./LockBanner";
 import { RecordsSection } from "./RecordsSection";
-import { ReleasesList } from "./ReleasesList";
+import { plannedReleases, releaseLabel, ReleasesList } from "./ReleasesList";
 import { activityPath, safeCalendarReturn } from "./paths";
 import { useEditLock } from "./useEditLock";
 
@@ -28,16 +28,22 @@ const ID = /^\d{1,9}$/;
 const NRMS_READ_ROLES = ["NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor"];
 const STATUS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
 const COULDNT_RELOAD = "Couldn't reload. Your changes are still here.";
+/** The fields whose change can leave a linked release behind (suite review CAL-4). */
+const TIMING: readonly (keyof ActivityFields)[] = ["startDate", "startTime", "endDate", "endTime", "isAllDay", "nrDate", "nrTime"];
 interface Loaded {
   config: CalendarConfigView;
   options: EditorOptions;
   view: ActivityView | null;
+  /** A new activity filled from Clone: unsaved until Save (owner, 2026-10-31). */
+  clone: ClonePrefill | null;
 }
 
-/** The route element, keyed by id, so moving to a clone or to a just-created activity starts afresh. */
+/** The route element, keyed by id (and the activity a clone copies), so moving to a clone or to a just-created activity starts afresh. */
 export function ActivityRoute(): React.JSX.Element {
   const { id } = useParams();
-  return <ActivityScreen key={id ?? "new"} idParam={id ?? null} />;
+  const [params] = useSearchParams();
+  const clone = id === undefined ? params.get("clone") : null;
+  return <ActivityScreen key={`${id ?? "new"}:${clone ?? ""}`} idParam={id ?? null} />;
 }
 
 /** `/hub/calendar/activities/:id` and `/new` (spec addendum §8.2): loads, then hands over to the editor. Not visible is "not found" (§6). */
@@ -47,25 +53,36 @@ export function ActivityScreen({ idParam }: { idParam: string | null }): React.J
   const location = useLocation();
   const returnTo = safeCalendarReturn(params.get("return"));
   const id = idParam !== null && ID.test(idParam) ? Number(idParam) : null;
+  const cloneParam = idParam === null ? params.get("clone") : null;
+  const cloneOf = cloneParam !== null && ID.test(cloneParam) ? Number(cloneParam) : null;
+  const badParam = (idParam !== null && id === null) || (cloneParam !== null && cloneOf === null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [failure, setFailure] = useState<"not_found" | "error" | null>(idParam !== null && id === null ? "not_found" : null);
+  const [failure, setFailure] = useState<"not_found" | { text: string } | null>(badParam ? "not_found" : null);
   useDocumentTitle(failure === "not_found" ? "Activity not found" : failure ? "Activity" : null);
 
   useEffect(() => {
-    if (idParam !== null && id === null) return;
+    if (badParam) return;
     let live = true;
-    Promise.all([listApi.config(), activityApi.options(), id === null ? Promise.resolve(null) : activityApi.get(id)]).then(
-      ([config, options, view]) => {
-        if (live) setLoaded({ config, options, view });
+    Promise.all([
+      listApi.config(),
+      activityApi.options(),
+      id === null ? Promise.resolve(null) : activityApi.get(id),
+      cloneOf === null ? Promise.resolve(null) : activityApi.clonePrefill(cloneOf),
+    ]).then(
+      ([config, options, view, clone]) => {
+        if (live) setLoaded({ config, options, view, clone });
       },
       (e: unknown) => {
-        if (live) setFailure(e instanceof ApiError && e.status === 404 ? "not_found" : "error");
+        if (!live) return;
+        if (e instanceof ApiError && e.status === 404) return setFailure("not_found");
+        // A clone refused (deleted, or no longer theirs to copy): the server's reason.
+        setFailure({ text: cloneOf !== null && e instanceof ApiError && e.status < 500 && e.status !== 401 ? e.message : "Couldn't load this activity." });
       },
     );
     return () => {
       live = false;
     };
-  }, [id, idParam]);
+  }, [id, cloneOf, badParam]);
 
   if (failure === "not_found") {
     return (
@@ -82,7 +99,10 @@ export function ActivityScreen({ idParam }: { idParam: string | null }): React.J
     return (
       <div>
         <h1>Activity</h1>
-        <InlineAlert variant="danger" role="alert" description="Couldn't load this activity." />
+        <InlineAlert variant="danger" role="alert" description={failure.text} />
+        <p>
+          <Link to={returnTo}>Back to the Calendar</Link>
+        </p>
       </div>
     );
   }
@@ -124,11 +144,11 @@ interface EditorProps extends Loaded {
   notice: string | null;
 }
 
-function ActivityEditor({ me, config, options, view: initial, returnTo, notice }: EditorProps): React.JSX.Element {
+function ActivityEditor({ me, config, options, view: initial, clone, returnTo, notice }: EditorProps): React.JSX.Element {
   const navigate = useNavigate();
   const session = useSession();
   const isNew = initial === null;
-  const draftId = initial?.id ?? "new";
+  const draftId: DraftId = initial?.id ?? (clone ? `clone-${clone.sourceId}` : "new");
   // Changes kept when a 401 sent the user to sign in, restored on the same activity with the
   // version they were based on. Only where they could still be saved.
   const [restored] = useState(() => {
@@ -137,15 +157,27 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   });
   const [view, setView] = useState(() => (initial && restored?.version != null ? { ...initial, version: restored.version } : initial));
   const start = useMemo(
-    () => initial?.fields ?? withInferredSection(newActivityFields(me, config.lookAheadFieldset), false, options, config.rules, null),
-    [initial, me, config, options],
+    () =>
+      initial?.fields ??
+      clone?.fields ??
+      withMyContact(withInferredSection(newActivityFields(me, config.lookAheadFieldset), false, options, config.rules, null), options, me.userId),
+    [initial, clone, me, config, options],
   );
   const [fields, setFields] = useState<ActivityFields>(() => restored?.fields ?? start);
   const original = useRef(start);
+  // A new activity's legacy prefills (suite review CAL-2): End follows Start, and Comm Contact
+  // follows the lead ministry, until the user sets them. A copy running several days keeps its End.
+  const [endFollows, setEndFollows] = useState(() => {
+    const f = restored?.fields ?? start;
+    return isNew && (f.endDate === null || f.endDate === f.startDate);
+  });
+  const [contactFollows, setContactFollows] = useState(isNew);
   const [overridden, setOverriddenState] = useState(() => {
     // Restored changes are judged as the server judges stored ones: a section their own values don't infer is an override.
-    const la = restored?.fields.lookAhead;
-    if (la) return initialOverride(la.hqSection, inferLookAhead(lookAheadInputOf(restored.fields, options, initial?.fields.lookAhead?.hqSection ?? null), config.rules));
+    // A clone's section is judged the same way: an override on the source stays one on the copy.
+    const la = restored?.fields.lookAhead ?? clone?.fields.lookAhead;
+    const f = restored?.fields ?? clone?.fields;
+    if (la && f) return initialOverride(la.hqSection, inferLookAhead(lookAheadInputOf(f, options, initial?.fields.lookAhead?.hqSection ?? clone?.fields.lookAhead?.hqSection ?? null), config.rules));
     return initial?.lookAhead ? initialOverride(initial.lookAhead.hqSection, initial.lookAhead.inferred) : false;
   });
   const overriddenRef = useRef(overridden);
@@ -217,6 +249,12 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   const lockedOut = lock.state.kind === "other" || lock.state.kind === "elsewhere" || lock.state.kind === "gone";
   const readOnly = !canEdit || frozen || lockedOut || !!view?.isDeleted || deletedMeanwhile;
   const inferred = inferLookAhead(lookAheadInputOf(fields, options, storedSection), config.rules);
+  // A release still to go out is planned against this activity's timing; changing it here doesn't move the release (suite review CAL-4).
+  const planned = view && !readOnly ? plannedReleases(view.releases) : [];
+  const releaseWarning =
+    view && planned.length > 0 && TIMING.some((k) => fields[k] !== original.current[k])
+      ? `A release is planned against ${minIdOf(view)} (${planned.map((r) => releaseLabel(r, config.timeZone)).join("; ")}). Changing the date or time here doesn't move the release. Tell the release editor.`
+      : null;
 
   const title = isNew ? "New activity" : `Activity ${minIdOf(view!)}`;
   useDocumentTitle(title);
@@ -356,7 +394,8 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
       rules: config.rules,
       relaxRequired: config.editor.relaxRequired,
       lookAheadFieldset: fieldset,
-      previous: view?.fields ?? null,
+      // A copy is judged against its source, as the server judges it.
+      previous: view?.fields ?? clone?.fields ?? null,
       inferredSection: inferred.kind === "section" ? inferred.section : null,
     });
     if (problems.length) return showErrors(problems);
@@ -368,11 +407,13 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
       if (!(await lock.touch())) return;
       const body = bodyOf(fields, fieldset);
       if (isNew) {
-        const r = await activityApi.create(body);
+        const r = await activityApi.create(body, clone?.sourceId);
         forgetDraft();
-        if (r.activity) leave(activityPath(r.id, returnTo), `Created ${minIdOf(r.activity)}.${extra(r.warnings)}`, true);
+        const done = (ref: string) => (clone ? `Cloned ${clone.sourceLabel} as ${ref}.` : `Created ${ref}.`);
+        if (r.activity) leave(activityPath(r.id, returnTo), `${done(minIdOf(r.activity))}${extra(r.warnings)}`, true);
         else leave(returnTo, r.warnings.join(" "));
       } else {
+        const warned = releaseWarning ? [releaseWarning] : [];
         const r = await activityApi.update(view!.id, { ...body, version: view!.version, tabId: lock.tabId });
         forgetDraft();
         if (andReview && r.activity) {
@@ -384,11 +425,11 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
             if (refused) setFailure(refused);
             return;
           }
-          leave(returnTo, `Saved and reviewed ${minIdOf(r.activity)}.${extra(r.warnings)}`, true);
+          leave(returnTo, `Saved and reviewed ${minIdOf(r.activity)}.${extra([...r.warnings, ...warned])}`, true);
           return;
         }
         // Replaces the editor's entry: Back doesn't reopen it, and a reload doesn't repeat the notice.
-        leave(returnTo, r.activity ? `Saved ${minIdOf(r.activity)}.${extra(r.warnings)}` : r.warnings.join(" "), true);
+        leave(returnTo, r.activity ? `Saved ${minIdOf(r.activity)}.${extra([...r.warnings, ...warned])}` : r.warnings.join(" "), true);
       }
     } catch (e) {
       writeFailed(e);
@@ -443,6 +484,12 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
           Your unsaved changes were restored.
         </p>
       )}
+      {clone && (
+        <InlineAlert
+          variant="info"
+          description={`This is an unsaved copy of ${clone.sourceLabel}. Nothing is created until you choose Save. Cancel leaves no copy behind.`}
+        />
+      )}
       {stamp && <p className="gcpe-hint">{stamp}</p>}
       {view?.isDeleted && <InlineAlert variant="info" description="This activity is deleted. HQ Administrators can review the deletion; nothing else can change it." />}
       {canEdit && frozen && !view?.isDeleted && <InlineAlert variant="warning" title="Change freeze" description={config.freeze.message} />}
@@ -475,8 +522,9 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
           <legend className="gcpe-visually-hidden">{title}</legend>
           <ActivityForm
             fields={fields}
-            stored={view?.fields ?? null}
+            stored={view?.fields ?? clone?.fields ?? null}
             change={change}
+            prefill={isNew ? { endFollowsStart: endFollows, contactFollowsMinistry: contactFollows, myUserId: me.userId, chose: (what) => (what === "end" ? setEndFollows(false) : setContactFollows(false)) } : undefined}
             options={options}
             config={config}
             me={me}
@@ -510,6 +558,8 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
             }
           />
         </fieldset>
+        {/* Mounted from the start, so a screen reader hears the warning when it appears. */}
+        <div aria-live="polite">{releaseWarning && <InlineAlert variant="warning" description={releaseWarning} />}</div>
         <div className="gcpe-actions">
           {!readOnly && (
             <Button type="submit" isPending={saving && !reviewing} pendingLabel="Saving…" shortcut={isNew ? ["save", "submit"] : "save"}>

@@ -19,9 +19,9 @@ const O: EditorOptions = {
     { key: "excluded", abbreviation: "EXCL", name: "Sample Excluded", isActive: true }, { key: "retired", abbreviation: "RET", name: "Sample Retired", isActive: false },
   ],
   commContacts: [
-    { id: 11, ministryKey: "health", name: "Robin Staff", rank: 4, isActive: true },
-    { id: 12, ministryKey: "finance", name: "Kim Finance", rank: 1, isActive: true },
-    { id: 13, ministryKey: "health", name: "Sample Former", rank: null, isActive: false },
+    { id: 11, userId: "u1", ministryKey: "health", name: "Robin Staff", rank: 4, isActive: true },
+    { id: 12, userId: "u2", ministryKey: "finance", name: "Kim Finance", rank: 1, isActive: true },
+    { id: 13, userId: "u3", ministryKey: "health", name: "Sample Former", rank: null, isActive: false },
   ],
   sectors: [], themes: [], tags: [],
 };
