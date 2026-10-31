@@ -106,6 +106,10 @@ For the PDF reports in the same panel, see [Reports](manual:calendar-editor-repo
 
 "Daily change freeze." at the top of the list says when no changes can be made. While the freeze applies to you, it shows as a **Change freeze** warning and **New activity** is hidden. See [The edit lock and the daily change freeze](manual:calendar-editor-lock-and-freeze).
 
+## Older activities
+
+Activities that ended before the move to this Calendar weren't brought over, except awareness dates. If you need an older one, ask a Calendar administrator.
+
 ## Can't do this?
 
 | Message | What it means |

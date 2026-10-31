@@ -47,5 +47,5 @@ The star beside **View changes** adds the activity to your watchlist. See [The a
 
 | Message | What it means |
 |---|---|
-| "It doesn't exist, or you can't see it." (under "Activity not found") | Check the number. The activity may be led by a ministry you're not in, it may have been deleted, or it may be marked **Not for Look Ahead**. This is also what you see if you open an old link to an activity you can no longer see. Choose **Back to the Calendar**. |
+| "It doesn't exist, or you can't see it." (under "Activity not found") | Check the number. The activity may be led by a ministry you're not in, it may have been deleted, or, if you are in an HQ organization, another ministry may have marked it **Not for Look Ahead**. This is also what you see if you open an old link to an activity you can no longer see. Choose **Back to the Calendar**. |
 | "Couldn't load this activity." | Reload the page. |

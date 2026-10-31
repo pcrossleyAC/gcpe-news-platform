@@ -11,7 +11,8 @@ owner's GrowBig account, project `boxs.ca`, host `giowm1258`) — the short vers
   resolve. The artifact (`dist/siteground/`, built by `scripts/build-siteground.mjs`) bundles
   every dependency into `stack.js` for exactly this reason.
 - The process is killed after 30–60s idle; the next request cold-starts it (measured locally:
-  a cold start of all six apps completes in well under a second).
+  a cold start of all six apps completes in well under a second). A deploy takes effect only once
+  the old process has idled out (about 60 s).
 - WebSocket upgrades are stripped (SSE still works) — the stack runs with
   `UPDATES_HUB_ENABLED=false` here; there is no live-updates hub in production.
 - The Postgres user SiteGround creates **cannot** `CREATE DATABASE` or `CREATE EXTENSION` —
@@ -170,6 +171,10 @@ instead, or every check fails with `error: "redirect"`.
 - `NOD_MEDIA_HUB_*`: unset means the stack's own fake Media Hub (made-up contacts), except on real
   production, where unset means no Media Hub at all: search, add-from-hub and the sync answer 503.
   Typing a media member's address by hand works either way.
+- `NOD_MEMBERSHIP_API_USERNAME` and `NOD_MEMBERSHIP_API_PASSWORD_HASH`: the login for the legacy
+  Membership tab's lookup (`Subscribe/SubscriberInformation`). The password setting is the hash
+  that `npm run nod:membership-hash` prints, never a plain password. If either is unset, the
+  lookup always answers 503.
 - Bounces: Distribution's `DIST_BOUNCE_SOURCE` is `fake` on every test site, boxs.ca included
   (`graph` is built but not run live until Q23 is answered). In `graph` mode Distribution also needs
   all four of `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET` and `BOUNCE_MAILBOX`
@@ -1821,6 +1826,7 @@ In semantic mode, each `/stack/tick` (the `news-api.embed` step) embeds up to 50
 - **Backlog:** at one tick a minute, 50 posts a tick, about 100,000 posts take about 33 hours or less to embed the first time — `STACK_LOOPS` (default on) also runs the worker's own internal 60 s loop in the same process, and the two can run back to back, so the real pace can be faster than one tick a minute. Until a post is embedded, search still finds it through the text half of a semantic search, and its related posts use the text fallback.
 - **Changing provider or model** re-embeds every post, at the same pace.
 - **Failures:** a provider failure is logged as `[embeddings] <provider> call failed <label>` and the posts are retried on the next tick. If a batch of several posts fails, the worker splits it and keeps retrying the halves, in the same tick, down to single posts, so one bad post never blocks the healthy ones behind it. A post that still fails alone is skipped by later ticks (until its text changes) rather than retried forever. After three failures in a row with no success between them the worker's breaker opens and the step skips its ticks for 60 seconds — isolating a single bad post among healthy ones is specifically designed not to trip this, since a healthy post's success resets the count. Search has its own breaker, so a failing batch doesn't turn search off.
+- **Timeout:** the worker has its own 5-second provider timeout and its own breaker, separate from search's.
 - **Unpublishing** deletes the post's embedding and related posts in the same transaction, so it disappears from semantic results and related lists at once. That includes a legacy import's unpublish step.
 - **Before turning semantic search on**, make sure the 6a search backfill has run: the worker skips a post whose `search_text` is still NULL, so such a post is never embedded until that backfill fills it in. A plain re-run of the backfill fills only posts with no search text; `--all` recomputes every post's search text. Either way, the worker fills missing embedding hashes itself, so re-running the backfill is never required just for that.
 
@@ -1988,7 +1994,11 @@ Both run on a developer machine (or in CI), never against boxs.ca. `npm run site
 
 ## Hardening batch 1
 
-**No migration.** **New tick step:** `calendar.orphan-sweep` (after `calendar.lock-sweep`).
+**No migration.** **New tick step:** `calendar.orphan-sweep` (after `calendar.lock-sweep`). It
+deletes Calendar attachment bytes that no attachment references any more (left behind when a
+delete failed after a replace or remove), only once they are a day old, at most 50 per tick. A
+failure logs "[calendar] orphan sweep could not delete a stored file" with the error's type only,
+and it retries on its next pass.
 
 **Hand check on boxs.ca:** run `bash scripts/siteground-website-walkthrough.sh`. Its file upload now sends the name in `X-GCPE-File-Name` and must still pass. Upload a release translation from the editor. The access log line for `POST /nrms/api/releases/<id>/files` must show `?kind=…&version=…` and no file name.
 

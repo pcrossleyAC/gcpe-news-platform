@@ -436,7 +436,8 @@ It asks for the SQL login's password and the `admin` password, then runs, in ord
 4. Signs in as `admin`, asks Core and NRMS to send their data to the other apps, and waits for NoD
    to receive every media list.
 5. **NoD**: subscribers, lists and the last 30 days of sends (from `Gcpe.NewsOnDemand`).
-6. **Calendar**: a **dry run** that changes nothing. Read `calendar-import.txt`, then run it for
+6. **Calendar**: a **dry run** that changes nothing. `CALENDAR_DATABASE_URL` must be set in
+   `gcpe.env` first (the script stops if it isn't); check it before cutover. Read `calendar-import.txt`, then run it for
    real: `.\Import-GcpeLegacy.ps1 -SqlServer … -SqlUser … -Only Calendar -CalendarCutoff 2025-11-01 -ConfirmCalendar`.
 
 Other parameters: `-SqlPassword`, `-TrustServerCertificate` (a legacy server with a self-signed
@@ -667,6 +668,7 @@ then `Restart-Service gcpe-stack`, and open its outbound firewall rule first
 | Service | Settings | Notes |
 |---|---|---|
 | Media Hub (NoD) | `NOD_MEDIA_HUB_URL`, `NOD_MEDIA_HUB_TOKEN_URL`, `NOD_MEDIA_HUB_CLIENT_ID`, `NOD_MEDIA_HUB_CLIENT_SECRET`, `NOD_MEDIA_HUB_SCOPE` | |
+| Legacy Membership lookup (NoD) | `NOD_MEMBERSHIP_API_USERNAME`, `NOD_MEMBERSHIP_API_PASSWORD_HASH` | The password setting is the hash `npm run nod:membership-hash` prints, never a plain password. With either unset, the lookup always answers 503. |
 | Emergency alerts feed | `NOD_EMERGENCY_FEED_URL=https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true` | Must be the final URL, no redirect. |
 | Flickr (NRMS) | `NRMS_FLICKR_API_KEY`, `NRMS_FLICKR_API_SECRET`, `NRMS_FLICKR_ACCESS_TOKEN`, `NRMS_FLICKR_ACCESS_SECRET`, `NRMS_FLICKR_ALERT_EMAILS` | siteground.md, "Flickr". |
 | Semantic search | `NEWSAPI_EMBEDDINGS_PROVIDER=azure-openai`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, and `"semanticSearch": true` in the tenant file (below) | pgvector is already on. `/stack/health` then says `"newsApiSearch": "semantic"`. Never turn on `staffAi` before the privacy impact assessment approves it. |

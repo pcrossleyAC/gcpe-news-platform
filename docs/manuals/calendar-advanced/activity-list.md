@@ -101,6 +101,10 @@ If you are in an HQ organization, you also see the **Look Ahead filter**, **Corp
 
 For **Review selected**, deleted activities, the **Exec Look Ahead** and other administrator tasks, see the Calendar administrator manual.
 
+## Older activities
+
+Activities that ended before the move to this Calendar weren't brought over, except awareness dates. If you need an older one, ask a Calendar administrator.
+
 ## Can't do this?
 
 | Message | What it means |
