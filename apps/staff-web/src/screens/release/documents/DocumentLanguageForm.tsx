@@ -143,11 +143,6 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
     if (restored && draftKey) clearDraft(draftKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Back to clean (saved, reloaded, or the edits taken back out): nothing left to keep.
-  useEffect(() => {
-    if (canPersistDraft && draftKey && !dirty) clearDraft(draftKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, canPersistDraft]);
 
   if (!doc || !lang) return <p role="alert">This document or language no longer exists.</p>;
 

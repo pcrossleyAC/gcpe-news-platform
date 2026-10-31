@@ -7,7 +7,7 @@
  * them back, and a save of them goes with that version, so it meets the server's 409 if the
  * release changed since instead of silently overwriting the newer content (suite review R3).
  *
- * Cleared on a successful save, when the form goes back to clean, on Leave in "Unsaved changes"
+ * Cleared once the form holds it again, on a successful save, on Leave in "Unsaved changes"
  * ({@link clearReleaseDrafts}) and on an explicit sign-out ({@link clearAllDrafts}, from
  * SessionContext's `signOut`: the next person to sign in on this tab may not be the same user).
  * Never written for a read-only (non-Editor) user.
