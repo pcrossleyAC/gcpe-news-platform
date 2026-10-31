@@ -151,22 +151,31 @@ describe("MediaListScreen", () => {
   });
 
   it("N12: adding someone already on the list says so, not \"Added to the list.\"", async () => {
-    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID1, created: false, newsEmailOff: false, alreadyMember: true, status: "active" }) });
+    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID1, email: "sam@riverbend.example.test", created: false, newsEmailOff: false, alreadyMember: true, reactivated: false, relinked: false }) });
     renderIt();
     const user = userEvent.setup();
     await user.type(await screen.findByRole("textbox", { name: "Email address" }), "sam@riverbend.example.test{Enter}");
     const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent(/^Already on this list\.$/);
+    expect(status).toHaveTextContent(/^sam@riverbend\.example\.test was already on this list\.$/);
   });
 
-  it("N12: adding a Disabled person already on the list says they get nothing and links to their record", async () => {
-    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID2, created: false, newsEmailOff: false, alreadyMember: true, status: "disabled" }) });
+  it("N12: re-adding a Disabled member says they're Active again, and that their news email stays off", async () => {
+    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID2, email: "lee@example.test", created: false, newsEmailOff: true, alreadyMember: true, reactivated: true, relinked: false }) });
     renderIt();
     const user = userEvent.setup();
     await user.type(await screen.findByRole("textbox", { name: "Email address" }), "lee@example.test{Enter}");
     const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent("Already on this list, but Disabled, so they get nothing. Open their record to activate them.");
-    expect(within(status).getByRole("link", { name: "Open their record" })).toHaveAttribute("href", `/subscribers/${ID2}`);
+    expect(status).toHaveTextContent(/^lee@example\.test was on this list but Disabled; they’re Active again, for media email\. Their news release email stays off; open their record to turn it on\.$/);
+    expect(within(status).getByRole("link", { name: "open their record" })).toHaveAttribute("href", `/subscribers/${ID2}`);
+  });
+
+  it("N12: re-adding a member from Media Hub says it's now linked to the contact chosen", async () => {
+    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID1, email: "sam@riverbend.example.test", created: false, newsEmailOff: false, alreadyMember: true, reactivated: false, relinked: true }) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Email address" }), "sam@riverbend.example.test{Enter}");
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^sam@riverbend\.example\.test was already on this list\. Their record now follows the Media Hub contact and email you chose\.$/);
   });
 
   it("adding an address whose news email is unchanged just says it was added", async () => {

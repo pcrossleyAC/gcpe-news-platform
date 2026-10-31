@@ -37,14 +37,20 @@ export interface AddMediaMemberInput {
   confirmOptOut?: boolean;
 }
 
+/** What an add did, so the screen can say so (N12, owner 2026-10-31: wording only, the add
+ * itself behaves as before). */
 export interface AddMediaMemberResult {
   subscriberId: string;
+  /** The address added, for the screen's message (a Media Hub add sends no address). */
+  email: string;
   created: boolean;
   newsEmailOff: boolean;
-  /** Already on this list: nothing was changed or recorded (N12). */
+  /** They were already on this list before the add. */
   alreadyMember: boolean;
-  /** The subscriber's status after the call, so staff can be told a member is Disabled. */
-  status: SubscriberStatus;
+  /** The add made a Disabled, Pending or ended record Active again (media email only). */
+  reactivated: boolean;
+  /** The add linked the record to a different Media Hub contact or email than before. */
+  relinked: boolean;
 }
 
 export interface MediaMember {
@@ -142,16 +148,14 @@ export async function addMediaMember(
     if (!(await mediaListRow(tx, key))) throw new MediaListNotFoundError(listKey);
 
     const [existing] = await tx.select().from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`).for("update");
-    // Already on the list: say so and change nothing (N12). In particular a re-add is not an
-    // Activate, so a Disabled member stays Disabled and staff are told (N4). A deleted record
-    // is sent nothing whatever rows it holds, so adding it goes on to reactivate it as before.
-    if (existing && existing.status !== "deleted") {
-      const [held] = await tx
-        .select({ listKey: subscriptions.listKey })
-        .from(subscriptions)
-        .where(and(eq(subscriptions.subscriberId, existing.id), eq(subscriptions.listKey, key)));
-      if (held) return { subscriberId: existing.id, created: false, newsEmailOff: false, alreadyMember: true, status: existing.status };
-    }
+    // N12: whether they were already on this list, only to say so; the add goes ahead as always.
+    const alreadyMember = existing
+      ? (await tx.select({ listKey: subscriptions.listKey }).from(subscriptions).where(and(eq(subscriptions.subscriberId, existing.id), eq(subscriptions.listKey, key)))).length > 0
+      : false;
+    const relinked =
+      !!existing &&
+      input.mediaHubContactId !== undefined &&
+      (existing.mediaHubContactId !== input.mediaHubContactId || (input.mediaHubEmailRef !== undefined && existing.mediaHubEmailRef !== input.mediaHubEmailRef));
     // The record's own opt-out, or one kept from a purged record of this address (opt-outs.ts).
     if (!input.confirmOptOut) {
       const optedOutAt = await mediaOptOutAt(tx, email, key, existing ?? null);
@@ -208,7 +212,8 @@ export async function addMediaMember(
     await tx.insert(subscriptions).values({ subscriberId, listKey: key }).onConflictDoNothing();
     await writeHistory(tx, subscriberId, actor, "media-list-added", key);
     if (newsOffDetail !== null) await writeHistory(tx, subscriberId, actor, "media-news-email-off", newsOffDetail);
-    return { subscriberId, created, newsEmailOff: newsOffDetail !== null, alreadyMember: false, status: "active" };
+    const reactivated = !!existing && existing.status !== "active";
+    return { subscriberId, email, created, newsEmailOff: newsOffDetail !== null, alreadyMember, reactivated, relinked };
   });
 }
 

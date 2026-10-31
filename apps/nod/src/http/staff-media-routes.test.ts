@@ -84,10 +84,10 @@ describe("staff media-list routes", () => {
     const [off] = await tdb.db.insert(subscribers).values({ email: "off-add@example.test", status: "disabled", source: "self", asItHappens: true, digest: true }).returning();
     const added = await as(editor).post("/api/media-lists/budget/members", { email: "off-add@example.test" });
     expect(added.status).toBe(200);
-    expect(added.body).toEqual({ subscriberId: off!.id, created: false, newsEmailOff: true, alreadyMember: false, status: "active" });
+    expect(added.body).toEqual({ subscriberId: off!.id, created: false, newsEmailOff: true, alreadyMember: false, reactivated: true, relinked: false, email: "off-add@example.test" });
     const again = await as(editor).post("/api/media-lists/budget/members", { email: "off-add@example.test" });
-    // N12: the second add finds them already there.
-    expect(again.body).toEqual({ subscriberId: off!.id, created: false, newsEmailOff: false, alreadyMember: true, status: "active" });
+    // N12: the second add says they were already there.
+    expect(again.body).toEqual({ subscriberId: off!.id, email: "off-add@example.test", created: false, newsEmailOff: false, alreadyMember: true, reactivated: false, relinked: false });
   });
 
   it("search travels in a POST body with a fixed page size; the old GET path is gone", async () => {

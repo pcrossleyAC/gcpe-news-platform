@@ -79,28 +79,21 @@ export function MediaListScreen(): React.JSX.Element {
       const added = await apiFetch<AddMemberResult>(`${base}/members`, { method: "POST", body });
       setOptOutPrompt(null);
       setEmail("");
-      // Already there: nothing changed (N12). A Disabled member gets nothing, so say so (N4).
-      if (added?.alreadyMember) {
-        setMessage(
-          added.status === "disabled" ? (
-            <>
-              Already on this list, but Disabled, so they get nothing. <Link to={`/subscribers/${added.subscriberId}`}>Open their record</Link> to activate them.
-            </>
-          ) : (
-            "Already on this list."
-          ),
-        );
-        reload();
-        return;
-      }
-      // A Disabled address comes onto the list for media email only (owner decision 2026-10-30).
+      // Say what the add did (N12, owner 2026-10-31: wording only). A Disabled address comes
+      // onto the list for media email only (owner decision 2026-10-30).
+      const first = !added?.alreadyMember
+        ? "Added to the list."
+        : added.reactivated
+          ? `${added.email} was on this list but Disabled; they’re Active again, for media email.`
+          : `${added.email} was already on this list.`;
+      const relink = added?.relinked ? " Their record now follows the Media Hub contact and email you chose." : "";
       setMessage(
         added?.newsEmailOff ? (
           <>
-            Added to the list. Their news release email stays off; <Link to={`/subscribers/${added.subscriberId}`}>open their record</Link> to turn it on.
+            {`${first}${relink}`} Their news release email stays off; <Link to={`/subscribers/${added.subscriberId}`}>open their record</Link> to turn it on.
           </>
         ) : (
-          "Added to the list."
+          `${first}${relink}`
         ),
       );
       reload();

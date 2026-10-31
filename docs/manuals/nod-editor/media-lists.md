@@ -32,7 +32,7 @@ Use this for people who aren't in Media Hub.
 2. Under **Add an address by hand**, enter the **Email address**.
 3. Choose **Add to list**. You see "Added to the list."
 
-If the address is already on the list, nothing changes and you see "Already on this list." instead. If they're on it but **Disabled**, you see "Already on this list, but Disabled, so they get nothing. Open their record to activate them." Adding them again doesn't activate them.
+If the address is already on the list, you see "[their address] was already on this list." instead. If they were on it but **Disabled**, adding them again makes them **Active** for media email, as for any Disabled address (see below), and you see "[their address] was on this list but Disabled; they’re Active again, for media email." If you added them from Media Hub and their record followed a different contact or email, it now follows the one you chose, and the message adds "Their record now follows the Media Hub contact and email you chose."
 
 ## What adding does
 

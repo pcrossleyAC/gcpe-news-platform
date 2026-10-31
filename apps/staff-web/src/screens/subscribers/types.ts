@@ -126,9 +126,11 @@ export interface AddMemberResult {
   subscriberId: string;
   created: boolean;
   newsEmailOff: boolean;
-  /** Already on the list: nothing changed (N12). */
+  /** What the add did, for the message (N12). */
+  email?: string;
   alreadyMember?: boolean;
-  status?: SubscriberStatus;
+  reactivated?: boolean;
+  relinked?: boolean;
 }
 
 /** apps/nod/src/media-hub/contract.ts */
