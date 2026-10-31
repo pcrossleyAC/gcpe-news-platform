@@ -7,6 +7,7 @@ import { useFormShortcut } from "../../../shared/shortcuts";
 import { TableScroll } from "../../../shared/TableScroll";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { withArticle, type LookupDetail, type LookupRowView, type LookupSummary } from "./types";
 
 interface Draft {
@@ -16,8 +17,10 @@ interface Draft {
 }
 
 /** Its refusal shows only while `showMessages`: the page hides it once it shows a newer message. */
-function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel, showMessages, onFailed }: {
+function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel, showMessages, onFailed, reportDirty }: {
   lookup: LookupSummary;
+  /** Suite review H2: tells the screen's leave-page guard whether this form has unsaved changes. */
+  reportDirty?: ReportDirty;
   row: LookupRowView | null;
   label: string;
   submitLabel: string;
@@ -31,6 +34,8 @@ function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel, showMess
     extras: Object.fromEntries(lookup.extras.map((e) => [e.key, row?.extras[e.key] ?? ""])),
     isActive: row?.isActive ?? true,
   });
+  const [start] = useState(draft);
+  useReportDirty(reportDirty, row ? `row-${row.id}` : "add", JSON.stringify(draft) !== JSON.stringify(start));
   const [messages, setMessages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const idBase = `lookup-${lookup.name}-${row?.id ?? "new"}`;
@@ -91,6 +96,8 @@ export function LookupScreen(): React.JSX.Element {
   const [status, setStatus] = useState<string | null>(null);
   const [orderMessages, setOrderMessages] = useState<string[]>([]);
   const [editing, setEditing] = useState<number | null>(null);
+  // Suite review H2: a row being added or edited, not yet saved, asks before leaving.
+  const forms = useDirtyParts();
   /** Whose message is on screen ("page", "add" or "row:<id>"): one at a time, so a newer message never sits beside a stale one. */
   const [shown, setShown] = useState<string | null>(null);
   const latest = useRef(0);
@@ -148,6 +155,7 @@ export function LookupScreen(): React.JSX.Element {
         <Link to="/calendar/lookups">All lookups</Link>
       </p>
       <h1>{lookup.label}</h1>
+      <LeavePageGuard dirty={forms.anyDirty} />
       {!lookup.editable && <p>Only a System Administrator can change {lookup.label.toLowerCase()}.</p>}
       {shown === "page" && status && <p role="status">{status}</p>}
       {(shown === "page" ? orderMessages : []).map((m) => (
@@ -181,7 +189,7 @@ export function LookupScreen(): React.JSX.Element {
               {lookup.editable && (
                 <td>
                   {editing === r.id ? (
-                    <RowForm lookup={lookup} row={r} label={`Edit ${r.name}`} submitLabel="Save" onSubmit={save(r)} onCancel={() => setEditing(null)} showMessages={shown === `row:${r.id}`} onFailed={() => setShown(`row:${r.id}`)} />
+                    <RowForm lookup={lookup} row={r} label={`Edit ${r.name}`} submitLabel="Save" onSubmit={save(r)} reportDirty={forms.report} onCancel={() => setEditing(null)} showMessages={shown === `row:${r.id}`} onFailed={() => setShown(`row:${r.id}`)} />
                   ) : (
                     <>
                       <Button variant="secondary" onPress={() => setEditing(r.id)}>{`Edit ${r.name}`}</Button>
@@ -199,7 +207,7 @@ export function LookupScreen(): React.JSX.Element {
       {lookup.editable && (
         <>
           <h2>Add {withArticle(lookup.singular)}</h2>
-          <RowForm lookup={lookup} row={null} label={`Add ${withArticle(lookup.singular)}`} submitLabel="Add" onSubmit={add} showMessages={shown === "add"} onFailed={() => setShown("add")} />
+          <RowForm lookup={lookup} row={null} label={`Add ${withArticle(lookup.singular)}`} submitLabel="Add" onSubmit={add} reportDirty={forms.report} showMessages={shown === "add"} onFailed={() => setShown("add")} />
         </>
       )}
     </div>

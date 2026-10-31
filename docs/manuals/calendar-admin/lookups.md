@@ -51,6 +51,10 @@ Renaming a row renames it on every activity that has it.
 
 Choose **Move** followed by the row's name and **up** or **down**. You see, for example, "Moved Housing up." Activities offer the rows in this order.
 
+## If you leave before saving
+
+If you have changed a row, or typed in the add form, and not saved it, the Hub asks before you go to another screen: "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

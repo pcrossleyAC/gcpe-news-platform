@@ -15,6 +15,7 @@ import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { dateTimeText } from "../calendar/list/dates";
 import { LeadMinistrySelect } from "./LeadMinistrySelect";
 import { ActivityLookupPanel, useActivityLookup } from "./ActivityLookupPanel";
+import { LeavePageGuard } from "../../shared/LeaveGuard";
 import type { Categories } from "./categories";
 
 type CreatableType = (typeof CREATABLE_TYPES)[number];
@@ -185,6 +186,10 @@ export function NewReleaseScreen(): React.JSX.Element {
   // from activity N" button is a deliberate request, so it overwrites every field, touched or
   // not (see fillIn's force option below).
   const [touchedFields, setTouchedFields] = useState<ReadonlySet<string>>(() => new Set());
+  // Suite review H2: anything the user changes in the form (not a fill from the Calendar
+  // activity) asks before leaving, until the release is created.
+  const [edited, setEdited] = useState(false);
+  const created = useRef(false);
   const touch = (field: string) => setTouchedFields((prev) => (prev.has(field) ? prev : new Set(prev).add(field)));
   // The activity id the fields below were last filled in from (or null, before any fill). When
   // the Calendar activity ID field moves away from this id -- retyped or cleared -- the effect below
@@ -357,8 +362,9 @@ export function NewReleaseScreen(): React.JSX.Element {
     inFlight.current = true;
     setSubmitting(true);
     try {
-      const created = await apiFetch<ReleaseView>("/nrms/api/releases", { method: "POST", body: parsed.data });
-      navigate(`/releases/${created.id}`);
+      const release = await apiFetch<ReleaseView>("/nrms/api/releases", { method: "POST", body: parsed.data });
+      created.current = true;
+      navigate(`/releases/${release.id}`);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 422) {
         setProblems(groupByField(caught.problems ?? [caught.message]));
@@ -375,8 +381,10 @@ export function NewReleaseScreen(): React.JSX.Element {
   const problemList = Object.entries(problems).flatMap(([field, list]) => list.map((message) => ({ field, message })));
 
   return (
-    <div className="gcpe-new-release">
+    // Every field's own change bubbles up here; an automatic fill from the activity sets state, not a field.
+    <div className="gcpe-new-release" onChange={() => setEdited(true)}>
       <h1>New release</h1>
+      <LeavePageGuard dirty={edited} leaving={created} />
 
       <ErrorSummary problems={problemList} />
 
