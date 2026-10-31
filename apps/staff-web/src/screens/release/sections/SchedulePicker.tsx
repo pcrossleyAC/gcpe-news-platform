@@ -34,6 +34,8 @@ export interface SchedulePickerProps {
   /** An error the caller found itself (Schedule re-checks at Confirm), shown like the picker's
    * own until the user changes a field. */
   error?: string | null;
+  /** Shown but not changeable (a read-only user's view of the planned date). */
+  isDisabled?: boolean;
 }
 
 /**
@@ -42,7 +44,7 @@ export interface SchedulePickerProps {
  * type="time">` rather than the design system's DatePicker/TimeField (which take
  * `CalendarDate`/`Time` objects) — simpler to wire to BC local time and to drive from tests.
  */
-export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange, onEdit, validate, error: callerError = null }: SchedulePickerProps): React.JSX.Element {
+export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange, onEdit, validate, error: callerError = null, isDisabled = false }: SchedulePickerProps): React.JSX.Element {
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState(initialTime);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +77,8 @@ export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", i
   return (
     <fieldset className="gcpe-schedule-picker">
       <legend>{legend}</legend>
-      <TextField label="Date" type="date" value={date} onChange={(v) => update(v, time)} id={`${idPrefix}-date`} />
-      <TextField label="Time (BC time)" type="time" value={time} onChange={(v) => update(date, v)} id={`${idPrefix}-time`} />
+      <TextField label="Date" type="date" value={date} onChange={(v) => update(v, time)} id={`${idPrefix}-date`} isDisabled={isDisabled} />
+      <TextField label="Time (BC time)" type="time" value={time} onChange={(v) => update(date, v)} id={`${idPrefix}-time`} isDisabled={isDisabled} />
       {(error ?? callerError) && <p role="alert">{error ?? callerError}</p>}
     </fieldset>
   );
