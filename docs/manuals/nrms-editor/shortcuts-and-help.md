@@ -18,7 +18,7 @@ On a Mac, use Command instead of Ctrl. The shortcuts work from inside text boxes
 | Ctrl+S | On a release, saves every part you changed, the same as **Save changes**. |
 | Ctrl+Enter | On **New release**, the same as **Create release**. |
 | Ctrl+K | Goes to the search or filter box: **Type** on the folders, the **Search** box on **Search**, and **Find a release** everywhere else. |
-| Esc | Closes a box or an open panel. Focus goes back to the button that opened it. |
+| Esc | Closes a box or an open panel. |
 
 In a box that asks you to confirm, Enter and Esc work as usual.
 

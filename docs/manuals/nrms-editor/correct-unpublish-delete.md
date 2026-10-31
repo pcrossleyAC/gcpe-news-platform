@@ -1,6 +1,6 @@
 ---
 id: editor-correct-unpublish-delete
-title: Correct, unpublish or delete
+title: Correct, feature, unpublish or delete
 manual: nrms-editor
 order: 70
 routes: []
@@ -16,9 +16,9 @@ topics: []
 
 It republishes at once: no box asks first. The status shows **Republishing...**, then **Published**, usually within a minute. **History** shows "Republished to …"; with **Show all** ticked it also shows "Edited after publishing — will republish". The public page shows the change within a couple of minutes. Nobody is emailed again.
 
-Uploading or removing a file counts as a correction too. If a correction fails, the release shows "This release failed" and stays on the public site as it was; fix the problem and save again.
+Uploading or removing a file counts as a correction too. If a correction fails, the release shows "This release failed" and stays on the public site as it was. Fix the problem, save, then choose **Publish now**. A failed correction can't be scheduled.
 
-## Put a release in a Top or Feature spot
+## Top and Feature spots
 
 Each place on the public site has one Top and one Feature spot: the home page, and each ministry, sector and theme page. A release can take them only while it is published.
 
@@ -41,7 +41,7 @@ To put it back, choose **Publish now** or **Schedule**. It keeps its numbers and
 
 ## Delete
 
-You can delete a draft, an approved release or a failed one. A published release must be unpublished first.
+You can delete a draft, an approved release or a failed one. A published release, including one whose correction failed, must be unpublished first.
 
 1. Choose **Delete**. A box asks "Delete this release?"
 2. Choose **Confirm delete**. You are taken to **Drafts**.

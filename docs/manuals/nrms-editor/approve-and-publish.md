@@ -28,7 +28,7 @@ To approve, a release needs at least one ministry, and a lead ministry when it h
 1. Choose **Publish now**. A box asks "Publish this release now?" and lists what will happen:
    - where it is published, such as "Publishes to news.gov.bc.ca now.";
    - which media distribution lists it is sent to, or "No media distribution lists.";
-   - which News On Demand subscribers are emailed, such as "Emails News on Demand subscribers who follow any of: Health — and everyone subscribed to all news.", or "News On Demand subscribers will not be emailed."
+   - which News On Demand subscribers are emailed, such as "Emails News on Demand subscribers who follow any of: Health — and everyone subscribed to all news.", or "News on Demand subscribers will not be emailed."
 2. Check the list. Choose **Publish now**.
 
 The status shows **Publishing...**, then **Published**, usually within a minute. The page updates by itself: "This page updates on its own until the release is done — no need to reload."

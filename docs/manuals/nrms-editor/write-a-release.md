@@ -20,7 +20,7 @@ You can change several parts of the release, then save them all at once.
 1. Make your changes. Each part you changed says **Unsaved** beside its heading.
 2. A bar along the bottom lists them: "You have unsaved changes in: …".
 3. Choose **Save changes** in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too.
-4. The bar says "All changes saved." for a moment, then goes. The button you pressed keeps keyboard focus.
+4. The bar says "All changes saved." for a moment, then goes.
 
 If one part can't be saved, the bar says "Couldn't save page details. See why in that section." Choose the link to go to the message. Parts after it are not saved yet and keep your changes.
 
@@ -30,7 +30,7 @@ If you try to leave with unsaved changes, a box asks "Leave anyway and discard t
 
 "Someone else changed this — reload to see their changes." means another person saved this release after you opened it. Choose **Reload**. Copy anything you typed first, because reloading shows their version.
 
-**If the release is already published, saving any change republishes it at once.** See [Correct, unpublish or delete](manual:editor-correct-unpublish-delete).
+**If the release is already published, saving any change republishes it at once.** See [Correct, feature, unpublish or delete](manual:editor-correct-unpublish-delete).
 
 ## Documents
 

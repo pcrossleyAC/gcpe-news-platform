@@ -18,7 +18,7 @@ topics: []
 | **Scheduled** | Releases set to publish at a time. | Soonest first. |
 | **Published** | Releases on the public site, and advisories that have been sent. | Newest first. |
 
-Each row shows the type, the page title (when it says more than the type), the lead ministry, the status, the date, the Calendar activity it is linked to, and on **Drafts** who changed it last. Choose the headline to open the release.
+Each row shows the type, the page title, if it isn't the same as the type, the lead ministry, the status, the date, the Calendar activity it is linked to, and on **Drafts** who changed it last. Choose the headline to open the release.
 
 To see one kind only, choose it in **Type**: **Release**, **Story**, **Factsheet** or **Advisory**. The Hub remembers your choice on every tab. If nothing matches, choose **Show every type**.
 

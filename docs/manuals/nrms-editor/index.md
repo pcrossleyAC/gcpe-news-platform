@@ -17,7 +17,7 @@ You write news releases, stories, factsheets and media advisories, approve them,
 2. [Write it](manual:editor-write-a-release): the text, page details and categories. **Save changes** saves everything you changed.
 3. [Add photos, video and files](manual:editor-files-and-media) if it has any.
 4. [Approve it, then publish it now or schedule it](manual:editor-approve-and-publish). Each step asks you to confirm and says who will be emailed.
-5. [Correct it, unpublish it or delete it](manual:editor-correct-unpublish-delete) if you need to.
+5. [Correct it, feature it, unpublish it or delete it](manual:editor-correct-unpublish-delete) if you need to.
 
 [Who is emailed, and when it goes public](manual:editor-what-happens-next) sums up what each step does.
 
@@ -30,7 +30,7 @@ Release viewers can open every release, the folders and **Search**, but can't ch
 | **Releases** > **New release** | Start a release, or start one from a Calendar activity on **Forecast**. | [Start a release](manual:editor-start-a-release) |
 | The release itself | Change its text, details, categories, media and files, and save. | [Write a release](manual:editor-write-a-release) |
 | **Actions**, on the release | **Approve**, **Publish now**, **Schedule**, **Cancel schedule**, **Return to draft**, **Unpublish** and **Delete**. | [Approve, publish and schedule](manual:editor-approve-and-publish) |
-| **Top / Feature**, on a published release | Put a release in a Top or Feature spot on the home page or a ministry, sector or theme page. | [Correct, unpublish or delete](manual:editor-correct-unpublish-delete) |
+| **Top / Feature**, on a published release | Put a release in a Top or Feature spot on the home page or a ministry, sector or theme page. | [Correct, feature, unpublish or delete](manual:editor-correct-unpublish-delete) |
 | **Similar published releases**, on the release | Look for published releases like the one you're writing. | [Write a release](manual:editor-write-a-release) |
 
 The [Releases viewer manual](manual:nrms-viewer) covers reading releases.

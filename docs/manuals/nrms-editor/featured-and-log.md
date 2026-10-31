@@ -15,7 +15,7 @@ On **Website** you see two tabs. Both only show information.
 
 The table lists each place on the public site that has a Top or Feature release: **Home**, and each ministry, sector or theme page. **Top** and **Feature** show the release's headline. A dash means the spot is empty. If nothing is set anywhere, the tab says "Nothing is currently Top or Feature anywhere."
 
-Choose a headline to open the release. You set Top and Feature on the release itself; see [Correct, unpublish or delete](manual:editor-correct-unpublish-delete).
+Choose a headline to open the release. You set Top and Feature on the release itself; see [Correct, feature, unpublish or delete](manual:editor-correct-unpublish-delete).
 
 ## Website log
 

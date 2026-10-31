@@ -24,9 +24,11 @@ On screens without their own search or filter box, Ctrl+K (Command+K on a Mac) t
 ## Search
 
 1. Choose **Search** in the side menu.
-2. Type words from the headline in **Search**.
-3. To narrow it, choose a **Ministry** or **Sector**.
+2. Type part of the headline, exactly as it appears, in **Search**.
+3. To narrow it, choose a **Ministry** or **Sector**. On its own, without words in **Search**, this does nothing.
 4. Choose **Search**.
+
+Typing a reference number, release number or web address here opens the release directly, as **Find a release** does.
 
 Before you search, **Search** lists the five most recently published releases.
 

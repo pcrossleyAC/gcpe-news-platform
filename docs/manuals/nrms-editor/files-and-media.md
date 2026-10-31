@@ -38,10 +38,8 @@ Links that are refused when you save:
 
 ## If Flickr is down when the release publishes
 
-The release never waits long for its photo.
-
 - At the publish time, the Hub tries to make the photo public for up to 2 minutes.
-- If it can't, the release goes out on time without the photo. The release and its row in the folders show a **Flickr alert**, and an alert email goes to the people set up to receive Flickr alerts.
+- If it can't, it goes out up to 2 minutes late, without the photo. The release and its row in the folders show a **Flickr alert**, and an alert email goes to the people set up to receive Flickr alerts.
 - The Hub keeps trying for 24 hours. When the photo becomes public, the release republishes with it by itself. Nobody is emailed again.
 - If it still fails after 24 hours, the alert says "The release is live without it — re-add or replace the photo." Change the **Asset URL** and save.
 
