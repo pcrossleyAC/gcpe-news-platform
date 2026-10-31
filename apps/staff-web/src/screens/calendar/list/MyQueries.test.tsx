@@ -39,8 +39,8 @@ describe("My Queries and the watchlist (spec addendum §8.1)", () => {
     expect(within(region).getByRole("button", { name: "Sample two" })).toBeDisabled();
     expect(within(region).getByText("This query can no longer be read. Delete it.")).toBeInTheDocument();
 
-    await user.type(within(region).getByLabelText("Name for this filter"), "Sample new");
-    await user.click(within(region).getByRole("button", { name: "Save query" }));
+    await user.type(within(region).getByLabelText("Name for this query"), "Sample new");
+    await user.click(within(region).getByRole("button", { name: "Save this filter as a query" }));
     expect(await within(region).findByRole("status")).toHaveTextContent("Saved the query “Sample new”.");
     const post = calls.find((c) => c.url === "/calendar/api/saved-filters" && c.init?.method === "POST")!;
     expect(JSON.parse(String(post.init!.body))).toMatchObject({ name: "Sample new", filter: { categoryId: 32 } });
@@ -78,11 +78,29 @@ describe("My Queries and the watchlist (spec addendum §8.1)", () => {
     renderList();
     const region = await screen.findByRole("region", { name: "My Queries" });
     const user = userEvent.setup();
-    await user.type(within(region).getByLabelText("Name for this filter"), "Sample new");
-    await user.click(within(region).getByRole("button", { name: "Save query" }));
+    await user.type(within(region).getByLabelText("Name for this query"), "Sample new");
+    await user.click(within(region).getByRole("button", { name: "Save this filter as a query" }));
     expect(await within(region).findByRole("alert")).toHaveTextContent("You can keep up to 200 queries: delete one first");
     expect(within(region).queryByRole("status")).toBeNull();
-    expect(within(region).getByLabelText("Name for this filter")).toHaveValue("Sample new");
+    expect(within(region).getByLabelText("Name for this query")).toHaveValue("Sample new");
+  });
+
+  it("won't save a filter whose changes aren't applied yet: it says to apply them first (form-order audit #14)", async () => {
+    stubFetch([], { saved: [] });
+    renderList();
+    const region = await screen.findByRole("region", { name: "My Queries" });
+    const user = userEvent.setup();
+    await user.type(within(region).getByLabelText("Name for this query"), "Sample new");
+    const save = within(region).getByRole("button", { name: "Save this filter as a query" });
+    expect(save).toBeEnabled();
+    const form = screen.getByRole("form", { name: "Filter activities" });
+    await user.click(form.closest("details")!.querySelector("summary")!);
+    await user.type(within(form).getByRole("searchbox", { name: "Search for" }), "launch");
+    expect(save).toBeDisabled();
+    expect(within(region).getByText("Apply filters first: the Filters panel has changes that aren't applied.")).toBeInTheDocument();
+    await user.click(within(form).getByRole("button", { name: "Apply filters" }));
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(within(region).queryByText(/Apply filters first/)).toBeNull();
   });
 
   it("shows every message of a refusal, even two the same", async () => {
@@ -94,8 +112,8 @@ describe("My Queries and the watchlist (spec addendum §8.1)", () => {
     renderList();
     const region = await screen.findByRole("region", { name: "My Queries" });
     const user = userEvent.setup();
-    await user.type(within(region).getByLabelText("Name for this filter"), "Sample new");
-    await user.click(within(region).getByRole("button", { name: "Save query" }));
+    await user.type(within(region).getByLabelText("Name for this query"), "Sample new");
+    await user.click(within(region).getByRole("button", { name: "Save this filter as a query" }));
     await waitFor(() => expect(within(region).getAllByRole("alert")).toHaveLength(2));
     expect(logged).not.toHaveBeenCalled();
   });

@@ -2,12 +2,17 @@ import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSearchShortcut } from "../../../shared/shortcuts";
 import { Button } from "@bcgov/design-system-react-components";
-import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateQuery, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
+import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateQuery, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery, type LookAheadFilter } from "@gcpe/calendar-contract";
 
 const DISPLAY_LABELS: Record<ListDisplay, string> = {
   all: "Show All", my_ministries: "My Ministries' Activities Only", my_activities: "My Activities Only", my_watchlist: "My Watchlist Only",
 };
 const STATUS_LABELS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
+/**
+ * HqTools' Look Ahead filter. Legacy's "Look Ahead Only" and "Not for Look Ahead Only" mean not
+ * confidential and confidential (form-order audit #7), so they are named for what they do.
+ */
+export const LOOK_AHEAD_LABELS: Record<LookAheadFilter, string> = { all: "Show All", look_ahead_only: "Not confidential only", not_for_look_ahead_only: "Confidential only" };
 /** HqTools' Corporate Queries labels. */
 const CORPORATE_LABELS: Record<CorporateStatus, string> = { new: "New", changed: "Changed", reviewed: "Reviewed", deleted: "Deleted", la_new: "LA New", la_changed: "LA Changed" };
 const tri = (v: boolean | null) => (v === null ? "" : String(v));
@@ -74,8 +79,14 @@ export function activeFilterParts(query: ListQuery, options: ListOptions): strin
   if (f.premierRequestedId !== null) parts.push(`Premier Requested: ${nameOf(options.premierRequested, f.premierRequestedId)}`);
   if (f.distributionId !== null) parts.push(`Distribution: ${nameOf(options.distributions, f.distributionId)}`);
   if (query.display !== "all") parts.push(DISPLAY_LABELS[query.display]);
+  // The Confidential filter sits outside the panel and applies at once, but it narrows the list too (form-order audit #14).
+  if (query.lookAhead !== "all") parts.push(LOOK_AHEAD_LABELS[query.lookAhead]);
   return parts;
 }
+
+/** The filter Apply filters would send: what the panel's fields hold, tidied as submit tidies them. */
+const applied = (f: ListFilter): ListFilter => ({ ...f, quickSearch: f.quickSearch.trim(), to: f.thisDayOnly ? null : f.to });
+const filterKey = (f: ListFilter) => JSON.stringify(Object.keys(f).sort().map((k) => [k, f[k as keyof ListFilter]]));
 
 /** Whether Filters is open, for this browser tab only: the screen keeps no other per-user UI state locally. */
 const OPEN_KEY = "gcpe.calendar.filtersOpen";
@@ -94,7 +105,13 @@ function storedOpen(): boolean | null {
  * line beside "Filters", so the activities start within the first screen; opening or closing it
  * is remembered for the tab.
  */
-export function FilterPanel({ query, options, onSearch }: { query: ListQuery; options: ListOptions; onSearch: (q: ListQuery) => void }): React.JSX.Element {
+export function FilterPanel({ query, options, onSearch, onPending }: {
+  query: ListQuery;
+  options: ListOptions;
+  onSearch: (q: ListQuery) => void;
+  /** Hears whether the panel's filter differs from the one the list is running (not yet applied). */
+  onPending?: (pending: boolean) => void;
+}): React.JSX.Element {
   const [filter, setFilter] = useState<ListFilter>(query.filter);
   const [display, setDisplay] = useState<ListDisplay>(query.display);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +121,8 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     setDisplay(query.display);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const parts = activeFilterParts(query, options);
+  const pending = filterKey(applied(filter)) !== filterKey(applied(query.filter));
+  useEffect(() => onPending?.(pending), [pending]); // eslint-disable-line react-hooks/exhaustive-deps
   // Open, the panel is most of a screen (three on a phone) before the first activity: closed until asked for.
   const [open, setOpen] = useState<boolean>(() => storedOpen() ?? false);
   // ⌘/Ctrl+K: opens Filters (if closed) and goes to Search for.
@@ -115,7 +134,7 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     e.preventDefault();
     if (filter.from && filter.to && filter.from > filter.to && !filter.thisDayOnly) return setError("From must be on or before To.");
     setError(null);
-    onSearch({ ...query, corporate: null, display, filter: { ...filter, quickSearch: filter.quickSearch.trim(), to: filter.thisDayOnly ? null : filter.to } });
+    onSearch({ ...query, corporate: null, display, filter: applied(filter) });
   };
   return (
     <details
@@ -196,6 +215,7 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
         <Choice id="list-distribution" label="Distribution" value={num(filter.distributionId)} onChange={(v) => set("distributionId", fromNum(v))} options={choices(options.distributions)} any="Any distribution" />
         <fieldset className="gcpe-calendar-filter__group">
           <legend>Display</legend>
+          <p className="gcpe-hint">Kept for next time. A saved query doesn&rsquo;t include it.</p>
           {LIST_DISPLAYS.map((d) => (
             <div key={d} className="gcpe-check">
               <input type="radio" id={`list-display-${d}`} name="list-display" checked={display === d} onChange={() => setDisplay(d)} />

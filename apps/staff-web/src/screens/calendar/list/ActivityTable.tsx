@@ -16,12 +16,11 @@ const plural = (n: number) => `${n} ${n === 1 ? "activity" : "activities"}`;
 export const loadFailure = (caught: unknown, general: string) => (caught instanceof ApiError && caught.status === 403 ? messagesOf(caught).join(" ") : general);
 
 /** The grid (UCFlexiGrid): 30 rows at a time as the end scrolls into view, as legacy's did. */
-/** Legacy's short column names, spelled out (the Help page's glossary explains each). */
+/** Column names that are short forms, spelled out (the Help page's glossary explains each). */
 const SPELLED_OUT: Partial<Record<ListColumn, string>> = {
   commMaterials: "Communication materials",
   commContact: "Communications contact",
   governmentRep: "Government representative",
-  leadOrg: "Lead organization",
 };
 
 function ColumnLabel({ column }: { column: ListColumn }): React.JSX.Element {

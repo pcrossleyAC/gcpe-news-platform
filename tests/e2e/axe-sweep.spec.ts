@@ -276,7 +276,7 @@ test.describe("item 16: axe across every staff screen", () => {
   });
 
   // The populated list as an HQ Administrator, so every HQ tool is scanned (Review selected's row
-  // checkboxes, Clear LA Status, Corporate Queries, the Look Ahead filter), then its month and
+  // checkboxes, Clear LA Status, Corporate Queries, the Confidential filter), then its month and
   // week views of the same activities.
   test("the Calendar list as an HQ Administrator, and its month and week views", async ({ page, context }) => {
     const f = await listFixture();
@@ -285,13 +285,13 @@ test.describe("item 16: axe across every staff screen", () => {
     await page.goto(listUrl(query));
     await expect(page.locator(".gcpe-activity-title")).toHaveCount(6);
     await expect(page.getByRole("button", { name: "Review selected (0)" })).toBeVisible();
-    // The list's tools open in panels under the Look Ahead filter: LA status here, Export and reports below.
+    // The list's tools open in panels under the Confidential filter: LA status here, Export and reports below.
     await page.getByRole("button", { name: "LA status", exact: true }).click();
     await expect(page.getByRole("button", { name: "Clear LA Status" })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: `Select HLTH-${f.ids.A}` })).toBeVisible();
     await page.getByText("Saved views", { exact: true }).click();
     await expect(page.getByRole("region", { name: "Corporate Queries" })).toBeVisible();
-    await expect(page.getByRole("group", { name: "Look Ahead filter" })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Confidential filter" })).toBeVisible();
     await expectNoSeriousA11yViolations(page, "the Calendar list as an HQ Administrator");
     await page.getByRole("button", { name: "Export and reports" }).click();
     await expect(page.getByRole("button", { name: "Exec Look Ahead" })).toBeVisible();

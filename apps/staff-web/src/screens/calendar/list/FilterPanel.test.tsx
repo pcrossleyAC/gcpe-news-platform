@@ -17,6 +17,12 @@ describe("the Filters summary", () => {
     expect(activeFilterParts({ ...query, corporate: { days: null, statuses: ["changed"] } }, OPTIONS)).toEqual(["Corporate query: all upcoming, Changed"]);
   });
 
+  it("names the confidential filter, which lives outside the panel (form-order audit #14)", () => {
+    expect(activeFilterParts({ ...DEFAULT_LIST_QUERY, lookAhead: "look_ahead_only" }, OPTIONS)).toEqual(["Not confidential only"]);
+    expect(activeFilterParts({ ...DEFAULT_LIST_QUERY, lookAhead: "not_for_look_ahead_only" }, OPTIONS)).toEqual(["Confidential only"]);
+    expect(activeFilterParts(DEFAULT_LIST_QUERY, OPTIONS)).toEqual([]);
+  });
+
   it("starts closed on a phone even with no filter running, saying No filters", async () => {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(max-width: 40rem)", media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
     stubFetch([]);

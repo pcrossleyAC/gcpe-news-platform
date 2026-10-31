@@ -11,10 +11,11 @@ export const LIST_COLUMNS = [
   "activity", "keywords", "ministry", "status", "dateTime", "title", "categories", "commMaterials", "premier", "leadOrg", "translations", "city", "commContact", "governmentRep",
 ] as const;
 export type ListColumn = (typeof LIST_COLUMNS)[number];
+/** The activity form's names for the same fields (form-order audit #20); legacy's short forms ("Govt Rep.") stay in the glossary. */
 export const LIST_COLUMN_LABELS: Readonly<Record<ListColumn, string>> = {
-  activity: "Activity Id", keywords: "HQ Tags", ministry: "Ministry", status: "Status", dateTime: "Date & Time", title: "Title & Summary",
-  categories: "Categories", commMaterials: "Comm. Materials", premier: "Premier", leadOrg: "Lead Org.", translations: "Translations", city: "City",
-  commContact: "Comm. Contact", governmentRep: "Govt Rep.",
+  activity: "Activity Id", keywords: "HQ Tags", ministry: "Lead Ministry", status: "Status", dateTime: "Date & Time", title: "Title & Summary",
+  categories: "Categories", commMaterials: "Comm Materials", premier: "Premier Requested", leadOrg: "Lead Organization", translations: "Translations", city: "City",
+  commContact: "Comm Contact", governmentRep: "Representative",
 };
 /** The Activity Id cell holds the row's checkbox and watch star, so it always shows. */
 export type HideableColumn = Exclude<ListColumn, "activity">;
