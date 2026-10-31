@@ -15,6 +15,9 @@ export interface FeatureSwitchesProps {
   /** Home plus every ministry/sector/theme this release is currently (as saved — not whatever
    * the Categories form has typed but not yet saved) filed under. */
   places: FeaturePlace[];
+  /** Ministries, sectors and themes ticked in Categories but not yet saved (audit #11): listed,
+   * with no switch, so the editor sees why they can't be featured yet. */
+  unsavedPlaces?: FeaturePlace[];
   /** A Viewer (no `NRMS.Editor`) never gets a write control, regardless of publish status. */
   readOnly: boolean;
 }
@@ -27,7 +30,7 @@ const SLOT_LABEL: Record<(typeof FEATURE_SLOTS)[number], string> = { top: "Top",
  * Feature slot (apps/nrms/src/website/features.ts's `setFeature` refuses it with a 409 even if
  * this client-side gate were somehow bypassed).
  */
-export function FeatureSwitches({ view, setView, places, readOnly }: FeatureSwitchesProps): React.JSX.Element {
+export function FeatureSwitches({ view, setView, places, unsavedPlaces = [], readOnly }: FeatureSwitchesProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
   const enabled = !readOnly && view.status === "published";
 
@@ -47,6 +50,8 @@ export function FeatureSwitches({ view, setView, places, readOnly }: FeatureSwit
       {section.error && <p role="alert">{section.error}</p>}
 
       <SectionDisclosure label={enabled ? "Change Top / Feature" : "Show Top / Feature"} summary={summary}>
+        {/* Audit #11: unlike the rest of the page, these don't wait for Save. */}
+        {enabled && <p className="gcpe-hint">Each switch changes the live site straight away. A ministry, sector or theme ticked in Categories appears here once you save.</p>}
         {places.map((place) => (
           <fieldset key={`${place.kind}:${place.key}`} className="gcpe-release-editor__feature-place">
             <legend>{place.label}</legend>
@@ -57,6 +62,13 @@ export function FeatureSwitches({ view, setView, places, readOnly }: FeatureSwit
             ))}
           </fieldset>
         ))}
+        {enabled &&
+          unsavedPlaces.map((place) => (
+            <fieldset key={`${place.kind}:${place.key}`} className="gcpe-release-editor__feature-place">
+              <legend>{place.label}</legend>
+              <p className="gcpe-hint">Save to feature here.</p>
+            </fieldset>
+          ))}
       </SectionDisclosure>
     </section>
   );

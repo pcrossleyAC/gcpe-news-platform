@@ -82,4 +82,24 @@ describe("FeatureSwitches (acceptance: posts the right kind/key/slot, disabled o
     await user.click(screen.getAllByRole("switch")[0]!);
     expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
   });
+
+  it("audit #11: on a published release it says the switches act at once, and a category ticked but not saved is listed as \"Save to feature here\" with no switch", () => {
+    const v = releaseView({ status: "published", releasedAt: "2026-01-01T00:00:00.000Z", features: [] });
+    const ROADS: FeaturePlace = { kind: "ministries", key: "roads", label: "Transportation" };
+    render(<FeatureSwitches view={v} setView={() => {}} places={[HOME, HEALTH]} unsavedPlaces={[ROADS]} readOnly={false} />);
+    openDisclosure();
+    expect(screen.getByText("Each switch changes the live site straight away. A ministry, sector or theme ticked in Categories appears here once you save.")).toBeInTheDocument();
+    const roads = screen.getByRole("group", { name: "Transportation" });
+    expect(within(roads).queryByRole("switch")).toBeNull();
+    expect(roads).toHaveTextContent("Save to feature here.");
+    expect(screen.getAllByRole("switch")).toHaveLength(4);
+  });
+
+  it("audit #11: a viewer sees neither the hint nor unsaved places", () => {
+    const v = releaseView({ status: "published", releasedAt: "2026-01-01T00:00:00.000Z", features: [] });
+    render(<FeatureSwitches view={v} setView={() => {}} places={[HOME]} unsavedPlaces={[{ kind: "ministries", key: "roads", label: "Transportation" }]} readOnly />);
+    openDisclosure();
+    expect(screen.queryByText(/changes the live site straight away/)).toBeNull();
+    expect(screen.queryByRole("group", { name: "Transportation" })).toBeNull();
+  });
 });

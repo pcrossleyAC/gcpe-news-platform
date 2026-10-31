@@ -23,7 +23,7 @@ Uploading or removing a file counts as a correction too. If a correction fails, 
 Each place on the public site has one Top and one Feature spot: the home page, and each ministry, sector and theme page. A release can take them only while it is published.
 
 1. Open the release. **Top / Feature** says where it is now, such as "Feature on Home", or "Not in a Top or Feature slot anywhere."
-2. Choose **Change Top / Feature**. You see **Home** and each ministry, sector and theme the release is filed under, as saved.
+2. Choose **Change Top / Feature**. You see **Home** and each ministry, sector and theme the release is filed under, as saved. One you have ticked in **Categories** but not saved shows "Save to feature here." with no switch; choose **Save changes** first.
 3. Switch **Top** or **Feature** on or off for a place.
 
 It changes at once, without **Save changes**, and doesn't republish the release or email anyone. Switching a spot on takes it over from whichever release had it. To see every spot at once, go to **Website** > **What's featured where**.
