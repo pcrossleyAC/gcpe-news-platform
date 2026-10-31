@@ -3,7 +3,7 @@ import type { ReleaseView } from "./types";
 export function view(over: Partial<ReleaseView> = {}): ReleaseView {
   return {
     id: "00000000-0000-4000-8000-000000000001", type: "release", key: null, reference: null, status: "draft", live: false, onHold: false, version: 1,
-    leadMinistryKey: "health", activityId: null, publishAt: null, releasedAt: null,
+    leadMinistryKey: "health", activityId: null, publishAt: null, releasedAt: null, everPublished: false,
     publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: false },
     assetUrl: null, assetAltText: null, hasMediaAssets: false, hasTranslations: false, redirectUrl: null, keywords: null, atomId: null,
     nodSubscribers: null, mediaSubscribers: null, lastError: null, flickrAlert: null,

@@ -4,7 +4,7 @@ import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers, type ItemKind } from "./db/schema";
 import { renderDigestItems } from "./digest";
-import { placeholderLinkLengths, recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import { placeholderLinkLengths, recipientSubstitutions, type RecipientLinkOptions, type RecipientLinks } from "./recipient-links";
 import { replyToFor, type ReplyToOptions } from "./reply-to";
 import type { RenderOptions } from "./render";
 import { emailAddressSchema } from "./subscribe/info";
@@ -257,7 +257,7 @@ async function countLateDeliveries(db: Db, jobId: string): Promise<number> {
  * string), or `<chunk_index>.<part>` when {@link splitChunkByBytes} had to split it further.
  *
  * `substitutions` (Task 3's recipientSubstitutions, keyed by subscriberId) carries each
- * recipient's own `{{manageUrl}}`/`{{unsubscribeUrl}}` values; omitted (or a member missing
+ * recipient's own `{{manageUrl}}`/`{{unsubscribeUrl}}`/`{{oneClickUnsubscribeUrl}}` values; omitted (or a member missing
  * from the map) during the byte-size probe in {@link partitionChunkByBytes}, where no real
  * links have been built yet — every member gets `{}` there, same as every other member, so the
  * probe's *relative* sizing is unaffected. */
@@ -265,7 +265,7 @@ function buildMessageRequest(
   job: ClaimedJobRow,
   members: Member[],
   key: string,
-  substitutions?: Map<string, { manageUrl: string; unsubscribeUrl: string }>,
+  substitutions?: Map<string, RecipientLinks>,
   replyTo?: string,
 ): MessageRequest {
   return {
@@ -274,7 +274,9 @@ function buildMessageRequest(
     subject: job.subject ?? "",
     html: job.html ?? "",
     text: job.text ?? undefined,
-    headers: { "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+    // The header carries the one-click POST URL (RFC 8058); the body's Unsubscribe link
+    // ({{unsubscribeUrl}}) opens the public Unsubscribe page instead -- see RecipientLinks.
+    headers: { "List-Unsubscribe": "<{{oneClickUnsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
     recipients: members.map((m) => ({ email: m.email, substitutions: substitutions?.get(m.subscriberId) ?? {} })),
     ...(replyTo ? { replyTo } : {}),
   };
@@ -300,7 +302,7 @@ function requestByteSize(req: MessageRequest): number {
  * between attempts. Returns the *membership* of each part, not yet filtered to active-only
  * or built into a request — that happens in sendAllChunks, per attempt.
  *
- * `linkPlaceholder` stands in for every member's real `{{manageUrl}}`/`{{unsubscribeUrl}}`
+ * `linkPlaceholder` stands in for every member's real link
  * substitutions during this probe -- same-length strings (placeholderLinkLengths), not real
  * tokens, so the probe's measured size already includes what every actual send-time request
  * will add once `recipientSubstitutions` fills them in for real (see sendAllChunks). Probing
@@ -314,7 +316,7 @@ function partitionChunkByBytes(
   members: Member[],
   chunkIndex: number,
   maxBytes: number,
-  linkPlaceholder: { manageUrl: string; unsubscribeUrl: string },
+  linkPlaceholder: RecipientLinks,
   replyTo: string | undefined,
 ): { key: string; members: Member[] }[] {
   let n = 1;
@@ -389,8 +391,12 @@ async function sendAllChunks(
 ): Promise<{ batchIds: Record<string, string>; error?: DistributionError }> {
   const batchIds: Record<string, string> = {};
   const replyTo = replyToFor(job.item_kind, opts.replyTo ?? {});
-  const { manageUrlLen, unsubscribeUrlLen } = placeholderLinkLengths(opts.links);
-  const linkPlaceholder = { manageUrl: "x".repeat(manageUrlLen), unsubscribeUrl: "x".repeat(unsubscribeUrlLen) };
+  const { manageUrlLen, unsubscribeUrlLen, oneClickUnsubscribeUrlLen } = placeholderLinkLengths(opts.links);
+  const linkPlaceholder: RecipientLinks = {
+    manageUrl: "x".repeat(manageUrlLen),
+    unsubscribeUrl: "x".repeat(unsubscribeUrlLen),
+    oneClickUnsubscribeUrl: "x".repeat(oneClickUnsubscribeUrlLen),
+  };
   for (const [chunkIndex, members] of chunks) {
     for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes, linkPlaceholder, replyTo)) {
       const activeMembers = partMembers.filter((m) => m.active);

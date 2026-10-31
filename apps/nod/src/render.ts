@@ -146,7 +146,8 @@ type FooterKind = "subscriber" | "system";
 /** Footer bar (global constraints / the real legacy samples): a subscriber email's grey bar has
  * two cells ("Manage your subscription" → `{{manageUrl}}`, "See more from BC Gov News" →
  * siteUrl), "Please do not respond to this message", then a small "Unsubscribe" link →
- * `{{unsubscribeUrl}}` (C62 — legacy had none in the body). A system email's bar (manage/verify/
+ * `{{unsubscribeUrl}}`, the public Unsubscribe page, which asks before it unsubscribes (C62 —
+ * legacy had none in the body; recipient-links.ts's RecipientLinks). A system email's bar (manage/verify/
  * change-email — not a subscriber send) has only the one "See more" cell, and no unsubscribe
  * link at all (manage-email-2026-09-24.md). */
 function footerHtml(opts: RenderOptions, kind: FooterKind): string {
