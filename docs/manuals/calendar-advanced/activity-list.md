@@ -14,7 +14,9 @@ topics: []
 Two kinds of activity are left out until you ask for them:
 
 - Awareness dates. Choose **Awareness Day / Week / Month** in **Category** to see them.
-- Activities led by the consultations ministry, shown as **CITENG**. Choose **CITENG** in **Lead Ministry** to see them.
+- Activities led by the consultations ministry, shown as **CITENG**. To see them, choose a ministry in **Lead Ministry**: in a ministry, choose your own (this also lists activities shared with it); in an HQ organization, choose **CITENG**.
+
+Both kinds always show under **My Watchlist Only**.
 
 ## Read the list
 

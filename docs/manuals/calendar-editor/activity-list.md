@@ -14,7 +14,9 @@ topics: []
 Two kinds of activity are left out until you ask for them:
 
 - Awareness dates. Choose **Awareness Day / Week / Month** in **Category** to see them.
-- Activities led by the consultations ministry, shown as **CITENG**. Choose **CITENG** in **Lead Ministry** to see them.
+- Activities led by the consultations ministry, shown as **CITENG**. To see them, choose a ministry in **Lead Ministry**: in a ministry, choose your own (this also lists activities shared with it); in an HQ organization, choose **CITENG**.
+
+Both kinds always show under **My Watchlist Only**.
 
 ## What sits above the list
 
@@ -25,7 +27,7 @@ From the top:
 3. **New activity**, on the left. **List**, **Month** and **Week**, on the right.
 4. **Columns** and **Export and reports**. HQ editors also see **LA status** here.
 
-**New activity** is hidden during the daily change freeze, unless you are in an HQ organization. To add an activity, see [Add or change an activity](manual:calendar-editor-activity).
+**New activity** is hidden during the daily change freeze, unless you are an HQ editor. To add an activity, see [Add or change an activity](manual:calendar-editor-activity).
 
 ## Read the list
 

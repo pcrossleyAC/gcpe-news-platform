@@ -16,7 +16,7 @@ You keep your ministry's activities in the Corporate Calendar up to date. The Co
 Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.
 
 - **In a ministry:** you see your ministries' activities and the activities shared with them. You add and change your ministries' activities.
-- **In an HQ organization:** you see every ministry's activities, except other ministries' ones marked **Not for Look Ahead**. You add and change any ministry's activities you can see, and the daily change freeze doesn't stop you. See [If you are an HQ editor](manual:calendar-editor-hq).
+- **In an HQ organization:** you see every ministry's activities, except other ministries' ones marked **Not for Look Ahead**. You add and change any ministry's activities you can see. As an HQ editor, the daily change freeze doesn't stop you. See [If you are an HQ editor](manual:calendar-editor-hq).
 
 ## What you can do that read-only users can't
 
@@ -27,7 +27,6 @@ Calendar read-only users see the list, **Updates**, activities and reports, but 
 | **New activity**, above the list | Add an activity. | [Add or change an activity](manual:calendar-editor-activity) |
 | An activity | Change it and choose **Save**. | [Add or change an activity](manual:calendar-editor-activity) |
 | **Clone**, on an activity | Make a new activity from it. | [Add or change an activity](manual:calendar-editor-activity) |
-| **Records**, on an activity | Add and remove files, when your Calendar has this section. | [Add or change an activity](manual:calendar-editor-activity) |
 | **LA status**, above the list | HQ editors only: clear the Look Ahead's NEW and CHANGED flags. | [If you are an HQ editor](manual:calendar-editor-hq) |
 
 To see what a read-only user can do, read the [Calendar read-only manual](manual:calendar-readonly).

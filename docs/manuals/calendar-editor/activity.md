@@ -9,15 +9,15 @@ topics: []
 ---
 **Who this is for:** Calendar editors (Calendar.Editor).
 
-You add activities for your ministries, and change the activities your ministries lead. In an HQ organization you can add and change any ministry's activities you can see. What each field is for is on [Activity fields](manual:calendar-editor-fields).
+You add activities for your ministries, and change the activities your ministries lead. As an HQ editor you can add and change any ministry's activities you can see. What each field is for is on [Activity fields](manual:calendar-editor-fields).
 
 ## Add an activity
 
 1. On **Calendar**, choose **New activity**.
-2. Fill in the fields. The times start at 8:00 AM to 6:00 PM. If you have only one ministry, it is already the **Lead Ministry**.
+2. Fill in the fields. The times start as 8:00 AM to 6:00 PM. If you have only one ministry, it is already the **Lead Ministry**.
 3. Choose **Save**. You see, for example, "Created HLTH-21." The activity stays open, so you can add files.
 
-**New activity** is hidden during the daily change freeze, unless you are in an HQ organization.
+**New activity** is hidden during the daily change freeze, unless you are an HQ editor.
 
 ## Change an activity
 
@@ -64,7 +64,7 @@ The clone is saved as soon as you choose **Clone**, and starts as **New**. It co
 - of the **HQ Tags**, only "30-60-90" is kept;
 - files and linked releases stay with the original.
 
-If you have unsaved changes, **Clone** waits: "Save or cancel your changes to review or clone." **Clone** isn't offered during the daily change freeze, unless you are in an HQ organization.
+If you have unsaved changes, **Clone** waits: "Save or cancel your changes to review or clone." **Clone** isn't offered during the daily change freeze, unless you are an HQ editor.
 
 ## Add files
 
@@ -78,7 +78,7 @@ A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file,
 
 To remove a file, choose **Remove** beside it, then **Remove** again in the "The file is deleted from this activity." box.
 
-Adding or removing a file doesn't touch your unsaved changes to the fields. Like saving, it isn't possible while someone else is editing the activity, or during the daily change freeze unless you are in an HQ organization. A file opens only for people who can see its activity.
+Adding or removing a file doesn't touch your unsaved changes to the fields. Like saving, it isn't possible while someone else is editing the activity, or during the daily change freeze unless you are an HQ editor. A file opens only for people who can see its activity.
 
 ## View changes
 
@@ -99,7 +99,7 @@ If you are signed out while you have unsaved changes, sign in again and open the
 | Message | What it means |
 |---|---|
 | "It doesn't exist, or you can't see it." (under "Activity not found") | Check the number. The activity may be led by a ministry you're not in, or it was deleted. |
-| "Someone else changed this activity — reload to see their changes" | Someone saved it after you opened it. Choose **Reload**. If you have unsaved changes, it asks "Reload and lose your changes? The activity as it is now replaces them." Choose **Reload**, then make your change again, or **Keep editing**. |
+| "Someone else changed this activity — reload to see their changes" | Someone saved it, reviewed it or cleared its LA status after you opened it. Choose **Reload**. If you have unsaved changes, it asks "Reload and lose your changes? The activity as it is now replaces them." Choose **Reload**, then make your change again, or **Keep editing**. |
 | "This activity is no longer available." | It was deleted, or moved out of your ministries, after you opened it. |
 | "This activity is deleted" | Someone deleted it while you were editing. Your changes stay on the page but can't be saved. |
 | "You can only choose one of your ministries" | Choose one of your own ministries as the **Lead Ministry**. |

@@ -27,7 +27,7 @@ Your **Look Ahead** report also differs. See [Reports](manual:calendar-editor-re
 
 ## Clear LA Status
 
-This clears **LA New** and **LA Changed**, so the next Look Ahead flags only what is new or changed since.
+This sets **LA Status** back to **None** on activities marked **New** or **Changed**, so the next Look Ahead flags only what is new or changed since.
 
 1. Choose **LA status** above the list.
 2. In **Days ahead (Clear LA Status)**, enter a number of days. It starts at 8.

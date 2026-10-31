@@ -30,13 +30,13 @@ One report is prepared at a time. If you leave the page before it downloads, mak
 
 - A report holds only activities you can see. Deleted activities are never in it.
 - Reports include Awareness dates even when the list leaves them out.
+- Unless you are an HQ editor, your Look Ahead shows no Executive Summary and no NEW or CHANGED flags.
 - Each activity number in a report links to the activity in the Hub.
 - Each report is marked "DRAFT AND CONFIDENTIAL". Share it only with people who may see those activities.
 
 ## If you are an HQ editor
 
 - Your Look Ahead puts each activity in its **LA Section**, shows its **Executive Summary** when it has one, and flags it NEW or CHANGED from its **LA Status**. Its Long Term Outlook lists only activities ticked **Long Term Outlook**.
-- Ministry editors' Look Aheads show no Executive Summary and no NEW or CHANGED flags.
 - The **Exec Look Ahead** report is for HQ administrators. You don't see it.
 
 ## Can't do this?

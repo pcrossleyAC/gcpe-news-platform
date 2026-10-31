@@ -25,7 +25,7 @@ A category that is a release, such as **Approved Release**, also needs **Origin*
 
 | Field | What to enter |
 |---|---|
-| **Category** | The kind of activity. **HQ Placeholder** is offered only to HQ editors and above. |
+| **Category** | The kind of activity. **HQ Placeholder** is offered only to HQ editors. |
 | **Not for Look Ahead** | Tick it to keep the activity out of the Look Ahead. Only its lead and shared ministries, HQ advanced users and HQ administrators then see it, and it isn't offered on the releases **Forecast**. |
 | **Title** | Up to 100 characters. |
 | **Summary** | Up to 700 characters. |

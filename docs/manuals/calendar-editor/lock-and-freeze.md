@@ -27,9 +27,9 @@ If you leave the page alone for 15 minutes, your lock lapses and you see "Your e
 
 ## The daily change freeze
 
-Every day from 4pm to 5pm BC time, only HQ can make changes. The list and each activity show "You cannot make content changes between 4pm-5pm. Contact the Corp Cal Manager to have emerging or urgent updates made for you during this time."
+Every day from 4pm to 5pm BC time, only HQ editors and above can make changes. The list and each activity show "You cannot make content changes between 4pm-5pm. Contact the Corp Cal Manager to have emerging or urgent updates made for you during this time."
 
-During the freeze, unless you are in an HQ organization:
+During the freeze, unless you are an HQ editor:
 
 - **New activity** is hidden.
 - Activities open read-only, with a **Change freeze** warning.
