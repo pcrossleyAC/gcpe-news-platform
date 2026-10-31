@@ -56,6 +56,21 @@ describe("MediaListNamesScreen", () => {
     await waitFor(() => expect(document.title).toBe("Media list names — GCPE News Staff"));
   });
 
+  it("audit #24: links Subscribers, Media lists for a Core admin who can open it, and says who manages members for one who can't", async () => {
+    stub(["Core.Admin", "NoD.Viewer"]);
+    renderIt();
+    const link = await screen.findByRole("link", { name: "Subscribers, Media lists" });
+    expect(link).toHaveAttribute("href", "/subscribers/media-lists");
+    cleanup();
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+
+    stub(["Core.Admin"]);
+    renderIt();
+    expect(await screen.findByText(/Members are managed under Subscribers, Media lists, by people with a News on Demand role\./)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Subscribers, Media lists" })).toBeNull();
+  });
+
   it("relies on the column headers: per-row labels are for assistive technology only, and Save just says Save", async () => {
     stub(["Core.Admin"]);
     renderIt();

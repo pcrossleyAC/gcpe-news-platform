@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AlertDialog, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../../api/client";
+import { Link } from "react-router";
 import { useSession } from "../../../session/SessionContext";
+import { canReadSubscribers } from "../../subscribers/access";
 import { Button } from "../../../shared/BusyButton";
 import { useShortcut } from "../../../shared/shortcuts";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -30,6 +32,8 @@ export function MediaListNamesScreen(): React.JSX.Element {
 }
 
 function MediaListNamesEditor(): React.JSX.Element {
+  // Audit #24: the link only for someone who can open Subscribers.
+  const canSeeMembers = canReadSubscribers(useSession());
   const [rows, setRows] = useState<MediaListRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -83,7 +87,16 @@ function MediaListNamesEditor(): React.JSX.Element {
   return (
     <div className="gcpe-admin__media-lists">
       <h1>Media list names</h1>
-      <p>Changes reach News On Demand&rsquo;s media lists within a minute. Members are managed under Subscribers, Media lists.</p>
+      <p>
+        Changes reach News On Demand&rsquo;s media lists within a minute.{" "}
+        {canSeeMembers ? (
+          <>
+            Members are managed under <Link to="/subscribers/media-lists">Subscribers, Media lists</Link>.
+          </>
+        ) : (
+          "Members are managed under Subscribers, Media lists, by people with a News on Demand role."
+        )}
+      </p>
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {message && <p role="status">{message}</p>}
       {rows === null && !loadError && <p>Loading…</p>}
