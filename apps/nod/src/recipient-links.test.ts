@@ -3,7 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { subscriberLinks, subscribers } from "./db/schema";
-import { placeholderLinkLengths, recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import { placeholderLinkLengths, recipientSubstitutions, unsubscribePageUrl, type RecipientLinkOptions } from "./recipient-links";
 import { addSubscriber } from "./subscribers";
 import { confirm, unsubscribe, type JourneyDeps } from "./subscribe/journeys";
 
@@ -27,7 +27,7 @@ describe("recipientSubstitutions", () => {
   });
   afterAll(async () => tdb.drop());
 
-  it("gives every member a manage link and a one-click unsubscribe URL, stored with origin 'send'", async () => {
+  it("gives every member a manage link, an Unsubscribe page link and a one-click unsubscribe URL, stored with origin 'send'", async () => {
     const seed = ["one@example.test", "two@example.test", "three@example.test"];
     const members = await Promise.all(
       seed.map(async (email) => {
@@ -49,9 +49,16 @@ describe("recipientSubstitutions", () => {
       const info = await confirm(deps, manageToken!);
       expect(info?.emailAddress).toBe(m.email);
 
-      // The unsubscribe URL's path segment, passed to unsubscribe(), ends that subscriber.
-      expect(links!.unsubscribeUrl.startsWith(`${opts.subscribeApiUrl.replace(/\/$/, "")}/OneClickUnsubscribe/`)).toBe(true);
-      const unsubToken = decodeURIComponent(new URL(links!.unsubscribeUrl).pathname.split("/").pop()!);
+      // N1: the body's Unsubscribe link opens the public Unsubscribe page (a sibling of the
+      // manage page), never the POST-only one-click API, which answers a click (GET) with an error.
+      const page = new URL(links!.unsubscribeUrl);
+      expect(`${page.origin}${page.pathname}`).toBe("https://news.example/site/subscribe/unsubscribe/");
+      // The List-Unsubscribe header's one-click URL stays on the API, carrying the same token.
+      expect(links!.oneClickUnsubscribeUrl.startsWith(`${opts.subscribeApiUrl.replace(/\/$/, "")}/OneClickUnsubscribe/`)).toBe(true);
+      const oneClickToken = decodeURIComponent(new URL(links!.oneClickUnsubscribeUrl).pathname.split("/").pop()!);
+      const unsubToken = page.searchParams.get("token")!;
+      expect(unsubToken).toBe(oneClickToken);
+      // The page's token, passed to unsubscribe() (what the page's button calls), ends that subscriber.
       await unsubscribe(deps, unsubToken);
       const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, m.subscriberId));
       expect(row?.status).toBe("deleted");
@@ -73,8 +80,13 @@ describe("recipientSubstitutions", () => {
     expect(result.size).toBe(0);
   });
 
+  it("puts the Unsubscribe page next to the manage page, with or without a trailing slash", () => {
+    expect(unsubscribePageUrl("https://news.example/site/subscribe/manage/")).toBe("https://news.example/site/subscribe/unsubscribe/");
+    expect(unsubscribePageUrl("https://news.example/subscribe/manage")).toBe("https://news.example/subscribe/unsubscribe/");
+  });
+
   it("placeholderLinkLengths never under-measures a real substitution, at version 1 or version 12", async () => {
-    const { manageUrlLen, unsubscribeUrlLen } = placeholderLinkLengths(opts);
+    const { manageUrlLen, unsubscribeUrlLen, oneClickUnsubscribeUrlLen } = placeholderLinkLengths(opts);
 
     for (const unsubscribeVersion of [1, 12]) {
       const { id } = await addSubscriber(tdb.db, { email: `v${unsubscribeVersion}@example.test`, lists: "all" });
@@ -82,6 +94,7 @@ describe("recipientSubstitutions", () => {
       const links = result.get(id)!;
       expect(links.manageUrl.length).toBeLessThanOrEqual(manageUrlLen);
       expect(links.unsubscribeUrl.length).toBeLessThanOrEqual(unsubscribeUrlLen);
+      expect(links.oneClickUnsubscribeUrl.length).toBeLessThanOrEqual(oneClickUnsubscribeUrlLen);
     }
   });
 });
