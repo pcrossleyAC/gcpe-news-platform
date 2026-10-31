@@ -16,7 +16,7 @@ topics: []
 
 It republishes at once: no box asks first. The status shows **Republishing...**, then **Published**, usually within a minute. **History** shows "Republished to …"; with **Show all** ticked it also shows "Edited after publishing — will republish". The public page shows the change within a couple of minutes. Nobody is emailed again.
 
-Uploading or removing a file counts as a correction too. If a correction fails, the release shows "This release failed" and stays on the public site as it was. Fix the problem, save, then choose **Publish now**. A failed correction can't be scheduled.
+Uploading or removing a file counts as a correction too. If a correction fails, the release shows "This release failed" and stays on the public site as it was. Fix the problem, save, then choose **Publish now**. **Schedule** isn't offered: a failed correction goes out at once.
 
 ## Top and Feature spots
 

@@ -89,6 +89,19 @@ describe("ActionsSection", () => {
     expect(screen.getByRole("button", { name: "Unpublish" })).toBeInTheDocument();
   });
 
+  // The server refuses to schedule a live release's correction (workflow.ts schedule: "A live
+  // release's correction goes out immediately — choose Publish now.").
+  it("a failed correction (still on the site) offers Publish now but not Schedule", () => {
+    renderActions(releaseView({ type: "release", status: "failed", live: true, key: "k1", reference: "NEWS-00001", releasedAt: "2026-01-01T00:00:00.000Z" }));
+    expect(screen.getByRole("button", { name: "Publish now" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Schedule" })).not.toBeInTheDocument();
+  });
+
+  it("a failed republish after an unpublish (not on the site) still offers Schedule", () => {
+    renderActions(releaseView({ type: "release", status: "failed", live: false, key: "k1", reference: "NEWS-00001", releasedAt: "2026-01-01T00:00:00.000Z" }));
+    expect(screen.getByRole("button", { name: "Schedule" })).toBeInTheDocument();
+  });
+
   it("a failed first publish (never on the site) still offers Delete", () => {
     renderActions(releaseView({ type: "release", status: "failed", live: false, key: "k1", reference: "NEWS-00001" }));
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
@@ -347,6 +360,26 @@ describe("ActionsSection", () => {
       expect(dialog).toHaveTextContent(
         "Daily digest subscribers get it only if it’s on the site again before 5:00 PM on Oct 1, 2026. That time has passed, so daily digest subscribers who didn’t get it then won’t.",
       );
+    });
+
+    it("the Schedule confirmation says the people not yet reached are emailed when it goes out, not now", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T18:00:00Z") });
+      const v = unpublished();
+      vi.stubGlobal("fetch", publishFetch([], v));
+      renderActions(v);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Schedule" }));
+      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
+      fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
+      await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+      const dialog = await screen.findByRole("dialog");
+      await waitFor(() =>
+        expect(dialog).toHaveTextContent(
+          "If unpublishing stopped its emails before they all went out, the people they hadn’t reached yet are emailed when it goes out: members of Regional newspapers, and News on Demand subscribers who chose As it happens.",
+        ),
+      );
+      expect(dialog).not.toHaveTextContent("emailed now");
+      expect(dialog).toHaveTextContent("That time has passed, so daily digest subscribers who didn’t get it then won’t.");
     });
 
     it("with News on Demand and media lists off, says nobody is emailed", async () => {

@@ -9,14 +9,14 @@ topics: []
 ---
 **Who this is for:** Release editors (NRMS.Editor).
 
-Publishing emails people, and only the first time. Saving, approving, scheduling, correcting and unpublishing don't.
+Publishing emails people. Publishing again after an unpublish emails only people who weren't reached the first time. Saving, approving, scheduling, correcting and unpublishing don't email anyone.
 
 ## When you publish
 
 | What | Who or where | When |
 |---|---|---|
 | Public news site | The release's own page, and the home, ministry, sector, theme and tag pages that list it. Not for advisories. | Usually within a couple of minutes of the publish time. |
-| News On Demand, as it happens | Active subscribers who chose As it happens and follow any of the release's ministries, sectors, themes or tags, and everyone subscribed to all news. | Soon after it publishes. |
+| News On Demand, as it happens | Active subscribers who chose As it happens and either follow any of the release's ministries, sectors, themes or tags, or subscribe to all news. | Soon after it publishes. |
 | News On Demand, daily digest | The same people, if they chose the digest. | The next digest, at 5:00 pm BC time. |
 | Media distribution lists | Every member of each list you ticked. They get the full text. | Soon after it publishes. |
 | The Calendar | The linked activity shows the new status. | Within a minute. |
@@ -34,7 +34,7 @@ Advisories are never sent to subscribers or put on the public site. They go only
 Saving any change republishes it at once, with no box asking first. The status shows **Republishing...**, then **Published**.
 
 - The public page shows the change within a couple of minutes.
-- Nobody is emailed again. People already emailed keep the first version; the 5 pm digest carries the corrected one.
+- Nobody is emailed again. People already emailed keep the first version; the 5 pm digest carries the corrected one if you correct it before 5 pm.
 - Media lists can't be changed on a release or factsheet once it has gone out.
 
 ## When you unpublish

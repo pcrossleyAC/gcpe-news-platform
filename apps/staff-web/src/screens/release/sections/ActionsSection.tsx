@@ -142,6 +142,8 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const canApprove = view.status === "draft";
   const canPublish = (view.status === "approved" || view.status === "failed") && view.key !== null;
   const needsKeyFirst = (view.status === "approved" || view.status === "failed") && view.key === null;
+  // The server refuses to schedule a live release's correction: it goes out immediately (workflow.ts schedule).
+  const canSchedule = canPublish && !view.live;
   const canCancel = view.status === "scheduled";
   const canReturnToDraft = view.reference !== null && view.releasedAt === null && view.atomId === null && RETURNABLE_STATUSES.has(view.status);
   // Both follow the server's `live` check: a failed correction is still on the site, so it can be
@@ -339,16 +341,18 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                 </AlertDialog>
               </Modal>
             </DialogTrigger>
-            <Button
-              variant="secondary"
-              onPress={openScheduler}
-              aria-expanded={schedulerOpen && canPublish}
-              aria-controls="actions-scheduler"
-              isDisabled={publishBlockers.length > 0}
-              aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}
-            >
-              Schedule
-            </Button>
+            {canSchedule && (
+              <Button
+                variant="secondary"
+                onPress={openScheduler}
+                aria-expanded={schedulerOpen}
+                aria-controls="actions-scheduler"
+                isDisabled={publishBlockers.length > 0}
+                aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}
+              >
+                Schedule
+              </Button>
+            )}
           </>
         )}
         {needsKeyFirst && <p>Set a URL key in Page details before this can be published.</p>}
@@ -457,9 +461,9 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
       {approveBlockers.length > 0 && <BlockerList id="actions-approve-why" lead="Approve is unavailable until:" items={approveBlockers} />}
       {canApprove && <p className="gcpe-release-editor__why">Publish now and Schedule appear once this is approved.</p>}
-      {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead="Publish now and Schedule are unavailable until:" items={publishBlockers} />}
+      {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead={canSchedule ? "Publish now and Schedule are unavailable until:" : "Publish now is unavailable until:"} items={publishBlockers} />}
 
-      {schedulerOpen && canPublish && (
+      {schedulerOpen && canSchedule && (
         // data-unsaved: Esc leaves it open once a date or time is typed (shared/escapeClosesPanels.ts).
         <div id="actions-scheduler" className="gcpe-release-editor__scheduler" data-unsaved={scheduleTyped !== scheduleOpenedWith || undefined}>
           <SchedulePicker
@@ -677,7 +681,7 @@ function PublishConsequences({
       <ul className="gcpe-publish-consequences">
         {web}
         <li>Anyone already emailed about it won&rsquo;t be emailed again.</li>
-        <li>{`If unpublishing stopped its emails before they all went out, the people they hadn\u2019t reached yet are emailed now: ${reached}.`}</li>
+        <li>{`If unpublishing stopped its emails before they all went out, the people they hadn\u2019t reached yet are emailed ${atInstant ? "when it goes out" : "now"}: ${reached}.`}</li>
         {toSubscribers && (
           <li>{goesUp > Date.parse(cutoff) ? `${digestRule} That time has passed, so daily digest subscribers who didn\u2019t get it then won\u2019t.` : digestRule}</li>
         )}
