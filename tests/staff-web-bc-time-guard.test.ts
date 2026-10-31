@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -55,7 +55,7 @@ describe("staff-web formats BC times only through format/bcTime.ts", () => {
   });
 
   it("no other staff-web file does", () => {
-    const offenders = sources(SRC).flatMap((f) => offendersIn(relative(ROOT, f), readFileSync(f, "utf8")));
+    const offenders = sources(SRC).flatMap((f) => offendersIn(relative(ROOT, f).split(sep).join("/"), readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);
   });
 });
