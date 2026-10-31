@@ -40,8 +40,8 @@ test.describe("item 2: per-type required/allowed fields", () => {
     await expect(page.getByRole("group", { name: "Themes" })).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Tags" })).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Page image" })).toHaveCount(0);
-    // But Media distribution lists is offered (and marked required for an Advisory).
-    await expect(page.getByText("Media distribution lists (required)")).toBeVisible();
+    // But Media distribution lists is offered (and marked "needed before publishing" for an Advisory).
+    await expect(page.getByText("Media distribution lists (needed before publishing)")).toBeVisible();
   });
 
   test("the API refuses an Advisory with sectors attached, directly", async () => {

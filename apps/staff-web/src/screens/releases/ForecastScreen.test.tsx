@@ -71,7 +71,7 @@ describe("ForecastScreen (spec addendum §11; Releases.aspx's Forecast folder)",
     expect(rows.map((r) => within(r).getByRole("link", { name: /Sample/ }).textContent)).toEqual(["Sample scheduled release", "Victoria - Sample clinic opening"]);
     expect(rows[1]).toHaveTextContent("Calendar activity · Health");
     expect(rows[1]).toHaveTextContent("Approved Event");
-    expect(rows[1]).toHaveTextContent("Planned for Jun 11, 2031 10:00 AM · Activity ID 4102");
+    expect(rows[1]).toHaveTextContent("Planned for Jun 11, 2031 10:00 AM · Calendar activity ID 4102");
     expect(within(rows[1]!).getByRole("link", { name: "Victoria - Sample clinic opening" })).toHaveAttribute("href", "/calendar/activities/4102");
     expect(calls).toContain("/nrms/api/forecast?page=1");
     expect(screen.getByRole("heading", { level: 1, name: "Forecast" })).toBeInTheDocument();

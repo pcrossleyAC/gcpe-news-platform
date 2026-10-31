@@ -84,6 +84,35 @@ describe("SettingsSection", () => {
     await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["old-desk", "list1"] }));
   });
 
+  // forms-b #2: the server sends the media email to the ticked lists, whatever a "Send to media
+  // distribution lists" box said (apps/nrms/src/releases/service.ts saveSettings), so there's no
+  // such box: the lists alone say who gets it.
+  it("has no separate Send to media distribution lists box; the ticked lists decide, and the section says so", async () => {
+    const calls = stubFetch({
+      mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }],
+      onPut: () => jsonResponse(200, releaseView({ version: 2 })),
+    });
+    const v = releaseView({ type: "release", version: 1, mediaListKeys: [], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: false } });
+    renderSettings(v);
+    const list = await screen.findByLabelText("List One");
+    expect(screen.queryByLabelText("Send to media distribution lists")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("The lists you tick get the media email when this is published. With none ticked, no media email goes out.");
+
+    const user = userEvent.setup();
+    await user.click(list);
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["list1"], toMediaLists: true }));
+  });
+
+  // forms-b #10: the planned date only plans; Schedule, under Actions, sets when it goes out.
+  it("names the planned date as for planning only and says Schedule sets the time", async () => {
+    stubFetch();
+    renderSettings(releaseView({ type: "release" }));
+    const group = await screen.findByRole("group", { name: "Planned publish date (for planning only)" });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByText("Shows on the Forecast. Nothing is published at this time: Schedule, under Actions, sets when it goes out.")).toBeInTheDocument();
+  });
+
   it("disables the subscribers checkbox and explains why, for a type that doesn't allow it", () => {
     stubFetch();
     renderSettings(releaseView({ type: "advisory", publishOptions: { toWeb: false, toSubscribers: false, toMediaLists: false } }));

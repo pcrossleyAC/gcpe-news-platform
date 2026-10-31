@@ -5,6 +5,7 @@ import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { UnsavedMarker } from "../UnsavedMarker";
+import { LeadMinistrySelect } from "../LeadMinistrySelect";
 import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
 import type { Categories, Term } from "../categories";
@@ -153,17 +154,13 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
             {categoryList("ministries", "Ministries", categories.ministries)}
 
             {form.ministries.length > 1 && (
-              <label className="gcpe-field">
-                Lead ministry
-                <select value={form.leadMinistryKey ?? ""} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, leadMinistryKey: e.target.value || null }))}>
-                  <option value="">(none)</option>
-                  {form.ministries.map((key) => (
-                    <option key={key} value={key}>
-                      {nameOf(categories.ministries, key)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <LeadMinistrySelect
+                value={form.leadMinistryKey}
+                ministries={form.ministries.map((key) => ({ key, name: nameOf(categories.ministries, key) }))}
+                needed={view.type !== "advisory"}
+                readOnly={readOnly}
+                onChange={(leadMinistryKey) => setForm((f) => ({ ...f, leadMinistryKey }))}
+              />
             )}
 
             {rules.categoriesBeyondMinistries && (

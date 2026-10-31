@@ -50,20 +50,28 @@ describe("HeaderSection", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Went out without its photo.");
   });
 
-  it("shows the approve checklist when approveProblems is non-empty, and hides it when empty", () => {
-    const { rerender } = render(<HeaderSection view={releaseView({ type: "release", ministries: [] })} />);
-    const heading = screen.getByText("Before this can be approved:");
-    expect(heading).toBeInTheDocument();
-    expect(heading.nextElementSibling).toHaveTextContent("Choose at least one ministry.");
-
-    rerender(<HeaderSection view={releaseView({ type: "release", ministries: ["health"], leadMinistryKey: "health" })} />);
-    expect(screen.queryByText("Before this can be approved:")).not.toBeInTheDocument();
+  // forms-b #16 and #13: the to-do lists are shown once, under Actions, with links; the header
+  // only says how many things are left, links to that list, and is for editors (viewers have no Actions).
+  it("an editor sees how many things are left and a link to the list under Actions, not a second copy of it", () => {
+    render(<HeaderSection view={releaseView({ type: "release", status: "draft", ministries: [], documents: [] })} canEdit />);
+    expect(screen.getByText(/^Not ready: 2 things to fix\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See them under Actions" })).toHaveAttribute("href", "#actions-approve-why");
+    expect(screen.queryByText("Choose at least one ministry.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Before this can be/)).not.toBeInTheDocument();
   });
 
-  it("shows the publish checklist when publishProblems is non-empty", () => {
-    render(<HeaderSection view={releaseView({ documents: [] })} />);
-    const heading = screen.getByText("Before this can be published:");
-    expect(heading).toBeInTheDocument();
-    expect(heading.nextElementSibling).toHaveTextContent("Add at least one document.");
+  it("an approved release links to the publish list, and says 1 thing", () => {
+    render(<HeaderSection view={releaseView({ status: "approved", reference: "NEWS-00001", key: "k", documents: [] })} canEdit />);
+    expect(screen.getByText(/^Not ready: 1 thing to fix\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See them under Actions" })).toHaveAttribute("href", "#actions-publish-why");
+  });
+
+  it("says nothing when the release is ready, for a viewer, or once nothing under Actions can act on it", () => {
+    const { rerender } = render(<HeaderSection view={releaseView({ type: "release", status: "draft", ministries: ["health"], leadMinistryKey: "health" })} canEdit />);
+    expect(screen.queryByText(/Not ready/)).not.toBeInTheDocument();
+    rerender(<HeaderSection view={releaseView({ type: "release", status: "draft", ministries: [] })} />);
+    expect(screen.queryByText(/Not ready/)).not.toBeInTheDocument();
+    rerender(<HeaderSection view={releaseView({ type: "release", status: "published", sectors: [] })} canEdit />);
+    expect(screen.queryByText(/Not ready/)).not.toBeInTheDocument();
   });
 });

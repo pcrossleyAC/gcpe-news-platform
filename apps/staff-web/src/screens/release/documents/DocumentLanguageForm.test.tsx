@@ -189,6 +189,71 @@ describe("DocumentLanguageForm", () => {
     expect(loadDraft(draftKeyFor("user-a"))).not.toBeNull(); // untouched, still recoverable by user A
   });
 
+  // forms-b #1: the server keeps Organizations only on a Formal document and Byline only on an
+  // Informal one (apps/nrms/src/releases/service.ts saveDocumentLanguage), so only that field is
+  // offered. Text a document already holds in the other one stays visible, read-only, with a note.
+  describe("layout decides Organizations or Byline", () => {
+    const withLanguage = (layout: "formal" | "informal", fields: { organizations: string | null; byline: string | null }, type: ReleaseView["type"] = "release") =>
+      releaseView({ ...BASE, type, documents: [{ ...BASE.documents[0]!, layout, languages: [{ ...BASE.documents[0]!.languages[0]!, ...fields }] }] });
+
+    it("Formal: Organizations, needed before publishing; no Byline", async () => {
+      stubFetch(() => jsonResponse(200, {}));
+      renderForm(withLanguage("formal", { organizations: "Ministry of Health", byline: null }));
+      const orgs = await screen.findByRole("textbox", { name: "Organizations" });
+      expect(orgs).toHaveValue("Ministry of Health");
+      expect(orgs).toHaveAccessibleDescription("Needed before publishing.");
+      expect(screen.queryByRole("textbox", { name: /Byline/ })).not.toBeInTheDocument();
+    });
+
+    it("Formal advisory: Organizations isn't needed to publish, so no note", async () => {
+      stubFetch(() => jsonResponse(200, {}));
+      renderForm(withLanguage("formal", { organizations: null, byline: null }, "advisory"));
+      expect(await screen.findByRole("textbox", { name: "Organizations" })).not.toHaveAccessibleDescription(/publishing/);
+    });
+
+    it("Informal: Byline; no Organizations", async () => {
+      stubFetch(() => jsonResponse(200, {}));
+      renderForm(withLanguage("informal", { organizations: null, byline: "By Pat" }));
+      expect(await screen.findByRole("textbox", { name: "Byline" })).toHaveValue("By Pat");
+      expect(screen.queryByRole("textbox", { name: /Organizations/ })).not.toBeInTheDocument();
+    });
+
+    it("Formal holding a byline: shown read-only with a note, and the save sends what it sent before", async () => {
+      const calls: { url: string; init?: RequestInit }[] = [];
+      stubFetch((url, init) => {
+        calls.push({ url, init });
+        return jsonResponse(200, releaseView({ ...BASE, version: 2 }));
+      });
+      renderForm(withLanguage("formal", { organizations: "Ministry of Health", byline: "By Pat" }));
+      const byline = await screen.findByRole("textbox", { name: "Byline" });
+      expect(byline).toHaveValue("By Pat");
+      expect(byline).toHaveAttribute("readonly");
+      expect(byline).toHaveAccessibleDescription("A formal document doesn't keep a byline. It's removed the next time this document is saved.");
+
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText("Headline"), " today");
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(JSON.parse(calls[0]!.init?.body as string)).toMatchObject({ layout: "formal", organizations: "Ministry of Health", byline: "By Pat" });
+    });
+
+    it("Informal holding organizations: shown read-only with a note", async () => {
+      stubFetch(() => jsonResponse(200, {}));
+      renderForm(withLanguage("informal", { organizations: "Ministry of Health", byline: null }));
+      const orgs = await screen.findByRole("textbox", { name: "Organizations" });
+      expect(orgs).toHaveAttribute("readonly");
+      expect(orgs).toHaveAccessibleDescription("An informal document doesn't keep organizations. They're removed the next time this document is saved.");
+      expect(screen.getByRole("textbox", { name: "Byline" })).not.toHaveAttribute("readonly");
+    });
+
+    it("read-only viewer: no required markers or publishing notes", async () => {
+      stubFetch(() => jsonResponse(200, {}));
+      renderForm(withLanguage("formal", { organizations: "Ministry of Health", byline: null }), () => {}, true);
+      expect(await screen.findByRole("textbox", { name: "Page title" })).not.toBeRequired();
+      expect(screen.getByRole("textbox", { name: "Organizations" })).not.toHaveAccessibleDescription(/publishing/);
+    });
+  });
+
   it("shows the French tab's own content independently when rendered for LANG_FR", async () => {
     stubFetch(() => jsonResponse(200, {}));
     const withFr = releaseView({

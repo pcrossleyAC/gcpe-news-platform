@@ -673,6 +673,8 @@ describe("ActionsSection", () => {
     await user.click(screen.getByRole("button", { name: "Schedule" }));
     expect(screen.getByLabelText("Date")).toHaveValue("2031-06-15");
     expect(screen.getByLabelText("Time (BC time)")).toHaveValue("14:30");
+    // forms-b #10: one short line, not three variations explaining plan vs. commit.
+    expect(screen.getByText("Filled in from the planned publish date. The time you confirm here is when it goes out.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Schedule" }));
     await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
@@ -837,6 +839,23 @@ describe("ActionsSection", () => {
     expect(why).toHaveTextContent("Choose at least one ministry.");
     expect(screen.getByRole("button", { name: "Approve" })).toHaveAttribute("aria-describedby", why.id);
     expect(screen.getByText("Publish now and Schedule appear once this is approved.")).toBeInTheDocument();
+  });
+
+  // forms-b #16: the header no longer repeats these lists, so a draft also lists, here and linked,
+  // what publishing will need (without repeating what Approve already lists).
+  it("a draft also lists, with links, what it needs before it can be published", () => {
+    renderActions(releaseView({ type: "release", status: "draft", ministries: [], documents: [] }));
+    const later = screen.getByText("Also needed before it can be published:").parentElement!;
+    expect(later).toHaveAttribute("id", "actions-publish-later");
+    expect(later).toHaveTextContent("Add at least one document.");
+    expect(later).not.toHaveTextContent("Choose at least one ministry.");
+    expect(screen.getByRole("link", { name: "Add at least one document." })).toHaveAttribute("href", "#section-documents");
+  });
+
+  it("an approved story with no URL key lists what else publishing needs", () => {
+    renderActions(releaseView({ type: "story", status: "approved", reference: "NEWS-00001", key: null, documents: [] }));
+    expect(screen.getByText("Set a URL key in Page details before this can be published.")).toBeInTheDocument();
+    expect(screen.getByText("Before it can be published:").parentElement).toHaveTextContent("Add at least one document.");
   });
 
   it("an approvable draft has no 'unavailable' reasons", () => {

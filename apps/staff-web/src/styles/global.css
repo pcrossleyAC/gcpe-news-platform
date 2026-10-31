@@ -223,6 +223,11 @@ body {
 .gcpe-documents__add {
   margin-top: 1rem;
 }
+/* Which layout a document has: it decides whether it keeps Organizations or a Byline. */
+.gcpe-documents__layout {
+  margin: 0 0 0.5rem;
+  color: var(--typography-color-secondary, #474543);
+}
 
 .gcpe-shell__main {
   flex: 1 1 auto;
@@ -1045,7 +1050,11 @@ body {
   margin: 0 0 0.5rem;
 }
 
-.gcpe-release-editor__checklist ul,
+/* The header's one "Not ready: n things to fix" line, linking to the list under Actions. */
+.gcpe-release-editor__checklist {
+  margin: 0.25rem 0 0.75rem;
+}
+
 .gcpe-release-editor__problems {
   margin: 0.25rem 0 0.75rem;
 }

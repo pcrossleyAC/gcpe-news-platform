@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
-import { LANG_EN, LAYOUTS, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
+import { LANG_EN, LAYOUTS, typeRules, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
+import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { useAnnouncer } from "../../../shared/Announcer";
 import { Button } from "../../../shared/BusyButton";
 import { ignoreWhileBusy } from "../../../shared/guardSubmit";
@@ -8,7 +9,7 @@ import { DragHandle, useDragReorder } from "../../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../../shared/useMoveFocusRestore";
 import { moveBy, moveTo } from "../../../shared/reorder";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
-import { documentsInOrder } from "./documentHelpers";
+import { documentsInOrder, LAYOUT_LABEL } from "./documentHelpers";
 import { orderedIds } from "./reorder";
 import { DocumentTabs } from "./DocumentTabs";
 import { useDirtyKeys } from "../useUnsavedChanges";
@@ -90,10 +91,27 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
     <section className="gcpe-release-editor__documents" aria-label="Documents" id="section-documents" tabIndex={-1} ref={moveFocus.containerRef}>
       <h2>Documents</h2>
 
-      <p className="gcpe-documents__summary-note">
-        Summary: {enLang?.summary || "(none yet)"}
-        {enLang && !enLang.summaryEdited ? " (auto)" : ""}
-      </p>
+      {/* The summary is edited in Page details (an advisory has none), so the note says where. */}
+      {typeRules(view.type).categoriesBeyondMinistries && (
+        <p className="gcpe-documents__summary-note">
+          Summary: {enLang?.summary || "(none yet)"}
+          {enLang && !enLang.summaryEdited ? " (auto)" : ""}
+          {!readOnly && (
+            <>
+              {" "}
+              <a
+                href="#section-page-details"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToAndFocus("section-page-details");
+                }}
+              >
+                Edit it in Page details
+              </a>
+            </>
+          )}
+        </p>
+      )}
 
       {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => void section.reload()}>Reload</Button>} />}
       {section.problems && (
@@ -148,6 +166,8 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
               </div>
             )}
           </div>
+          {/* The layout decides whether the document keeps Organizations or a Byline (DocumentLanguageForm). */}
+          <p className="gcpe-documents__layout">Layout: {LAYOUT_LABEL[doc.layout]}</p>
           <DocumentTabs view={view} setView={setView} documentId={doc.id} readOnly={readOnly} />
         </div>
       ))}
@@ -167,7 +187,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
             <select value={newLayout} onChange={(e) => setNewLayout(e.target.value as Layout)}>
               {LAYOUTS.map((l) => (
                 <option key={l} value={l}>
-                  {l === "formal" ? "Formal" : "Informal"}
+                  {LAYOUT_LABEL[l]}
                 </option>
               ))}
             </select>

@@ -1,21 +1,26 @@
-import { approveProblems, publishProblems, statusText, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
+import { statusText, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { headlineOf } from "../viewHelpers";
+import { scrollToAndFocus } from "../../../shared/scrollToSection";
+import { APPROVE_LIST_ID, readiness } from "../readiness";
 
 export interface HeaderSectionProps {
   view: ReleaseView;
+  /** NRMS.Editor: only an editor has Actions, so only an editor gets the "Not ready" line. */
+  canEdit?: boolean;
 }
 
 /**
  * Spec's "Header and errors" section (task-3-brief.md): headline (the page's one `h1`), type,
- * status text, key/reference, `lastError`, the Flickr alert, and the approve/publish checklists
- * — shown here, ahead of the Approve/Publish buttons in {@link ActionsSection} further down the
- * page, so the user sees what's missing before they even reach the button.
+ * status text, key/reference, `lastError` and the Flickr alert. For an editor, one line says how
+ * many things are left to fix and links to the list under Actions (forms-b #16: the list is shown
+ * once, there, with links). A viewer has no Actions, so no line (forms-b #13).
  */
-export function HeaderSection({ view }: HeaderSectionProps): React.JSX.Element {
-  const toApprove = approveProblems(view);
-  const toPublish = publishProblems(view);
+export function HeaderSection({ view, canEdit = false }: HeaderSectionProps): React.JSX.Element {
+  const ready = readiness(view);
+  const left = ready.approve.length + ready.publish.length;
+  const listId = ready.approve.length > 0 ? APPROVE_LIST_ID : ready.publishListId;
   useDocumentTitle(headlineOf(view) || "(untitled)");
 
   return (
@@ -34,26 +39,19 @@ export function HeaderSection({ view }: HeaderSectionProps): React.JSX.Element {
       {view.lastError && <InlineAlert variant="danger" role="alert" title="This release failed" description={view.lastError} />}
       {view.flickrAlert && <InlineAlert variant="warning" role="alert" title="Flickr alert" description={view.flickrAlert} />}
 
-      {toApprove.length > 0 && (
-        <div className="gcpe-release-editor__checklist">
-          <p>Before this can be approved:</p>
-          <ul>
-            {toApprove.map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {toPublish.length > 0 && (
-        <div className="gcpe-release-editor__checklist">
-          <p>Before this can be published:</p>
-          <ul>
-            {toPublish.map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ul>
-        </div>
+      {canEdit && left > 0 && (
+        <p className="gcpe-release-editor__checklist">
+          Not ready: {left} {left === 1 ? "thing" : "things"} to fix.{" "}
+          <a
+            href={`#${listId}`}
+            onClick={(e) => {
+              e.preventDefault();
+              scrollToAndFocus(listId);
+            }}
+          >
+            See them under Actions
+          </a>
+        </p>
       )}
     </header>
   );

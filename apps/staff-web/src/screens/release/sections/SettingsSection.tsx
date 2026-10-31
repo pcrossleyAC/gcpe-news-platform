@@ -28,7 +28,6 @@ interface FormState {
   /** The Calendar activity ID as typed (digits only). */
   activityText: string;
   toSubscribers: boolean;
-  toMediaLists: boolean;
   mediaListKeys: string[];
   planned: ScheduleValue | null;
 }
@@ -37,7 +36,6 @@ function fromView(view: ReleaseView, timeZone: string): FormState {
   return {
     activityText: view.activityId === null ? "" : String(view.activityId),
     toSubscribers: view.publishOptions.toSubscribers,
-    toMediaLists: view.publishOptions.toMediaLists,
     mediaListKeys: view.mediaListKeys,
     planned: view.publishAt ? scheduleValueFromInstant(view.publishAt, timeZone) : null,
   };
@@ -52,8 +50,8 @@ function scheduleValueFromInstant(iso: string, timeZone: string): ScheduleValue 
 }
 
 /** Spec's "Publish settings" section (`PUT .../settings`): Calendar activity id, the planned
- * (not yet committed — Schedule/Publish now in {@link ActionsSection} commit it) publish time,
- * and whether/where this goes out to News On Demand subscribers and media distribution lists. */
+ * publish time (for planning only — Schedule/Publish now in {@link ActionsSection} commit a time),
+ * whether it goes out to News On Demand subscribers, and which media distribution lists get it. */
 export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsSectionProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
@@ -112,7 +110,8 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
             ? { plannedPublishAtLocal: plannedValue.local }
             : { plannedPublishAt: null }),
         toSubscribers: form.toSubscribers,
-        toMediaLists: form.toMediaLists,
+        // The server sets this from the lists itself (saveSettings); sent to match.
+        toMediaLists: form.mediaListKeys.length > 0,
         mediaListKeys: form.mediaListKeys,
       }, "PUT", staleVersion, { quiet: true })
       .then((next) => {
@@ -170,14 +169,14 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           // from it; the user's own typing never does.
           key={baseline.planned?.instant ?? "none"}
           timeZone={timeZone}
-          legend="Planned publish date (not yet committed)"
+          legend="Planned publish date (for planning only)"
           idPrefix="planned"
           initialDate={initialPlanned?.date}
           initialTime={initialPlanned?.time}
           onChange={setPlannedValue}
           isDisabled={readOnly}
         />
-        {!readOnly && <p className="gcpe-hint gcpe-release-editor__planned-note">Only a plan: Schedule, under Actions, commits the publish time.</p>}
+        {!readOnly && <p className="gcpe-hint gcpe-release-editor__planned-note">Shows on the Forecast. Nothing is published at this time: Schedule, under Actions, sets when it goes out.</p>}
         {plannedValue && !readOnly && (
           <Button size="small" variant="secondary" onPress={() => setPlannedValue(null)}>
             Clear planned date
@@ -191,12 +190,13 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
         {!rules.nodAllowed && <p>Not available for this release type.</p>}
 
         {rules.mediaListsAllowed && (
-          <fieldset className="gcpe-options">
+          // No separate "Send to media distribution lists" box: the server sends the media email
+          // to the ticked lists whatever such a box said (saveSettings), so the lists alone decide.
+          <fieldset className="gcpe-options" aria-describedby="settings-media-lists-hint">
             <legend>Media distribution lists</legend>
-            <label className="gcpe-options__wide gcpe-check">
-              <input type="checkbox" checked={form.toMediaLists} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, toMediaLists: e.target.checked }))} />
-              Send to media distribution lists
-            </label>
+            <p id="settings-media-lists-hint" className="gcpe-options__wide gcpe-hint">
+              {readOnly ? "The lists ticked here get the media email when this is published." : "The lists you tick get the media email when this is published. With none ticked, no media email goes out."}
+            </p>
             {lists
               .filter((l) => l.isActive || view.mediaListKeys.includes(l.key))
               .map((l) =>

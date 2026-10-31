@@ -179,7 +179,7 @@ export function ReleaseEditorPage(): React.JSX.Element {
         <DirtyKeysProvider keys={guard.dirtyKeys}>
           <div className={`gcpe-release-editor${guard.dirtySections.length > 0 || guard.saveState.status === "saved" ? " gcpe-release-editor--save-bar-open" : ""}`}>
             <div className="gcpe-release-editor__top">
-              <HeaderSection view={view} />
+              <HeaderSection view={view} canEdit={canEdit} />
               {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
             </div>
 
