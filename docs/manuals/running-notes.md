@@ -97,18 +97,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   `{"raw": "<the .eml's full text>"}`; the next scheduled bounce run (every 15 minutes, or the
   next tick in dev) picks it up. Distribution's own `/api/bounces/inbox`
   (`Distribution.Operate`) 404s unless it's actually running in fake mode.
-- **Editor** — Bulk actions apply to the rows ticked on the current page only, always after a
-  confirmation. Skipped rows (already in that state, or a deleted subscriber you tried to
-  activate) are counted in the message, not treated as errors.
-- **Editor** — "Disabled" means no email is sent: either bounces disabled the subscriber (the
-  detail screen says so) or staff did. Activate restarts the bounce count. "Unsubscribed or
-  deleted" subscribers can't be reactivated; only their own re-subscribe brings them back.
-- **Editor** — A staff email change sends no confirmation, stops every link in emails already
-  sent except the unsubscribe links, and is refused if another record has that address (open
-  that record instead). The address of a Media Hub contact, or of anyone linked to one, is
-  changed in Media Hub: the subscriber page says so instead of offering Change email.
-- **Editor** — Deleting a subscriber removes them from every media list too. That's recorded as
-  a staff removal, so adding them back to a media list later needs no opt-out confirmation.
 - **Viewer** — The History screen shows "Subscriber" for the person's own actions, staff names
   for staff actions, and "Bounce processing" / "Media Hub sync" for automatic ones.
 - **Operations** — Two more test users: `nod-viewer@example.test` and `nod-editor@example.test`.
@@ -116,17 +104,8 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Developer** — Staff subscriber routes answer unexpected errors themselves and log only an
   error code, because their queries bind addresses (`privateErrors`). Use it for any new route
   that binds an address.
-- **Editor** — After any email change (by staff, by the subscriber, or from Media Hub), the
-  unsubscribe link in every email the subscriber already received still unsubscribes them. The
-  other links in those emails, such as manage preferences, stop working.
 - **Viewer** — For an all-news subscriber, the subscriber page shows "All news" and also their
   timing (As it happens, Daily digest, or both).
-- **Editor** — Media lists: add a reporter from Media Hub (choose which of their emails) or type
-  an address for someone not in Media Hub. If they unsubscribed, you'll be asked to confirm, and
-  you'll see when they left; add them only if they've asked to come back.
-- **Editor** — A flagged member shows why. "Bouncing": clear it once the mailbox works, and
-  their bounce count starts again. A Media Hub email problem: pick another of their emails, or
-  clear the flag.
 - **Viewer** — Each media list shows who left it by unsubscribing, and whether they're back on
   it.
 - **Operations** — Operations (NoD Admins) pauses and resumes News On Demand sending and
@@ -136,12 +115,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   message. Bounce processing picks it up within 15 minutes.
 - **Developer** — A route that binds an address or a search term uses `privateErrorsWith`
   (`apps/nod/src/http/private-errors.ts`), and search terms go in POST bodies, never URLs.
-- **Editor** — Adding someone to a media list they left by unsubscribing always asks first, even
-  if they've since signed up again for public news. Confirm only if they've asked to receive
-  media releases again.
-- **Editor** — A retired media list can't be put on a release. If a release already had it when
-  it was retired, Publish settings shows it ticked and greyed out, marked "(retired)"; it stays
-  on the release, but nothing is sent to it.
 - **Operations** — When Operations says "Using the server default: …", the bounce summary field
   is empty on purpose. Type an address only to override the default; saving the field empty
   keeps using the default.
@@ -151,8 +124,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Viewer** — Every report downloads as a CSV that opens in Excel. Viewers get counts only;
   CSVs with email addresses (a list's members, recent unsubscribes) are for NoD Editors and
   Admins.
-- **Editor** — Each address CSV you download is recorded in the operations log (who, which
-  report; never the addresses).
 - **Viewer** — In Sends per release and Daily digest runs, "Handed off, not bounced" counts
   emails News On Demand handed to Distribution, minus bounces. It isn't delivery: an email still
   queued in Distribution, or one Distribution failed to send, still counts as handed off. "Not
@@ -207,10 +178,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Operations** — The first time NoD reads a feed (or after its address changes), it records the
   alerts already there without emailing anyone. Only alerts posted after that are sent.
 - **Operations** — An alert edited on the EMCR site updates our copy but is not sent again.
-- **Editor** — If you add a journalist to a media list and are asked to confirm because they opted
-  out, that holds even if their old record was purged: the opt-out is kept without the address. The
-  same applies to an address that simply unsubscribed and was later purged, even if it was never on
-  a media list at all — a kept opt-out with no address can't otherwise tell the two apart.
 - **Developer** — `npm run nod:import` (see docs/deploy/siteground.md) loads legacy NoD into NoD.
   Run `nrms:import` first and let Core's lists reach NoD. Read the report before trusting the data:
   every skipped row is grouped by reason. Re-running is safe; records changed in NoD since the last
@@ -219,19 +186,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Operations** — The NoD migration `0029_purge_indexes` adds indexes to `job_recipients` and
   `subscriber_links`. On a populated database, pre-build them with the CONCURRENTLY steps in
   docs/deploy/siteground.md.
-- **Editor** — A media-list member can now be flagged "Media Hub email opted out of a media list
-  this member is on": Media Hub moved their chosen email to an address that had unsubscribed from
-  one of their lists, so NoD kept them at their old address instead of moving them. Resolve it
-  from the media list: choose another of their emails, update the contact in Media Hub, or remove
-  them and add them again, confirming the opt-out. "Clear the flag only" lasts only until the next
-  Media Hub sync, which flags them again. Choosing an email that opted out is refused with the same
-  explanation.
-- **Editor** — Changing a subscriber's email to an address that unsubscribed from one of their
-  media lists asks first ("That address unsubscribed"). Change it only if they've asked to receive
-  media releases there again; confirming counts as re-adding them to those lists.
-- **Editor** — Recent unsubscribes includes people who unsubscribed in legacy, at the dates they
-  did so in legacy: after the import, the report's earlier weeks fill in with legacy's
-  unsubscribes, not just NoD's own.
 - **Developer** — Re-running `nod:import`: someone who unsubscribed in legacy since the last import
   is unsubscribed in NoD too, even if NoD changed their record in the meantime (the report lists
   them as "unsubscribed in legacy since the last import"); if NoD had already purged them, their
