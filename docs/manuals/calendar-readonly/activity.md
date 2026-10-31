@@ -21,10 +21,6 @@ Choose **Back**. You return to where you came from:
 - From **Month** or **Week**, you see the same calendar.
 - From **Updates**, you see the same updates.
 
-## Files
-
-The **Records** section appears only when it is turned on for your Calendar. It lists the activity's files, or "No files yet." Choose a file's name to open it. Only people who can see the activity can open its files.
-
 ## Linked news releases
 
 **BC Gov News**, at the end of the **Release** section, lists the news releases linked to the activity, or says "No releases are linked to this activity."

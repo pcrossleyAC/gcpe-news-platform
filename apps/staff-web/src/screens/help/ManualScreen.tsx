@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { formatLongDate } from "@gcpe/nrms-contract";
-import type { ManualsData } from "../../../../../scripts/manuals-lib.mjs";
+import type { HubManualsData as ManualsData } from "../../../../../scripts/manuals-lib.mjs";
 import { MANUALS } from "../../manuals/catalog";
 import { canOpenManual, MANUALS_DATA, openablePage } from "../../manuals/visible-pages";
 import { useSession } from "../../session/SessionContext";

@@ -4,7 +4,7 @@ The manuals are Markdown pages in folders under `docs/manuals/`, one folder per 
 
 When you change something staff see or do, change the manual page that covers it. Operations material goes in the deploy guide it concerns, in `docs/deploy/`. Developer material goes in `docs/developer-notes.md`. There is no running-notes file any more: `docs/manuals/running-notes.md` was retired, and a test fails if it comes back.
 
-After you add or edit a page, run `npm run manuals:build` and commit the updated `apps/staff-web/src/manuals/manuals.generated.json`. A test fails when the pages and that file disagree. Files directly in `docs/manuals/`, such as this README, are not pages; only files inside a folder are.
+After you add or edit a page, run `npm run manuals:build` and commit the three updated files in `apps/staff-web/src/manuals/`: `manuals.generated.json` (every field; the Word build and the next build read it), `manuals.hub.generated.json` (what the Hub loads, without the markdown or previous versions) and `manuals.previous.generated.json` (the previous versions, which only the review screen loads, in a file of its own). A test fails when the pages and those files disagree. Files directly in `docs/manuals/`, such as this README, are not pages; only files inside a folder are.
 
 ## The page header
 
@@ -54,6 +54,6 @@ A pull request that changes a Hub screen must also change the manual page that d
 - The check looks at changed files under `apps/staff-web/src/screens/`, except test files (`*.test.*`).
 - A page covers a folder when its `screens` header names that folder exactly, or names a folder above it: `admin/organizations` covers `admin/organizations/sub/x.tsx` but not `admin/organizations-x/`.
 - For each changed folder that some page covers, at least one of those pages must also change in the same pull request. Deleting such a page counts as a change. A folder no page names is not checked.
-- A broad entry such as `website` covers every folder under it, so changing any page that names it satisfies the check for all of those folders. Where another page names a narrower folder (`website/settings`), changing either page passes a change there.
+- A broad entry such as `website` covers every folder under it that no page names. Where a page names a narrower folder (`website/settings`), a file there is checked only against the pages naming that narrower folder: a change to `website/settings/BannerScreen.tsx` needs a change to a `website/settings` page (such as `nrms-site-editor/site-banner.md`), and a change to a `website` page alone does not pass it.
 - If the change does not alter what staff see or do, put a line in any commit message of the pull request that says exactly `Manual: no change`. That exempts the whole pull request.
 - The failure message names the folder and the pages to update.

@@ -216,6 +216,18 @@ export function compile(pages, previousData, today) {
   return { pages: out };
 }
 
+/**
+ * What the Hub ships, split out of the full compiled data so its main bundle stays small: `hub` is
+ * every page without `markdown` (only the Word build reads it) or `previous` (only the review
+ * screen shows it); `previous` maps each page id to its previous version, loaded on its own.
+ */
+export function splitForHub(data) {
+  return {
+    hub: { pages: data.pages.map(({ markdown: _markdown, previous: _previous, ...page }) => page) },
+    previous: Object.fromEntries(data.pages.map((p) => [p.id, p.previous])),
+  };
+}
+
 /** Every page under docs/manuals/<folder>/ (the README and loose notes at the top level are not pages). */
 export function readManualPages(dir = MANUALS_DIR) {
   const files = [];

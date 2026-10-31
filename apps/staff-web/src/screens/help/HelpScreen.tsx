@@ -7,7 +7,7 @@ import { GLOSSARY, type GlossaryArea } from "../../shared/glossary";
 import { isApplePlatform, SHORTCUTS, shortcutText, shortcutWords } from "../../shared/shortcuts";
 import { hasAnyReadRole } from "../../shell/nav";
 import { MANUALS, visibleManuals } from "../../manuals/catalog";
-import { canManageWebsite, canReadWebsite } from "../website/access";
+import { canReadWebsite } from "../website/access";
 import { canEditSubscribers, canReadSubscribers } from "../subscribers/access";
 import { canEditReleases } from "../release/access";
 import { canChangeCalendar, hasCalendarRole } from "../calendar/access";
@@ -23,6 +23,10 @@ interface HowTo {
 
 /** The keys for a shortcut as this device names them ("⌘S" / "Ctrl+S"). */
 const mod = (key: "S" | "Enter" | "K") => shortcutText(key === "S" ? "save" : key === "Enter" ? "submit" : "search");
+
+/** Can change the Website tabs: the screens' own `canEdit` and the server's rule (no shared
+ * predicate exists). A Core administrator without the role sees them view-only. */
+const canEditWebsite = (s: SessionValue) => s.has("NRMS.SiteEditor");
 
 /** Short pointers to what each area does, worded from the screens as built (only what is true). */
 const HOW_TO: HowTo[] = [
@@ -84,7 +88,7 @@ const HOW_TO: HowTo[] = [
     show: canReadWebsite,
     items: [
       {
-        show: canManageWebsite,
+        show: canEditWebsite,
         text: (
           <>
             <strong>Change the banner, footer and other site settings:</strong> make your changes, Save draft ({mod("S")}), then Publish. Nothing is live until you publish. Settings history lists every published revision and can restore one.
@@ -92,10 +96,10 @@ const HOW_TO: HowTo[] = [
         ),
       },
       {
-        show: canManageWebsite,
+        show: canEditWebsite,
         text: (
           <>
-            <strong>Change the home page carousel:</strong> edit the next carousel and save it; it goes live at its Go live at time, or choose Make live now. Changes to the live carousel publish at once, so it asks first.
+            <strong>Change the home page carousel:</strong> edit the next carousel and save it; it goes live at its Go live at time, or choose Make live now. Changes to the live carousel reach the public home page within a few minutes, so it asks first.
           </>
         ),
       },

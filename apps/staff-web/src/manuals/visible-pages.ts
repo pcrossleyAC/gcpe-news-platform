@@ -1,10 +1,16 @@
-import type { ManualPage, ManualsData } from "../../../../scripts/manuals-lib.mjs";
+import type { HubManualPage as ManualPage, HubManualsData as ManualsData, ManualPreviousVersions } from "../../../../scripts/manuals-lib.mjs";
 import type { SessionValue } from "../session/SessionContext";
 import { visibleManuals } from "./catalog";
-import generated from "./manuals.generated.json";
+import generated from "./manuals.hub.generated.json";
 
-/** The compiled manual pages (committed, refreshed by `npm run manuals:build`). */
+/** The compiled manual pages as the Hub ships them (committed, refreshed by `npm run manuals:build`). */
 export const MANUALS_DATA = generated as ManualsData;
+
+/** Each page's previous version, for the review screen only. A dynamic import, so the build puts it
+ * in its own file and the main bundle doesn't carry it. */
+export function loadPreviousVersions(): Promise<ManualPreviousVersions> {
+  return import("./manuals.previous.generated.json").then((m) => m.default as ManualPreviousVersions);
+}
 
 export function canOpenManual(manualId: string, s: SessionValue): boolean {
   return (visibleManuals(s) as string[]).includes(manualId);

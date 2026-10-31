@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { formatLongDate } from "@gcpe/nrms-contract";
-import type { ManualPage, ManualsData } from "../../../../../scripts/manuals-lib.mjs";
+import type { HubManualPage as ManualPage, HubManualsData as ManualsData, ManualPreviousVersions } from "../../../../../scripts/manuals-lib.mjs";
 import { ApiError, apiFetch } from "../../api/client";
 import { MANUALS } from "../../manuals/catalog";
-import { MANUALS_DATA } from "../../manuals/visible-pages";
+import { loadPreviousVersions, MANUALS_DATA } from "../../manuals/visible-pages";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
@@ -39,17 +39,34 @@ function PageHtml({ html }: { html: string }): React.JSX.Element {
   return <div className="gcpe-manual__content" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+/** What a page said before this version, or that it is new. */
+function Before({ version }: { version: ManualPreviousVersions[string] }): React.JSX.Element {
+  return version ? (
+    <>
+      <h3>Before</h3>
+      <PageHtml html={version.html} />
+    </>
+  ) : (
+    <>
+      <h3>New page</h3>
+      <p>This page did not exist before.</p>
+    </>
+  );
+}
+
 /**
  * `/hub/help/manuals-review` (Core.Admin only): the manual pages whose current version nobody has
  * marked reviewed, each with what it said before. A page's version is its content hash, so editing
  * a page makes it unreviewed again; a review of a hash or page the Hub no longer has is ignored.
+ * The previous versions load on their own (`loadPrevious`), so only this screen fetches them.
  */
-export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData }): React.JSX.Element {
+export function ManualReviewScreen({ data = MANUALS_DATA, loadPrevious = loadPreviousVersions }: { data?: ManualsData; loadPrevious?: () => Promise<ManualPreviousVersions> }): React.JSX.Element {
   const session = useSession();
   const allowed = isCoreAdmin(session);
   useDocumentTitle(allowed ? "Changed since your last review" : "Not available");
 
   const [reviews, setReviews] = useState<Review[] | null>(null);
+  const [previous, setPrevious] = useState<ManualPreviousVersions | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -68,7 +85,8 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
   useEffect(() => {
     if (!allowed) return;
     load().catch(() => setLoadError(true));
-  }, [allowed, load]);
+    loadPrevious().then(setPrevious, () => setLoadError(true));
+  }, [allowed, load, loadPrevious]);
 
   if (!allowed) {
     return (
@@ -83,8 +101,9 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
   }
 
   const byVersion = new Map((reviews ?? []).map((r) => [key(r.pageId, r.hash), r]));
-  const unreviewed = reviews ? data.pages.filter((p) => !byVersion.has(key(p.id, p.hash))).sort(newestFirst) : [];
-  const reviewed = reviews
+  const ready = reviews !== null && previous !== null;
+  const unreviewed = ready ? data.pages.filter((p) => !byVersion.has(key(p.id, p.hash))).sort(newestFirst) : [];
+  const reviewed = ready
     ? data.pages
         .flatMap((p) => {
           const r = byVersion.get(key(p.id, p.hash));
@@ -132,9 +151,9 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
 
       {loadError && <InlineAlert variant="danger" role="alert" description="Couldn't load the reviews. Reload the page to try again." />}
       {problems.length > 0 && <InlineAlert variant="danger" role="alert" title="Couldn't mark it reviewed" description={problems.join(" ")} />}
-      {!loadError && reviews === null && <p>Loading…</p>}
+      {!loadError && !ready && <p>Loading…</p>}
 
-      {reviews && unreviewed.length === 0 && <p>Nothing to review. Every manual change has been reviewed.</p>}
+      {ready && unreviewed.length === 0 && <p>Nothing to review. Every manual change has been reviewed.</p>}
       {unreviewed.length > 0 && (
         <ul className="gcpe-manual-review__list">
           {unreviewed.map((p) => (
@@ -147,8 +166,7 @@ export function ManualReviewScreen({ data = MANUALS_DATA }: { data?: ManualsData
               </p>
               <div className="gcpe-manual-review__compare">
                 <section aria-label={`Before: ${p.title}`}>
-                  <h3>{p.previous ? "Before" : "New page"}</h3>
-                  {p.previous ? <PageHtml html={p.previous.html} /> : <p>This page did not exist before.</p>}
+                  <Before version={previous?.[p.id] ?? null} />
                 </section>
                 <section aria-label={`Now: ${p.title}`}>
                   <h3>Now</h3>

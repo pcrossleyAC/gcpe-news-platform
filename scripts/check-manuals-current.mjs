@@ -21,16 +21,18 @@ const isPagePath = (file) => file.startsWith(MANUALS) && file.endsWith(".md") &&
  *   (its header read from the base) so that a deletion counts as a change to the pages naming that folder.
  * commitMessages: full messages; a line exactly `Manual: no change` exempts the whole pull request.
  * A folder matches exactly, or as a prefix at a folder boundary (admin/organizations covers admin/organizations/sub/x.tsx,
- * not admin/organizations-x/).
+ * not admin/organizations-x/). Each file belongs only to the narrowest named folder that covers it: with pages naming
+ * website and website/settings, website/settings/x.tsx is checked against the website/settings pages alone.
  */
 export function missingManualUpdates(changedFiles, pages, commitMessages) {
   if (commitMessages.some((m) => m.split(/\r?\n/).some((line) => line.trimEnd() === OPT_OUT))) return [];
   const changed = new Set(changedFiles);
   const screenFiles = changedFiles.filter((f) => f.startsWith(SCREENS) && !/\.test\.[^/]*$/.test(f.slice(f.lastIndexOf("/") + 1)));
   const named = [...new Set(pages.flatMap((p) => p.screens))].sort();
+  const owner = (file) => named.filter((folder) => file.startsWith(`${SCREENS}${folder}/`)).sort((a, b) => b.length - a.length)[0];
   const messages = [];
   for (const folder of named) {
-    const touched = screenFiles.filter((f) => f.startsWith(`${SCREENS}${folder}/`));
+    const touched = screenFiles.filter((f) => owner(f) === folder);
     if (touched.length === 0) continue;
     const covering = pages.filter((p) => p.screens.includes(folder));
     if (covering.some((p) => changed.has(p.path))) continue;

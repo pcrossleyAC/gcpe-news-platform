@@ -22,7 +22,7 @@ The **Status** column shows one of these:
 
 | Status | What it means |
 |---|---|
-| **Pending** | Never confirmed. They get nothing. Rare; such records are deleted after 10 days when the retention purge is on. |
+| **Pending** | Never confirmed. You shouldn't see it: people who sign up on the public site get a record only once they confirm. If one does turn up, it gets nothing and is deleted after 10 days when the retention purge is on. |
 | **Active** | They get the email they chose. |
 | **Disabled** | They get nothing. Staff deactivated them, or their email kept bouncing. Their lists are kept. |
 | **Unsubscribed or deleted** | They get nothing. Only they can subscribe again. |

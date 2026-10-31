@@ -33,6 +33,9 @@ const ESBUILD_OPTIONS = {
   // Content-hashed names (esbuild's own [hash]) are *why* /hub/assets/* can be cached
   // immutably for a year in apps/stack/src/stack.ts — a changed file is a changed URL.
   entryNames: "assets/app-[hash]",
+  // A dynamic import() gets its own chunk (the manual review screen's previous versions), so the
+  // main bundle doesn't carry it.
+  splitting: true,
   chunkNames: "assets/chunk-[name]-[hash]",
   assetNames: "assets/[name]-[hash]",
   // The design system's fonts (and any future icons/images its CSS references via url()) are

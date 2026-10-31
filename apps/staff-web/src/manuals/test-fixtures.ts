@@ -1,24 +1,22 @@
-import type { ManualPage, ManualsData } from "../../../../scripts/manuals-lib.mjs";
+import type { HubManualPage, HubManualsData } from "../../../../scripts/manuals-lib.mjs";
 
-/** A page for tests; the html is what the compiler would make from the markdown. */
-export function fixturePage(over: Partial<ManualPage> & Pick<ManualPage, "id" | "manual">): ManualPage {
+/** A page for tests, as the Hub ships it; the html is what the compiler would make. */
+export function fixturePage(over: Partial<HubManualPage> & Pick<HubManualPage, "id" | "manual">): HubManualPage {
   return {
     title: over.id,
     order: 1,
     routes: [],
     screens: [],
     topics: [],
-    markdown: "",
     html: `<p>Body of ${over.id}.</p>`,
     hash: "0".repeat(64),
     changed: "2026-10-30",
-    previous: null,
     ...over,
   };
 }
 
 /** Pages for the visibility and context-Help tests: a stub per kind, plus a second topic. */
-export const FIXTURE: ManualsData = {
+export const FIXTURE: HubManualsData = {
   pages: [
     fixturePage({ id: "core-admin-overview", manual: "core-admin", title: "Core administrator manual", html: "<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>" }),
     fixturePage({ id: "government-terms", manual: "core-admin", title: "Government terms", order: 20, routes: ["/government-terms"], changed: "2026-10-05" }),

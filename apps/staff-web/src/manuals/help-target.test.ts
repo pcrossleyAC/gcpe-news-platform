@@ -12,8 +12,15 @@ describe("helpTargetFor", () => {
   it("gives a release editor the editor manual's page, not the site editor's", () => {
     expect(helpTargetFor("/releases/123", as("NRMS.Editor"), FIXTURE)).toBe("/help/manuals/nrms-editor/editor-releases");
   });
-  it("gives a site editor their own manual's page, ahead of the lower manuals that match as well", () => {
+  it("puts the reader's own manual first when two pages match equally", () => {
+    // The fixture's Site editor page and the viewer page both match /releases.
     expect(helpTargetFor("/releases/123", as("NRMS.SiteEditor"), FIXTURE)).toBe("/help/manuals/nrms-site-editor/site-editor-releases");
+  });
+  it("skips the release editor's pages for a reader who can't change releases", () => {
+    const data = { pages: FIXTURE.pages.filter((p) => p.id !== "site-editor-releases") };
+    expect(helpTargetFor("/releases/123", as("NRMS.SiteEditor"), data)).toBe("/help/manuals/nrms-viewer/viewer-overview");
+    expect(helpTargetFor("/releases/scheduled", as("NRMS.SiteEditor"), data)).toBe("/help/manuals/nrms-viewer/viewer-overview");
+    expect(helpTargetFor("/releases/123", as("NRMS.SiteEditor", "NRMS.Editor"), data)).toBe("/help/manuals/nrms-editor/editor-releases");
   });
   it("prefers the longest matching route", () => {
     expect(helpTargetFor("/releases/scheduled", as("NRMS.Editor"), FIXTURE)).toBe("/help/manuals/nrms-editor/editor-publishing");
@@ -59,6 +66,57 @@ describe("Help on the release screens, with the compiled manuals", () => {
   it.each(SCREENS)("on %s, a release viewer gets %s and a release editor %s", (path, viewerPage, editorPage) => {
     expect(helpTargetFor(path, as("NRMS.Viewer"))).toBe(`/help/manuals/nrms-viewer/${viewerPage}`);
     expect(helpTargetFor(path, as("NRMS.Editor"))).toBe(`/help/manuals/nrms-editor/${editorPage}`);
+  });
+  // Site editors only read releases, so the release editor's pages don't fit them.
+  const RELEASE_ROUTES: [string, string][] = [
+    ["/releases", "viewer-read-a-release"],
+    ["/releases/123", "viewer-read-a-release"],
+    ["/releases/new", "viewer-read-a-release"],
+    ["/releases/forecast", "viewer-release-folders"],
+    ["/releases/drafts", "viewer-release-folders"],
+    ["/releases/scheduled", "viewer-release-folders"],
+    ["/releases/published", "viewer-release-folders"],
+    ["/search", "viewer-find-a-release"],
+  ];
+  it.each(RELEASE_ROUTES)("on %s, a site editor gets the viewer's %s, not a release editor's page", (path, viewerPage) => {
+    expect(helpTargetFor(path, as("NRMS.SiteEditor"))).toBe(`/help/manuals/nrms-viewer/${viewerPage}`);
+    expect(helpTargetFor(path, as("NRMS.SiteEditor", "NRMS.Editor"))).toMatch(/^\/help\/manuals\/nrms-editor\//);
+  });
+});
+
+describe("Help on the Website screens, with the compiled manuals", () => {
+  // [path, the Site editor's page]. A Core administrator who is also a site editor gets the Site
+  // editor's page, not the Core admin page that says Website is view-only for them.
+  const SCREENS: [string, string][] = [
+    ["/website/carousel", "carousel"],
+    ["/website/pins", "emergency-pins"],
+    ["/website/live-feed", "live-feed"],
+    ["/website/links", "resource-links"],
+    ["/website/files", "website-files"],
+    ["/website/settings", "site-settings"],
+    ["/website/settings-history", "site-settings"],
+    ["/website/banner", "site-banner"],
+    ["/website/footer", "footer-and-navigation"],
+    ["/website/navigation", "footer-and-navigation"],
+    ["/website/social", "social-links"],
+    ["/website/theme", "theme-colours"],
+    ["/website/ministry-pages", "ministry-pages-and-media-contacts"],
+    ["/website/media-contacts", "ministry-pages-and-media-contacts"],
+    ["/website/page-text", "page-text"],
+    ["/website/identity", "site-identity"],
+  ];
+  it.each(SCREENS)("on %s, a Core administrator who is also a site editor gets %s", (path, page) => {
+    expect(helpTargetFor(path, as("NRMS.SiteEditor"))).toBe(`/help/manuals/nrms-site-editor/${page}`);
+    expect(helpTargetFor(path, as("Core.Admin", "NRMS.SiteEditor"))).toBe(`/help/manuals/nrms-site-editor/${page}`);
+    expect(helpTargetFor(path, as("Core.Admin"))).toBe("/help/manuals/core-admin/website-project-blue-bridge");
+  });
+  it("keeps the Core admin page on Project Blue Bridge, the one switch only a Core administrator has", () => {
+    expect(helpTargetFor("/website/blue-bridge", as("Core.Admin", "NRMS.SiteEditor"))).toBe("/help/manuals/core-admin/website-project-blue-bridge");
+    expect(helpTargetFor("/website/blue-bridge", as("NRMS.SiteEditor"))).toBe("/help/manuals/nrms-site-editor/site-identity");
+  });
+  it("sends a Core administrator who is also a site editor to How do I on the Website landing, as a site editor", () => {
+    expect(helpTargetFor("/website", as("Core.Admin", "NRMS.SiteEditor"))).toBe("/help#how-website");
+    expect(helpTargetFor("/website", as("Core.Admin"))).toBe("/help/manuals/core-admin/website-project-blue-bridge");
   });
 });
 
