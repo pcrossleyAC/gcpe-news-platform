@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import { useBlocker, type Blocker } from "react-router";
+import { UNSAFE_DataRouterContext, useBlocker, type Blocker } from "react-router";
 import { AlertDialog, Button, Modal } from "@bcgov/design-system-react-components";
 
 /**
@@ -11,6 +11,9 @@ import { AlertDialog, Button, Modal } from "@bcgov/design-system-react-component
  * A screen says it has unsaved changes with one line, `<LeavePageGuard dirty={…} />`. The release
  * editor and the Calendar activity, which have their own dialog wording and drafts to forget on
  * Leave, use the two halves ({@link useLeaveBlocker} and {@link LeavePageDialog}) directly.
+ *
+ * A screen has at most one guard: react-router honours only one blocker at a time, so a screen
+ * with several forms passes their combined "anything unsaved" to one guard.
  *
  * Every guard on screen also reports to the shell's {@link UnsavedChangesProvider} (when there is
  * one: a screen tested on its own has none), so **Sign out** can ask first and a session that ends
@@ -77,6 +80,8 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }): R
   return <UnsavedChangesContext.Provider value={value}>{children}</UnsavedChangesContext.Provider>;
 }
 
+const IDLE_BLOCKER: Blocker = { state: "unblocked", proceed: undefined, reset: undefined, location: undefined };
+
 export interface LeaveBlockerOptions {
   /** See {@link Registration.keepsDraft}. */
   keepsDraft?: boolean;
@@ -100,13 +105,21 @@ export function useLeaveBlocker(dirty: boolean, options: LeaveBlockerOptions = {
   const isDirtyRef = useRef(options.isDirty);
   isDirtyRef.current = options.isDirty;
   const bypass = shell?.bypass;
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      (isDirtyRef.current ? isDirtyRef.current() : dirtyRef.current) &&
-      !leaving?.current &&
-      !bypass?.current &&
-      (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
-  );
+  // The Hub always runs under a data router (createBrowserRouter), which blocking needs. A screen's
+  // own test may mount it under a plain <MemoryRouter>: there, in-app navigation simply isn't
+  // guarded. Whether there is a data router never changes for a mounted screen, so the hook order
+  // is stable.
+  const inDataRouter = useContext(UNSAFE_DataRouterContext) !== null;
+  const blocker = inDataRouter
+    ? // eslint-disable-next-line react-hooks/rules-of-hooks
+      useBlocker(
+        ({ currentLocation, nextLocation }) =>
+          (isDirtyRef.current ? isDirtyRef.current() : dirtyRef.current) &&
+          !leaving?.current &&
+          !bypass?.current &&
+          (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
+      )
+    : IDLE_BLOCKER;
 
   useEffect(() => {
     if (!dirty) return;
@@ -176,4 +189,28 @@ export function LeavePageDialog({
 export function LeavePageGuard({ dirty, message, onLeave }: { dirty: boolean; message?: string; onLeave?: () => void }): React.JSX.Element {
   const blocker = useLeaveBlocker(dirty);
   return <LeavePageDialog blocker={blocker} message={message} onLeave={onLeave} />;
+}
+
+export type ReportDirty = (key: string, dirty: boolean) => void;
+
+/** For a screen whose unsaved changes sit in several parts (cards, rows, panels): each part
+ * reports with {@link useReportDirty}, and the screen's one guard asks while any part is dirty. */
+export function useDirtyParts(): { anyDirty: boolean; report: ReportDirty } {
+  const parts = useRef(new Set<string>());
+  const [anyDirty, setAnyDirty] = useState(false);
+  const report = useCallback<ReportDirty>((key, dirty) => {
+    if (dirty) parts.current.add(key);
+    else parts.current.delete(key);
+    setAnyDirty(parts.current.size > 0);
+  }, []);
+  return { anyDirty, report };
+}
+
+/** One part's share of {@link useDirtyParts}; it stops counting when the part goes away. */
+export function useReportDirty(report: ReportDirty | undefined, key: string, dirty: boolean): void {
+  useEffect(() => {
+    if (!report) return;
+    report(key, dirty);
+    return () => report(key, false);
+  }, [report, key, dirty]);
 }

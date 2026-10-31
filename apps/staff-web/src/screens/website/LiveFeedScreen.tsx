@@ -10,6 +10,7 @@ import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { canManageWebsite } from "./access";
 import { SaveResult, clockTime } from "./SaveResult";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
+import { LeavePageGuard } from "../../shared/LeaveGuard";
 import type { LiveFeedView } from "./types";
 
 /** Server wording (apps/nrms/src/website/settings.ts's saveLiveFeed) — shown client-side too so
@@ -97,6 +98,8 @@ export function LiveFeedScreen(): React.JSX.Element {
   return (
     <div className="gcpe-live-feed">
       <h1>Live Feed</h1>
+      {/* Suite review W9: asks before leaving with changes not yet saved. */}
+      <LeavePageGuard dirty={canEdit && (enabled !== feed.enabled || manifestUrl !== feed.manifestUrl || m3uUrl !== feed.m3uUrl)} />
 
       {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
       {(clientProblem || section.problems) && (

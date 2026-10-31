@@ -8,6 +8,7 @@ import { RequireAuth } from "../../session/RequireAuth";
 import { AnnouncerProvider } from "../../shared/Announcer";
 import { LinksScreen } from "./LinksScreen";
 import type { LinksView } from "./types";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
 
 function withAuth(children: React.ReactNode) {
   return (
@@ -160,3 +161,31 @@ describe("LinksScreen", () => {
     expect(await screen.findByText(/^Saved at \d{1,2}:\d{2}\s?[AP]M\. Live now: the public home page shows the resource links within a few minutes\.$/)).toHaveAttribute("role", "status");
   });
 });
+
+// Suite review W9/H2: unsaved resource links ask before leaving.
+describe("LinksScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves freely untouched, and asks after a link is edited", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/links") return jsonResponse(200, TWO_LINKS);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    let router = renderGuarded(<LinksScreen />);
+    await screen.findByLabelText("Link 1 text");
+    await expectLeaveFree(router);
+    cleanup();
+    router = renderGuarded(<LinksScreen />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Link 1 text"), " link");
+    await expectLeaveAsks(router, user);
+  });
+});
+

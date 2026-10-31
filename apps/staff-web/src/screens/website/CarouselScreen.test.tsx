@@ -9,6 +9,7 @@ import { RequireAuth } from "../../session/RequireAuth";
 import { AnnouncerProvider } from "../../shared/Announcer";
 import { CarouselScreen } from "./CarouselScreen";
 import type { CarouselsResponse, CarouselView } from "./types";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
 
 function withAuth(children: React.ReactNode) {
   return (
@@ -644,3 +645,27 @@ describe("CarouselScreen", () => {
     });
   });
 });
+
+// Suite review W9/H2: the carousel asks before leaving with unsaved slides.
+describe("CarouselScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves freely with nothing changed, and asks once a slide is added but not saved", async () => {
+    stubBasicFetch(["NRMS.SiteEditor"], { ...EMPTY, next: NEXT_CAROUSEL });
+    let router = renderGuarded(<CarouselScreen />);
+    await screen.findByRole("button", { name: "Add slide" });
+    await expectLeaveFree(router);
+    cleanup();
+
+    stubBasicFetch(["NRMS.SiteEditor"], { ...EMPTY, next: NEXT_CAROUSEL });
+    router = renderGuarded(<CarouselScreen />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Add slide" }));
+    await user.type(screen.getByLabelText("Slide 1 headline"), "Big news");
+    await expectLeaveAsks(router, user);
+  });
+});
+

@@ -21,6 +21,7 @@ import { formatPublishedAt } from "./settings/format";
 import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressErrors } from "./slideChecks";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../shared/LeaveGuard";
 import type { CarouselsResponse, CarouselView, SlideView } from "./types";
 
 /** A slide's editable fields, as the slides-order PUT (saveCarouselSchema) takes them — `id`
@@ -57,6 +58,8 @@ interface SlideEditorProps {
   onSaved(result?: string): void;
   /** W3: on the live card, the scheduled next carousel (a copy of these slides made earlier), if any. */
   next?: CarouselView | null;
+  /** Suite review W9: tells the screen's leave-page guard whether this card has unsaved changes. */
+  reportDirty?: ReportDirty;
 }
 
 /** One carousel's slide list — shared by the live and next cards (past carousels use a
@@ -64,7 +67,7 @@ interface SlideEditorProps {
  * end up building the same full `slides` array (constraints.md: every drag needs a keyboard
  * alternative), and a single Save sends the whole list plus (optionally) a new go-live time in
  * one `PUT .../carousels/:id`. */
-function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved, next: scheduled = null }: SlideEditorProps): React.JSX.Element {
+function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved, next: scheduled = null, reportDirty }: SlideEditorProps): React.JSX.Element {
   const section = useVersionedSave<CarouselView>({ quiet: true });
   const at = () => clockTime(new Date(), timeZone);
   const [slides, setSlides] = useState<SlideForm[]>(() => toForm(carousel.slides));
@@ -84,6 +87,10 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved, ne
   const moveFocus = useMoveFocusRestore<HTMLDivElement>();
   const nextClientKey = useRef(0);
   const publicOrigin = usePublicFilesOrigin();
+  // W9: slides changed, added, removed or moved, or a new go-live time, not yet saved. The card
+  // remounts with each saved version, so a save starts it clean again.
+  const dirty = canEdit && (goLive !== null || JSON.stringify(slides) !== JSON.stringify(toForm(carousel.slides)));
+  useReportDirty(reportDirty, carousel.id, dirty);
 
   // I4: local reorders (unlike Documents, moving a slide isn't saved until "Save carousel" or, on the live card, "Publish carousel changes")
   // re-render synchronously, so restoring focus right after the triggering state update (in an
@@ -422,6 +429,7 @@ export function CarouselScreen(): React.JSX.Element {
   const [nextResult, setNextResult] = useState("");
   const at = () => clockTime(new Date(), timeZone);
   const [goLive, setGoLive] = useState<ScheduleValue | null>(null);
+  const cards = useDirtyParts();
 
   const reload = useCallback(() => {
     apiFetch<CarouselsResponse>("/nrms/api/site/carousels").then(setData, () => setLoadError("Couldn't load the carousels."));
@@ -493,12 +501,15 @@ export function CarouselScreen(): React.JSX.Element {
   return (
     <div className="gcpe-carousel">
       <h1>Carousel</h1>
+      {/* W9: a card's unsaved slides, or a go-live time chosen for a next carousel not yet created. */}
+      <LeavePageGuard dirty={cards.anyDirty || (canEdit && goLive !== null)} />
 
       <section aria-label="Live carousel">
         <h2>Live</h2>
         {data.live ? (
           <SlideEditor
             key={`${data.live.id}:${data.live.version}`}
+            reportDirty={cards.report}
             carousel={data.live}
             canEdit={canEdit}
             allowGoLiveEdit={false}
@@ -522,6 +533,7 @@ export function CarouselScreen(): React.JSX.Element {
             <NextCopyNote live={data.live} next={data.next} timeZone={timeZone} />
             <SlideEditor
               key={`${data.next.id}:${data.next.version}`}
+              reportDirty={cards.report}
               carousel={data.next}
               canEdit={canEdit}
               allowGoLiveEdit={canEdit}

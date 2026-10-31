@@ -15,6 +15,7 @@ import { canManageWebsite } from "./access";
 import { SaveResult, clockTime } from "./SaveResult";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
+import { LeavePageGuard } from "../../shared/LeaveGuard";
 import type { LinksView, ResourceLinkView } from "./types";
 
 /** `clientKey` is this form's own stable identity (never sent to the server) — `id` alone
@@ -128,6 +129,8 @@ export function LinksScreen(): React.JSX.Element {
   return (
     <div className="gcpe-links" ref={moveFocus.containerRef}>
       <h1>Resource links</h1>
+      {/* Suite review W9: asks before leaving with links changed, added, removed or moved but not saved. */}
+      <LeavePageGuard dirty={canEdit && JSON.stringify(links) !== JSON.stringify(toForm(view.links))} />
 
       {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
       {section.problems && (
