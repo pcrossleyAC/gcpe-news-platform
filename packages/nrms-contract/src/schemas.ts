@@ -173,12 +173,21 @@ export type ListQuery = z.infer<typeof listQuerySchema>;
 /** `GET /forecast` (spec addendum §11): one page of the merged releases and activities. */
 export const forecastQuerySchema = z.object({ page: z.coerce.number().int().min(1).max(1000).default(1) });
 export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
-export const searchQuerySchema = z.object({
-  q: z.string().trim().max(200).default(""),
-  ministry: z.string().trim().toLowerCase().max(100).optional(),
-  sector: z.string().trim().toLowerCase().max(100).optional(),
-  page: z.coerce.number().int().min(1).default(1),
-});
+/** A calendar day ("2026-09-02"), as an `<input type="date">` gives it. */
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-09-02.").refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), "That isn't a real date.");
+export const searchQuerySchema = z
+  .object({
+    q: z.string().trim().max(200).default(""),
+    ministry: z.string().trim().toLowerCase().max(100).optional(),
+    sector: z.string().trim().toLowerCase().max(100).optional(),
+    // Suite review R9: the release type, and a From/To range (BC days, both included) on the
+    // release date: when it went out, or else its planned or scheduled time.
+    type: z.enum(["all", ...RELEASE_TYPES]).optional(),
+    from: isoDay.optional(),
+    to: isoDay.optional(),
+    page: z.coerce.number().int().min(1).default(1),
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: "The From date is after the To date.", path: ["to"] });
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type AddDocumentInput = z.infer<typeof addDocumentSchema>;
 export type AddTranslationInput = z.infer<typeof addTranslationSchema>;

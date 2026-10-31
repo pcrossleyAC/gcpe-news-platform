@@ -139,7 +139,7 @@ describe("SearchScreen", () => {
   it("before any search, says what it searches and lists the latest published releases", async () => {
     stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
     renderSearch();
-    expect(await screen.findByText("Type part of a headline, a reference number or a web address; filter by ministry or sector.")).toBeInTheDocument();
+    expect(await screen.findByText("Type part of a headline, a reference number or a web address; filter by ministry, sector, type or date.")).toBeInTheDocument();
     const recent = await screen.findByRole("region", { name: "Recently published" });
     expect(within(recent).getByText("Latest published release")).toBeInTheDocument();
   });
@@ -147,7 +147,7 @@ describe("SearchScreen", () => {
   it("with a ministry or sector chosen but no words, doesn't show the unfiltered recent releases", async () => {
     stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
     renderSearch("/search?ministry=educ");
-    expect(await screen.findByText("Type part of a headline, a reference number or a web address; filter by ministry or sector.")).toBeInTheDocument();
+    expect(await screen.findByText("Type part of a headline, a reference number or a web address; filter by ministry, sector, type or date.")).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole("region", { name: "Recently published" })).toBeNull();
   });
@@ -190,16 +190,16 @@ describe("SearchScreen", () => {
     expect(searchCalls).toEqual(["/nrms/api/search?q=schools+funding&page=1"]);
   });
 
-  it("says what matched nothing, and offers to clear the ministry and sector filters when any are set", async () => {
+  it("says what matched nothing, and offers to clear the filters when any are set", async () => {
     const searchCalls: string[] = [];
     stubFetch({ searchCalls, searchResult: searchPage([]) });
     renderSearch("/search?q=ferries&ministry=educ");
     expect(await screen.findByText("No releases match “ferries”.")).toBeInTheDocument();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "Clear ministry and sector filters" }));
+    await user.click(screen.getByRole("link", { name: "Clear filters" }));
     await waitFor(() => expect(searchCalls.at(-1)).toBe("/nrms/api/search?q=ferries&page=1"));
     expect(await screen.findByText("No releases match “ferries”.")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Clear ministry and sector filters" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Clear filters" })).toBeNull();
   });
 
   it("combines the ministry and sector filters with the query (AND)", async () => {
@@ -217,6 +217,33 @@ describe("SearchScreen", () => {
     await waitFor(() => expect(searchCalls.at(-1)).toContain("ministry=educ"));
     expect(searchCalls.at(-1)).toContain("sector=econ");
     expect(searchCalls.at(-1)).toContain("q=schools");
+  });
+
+  // Suite review R9: Type and a From/To range on the release date, ANDed with the rest.
+  it("filters by type and by a From/To release date, and keeps them in the address", async () => {
+    const searchCalls: string[] = [];
+    stubFetch({ searchCalls, searchResult: searchPage([item()]) });
+    renderSearch("/search?q=schools");
+    await screen.findByText("A headline");
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText("Type"), "factsheet");
+    await waitFor(() => expect(searchCalls.at(-1)).toContain("type=factsheet"));
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2024-01-01" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2024-12-31" } });
+    await waitFor(() => expect(searchCalls.at(-1)).toContain("to=2024-12-31"));
+    expect(searchCalls.at(-1)).toContain("from=2024-01-01");
+    expect(searchCalls.at(-1)).toContain("type=factsheet");
+    expect(searchCalls.at(-1)).toContain("q=schools");
+    expect(screen.getByLabelText("Type")).toHaveValue("factsheet");
+  });
+
+  it("a From date after the To date says so and isn't searched", async () => {
+    const searchCalls: string[] = [];
+    stubFetch({ searchCalls, searchResult: searchPage([item()]) });
+    renderSearch("/search?q=schools&from=2024-12-31&to=2024-01-01");
+    expect(await screen.findByText("The From date is after the To date.")).toBeInTheDocument();
+    expect(searchCalls).toEqual([]);
+    expect(screen.getByLabelText("To")).toHaveAccessibleDescription("The From date is after the To date.");
   });
 
   it("keeps the ministry/sector filters when submitting a new search term, and resets the page", async () => {

@@ -25,14 +25,14 @@ On screens without their own search or filter box, Ctrl+K (Command+K on a Mac) t
 
 1. Choose **Search** in the side menu.
 2. Type part of the headline, exactly as it appears, in **Search**.
-3. To narrow it, choose a **Ministry** or **Sector**. On its own, without words in **Search**, this does nothing.
+3. To narrow it, choose a **Ministry**, **Sector** or **Type**, or a **From** and **To** date. The dates are the release date: when it went out, or for one that hasn't, its planned or scheduled time. Both days are included; leave either empty for no limit on that side. If **From** is after **To**, it says "The From date is after the To date." and doesn't search. On their own, without words in **Search**, these do nothing.
 4. Choose **Search**.
 
 Typing a reference number, key or web address here opens the release directly, as **Find a release** does.
 
 Before you search, **Search** lists the five most recently published releases.
 
-Results include drafts, scheduled and published releases, newest first, 20 to a page. Deleted releases don't appear. If nothing matches, you see "No releases match" and your words; if a ministry or sector is chosen, choose **Clear ministry and sector filters** to try again without them.
+Results include drafts, scheduled and published releases, newest first, 20 to a page. Deleted releases don't appear. If nothing matches, you see "No releases match" and your words; if any filter is chosen, choose **Clear filters** to try again without them.
 
 Search looks at headlines only. To find a release by other words, use **Similar published releases** on a release, or the public site's own search.
 
