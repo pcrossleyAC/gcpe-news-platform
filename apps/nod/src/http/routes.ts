@@ -7,6 +7,7 @@ import type { ItemSending } from "../as-it-happens";
 import { DistributionError, type DistributionClient } from "../distribution-client";
 import type { MediaHubClient } from "../media-hub/client";
 import { getSettings, setDistributionPaused, setPaused } from "../settings";
+import { releaseAudience } from "../audience";
 import { countSubscribers } from "../subscribers";
 import { emailAddressSchema } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
@@ -104,6 +105,25 @@ export function apiRoutes(
       const lists = z.array(countListKeySchema).parse(raw ? raw.split(",") : []);
       // ?exact=true: only these exact lists, without "all news" ('*') subscribers (the Hub's hand-over).
       res.json({ count: await countSubscribers(db, lists, { exact: req.query.exact === "true" }) });
+    }),
+  );
+
+  // Suite review R6: who a first publish reaches, by the senders' own rules (audience.ts): emailed
+  // As it happens, in the daily digest, and media contacts. Read-only; same roles as the count.
+  r.get(
+    "/subscribers/release-audience",
+    requireAnyRole("NoD.Admin", "NRMS.Editor", "NoD.SubscriberCount", "Core.Admin"),
+    run(async (req, res) => {
+      const split = (v: unknown) => (typeof v === "string" && v !== "" ? v.split(",") : []);
+      const input = z
+        .object({
+          listKeys: z.array(listKeySchema),
+          mediaListKeys: z.array(z.string().regex(/^media-distribution-lists:.+$/i, "must be 'media-distribution-lists:<key>'")),
+          toSubscribers: z.boolean(),
+          postKind: z.string().min(1).max(50),
+        })
+        .parse({ listKeys: split(req.query.lists), mediaListKeys: split(req.query.media), toSubscribers: req.query.subscribers === "true", postKind: req.query.kind });
+      res.json(await releaseAudience(db, input));
     }),
   );
 

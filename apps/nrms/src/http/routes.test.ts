@@ -261,6 +261,16 @@ describe("NRMS HTTP API", () => {
     expect(res.body.items[0].id).toBe(id);
   });
 
+  // Suite review R9 fix round 1: a hand-edited address with an impossible date is a 400 with a
+  // plain message, never a database error.
+  it("search refuses an impossible or backwards date with a 400 and a plain message; filters work without words", async () => {
+    const bad = await get("/api/search?q=x&from=2026-02-30");
+    expect(bad.status).toBe(400);
+    expect(JSON.stringify(bad.body)).toContain("That isn't a real date.");
+    expect((await get("/api/search?from=2026-03-02&to=2026-03-01")).status).toBe(400);
+    expect((await get("/api/search?type=story&from=2020-01-01")).status).toBe(200);
+  });
+
   it("go-to: a known reference → 200 { id }; unknown → 404", async () => {
     const { id } = await create();
     const a = await post(`/api/releases/${id}/approve`, editorCookie, { version: 1 });

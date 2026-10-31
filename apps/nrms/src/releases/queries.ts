@@ -96,6 +96,12 @@ export async function searchReleases(db: DbOrTx, q: SearchQuery, opts: QueryOpti
     sql`EXISTS (SELECT 1 FROM ${releaseCategories} c WHERE c.release_id = ${newsReleases.id} AND c.kind = ${kind} AND c.key = ${key})`;
   if (q.ministry) base.push(inCategory("ministries", q.ministry));
   if (q.sector) base.push(inCategory("sectors", q.sector));
+  if (q.type && q.type !== "all") base.push(eq(newsReleases.type, q.type));
+  // Suite review R9: BC days, both ends included — from midnight on `from` to midnight after `to`.
+  const releaseDate = sql`coalesce(${newsReleases.releasedAt}, ${newsReleases.publishAt})`;
+  const bcMidnight = (day: string, plusDays = 0) => sql`((${day}::date + ${plusDays}::int)::timestamp AT TIME ZONE ${opts.timeZone})`;
+  if (q.from) base.push(sql`${releaseDate} >= ${bcMidnight(q.from)}`);
+  if (q.to) base.push(sql`${releaseDate} < ${bcMidnight(q.to, 1)}`);
   const order = [sql`coalesce(${newsReleases.releasedAt}, ${newsReleases.publishAt}) DESC NULLS LAST`, sql`${firstHeadline} ASC`];
   const run = (match: SQL | undefined) => pageOf(db, and(...base, match), order, q.page, SEARCH_PAGE_SIZE, opts);
   const headline = q.q

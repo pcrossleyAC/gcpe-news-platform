@@ -8,8 +8,25 @@ export interface NodClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+/** What NoD's `/api/subscribers/release-audience` takes (apps/nod/src/audience.ts). */
+export interface ReleaseAudienceQuery {
+  listKeys: string[];
+  /** NoD media list keys (`media-distribution-lists:<key>`). */
+  mediaListKeys: string[];
+  toSubscribers: boolean;
+  postKind: string;
+}
+
+/** Who a first publish reaches, by NoD's own send rules. */
+export interface ReleaseAudienceCounts {
+  asItHappens: number;
+  digest: number;
+  mediaContacts: number;
+}
+
 export interface NodClient {
   countSubscribers(listKeys: string[]): Promise<number>;
+  releaseAudience(q: ReleaseAudienceQuery): Promise<ReleaseAudienceCounts>;
 }
 
 /**
@@ -33,6 +50,17 @@ export function nodClient(opts: NodClientOptions): NodClient {
       if (!res.ok) throw new Error(`NoD count failed: HTTP ${res.status}`);
       const json = (await res.json()) as { count: number };
       return json.count;
+    },
+    // Suite review R6: the Publish dialogs' numbers. Same 5 s bound and token as the count.
+    async releaseAudience(q: ReleaseAudienceQuery): Promise<ReleaseAudienceCounts> {
+      const token = await opts.getToken();
+      const params = new URLSearchParams({ lists: q.listKeys.join(","), media: q.mediaListKeys.join(","), subscribers: String(q.toSubscribers), kind: q.postKind });
+      const res = await doFetch(`${base}/api/subscribers/release-audience?${params}`, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`NoD release audience failed: HTTP ${res.status}`);
+      return (await res.json()) as ReleaseAudienceCounts;
     },
   };
 }

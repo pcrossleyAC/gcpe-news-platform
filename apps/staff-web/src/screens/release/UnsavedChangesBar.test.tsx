@@ -58,4 +58,20 @@ describe("UnsavedChangesBar", () => {
     expect(screen.getByRole("region", { name: "Save status" })).toHaveTextContent("All changes saved.");
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  // Suite review R7: on a live release a save republishes it; the bar says so.
+  it("on a live release, says saving republishes it and the button reads Save and republish", async () => {
+    const onSave = vi.fn();
+    render(<UnsavedChangesBar sections={[pageDetails]} state={{ status: "idle" }} onSave={onSave} republishes />);
+    const region = screen.getByRole("region", { name: "Unsaved changes" });
+    expect(region).toHaveTextContent("Saving republishes this release on the public site.");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save and republish" }));
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+  });
+
+  it("not live: no republish wording", () => {
+    render(<UnsavedChangesBar sections={[pageDetails]} state={{ status: "idle" }} onSave={() => {}} />);
+    expect(screen.getByRole("region", { name: "Unsaved changes" })).not.toHaveTextContent(/republish/i);
+  });
 });

@@ -404,6 +404,31 @@ describe("runDigestIfDue", () => {
   // was never actually delivered, so that guard must not apply once the job is cancelled. Pins
   // the full round trip: digest built -> item withdrawn -> job cancelled (deliveries deleted
   // here, not just the job) -> republished -> a both-timings subscriber gets it As-It-Happens.
+  // Suite review (releases batch) investigation: a republish after an unpublish sends
+  // release.published with the release's original publishDate (NRMS keeps released_at;
+  // publisher.test.ts "re-scheduling an unpublished release..."), and the upsert stores that as
+  // published_at, so an item a digest already covered stays outside every later window: digest
+  // subscribers don't get it a second time. The contrast item shows the window would take it.
+  it("a release republished after an unpublish keeps its original published_at, so a later digest doesn't send it again", async () => {
+    await setLastCutoff(new Date(cutoff.getTime() - DAY_MS));
+    const sub = await digestSubscriber(tdb.db, "republish-digest@example.com", ["ministries:health"]);
+    const original = new Date(cutoff.getTime() - 1.5 * DAY_MS).toISOString(); // in yesterday's digest window
+    const k = itemKey("REPUB-DIGEST");
+    const kNew = itemKey("NEW-TODAY");
+    const release = { ...sampleRelease, key: k, ministryKeys: ["health"], sectorKeys: [], tagKeys: [], themeKeys: [], publishDate: original };
+    await upsertReleaseItem(tdb.db, release, PUBLIC_SITE_URL);
+    await tdb.db.update(items).set({ withdrawnAt: new Date() }).where(eq(items.key, k)); // unpublished
+    await upsertReleaseItem(tdb.db, release, PUBLIC_SITE_URL); // republished today, same publishDate
+    await upsertReleaseItem(tdb.db, { ...release, key: kNew, publishDate: new Date(cutoff.getTime() - HOUR_MS).toISOString() }, PUBLIC_SITE_URL);
+
+    const [stored] = await tdb.db.select().from(items).where(eq(items.key, k));
+    expect(stored!.publishedAt.toISOString()).toBe(original);
+    expect(stored!.withdrawnAt).toBeNull();
+    expect((await runDigestIfDue(tdb.db, TZ, RENDER)).ran).toBe(true);
+    const delivered = (await tdb.db.select({ itemKey: deliveries.itemKey }).from(deliveries).where(eq(deliveries.subscriberId, sub))).map((d) => d.itemKey);
+    expect(delivered).toEqual([kNew]);
+  });
+
   it("after a cancelled all-withdrawn digest job, republishing the item reaches a both-timings subscriber As-It-Happens", async () => {
     await setLastCutoff(new Date(cutoff.getTime() - DAY_MS));
     const both = await digestSubscriber(tdb.db, "cancel-republish@example.com", ["ministries:health"], true); // as_it_happens true, digest true

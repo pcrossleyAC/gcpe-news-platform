@@ -35,7 +35,7 @@ describe("SessionContext signOut (Fix round 1, finding 1)", () => {
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
-    saveDraft(DRAFT_KEY, { headline: "Unsaved" });
+    saveDraft(DRAFT_KEY, { version: 1, form: { headline: "Unsaved" } });
 
     render(
       <SessionProvider>
@@ -76,7 +76,7 @@ describe("SessionContext signOut (Fix round 1, finding 1)", () => {
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
-    saveDraft(DRAFT_KEY, { headline: "Unsaved" });
+    saveDraft(DRAFT_KEY, { version: 1, form: { headline: "Unsaved" } });
 
     render(
       <SessionProvider>

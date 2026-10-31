@@ -157,7 +157,8 @@ describe("SettingsSection", () => {
       stubFetch({ mediaLists: LISTS });
       const { unmount } = renderSettings(unpublished());
       await screen.findByLabelText("List One");
-      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("As saved, these lists won't get the media email when it's republished.");
+      // Suite review R11: and, for an editor, why the lists can't be changed.
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription("As saved, these lists won't get the media email when it's republished. Media lists can't change after it has gone out.");
       expect(screen.getByRole("heading", { name: /Publish settings/ })).not.toHaveTextContent("Unsaved");
       unmount();
       renderSettings(unpublished(), () => {}, true);
@@ -194,6 +195,41 @@ describe("SettingsSection", () => {
   });
 
   // forms-b #10: the planned date only plans; Schedule, under Actions, sets when it goes out.
+  // Suite review R11: the server refuses a media-list change on a Release or Factsheet that has
+  // been released (service.ts saveSettings), so the boxes are disabled, saying why.
+  describe("media lists after it has gone out", () => {
+    const lists = [
+      { key: "list1", displayName: "List One", sortOrder: 1, isActive: true },
+      { key: "list2", displayName: "List Two", sortOrder: 2, isActive: true },
+    ];
+    const released = (type: ReleaseView["type"], over: Partial<ReleaseView> = {}) =>
+      releaseView({ type, status: "published", live: true, releasedAt: "2026-10-01T17:00:00.000Z", publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: true }, mediaListKeys: ["list1"], ...over });
+
+    it.each(["release", "factsheet"] as const)("a released %s: the boxes are disabled with the reason", async (type) => {
+      stubFetch({ mediaLists: lists });
+      renderSettings(released(type));
+      const one = await screen.findByLabelText("List One");
+      expect(one).toBeDisabled();
+      expect(one).toBeChecked();
+      expect(screen.getByLabelText("List Two")).toBeDisabled();
+      expect(screen.getByText("Media lists can't change after it has gone out.")).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "Media distribution lists" })).toHaveAccessibleDescription(/Media lists can't change after it has gone out\./);
+    });
+
+    it("released, then unpublished: still locked, as the server keeps it", async () => {
+      stubFetch({ mediaLists: lists });
+      renderSettings(released("release", { status: "approved", live: false }));
+      expect(await screen.findByLabelText("List Two")).toBeDisabled();
+    });
+
+    it("never released: the boxes can be changed", async () => {
+      stubFetch({ mediaLists: lists });
+      renderSettings(released("release", { status: "approved", live: false, releasedAt: null }));
+      expect(await screen.findByLabelText("List Two")).toBeEnabled();
+      expect(screen.queryByText("Media lists can't change after it has gone out.")).not.toBeInTheDocument();
+    });
+  });
+
   it("names the planned date as for planning only and says Schedule sets the time", async () => {
     stubFetch();
     renderSettings(releaseView({ type: "release" }));
