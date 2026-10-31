@@ -19,7 +19,8 @@ export function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const tzCheck = useTimeZoneWarning();
   // I5 (WCAG 2.4.2): move focus to the new screen's h1 on every route change.
-  const mainRef = useFocusH1OnRouteChange<HTMLElement>();
+  // A late time-zone correction redraws the screen on the same path: focus its h1 again too.
+  const mainRef = useFocusH1OnRouteChange<HTMLElement>(tzCheck.generation);
   // Esc closes the panel or disclosure the user is in, on every screen (dialogs close themselves).
   useEscapeClosesPanels();
   const uid = useId();

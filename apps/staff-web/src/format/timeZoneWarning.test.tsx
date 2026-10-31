@@ -26,9 +26,30 @@ describe("useTimeZoneWarning", () => {
   it("no warning when the check has no tzCheck, and it settles", async () => {
     answer({ timeZone: "America/Vancouver" });
     const { result } = renderHook(() => useTimeZoneWarning());
-    expect(result.current.settled).toBe(false);
     await waitFor(() => expect(result.current.settled).toBe(true));
     expect(result.current.warning).toBeNull();
+  });
+
+  // Review minor 1: a browser whose own answer for BC already agrees never waits for the check.
+  it("an up-to-date browser is settled from the first render; an old-rules one waits", async () => {
+    answer({ timeZone: "America/Vancouver", tzCheck: BC_TZ_CHECK });
+    const current = renderHook(() => useTimeZoneWarning());
+    expect(current.result.current.settled).toBe(true);
+    current.unmount();
+    undo = playOldRulesBrowser();
+    const old = renderHook(() => useTimeZoneWarning());
+    expect(old.result.current.settled).toBe(false);
+    await waitFor(() => expect(old.result.current.warning).toBe("corrected"));
+  });
+
+  // Review minor 3: with no answer from the server, an old-rules browser still gets the warning.
+  it("an old-rules browser whose check fails: the stale warning, no correction", async () => {
+    undo = playOldRulesBrowser();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(500, { error: "nope" })));
+    const { result } = renderHook(() => useTimeZoneWarning());
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.warning).toBe("stale");
+    expect(isCorrectingTimes()).toBe(false);
   });
 
   it("no warning when the check has no timeZone", async () => {

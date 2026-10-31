@@ -2,7 +2,7 @@
  * The Hub's one way to turn an instant into BC wall-clock time, and back (owner decision
  * 2026-10-31). Every date or time staff-web shows, and every browser-side comparison that
  * depends on BC's wall clock (today's date, "is this in the past", unsaved-changes checks,
- * calendar days), goes through here. A guard test (`bcTimeGuard.test.ts`) fails if any other
+ * calendar days), goes through here. A guard test (`tests/staff-web-bc-time-guard.test.ts`) fails if any other
  * file passes a `timeZone` to `Intl` itself.
  *
  * Why: from 2026-11-01 America/Vancouver stays on UTC-7 all year. A browser whose time-zone

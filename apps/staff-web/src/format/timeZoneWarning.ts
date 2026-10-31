@@ -15,6 +15,20 @@ interface ConfigResponse {
   tzCheck?: TzCheck;
 }
 
+/**
+ * The Hub's own zone and a post-2026-11-01 instant with its true offset, used only *before or
+ * without* the server's answer: a browser that already says UTC-7 there needn't wait for the
+ * check (review minor 1), and one that doesn't, when the check fails, gets the warning (minor
+ * 3). The correction itself always comes from the server's tzCheck, never from these.
+ */
+const HUB_ZONE = "America/Vancouver";
+const AFTER_CHANGE = "2026-12-15T20:00:00Z";
+const AFTER_CHANGE_OFFSET = -420;
+const browserAgreesForBc = (): boolean | null => {
+  const b = browserOffsetMinutes(Date.parse(AFTER_CHANGE), HUB_ZONE);
+  return b === null ? null : b === AFTER_CHANGE_OFFSET;
+};
+
 /** How long the Hub holds a screen back waiting for the check before showing it anyway. */
 export const TIME_ZONE_CHECK_WAIT_MS = 3000;
 
@@ -37,11 +51,14 @@ export interface TimeZoneCheck {
  * rules ({@link setServerZoneRule}, format/bcTime.ts) and AppShell says so in a persistent notice.
  *
  * AppShell waits for this before showing the screen, so the first times anyone sees are already
- * right. Fails safe: a missing `tzCheck`/`timeZone`, an unreadable browser answer, or a failed
- * fetch changes nothing — the absence of a clear signal is not evidence of staleness.
+ * right (only a browser whose own BC answer is wrong waits). Fails safe: a missing
+ * `tzCheck`/`timeZone` or an unreadable browser answer changes nothing; a failed fetch shows the
+ * warning only when the browser's own answer for BC after 2026-11-01 is plainly not UTC-7.
  */
 export function useTimeZoneWarning(): TimeZoneCheck {
-  const [state, setState] = useState<TimeZoneCheck>({ settled: false, warning: null, generation: 0 });
+  // A browser whose own BC answer is already right shows the screen at once; the check still
+  // runs (a tenant in another zone, or the server disagreeing, can still correct and redraw).
+  const [state, setState] = useState<TimeZoneCheck>(() => ({ settled: browserAgreesForBc() === true, warning: null, generation: 0 }));
 
   useEffect(() => {
     let active = true;
@@ -65,7 +82,9 @@ export function useTimeZoneWarning(): TimeZoneCheck {
           setState((s) => ({ settled: true, warning: "corrected", generation: s.settled ? s.generation + 1 : s.generation }));
         },
         () => {
-          // No warning if the check itself couldn't be made.
+          // The check couldn't be made: nothing to correct with, but a browser that is plainly
+          // wrong for BC after 2026-11-01 is still told so.
+          if (active && browserAgreesForBc() === false) setState((s) => ({ ...s, settled: true, warning: "stale" }));
         },
       )
       .finally(() => {
