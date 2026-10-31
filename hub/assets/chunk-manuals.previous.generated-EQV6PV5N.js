@@ -79,7 +79,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>The table lists every staff account with its <strong>Name</strong>, <strong>Email</strong>, <strong>Sign-in</strong> (<strong>Password</strong> or <strong>Microsoft</strong>), <strong>Roles</strong> and <strong>Status</strong>. A person with Calendar access also shows a line such as &quot;Calendar: Editor (HLTH)&quot;; you change that on <a href="/hub/help/manuals/core-admin/calendar-access">Calendar access</a>.</p>
 <h2>Find someone</h2>
 <ol>
-<li>Type part of a name or email address in <strong>Filter users</strong>. You can also type a single word of a role, such as Editor or Admin. Full badge names such as &quot;NRMS Site editor&quot; don&#39;t match.</li>
+<li>Type part of a name or email address in <strong>Filter users</strong>. You can also type a role as it appears in the table, such as &quot;NRMS Site editor&quot; or &quot;Core Admin&quot;, or just a word of it, such as Editor.</li>
 <li>The table narrows as you type, and the count shows &quot;Showing 3 of 24 users&quot;. Type <strong>active</strong> or <strong>inactive</strong> to list people by status.</li>
 </ol>
 <h2>Add a user</h2>
@@ -87,13 +87,13 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ol>
 <li>Under <strong>Add a user</strong>, enter their <strong>Email</strong>. For Microsoft sign-in, use their Microsoft sign-in name, which is usually their government email address.</li>
 <li>Enter their <strong>Display name</strong>.</li>
-<li>Under <strong>Roles</strong>, tick each role they need. Each box shows the role&#39;s name and what it allows.</li>
+<li>Under <strong>Roles</strong>, tick each role they need. Each box shows the role&#39;s name, as it appears in the table, and what it allows.</li>
 <li>To let them sign in with a password, tick <strong>Set a password now</strong> and enter a <strong>Password (at least 12 characters)</strong>. Leave it unticked for people who sign in with Microsoft.</li>
 <li>Choose <strong>Add user</strong>. The person appears in the table.</li>
 </ol>
 <p>Nobody is emailed. Tell the person their account is ready.</p>
 <h3>What each role allows</h3>
-<p>The table shows roles as short badges. Each box starts with the role&#39;s system name: the area, a dot, then the role&#39;s words run together with no spaces (so <strong>NRMS Site editor</strong> appears as NRMS, a dot and SiteEditor). Then it says what the role allows.</p>
+<p>Each role has the same name in the table and beside its box.</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
@@ -281,7 +281,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </ol>
 <p>The public page shows the alternate contact only when there is a primary contact.</p>
 <h3>The abbreviation</h3>
-<p>Every release number contains the lead ministry&#39;s abbreviation, as in 2026HLTH0001. Use 2 to 10 capital letters or digits. No two active ministries may share one. A release can&#39;t be approved until its lead ministry has an abbreviation: release editors see &quot;The lead ministry has no abbreviation in Core; add one before approving.&quot; Changing it affects only releases approved from then on.</p>
+<p>Every release number contains the lead ministry&#39;s abbreviation, as in 2026HLTH0001. Use 2 to 10 capital letters or digits. No two active ministries may share one. A release can&#39;t be approved until its lead ministry has an abbreviation: release editors see &quot;The lead ministry has no abbreviation yet. Ask an administrator to add one, then approve again.&quot; Changing it affects only releases approved from then on.</p>
 <h2>Add a ministry</h2>
 <ol>
 <li>Choose <strong>Add ministry</strong>.</li>
@@ -443,7 +443,58 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Nothing was changed.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},h=null,l=null,g=null,c={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+`,changed:"2026-10-30"},h=null,l={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Media list names</strong> decides which media lists exist, what they are called and the order they appear in. Release editors pick these lists to send a release to reporters. The reporters on each list are managed by News On Demand staff under <strong>Subscribers</strong> &gt; <strong>Media lists</strong>.</p>
+<p>Each row has a <strong>Key</strong>, a <strong>Name</strong>, an <strong>Order</strong> and an <strong>Active</strong> box.</p>
+<h2>Rename or reorder a list</h2>
+<ol>
+<li>Change the <strong>Name</strong> or <strong>Order</strong> on its row.</li>
+<li>Choose <strong>Save</strong> on that row. You see &quot;{key} saved.&quot;</li>
+</ol>
+<h2>Retire a list</h2>
+<ol>
+<li>Untick <strong>Active</strong> on its row.</li>
+<li>Choose <strong>Save</strong>. The Hub asks &quot;Retire {key}?&quot; and explains &quot;Releases can no longer be sent to it. Its members are kept, and ticking Active again brings it back.&quot;</li>
+<li>Choose <strong>Retire list</strong>.</li>
+</ol>
+<h2>Add a list</h2>
+<ol>
+<li>Under <strong>Add a media list</strong>, enter the <strong>Key</strong>: lowercase letters, numbers and hyphens. It can&#39;t be changed later.</li>
+<li>Enter the <strong>Name</strong>.</li>
+<li>Choose <strong>Add media list</strong>. You see &quot;Media list added. It reaches News On Demand within a minute.&quot;</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>Changes reach News On Demand&#39;s media lists within a minute.</li>
+<li>A retired list can&#39;t be put on a release. A release that already had it shows it ticked, greyed out and marked &quot;(retired)&quot;; nothing is sent to it.</li>
+<li>Nobody is emailed.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;A media list with that key already exists.&quot;</td>
+<td>Choose another key. To bring back a retired list, tick <strong>Active</strong> on its row.</td>
+</tr>
+<tr>
+<td>&quot;Keys use lowercase letters, numbers and hyphens; both fields are required.&quot;</td>
+<td>Fix the key, and fill in both fields.</td>
+</tr>
+<tr>
+<td>&quot;Name is required.&quot;</td>
+<td>Enter a name.</td>
+</tr>
+<tr>
+<td>&quot;Order must be a whole number.&quot;</td>
+<td>Enter a number such as 3.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},g=null,c={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p>In <strong>Website</strong>, the one thing only you can change is <strong>Project Blue Bridge</strong>: the switch that puts the public site into mourning when the King dies. Everything else in <strong>Website</strong> is view-only for you.</p>
 <h2>What you can and can&#39;t change in Website</h2>
 <p>You can open every <strong>Website</strong> tab: <strong>Carousel</strong>, <strong>Emergency pins</strong>, <strong>Live Feed</strong>, <strong>What&#39;s featured where</strong>, <strong>Resource links</strong>, <strong>Files</strong>, <strong>Website log</strong> and <strong>Site settings</strong>. You see what is live, but there are no <strong>Save</strong> or <strong>Publish</strong> buttons.</p>
@@ -501,12 +552,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </ol>
 <p>Leave <strong>Action label</strong> empty to use the standard link words, set on <a href="/hub/help/manuals/nrms-site-editor/footer-and-navigation">Navigation and labels</a>.</p>
 <h2>Add or change a slide&#39;s image</h2>
-<p>Use a JPEG or PNG image of up to 2 MB.</p>
+<p>Use a JPEG or PNG image of up to 2 MB. Any slide can take an image, including one you have just added.</p>
 <ol>
-<li>Choose the slide&#39;s <strong>Image (JPEG or PNG, up to 2 MB)</strong> button and pick the file.</li>
-<li>The image appears beside the slide.</li>
+<li>Choose the slide&#39;s <strong>Image (JPEG or PNG, up to 2 MB)</strong> button and pick the file. The slide says &quot;New image chosen:&quot; and the file&#39;s name.</li>
+<li>On a live slide, choose <strong>Publish carousel changes</strong>, then confirm. The image goes live with your other changes. On the next carousel, choose <strong>Save carousel</strong>.</li>
 </ol>
-<p>On a live slide, the new image goes live without <strong>Publish carousel changes</strong>, within a few minutes. A new slide gets its image box only after it is published or saved: the slide shows &quot;Publish the carousel changes to add this slide&#39;s image.&quot;</p>
+<p>Until then, the slide keeps the image it had.</p>
 <h2>Prepare the next slides</h2>
 <ol>
 <li>Under <strong>Next</strong>, enter the <strong>Date</strong> and <strong>Time (BC time)</strong> in <strong>Go live at (BC time)</strong>.</li>
@@ -531,8 +582,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </thead>
 <tbody><tr>
-<td>&quot;invalid request&quot;</td>
-<td>A web address doesn&#39;t start with http:// or https://. Check <strong>Action URL</strong> and <strong>Facebook post URL</strong> on every slide.</td>
+<td>&quot;Slide 2: Enter a full web address for Action URL, starting with http:// or https://&quot;</td>
+<td>The web address in <strong>Action URL</strong> (or <strong>Facebook post URL</strong>) on that slide is wrong. Start it with http:// or https://, or empty the box. Nothing is saved until every address is right.</td>
 </tr>
 <tr>
 <td>&quot;Keep the action label to 40 characters or fewer, in plain text.&quot;</td>
@@ -547,15 +598,19 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The file isn&#39;t a JPEG or PNG image.</td>
 </tr>
 <tr>
-<td>&quot;request entity too large&quot;</td>
-<td>The image is bigger than 2 MB. Make it smaller and try again.</td>
+<td>&quot;That image is over 2 MB. Choose a smaller image.&quot;</td>
+<td>Make the image smaller and try again.</td>
+</tr>
+<tr>
+<td>&quot;Choose slide 2\u2019s image again.&quot;</td>
+<td>The image you chose for that slide wasn&#39;t kept. Pick the file again, then publish or save.</td>
 </tr>
 <tr>
 <td>&quot;Someone else changed this \u2014 reload to see their changes.&quot;</td>
 <td>Another site editor saved these slides while you had the page open. Choose <strong>Reload</strong>. Your unsaved changes are lost, so make them again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},m={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},m={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Emergency pins</strong> holds two emergency notices, <strong>Primary</strong> and <strong>Secondary</strong>. A pinned notice shows on the public home page under the <strong>Emergency information</strong> heading, above the news. An unpinned one is kept here but not shown.</p>
 <p>Each notice has the same fields as a carousel slide: headline, summary, action URL, action label, Facebook post URL, justify and an image.</p>
 <h2>Write a notice</h2>
@@ -565,9 +620,9 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </ol>
 <p>If the notice is already pinned, the change goes to the public site when you save.</p>
 <h2>Pin or unpin a notice</h2>
-<p>Save the notice first. Pinning reloads the notice, and any change you haven&#39;t saved is lost.</p>
+<p>Save the notice first. If you have typed changes you haven&#39;t saved, the switch does nothing and shows &quot;Save your changes first.&quot; Your typing stays.</p>
 <ol>
-<li>Choose the switch beside <strong>Primary is not pinned</strong>. It saves at once, with no question, and now reads <strong>Primary is pinned</strong>.</li>
+<li>Choose the switch beside <strong>Primary is not pinned</strong>. It saves at once, with no question, and changes only the pin; it now reads <strong>Primary is pinned</strong>.</li>
 <li>To take the notice down, choose the switch again.</li>
 </ol>
 <h2>Add or change the image</h2>
@@ -593,8 +648,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The saved notice has no headline. Enter one, choose <strong>Save primary pin</strong>, then pin it.</td>
 </tr>
 <tr>
-<td>&quot;invalid request&quot;</td>
-<td>A web address doesn&#39;t start with http:// or https://. Check the action URL and the Facebook post URL.</td>
+<td>&quot;Primary: Enter a full web address for Action URL, starting with http:// or https://&quot;</td>
+<td>The web address in the action URL (or Facebook post URL) is wrong. Start it with http:// or https://, or empty the box. Nothing is saved until it is right.</td>
 </tr>
 <tr>
 <td>&quot;Keep the action label to 40 characters or fewer, in plain text.&quot;</td>
@@ -605,8 +660,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The file isn&#39;t a JPEG or PNG image.</td>
 </tr>
 <tr>
-<td>&quot;request entity too large&quot;</td>
-<td>The image is bigger than 2 MB.</td>
+<td>&quot;That image is over 2 MB. Choose a smaller image.&quot;</td>
+<td>Make the image smaller and try again.</td>
+</tr>
+<tr>
+<td>&quot;Save your changes first.&quot;</td>
+<td>You changed the notice and then used the pin switch. Choose <strong>Save primary pin</strong> (or <strong>Save secondary pin</strong>), then use the switch.</td>
 </tr>
 <tr>
 <td>&quot;Someone else changed this \u2014 reload to see their changes.&quot;</td>
@@ -715,34 +774,34 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 `,changed:"2026-10-30"},f=null,w={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
-<p><strong>Website</strong> &gt; <strong>Site settings</strong> lists the screens that set how the public site looks and reads: <strong>Banner</strong>, <strong>Footer</strong>, <strong>Social links</strong>, <strong>Theme</strong>, <strong>Ministry pages</strong>, <strong>Media contacts page</strong>, <strong>Page text</strong>, <strong>Navigation and labels</strong> and <strong>Site identity</strong>. They all save and publish the same way. <strong>Settings history</strong> lists everything published so far.</p>
+<p><strong>Website</strong> &gt; <strong>Site settings</strong> lists the screens that set how the public site looks and reads: <strong>Site banner</strong>, <strong>Footer links</strong>, <strong>Social links</strong>, <strong>Theme colours</strong>, <strong>Ministry page headings</strong>, <strong>Media contacts page</strong>, <strong>Page text</strong>, <strong>Navigation and labels</strong> and <strong>Site identity</strong>. They all save and publish the same way. <strong>Settings history</strong> lists everything published so far.</p>
 <h2>Your draft</h2>
 <p>You have one private draft that covers all of these screens. Other site editors have their own, and nobody else sees yours.</p>
 <ul>
 <li><strong>Save draft</strong> keeps your changes in your draft. The public site doesn&#39;t change.</li>
 <li><strong>Publish</strong> puts your whole draft live: the changes on this screen, and any you saved as a draft on other settings screens.</li>
-<li><strong>Discard draft</strong> throws your draft away, on every settings screen, with no question. The screen then shows what is live: &quot;Draft discarded. Showing what is live.&quot;</li>
+<li><strong>Discard draft</strong> throws your whole draft away, on every settings screen. A box asks &quot;Discard your whole draft?&quot; and names the other screens it clears, such as &quot;This also throws away your draft changes on Theme colours and Footer links.&quot; Choose <strong>Discard draft</strong> to confirm, or <strong>Cancel</strong>. The screen then shows what is live: &quot;Draft discarded. Showing what is live.&quot;</li>
 </ul>
-<p>The foot of each screen says where you are. &quot;Draft saved \xB7 not yet live&quot; means you have a draft; &quot;No unpublished changes&quot; means you don&#39;t. The next line shows the live revision, who published it and when.</p>
+<p>The foot of each screen says where you are. &quot;Draft saved \xB7 not yet live&quot; means you have a draft; &quot;No unpublished changes&quot; means you don&#39;t. With a draft, &quot;Your draft has changes on:&quot; names each screen it changes, with a link to it. The next line shows the live revision, who published it and when. Above the buttons, &quot;Publish and Discard draft apply to your whole draft, on every settings screen, not just this one.&quot;</p>
 <h2>Publish a change</h2>
 <ol>
 <li>Make the change on the settings screen.</li>
 <li>If you like, type a <strong>Note for the history log (optional)</strong>, such as &quot;Election notice&quot;. It shows in <strong>Settings history</strong> and <strong>Website log</strong>.</li>
 <li>Choose <strong>Publish</strong>. You see &quot;Published revision 5. Visitors see it within a few minutes.&quot; (with the new number).</li>
 </ol>
-<p>If the draft has a problem, nothing is published. You see &quot;Draft saved, but it has problems to fix before it can be published.&quot; Each problem shows under its field. A problem on another settings screen shows in a list headed &quot;Other parts of the draft have problems that block publishing:&quot;, with the name of that screen. Fix it there, or choose <strong>Discard draft</strong> to start again from what is live.</p>
+<p>If the draft has a problem, nothing is published. You see &quot;Draft saved, but it has problems to fix before it can be published.&quot; Each problem shows under its field. A problem on another settings screen shows in a list headed &quot;Other parts of the draft have problems that block publishing:&quot;, led by a link to that screen. Fix it there, or choose <strong>Discard draft</strong> to start again from what is live.</p>
 <h2>If someone else published first</h2>
 <p>When another site editor publishes while you are working, your <strong>Publish</strong> doesn&#39;t go through. You see &quot;Someone published while you were editing&quot;, with who published and when, and &quot;Nothing of yours was published, and your draft is saved.&quot; It also lists the screens where your draft differs.</p>
 <p>Choose one:</p>
 <ul>
-<li><strong>Keep my banner, on top of their version</strong> (the button names the screen you are on, such as &quot;Keep my footer&quot;): your changes on this screen are added to what they published. Changes you saved on other screens are set aside, and the message names them. Check the result, then choose <strong>Publish</strong>.</li>
+<li><strong>Keep my site banner, on top of their version</strong> (the button names the screen you are on, such as &quot;Keep my footer links&quot;): your changes on this screen are added to what they published. Changes you saved on other screens are set aside, and the message names them. Check the result, then choose <strong>Publish</strong>.</li>
 <li><strong>Discard mine, use theirs</strong>: your draft is thrown away and the screen shows what is live.</li>
 </ul>
 <h2>Bring back an earlier version</h2>
 <p><strong>Settings history</strong> lists every published revision, newest first, with <strong>Revision</strong>, <strong>When</strong>, <strong>Who</strong> and <strong>Note</strong>. The live one is marked <strong>Live</strong>.</p>
 <ol>
 <li>Choose <strong>Restore\u2026</strong> on the revision you want.</li>
-<li>A box asks &quot;Restore revision 1?&quot; and lists the screens it would change, such as &quot;Compared with what is live now, this changes: Footer.&quot; If the banner changes, it says what the banner would be.</li>
+<li>A box asks &quot;Restore revision 1?&quot; and lists the screens it would change, such as &quot;Compared with what is live now, this changes: Footer links.&quot; If the banner changes, it says what the banner would be.</li>
 <li>Choose <strong>Restore revision 1</strong>. You see &quot;Revision 1 is live again, as revision 6.&quot;</li>
 </ol>
 <p>Nothing is ever deleted. A restore is published as a new revision, so you can undo it by restoring the one before. Restoring also throws away your own draft.</p>
@@ -777,7 +836,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Reload the page. If it keeps happening, tell the support team.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},q={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},q={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>The banner is a notice across the top of every public page, such as planned maintenance or an emergency. Open it from <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Banner</strong>. Like every site setting, it changes the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
 <h2>Put up a banner</h2>
 <ol>
@@ -864,7 +923,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Text on or in this colour would be hard to read. The message says where: on the page background, on panels, on the header, as link text or behind white text.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},T={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},k={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>Two settings screens set the wording around every public page: <strong>Footer</strong> for the footer&#39;s links, and <strong>Navigation and labels</strong> for the menu, buttons and headings. Open them from <strong>Website</strong> &gt; <strong>Site settings</strong>. Both change the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
 <h2>Footer</h2>
 <p>The screen is titled <strong>Footer links</strong>.</p>
@@ -938,7 +997,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Shorten <strong>Land acknowledgement</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},k=null,A={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},T=null,A={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>Two settings screens set the wording that every ministry shares. A single ministry&#39;s own details, such as its minister and contacts, are on <a href="/hub/help/manuals/nrms-site-editor/site-editor-organizations">Organizations</a>. Both screens change the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
 <h2>Ministry page headings</h2>
 <p><strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Ministry pages</strong> sets the seven headings on every ministry&#39;s public page: <strong>More from this Ministry heading</strong>, <strong>Ministry website heading</strong>, <strong>Ministry photos heading</strong>, <strong>Ministry videos heading</strong>, <strong>Featured topics heading</strong>, <strong>Featured services heading</strong> and <strong>Media contacts heading</strong>.</p>
@@ -1607,7 +1666,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Choose <strong>Save changes</strong>.</li>
 </ol>
 <p>It republishes at once: no box asks first. The status shows <strong>Republishing...</strong>, then <strong>Published</strong>, usually within a minute. <strong>History</strong> shows &quot;Republished to \u2026&quot;; with <strong>Show all</strong> ticked it also shows &quot;Edited after publishing \u2014 will republish&quot;. The public page shows the change within a couple of minutes. Nobody is emailed again.</p>
-<p>Uploading or removing a file counts as a correction too. If a correction fails, the release shows &quot;This release failed&quot; and stays on the public site as it was. Fix the problem, save, then choose <strong>Publish now</strong>. A failed correction can&#39;t be scheduled.</p>
+<p>Uploading or removing a file counts as a correction too. If a correction fails, the release shows &quot;This release failed&quot; and stays on the public site as it was. Fix the problem, save, then choose <strong>Publish now</strong>. <strong>Schedule</strong> isn&#39;t offered: a failed correction goes out at once.</p>
 <h2>Top and Feature spots</h2>
 <p>Each place on the public site has one Top and one Feature spot: the home page, and each ministry, sector and theme page. A release can take them only while it is published.</p>
 <ol>
@@ -3589,7 +3648,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </ol>
 <p>If it fails again, it comes straight back to the table, without another 24 hours of tries. Reload the page after a minute to check. If it is back, Releases is still refusing it: have that fixed before you retry again.</p>
 <p>Retrying an old change is safe. If a newer change to the same activity has already reached Releases, the newer one stays.</p>
-`,changed:"2026-10-30"},Tt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+`,changed:"2026-10-30"},kt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
 <p>You plan the Corporate Calendar: the government-wide schedule of announcements and events. You add and change activities, follow what changed on <strong>Updates</strong>, and make reports.</p>
 <h2>Ministry or HQ</h2>
 <p>Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.</p>
@@ -3719,7 +3778,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tbody></table></div>
 <h2>Signing in</h2>
 <p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
-`,changed:"2026-10-30"},kt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+`,changed:"2026-10-30"},Tt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
 <p><strong>Calendar</strong> lists the activities you can see, from today on, earliest first. The first 30 show. More load as you scroll down, or when you choose <strong>Show more</strong> (the button names how many).</p>
 <p>Two kinds of activity are left out until you ask for them:</p>
 <ul>
@@ -5538,4 +5597,4 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Take down or change any election notice on <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Site banner</strong>, and publish. See <a href="/hub/help/manuals/nrms-site-editor/site-banner">Site banner</a>.</li>
 <li>Update the ministers&#39; contact records in Media Hub. The Hub does not change them.</li>
 </ol>
-`,changed:"2026-10-30"},Kt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":c,"site-editor-overview":u,carousel:p,"emergency-pins":m,"live-feed":y,"resource-links":b,"website-files":v,"featured-and-website-log":f,"site-settings":w,"site-banner":q,"theme-colours":C,"footer-and-navigation":T,"social-links":k,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":E,"editor-approve-and-publish":I,"editor-what-happens-next":L,"editor-correct-unpublish-delete":F,"editor-find-a-release":O,"editor-featured-and-log":D,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":V,"who-gets-which-email":K,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ct,"nod-viewer-lists-and-categories":ut,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":yt,"calendar-users":bt,"calendar-transfer":vt,"calendar-lookups":ft,"calendar-delete-activity":wt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":Tt,"calendar-advanced-list":kt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Et,"calendar-editor-updates":It,"calendar-editor-activity":Lt,"calendar-editor-fields":Ft,"calendar-editor-lock-and-freeze":Ot,"calendar-editor-hq":Dt,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Vt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",yt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",kt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",Tt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",wt as"calendar-delete-activity",Lt as"calendar-editor-activity",Ft as"calendar-editor-fields",Dt as"calendar-editor-hq",Et as"calendar-editor-list",Ot as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",It as"calendar-editor-updates",qt as"calendar-hq-review",ft as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",vt as"calendar-transfer",Ct as"calendar-undelivered-events",bt as"calendar-users",p as carousel,n as"core-admin-overview",Kt as default,ot as"editor-add-a-subscriber",I as"editor-approve-and-publish",dt as"editor-bounces",F as"editor-correct-unpublish-delete",D as"editor-featured-and-log",E as"editor-files-and-media",O as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",L as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",f as"featured-and-website-log",j as"find-and-change-subscribers",T as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",y as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Vt as"new-government",V as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ut as"nod-viewer-lists-and-categories",ct as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",b as"resource-links",d as"sectors-themes-and-tags",q as"site-banner",W as"site-editor-organizations",u as"site-editor-overview",x as"site-identity",w as"site-settings",k as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",v as"website-files",c as"website-project-blue-bridge",K as"who-gets-which-email"};
+`,changed:"2026-10-30"},Kt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":c,"site-editor-overview":u,carousel:p,"emergency-pins":m,"live-feed":y,"resource-links":b,"website-files":v,"featured-and-website-log":f,"site-settings":w,"site-banner":q,"theme-colours":C,"footer-and-navigation":k,"social-links":T,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":E,"editor-approve-and-publish":I,"editor-what-happens-next":L,"editor-correct-unpublish-delete":F,"editor-find-a-release":O,"editor-featured-and-log":D,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":V,"who-gets-which-email":K,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ct,"nod-viewer-lists-and-categories":ut,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":yt,"calendar-users":bt,"calendar-transfer":vt,"calendar-lookups":ft,"calendar-delete-activity":wt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":kt,"calendar-advanced-list":Tt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Et,"calendar-editor-updates":It,"calendar-editor-activity":Lt,"calendar-editor-fields":Ft,"calendar-editor-lock-and-freeze":Ot,"calendar-editor-hq":Dt,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Vt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",yt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",Tt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",kt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",wt as"calendar-delete-activity",Lt as"calendar-editor-activity",Ft as"calendar-editor-fields",Dt as"calendar-editor-hq",Et as"calendar-editor-list",Ot as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",It as"calendar-editor-updates",qt as"calendar-hq-review",ft as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",vt as"calendar-transfer",Ct as"calendar-undelivered-events",bt as"calendar-users",p as carousel,n as"core-admin-overview",Kt as default,ot as"editor-add-a-subscriber",I as"editor-approve-and-publish",dt as"editor-bounces",F as"editor-correct-unpublish-delete",D as"editor-featured-and-log",E as"editor-files-and-media",O as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",L as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",f as"featured-and-website-log",j as"find-and-change-subscribers",k as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",y as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Vt as"new-government",V as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ut as"nod-viewer-lists-and-categories",ct as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",b as"resource-links",d as"sectors-themes-and-tags",q as"site-banner",W as"site-editor-organizations",u as"site-editor-overview",x as"site-identity",w as"site-settings",T as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",v as"website-files",c as"website-project-blue-bridge",K as"who-gets-which-email"};
