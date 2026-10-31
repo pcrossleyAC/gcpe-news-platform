@@ -178,7 +178,7 @@ test.describe("the Calendar list: journeys", () => {
     await page.goto(listUrl({ filter: { ...MAY, quickSearch: f.tag } }));
     await expect(titles(page)).toHaveCount(6);
     // The radio is checked once the URL carries the new query, a beat after the click.
-    const confidentialOnly = page.getByRole("group", { name: "Confidential filter" }).getByLabel("Confidential only");
+    const confidentialOnly = page.getByRole("group", { name: "Confidential filter" }).getByLabel("Confidential only", { exact: true });
     await confidentialOnly.click();
     await expect(confidentialOnly).toBeChecked();
     await expect(titles(page)).toHaveText([`Vis B ${f.tag}`, `Vis D ${f.tag}`, `Vis E ${f.tag}`]);
