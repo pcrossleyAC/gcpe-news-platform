@@ -394,7 +394,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // Legacy news.gov.bc.ca /files/<name>: the legacy Hub's uploads, imported as NRMS site files by
   // legacy-files/cli.ts, are found by name in any letter case (siteFileByName); a path nothing
   // answers is 302'd to legacy's Azure origin (LEGACY_FILES_FALLBACK, on by default) — never for
-  // releases/ or slides/ (any case): a release file that isn't live stays the plain 404 (Q17).
+  // a name staff deleted in the Hub (siteFileDeleted: the 404), nor for releases/ or slides/ (any case): a release file that isn't live stays the plain 404 (Q17).
   // Every /files answer gets files-policy.ts's type, disposition and sandbox CSP.
   app.use(
     "/files",
@@ -403,6 +403,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
       outputDir,
       isPublic: (key) => nrms.releaseFileIsPublic(key),
       siteFileByName: (name) => nrms.siteFileByName(name),
+      siteFileDeleted: (name) => nrms.siteFileDeleted(name),
       fallbackOrigin: stackEnv.LEGACY_FILES_FALLBACK ? stackEnv.LEGACY_FILES_ORIGIN : null,
     }),
   );

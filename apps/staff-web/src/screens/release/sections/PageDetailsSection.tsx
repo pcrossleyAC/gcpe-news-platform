@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
-import { aType, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
+import { aType, TYPE_LABEL, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { UnsavedMarker } from "../UnsavedMarker";
@@ -40,7 +40,7 @@ function fromView(view: ReleaseView): FormState {
 
 
 /** Spec's "Page details" section (`PUT .../meta`): the URL key/slug (editable only for Story/
- * Factsheet, and only while still a draft or approved), redirect URL, location, English summary,
+ * Factsheet, only while still a draft or approved, and never once it has been published), redirect URL, location, English summary,
  * social-media summary, and keywords. */
 export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSectionProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
@@ -49,7 +49,18 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
 
   const dirty = !readOnly && edited;
 
-  const keyEditable = rules.keyEditable && EDITABLE_KEY_STATUSES.has(view.status);
+  // Suite review R2: once on the public site (the server's own test: a release date, an atom id or
+  // a publication record), the key is a web address people were sent, so it stays fixed even after
+  // an unpublish puts the release back to approved.
+  const everPublished = view.everPublished;
+  const keyEditable = rules.keyEditable && EDITABLE_KEY_STATUSES.has(view.status) && !everPublished;
+  const keyNote = !rules.keyEditable
+    ? `${aType(view.type)}'s URL key is generated automatically.`
+    : everPublished
+      ? `This ${TYPE_LABEL[view.type]} has been published, so its URL key can't change.`
+      : !keyEditable
+        ? "The URL key can no longer be changed."
+        : undefined;
   const showSummaryFields = rules.categoriesBeyondMinistries;
 
   const doSave = () =>
@@ -106,7 +117,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
             value={form.key}
             onChange={(v) => setForm((f) => ({ ...f, key: v }))}
             isDisabled={readOnly || !keyEditable}
-            description={!rules.keyEditable ? `${aType(view.type)}'s URL key is generated automatically.` : !keyEditable ? "The URL key can no longer be changed." : undefined}
+            description={keyNote}
           />
           <TextField label="Redirect URL" value={form.redirectUrl} onChange={(v) => setForm((f) => ({ ...f, redirectUrl: v }))} isDisabled={readOnly} />
           <TextField label="Location" value={form.location} onChange={(v) => setForm((f) => ({ ...f, location: v }))} isDisabled={readOnly} maxLength={50} />
