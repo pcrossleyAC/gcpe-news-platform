@@ -82,3 +82,32 @@ describe("Help on the Subscribers screens, with the compiled manuals", () => {
     expect(helpTargetFor(path, as("NoD.Admin"))).toBe(`/help/manuals/nod-admin/${adminPage}`);
   });
 });
+
+describe("Help on the Calendar screens, with the compiled manuals", () => {
+  // The activity list, Updates and the activity pages: the advanced manual's pages, which administrators
+  // see too (their own manual has no pages for these screens). Editors and read-only users have no
+  // manual yet, so they get the Calendar's How do I.
+  const SHARED: [string, string][] = [
+    ["/calendar", "calendar-advanced-list"],
+    ["/calendar/updates", "calendar-advanced-updates"],
+    ["/calendar/activities/new", "calendar-advanced-activity"],
+    ["/calendar/activities/12", "calendar-advanced-activity"],
+    ["/calendar/activities/12/changes", "calendar-advanced-activity"],
+  ];
+  it.each(SHARED)("on %s, an advanced user and an administrator get %s; an editor gets the How do I", (path, page) => {
+    expect(helpTargetFor(path, as("Calendar.Advanced"))).toBe(`/help/manuals/calendar-advanced/${page}`);
+    expect(helpTargetFor(path, as("Calendar.Administrator"))).toBe(`/help/manuals/calendar-advanced/${page}`);
+    expect(helpTargetFor(path, as("Calendar.SysAdmin"))).toBe(`/help/manuals/calendar-advanced/${page}`);
+    expect(helpTargetFor(path, as("Calendar.Editor"))).toBe("/help#how-calendar");
+    expect(helpTargetFor(path, as("Calendar.ReadOnly"))).toBe("/help#how-calendar");
+  });
+  const ADMIN: [string, string][] = [
+    ["/calendar/users", "calendar-users"],
+    ["/calendar/lookups/categories", "calendar-lookups"],
+    ["/calendar/transfer", "calendar-transfer"],
+    ["/calendar/dead-letters", "calendar-undelivered-events"],
+  ];
+  it.each(ADMIN)("on %s, an administrator still gets their own page %s", (path, page) => {
+    expect(helpTargetFor(path, as("Calendar.SysAdmin"))).toBe(`/help/manuals/calendar-admin/${page}`);
+  });
+});
