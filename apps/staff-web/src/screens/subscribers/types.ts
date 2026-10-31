@@ -221,7 +221,7 @@ export interface OperationsStatus {
 /** apps/nod/src/outgoing.ts (N3) */
 export interface OutgoingGroup {
   jobIds: string[];
-  kind: "as_it_happens" | "emergency" | "media" | "digest";
+  kind: "as_it_happens" | "emergency" | "media" | "digest" | "correction" | "correction_media";
   title: string | null;
   itemKey: string | null;
   digestCutoff: string | null;

@@ -137,6 +137,9 @@ const KIND_LABELS: Record<OutgoingGroup["kind"], string> = {
   emergency: "Emergency alert",
   media: "Media list",
   digest: "Daily digest",
+  // Owner decision 2026-10-31: "Also email it again?" on a republish.
+  correction: "Corrected copy to subscribers",
+  correction_media: "Corrected copy to media lists",
 };
 
 function groupTitle(g: OutgoingGroup, timeZone: string): string {

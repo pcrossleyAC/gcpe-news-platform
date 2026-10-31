@@ -166,6 +166,23 @@ describe("OperationsScreen", () => {
     expect(await screen.findByText("News On Demand sending resumed. 1,310 held emails for 5 releases are going out now.")).toBeInTheDocument();
   });
 
+  // Owner decision 2026-10-31: a corrected copy is held by a pause like any news email, named as such.
+  it("a held corrected copy is listed and can be cancelled like any other", async () => {
+    const corrected: OperationsStatus = {
+      ...HELD,
+      outgoing: {
+        ...HELD.outgoing,
+        held: { ...HELD.outgoing.held, groups: [group({ jobIds: [J5], kind: "correction_media", title: "Budget 2027", itemKey: "r1", emails: 12 })] },
+      },
+    };
+    stub(["NoD.Admin"], corrected);
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel held email: Budget 2027 (Corrected copy to media lists)" }));
+    expect(within(await screen.findByRole("alertdialog")).getByRole("listitem")).toHaveTextContent("Budget 2027 (Corrected copy to media lists): 12 emails");
+  });
+
   it("N3: a failed send is shown with what went wrong, and what to do", async () => {
     stub(["NoD.Admin"], HELD);
     renderIt();
