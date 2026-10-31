@@ -105,12 +105,12 @@ function storedOpen(): boolean | null {
  * line beside "Filters", so the activities start within the first screen; opening or closing it
  * is remembered for the tab.
  */
-export function FilterPanel({ query, options, onSearch, onPending }: {
+export function FilterPanel({ query, options, onSearch, onUnapplied }: {
   query: ListQuery;
   options: ListOptions;
   onSearch: (q: ListQuery) => void;
   /** Hears whether the panel's filter differs from the one the list is running (not yet applied). */
-  onPending?: (pending: boolean) => void;
+  onUnapplied?: (unapplied: boolean) => void;
 }): React.JSX.Element {
   const [filter, setFilter] = useState<ListFilter>(query.filter);
   const [display, setDisplay] = useState<ListDisplay>(query.display);
@@ -121,8 +121,8 @@ export function FilterPanel({ query, options, onSearch, onPending }: {
     setDisplay(query.display);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const parts = activeFilterParts(query, options);
-  const pending = filterKey(applied(filter)) !== filterKey(applied(query.filter));
-  useEffect(() => onPending?.(pending), [pending]); // eslint-disable-line react-hooks/exhaustive-deps
+  const unapplied = filterKey(applied(filter)) !== filterKey(applied(query.filter));
+  useEffect(() => onUnapplied?.(unapplied), [unapplied]); // eslint-disable-line react-hooks/exhaustive-deps
   // Open, the panel is most of a screen (three on a phone) before the first activity: closed until asked for.
   const [open, setOpen] = useState<boolean>(() => storedOpen() ?? false);
   // ⌘/Ctrl+K: opens Filters (if closed) and goes to Search for.

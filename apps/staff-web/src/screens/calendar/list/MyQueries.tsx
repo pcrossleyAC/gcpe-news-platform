@@ -12,12 +12,12 @@ const filterKey = (f: ListFilter) => JSON.stringify(Object.keys(f).sort().map((k
  * "My Queries" (Default.aspx:663-681): your own saved filters. Saving isn't frozen. `onRunning`
  * hears the name of the saved query the list is running (its filter is the current one), or null.
  */
-export function MyQueries({ current, onRun, onRunning, pending = false }: {
+export function MyQueries({ current, onRun, onRunning, unapplied = false }: {
   current: ListFilter;
   onRun: (filter: ListFilter) => void;
   onRunning?: (name: string | null) => void;
   /** The Filters panel has changes not yet applied: saving now would save the old filter (form-order audit #14). */
-  pending?: boolean;
+  unapplied?: boolean;
 }): React.JSX.Element {
   const [filters, setFilters] = useState<SavedFilterView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -154,17 +154,17 @@ export function MyQueries({ current, onRun, onRunning, pending = false }: {
         className="gcpe-field-row"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!pending) void save();
+          if (!unapplied) void save();
         }}
       >
         <div className="gcpe-field">
           <label htmlFor="query-name">Name for this query</label>
           <input id="query-name" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} aria-describedby="query-name-hint" />
           <p id="query-name-hint" className="gcpe-hint">
-            {pending ? "Apply filters first: the Filters panel has changes that aren't applied." : "Saves the filter the list is running. The Confidential filter and Display aren't saved with it."}
+            {unapplied ? "Apply filters first: the Filters panel has changes that aren't applied." : "Saves the filter the list is running. The Confidential filter and Display aren't saved with it."}
           </p>
         </div>
-        <Button type="submit" isDisabled={!name.trim() || pending}>
+        <Button type="submit" isDisabled={!name.trim() || unapplied}>
           Save this filter as a query
         </Button>
       </form>
