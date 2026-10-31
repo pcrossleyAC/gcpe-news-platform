@@ -31,6 +31,8 @@ const detailOf = (id: string): CalendarUserDetail => {
   const c = CORE_USERS.find((u) => u.id === id)!;
   return { ...DETAIL, user: { id, displayName: c.displayName, email: c.email, isActive: c.isActive, role: c.calendarRole as CalendarUserDetail["user"]["role"], ministryKeys: c.organizationKeys } };
 };
+/** The status lines that say something: the rank's live region stays mounted, empty, between messages. */
+const said = () => screen.queryAllByRole("status").map((e) => e.textContent).filter(Boolean);
 const OTHER_ROLES_REFUSAL = { error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" };
 
 function stub(calls: { url: string; init?: RequestInit }[], detail = DETAIL, override?: (url: string, init?: RequestInit) => Response | undefined) {
@@ -88,7 +90,7 @@ describe("CalendarUserScreen", () => {
     await user.click(within(form).getByRole("button", { name: "Save contact details" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/calendar/api/users/u1/profile")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.url.endsWith("/profile"))!.init!.body as string)).toEqual({ phone: "250-555-0100", mobile: "", jobTitle: "Sample title", description: "" });
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved contact details.");
+    await waitFor(() => expect(said()).toEqual(["Saved contact details."]));
   });
 
   it("shows the server's field message", async () => {
@@ -117,14 +119,19 @@ describe("CalendarUserScreen", () => {
     renderAt("u1");
     const user = userEvent.setup();
     const rank = await screen.findByLabelText("Comm contact rank for Health (HLTH)");
+    // Mounted and empty before anything is saved.
+    const region = document.getElementById("rank-health-result")!;
+    expect(region).toHaveAttribute("role", "status");
+    expect(region).toBeEmptyDOMElement();
     await user.selectOptions(rank, "1");
-    const saved = await screen.findByRole("status");
-    expect(saved).toHaveTextContent("Saved: Comm Director for Health (HLTH).");
+    const saved = await screen.findByText("Saved: Comm Director for Health (HLTH).");
+    expect(saved).toBe(region);
     expect(saved.parentElement).toBe(rank.parentElement);
     expect(rank).toHaveAccessibleDescription("Saved: Comm Director for Health (HLTH).");
     await user.selectOptions(rank, "");
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Saved: Not a comm contact for Health (HLTH)."));
-    expect(screen.getAllByRole("status")).toHaveLength(1);
+    await waitFor(() => expect(said()).toEqual(["Saved: Not a comm contact for Health (HLTH)."]));
+    // The same region, updated: it was there before the first message, so that one is heard too.
+    expect(screen.getByText("Saved: Not a comm contact for Health (HLTH).")).toBe(saved);
   });
 
   it("a rank that doesn't save says so plainly beside the select", async () => {
@@ -135,7 +142,7 @@ describe("CalendarUserScreen", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("The rank wasn't saved. Try again.");
     expect(alert.parentElement).toBe(rank.parentElement);
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(said()).toEqual([]);
   });
 
   it("with no ministry, the comm contact hint names the control that gives one (form-order audit #17)", async () => {
@@ -155,7 +162,7 @@ describe("CalendarUserScreen", () => {
     await user.click(within(preview).getByRole("button", { name: "Deactivate" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/calendar-access/u1/active")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.url.endsWith("/active"))!.init!.body as string)).toEqual({ isActive: false });
-    expect(await screen.findByRole("status")).toHaveTextContent("Robin Staff is deactivated. The Calendar picks this up within a minute.");
+    await waitFor(() => expect(said()).toEqual(["Robin Staff is deactivated. The Calendar picks this up within a minute."]));
   });
 
   it("lists the user's open activities before deactivating, with a way to Transfer them", async () => {
@@ -235,7 +242,7 @@ describe("CalendarUserScreen", () => {
     const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
     await user.click(within(preview).getByRole("button", { name: "Deactivate anyway" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Only a Core administrator can deactivate someone who also has other Hub roles.");
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(said()).toEqual([]);
     expect(screen.getByRole("button", { name: "Deactivate Robin Staff" })).toBeInTheDocument();
   });
 
@@ -373,11 +380,11 @@ describe("CalendarUserScreen", () => {
     const user = userEvent.setup();
     const form = await screen.findByRole("form", { name: "Contact details" });
     await user.click(within(form).getByRole("button", { name: "Save contact details" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved contact details.");
+    await waitFor(() => expect(said()).toEqual(["Saved contact details."]));
     await user.click(screen.getByRole("button", { name: "Deactivate Robin Staff" }));
     await user.click(within(await screen.findByRole("region", { name: "Before deactivating Robin Staff" })).getByRole("button", { name: "Deactivate" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Only a Core administrator can deactivate someone who also has other Hub roles.");
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(said()).toEqual([]);
   });
 
   it("shows one message at a time: a later Saved replaces a form's refusal", async () => {
@@ -388,7 +395,7 @@ describe("CalendarUserScreen", () => {
     await user.click(within(form).getByRole("button", { name: "Save contact details" }));
     expect(await within(form).findByRole("alert")).toHaveTextContent("job title: at most 100 characters");
     await user.selectOptions(screen.getByLabelText("Comm contact rank for Health (HLTH)"), "1");
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved: Comm Director for Health (HLTH).");
+    await waitFor(() => expect(said()).toEqual(["Saved: Comm Director for Health (HLTH)."]));
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });

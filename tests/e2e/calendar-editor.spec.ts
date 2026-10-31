@@ -42,7 +42,7 @@ test.describe("the activity editor, as each role (spec addendum §3 row 5e, §6)
     await expect(page.getByRole("heading", { level: 1, name: `Activity FIN-${f.ids.C}` })).toBeVisible();
     await expect(page.getByText("You can view this activity but not change it.")).toBeVisible();
     await expect(titleBox(page)).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: `Watch FIN-${f.ids.C}` })).toBeVisible();
     await expectNoSeriousA11yViolations(page, "the editor, read-only");
     await page.getByRole("link", { name: "View changes" }).click();
@@ -67,7 +67,7 @@ test.describe("the activity editor, as each role (spec addendum §3 row 5e, §6)
     await expect(page.getByRole("group", { name: "Look Ahead" })).toHaveCount(0);
     await expectNoSeriousA11yViolations(page, "the editor, as a ministry editor");
     await titleBox(page).fill(`Edited ${stamp}`);
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page).toHaveURL(list);
     await expect(page.getByRole("status").filter({ hasText: `Saved HLTH-${id}.` })).toBeVisible();
     await expect(page.locator(".gcpe-activity-title")).toHaveText([`Edited ${stamp}`]);
@@ -87,7 +87,7 @@ test.describe("the activity editor, as each role (spec addendum §3 row 5e, §6)
     await page.goto(listUrl({ filter: { ...AUGUST, quickSearch: stamp } }));
     await page.getByRole("link", { name: "New activity" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "New activity" })).toBeVisible();
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     const summary = page.getByRole("alert").filter({ hasText: "Fix these to save" });
     await expect(summary.getByRole("link", { name: "Enter a title" })).toBeVisible();
     await expect(summary).toBeFocused();
@@ -100,7 +100,7 @@ test.describe("the activity editor, as each role (spec addendum §3 row 5e, §6)
     await page.getByRole("combobox", { name: "Comm Contact" }).selectOption(String(f.health));
     await page.getByLabel("Start date").fill("2031-08-13");
     await page.getByLabel("End date").fill("2031-08-13");
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText(/^Created HLTH-\d+\.$/)).toBeVisible();
     const id = Number(/activities\/(\d+)/.exec(page.url())![1]);
     await expect(page.getByRole("heading", { level: 1, name: `Activity HLTH-${id}` })).toBeVisible();
@@ -227,11 +227,11 @@ test("edit locks: the second user waits read-only, the lock lapses after 15 idle
     await expect(titleBox(second)).toBeEnabled();
 
     await titleBox(second).fill(`Theirs ${stamp}`);
-    await second.getByRole("button", { name: "Save" }).click();
+    await second.getByRole("button", { name: "Save", exact: true }).click();
     await expect(second).toHaveURL(`${baseUrl()}/hub/calendar`);
 
     await expect(titleBox(first)).toHaveValue(`Mine ${stamp}`);
-    await first.getByRole("button", { name: "Save" }).click();
+    await first.getByRole("button", { name: "Save", exact: true }).click();
     await expect(first.getByText("Someone else changed this activity — reload to see their changes")).toBeVisible();
     await expect(titleBox(first)).toHaveValue(`Mine ${stamp}`);
     await expectNoSeriousA11yViolations(first, "the editor after a version conflict");

@@ -28,7 +28,7 @@ You don't see deleted activities. Reviewing deletions is for HQ Administrators.
 
 Review marks the activity **Reviewed** and clears its "Changed: needs review" marks. It shows on **Updates** as "reviewed activity".
 
-If you have unsaved changes, save or cancel them first: the page says "Save or cancel your changes to review or clone." Or choose **Save and review**: see below.
+If you have unsaved changes, save or cancel them first: the page says "Save or cancel your changes to review or clone, or choose Save and review." **Save and review** is described below.
 
 If you see "Someone else changed this activity — reload to see their changes", choose **Reload**, check the new change, then choose **Review** again.
 

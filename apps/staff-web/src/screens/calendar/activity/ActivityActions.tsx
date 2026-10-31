@@ -28,8 +28,10 @@ function refusal(e: unknown): string | null {
  * changes to be saved or cancelled; Delete asks first and discards them. The change freeze leaves
  * only Review, the star and View changes (§7.4); a deleted activity offers only Review (§6).
  */
-export function ActivityActions({ view, myName, dirty, frozen, deletable, reload, returnTo, leave, onWatch }: {
+export function ActivityActions({ view, myName, dirty, frozen, deletable, reload, returnTo, leave, onWatch, saveAndReview = false }: {
   view: ActivityView;
+  /** The form above offers Save and review, so the unsaved-changes hint names it. */
+  saveAndReview?: boolean;
   myName: string;
   dirty: boolean;
   frozen: boolean;
@@ -100,7 +102,9 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
           Delete
         </Button>
       )}
-      {dirty && (view.can.review || view.can.clone) && <p className="gcpe-hint">Save or cancel your changes to review or clone.</p>}
+      {dirty && (view.can.review || view.can.clone) && (
+        <p className="gcpe-hint">{saveAndReview ? "Save or cancel your changes to review or clone, or choose Save and review." : "Save or cancel your changes to review or clone."}</p>
+      )}
       {error && (
         <InlineAlert
           variant="danger"

@@ -22,7 +22,7 @@ HQ reviews what the ministries enter. This page is for HQ Administrators: Admini
 1. Open the activity from the list.
 2. Choose **Review**. You are back on the list and see, for example, "Reviewed HLTH-1."
 
-Review marks the activity **Reviewed** and clears its "changed" marks. If you have unsaved changes, save or cancel them first; the page says "Save or cancel your changes to review or clone." To save them and review in one step, choose **Save and review**.
+Review marks the activity **Reviewed** and clears its "changed" marks. If you have unsaved changes, save or cancel them first; the page says "Save or cancel your changes to review or clone, or choose Save and review." **Save and review** saves them and reviews in one step.
 
 ## Save and review
 

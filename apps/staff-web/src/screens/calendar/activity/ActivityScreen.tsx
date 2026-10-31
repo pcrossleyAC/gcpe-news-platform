@@ -155,7 +155,13 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   };
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [failure, setFailure] = useState<{ text: string; conflict: boolean } | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSavingState] = useState(false);
+  /** Read synchronously: a second Save, Save and review or Ctrl+S while one is under way sends nothing. */
+  const savingRef = useRef(false);
+  const setSaving = (v: boolean) => {
+    savingRef.current = v;
+    setSavingState(v);
+  };
   /** The save under way is a Save and review. */
   const [reviewing, setReviewing] = useState(false);
   const [dirty, setDirtyState] = useState(restored !== null);
@@ -344,6 +350,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
    * save reviews nothing; a failed review leaves the activity saved and says so.
    */
   const save = async (andReview = false) => {
+    if (savingRef.current) return;
     setFailure(null);
     const problems = checkActivity(fields, {
       rules: config.rules,
@@ -516,7 +523,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
               isPending={saving && reviewing}
               pendingLabel="Saving and reviewing…"
               onPress={() => {
-                if (saving) return;
+                if (savingRef.current) return;
                 setReviewing(true);
                 void save(true).finally(() => setReviewing(false));
               }}
@@ -534,6 +541,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
         <ActivityActions
           view={view}
           myName={me.displayName}
+          saveAndReview={!readOnly && view.can.review}
           // Deleted underneath, the changes can never be saved, so they don't hold back Review.
           dirty={dirty && !deletedMeanwhile}
           frozen={frozen}

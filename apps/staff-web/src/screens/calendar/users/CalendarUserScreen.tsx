@@ -310,7 +310,7 @@ export function CalendarUserScreen(): React.JSX.Element {
               id={`rank-${k}`}
               value={current?.rank ? String(current.rank) : ""}
               onChange={(e) => void setRank(k, label, e.target.value)}
-              aria-describedby={result ? `rank-${k}-result` : undefined}
+              aria-describedby={result ? (result.ok ? `rank-${k}-result` : `rank-${k}-error`) : undefined}
             >
               {RANK_OPTIONS.map((r) => (
                 <option key={r.value} value={r.value}>
@@ -318,8 +318,12 @@ export function CalendarUserScreen(): React.JSX.Element {
                 </option>
               ))}
             </select>
-            {result && (
-              <p id={`rank-${k}-result`} role={result.ok ? "status" : "alert"} className={result.ok ? "gcpe-hint" : undefined}>
+            {/* Mounted from the start, empty, so a screen reader hears the first Saved too (as the Hub's Announcer). */}
+            <p id={`rank-${k}-result`} role="status" className="gcpe-hint">
+              {result?.ok ? result.text : ""}
+            </p>
+            {result && !result.ok && (
+              <p id={`rank-${k}-error`} role="alert">
                 {result.text}
               </p>
             )}

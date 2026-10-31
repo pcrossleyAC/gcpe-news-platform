@@ -150,6 +150,24 @@ describe("the activity editor (spec addendum §8.2)", () => {
       expect(JSON.parse(String(calls.find(isReview)!.init!.body))).toEqual({ version: 4 });
     });
 
+    it("Save pressed while Save and review is under way sends nothing more: exactly one save", async () => {
+      const calls: Call[] = [];
+      let answer: (r: Response) => void = () => {};
+      stubActivity(calls, { ...reviewer, other: (url, init) => (isPut({ url, init }) ? (new Promise<Response>((res) => (answer = res)) as unknown as Response) : isReview({ url, init }) ? jsonResponse(200, view({ version: 5 })) : undefined) });
+      renderActivity("/calendar/activities/20001");
+      await userEvent.type(await title(), " fixed");
+      await userEvent.click(saveAndReview());
+      await waitFor(() => expect(calls.filter(isPut)).toHaveLength(1));
+      fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!);
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Title" }), { key: "s", ctrlKey: true });
+      await act(async () => {
+        answer(jsonResponse(200, { id: 20001, activity: view({ version: 4 }), warnings: [] }));
+      });
+      await screen.findByRole("heading", { level: 1, name: "Sample list" });
+      expect(calls.filter(isPut)).toHaveLength(1);
+    });
+
     it("a save that fails reviews nothing", async () => {
       const calls: Call[] = [];
       stubActivity(calls, { ...reviewer, other: (url, init) => (isPut({ url, init }) ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity. Reload to see their changes." }) : undefined) });
