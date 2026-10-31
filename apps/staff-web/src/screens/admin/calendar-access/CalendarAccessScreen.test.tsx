@@ -87,7 +87,7 @@ describe("CalendarAccessScreen", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Edit access for Robin Staff" }));
     expect(screen.queryByRole("button", { name: "Edit access for Pat Hq" })).toBeNull();
-    expect(screen.getByText("Only an HQ Administrator, a System Administrator or a Core admin can change this user’s access.")).toBeInTheDocument();
+    expect(screen.getByText("Only an HQ Administrator, a System Administrator or a Core administrator can change this user’s access.")).toBeInTheDocument();
     const form = screen.getByRole("form", { name: "Calendar access for Robin Staff" });
     expect(within(form).getByLabelText("Health (HLTH)")).toBeInTheDocument();
     expect(within(form).queryByLabelText(/GCPE Headquarters/)).toBeNull();
@@ -132,7 +132,8 @@ describe("CalendarAccessScreen", () => {
     await user.click(within(form).getByLabelText("Health (HLTH)"));
     await user.click(within(form).getByRole("button", { name: "Save Calendar access" }));
     const alert = await within(form).findByRole("alert");
-    expect(alert).toHaveTextContent("unknown or inactive ministry: health");
+    // Named as the ministry list shows it, in a plain sentence.
+    expect(alert).toHaveTextContent(/^Health is no longer active or doesn.t exist\. Untick it, then save again\.$/);
     expect(alert).not.toHaveTextContent("not-submitted");
   });
 
@@ -142,7 +143,7 @@ describe("CalendarAccessScreen", () => {
     await screen.findByRole("button", { name: "Edit access for Robin Staff" });
     expect(screen.queryByRole("button", { name: "Edit access for Lee Sys" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit access for Sam Self" })).toBeNull();
-    expect(screen.getByText("Only a System Administrator or a Core admin can change this user’s access.")).toBeInTheDocument();
+    expect(screen.getByText("Only a System Administrator or a Core administrator can change this user’s access.")).toBeInTheDocument();
     expect(screen.getByText("You can’t change your own Calendar access.")).toBeInTheDocument();
   });
 
@@ -193,7 +194,7 @@ describe("CalendarAccessScreen", () => {
     await screen.findByRole("button", { name: "Edit access for Robin Staff" });
     await user.click(screen.getByLabelText("Show inactive users, including those with no email"));
     const item = screen.getByRole("rowheader", { name: "Dale Dormant" }).closest("tr")!;
-    expect(within(item).getByText("Only a Core admin can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
+    expect(within(item).getByText("Only a Core administrator can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
     expect(within(item).queryByRole("button")).toBeNull();
     cleanup();
     vi.unstubAllGlobals();

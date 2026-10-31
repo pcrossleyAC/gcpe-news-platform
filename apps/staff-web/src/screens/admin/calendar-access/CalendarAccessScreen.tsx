@@ -14,6 +14,8 @@ export interface CalendarAccessUser {
   isActive: boolean;
   calendarRole: CalendarRoleName | null;
   organizationKeys: string[];
+  /** Core's: they have a Hub role besides their Calendar one, so only a Core admin may change their account. Absent from older responses. */
+  hasOtherRoles?: boolean;
 }
 
 /** The fields of Core's OrgRecord this screen reads. */

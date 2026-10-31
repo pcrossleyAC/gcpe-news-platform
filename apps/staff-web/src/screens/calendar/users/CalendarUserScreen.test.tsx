@@ -19,8 +19,19 @@ const CORE_USERS = [
   { id: "u1", email: "robin.staff@example.test", displayName: "Robin Staff", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"] },
   { id: "u2", email: null, displayName: "Kim Imported", isActive: false, calendarRole: "Calendar.Editor", organizationKeys: ["health"] },
   { id: "u3", email: "dale.dormant@example.test", displayName: "Dale Dormant", isActive: false, calendarRole: null, organizationKeys: [] },
+  { id: "u4", email: "sam.both@example.test", displayName: "Sam Both", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"], hasOtherRoles: true },
+  { id: "u5", email: "hana.hq@example.test", displayName: "Hana HQ", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["gcpe-hq"] },
+  { id: "u6", email: "sy.admin@example.test", displayName: "Sy Admin", isActive: false, calendarRole: "Calendar.SysAdmin", organizationKeys: ["health"] },
 ];
-const ORGS = [{ key: "health", displayName: "Health", abbreviation: "HLTH", isActive: true, isHq: false, isPublic: true }];
+const ORGS = [
+  { key: "health", displayName: "Health", abbreviation: "HLTH", isActive: true, isHq: false, isPublic: true },
+  { key: "gcpe-hq", displayName: "GCPE Headquarters", abbreviation: "HQ", isActive: true, isHq: true, isPublic: false },
+];
+const detailOf = (id: string): CalendarUserDetail => {
+  const c = CORE_USERS.find((u) => u.id === id)!;
+  return { ...DETAIL, user: { id, displayName: c.displayName, email: c.email, isActive: c.isActive, role: c.calendarRole as CalendarUserDetail["user"]["role"], ministryKeys: c.organizationKeys } };
+};
+const OTHER_ROLES_REFUSAL = { error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" };
 
 function stub(calls: { url: string; init?: RequestInit }[], detail = DETAIL, override?: (url: string, init?: RequestInit) => Response | undefined) {
   vi.stubGlobal(
@@ -158,15 +169,15 @@ describe("CalendarUserScreen", () => {
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/calendar-access/u2/link")).toBe(true));
   });
 
-  it("shows Core's refusal for a user with other roles", async () => {
+  it("shows Core's refusal for a user with other roles in plain words", async () => {
     openActivities = { activities: [], truncated: false };
-    stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, { error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" }) : undefined));
+    stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, OTHER_ROLES_REFUSAL) : undefined));
     renderAt("u1");
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
     const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
     await user.click(within(preview).getByRole("button", { name: "Deactivate" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("only a Core admin can change a user who also has NRMS or NoD roles");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/^Only a Core administrator can deactivate someone who also has other Hub roles\.$/);
   });
 
   it.each([
@@ -185,13 +196,13 @@ describe("CalendarUserScreen", () => {
 
   it("shows Core's refusal after a preview listing open activities, and the user stays active", async () => {
     openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: "2026-11-10T17:00:00.000Z", endAt: null, startDate: "2026-11-10", endDate: null }], truncated: false };
-    stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, { error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" }) : undefined));
+    stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, OTHER_ROLES_REFUSAL) : undefined));
     renderAt("u1");
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
     const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
     await user.click(within(preview).getByRole("button", { name: "Deactivate anyway" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("only a Core admin can change a user who also has NRMS or NoD roles");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Only a Core administrator can deactivate someone who also has other Hub roles.");
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getByRole("button", { name: "Deactivate Robin Staff" })).toBeInTheDocument();
   });
@@ -246,7 +257,7 @@ describe("CalendarUserScreen", () => {
     stub([], dormant);
     renderAt("u3");
     await screen.findByRole("heading", { level: 1, name: "Dale Dormant" });
-    expect(screen.getByText("Only a Core admin can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
+    expect(screen.getByText("Only a Core administrator can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit Calendar access for Dale Dormant" })).toBeNull();
   });
 
@@ -256,5 +267,96 @@ describe("CalendarUserScreen", () => {
     renderAt("A1");
     await screen.findByRole("heading", { level: 1, name: "Pat" });
     expect(screen.queryByRole("button", { name: "Deactivate Pat" })).toBeNull();
+  });
+
+  const twoMinistries: CalendarUserDetail = { ...DETAIL, user: { ...DETAIL.user, ministryKeys: ["finance", "health"] } };
+  const LINE = "They also work for ministries you don’t belong to. Ask an HQ Administrator to check and transfer their activities there.";
+  const openPreview = async () => {
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    return screen.findByRole("region", { name: "Before deactivating Robin Staff" });
+  };
+
+  it("says when they also work for ministries the Administrator doesn't, even with nothing listed", async () => {
+    stub([], twoMinistries);
+    renderAt("u1");
+    const preview = await openPreview();
+    expect(within(preview).getByText("No open activities in your ministries.")).toBeInTheDocument();
+    expect(within(preview).getByText(LINE)).toBeInTheDocument();
+    expect(within(preview).queryByText("No open activities.")).toBeNull();
+    // The button follows only what is listed.
+    expect(within(preview).getByRole("button", { name: "Deactivate" })).toBeInTheDocument();
+  });
+
+  it("lists the visible activities and still says they work for other ministries", async () => {
+    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: null, endAt: null, startDate: null, endDate: null }], truncated: false };
+    stub([], twoMinistries);
+    renderAt("u1");
+    const preview = await openPreview();
+    expect(within(preview).getByText("HLTH-41 — Sample launch — no date")).toBeInTheDocument();
+    expect(within(preview).getByText(LINE)).toBeInTheDocument();
+    expect(within(preview).getByRole("link", { name: "Transfer their activities first" })).toHaveAttribute("href", "/calendar/transfer");
+    expect(within(preview).getByRole("button", { name: "Deactivate anyway" })).toBeInTheDocument();
+  });
+
+  it("says nothing about other ministries to an HQ Administrator, or when every ministry is the Administrator's", async () => {
+    const hqActor = CORE_USERS.map((c) => (c.id === "a1" ? { ...c, organizationKeys: ["gcpe-hq"] } : c));
+    stub([], twoMinistries, (url) => (url === "/core/api/calendar-access" ? jsonResponse(200, hqActor) : undefined));
+    renderAt("u1");
+    let preview = await openPreview();
+    expect(within(preview).getByText("No open activities.")).toBeInTheDocument();
+    expect(within(preview).queryByText(LINE)).toBeNull();
+    cleanup();
+    vi.unstubAllGlobals();
+    stub([]);
+    renderAt("u1");
+    preview = await openPreview();
+    expect(within(preview).getByText("No open activities.")).toBeInTheDocument();
+    expect(within(preview).queryByText(LINE)).toBeNull();
+  });
+
+  it.each([
+    ["u4", "Sam Both", "Deactivate", "Only a Core administrator can deactivate someone who also has other Hub roles."],
+    ["u5", "Hana HQ", "Deactivate", "Only an HQ Administrator, a System Administrator or a Core administrator can deactivate someone in an HQ organization."],
+    ["u6", "Sy Admin", "Reactivate", "Only a System Administrator or a Core administrator can reactivate a System Administrator."],
+    ["u3", "Dale Dormant", "Reactivate", "Only a Core administrator can reactivate someone who has no Calendar role."],
+  ])("%s: no button where Core would refuse it (%s, %s), with the reason instead", async (id, name, action, why) => {
+    stub([], detailOf(id));
+    renderAt(id);
+    await screen.findByRole("heading", { level: 1, name });
+    expect(screen.getByText(why)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: `${action} ${name}` })).toBeNull();
+  });
+
+  it("a Core administrator is offered Deactivate for someone with other Hub roles", async () => {
+    stub([], detailOf("u4"), (url) =>
+      url === "/core/auth/session" ? jsonResponse(200, { user: { id: "a1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() }) : undefined,
+    );
+    renderAt("u4");
+    expect(await screen.findByRole("button", { name: "Deactivate Sam Both" })).toBeInTheDocument();
+  });
+
+  it("shows one message at a time: a refusal replaces an earlier Saved", async () => {
+    stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, OTHER_ROLES_REFUSAL) : undefined));
+    renderAt("u1");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Contact details" });
+    await user.click(within(form).getByRole("button", { name: "Save contact details" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved contact details.");
+    await user.click(screen.getByRole("button", { name: "Deactivate Robin Staff" }));
+    await user.click(within(await screen.findByRole("region", { name: "Before deactivating Robin Staff" })).getByRole("button", { name: "Deactivate" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Only a Core administrator can deactivate someone who also has other Hub roles.");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("shows one message at a time: a later Saved replaces a form's refusal", async () => {
+    stub([], DETAIL, (url, init) => (url.endsWith("/profile") && init?.method === "PUT" ? jsonResponse(400, { error: "invalid request", issues: [{ message: "job title: at most 100 characters", path: ["jobTitle"] }] }) : undefined));
+    renderAt("u1");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Contact details" });
+    await user.click(within(form).getByRole("button", { name: "Save contact details" }));
+    expect(await within(form).findByRole("alert")).toHaveTextContent("job title: at most 100 characters");
+    await user.selectOptions(screen.getByLabelText("Comm contact rank for Health (HLTH)"), "1");
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved the comm-contact rank.");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

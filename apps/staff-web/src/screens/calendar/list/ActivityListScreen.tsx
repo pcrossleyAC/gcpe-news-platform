@@ -129,7 +129,8 @@ export function ActivityListScreen(): React.JSX.Element {
   const notice = arrival?.calendarNotice ?? null;
   const returnedFrom = typeof arrival?.calendarActivityId === "number" ? arrival.calendarActivityId : null;
   const me = useCalendarContext();
-  const canManage = canManageCalendarAccess(useSession());
+  const session = useSession();
+  const canManage = canManageCalendarAccess(session);
   const [params, setParams] = useSearchParams();
   const [config, setConfig] = useState<CalendarConfigView | null>(null);
   const [options, setOptions] = useState<ListOptions | null>(null);
@@ -240,10 +241,13 @@ export function ActivityListScreen(): React.JSX.Element {
         // Owner decision 2026-10-29: say why the list is empty rather than leave a dead end.
         <p className="gcpe-notice">
           You aren&rsquo;t in any ministry yet, so there are no activities to show you.{" "}
-          {canManage ? (
+          {/* Only a Core admin may change their own Calendar access: anyone else would find their own row locked. */}
+          {session.has("Core.Admin") ? (
             <>
               Ministries are given in <Link to="/calendar-access">Calendar access</Link>.
             </>
+          ) : canManage ? (
+            "Ask another Calendar administrator or a Core administrator to add your ministry."
           ) : (
             "Ask a Calendar administrator."
           )}

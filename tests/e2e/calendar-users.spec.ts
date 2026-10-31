@@ -55,5 +55,11 @@ test.describe("Calendar users", () => {
     });
     expect(refused.status).toBe(403);
     expect(await refused.json()).toMatchObject({ reason: "other-roles" });
+    // The page knows that already: it says why instead of offering Deactivate.
+    await tick();
+    await page.goto(`${baseUrl()}/hub/calendar/users/${dual.id}`);
+    await expect(page.getByRole("heading", { level: 1, name: `Calendar Dual ${stamp}` })).toBeVisible();
+    await expect(page.getByText("Only a Core administrator can deactivate someone who also has other Hub roles.")).toBeVisible();
+    await expect(page.getByRole("button", { name: `Deactivate Calendar Dual ${stamp}` })).toHaveCount(0);
   });
 });

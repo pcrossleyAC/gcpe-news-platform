@@ -48,9 +48,9 @@ Saving replaces the person's whole ministry list with what is ticked.
 You may change anyone, including yourself. Calendar administrators and Calendar system administrators can't, and the screen shows them a note instead of **Edit**:
 
 - "You can't change your own Calendar access."
-- "Only a System Administrator or a Core admin can change this user's access."
-- "Only an HQ Administrator, a System Administrator or a Core admin can change this user's access."
-- "Only a Core admin can give Calendar access to an inactive user who has none."
+- "Only a System Administrator or a Core administrator can change this user's access."
+- "Only an HQ Administrator, a System Administrator or a Core administrator can change this user's access."
+- "Only a Core administrator can give Calendar access to an inactive user who has none."
 
 When one of them sends a request like this to you, make the change yourself.
 
@@ -59,4 +59,4 @@ When one of them sends a request like this to you, make the change yourself.
 | Message | What it means |
 |---|---|
 | "choose at least one ministry for a Calendar role" | Tick a ministry, or choose **No Calendar access**. |
-| "unknown or inactive ministry: health" | The named ministry (shown by its short web name) was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save. |
+| "Health is no longer active or doesn't exist. Untick it, then save again." | The named ministry was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save. |

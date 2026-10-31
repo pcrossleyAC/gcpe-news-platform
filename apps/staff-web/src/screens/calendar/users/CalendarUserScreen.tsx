@@ -9,10 +9,42 @@ import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 import { AccessEditor, actorFor, lockedMessage } from "../../admin/calendar-access/AccessEditor";
 import type { CalendarAccessUser, OrgOption } from "../../admin/calendar-access/CalendarAccessScreen";
-import { canonicalId, checkCalendarGrant } from "../../admin/calendar-access/calendar-roles";
+import { canonicalId, checkCalendarGrant, type CalendarGrantRefusal } from "../../admin/calendar-access/calendar-roles";
 import { RANK_OPTIONS, type CalendarUserDetail, type OpenActivities, type Profile } from "./types";
 
 const LAG = "The Calendar picks this up within a minute.";
+
+/** What the Account section does for this user: the verb in its button. */
+type AccountAction = "deactivate" | "reactivate" | "link";
+
+/**
+ * Why Core would refuse this account change (services/calendar-access.ts's calendarAdminGuard), in
+ * plain words: the reason shown instead of the button, and for the same refusal if it still comes back.
+ */
+const ACCOUNT_REFUSALS: Partial<Record<CalendarGrantRefusal | "other-roles" | "no-calendar-role", (verb: AccountAction) => string>> = {
+  "other-roles": (v) => `Only a Core administrator can ${v} someone who also has other Hub roles.`,
+  "no-calendar-role": (v) => `Only a Core administrator can ${v} someone who has no Calendar role.`,
+  "hq-target": (v) => `Only an HQ Administrator, a System Administrator or a Core administrator can ${v} someone in an HQ organization.`,
+  "target-above-ceiling": (v) => `Only a System Administrator or a Core administrator can ${v} a System Administrator.`,
+  "own-access": (v) => `You can’t ${v} yourself.`,
+};
+const refusalText = (reason: unknown, verb: AccountAction): string | null =>
+  typeof reason === "string" && Object.hasOwn(ACCOUNT_REFUSALS, reason) ? ACCOUNT_REFUSALS[reason as keyof typeof ACCOUNT_REFUSALS]!(verb) : null;
+
+/** A server message in sentence case: "you can't deactivate yourself" ⇒ "You can't deactivate yourself." */
+const sentence = (m: string) => {
+  const t = m.trim();
+  if (!t) return t;
+  const s = t[0]!.toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(s) ? s : `${s}.`;
+};
+
+/** A refused account change in plain words: the reason's own sentence where Core sent one, otherwise its message in sentence case. */
+function accountMessages(caught: unknown, verb: AccountAction): string[] {
+  const reason = caught instanceof ApiError ? (caught.body as { reason?: unknown } | undefined)?.reason : undefined;
+  const plain = refusalText(reason, verb);
+  return plain ? [plain] : messagesOf(caught).map(sentence);
+}
 
 function Alerts({ messages }: { messages: string[] }): React.JSX.Element {
   return (
@@ -26,7 +58,8 @@ function Alerts({ messages }: { messages: string[] }): React.JSX.Element {
   );
 }
 
-function ProfileForm({ userId, profile, onSaved }: { userId: string; profile: Profile; onSaved(msg: string): void }): React.JSX.Element {
+/** Its refusal shows beside the form only while `showMessages`: the page hides it once it shows a newer message. */
+function ProfileForm({ userId, profile, onSaved, showMessages, onFailed }: { userId: string; profile: Profile; onSaved(msg: string): void; showMessages: boolean; onFailed(): void }): React.JSX.Element {
   const [draft, setDraft] = useState({ phone: profile.phone ?? "", mobile: profile.mobile ?? "", jobTitle: profile.jobTitle ?? "", description: profile.description ?? "" });
   const [messages, setMessages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -46,6 +79,7 @@ function ProfileForm({ userId, profile, onSaved }: { userId: string; profile: Pr
       onSaved("Saved contact details.");
     } catch (caught) {
       setMessages(messagesOf(caught));
+      onFailed();
     } finally {
       setBusy(false);
     }
@@ -55,7 +89,7 @@ function ProfileForm({ userId, profile, onSaved }: { userId: string; profile: Pr
   return (
     <form ref={formRef} aria-label="Contact details" onSubmit={save}>
       <h2>Contact details</h2>
-      <Alerts messages={messages} />
+      <Alerts messages={showMessages ? messages : []} />
       {field("phone", "Phone", "Up to 20 characters")}
       {field("mobile", "Mobile", "12 digits and hyphens, like 250-555-0100")}
       {field("jobTitle", "Job title")}
@@ -84,6 +118,8 @@ export function CalendarUserScreen(): React.JSX.Element {
   const [editingAccess, setEditingAccess] = useState(false);
   const [linkEmail, setLinkEmail] = useState("");
   const [preview, setPreview] = useState<OpenActivities | null>(null);
+  /** Whose message is on screen: one at a time, so a newer message never sits beside a stale one. */
+  const [shown, setShown] = useState<"page" | "profile" | "access" | null>(null);
   const latest = useRef(0);
   useDocumentTitle(detail?.user.displayName ?? (notFound ? "Calendar user" : null));
 
@@ -141,12 +177,43 @@ export function CalendarUserScreen(): React.JSX.Element {
       })
     : null;
   const lockedAccess = core ? lockedMessage(refusal, actor, core) : null;
+  const isActive = core?.isActive ?? u.isActive;
+  const email = core ? core.email : u.email;
+  const verb: AccountAction = isActive ? "deactivate" : email ? "reactivate" : "link";
+  // What Core's calendarAdminGuard would refuse, so the button isn't offered for it. A Core admin may
+  // change anyone's account; a user the Calendar knows but Core's list doesn't yet is left to the server.
+  const accountRefusal = (() => {
+    if (!core || actor.roles.includes("Core.Admin")) return null;
+    if (core.calendarRole === null) return refusalText("no-calendar-role", verb);
+    if (core.hasOtherRoles ?? false) return refusalText("other-roles", verb);
+    const r = checkCalendarGrant({
+      actorId: actor.id,
+      actorRoles: actor.roles,
+      actorIsHq: actor.isHq,
+      targetId: core.id,
+      targetRole: core.calendarRole,
+      nextRole: core.calendarRole,
+      addsHqOrganization: false,
+      targetHasHqAfter: core.organizationKeys.some((k) => hqKeys.has(k)),
+    });
+    // The other refusals can't arise for a change that keeps the role; the server's own words cover them.
+    return r ? (refusalText(r, verb) ?? `You can’t ${verb} this person.`) : null;
+  })();
+  // Whether the user works for a ministry the administrator doesn't: the page already shows their
+  // ministries, so saying so reveals nothing. An HQ administrator sees every ministry's activities.
+  const actorKeys = new Set(coreUsers.find((c) => canonicalId(c.id) === canonicalId(actor.id))?.organizationKeys ?? []);
+  const otherMinistries = !actor.isHq && [...u.ministryKeys, ...detail.commContacts.map((c) => c.ministryKey)].some((k) => !actorKeys.has(k));
   const done = (msg: string) => {
     setStatus(msg);
     setMessages([]);
+    setShown("page");
     reload();
   };
-  const fail = (caught: unknown) => setMessages(messagesOf(caught));
+  const fail = (caught: unknown, toMessages: (caught: unknown) => string[] = messagesOf) => {
+    setStatus(null);
+    setMessages(toMessages(caught));
+    setShown("page");
+  };
 
   const setRank = async (ministryKey: string, value: string) => {
     try {
@@ -168,7 +235,7 @@ export function CalendarUserScreen(): React.JSX.Element {
       await apiFetch(`/core/api/calendar-access/${u.id}/active`, { method: "PUT", body: { isActive } });
       done(`${u.displayName} is ${isActive ? "reactivated" : "deactivated"}. ${LAG}`);
     } catch (caught) {
-      fail(caught);
+      fail(caught, (c) => accountMessages(c, isActive ? "reactivate" : "deactivate"));
     }
   };
   const link = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -177,14 +244,12 @@ export function CalendarUserScreen(): React.JSX.Element {
       await apiFetch(`/core/api/calendar-access/${u.id}/link`, { method: "POST", body: { email: linkEmail } });
       done(`${u.displayName} is linked and active. ${LAG}`);
     } catch (caught) {
-      fail(caught);
+      fail(caught, (c) => accountMessages(c, "link"));
     }
   };
 
-  const isActive = core?.isActive ?? u.isActive;
   // The server refuses anyone deactivating themself; the button isn't offered on their own page.
   const isSelf = canonicalId(u.id) === canonicalId(session.user?.id ?? "");
-  const email = core ? core.email : u.email;
   return (
     <div>
       <p>
@@ -195,8 +260,8 @@ export function CalendarUserScreen(): React.JSX.Element {
         {email ?? "No email"}
         {isActive ? "" : " — inactive"}
       </p>
-      {status && <p role="status">{status}</p>}
-      <Alerts messages={messages} />
+      {shown === "page" && status && <p role="status">{status}</p>}
+      <Alerts messages={shown === "page" ? messages : []} />
 
       <h2>Calendar access</h2>
       {lockedAccess ? (
@@ -211,6 +276,8 @@ export function CalendarUserScreen(): React.JSX.Element {
             done(`${m} ${LAG}`);
           }}
           onCancel={() => setEditingAccess(false)}
+          showMessages={shown === "access"}
+          onFailed={() => setShown("access")}
         />
       ) : (
         <Button variant="secondary" onPress={() => setEditingAccess(true)} isDisabled={!core}>
@@ -218,7 +285,7 @@ export function CalendarUserScreen(): React.JSX.Element {
         </Button>
       )}
 
-      <ProfileForm userId={u.id} profile={detail.profile} onSaved={done} />
+      <ProfileForm userId={u.id} profile={detail.profile} onSaved={done} showMessages={shown === "profile"} onFailed={() => setShown("profile")} />
 
       <h2>Comm contact</h2>
       {u.ministryKeys.length === 0 && <p>Give this user a ministry first.</p>}
@@ -241,45 +308,24 @@ export function CalendarUserScreen(): React.JSX.Element {
       })}
 
       <h2>Account</h2>
-      {isActive ? (
-        isSelf ? null : (
-          <>
-            <Button variant="secondary" onPress={() => void showPreview()}>{`Deactivate ${u.displayName}`}</Button>
-            {preview && (
-              <section aria-label={`Before deactivating ${u.displayName}`}>
-                <h3>Open activities</h3>
-                {preview.activities.length === 0 ? (
-                  <p>No open activities.</p>
-                ) : (
-                  <>
-                    <p>{u.displayName} is the comm contact for these activities. Deactivating doesn&rsquo;t move them.</p>
-                    <ul>
-                      {preview.activities.map((a) => (
-                        <li key={a.id}>{`${a.reference} — ${a.title} — ${a.startDate ?? "no date"}`}</li>
-                      ))}
-                    </ul>
-                    {preview.truncated && <p>Only the first 500 are listed.</p>}
-                    <p>
-                      <Link to="/calendar/transfer">Transfer their activities first</Link>
-                    </p>
-                  </>
-                )}
-                <Button
-                  variant="secondary"
-                  onPress={() => {
-                    setPreview(null);
-                    void setActive(false);
-                  }}
-                >
-                  {preview.activities.length === 0 ? "Deactivate" : "Deactivate anyway"}
-                </Button>
-                <Button variant="tertiary" onPress={() => setPreview(null)}>
-                  Cancel
-                </Button>
-              </section>
-            )}
-          </>
-        )
+      {isSelf ? null : accountRefusal ? (
+        <p>{accountRefusal}</p>
+      ) : isActive ? (
+        <>
+          <Button variant="secondary" onPress={() => void showPreview()}>{`Deactivate ${u.displayName}`}</Button>
+          {preview && (
+            <DeactivatePreview
+              name={u.displayName}
+              preview={preview}
+              otherMinistries={otherMinistries}
+              onDeactivate={() => {
+                setPreview(null);
+                void setActive(false);
+              }}
+              onCancel={() => setPreview(null)}
+            />
+          )}
+        </>
       ) : email ? (
         <Button variant="secondary" onPress={() => void setActive(true)}>{`Reactivate ${u.displayName}`}</Button>
       ) : (
@@ -291,5 +337,48 @@ export function CalendarUserScreen(): React.JSX.Element {
         </form>
       )}
     </div>
+  );
+}
+
+/**
+ * Before deactivating: the open activities this administrator can see. Nothing about the rest, not
+ * even a count (it would reveal confidential activities); when the user also works for ministries
+ * the administrator doesn't, the preview says so and who can check them.
+ */
+function DeactivatePreview({ name, preview, otherMinistries, onDeactivate, onCancel }: {
+  name: string;
+  preview: OpenActivities;
+  otherMinistries: boolean;
+  onDeactivate(): void;
+  onCancel(): void;
+}): React.JSX.Element {
+  const listed = preview.activities.length;
+  return (
+    <section aria-label={`Before deactivating ${name}`}>
+      <h3>Open activities</h3>
+      {listed === 0 ? (
+        <p>{otherMinistries ? "No open activities in your ministries." : "No open activities."}</p>
+      ) : (
+        <>
+          <p>{name} is the comm contact for these activities. Deactivating doesn&rsquo;t move them.</p>
+          <ul>
+            {preview.activities.map((a) => (
+              <li key={a.id}>{`${a.reference} — ${a.title} — ${a.startDate ?? "no date"}`}</li>
+            ))}
+          </ul>
+          {preview.truncated && <p>Only the first 500 are listed.</p>}
+          <p>
+            <Link to="/calendar/transfer">Transfer their activities first</Link>
+          </p>
+        </>
+      )}
+      {otherMinistries && <p>They also work for ministries you don&rsquo;t belong to. Ask an HQ Administrator to check and transfer their activities there.</p>}
+      <Button variant="secondary" onPress={onDeactivate}>
+        {listed === 0 ? "Deactivate" : "Deactivate anyway"}
+      </Button>
+      <Button variant="tertiary" onPress={onCancel}>
+        Cancel
+      </Button>
+    </section>
   );
 }

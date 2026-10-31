@@ -11,6 +11,8 @@ interface DeadLetter {
   subscriber: string;
   type: string;
   aggregateId: string;
+  /** Such as HLTH-12; null where this System Administrator can't see the activity. */
+  activityReference: string | null;
   attempts: number;
   lastError: string | null;
   createdAt: string;
@@ -24,6 +26,14 @@ interface DeadLetterList {
 }
 
 const keyOf = (d: DeadLetter) => `${d.eventId}:${d.subscriber}`;
+
+/** The Calendar's event types and subscribers in the words staff use; anything new shows as sent. */
+const EVENT_LABELS: Record<string, string> = { "activity.created": "New activity", "activity.updated": "Activity changed", "activity.deleted": "Activity deleted" };
+const APP_LABELS: Record<string, string> = { nrms: "Releases" };
+const eventLabel = (d: DeadLetter) => EVENT_LABELS[d.type] ?? d.type;
+const appLabel = (d: DeadLetter) => APP_LABELS[d.subscriber] ?? d.subscriber;
+/** Its reference where the server sent one, else its number: "activity:12" ⇒ "Activity 12". */
+const aboutLabel = (d: DeadLetter) => d.activityReference ?? d.aggregateId.replace(/^activity:(\d+)$/, "Activity $1");
 
 const RETRY_NOTE = "Queued for delivery again. If it comes back here after the next minute, the receiving app is still refusing it: check it before retrying.";
 
@@ -120,9 +130,9 @@ export function DeadLettersScreen(): React.JSX.Element {
             <tbody>
               {rows.map((d) => (
                 <tr key={keyOf(d)}>
-                  <td>{d.type}</td>
-                  <td>{d.aggregateId}</td>
-                  <td>{d.subscriber}</td>
+                  <td>{eventLabel(d)}</td>
+                  <td>{aboutLabel(d)}</td>
+                  <td>{appLabel(d)}</td>
                   <td>{d.attempts}</td>
                   <td>{d.lastError ?? ""}</td>
                   <td>{d.queuedAtBc}</td>
@@ -133,7 +143,7 @@ export function DeadLettersScreen(): React.JSX.Element {
                       onPress={() => void retry(d)}
                       isPending={retrying.has(keyOf(d))}
                       pendingLabel="Retrying…"
-                      aria-label={`Retry ${d.type} for ${d.aggregateId} to ${d.subscriber}, queued ${d.queuedAtBc}`}
+                      aria-label={`Retry ${eventLabel(d)} for ${aboutLabel(d)} to ${appLabel(d)}, queued ${d.queuedAtBc}`}
                     >
                       Retry
                     </Button>

@@ -11,9 +11,9 @@ const retrySchema = z.object({ eventId: z.string().uuid(), subscriber: safeStrin
 export function deadLetterRoutes(deps: ApiDeps): Router {
   const r = Router();
   r.use("/dead-letters", requireLevel("Calendar.SysAdmin"));
-  r.get("/dead-letters", async (_req, res, next) => {
+  r.get("/dead-letters", async (req, res, next) => {
     try {
-      res.json(await listDeadLetters(deps.db, deps.rules.timeZone));
+      res.json(await listDeadLetters(deps.db, deps.rules.timeZone, req.calendar!));
     } catch (e) {
       next(e);
     }

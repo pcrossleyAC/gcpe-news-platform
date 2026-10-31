@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { dispatchOnce, outboxDeliveries, outboxEvents } from "@gcpe/events";
 import { createCalendarTestDb, createTestApp, projectUser, sessionCookie } from "../../test/helpers";
-import { call, seedWorld, type World } from "../../test/world";
+import { call, insertRaw, seedWorld, type World } from "../../test/world";
 
 const SYSADMIN = "00000000-0000-4000-8000-000000000499";
 const NRMS = { name: "nrms", url: "http://nrms.invalid/events", secret: "s".repeat(32), types: ["activity.created", "activity.updated", "activity.deleted"] };
@@ -14,9 +14,9 @@ describe("the Calendar's undelivered events (spec addendum §5.1)", () => {
   let w: World;
   let app: ReturnType<typeof createTestApp>;
   let sysCookie = "";
-  const dead = async (status: "dead" | "pending" | "delivered" = "dead") => {
+  const dead = async (status: "dead" | "pending" | "delivered" = "dead", aggregateId = "activity:7") => {
     const id = randomUUID();
-    const envelope = { id, type: "activity.updated", version: 1, source: "calendar", aggregateId: "activity:7", sequence: 1, occurredAt: "2026-09-01T00:00:00Z", correlationId: randomUUID(), data: { id: 7, isConfidential: true, isDeleted: false } };
+    const envelope = { id, type: "activity.updated", version: 1, source: "calendar", aggregateId, sequence: 1, occurredAt: "2026-09-01T00:00:00Z", correlationId: randomUUID(), data: { id: 7, isConfidential: true, isDeleted: false } };
     await tdb.db.insert(outboxEvents).values({ id, type: envelope.type, aggregateId: envelope.aggregateId, sequence: 1, envelope, createdAt: new Date("2026-09-01T00:00:00Z") });
     await tdb.db.insert(outboxDeliveries).values({ eventId: id, subscriber: "nrms", status, attempts: 9, lastError: "HTTP 503" });
     return id;
@@ -38,8 +38,21 @@ describe("the Calendar's undelivered events (spec addendum §5.1)", () => {
     await dead("delivered");
     const res = await call(app, "get", "/api/dead-letters", sysCookie);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ items: [{ eventId: id, subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" }], truncated: false });
+    expect(res.body).toEqual({ items: [{ eventId: id, subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", activityReference: null, attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" }], truncated: false });
     expect(JSON.stringify(res.body)).not.toContain("isConfidential");
+  });
+
+  it("names the activity by its reference, only where the System Administrator can see it", async () => {
+    await tdb.db.delete(outboxDeliveries);
+    const mine = await insertRaw(tdb.db, { contactMinistryKey: "health", title: "Sample seen" });
+    const hidden = await insertRaw(tdb.db, { commContactId: w.contact.financeEditor, contactMinistryKey: "finance", isConfidential: true, title: "Sample unseen" });
+    const seen = await dead("dead", `activity:${mine}`);
+    const unseen = await dead("dead", `activity:${hidden}`);
+    const items = (await call(app, "get", "/api/dead-letters", sysCookie)).body.items as { eventId: string; activityReference: string | null }[];
+    expect(items.find((i) => i.eventId === seen)!.activityReference).toBe(`HLTH-${mine}`);
+    // A Health System Administrator can't see a confidential Finance activity: not even its ministry.
+    expect(items.find((i) => i.eventId === unseen)!.activityReference).toBeNull();
+    expect(JSON.stringify(items)).not.toContain("FIN");
   });
 
   it("is System Administrator only", async () => {

@@ -12,7 +12,8 @@ export class CalendarUserNotFoundError extends Error {
 }
 export class NotUsersMinistryError extends Error {
   override name = "NotUsersMinistryError";
-  constructor(readonly ministryKey: string) {
+  /** `ministryName` is the ministry's display name, or its key when the Calendar doesn't know it yet. */
+  constructor(readonly ministryKey: string, readonly ministryName: string = ministryKey) {
     super("not one of the user's ministries");
   }
 }
@@ -140,7 +141,10 @@ export async function setCommContactRank(db: Db, id: string, ministryKey: string
     const u = await projectedUser(tx, id);
     // ministryKey arrives exactly as the Calendar stores it (spec addendum §5.2): Core keys are
     // byte for byte, and legacy's own GCPE ministry keys are uppercase GUIDs.
-    if (!u.organizationKeys.includes(ministryKey)) throw new NotUsersMinistryError(ministryKey);
+    if (!u.organizationKeys.includes(ministryKey)) {
+      const [o] = await tx.select({ name: orgs.displayName }).from(orgs).where(eq(orgs.key, ministryKey));
+      throw new NotUsersMinistryError(ministryKey, o?.name ?? ministryKey);
+    }
     const [existing] = await tx.select().from(commContacts).where(and(eq(commContacts.userId, u.id), eq(commContacts.ministryKey, ministryKey))).for("update");
     if (existing) {
       await tx
@@ -165,13 +169,19 @@ export interface OpenActivity {
   endDate: string | null;
 }
 
+export interface OpenActivities {
+  activities: OpenActivity[];
+  truncated: boolean;
+}
+
 /**
  * What legacy's user page listed before deactivating (User.aspx:183-223): activities whose comm
- * contact is one of the user's active comm contacts, here only those still open (not deleted,
- * ending today or later, or undated) and visible to the Administrator. No count of the rest: it
- * would reveal confidential activities.
+ * contact is one of the user's comm contacts, active or not (Not a comm contact leaves the
+ * activities pointing at it), here only those still open (not deleted, ending today or later, or
+ * undated) and visible to the Administrator. No count of the rest: it would reveal confidential
+ * activities. The screen says instead when the user works for ministries the Administrator doesn't.
  */
-export async function openActivitiesOf(deps: ApiDeps, actor: Viewer, userId: string, opts: { limit?: number } = {}): Promise<{ activities: OpenActivity[]; truncated: boolean }> {
+export async function openActivitiesOf(deps: ApiDeps, actor: Viewer, userId: string, opts: { limit?: number } = {}): Promise<OpenActivities> {
   const u = await projectedUser(deps.db, userId);
   const limit = opts.limit ?? 500;
   const now = await dbNow(deps.db, deps.now);
@@ -182,7 +192,7 @@ export async function openActivitiesOf(deps: ApiDeps, actor: Viewer, userId: str
     .from(activities)
     .innerJoin(commContacts, eq(commContacts.id, activities.commContactId))
     .leftJoin(orgs, eq(orgs.key, activities.contactMinistryKey))
-    .where(and(eq(commContacts.userId, u.id), eq(commContacts.isActive, true), isNull(activities.deletedAt), or(sql`${ends} IS NULL`, gte(ends, today)), visibleSql(actor)))
+    .where(and(eq(commContacts.userId, u.id), isNull(activities.deletedAt), or(sql`${ends} IS NULL`, gte(ends, today)), visibleSql(actor)))
     .orderBy(sql`${activities.startAt} ASC NULLS LAST`, asc(activities.id))
     .limit(limit + 1);
   const local = (d: Date | null) => (d ? wallClock(d, deps.rules.timeZone).date : null);
