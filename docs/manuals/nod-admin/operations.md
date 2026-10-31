@@ -81,7 +81,7 @@ When on, every night at 3:00 am it deletes:
 - sign-ups that were never confirmed, after 10 days;
 - people who unsubscribed or were deleted more than 90 days ago, with their history and delivery records.
 
-It never deletes subscribers disabled by bounces. When it deletes someone who had left a media list by unsubscribing, it keeps that they left the list, without their address, so adding that address back still asks first.
+It never deletes subscribers disabled by bounces. When it deletes someone who had left a media list, it keeps that they left the list, without their address, so adding that address back still asks first.
 
 **If it ran now, it would delete** shows the counts before you turn it on. While it is on, the section also shows how its last run went. While it is off, no last run is shown.
 

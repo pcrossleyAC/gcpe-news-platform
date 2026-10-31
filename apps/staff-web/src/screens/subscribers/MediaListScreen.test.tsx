@@ -109,7 +109,9 @@ describe("MediaListScreen", () => {
     await user.type(await screen.findByRole("textbox", { name: "Email address" }), "gone@example.test");
     await user.click(screen.getByRole("button", { name: "Add to list" }));
     const dialog = await screen.findByRole("alertdialog");
-    expect(dialog).toHaveTextContent("They unsubscribed");
+    // Leaves imported from the old system can't tell an unsubscribe from a removal, so the
+    // question doesn't claim they unsubscribed.
+    expect(dialog).toHaveTextContent(/^This person unsubscribed.*Our records show they left .+: they unsubscribed, or left it in the old system\. Add them only if they've asked to receive media releases again\./);
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(calls.filter((c) => c.method === "POST" && c.url.endsWith("/members"))).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "Add to list" }));

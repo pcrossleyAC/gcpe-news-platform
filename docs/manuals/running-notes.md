@@ -97,17 +97,11 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   `{"raw": "<the .eml's full text>"}`; the next scheduled bounce run (every 15 minutes, or the
   next tick in dev) picks it up. Distribution's own `/api/bounces/inbox`
   (`Distribution.Operate`) 404s unless it's actually running in fake mode.
-- **Viewer** — The History screen shows "Subscriber" for the person's own actions, staff names
-  for staff actions, and "Bounce processing" / "Media Hub sync" for automatic ones.
 - **Operations** — Two more test users: `nod-viewer@example.test` and `nod-editor@example.test`.
   `scripts/siteground-seed-users.sh` creates all five.
 - **Developer** — Staff subscriber routes answer unexpected errors themselves and log only an
   error code, because their queries bind addresses (`privateErrors`). Use it for any new route
   that binds an address.
-- **Viewer** — For an all-news subscriber, the subscriber page shows "All news" and also their
-  timing (As it happens, Daily digest, or both).
-- **Viewer** — Each media list shows who left it by unsubscribing, and whether they're back on
-  it.
 - **Operations** — Operations (NoD Admins) pauses and resumes News On Demand sending and
   Distribution. Each asks first and emails the operations inbox. Pausing holds email; nothing is
   dropped. The bounce summary address is set here; clearing it goes back to the server default.
@@ -118,27 +112,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Operations** — When Operations says "Using the server default: …", the bounce summary field
   is empty on purpose. Type an address only to override the default; saving the field empty
   keeps using the default.
-- **Viewer** — Subscribers → Reports has five reports: active subscribers by list, recent
-  unsubscribes, sends per release, daily digest runs, and Distribution sent and bounced. Dates
-  are BC days; pick up to 92 at a time, or leave them empty for the last 30.
-- **Viewer** — Every report downloads as a CSV that opens in Excel. Viewers get counts only;
-  CSVs with email addresses (a list's members, recent unsubscribes) are for NoD Editors and
-  Admins.
-- **Viewer** — In Sends per release and Daily digest runs, "Handed off, not bounced" counts
-  emails News On Demand handed to Distribution, minus bounces. It isn't delivery: an email still
-  queued in Distribution, or one Distribution failed to send, still counts as handed off. "Not
-  sent" means not yet handed to Distribution, including a send still going out. Digest emails
-  are in Daily digest runs, counted once per subscriber.
-- **Viewer** — Totals in Sends per release or Daily digest runs won't match Distribution sent
-  and bounced, and aren't meant to: Distribution's report has its own Failed column, counts by
-  the day it sent (the other two go by the day the release was published, or the digest's 17:00
-  cutoff), and counts every bounce recorded against one of its emails, while News On Demand
-  counts only the bounces it could match back to one of its own sends.
-- **Viewer** — In Daily digest runs, "Items in window" is worked out when you open the report,
-  from the releases in that run's window as they stand now: a release withdrawn since the run no
-  longer counts, so an older run's number can go down.
-- **Viewer** — While a report is still loading you can already type new dates; what you type
-  stays when the report arrives.
 - **Operations** — The Distribution report comes from Distribution itself. If Distribution is
   down, that report says so and the others still work.
 - **Developer** — Report day boundaries are computed in Node (`apps/nod/src/reports/range.ts`)
