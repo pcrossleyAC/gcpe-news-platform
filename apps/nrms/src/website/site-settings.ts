@@ -1,7 +1,8 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, gt, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
 import {
+  SECTION_LABEL,
   differingSections,
   fillMissingFields,
   siteSettingsSchema,
@@ -80,9 +81,32 @@ async function readLive(db: DbOrTx): Promise<{ info: LiveInfo; document: StoredS
   return row ? { info: toInfo(row), document: row.document } : null;
 }
 
-async function readDraft(db: DbOrTx, actor: Actor) {
-  const [row] = await db.select().from(siteSettingsDrafts).where(eq(siteSettingsDrafts.editorId, actor.id));
+/** The editor's draft; `forUpdate` (inside a transaction) locks its row, so a save from another
+ * tab waits for this transaction instead of being overwritten by it (N2, fix round 2). */
+async function readDraft(db: DbOrTx, actor: Actor, forUpdate = false) {
+  const query = db.select().from(siteSettingsDrafts).where(eq(siteSettingsDrafts.editorId, actor.id));
+  const [row] = forUpdate ? await query.for("update") : await query;
   return row ?? null;
+}
+
+/**
+ * The sections someone other than `actor` changed in the revisions published after `baseRevision`
+ * (each compared with the one before it; the first with the base, or the defaults). The editor's
+ * own revisions, such as an earlier Publish only, aren't "theirs" (N1/N4, fix round 2).
+ */
+async function sectionsChangedByOthers(tx: DbOrTx, baseRevision: number | null, actor: Actor, defaults: SiteSettings): Promise<Set<SectionKey>> {
+  let previous = await baseDocumentOf(tx, baseRevision, defaults);
+  const later = await tx
+    .select({ document: siteSettingsRevisions.document, by: siteSettingsRevisions.publishedById })
+    .from(siteSettingsRevisions)
+    .where(gt(siteSettingsRevisions.revision, baseRevision ?? 0))
+    .orderBy(asc(siteSettingsRevisions.revision));
+  const theirs = new Set<SectionKey>();
+  for (const r of later) {
+    if (r.by !== actor.id) for (const k of differing(previous, r.document, defaults)) theirs.add(k);
+    previous = r.document;
+  }
+  return theirs;
 }
 
 /** Parses one section's value with its structural schema — always the complete section (a
@@ -134,16 +158,34 @@ export async function saveDraft(
   await db.transaction(async (tx) => {
     // Sequential: one transaction client runs one query at a time.
     const live = await readLive(tx);
-    const draft = await readDraft(tx, actor);
+    const draft = await readDraft(tx, actor, true);
     await upsertDraft(tx, actor, overlay(draft?.document ?? live?.document ?? defaults, input), input.baseRevision);
   });
   return getSettingsState(db, actor, defaults);
+}
+
+/** The document an editor's draft started from: its base revision, or the defaults when it began before anything was published. */
+async function baseDocumentOf(tx: DbOrTx, baseRevision: number | null, defaults: SiteSettings): Promise<StoredSiteSettings> {
+  if (baseRevision === null) return defaults;
+  const [base] = await tx.select({ document: siteSettingsRevisions.document }).from(siteSettingsRevisions).where(eq(siteSettingsRevisions.revision, baseRevision));
+  return base?.document ?? defaults;
 }
 
 /**
  * Publishes `document` as revision live+1 under the publish lock: invalid ⇒ nothing written;
  * live ≠ `baseRevision` ⇒ conflict, nothing written; else insert, delete the publisher's draft
  * (other editors keep theirs), log, and enqueue `site.settings.published`.
+ *
+ * W4 (owner decision 2026-10-31), `onlySection`: what is published is live (or the defaults)
+ * with only that section taken from `document`, so a stale or invalid change elsewhere in the
+ * draft neither goes live nor blocks it. Fix rounds 1–2: a draft based on an older revision only
+ * conflicts when someone other than the publisher changed this same section since that base (the
+ * publisher's own earlier Publish only doesn't count); other sections they published stay as they
+ * are, so nothing of theirs is undone. The revision's note records the
+ * partial publish ("Banner only", as Restore records "Restored revision N"). The publisher's
+ * draft keeps its other changes, re-based on the new revision (deleted when nothing else is left
+ * in it), unless one of them overlaps a section someone else changed since its base: then it is
+ * left exactly as it was, so a later full Publish still meets the conflict check.
  */
 async function publishDocument(
   tx: Tx,
@@ -153,25 +195,51 @@ async function publishDocument(
   document: SiteSettings,
   baseRevision: number | null,
   note: string | null,
+  onlySection?: SectionKey,
 ): Promise<PublishResult> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${SITE_SETTINGS_PUBLISH_LOCK[0]}, ${SITE_SETTINGS_PUBLISH_LOCK[1]})`);
+  const live = await readLive(tx);
+  if (onlySection) document = { ...fillMissingFields(live?.document ?? defaults, defaults), [onlySection]: document[onlySection] };
   // Drafts are cleaned on save; this also covers a restored revision stored before cleaning.
   document = cleanSettingsRichHtml(document);
   const errors = validateSiteSettings(document);
   if (errors.length > 0) return { result: "invalid", errors };
 
-  const live = await readLive(tx);
   const liveRevision = live?.info.revision ?? null;
-  if (live && liveRevision !== baseRevision) return { result: "conflict", live: live.info, differing: differing(document, live.document, defaults) };
+  const stale = liveRevision !== baseRevision;
   if (!live && baseRevision !== null) return { result: "conflict", live: null, differing: [] };
+  if (live && stale) {
+    if (!onlySection) return { result: "conflict", live: live.info, differing: differing(document, live.document, defaults) };
+    if ((await sectionsChangedByOthers(tx, baseRevision, actor, defaults)).has(onlySection)) return { result: "conflict", live: live.info, differing: [onlySection] };
+  }
 
   const revision = (liveRevision ?? 0) + 1;
+  const storedNote = onlySection ? (note ? `${SECTION_LABEL[onlySection]} only: ${note}` : `${SECTION_LABEL[onlySection]} only`) : note;
   const [row] = await tx
     .insert(siteSettingsRevisions)
-    .values({ revision, document, publishedById: actor.id, publishedByName: actor.name, note })
+    .values({ revision, document, publishedById: actor.id, publishedByName: actor.name, note: storedNote })
     .returning({ publishedAt: siteSettingsRevisions.publishedAt });
-  await tx.delete(siteSettingsDrafts).where(eq(siteSettingsDrafts.editorId, actor.id));
-  await writeSiteLog(tx, actor, "settings", note ? `Published revision ${revision}: ${note}` : `Published revision ${revision}`);
+  if (!onlySection) {
+    await tx.delete(siteSettingsDrafts).where(eq(siteSettingsDrafts.editorId, actor.id));
+  } else {
+    // The rest of the draft. Based on live, it is simply re-based. Stale (N1, fix round 2): when
+    // none of the editor's other changes overlap what someone else published since the base, it
+    // is re-based too, as the new revision plus those changes (theirs keep their live values); on
+    // an overlap it stays as it was, so a later full Publish still meets the conflict check.
+    const draft = await readDraft(tx, actor, true);
+    if (draft) {
+      const draftDocument = fillMissingFields(draft.document, defaults);
+      const mine = stale ? differing(draftDocument, await baseDocumentOf(tx, draft.baseRevision, defaults), defaults).filter((k) => k !== onlySection) : [];
+      const theirs = stale ? await sectionsChangedByOthers(tx, draft.baseRevision, actor, defaults) : new Set<SectionKey>();
+      if (!mine.some((k) => theirs.has(k))) {
+        const rest: StoredSiteSettings = stale ? { ...document } : draftDocument;
+        if (stale) for (const k of mine) (rest as Record<SectionKey, unknown>)[k] = draftDocument[k];
+        if (differing(rest, document, defaults).length > 0) await upsertDraft(tx, actor, rest, revision);
+        else await tx.delete(siteSettingsDrafts).where(eq(siteSettingsDrafts.editorId, actor.id));
+      }
+    }
+  }
+  await writeSiteLog(tx, actor, "settings", storedNote ? `Published revision ${revision}: ${storedNote}` : `Published revision ${revision}`);
   await enqueueEvent(
     tx,
     { type: "site.settings.published", source: "nrms", aggregateId: "site:settings", data: { revision, publishedAt: row!.publishedAt.toISOString(), document } },
@@ -180,17 +248,28 @@ async function publishDocument(
   return { result: "published", revision };
 }
 
-/** Saves the draft first (so nothing is lost on invalid or conflict), then publishes it. */
+/** Saves the draft first (so nothing is lost on invalid or conflict), then publishes it — the
+ * whole draft, or with `onlySection` just this screen's section (W4, see {@link publishDocument}). */
 export async function publishSettings(
   db: Db,
   actor: Actor,
   defaults: SiteSettings,
   subs: SubscriberConfig[],
-  input: SectionInput & { baseRevision: number | null; note?: string },
+  input: SectionInput & { baseRevision: number | null; note?: string; onlySection?: boolean },
 ): Promise<PublishResult> {
-  const { document } = await saveDraft(db, actor, defaults, input);
   const note = input.note?.trim() || null;
-  return db.transaction((tx) => publishDocument(tx, actor, defaults, subs, document, input.baseRevision, note));
+  // M2/N2: the draft is saved in the publish's own transaction, under its lock, and its row is
+  // read FOR UPDATE: a save from another tab (which doesn't take the publish lock) waits for this
+  // transaction, or this one waits for it and then reads what it saved. A refusal still commits
+  // the saved draft.
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${SITE_SETTINGS_PUBLISH_LOCK[0]}, ${SITE_SETTINGS_PUBLISH_LOCK[1]})`);
+    const live = await readLive(tx);
+    const draft = await readDraft(tx, actor, true);
+    const saved = overlay(draft?.document ?? live?.document ?? defaults, input);
+    await upsertDraft(tx, actor, saved, input.baseRevision);
+    return publishDocument(tx, actor, defaults, subs, fillMissingFields(saved, defaults), input.baseRevision, note, input.onlySection ? input.section : undefined);
+  });
 }
 
 export async function discardDraft(db: DbOrTx, actor: Actor): Promise<void> {
@@ -198,27 +277,34 @@ export async function discardDraft(db: DbOrTx, actor: Actor): Promise<void> {
 }
 
 /**
- * "Keep mine on top of theirs": live (or defaults) + this screen's section, based on the live
- * revision. `setAside` = the other sections the editor had changed in their old draft (it
- * differs from the revision it was based on, or the defaults) that the result doesn't keep —
- * a section only the other editor changed is not "mine" and isn't reported.
+ * "Keep mine on top of theirs": live (or defaults), with this screen's section and every other
+ * section the editor had changed in their old draft (where it differs from the revision it was
+ * based on, or the defaults) put back on top, based on the live revision. Fix round 1: nothing
+ * of the editor's is thrown away. `alsoChangedByThem` names the other sections kept where the
+ * other editor had changed them too, so the editor can check them before publishing; a section
+ * only the other editor changed is theirs and stays as they published it.
  */
-export async function rebaseDraft(db: Db, actor: Actor, defaults: SiteSettings, input: SectionInput): Promise<SettingsState & { setAside: SectionKey[] }> {
-  const setAside = await db.transaction(async (tx) => {
+export async function rebaseDraft(db: Db, actor: Actor, defaults: SiteSettings, input: SectionInput): Promise<SettingsState & { alsoChangedByThem: SectionKey[] }> {
+  const alsoChangedByThem = await db.transaction(async (tx) => {
     // Sequential: one transaction client runs one query at a time.
     const live = await readLive(tx);
-    const draft = await readDraft(tx, actor);
-    const document = overlay(live?.document ?? defaults, input);
-    await upsertDraft(tx, actor, document, live?.info.revision ?? null);
-    if (!draft) return [];
-    const [base] = draft.baseRevision === null
-      ? []
-      : await tx.select({ document: siteSettingsRevisions.document }).from(siteSettingsRevisions).where(eq(siteSettingsRevisions.revision, draft.baseRevision));
-    const baseDocument = base?.document ?? defaults;
-    const mine = new Set(differing(draft.document, baseDocument, defaults));
-    return differing(draft.document, document, defaults).filter((k) => k !== input.section && mine.has(k));
+    const draft = await readDraft(tx, actor, true);
+    const liveDocument = fillMissingFields(live?.document ?? defaults, defaults);
+    if (!draft) {
+      await upsertDraft(tx, actor, overlay(liveDocument, input), live?.info.revision ?? null);
+      return [];
+    }
+    const baseDocument = await baseDocumentOf(tx, draft.baseRevision, defaults);
+    const draftDocument = fillMissingFields(draft.document, defaults);
+    const mine = differing(draftDocument, baseDocument, defaults).filter((k) => k !== input.section);
+    // N4: only sections someone else published count, not the editor's own Publish only.
+    const theirs = await sectionsChangedByOthers(tx, draft.baseRevision, actor, defaults);
+    const kept: StoredSiteSettings = { ...liveDocument };
+    for (const k of mine) (kept as Record<SectionKey, unknown>)[k] = draftDocument[k];
+    await upsertDraft(tx, actor, overlay(kept, input), live?.info.revision ?? null);
+    return mine.filter((k) => theirs.has(k));
   });
-  return { ...(await getSettingsState(db, actor, defaults)), setAside };
+  return { ...(await getSettingsState(db, actor, defaults)), alsoChangedByThem };
 }
 
 /** Every published revision, newest first. */

@@ -22,7 +22,7 @@ For a new cabinet, prepare all the ministry changes together on [Cabinet change]
    - **Ministry name (required)** and **Additional display name**, which shows in brackets under the ministry on the Media Contacts page.
    - **Abbreviation** and **Parent ministry**, straight after the names. Only you see these.
    - **Sort order**: a whole number that places the ministry in lists.
-   - **Minister name** (with the title, such as "Honourable Jane Doe"), **Minister summary**, **Minister email** and **Minister photo URL**. Upload the photo under **Website** > **Files** first, then paste its address. A preview appears once the address starts with https://.
+   - **Minister name** (with the title, such as "Honourable Jane Doe"), **Minister summary**, **Minister email** and **Minister photo URL**. Upload the photo under **Website** > **Files** first, choose **Copy public address** beside it, then paste the address. A preview appears once the address starts with https://. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." Visitors couldn't see that photo.
    - **Minister biography**: shown on the minister's biography page, linked as Read Bio. **Clear the biography** removes that page. After you rename the minister, a note warns "The biography still describes the previous minister."
    - **Meet the Team links**, **Media contacts** (**Primary contact**, **Alternate contact**, **After-hours phone**) and **Ministry page links** (**Ministry website**, **Photos (Flickr) address**, **Videos (YouTube) address**, **Featured Topics**, **Featured Services**).
    - **Active**, last, before **Save**. Only you see it.

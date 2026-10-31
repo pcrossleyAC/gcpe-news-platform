@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import type { SettingsState } from "./api";
 import { MediaContactsScreen } from "./MediaContactsScreen";
 
@@ -128,7 +129,7 @@ describe("MediaContactsScreen", () => {
     await user.type(within(added).getByLabelText("Name"), "Ann");
     await user.click(screen.getByRole("button", { name: "Move contact 4 up" }));
     await user.click(screen.getByRole("button", { name: "Remove contact 1" }));
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
     expect(post.body).toEqual({
@@ -163,7 +164,7 @@ describe("MediaContactsScreen", () => {
     await user.click(screen.getByRole("button", { name: "Add contact" }));
     for (const n of [4, 3, 2]) await user.click(screen.getByRole("button", { name: `Move contact ${n} up` }));
     expect((within(screen.getByRole("group", { name: "Contact 1" })).getByLabelText("Name") as HTMLInputElement).value).toBe("");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     const sent = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { value: SiteSettings["contactsPage"] };
     expect(sent.value.contacts).toEqual(PAGE.contacts);
     // The form now shows what was saved (no blank row), so row 2 is News Desk and carries the error.
@@ -185,7 +186,7 @@ describe("MediaContactsScreen", () => {
     renderScreen();
     const user = userEvent.setup();
     await screen.findByLabelText("Page heading");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const sent = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { value: SiteSettings["contactsPage"] };
     expect(sent.value.introHtml).toBe("");

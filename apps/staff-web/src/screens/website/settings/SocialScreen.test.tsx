@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import type { SettingsState } from "./api";
 
 const BASE: SiteSettings = defaultSiteSettings({
@@ -20,7 +21,7 @@ interface Call {
   body: unknown;
 }
 
-function stub(roles: string[], initial: SettingsState) {
+function stub(roles: string[], initial: SettingsState, filesBase = "") {
   const calls: Call[] = [];
   vi.stubGlobal(
     "fetch",
@@ -28,7 +29,7 @@ function stub(roles: string[], initial: SettingsState) {
       const call: Call = { url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(init.body as string) : undefined };
       calls.push(call);
       if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
-      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase, isTestSite: true });
       if (url === "/nrms/api/site/settings" && call.method === "GET") return jsonResponse(200, initial);
       if (url === "/nrms/api/site/settings/publish" && call.method === "POST") return jsonResponse(200, { revision: 5, state: initial });
       // The tenant defaults: BC's Blogs never collapses (0); the other networks have no value (2).
@@ -124,7 +125,7 @@ describe("SocialScreen", () => {
     const rows = within(accounts).getAllByLabelText("Link text");
     await user.type(rows[rows.length - 1]!, "BC Parks");
     await user.type(within(accounts).getAllByLabelText("Web address").pop()!, "https://bsky.app/profile/bcparks");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
     expect(body.section).toBe("connect");
@@ -141,7 +142,7 @@ describe("SocialScreen", () => {
     await waitFor(() => expect(field).toHaveAccessibleDescription(/0 never collapses the list\. Leave it empty for the default: 2\./));
     await user.type(field, "0");
     await user.tab();
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
     expect(body.value.x).toEqual({ featured: [], accounts: [{ text: "A", url: "https://x.com/a" }, { text: "b", url: "https://x.com/b" }], collapseAfter: 0 });
@@ -173,7 +174,7 @@ describe("SocialScreen", () => {
     await user.clear(field);
     await user.tab();
     expect(field).toHaveValue("");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
     expect("collapseAfter" in body.value.blogs).toBe(false);
@@ -190,7 +191,7 @@ describe("SocialScreen", () => {
     await user.click(within(accounts).getByRole("button", { name: "+ Add a link" }));
     await user.type(within(accounts).getAllByLabelText("Link text").pop()!, "Another");
     await user.type(within(accounts).getAllByLabelText("Web address").pop()!, "https://another.example");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
     expect(body.value.blogs.collapseAfter).toBe(0);
@@ -216,7 +217,7 @@ describe("SocialScreen", () => {
     const featured = await screen.findByRole("group", { name: "Featured accounts" });
     expect(within(featured).getAllByLabelText("Description (optional)")).toHaveLength(2);
     await user.click(within(featured).getByRole("button", { name: "Move link 1 down" }));
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { value: SiteSettings["connect"] };
     expect(body.value.facebook.featured.map((l) => l.id)).toEqual(["b", "a"]);
@@ -269,7 +270,7 @@ describe("SocialScreen", () => {
     await user.type(within(box).getByLabelText("Policy link text"), "Social media policy");
     await user.type(within(box).getByLabelText("Policy link URL"), "https://www2.gov.bc.ca/policy");
     await user.type(within(box).getByLabelText("Introduction"), "Follow the Province.");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
     expect(body.section).toBe("connect");
@@ -284,6 +285,20 @@ describe("SocialScreen", () => {
     expect(within(box).getByLabelText("Policy link URL")).toHaveAccessibleDescription(/https:\/\/ only \(or a page on this site starting with \/\), no spaces/);
     expect(within(box).getByLabelText("Policy link text")).toHaveAccessibleDescription(/200 characters or fewer, plain text/);
     expect(within(box).getByLabelText("Introduction")).toHaveAccessibleDescription(/top of the Connect page/);
+  });
+
+  it("I4: a Policy link URL on the Hub's own host warns that the public can't open it", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC), "https://news.gov.bc.ca");
+    renderScreen();
+    const user = userEvent.setup();
+    const box = await screen.findByRole("group", { name: "Connect page" });
+    const url = within(box).getByLabelText("Policy link URL");
+    await user.clear(url);
+    await user.type(url, `${window.location.origin}/files/policy.pdf`);
+    await waitFor(() => expect(url).toHaveAccessibleDescription(expect.stringContaining("This address points at the Hub, which the public can't open.")));
+    await user.clear(url);
+    await user.type(url, "https://news.gov.bc.ca/files/policy.pdf");
+    expect(url).not.toHaveAccessibleDescription(expect.stringContaining("the public can't open"));
   });
 
   it("a server error on connect.policyLink.url shows beside Policy link URL", async () => {
