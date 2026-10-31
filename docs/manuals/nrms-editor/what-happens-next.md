@@ -41,7 +41,7 @@ Saving any change republishes it at once, with no box asking first. The status s
 
 - The release's page and its files come off the public site, and it leaves the lists on other pages.
 - It leaves any Top or Feature spot it held.
-- Emails not yet sent are stopped, and it stays out of later digests. Emails already sent can't be recalled.
+- Emails not yet sent are stopped, and daily digests leave it out while it is off the site. Emails already sent can't be recalled.
 - It goes back to **Drafts** as approved, with the same numbers and web address. Its status shows **Planned**, because it keeps its old publish time as a plan.
 
 ## When you publish it again after an unpublish

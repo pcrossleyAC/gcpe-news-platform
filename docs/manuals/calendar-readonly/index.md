@@ -17,7 +17,7 @@ You can see activities in the Corporate Calendar, the government-wide plan of an
 |---|---|---|
 | **Calendar** | Find activities, filter and save filters, see them by month or week, and star the ones you follow. | [The activity list](manual:calendar-readonly-list) |
 | **Updates** | See what changed recently. | [Updates](manual:calendar-readonly-updates) |
-| An activity | Read its details, files and linked releases, and see every change made to it. | [Read an activity](manual:calendar-readonly-activity) |
+| An activity | Read its details and linked releases, and see every change made to it. | [Read an activity](manual:calendar-readonly-activity) |
 | **Export and reports** | Download a spreadsheet or a PDF report. | [Reports](manual:calendar-readonly-reports) |
 
 Calendar editors also add, change and clone activities. Their manual is the Calendar editor manual. HQ advanced users and Calendar administrators have their own manuals too.

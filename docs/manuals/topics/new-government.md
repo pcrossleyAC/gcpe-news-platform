@@ -28,7 +28,7 @@ Core administrators only.
 2. Enter the **Start date (required)**, normally the swearing-in date, and choose **Continue**.
 3. Read the dates in the question, then choose **Confirm**.
 
-The start date decides where every release is listed in the public archive: releases published from that day are listed under the new term. You can fix a wrong date later with **Edit**. [Government terms](manual:government-terms) has the details.
+The start date decides where every release is listed in the public archive: releases published from that day are listed under the new term. You can fix a wrong date later with **Edit**. The Government terms page of the Core administrator manual has the details.
 
 ## 2. Prepare the ministry changes
 
@@ -39,7 +39,7 @@ Core administrators only.
 3. Choose **Preview** and fix anything listed under "Fix these before publishing".
 4. Choose **Schedule…**, enter the swearing-in date and time (BC time), and choose **Schedule**.
 
-Nothing changes for anyone until it publishes. [Cabinet change](manual:cabinet-change) has the details. A single ministry can also be handed over on its own from **Organizations**; see [Organizations](manual:organizations).
+Nothing changes for anyone until it publishes. The Cabinet change page of the Core administrator manual has the details. A single ministry can also be handed over on its own from **Organizations**, as its Organizations page explains.
 
 ## 3. On the day
 

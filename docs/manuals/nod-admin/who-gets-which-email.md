@@ -22,7 +22,7 @@ Each subscriber chooses lists and a timing. Lists are ministries, sectors, theme
 | **As it happens and daily digest** | Both. |
 | **None (media lists only)** | No news release email. This person is here only for media lists. |
 
-A correction to a release never emails anyone again. If a release is unpublished, anything not yet sent is stopped, and it stays out of later digests.
+A correction to a release never emails anyone again. If a release is unpublished, anything not yet sent is stopped, and daily digests leave it out while it is off the site. If it is published again before 5:00 pm on the day it first went out (the next day if it first went out after 5:00 pm), that digest still carries it.
 
 ## Emergency alerts
 
