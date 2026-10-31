@@ -769,8 +769,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Names such as con, aux, nul or prn can&#39;t be used. Rename the file and upload it again.</td>
 </tr>
 <tr>
-<td>&quot;invalid request&quot;</td>
-<td>If this happens just after the Hub was updated, reload the page and try again. A page left open from before the update sends the file in a way the Hub no longer accepts.</td>
+<td>&quot;The upload wasn&#39;t accepted. Reload the page and try again.&quot;</td>
+<td>Most often this happens just after the Hub was updated: a page left open from before the update sends the file in a way the Hub no longer accepts.</td>
 </tr>
 </tbody></table></div>
 `,changed:"2026-10-30"},f=null,w={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
@@ -1375,7 +1375,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>An <strong>Informal</strong> document has a <strong>Byline</strong> instead.</li>
 </ul>
 <p>Every document also has a <strong>Page title</strong>, <strong>Headline</strong>, <strong>Subheadline</strong>, <strong>Body</strong> and <strong>Contacts</strong>.</p>
-<p>If a document already holds a byline but is Formal, or organizations but is Informal, that text shows greyed out with a note such as &quot;A formal document doesn&#39;t keep a byline. It&#39;s removed the next time this document is saved.&quot; Copy it first if you need it.</p>
+<p>If a document already holds a byline but is Formal, or organizations but is Informal, that text shows, but can&#39;t be edited, with a note such as &quot;A formal document doesn&#39;t keep a byline. It&#39;s removed the next time this tab is saved.&quot; Copy it first if you need it.</p>
 <p>The <strong>Body</strong> toolbar has <strong>Bold</strong>, <strong>Italic</strong>, <strong>Bulleted list</strong>, <strong>Numbered list</strong>, <strong>Link</strong> and <strong>Insert asset</strong>. Pasted text keeps only that formatting.</p>
 <p>To show a video or photo inside the body:</p>
 <ol>
@@ -1671,7 +1671,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Each place on the public site has one Top and one Feature spot: the home page, and each ministry, sector and theme page. A release can take them only while it is published.</p>
 <ol>
 <li>Open the release. <strong>Top / Feature</strong> says where it is now, such as &quot;Feature on Home&quot;, or &quot;Not in a Top or Feature slot anywhere.&quot;</li>
-<li>Choose <strong>Change Top / Feature</strong>. You see <strong>Home</strong> and each ministry, sector and theme the release is filed under, as saved.</li>
+<li>Choose <strong>Change Top / Feature</strong>. You see <strong>Home</strong> and each ministry, sector and theme the release is filed under, as saved. One you have ticked in <strong>Categories</strong> but not saved shows &quot;Save to feature here.&quot; with no switch; choose <strong>Save changes</strong> first.</li>
 <li>Switch <strong>Top</strong> or <strong>Feature</strong> on or off for a place.</li>
 </ol>
 <p>It changes at once, without <strong>Save changes</strong>, and doesn&#39;t republish the release or email anyone. Switching a spot on takes it over from whichever release had it. To see every spot at once, go to <strong>Website</strong> &gt; <strong>What&#39;s featured where</strong>.</p>
@@ -1693,7 +1693,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>A draft that was never approved is deleted for good: &quot;This draft has never been approved \u2014 deleting it is permanent and can&#39;t be undone.&quot;</li>
 <li>A release with a reference number disappears from the folders and <strong>Search</strong>, but its record is kept: &quot;This release has a reference number (NEWS-00010) \u2014 deleting it hides it from the lists but keeps the record.&quot;</li>
 </ul>
-`,changed:"2026-10-30"},O={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},O={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <h2>Open a release you know</h2>
 <ol>
 <li>Type into <strong>Find a release</strong>, at the top of the side menu, one of:<ul>
