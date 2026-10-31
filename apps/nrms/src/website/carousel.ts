@@ -232,11 +232,22 @@ export const SLIDE_IMAGE_UPLOAD = /^[0-9a-f]{64}\.(png|jpg)$/;
  * own save, so a new slide can have its image before it is published, and an image change on the
  * live carousel goes through the same Publish confirmation as its text. Staging writes the file
  * the image will be served from (content-addressed, so not findable without its hash, exactly as
- * a next carousel's image already is) and changes no slide, emits nothing and logs nothing.
+ * a next carousel's image already is) and changes no slide and emits nothing. For a live
+ * carousel's slide (`target`) it writes a Website log line.
  */
-export async function stageSlideImage(files: SlideImageFiles, bytes: Buffer): Promise<{ upload: string }> {
+export async function stageSlideImage(
+  files: SlideImageFiles,
+  bytes: Buffer,
+  target?: { db: DbOrTx; actor: Actor; carouselId: string; slideNumber: number },
+): Promise<{ upload: string }> {
   const mimeType = await checkImageBytes(bytes);
   await publishSlideImage(files, bytes, mimeType);
+  // Fix round 1: an image chosen for the live carousel is logged (who, which slide), so it is
+  // auditable before it is published. Nothing else is written, and nothing is emitted.
+  if (target) {
+    const [row] = await target.db.select({ state: carousels.state }).from(carousels).where(eq(carousels.id, target.carouselId));
+    if (row?.state === "live") await writeSiteLog(target.db, target.actor, "carousel", `Chose a new image for slide ${target.slideNumber} of the live carousel. It goes live when the carousel changes are published.`, target.carouselId);
+  }
   return { upload: slideImageRef(files, bytes, mimeType).imageKey.slice("slides/".length) };
 }
 

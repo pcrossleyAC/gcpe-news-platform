@@ -113,6 +113,7 @@ const savePinSchema = z.object({
   justify: justifySchema,
 });
 const setPinnedSchema = z.object({ version: z.number().int().positive(), pinned: z.boolean() });
+const stageQuerySchema = z.object({ carouselId: z.string().uuid().optional(), slide: z.coerce.number().int().min(1).max(1000).optional() });
 const deleteNextQuerySchema = z.object({ version: z.coerce.number().int().positive() });
 const logQuerySchema = z.object({
   area: z.enum(AREAS as [SiteLogArea, ...SiteLogArea[]]).optional(),
@@ -270,7 +271,12 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     "/site/slide-images",
     edit,
     rawImage,
-    run(async (req, res) => void res.status(201).json(await stageSlideImage(slideFiles, bytesOf(req)))),
+    run(async (req, res) => {
+      // The slide it's for (optional): a live carousel's slide gets a Website log line.
+      const q = stageQuerySchema.parse(req.query);
+      const target = q.carouselId && q.slide ? { db, actor: actorOf(req), carouselId: q.carouselId, slideNumber: q.slide } : undefined;
+      res.status(201).json(await stageSlideImage(slideFiles, bytesOf(req), target));
+    }),
   );
   r.put(
     "/site/slides/:id/image",

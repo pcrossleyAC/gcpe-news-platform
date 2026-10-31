@@ -135,18 +135,31 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
     setRemoveIndex(null);
   };
 
-  // Audit #9 (owner decision 2026-10-31): choosing an image only stages it. The slide gets it
-  // with the carousel's Save, or on the live carousel with the confirmed Publish, so a new slide
-  // can have its image before it goes live and no image reaches the home page unconfirmed.
-  const chooseImage = async (clientKey: string, file: File) => {
+  // Audit #9 (owner decision 2026-10-31), fix round 1: a saved slide on the next carousel keeps
+  // saving its image at once, as before (nothing public changes). A new, unsaved slide (on either
+  // carousel) and any live slide only stage the image: the slide gets it with Save carousel or,
+  // on the live carousel, with the confirmed Publish, so nothing reaches the home page unconfirmed.
+  const stagesImage = (slide: SlideForm) => isLive || !slide.id;
+  const chooseImage = async (slide: SlideForm, slideNumber: number, file: File) => {
+    const { clientKey } = slide;
     setImageError(null);
     if (file.size > MAX_IMAGE_BYTES) {
       setImageError(IMAGE_TOO_BIG);
       return;
     }
+    if (!stagesImage(slide)) {
+      try {
+        await apiFetch(`/nrms/api/site/slides/${slide.id}/image`, { method: "PUT", raw: file });
+        onSaved();
+      } catch (caught) {
+        setImageError(imageUploadMessage(caught));
+      }
+      return;
+    }
     setStaging((n) => n + 1);
     try {
-      const { upload } = await apiFetch<{ upload: string }>("/nrms/api/site/slide-images", { method: "POST", raw: file });
+      // Naming the carousel and slide lets the server log a live carousel's choice.
+      const { upload } = await apiFetch<{ upload: string }>(`/nrms/api/site/slide-images?carouselId=${encodeURIComponent(carousel.id)}&slide=${slideNumber}`, { method: "POST", raw: file });
       setSlides((s) => s.map((slide) => (slide.clientKey === clientKey ? { ...slide, imageUpload: upload, imageName: file.name } : slide)));
     } catch (caught) {
       setImageError(imageUploadMessage(caught));
@@ -155,6 +168,8 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
     }
   };
   const imageWhen = isLive ? "goes live when you publish the carousel changes" : "is saved when you save the carousel";
+  const imageHint = (slide: SlideForm) =>
+    !stagesImage(slide) ? "The image saves as soon as you choose it." : slide.imageName ? `New image chosen: ${slide.imageName}. It ${imageWhen}.` : `The image ${imageWhen}.`;
 
   return (
     <div className="gcpe-carousel__slides" ref={moveFocus.containerRef}>
@@ -266,12 +281,12 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             e.target.value = "";
-                            if (file) void chooseImage(slide.clientKey, file);
+                            if (file) void chooseImage(slide, n, file);
                           }}
                         />
                       </label>
                       <p className="gcpe-hint" id={`slide-${carousel.id}-${slide.clientKey}-image-hint`}>
-                        {slide.imageName ? `New image chosen: ${slide.imageName}. It ${imageWhen}.` : `The image ${imageWhen}.`}
+                        {imageHint(slide)}
                       </p>
                     </>
                   )}

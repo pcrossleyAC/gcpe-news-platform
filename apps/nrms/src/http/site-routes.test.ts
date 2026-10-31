@@ -210,6 +210,8 @@ describe("NRMS site HTTP API", () => {
     expect(html.body.errors).toEqual(["Upload a JPEG or PNG image."]);
     expect((await stage(PNG, viewerCookie)).status).toBe(403);
     expect((await stage(PNG, editorOnlyCookie)).status).toBe(403);
+    const badTarget = await request(app).post("/api/site/slide-images?carouselId=nope&slide=1").set("cookie", siteEditorCookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream").send(PNG);
+    expect(badTarget.status).toBe(400);
     const staged = await stage(PNG);
     expect(staged.status).toBe(201);
     expect(staged.body.upload).toMatch(/^[0-9a-f]{64}\.png$/);

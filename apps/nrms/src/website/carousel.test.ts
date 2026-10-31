@@ -343,7 +343,7 @@ describe("home-page carousel", () => {
   describe("audit #9: a slide's image goes with the carousel's save", () => {
     const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
-    it("staging an image stores its file but changes nothing public and logs nothing", async () => {
+    it("staging an image with no slide named stores its file but changes nothing public and logs nothing", async () => {
       await seedLiveCarousel([slide("Live")]);
       const events = await slidesEventCount();
       const log = await lastLog();
@@ -354,6 +354,20 @@ describe("home-page carousel", () => {
       expect(await lastLog()).toEqual(log);
       const { live } = await getCarousels(tdb.db);
       expect(live!.slides[0]!.hasImage).toBe(false);
+    });
+
+    it("fix round 1: staging for a live slide logs who chose an image for which slide; for a next carousel it logs nothing", async () => {
+      const liveId = await seedLiveCarousel([slide("Live")]);
+      const events = await slidesEventCount();
+      await stageSlideImage(files, PNG, { db: tdb.db, actor: editor, carouselId: liveId, slideNumber: 2 });
+      const log = await lastLog();
+      expect(log).toEqual({ actor_name: editor.name, area: "carousel", text: "Chose a new image for slide 2 of the live carousel. It goes live when the carousel changes are published." });
+      expect(await slidesEventCount()).toBe(events);
+
+      const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
+      const afterCreate = await lastLog();
+      await stageSlideImage(files, PNG, { db: tdb.db, actor: editor, carouselId: next.id, slideNumber: 1 });
+      expect(await lastLog()).toEqual(afterCreate);
     });
 
     it("staging refuses a file that isn't a JPEG or PNG", async () => {

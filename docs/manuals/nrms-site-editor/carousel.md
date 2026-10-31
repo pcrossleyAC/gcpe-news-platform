@@ -36,10 +36,11 @@ Leave **Action label** empty to use the standard link words, set on [Navigation 
 
 Use a JPEG or PNG image of up to 2 MB. Any slide can take an image, including one you have just added.
 
-1. Choose the slide's **Image (JPEG or PNG, up to 2 MB)** button and pick the file. The slide says "New image chosen:" and the file's name.
-2. On a live slide, choose **Publish carousel changes**, then confirm. The image goes live with your other changes. On the next carousel, choose **Save carousel**.
-
-Until then, the slide keeps the image it had.
+1. Choose the slide's **Image (JPEG or PNG, up to 2 MB)** button and pick the file.
+2. What happens next depends on the slide:
+   - **On the live slides**, the slide says "New image chosen:" and the file's name. The image goes live with your other changes when you choose **Publish carousel changes** and confirm. Until then the slide keeps the image it had. **Website log** notes that you chose it.
+   - **On a slide you have just added to the next slides**, the image is saved when you choose **Save carousel**.
+   - **On a slide already saved in the next slides**, the image saves as soon as you choose it. Nothing changes on the public site.
 
 ## Prepare the next slides
 

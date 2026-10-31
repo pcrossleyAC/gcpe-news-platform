@@ -212,7 +212,7 @@ describe("CarouselScreen", () => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
         if (url === "/nrms/api/site/carousels") return jsonResponse(200, withSlide);
-        if (url === "/nrms/api/site/slide-images" && init?.method === "POST") return jsonResponse(422, { errors: ["Upload a JPEG or PNG image."] });
+        if (url === "/nrms/api/site/slides/slide-1/image" && init?.method === "PUT") return jsonResponse(422, { errors: ["Upload a JPEG or PNG image."] });
         throw new Error(`unhandled: ${url}`);
       }),
     );
@@ -347,7 +347,7 @@ describe("CarouselScreen", () => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
         if (url === "/nrms/api/site/carousels") return jsonResponse(200, withSlide);
-        if (url === "/nrms/api/site/slide-images" && init?.method === "POST") return jsonResponse(413, { error: "request entity too large" });
+        if (url === "/nrms/api/site/slides/slide-1/image" && init?.method === "PUT") return jsonResponse(413, { error: "request entity too large" });
         throw new Error(`unhandled: ${url}`);
       }),
     );
@@ -428,7 +428,7 @@ describe("CarouselScreen", () => {
           if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
           if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
           if (url === "/nrms/api/site/carousels") return jsonResponse(200, { live, next: null, past: [] });
-          if (url === "/nrms/api/site/slide-images" && method === "POST") return jsonResponse(201, { upload: UPLOAD });
+          if (url.startsWith("/nrms/api/site/slide-images?") && method === "POST") return jsonResponse(201, { upload: UPLOAD });
           if (url === "/nrms/api/site/carousels/live-1" && method === "PUT") return jsonResponse(200, { ...live, version: 5 });
           throw new Error(`unhandled: ${method} ${url}`);
         }),
@@ -450,8 +450,10 @@ describe("CarouselScreen", () => {
       await user.upload(input, file);
 
       await waitFor(() => expect(input).toHaveAccessibleDescription("New image chosen: photo.png. It goes live when you publish the carousel changes."));
-      const staged = calls.filter((c) => c.url === "/nrms/api/site/slide-images");
+      const staged = calls.filter((c) => c.url.startsWith("/nrms/api/site/slide-images"));
       expect(staged).toHaveLength(1);
+      // Fix round 1: it names the carousel and slide, so the live choice is logged.
+      expect(staged[0]!.url).toBe("/nrms/api/site/slide-images?carouselId=live-1&slide=2");
       expect(staged[0]!.method).toBe("POST");
       expect(staged[0]!.body).toBe(file);
       // Nothing has reached the live carousel: no carousel save, no straight-to-slide upload.
@@ -489,6 +491,56 @@ describe("CarouselScreen", () => {
       await user.click(within(dialog).getByRole("button", { name: "Publish carousel changes" }));
       await waitFor(() => expect(carouselPuts(calls)).toHaveLength(1));
       expect(carouselPuts(calls)[0]!.slides[0]).toMatchObject({ id: "slide-1", imageUpload: UPLOAD });
+    });
+  });
+  describe("fix round 1: the next carousel", () => {
+    const UPLOAD = `${"b".repeat(64)}.png`;
+    const stubNext = (next: CarouselView) => {
+      const calls: { url: string; method: string; body?: unknown }[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          const method = init?.method ?? "GET";
+          calls.push({ url, method, body: init?.body });
+          if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+          if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
+          if (url === "/nrms/api/site/carousels") return jsonResponse(200, { live: null, next, past: [] });
+          if (url === "/nrms/api/site/slides/slide-1/image" && method === "PUT") return new Response(null, { status: 204 });
+          if (url.startsWith("/nrms/api/site/slide-images?") && method === "POST") return jsonResponse(201, { upload: UPLOAD });
+          if (url === "/nrms/api/site/carousels/next-1" && method === "PUT") return jsonResponse(200, { ...next, version: 2 });
+          throw new Error(`unhandled: ${method} ${url}`);
+        }),
+      );
+      return calls;
+    };
+
+    it("a saved slide's image saves as soon as it is chosen, as before: no Save carousel needed", async () => {
+      const calls = stubNext({ ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] });
+      render(withAuth(<CarouselScreen />));
+      const input = await screen.findByLabelText("Slide 1 image (JPEG or PNG, up to 2 MB)");
+      expect(input).toHaveAccessibleDescription("The image saves as soon as you choose it.");
+      const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "photo.png", { type: "image/png" });
+      await userEvent.setup().upload(input, file);
+      await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/slides/slide-1/image" && c.method === "PUT")).toBe(true));
+      expect(calls.find((c) => c.url === "/nrms/api/site/slides/slide-1/image")!.body).toBe(file);
+      expect(calls.some((c) => c.url.startsWith("/nrms/api/site/slide-images"))).toBe(false);
+      expect(calls.some((c) => c.url === "/nrms/api/site/carousels/next-1")).toBe(false);
+    });
+
+    it("a new slide's image is staged and goes out in the Save carousel PUT body", async () => {
+      const calls = stubNext(NEXT_CAROUSEL);
+      render(withAuth(<CarouselScreen />));
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Add slide" }));
+      await user.type(screen.getByLabelText("Slide 1 headline"), "New one");
+      const input = screen.getByLabelText("Slide 1 image (JPEG or PNG, up to 2 MB)");
+      await user.upload(input, new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "new.png", { type: "image/png" }));
+      await waitFor(() => expect(input).toHaveAccessibleDescription("New image chosen: new.png. It is saved when you save the carousel."));
+      expect(calls.some((c) => c.url === "/nrms/api/site/carousels/next-1")).toBe(false);
+      await user.click(screen.getByRole("button", { name: "Save carousel" }));
+      await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/carousels/next-1" && c.method === "PUT")).toBe(true));
+      const body = JSON.parse(calls.find((c) => c.url === "/nrms/api/site/carousels/next-1")!.body as string) as { slides: Record<string, unknown>[] };
+      expect(body.slides).toEqual([{ headline: "New one", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", imageUpload: UPLOAD }]);
     });
   });
 });
