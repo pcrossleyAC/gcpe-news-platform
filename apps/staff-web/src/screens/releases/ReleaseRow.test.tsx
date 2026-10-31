@@ -27,7 +27,7 @@ const BASE: ReleaseListItem = {
   lastEdited: null,
 };
 
-function renderRow(item: ReleaseListItem, opts: { showLastEdited?: boolean } = {}) {
+function renderRow(item: ReleaseListItem, opts: { showLastEdited?: boolean; flagPassedPlanned?: boolean } = {}) {
   return render(
     <MemoryRouter>
       <ul>
@@ -38,6 +38,31 @@ function renderRow(item: ReleaseListItem, opts: { showLastEdited?: boolean } = {
 }
 
 describe("ReleaseRow", () => {
+  // Suite review R8: "Planned" (only a plan; nothing goes out) looks different from "Scheduled".
+  it("a Planned status has its own badge style; Scheduled keeps the plain one", () => {
+    renderRow({ ...BASE, status: "approved", statusText: "Planned" });
+    expect(screen.getByText("Planned")).toHaveClass("gcpe-badge", "gcpe-badge--planned");
+    cleanup();
+    renderRow({ ...BASE, status: "scheduled", statusText: "Scheduled" });
+    expect(screen.getByText("Scheduled")).toHaveClass("gcpe-badge");
+    expect(screen.getByText("Scheduled")).not.toHaveClass("gcpe-badge--planned");
+  });
+
+  it("on the Forecast, a planned release whose time has passed says so, as an alert", () => {
+    const passed = { ...BASE, status: "approved" as const, statusText: "Planned", publishAt: "2026-06-15T16:00:00Z" };
+    renderRow(passed, { flagPassedPlanned: true });
+    const badge = screen.getByText("Planned time passed – not published");
+    expect(badge).toHaveClass("gcpe-badge--alert");
+    cleanup();
+    // Elsewhere (Drafts) it stays "Planned"; and a planned time still ahead is never flagged.
+    renderRow(passed);
+    expect(screen.getByText("Planned")).toBeInTheDocument();
+    cleanup();
+    renderRow({ ...passed, publishAt: "2026-06-15T19:00:00Z" }, { flagPassedPlanned: true });
+    expect(screen.getByText("Planned")).toBeInTheDocument();
+  });
+
+
   afterEach(() => cleanup());
 
   it("renders the type label, organisation, page title, headline link, location-summary, status/date and Calendar id", () => {

@@ -177,7 +177,7 @@ export function apiRoutes(deps: RouteDeps): Router {
     read,
     run(async (req, res) => {
       const q = forecastQuerySchema.parse(req.query);
-      res.json(await forecast(db, await calendarViewerOf(db, req), q, { prefix: deps.forecastCategoryPrefix ?? null, nowMs: Date.now() }));
+      res.json(await forecast(db, await calendarViewerOf(db, req), q, { prefix: deps.forecastCategoryPrefix ?? null, nowMs: Date.now(), timeZone: workflow.timeZone }));
     }),
   );
 

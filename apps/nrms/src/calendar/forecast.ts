@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
 import { hasCategoryStartingWith, visible, type Viewer } from "@gcpe/calendar-contract";
 import type { ForecastItem, ForecastPage, ForecastQuery } from "@gcpe/nrms-contract";
@@ -14,7 +14,13 @@ export interface ForecastOptions {
   /** The tenant's `calendar.forecastCategoryPrefix`; null lists releases only. */
   prefix: string | null;
   nowMs: number;
+  /** The tenant's zone: "today" starts at midnight there. */
+  timeZone: string;
 }
+
+/** Not out yet: a release in one of these whose time passed earlier today stays listed (suite
+ * review R8), so a planned release nobody scheduled doesn't vanish at the moment it was due. */
+const NOT_OUT_STATUSES = ["draft", "approved", "scheduled", "failed"] as const;
 
 type Entry = { kind: "release"; at: Date; row: NewsReleaseRow } | { kind: "activity"; at: Date; row: CalendarActivityRow };
 
@@ -28,7 +34,8 @@ function byTime(x: Entry, y: Entry): number {
 
 /**
  * The Forecast tab (spec addendum §11, ReleasesModel.cs:144-230), evaluated at read time against
- * the database clock. Releases: every non-deleted one planned or scheduled from now on.
+ * the database clock. Releases: every non-deleted one planned or scheduled from now on, and (suite
+ * review R8, owner-approved 2026-10-31) one whose time passed earlier today that still isn't out.
  * Activities: confirmed, not confidential or deleted, starting from now on, with a category
  * starting with the tenant's prefix, not linked to one of those releases, and visible to `viewer`
  * in the Calendar (spec addendum §6). Each is placed at its release time, or else its start.
@@ -37,7 +44,18 @@ export async function forecast(db: DbOrTx, viewer: Viewer | null, q: ForecastQue
   const releases = await db
     .select()
     .from(newsReleases)
-    .where(and(ne(newsReleases.status, "deleted"), sql`${newsReleases.publishAt} >= now()`))
+    .where(
+      and(
+        ne(newsReleases.status, "deleted"),
+        or(
+          sql`${newsReleases.publishAt} >= now()`,
+          and(
+            inArray(newsReleases.status, [...NOT_OUT_STATUSES]),
+            sql`${newsReleases.publishAt} >= (date_trunc('day', now() AT TIME ZONE ${o.timeZone}) AT TIME ZONE ${o.timeZone})`,
+          ),
+        ),
+      ),
+    )
     .orderBy(asc(newsReleases.publishAt), asc(newsReleases.id))
     .limit(FORECAST_CANDIDATE_LIMIT);
   const linked = new Set(releases.flatMap((r) => (r.activityId === null ? [] : [r.activityId])));
