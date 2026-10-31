@@ -57,7 +57,7 @@ An activity also opens read-only while someone else is editing it, or during the
 
 **Cancel**, or leaving the page another way, creates nothing.
 
-The copy starts as **New**, and its **View changes** says "created it as a clone", naming the activity it was cloned from. It copies the activity's fields except these:
+The copy starts as **New**, and its **View changes** says "created it as a clone", naming the activity it was cloned from. Like any new activity, the copy must have every required field filled in before it saves; an older activity may be missing some. It copies the activity's fields except these:
 
 - the release date and time are emptied;
 - **Internal notes** is emptied;
@@ -86,7 +86,7 @@ Adding or removing a file doesn't touch your unsaved changes to the fields. Like
 
 ## View changes
 
-**View changes** lists every change to the activity, newest first. Each entry says when, who and what they did, such as "changed it", "created it as a clone", "reviewed it", "transferred it" or "cleared its LA status". A table shows each field before and after. Changes brought over from the old Calendar are marked "from legacy log".
+**View changes** lists every change to the activity, newest first. Each entry says when, who and what they did, such as "changed it", "created it as a clone" (the copy may have been changed before it was saved), "reviewed it", "transferred it" or "cleared its LA status". A table shows each field before and after. Changes brought over from the old Calendar are marked "from legacy log".
 
 Choose **Back to the activity** to return.
 

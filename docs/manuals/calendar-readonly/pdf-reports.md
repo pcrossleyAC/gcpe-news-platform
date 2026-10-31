@@ -33,7 +33,7 @@ One report is prepared at a time. If you leave the page before it downloads, mak
 | **Planning** | One line for each activity: its schedule, title and summary, significance and number. |
 
 - Reports list activities in date order, whatever the list is sorted by.
-- Each report says under its heading which filter it used, and the Excel export says it on its last row, below the confidentiality notice, for example "Filter: Dates: 2026-11-01 to 2026-11-14 · Lead Ministry: HLTH", or "Filter: none (every activity you can see)".
+- Each report says under its heading which filter it used, and the Excel export says it on its last row, below the confidentiality notice, for example "Filter: Dates: 2026-11-01 to 2026-11-14 · Lead Ministry: HLTH", or "Filter: none (every activity you can see)". The filter line includes any words you typed in **Search for**, so clear them first if they shouldn't go out with the report.
 - A report holds only activities you can see. Deleted activities are never in it.
 - Reports include awareness dates even when the list leaves them out.
 - Your Look Ahead shows no Executive Summary and no NEW or CHANGED flags. Those are for HQ editors and above.

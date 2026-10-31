@@ -336,6 +336,18 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
       expect(calls.filter((c) => c.url.endsWith("/lock") && c.init?.method === "PUT")).toHaveLength(0);
     });
 
+    it("Escape closes the question as Cancel does: nothing sent, and it says so", async () => {
+      const calls: Call[] = [];
+      replacing(calls);
+      renderActivity("/calendar/activities/20001");
+      await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample brief.pdf")]);
+      await screen.findByRole("alertdialog", { name: "Replace Sample brief.pdf?" });
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(within(screen.getByRole("group", { name: "Records" })).getByRole("status")).toHaveTextContent("Nothing was added.");
+      expect(sent(calls)).toEqual([]);
+    });
+
     it("a mixed pick adds the new file and replaces the other, and says both", async () => {
       const calls: Call[] = [];
       replacing(calls);

@@ -28,7 +28,7 @@ One report is prepared at a time. If you leave the page before it downloads, mak
 | **30/60/90** | One table for each month, from the start of the **From** month. With no **To** date it covers about 90 days. |
 | **Planning** | One line for each activity: its schedule, title and summary, significance and number. |
 
-- Each report says under its heading which filter it used, and the Excel export says it on its last row, below the confidentiality notice, for example "Filter: Dates: 2026-11-01 to 2026-11-14 · Lead Ministry: HLTH", or "Filter: none (every activity you can see)".
+- Each report says under its heading which filter it used, and the Excel export says it on its last row, below the confidentiality notice, for example "Filter: Dates: 2026-11-01 to 2026-11-14 · Lead Ministry: HLTH", or "Filter: none (every activity you can see)". The filter line includes any words you typed in **Search for**, so clear them first if they shouldn't go out with the report.
 - A report holds only activities you can see. Deleted activities are never in it.
 - Reports include Awareness dates even when the list leaves them out.
 - Each activity number in a report links to the activity in the Hub.

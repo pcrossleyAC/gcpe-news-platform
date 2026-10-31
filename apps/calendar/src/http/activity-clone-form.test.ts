@@ -5,6 +5,7 @@ import type { ActivityFields } from "@gcpe/calendar-contract";
 import { createCalendarTestDb, createTestApp, FIXED_NOW } from "../../test/helpers";
 import { call, historyOf, insertRaw, outboxOf, seedWorld, validInput, type World } from "../../test/world";
 import { activities, cities } from "../db/schema";
+import { loadStored, type StoredActivity } from "../activities/store";
 
 /**
  * Clone as an unsaved form (owner, 2026-10-31, suite review CAL-1): GET .../clone gives the New
@@ -120,5 +121,36 @@ describe("clone as a pre-filled, unsaved form", () => {
       expect((await call(app, "post", "/api/activities", w.as.editor.cookie, { ...validInput(w), clonedFrom: src.id })).body).toMatchObject({ code: "freeze" });
       clock = FIXED_NOW;
     });
+  });
+
+  /**
+   * POST /activities/:id/clone stays for a Hub tab opened before the form clone was deployed. Both
+   * paths must make the same activity, so a change to one can't quietly make them drift.
+   */
+  describe("the server clone and the form clone make the same activity", () => {
+    const comparable = (s: StoredActivity | null) => {
+      const { id: _id, createdAt: _c, createdBy: _cb, lastUpdatedAt: _u, lastUpdatedBy: _ub, version: _v, ...row } = s!.row;
+      return { row, joins: s!.joins, keywordNames: s!.keywordNames };
+    };
+    for (const who of ["editor", "hqEditor", "hqAdmin"] as const) {
+      it(`for ${who === "editor" ? "a ministry editor" : who}: row, joins, keywords and history alike`, async () => {
+        const src = await make({
+          nrDate: "2026-11-10", nrTime: "08:00", comments: "Sample notes", tagKeys: ["sample-tag"], keywordNames: ["Sample kept keyword", "sample tag"],
+          translations: ["Sample language A"], eventPlannerId: w.ids.planner, venue: "  Sample hall ", sharedWithKeys: ["finance"],
+          isAllDay: true, startTime: null, endTime: null, endDate: "2026-11-12", strategy: "Sample strategy", leadOrganization: "Sample org", potentialDates: "late June",
+        });
+        await tdb.db.update(activities).set({ hqSection: "events_and_speeches", longTermOutlook: true, hqComments: "Sample summary", hqStatus: "new" }).where(eq(activities.id, src.id));
+        const viaServer = (await call(app, "post", `/api/activities/${src.id}/clone`, w.as[who].cookie, {})).body.id as number;
+        const prefill = (await call(app, "get", `/api/activities/${src.id}/clone`, w.as[who].cookie)).body.fields as ActivityFields;
+        const res = await call(app, "post", "/api/activities", w.as[who].cookie, { ...prefill, clonedFrom: src.id });
+        expect(res.status).toBe(201);
+        const viaForm = res.body.id as number;
+        expect(comparable(await loadStored(tdb.db, viaForm))).toEqual(comparable(await loadStored(tdb.db, viaServer)));
+        const [a] = await historyOf(tdb.db, viaServer);
+        const [b] = await historyOf(tdb.db, viaForm);
+        expect(b!.action).toBe(a!.action);
+        expect(b!.fields).toEqual(a!.fields);
+      });
+    }
   });
 });

@@ -151,7 +151,7 @@ describe("CalendarUserScreen", () => {
     expect(await screen.findByText("Give this user a ministry under Calendar access (Edit Calendar access) first.")).toBeInTheDocument();
   });
 
-  describe("a ministry just given in Calendar access (suite review CAL-9)", () => {
+  describe("a ministry just given or taken away in Calendar access (suite review CAL-9)", () => {
     const saved = { ...catchUp };
     beforeEach(() => Object.assign(catchUp, { everyMs: 20, tries: 5 }));
     afterEach(() => Object.assign(catchUp, saved));
@@ -169,23 +169,43 @@ describe("CalendarUserScreen", () => {
       const calls: { url: string; init?: RequestInit }[] = [];
       lagging(calls, 2);
       renderAt("u1");
-      expect(await screen.findByText("Setting up their ministries in the Calendar… The rank appears here in a moment.")).toBeInTheDocument();
+      expect(await screen.findByText("Updating their ministries in the Calendar… This page catches up by itself in a moment.")).toBeInTheDocument();
       expect(screen.queryByText(/Give this user a ministry/)).toBeNull();
       expect(screen.queryByLabelText("Comm contact rank for Health (HLTH)")).toBeNull();
       expect(await screen.findByLabelText("Comm contact rank for Health (HLTH)")).toBeInTheDocument();
-      expect(screen.queryByText(/Setting up their ministries/)).toBeNull();
+      expect(screen.queryByText(/Updating their ministries/)).toBeNull();
       expect(reads(calls)).toBe(3);
       // Caught up: it stops asking.
       await new Promise((r) => setTimeout(r, 200));
       expect(reads(calls)).toBe(3);
+      // While waiting it asks the Calendar only: Core's list, the authority, was read once with the page.
+      expect(calls.filter((c) => c.url === "/core/api/calendar-access")).toHaveLength(1);
+    });
+
+    it("a later change after a wait ran out gets a fresh wait", async () => {
+      const calls: { url: string; init?: RequestInit }[] = [];
+      let behind = true;
+      stub(calls, DETAIL, (url, init) =>
+        url === "/calendar/api/users/u1" && (init?.method ?? "GET") === "GET" && behind ? jsonResponse(200, { ...DETAIL, user: { ...DETAIL.user, ministryKeys: [] }, commContacts: [] }) : undefined,
+      );
+      renderAt("u1");
+      await screen.findByText(/hasn't picked up their ministry changes yet/);
+      // The Calendar catches up, then lags again behind a newer change: the contact details' save reloads the page's data.
+      behind = false;
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Save contact details" }));
+      expect(await screen.findByLabelText("Comm contact rank for Health (HLTH)")).toBeInTheDocument();
+      behind = true;
+      await user.click(screen.getByRole("button", { name: "Save contact details" }));
+      expect(await screen.findByText(/Updating their ministries/)).toBeInTheDocument();
     });
 
     it("stops after about a minute and a half, and says to reload later", async () => {
       const calls: { url: string; init?: RequestInit }[] = [];
       lagging(calls, Infinity);
       renderAt("u1");
-      await screen.findByText(/Setting up their ministries/);
-      expect(await screen.findByText("The Calendar hasn't picked up their new ministries yet. Reload the page in a minute.")).toBeInTheDocument();
+      await screen.findByText(/Updating their ministries/);
+      expect(await screen.findByText("The Calendar hasn't picked up their ministry changes yet. Reload the page in a minute.")).toBeInTheDocument();
       // The first read, then one per try.
       expect(reads(calls)).toBe(6);
       await new Promise((r) => setTimeout(r, 200));

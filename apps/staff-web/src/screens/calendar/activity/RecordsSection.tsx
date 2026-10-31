@@ -75,6 +75,11 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
     else void add(picked);
   };
 
+  const cancelReplace = () => {
+    setReplacing(null);
+    setStatus("Nothing was added.");
+  };
+
   const add = async (picked: File[]) => {
     if (picked.length === 0 || !(await begin())) return;
     const failed: string[] = [];
@@ -197,8 +202,9 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
           </ul>
         </div>
       )}
-      <Modal isOpen={replacing !== null} onOpenChange={(open) => { if (!open) setReplacing(null); }} isDismissable>
-        {replacing && <ReplaceDialog {...replacing} timeZone={timeZone} onCancel={() => { setReplacing(null); setStatus("Nothing was added."); }} onReplace={() => { setReplacing(null); void add(replacing.picked); }} />}
+      {/* Escape or a click outside is a Cancel, and says so. */}
+      <Modal isOpen={replacing !== null} onOpenChange={(open) => { if (!open) cancelReplace(); }} isDismissable>
+        {replacing && <ReplaceDialog {...replacing} timeZone={timeZone} onCancel={cancelReplace} onReplace={() => { setReplacing(null); void add(replacing.picked); }} />}
       </Modal>
       <Modal isOpen={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null); }} isDismissable>
         <AlertDialog

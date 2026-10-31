@@ -41,7 +41,7 @@ Choose **Not a comm contact** to stop offering them. Activities that already hav
 
 "Give this user a ministry under Calendar access (Edit Calendar access) first." means they have no ministry yet. Choose **Edit Calendar access** above and give them one.
 
-Just after you give someone a ministry, the page says "Setting up their ministries in the Calendar… The rank appears here in a moment." Stay on the page: the rank box for the new ministry appears by itself, usually within a minute. If it hasn't after about a minute and a half, the page says "The Calendar hasn't picked up their new ministries yet. Reload the page in a minute."
+Just after you give someone a ministry, or take one away, the page says "Updating their ministries in the Calendar… This page catches up by itself in a moment." Stay on the page: the rank boxes follow by themselves, usually within a minute. If they haven't after about a minute and a half, the page says "The Calendar hasn't picked up their ministry changes yet. Reload the page in a minute."
 
 ## Deactivate someone
 

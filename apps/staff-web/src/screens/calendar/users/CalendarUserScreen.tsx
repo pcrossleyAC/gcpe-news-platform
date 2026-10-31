@@ -150,20 +150,35 @@ export function CalendarUserScreen(): React.JSX.Element {
     );
   }, [id]);
   useEffect(() => reload(), [reload]);
+  /** The Calendar's copy alone, while it catches up: Core's list, the authority, was just read. */
+  const refreshCalendar = useCallback(() => {
+    const call = latest.current;
+    apiFetch<CalendarUserDetail>(`/calendar/api/users/${encodeURIComponent(id)}`).then(
+      (d) => {
+        if (call === latest.current) setDetail(d);
+      },
+      // A failed try is just a try; the next one, or the page's own reload, asks again.
+      () => {},
+    );
+  }, [id]);
 
   // Core's ministries are the authority; the Calendar's copy arrives about a minute later. While they
-  // differ (ministries just given), ask again every few seconds, so the rank appears without a reload.
+  // differ (ministries just given or taken away), ask the Calendar again every few seconds, so the
+  // rank boxes follow without a reload. Each new difference gets a fresh budget of tries.
   const coreNow = detail ? coreUsers.find((c) => canonicalId(c.id) === canonicalId(detail.user.id)) : undefined;
   const sameKeys = (a: readonly string[], b: readonly string[]) => [...a].sort().join("\n") === [...b].sort().join("\n");
   const settingUp = !!detail && !!coreNow && !sameKeys(coreNow.organizationKeys, detail.user.ministryKeys);
   useEffect(() => {
+    if (!settingUp) setCatchUpTries(0);
+  }, [settingUp]);
+  useEffect(() => {
     if (!settingUp || catchUpTries >= catchUp.tries) return;
     const t = setTimeout(() => {
       setCatchUpTries((n) => n + 1);
-      reload();
+      refreshCalendar();
     }, catchUp.everyMs);
     return () => clearTimeout(t);
-  }, [settingUp, catchUpTries, detail, reload]);
+  }, [settingUp, catchUpTries, detail, refreshCalendar]);
 
   if (notFound) {
     return (
@@ -319,8 +334,8 @@ export function CalendarUserScreen(): React.JSX.Element {
       <p role="status" className="gcpe-hint">
         {settingUp
           ? catchUpTries < catchUp.tries
-            ? "Setting up their ministries in the Calendar… The rank appears here in a moment."
-            : "The Calendar hasn't picked up their new ministries yet. Reload the page in a minute."
+            ? "Updating their ministries in the Calendar… This page catches up by itself in a moment."
+            : "The Calendar hasn't picked up their ministry changes yet. Reload the page in a minute."
           : ""}
       </p>
       {u.ministryKeys.length === 0 && !settingUp && <p>Give this user a ministry under Calendar access (Edit Calendar access) first.</p>}
