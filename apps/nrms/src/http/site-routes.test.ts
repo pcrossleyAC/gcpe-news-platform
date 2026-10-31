@@ -636,11 +636,11 @@ describe("NRMS site settings HTTP API", () => {
     expect(cleared.body.document.banner).toMatchObject({ startsAt: null, endsAt: null });
   });
 
-  it("POST /rebase puts my section on top of live and reports what it set aside", async () => {
+  it("POST /rebase puts my section on top of live and names my other changes they also changed", async () => {
     await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("One") });
     const res = await w("post", `${S}/rebase`, siteEditor, { section: "banner", value: banner("Mine") });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ baseRevision: 1, setAside: [] });
+    expect(res.body).toMatchObject({ baseRevision: 1, alsoChangedByThem: [] });
     expect(res.body.document.banner.message).toBe("Mine");
   });
 
