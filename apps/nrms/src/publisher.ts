@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
-import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
+import { enqueueEvent, type EmailAgain, type SubscriberConfig } from "@gcpe/events";
 import { publishProblems, type ReleaseView } from "@gcpe/nrms-contract";
 import { governmentTerms, newsReleases, releasePublications } from "./db/schema";
 import { DeferPublish } from "./media/flickr-jobs";
@@ -8,6 +8,7 @@ import { ReleaseRuleError } from "./releases/errors";
 import { emitLinkChange, linkStateOf } from "./releases/link-events";
 import { toReleaseRecord } from "./releases/record";
 import { loadView, SYSTEM_ACTOR, writeLog } from "./releases/store";
+import { emailAgainOffer, emailAgainWho } from "./releases/workflow";
 import { clearFeaturesFor } from "./website/features";
 
 export interface PublisherOptions {
@@ -115,17 +116,44 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
     { publishDate: row!.releasedAt!.toISOString(), timestamp: row!.updatedAt.toISOString() },
     { filesBase: opts.filesBase, rendition },
   );
+  const emailAgain = await takeEmailAgain(tx, id, view);
+  const extra = emailAgain.send ? { emailAgain: emailAgain.send } : {};
   if (goLive) {
-    await enqueueEvent(tx, { type: "release.published", source: "nrms", aggregateId: record.key, data: record }, opts.subscribers);
+    await enqueueEvent(tx, { type: "release.published", source: "nrms", aggregateId: record.key, data: { ...record, ...extra } }, opts.subscribers);
     await writeLog(tx, id, SYSTEM_ACTOR, "Released for Publishing");
     await writeLog(tx, id, SYSTEM_ACTOR, `Published to ${destinations(view)}`);
   } else {
-    await enqueueEvent(tx, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: true } }, opts.subscribers);
+    await enqueueEvent(tx, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: true, ...extra } }, opts.subscribers);
     await writeLog(tx, id, SYSTEM_ACTOR, `Republished to ${destinations(view)}`);
   }
+  if (emailAgain.line) await writeLog(tx, id, SYSTEM_ACTOR, emailAgain.line);
   await tx.insert(releasePublications).values({ releaseId: id, publishedAt: row!.updatedAt, actorId: SYSTEM_ACTOR.id, actorName: SYSTEM_ACTOR.name, record });
   await emitLinkChange(tx, before, await linkStateOf(tx, id), opts.subscribers);
   return { kind: goLive ? "published" : "updated", key: record.key };
+}
+
+/**
+ * Owner decision 2026-10-31: takes this republish's waiting "Also email it again?" (if any) off
+ * the row. What it can still offer as it goes out is sent — a ticked audience it no longer goes
+ * to (media lists turned off since) is left out, and said so — under the release's next
+ * correction number, so NoD makes it a send of its own.
+ */
+async function takeEmailAgain(tx: Tx, id: string, view: ReleaseView): Promise<{ send: EmailAgain | null; line: string | null }> {
+  const [row] = await tx.select({ request: newsReleases.emailAgain, done: newsReleases.correctionsEmailed }).from(newsReleases).where(eq(newsReleases.id, id));
+  const request = row?.request;
+  if (!request) return { send: null, line: null };
+  const offer = emailAgainOffer({ ...view, everPublished: true })!;
+  const go = { subscribers: request.subscribers && offer.subscribers, mediaLists: request.mediaLists && offer.mediaLists };
+  if (!go.subscribers && !go.mediaLists) {
+    await tx.update(newsReleases).set({ emailAgain: null }).where(eq(newsReleases.id, id));
+    return { send: null, line: `Not emailed again: it no longer goes to ${emailAgainWho(request)}` };
+  }
+  const seq = row!.done + 1;
+  await tx.update(newsReleases).set({ emailAgain: null, correctionsEmailed: seq }).where(eq(newsReleases.id, id));
+  return {
+    send: { seq, ...go, requestedBy: request.actorName, requestedAt: request.at },
+    line: `Emailed it again with "Corrected:" to ${emailAgainWho(go)} who got it, as ${request.actorName} asked`,
+  };
 }
 
 /**

@@ -2,8 +2,11 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { indexKeysFor, type SubscriberConfig } from "@gcpe/events";
 import { wallClockToInstant } from "@gcpe/config";
-import { approveProblems, POST_KIND, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
-import { flickrJobs, newsReleases, organizations } from "../db/schema";
+import {
+  approveProblems, POST_KIND, publishProblems, TYPE_LABEL, typeRules,
+  type EmailAgainChoice, type EmailAgainInput, type ReleaseView, type ScheduleInput,
+} from "@gcpe/nrms-contract";
+import { flickrJobs, newsReleases, organizations, type EmailAgainRequest } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
 import { ReleaseRuleError, ReleaseStateError } from "./errors";
 import { emitLinkChange, linkStateOf } from "./link-events";
@@ -17,6 +20,8 @@ export interface WorkflowDeps {
   countMediaContacts?: (listKeys: string[]) => Promise<number>;
   /** NoD's breakdown of who a first publish reaches (suite review R6; clients.ts releaseAudience). */
   releaseAudience?: (q: { listKeys: string[]; mediaListKeys: string[]; toSubscribers: boolean; postKind: string }) => Promise<{ asItHappens: number; digest: number; mediaContacts: number }>;
+  /** NoD's count of who already got a release, per "Also email it again?" tick (apps/nod/src/correction.ts). */
+  correctionAudience?: (q: { itemKey: string; listKeys: string[]; mediaListKeys: string[] }) => Promise<{ subscribers: number; mediaContacts: number; both: number }>;
   /** PUBLIC_FILES_BASE — only affects the size check here (absolute file URLs are longer). */
   filesBase?: string;
   /** Who gets release.status_changed (the Calendar); unset → enqueued for no one. */
@@ -194,6 +199,106 @@ export async function audiencePreview(db: Db, id: string, deps: WorkflowDeps): P
   };
 }
 
+/**
+ * Owner decision 2026-10-31: which "Also email it again?" ticks a release can offer — only once it
+ * has gone out (null before). Subscribers when its type goes to News On Demand subscribers (never
+ * an advisory: media lists only, as its normal send); media lists while it goes to at least one.
+ */
+export function emailAgainOffer(v: Pick<ReleaseView, "type" | "everPublished" | "publishOptions" | "mediaListKeys">): EmailAgainChoice | null {
+  if (!v.everPublished) return null;
+  const rules = typeRules(v.type);
+  return { subscribers: rules.nodAllowed, mediaLists: rules.mediaListsAllowed && v.publishOptions.toMediaLists && v.mediaListKeys.length > 0 };
+}
+
+/** "subscribers", "media lists" or "subscribers and media lists". */
+export function emailAgainWho(c: EmailAgainChoice): string {
+  return [c.subscribers && "subscribers", c.mediaLists && "media lists"].filter(Boolean).join(" and ");
+}
+
+/** The request to store for `choice` (null when nothing is ticked, unless `required`), refused when
+ * the release can't be emailed that way. Who asked and when (the database clock) go with it. */
+async function emailAgainRequest(tx: DbOrTx, view: ReleaseView, choice: EmailAgainChoice | undefined, actor: Actor, required: boolean): Promise<EmailAgainRequest | null> {
+  if (!choice || (!choice.subscribers && !choice.mediaLists)) {
+    if (required) throw new ReleaseRuleError(["Tick who to email it to again."]);
+    return null;
+  }
+  const offer = emailAgainOffer(view);
+  if (!offer) throw new ReleaseRuleError(["Only a release that has gone out before can be emailed again."]);
+  if (choice.subscribers && !offer.subscribers) {
+    throw new ReleaseRuleError([
+      view.type === "advisory" ? "A media advisory is emailed again to media lists only." : `This ${TYPE_LABEL[view.type].toLowerCase()} isn't sent to News On Demand subscribers, so it can't be emailed to them again.`,
+    ]);
+  }
+  if (choice.mediaLists && !offer.mediaLists) throw new ReleaseRuleError(["This release doesn't go to any media distribution lists, so it can't be emailed to them again."]);
+  return { subscribers: choice.subscribers, mediaLists: choice.mediaLists, actorId: actor.id, actorName: actor.name, at: (await dbClock(tx)).now.toISOString() };
+}
+
+const askedLine = (r: EmailAgainChoice) => `Asked to email it again to ${emailAgainWho(r)} who got it`;
+
+/** Who a corrected copy reaches, per tick ("Also email it again?"): `count` null when NoD couldn't say. */
+export interface EmailAgainAudience {
+  /** Subscribers who got it As it happens or in a daily digest; null when this release can't offer the tick. */
+  subscribers: AudienceCount | null;
+  /** Media contacts who got its media email; null when it can't offer the tick. */
+  mediaContacts: AudienceCount | null;
+  /** How many are in both (with both ticked they get one copy, the media one); null when unknown. */
+  both: number | null;
+}
+
+/**
+ * Owner decision 2026-10-31: about how many people "Also email it again?" reaches, per tick, from
+ * NoD's own rules for corrected copies (apps/nod/src/correction.ts, pinned there against the
+ * copies created), for the release as saved. Read-only. Null for an unknown release or one that
+ * hasn't gone out.
+ */
+export async function emailAgainAudience(db: Db, id: string, deps: WorkflowDeps): Promise<EmailAgainAudience | null> {
+  const v = await loadView(db, id);
+  if (!v || !v.key) return null;
+  const offer = emailAgainOffer(v);
+  if (!offer) return null;
+  let counts: { subscribers: number; mediaContacts: number; both: number } | null = null;
+  if (deps.correctionAudience && (offer.subscribers || offer.mediaLists)) {
+    try {
+      counts = await deps.correctionAudience({
+        itemKey: v.key,
+        listKeys: indexKeysFor({ ministryKeys: v.ministries, sectorKeys: v.sectors, tagKeys: v.tags, themeKeys: v.themes }),
+        mediaListKeys: offer.mediaLists ? v.mediaListKeys.map(mediaListKey) : [],
+      });
+    } catch {
+      console.error("[nrms] email-again audience unavailable");
+    }
+  }
+  return {
+    subscribers: offer.subscribers ? { count: counts ? counts.subscribers : null } : null,
+    mediaContacts: offer.mediaLists ? { count: counts ? counts.mediaContacts : null } : null,
+    both: counts ? counts.both : null,
+  };
+}
+
+/**
+ * Owner decision 2026-10-31: Email the correction — a live release (published, or already on its
+ * way back out after an edit) is republished and emailed again, per tick, to the people who already
+ * got it. Same role as Publish now. The request waits on the row until the publisher republishes
+ * it; the history records who asked and when.
+ */
+export async function requestEmailAgain(db: Db, id: string, input: EmailAgainInput, actor: Actor): Promise<ReleaseView> {
+  return mutateRelease(
+    db, id, input.version, actor,
+    async (tx, row) => {
+      if (!row.live || (row.status !== "published" && row.status !== "publishing")) {
+        throw new ReleaseStateError("Only a published release can be emailed again this way. Use Publish now or Schedule to publish it again.");
+      }
+      const view = (await loadView(tx, id))!;
+      const problems = publishProblems(view);
+      if (problems.length) throw new ReleaseRuleError(problems);
+      const request = (await emailAgainRequest(tx, view, input, actor, true))!;
+      await tx.update(newsReleases).set({ emailAgain: request, status: "publishing" }).where(eq(newsReleases.id, id));
+      return askedLine(request);
+    },
+    { correction: false },
+  );
+}
+
 export async function schedule(db: Db, id: string, input: ScheduleInput, actor: Actor, deps: WorkflowDeps): Promise<ReleaseView> {
   const before = await loadView(db, id);
   const subscribers = before ? await subscriberCount(before, deps) : null;
@@ -231,17 +336,20 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
       const rendition = { timeZone: deps.timeZone, nowMs: clock.now.getTime() };
       assertPublishable(toReleaseRecord(view, { publishDate: publishAt.toISOString(), timestamp: clock.now.toISOString() }, { filesBase: deps.filesBase, rendition }));
 
+      // A choice made now replaces any earlier one; unticked (or a first publish) asks for nothing.
+      const emailAgain = await emailAgainRequest(tx, view, input.emailAgain, actor, false);
       await tx
         .update(newsReleases)
         .set({
-          status: "scheduled", publishAt, lastError: null,
+          status: "scheduled", publishAt, lastError: null, emailAgain,
           ...(subscribers && row.releasedAt === null ? { nodSubscribers: subscribers.count } : {}),
           ...(mediaContacts && row.releasedAt === null ? { mediaSubscribers: mediaContacts.count } : {}),
         })
         .where(eq(newsReleases.id, id));
       await dropUnfinishedFlickrJob(tx, id);
       await emitLinkChange(tx, before, await linkStateOf(tx, id), deps.subscribers ?? []);
-      return immediate ? "Scheduled for Immediate Release" : `Scheduled for Release on ${formatBcDateTime(publishAt, deps.timeZone)}`;
+      const line = immediate ? "Scheduled for Immediate Release" : `Scheduled for Release on ${formatBcDateTime(publishAt, deps.timeZone)}`;
+      return emailAgain ? [line, askedLine(emailAgain)] : line;
     },
     { correction: false },
   );
@@ -263,7 +371,7 @@ export async function cancel(db: Db, id: string, version: number, actor: Actor, 
       if (row.status !== "scheduled") throw new ReleaseStateError("Only a scheduled release can be cancelled.");
       if (row.live) throw new ReleaseStateError("This release is live — save a correction or unpublish it instead.");
       const before = await linkStateOf(tx, id);
-      await tx.update(newsReleases).set({ status: row.reference ? "approved" : "draft" }).where(eq(newsReleases.id, id));
+      await tx.update(newsReleases).set({ status: row.reference ? "approved" : "draft", emailAgain: null }).where(eq(newsReleases.id, id));
       await dropUnfinishedFlickrJob(tx, id);
       await emitLinkChange(tx, before, await linkStateOf(tx, id), subscribers);
       return "Cancelled Release";
@@ -312,7 +420,8 @@ export async function unpublish(db: Db, id: string, version: number, actor: Acto
     async (tx, row) => {
       if (!row.live || !UNPUBLISHABLE_STATUSES.has(row.status)) throw new ReleaseStateError("Only a published release can be unpublished.");
       if (!typeRules(row.type).unpublishable) throw new ReleaseStateError(`A sent ${TYPE_LABEL[row.type]} can't be unpublished.`);
-      await tx.update(newsReleases).set({ status: "unpublishing" }).where(eq(newsReleases.id, id));
+      // Taking it down drops any "email it again" still waiting for its republish.
+      await tx.update(newsReleases).set({ status: "unpublishing", emailAgain: null }).where(eq(newsReleases.id, id));
       return "Unpublished Release";
     },
     { correction: false },

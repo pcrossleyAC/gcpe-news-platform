@@ -99,15 +99,15 @@ export async function writeLog(tx: DbOrTx, releaseId: string, actor: Actor, text
 }
 
 /**
- * Every edit goes through here: row lock, version check, the change, version bump, one log
- * line, and — when the release is live — the correction transition (published → publishing).
+ * Every edit goes through here: row lock, version check, the change, version bump, its log
+ * line(s), and — when the release is live — the correction transition (published → publishing).
  */
 export async function mutateRelease(
   db: Db,
   id: string,
   expectedVersion: number,
   actor: Actor,
-  change: (tx: Tx, row: NewsReleaseRow) => Promise<string | null>,
+  change: (tx: Tx, row: NewsReleaseRow) => Promise<string | string[] | null>,
   opts: { correction?: boolean } = {},
 ): Promise<ReleaseView> {
   if (!isUuid(id)) throw new ReleaseNotFoundError(id);
@@ -121,7 +121,7 @@ export async function mutateRelease(
       .update(newsReleases)
       .set({ version: row.version + 1, updatedAt: sql`now()`, ...(correction ? { status: "publishing" as const } : {}) })
       .where(and(eq(newsReleases.id, id)));
-    if (text) await writeLog(tx, id, actor, text);
+    for (const line of Array.isArray(text) ? text : text ? [text] : []) await writeLog(tx, id, actor, line);
     if (correction) await writeLog(tx, id, actor, "Edited after publishing — will republish");
     return (await loadView(tx, id))!;
   });
