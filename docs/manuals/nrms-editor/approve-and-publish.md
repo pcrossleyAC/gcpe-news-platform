@@ -42,7 +42,7 @@ The status shows **Publishing...**, then **Published**, usually within a minute.
 
 1. Choose **Schedule**. If the release has a planned publish date still ahead, the date and time are filled in from it, and the panel says "Filled in from the planned publish date."
 2. Enter the **Date** and **Time (BC time)**. A time that has passed shows "Choose a time in the future, or use Publish now."
-3. Choose **Confirm schedule**. A box asks, for example, "Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?" and lists who will be emailed, and about how many people, as for **Publish now**. For a release that has gone out before it also asks **Also email it again?**, as for **Publish now**.
+3. Choose **Confirm schedule**. A box asks, for example, "Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?" and lists who will be emailed, and about how many people, as for **Publish now**. For a release that has gone out before it also asks **Also email it again?**, as for **Publish now**. Its numbers are as of now: who gets it is worked out when it goes out.
 4. Choose **Schedule**.
 
 The release moves to **Scheduled**. At that time it publishes by itself and the emails go out. Until then nothing is public: not the page, not its files, not the emails.

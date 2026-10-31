@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { typeRules, type EmailAgainChoice, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
+import { dateTimeText } from "../../calendar/list/dates";
 
 /** Nothing ticked: "Also email it again?" starts unticked every time (owner decision 2026-10-31). */
 export const NO_EMAIL_AGAIN: EmailAgainChoice = { subscribers: false, mediaLists: false };
@@ -16,13 +17,14 @@ interface EmailAgainAudience {
 
 /**
  * Which ticks a release can offer, as the server decides (workflow.ts emailAgainOffer): only once
- * it has gone out; subscribers when its type goes to News on Demand subscribers (an advisory goes
- * to media lists only); media lists while it goes to at least one. Null when it offers neither.
+ * it has gone out; subscribers while its type goes to, and it is set to go to, News on Demand
+ * subscribers (an advisory goes to media lists only); media lists while it goes to at least one.
+ * Null when it offers neither.
  */
 export function emailAgainOffer(view: ReleaseView): EmailAgainChoice | null {
   if (!view.everPublished && view.releasedAt === null) return null;
   const rules = typeRules(view.type);
-  const offer = { subscribers: rules.nodAllowed, mediaLists: rules.mediaListsAllowed && view.publishOptions.toMediaLists && view.mediaListKeys.length > 0 };
+  const offer = { subscribers: rules.nodAllowed && view.publishOptions.toSubscribers, mediaLists: rules.mediaListsAllowed && view.publishOptions.toMediaLists && view.mediaListKeys.length > 0 };
   return offer.subscribers || offer.mediaLists ? offer : null;
 }
 
@@ -42,12 +44,15 @@ export function EmailAgainFields({
   view,
   value,
   onChange,
-  legend = "Also email it again?",
+  timeZone,
+  scheduled = false,
 }: {
   view: ReleaseView;
   value: EmailAgainChoice;
   onChange(next: EmailAgainChoice): void;
-  legend?: string;
+  timeZone: string;
+  /** In the Schedule confirmation: who gets it is worked out when it goes out (review M5). */
+  scheduled?: boolean;
 }): React.JSX.Element | null {
   const offer = emailAgainOffer(view);
   // undefined while counting; null when the counts couldn't be fetched.
@@ -77,10 +82,17 @@ export function EmailAgainFields({
 
   return (
     <fieldset className="gcpe-email-again" aria-describedby={`email-again-hint-${view.id}`}>
-      <legend>{legend}</legend>
+      <legend>Also email it again?</legend>
       <p id={`email-again-hint-${view.id}`} className="gcpe-hint">
         Only people who already got it, and are still subscribed, get it again: the release as saved, with &ldquo;Corrected:&rdquo; before the subject. Nobody new is emailed.
+        {scheduled ? " These numbers are as of now; who gets it is worked out when it goes out." : ""}
       </p>
+      {view.lastCorrection && (
+        // Review M4: two editors fixing the same mistake would email everyone twice.
+        <p className="gcpe-release-editor__media-warning">
+          {`Already emailed a correction on ${dateTimeText(view.lastCorrection.requestedAt, timeZone)}, asked for by ${view.lastCorrection.requestedBy}. This sends another to the same people.`}
+        </p>
+      )}
       {offer.subscribers && (
         <label className="gcpe-check">
           <input type="checkbox" checked={value.subscribers} disabled={subs === 0 && !value.subscribers} onChange={(e) => onChange({ ...value, subscribers: e.target.checked })} />

@@ -14,6 +14,9 @@ import { useSaveQueue, withVersion } from "../saveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
 import { emailAgainBody, EmailAgainFields, emailAgainOffer, NO_EMAIL_AGAIN } from "./EmailAgainFields";
+
+/** "subscribers", "media lists" or "subscribers and media lists". */
+const who = (c: EmailAgainChoice) => [c.subscribers && "subscribers", c.mediaLists && "media lists"].filter(Boolean).join(" and ");
 import { bcLocalToInstant, instantToBcLocal, wallClockNowMinute } from "../timezone";
 import { placeholderHits } from "../placeholders";
 import { APPROVE_LIST_ID, readiness } from "../readiness";
@@ -74,6 +77,9 @@ export interface ActionsSectionProps {
    * Approve, Publish now and Schedule are unavailable: they act on the release as saved, so
    * the edits on screen would be left out (owner decision 2026-10-29). */
   unsaved?: DirtySection[];
+  /** Review I3: a save just republished this live release (the page's one Save): nobody was
+   * emailed, so say how to email the people who got it. */
+  republishedBySave?: boolean;
 }
 
 /** A reason an action is unavailable, and the section/field it links to (if any). */
@@ -92,7 +98,7 @@ const unsavedName = (label: string) => label.replace(/^save\s+/i, "");
  * preconditions; the server remains the authority (constraints.md) — these are convenience
  * gates, not the enforcement.
  */
-export function ActionsSection({ view, setView, timeZone, unsaved = [] }: ActionsSectionProps): React.JSX.Element {
+export function ActionsSection({ view, setView, timeZone, unsaved = [], republishedBySave = false }: ActionsSectionProps): React.JSX.Element {
   const navigate = useNavigate();
   const section = useReleaseSection(view, setView);
   const queue = useSaveQueue();
@@ -124,6 +130,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const [scheduleConfirmOpen, setScheduleConfirmOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [emailedSinceSave, setEmailedSinceSave] = useState(false);
   // Owner decision 2026-10-31: "Also email it again?", unticked whenever a publish dialog opens.
   const [emailAgain, setEmailAgain] = useState<EmailAgainChoice>(NO_EMAIL_AGAIN);
   const openWithEmailAgain = (setOpen: (open: boolean) => void) => (open: boolean) => {
@@ -231,6 +238,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
     void section.save("/email-again", { version: view.version, ...emailAgain }, "POST").then((next) => {
       if (!next) return;
       setCorrectionOpen(false);
+      setEmailedSinceSave(true);
       setFocusHeading(true);
     });
   const cancelSchedule = () =>
@@ -385,7 +393,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                     </p>
                   )}
                   <PublishConsequences view={view} timeZone={timeZone} />
-                  <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} />
+                  <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} timeZone={timeZone} />
                   <ActionErrors section={section} />
                 </AlertDialog>
               </Modal>
@@ -431,7 +439,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                 }
               >
                 <p>This republishes the {typeName} as saved, then emails it again to the people you tick.</p>
-                <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} legend="Who to email again" />
+                <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} timeZone={timeZone} />
                 <ActionErrors section={section} />
               </AlertDialog>
             </Modal>
@@ -586,6 +594,22 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
           items={publishLater}
         />
       )}
+      {canEmailCorrection && republishedBySave && !emailedSinceSave && !view.emailAgainPending && (
+        <p role="status" className="gcpe-release-editor__why">
+          Republished. People who already got it weren&rsquo;t emailed again. To send them the corrected version, use Email the correction.
+        </p>
+      )}
+      {view.emailAgainPending && <p className="gcpe-release-editor__why">{`Emailing it again to ${who(view.emailAgainPending)} who got it is waiting for it to republish.`}</p>}
+      {view.lastCorrection?.state === "waiting" && (
+        <p className="gcpe-release-editor__why">{`The corrected email asked for on ${dateTimeText(view.lastCorrection.requestedAt, timeZone)} is on its way to News On Demand.`}</p>
+      )}
+      {view.lastCorrection?.state === "not-delivered" && (
+        <InlineAlert
+          variant="danger"
+          role="alert"
+          description={`The corrected email asked for on ${dateTimeText(view.lastCorrection.requestedAt, timeZone)} didn’t reach News On Demand, so nobody was emailed. Choose Email the correction to send it again.`}
+        />
+      )}
       {correctionBlockers.length > 0 && <BlockerList id="actions-correction-why" lead="Email the correction is unavailable until:" items={correctionBlockers} />}
       {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead={canSchedule ? "Publish now and Schedule are unavailable until:" : "Publish now is unavailable until:"} items={publishBlockers} />}
 
@@ -633,7 +657,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                 }
               >
                 {scheduleValue && <PublishConsequences view={view} at={scheduleText(scheduleValue.local)} atInstant={scheduleValue.instant} timeZone={timeZone} />}
-                <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} />
+                <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} timeZone={timeZone} scheduled />
                 <ActionErrors section={section} />
               </AlertDialog>
             </Modal>
