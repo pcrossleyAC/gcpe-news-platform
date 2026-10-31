@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isRealProduction, trustProxyHopsSchema } from "@gcpe/config";
+import { isRealProduction, isTestSite, trustProxyHopsSchema } from "@gcpe/config";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { DEFAULT_LEGACY_FILES_ORIGIN, parseOrigin } from "./legacy-files/options";
 import { createProjectionHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
@@ -155,15 +155,16 @@ export const FAKE_MEDIA_HUB_ENV: Readonly<Record<string, string>> = {
 
 /**
  * True when the stack runs, and points NoD at, its fake Media Hub: NoD has no effective
- * `MEDIA_HUB_URL` ("" counts as none) AND this is not a real production deployment -- same
- * safety net as {@link usesFakeFlickr} (NODE_ENV isn't "production", or it's a test deployment
- * via LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true). Production with no Media Hub configured fails
- * closed instead: no Media Hub at all, so search/add-from-hub answer 503 rather than serving
- * made-up contacts that could get added to a real media list.
+ * `MEDIA_HUB_URL` ("" counts as none) AND this is a test site (@gcpe/config's isTestSite:
+ * NODE_ENV isn't "production", or SITE_ENVIRONMENT=test) -- same safety net as
+ * {@link usesFakeFlickr}. Production with no Media Hub configured fails closed instead: no Media
+ * Hub at all, so search/add-from-hub answer 503 rather than serving made-up contacts that could
+ * get added to a real media list. Break-glass allowed in production
+ * (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true) is not a test site (owner decision 2026-10-31).
  */
 export function usesFakeMediaHub(env: NodeJS.ProcessEnv): boolean {
   if (env.NOD_MEDIA_HUB_URL) return false;
-  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
+  return isTestSite(env);
 }
 
 /** Where the stack mounts its fake emergency feed when NoD has no real one configured. */
@@ -181,7 +182,7 @@ export const FAKE_EMERGENCY_FEED_ENV: Readonly<Record<string, string>> = {
  */
 export function usesFakeEmergencyFeed(env: NodeJS.ProcessEnv): boolean {
   if (env.NOD_EMERGENCY_FEED_URL) return false;
-  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
+  return isTestSite(env);
 }
 
 /** Where the stack mounts its fake Microsoft sign-in when FAKE_ENTRA_ENABLED=true. */
@@ -248,15 +249,15 @@ function nrmsFlickrSetting(env: NodeJS.ProcessEnv, name: string): string | undef
 
 /**
  * True when the stack runs, and points NRMS at, its fake Flickr: NRMS has no effective Flickr
- * key ("" counts as none) AND this is not a real production deployment — NODE_ENV isn't
- * "production", or it's a test deployment (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true), or the fake
+ * key ("" counts as none) AND this is not a real production deployment — a test site
+ * (@gcpe/config's isTestSite: NODE_ENV isn't "production", or SITE_ENVIRONMENT=test), or the fake
  * is asked for explicitly (FLICKR_MODE=fake). Production with a lost key fails closed instead:
  * no Flickr at all, so the publisher alerts and asset status reads "unavailable" — never the
  * fake's "this photo no longer exists" for a real photo.
  */
 export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
   if (nrmsFlickrSetting(env, "FLICKR_API_KEY")) return false;
-  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || nrmsFlickrSetting(env, "FLICKR_MODE") === "fake";
+  return isTestSite(env) || nrmsFlickrSetting(env, "FLICKR_MODE") === "fake";
 }
 
 /**
@@ -270,7 +271,7 @@ export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
  * deployments. DATA_DIR (Task 1) is shared too — the one folder, outside any SiteGround deploy
  * folder, that survives a redeploy (see data-dir.ts). SITE_ENVIRONMENT (plan 3d task 4) is
  * shared so an operator can mark a whole deployment (e.g. boxs.ca) a test site with one
- * setting, reaching Public Site's `isTestSite` the same way NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION do.
+ * setting, reaching every app's `isTestSite` the same way NODE_ENV does.
  */
 function isSharedKey(key: string): boolean {
   return (

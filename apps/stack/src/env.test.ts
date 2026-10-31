@@ -551,11 +551,16 @@ describe("when the stack uses the fake Flickr (fix round 1: never silently in pr
     expect(Object.keys(view).filter((k) => k.startsWith("FLICKR_"))).toEqual([]);
   });
 
-  it("production + LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true (a test deployment) → fake", () => {
-    const env = { ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" };
+  it("production + SITE_ENVIRONMENT=test (a test deployment) → fake", () => {
+    const env = { ...prod, SITE_ENVIRONMENT: "test" };
     expect(usesFakeFlickr(env)).toBe(true);
     expect(envFor(env, "NRMS")).toMatchObject(FAKE_FLICKR_ENV);
-    expect(usesFakeFlickr({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "false" })).toBe(false);
+  });
+
+  it("production + break-glass allowed (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true) is still real production → no fake (2026-10-31, T1)", () => {
+    const env = { ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" };
+    expect(usesFakeFlickr(env)).toBe(false);
+    expect(Object.keys(envFor(env, "NRMS")).filter((k) => k.startsWith("FLICKR_"))).toEqual([]);
   });
 
   it("an explicit FLICKR_MODE=fake (shared or NRMS-prefixed) → fake, even in production", () => {
@@ -618,8 +623,10 @@ describe("Media Hub in the stack", () => {
   it("never silently fakes in production (fix round 1's own rule for Flickr, applied here too)", () => {
     expect(usesFakeMediaHub(prod)).toBe(false);
     expect(envFor(prod, "NOD").MEDIA_HUB_URL).toBeUndefined();
-    expect(usesFakeMediaHub({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
-    expect(envFor({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }, "NOD")).toMatchObject(FAKE_MEDIA_HUB_ENV);
+    expect(usesFakeMediaHub({ ...prod, SITE_ENVIRONMENT: "test" })).toBe(true);
+    expect(envFor({ ...prod, SITE_ENVIRONMENT: "test" }, "NOD")).toMatchObject(FAKE_MEDIA_HUB_ENV);
+    // Break-glass allowed in production is not a test site (2026-10-31, T1).
+    expect(usesFakeMediaHub({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(false);
   });
 });
 
@@ -638,8 +645,11 @@ describe("fake emergency feed", () => {
     expect(usesFakeEmergencyFeed({ NODE_ENV: "production" })).toBe(false);
     expect(envFor({ NODE_ENV: "production" }, "NOD").EMERGENCY_FEED_URL).toBeUndefined();
   });
-  it("an explicitly allowed test deployment in production mode still gets the fake", () => {
-    expect(usesFakeEmergencyFeed({ NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
+  it("a test deployment in production mode (SITE_ENVIRONMENT=test) still gets the fake", () => {
+    expect(usesFakeEmergencyFeed({ NODE_ENV: "production", SITE_ENVIRONMENT: "test" })).toBe(true);
+  });
+  it("break-glass allowed in production is not a test site: no fake feed (2026-10-31, T1)", () => {
+    expect(usesFakeEmergencyFeed({ NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(false);
   });
 });
 

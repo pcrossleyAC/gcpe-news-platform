@@ -618,7 +618,7 @@ Staff can sign in with their government Microsoft account. It is **off** unless 
 | `CORE_ENTRA_CLIENT_ID` | The app registration's client id. |
 | `CORE_ENTRA_CLIENT_SECRET` | Its client secret. |
 | `CORE_PUBLIC_BASE_URL` | The site's origin, e.g. `https://boxs.ca`: https, no path. The redirect URI is this plus `/core/auth/entra/callback`. |
-| `CORE_LOCAL_PASSWORDS_ALLOWED` | Optional, and only matters in **real** production: a deployment with `NODE_ENV=production` that is *not* also a test site under the same rule `LOCAL_ADMIN_ALLOW_IN_PRODUCTION`/`SITE_ENVIRONMENT=test` use (boxs.ca is a test site, so it's unaffected either way). There, with Entra on, user passwords are refused unless this is `true`. The break-glass admin isn't affected. |
+| `CORE_LOCAL_PASSWORDS_ALLOWED` | Optional, and only matters in **real** production: a deployment with `NODE_ENV=production` that is *not* also a test site (`SITE_ENVIRONMENT=test`; boxs.ca is a test site, so it's unaffected either way). There, with Entra on, user passwords are refused unless this is `true`. The break-glass admin isn't affected. |
 
 Entra sign-in is on when `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET` or `CORE_PUBLIC_BASE_URL` is set. Setting only some of them fails at startup and in `node stack.js --check`, naming what's missing. `SESSION_SECRET` is needed too; on the stack it is derived from `STACK_EVENT_SECRET`.
 
@@ -636,13 +636,13 @@ Entra sign-in is on when `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET` or `
 
 Fake mode is automatic whenever NRMS has no effective Flickr key (`FLICKR_API_KEY` /
 `NRMS_FLICKR_API_KEY` unset or empty) **and** at least one of: `NODE_ENV` isn't `production`, or
-`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`, or `FLICKR_MODE=fake` (see `usesFakeFlickr` in
+`SITE_ENVIRONMENT=test`, or `FLICKR_MODE=fake` (see `usesFakeFlickr` in
 `apps/stack/src/env.ts`) — the stack mounts a fake Flickr at `/fake-flickr` and points NRMS at
 it instead, so the whole photo-publishing path can be exercised before a real key exists. boxs.ca
-qualifies today because `siteground:env` sets `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`.
+qualifies because `siteground:env` sets `SITE_ENVIRONMENT=test`.
 
 Without a key, a *real* production deployment (`NODE_ENV=production`, no
-`LOCAL_ADMIN_ALLOW_IN_PRODUCTION` and no `FLICKR_MODE=fake`) fails closed instead: no Flickr at
+`SITE_ENVIRONMENT=test` and no `FLICKR_MODE=fake`) fails closed instead: no Flickr at
 all — the publisher alerts on every release with a photo and the asset-status endpoint reads
 "unavailable" — rather than silently using the fake for real photos.
 
@@ -744,14 +744,17 @@ subject, never an address, instead of calling Core.
 **The test-site rule and `SITE_ENVIRONMENT`.** A deployment is a *test site* — every public page
 gets `<meta name="robots" content="noindex, nofollow">` and the Project Blue Bridge banner text
 (when on) is prefixed `TEST — ` — unless it's the real production deployment:
-`NODE_ENV=production` **and** not `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` **and** not
-`SITE_ENVIRONMENT=test` (`isTestSite`, `apps/public-site/src/site-env.ts`; same rule as legacy's
-Flickr fake-mode check). `SITE_ENVIRONMENT` is a shared, unprefixed var (`apps/stack/src/env.ts`'s
+`NODE_ENV=production` **and** not `SITE_ENVIRONMENT=test` (`isTestSite`, `packages/config/src/test-site.ts`;
+the same rule decides the Flickr, Media Hub and emergency-feed fakes). `SITE_ENVIRONMENT` is a shared, unprefixed var (`apps/stack/src/env.ts`'s
 `isSharedKey`) so one setting marks a whole deployment a test site regardless of `NODE_ENV`.
-**boxs.ca is a test site today**: `NODE_ENV=production` but `siteground:env` also sets
-`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` (see "Flickr" above) — never remove that without first
-confirming boxs.ca really is meant to go live for real, since it flips both the Flickr fake and
-this rule at once.
+**boxs.ca is a test site** because `siteground:env` writes `SITE_ENVIRONMENT=test`. Until
+2026-10-31, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` also made a test site; now it only allows the
+break-glass admin under `NODE_ENV=production` (owner decision 2026-10-31), so turning break-glass on
+never changes how the public site looks. **An env generated before 2026-10-31 has no
+`SITE_ENVIRONMENT` line:** add `SITE_ENVIRONMENT=test` in Site Tools → Devs → Node.js → your
+project → Environment Variables **before** deploying a build from 2026-10-31 or later. Without it,
+boxs.ca counts as the real production site, and the stack refuses to start until the real-production
+settings are in place (see "Real production: what the stack refuses" in docs/deploy/windows.md).
 
 **Running the walkthrough.** From your Mac, against a stack already confirmed to be a test site
 (the script checks this itself and refuses otherwise):
@@ -1764,7 +1767,7 @@ Nothing calls an embedding provider yet: semantic search and its worker arrive i
 | `NEWSAPI_AZURE_OPENAI_API_VERSION` | Default `2024-10-21`. |
 | `NEWSAPI_EMBEDDINGS_TIMEOUT_MS` | Per call. Default 1000; clamped to 200–5000. |
 
-`stand-in` is refused on a real production deployment: `NODE_ENV=production` without `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` or `SITE_ENVIRONMENT=test`. That is the same test-site rule as Flickr and the TEST banner. boxs.ca qualifies as a test deployment.
+`stand-in` is refused on a real production deployment: `NODE_ENV=production` without `SITE_ENVIRONMENT=test`. That is the same test-site rule as Flickr and the TEST banner. boxs.ca qualifies as a test deployment.
 
 ### Search columns and the backfill
 

@@ -38,12 +38,13 @@ describe("embeddingsEnvSchema and createEmbeddingProvider", () => {
     expect(r.error!.issues[0]!.message).toMatch(/production/);
   });
 
-  it.each([{ LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }, { SITE_ENVIRONMENT: "test" }])(
-    "allows the stand-in on a production-mode test deployment (%j), as boxs.ca is",
-    (extra) => {
-      expect(parse({ EMBEDDINGS_PROVIDER: "stand-in", NODE_ENV: "production", ...extra }).success).toBe(true);
-    },
-  );
+  it("allows the stand-in on a production-mode test deployment (SITE_ENVIRONMENT=test), as boxs.ca is", () => {
+    expect(parse({ EMBEDDINGS_PROVIDER: "stand-in", NODE_ENV: "production", SITE_ENVIRONMENT: "test" }).success).toBe(true);
+  });
+
+  it("refuses the stand-in when only break-glass is allowed in production (2026-10-31, T1: not a test site)", () => {
+    expect(parse({ EMBEDDINGS_PROVIDER: "stand-in", NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }).success).toBe(false);
+  });
 
   it("builds the Azure provider with the default API version and the clamped timeout", () => {
     const r = parse({ ...azure, EMBEDDINGS_TIMEOUT_MS: "99999" });

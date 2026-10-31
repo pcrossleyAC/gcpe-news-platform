@@ -85,7 +85,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   // Throws on an invalid file, so a bad deploy fails here rather than on the first render.
   const defaultSettings = tenantConfig ? loadSiteSettingsDefaults(tenantConfigPath, tenantConfig.site.theme) : undefined;
   // Plan 3d task 4: the TEST banner prefix and noindex meta — decided once, from this process's
-  // own env view (the stack's envFor shares NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION/SITE_ENVIRONMENT
+  // own env view (the stack's envFor shares NODE_ENV/SITE_ENVIRONMENT
   // into it the same way for every app).
   const test = isTestSite(env);
 

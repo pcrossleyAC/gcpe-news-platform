@@ -58,12 +58,13 @@ describe("signInSettingsFromEnv", () => {
     expect(() => signInSettingsFromEnv({ LOCAL_PASSWORDS_ALLOWED: "yes" })).toThrow('LOCAL_PASSWORDS_ALLOWED must be "true" or "false"');
   });
 
-  // A test site under NODE_ENV=production (boxs.ca's shape, or SITE_ENVIRONMENT=test) is not
+  // A test site under NODE_ENV=production (SITE_ENVIRONMENT=test, as boxs.ca sets) is not
   // real production — the password-refusal rule, like the ENTRA_AUTHORITY_URL guard just above,
   // uses C39's shared test-site rule and leaves passwords on without LOCAL_PASSWORDS_ALLOWED.
-  it("a test site under NODE_ENV=production (boxs.ca's shape, or SITE_ENVIRONMENT=test) keeps user passwords on", () => {
-    expect(signInSettingsFromEnv({ ...FULL, NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }).userPasswordsAllowed).toBe(true);
+  it("a test site under NODE_ENV=production (SITE_ENVIRONMENT=test, as boxs.ca sets) keeps user passwords on", () => {
     expect(signInSettingsFromEnv({ ...FULL, NODE_ENV: "production", SITE_ENVIRONMENT: "test" }).userPasswordsAllowed).toBe(true);
+    // 2026-10-31 (T1): break-glass allowed in production no longer makes a test site.
+    expect(signInSettingsFromEnv({ ...FULL, NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }).userPasswordsAllowed).toBe(false);
     // Real production still refuses them even with SITE_ENVIRONMENT set to something else.
     expect(signInSettingsFromEnv({ ...FULL, NODE_ENV: "production", SITE_ENVIRONMENT: "" }).userPasswordsAllowed).toBe(false);
   });
@@ -71,8 +72,8 @@ describe("signInSettingsFromEnv", () => {
   it("ENTRA_AUTHORITY_URL points a test site at the fake, and is refused in production or on its own", () => {
     const fake = "http://stack.internal/fake-entra/0000fa4e/v2.0";
     expect(signInSettingsFromEnv({ ...FULL, NODE_ENV: "test", ENTRA_AUTHORITY_URL: `${fake}/` }).entra!.authority).toBe(fake);
-    expect(signInSettingsFromEnv({ ...FULL, NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", ENTRA_AUTHORITY_URL: fake }).entra!.authority).toBe(fake);
-    // SITE_ENVIRONMENT=test marks a test site exactly as LOCAL_ADMIN_ALLOW_IN_PRODUCTION does.
+    expect(() => signInSettingsFromEnv({ ...FULL, NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", ENTRA_AUTHORITY_URL: fake })).toThrow("ENTRA_AUTHORITY_URL is for test sites only");
+    // SITE_ENVIRONMENT=test marks a test site.
     expect(signInSettingsFromEnv({ ...FULL, NODE_ENV: "production", SITE_ENVIRONMENT: "test", ENTRA_AUTHORITY_URL: fake }).entra!.authority).toBe(fake);
     expect(() => signInSettingsFromEnv({ ...FULL, NODE_ENV: "production", ENTRA_AUTHORITY_URL: fake })).toThrow("ENTRA_AUTHORITY_URL is for test sites only");
     expect(() => signInSettingsFromEnv({ ENTRA_AUTHORITY_URL: fake })).toThrow("ENTRA_AUTHORITY_URL is set but Entra sign-in is not");

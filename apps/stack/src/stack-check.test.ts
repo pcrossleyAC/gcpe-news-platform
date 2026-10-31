@@ -251,6 +251,7 @@ describe("checkStack", () => {
     const env = baseEnv();
     env.NODE_ENV = "production";
     env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION = "true";
+    env.SITE_ENVIRONMENT = "test";
     env.NEWSAPI_EMBEDDINGS_PROVIDER = "stand-in";
     const result = await checkStack(env);
     expect(result.apps["news-api"]?.ok).toBe(true);

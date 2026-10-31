@@ -98,6 +98,13 @@ describe("buildEnvLines", () => {
     expect(tooLong).toEqual([]);
   });
 
+  it("marks the deployment a test site with SITE_ENVIRONMENT=test, which isTestSite reads (2026-10-31, T1)", async () => {
+    const { isTestSite } = await import("@gcpe/config");
+    const map = parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n"));
+    expect(map.get("SITE_ENVIRONMENT")).toBe("test");
+    expect(isTestSite(Object.fromEntries(map))).toBe(true);
+  });
+
   it("never sets PORT (SiteGround injects it)", () => {
     const map = parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n"));
     expect(map.has("PORT")).toBe(false);
