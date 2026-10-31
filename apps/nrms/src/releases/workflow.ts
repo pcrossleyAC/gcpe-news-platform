@@ -3,13 +3,13 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { indexKeysFor, type SubscriberConfig } from "@gcpe/events";
 import { wallClockToInstant } from "@gcpe/config";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
-import { flickrJobs, newsReleases, organizations, releasePublications } from "../db/schema";
+import { flickrJobs, newsReleases, organizations } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
 import { ReleaseRuleError, ReleaseStateError } from "./errors";
 import { emitLinkChange, linkStateOf } from "./link-events";
 import { bcYear, nextCounter, pad } from "./numbering";
 import { assertPublishable, toReleaseRecord } from "./record";
-import { loadView, mutateRelease, type Actor } from "./store";
+import { hasBeenPublic, loadView, mutateRelease, type Actor } from "./store";
 
 export interface WorkflowDeps {
   timeZone: string;
@@ -216,16 +216,6 @@ export async function cancel(db: Db, id: string, version: number, actor: Actor, 
     },
     { correction: false },
   );
-}
-
-/**
- * Ever public: releasedAt, or (a legacy import with no ReleaseDateTime) an atomId — stamped on
- * every publish and carried by imports — or a publication row. Its key is then a public URL, so
- * it never goes back to draft (returnToDraft) and its key never changes (suite review R2).
- */
-export async function hasBeenPublic(tx: DbOrTx, row: { id: string; releasedAt: Date | null; atomId: string | null }): Promise<boolean> {
-  if (row.releasedAt !== null || row.atomId !== null) return true;
-  return (await tx.select({ id: releasePublications.id }).from(releasePublications).where(eq(releasePublications.releaseId, row.id)).limit(1)).length > 0;
 }
 
 /**

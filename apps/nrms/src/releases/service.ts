@@ -22,9 +22,9 @@ import { assertActivityLinkable } from "../calendar/lookup";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError } from "./errors";
 import { uniqueKey } from "./keys";
 import { emitLinkChange, linkStateOf } from "./link-events";
-import { loadView, mutateRelease, writeLog, type Actor } from "./store";
+import { hasBeenPublic, loadView, mutateRelease, writeLog, type Actor } from "./store";
 import { clearFeaturesFor } from "../website/features";
-import { hasBeenPublic, parseLocalDateTime, type WorkflowDeps } from "./workflow";
+import { parseLocalDateTime, type WorkflowDeps } from "./workflow";
 
 const EDITABLE_KEY_STATUSES = new Set(["draft", "approved"]);
 const PLANNING_STATUSES = new Set(["draft", "approved", "failed"]);

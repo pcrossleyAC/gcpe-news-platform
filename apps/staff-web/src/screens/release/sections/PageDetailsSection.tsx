@@ -49,10 +49,10 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
 
   const dirty = !readOnly && edited;
 
-  // Suite review R2: once on the public site (released, or an imported one with an atom id — the
-  // server's own test also counts a publication record), the key is a web address people were
-  // sent, so it stays fixed even after an unpublish puts the release back to approved.
-  const everPublished = view.releasedAt !== null || view.atomId !== null;
+  // Suite review R2: once on the public site (the server's own test: a release date, an atom id or
+  // a publication record), the key is a web address people were sent, so it stays fixed even after
+  // an unpublish puts the release back to approved.
+  const everPublished = view.everPublished;
   const keyEditable = rules.keyEditable && EDITABLE_KEY_STATUSES.has(view.status) && !everPublished;
   const keyNote = !rules.keyEditable
     ? `${aType(view.type)}'s URL key is generated automatically.`

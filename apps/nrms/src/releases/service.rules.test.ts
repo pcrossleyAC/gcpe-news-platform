@@ -48,6 +48,7 @@ describe("release editing service — further rules", () => {
       const key = v.key;
       await setStatus(v.id, "approved", everPublic);
       v = (await loadView(db(), v.id))!;
+      expect(v.everPublished).toBe(true);
       v = await saveDocumentLanguage(db(), v.id, docId, 4105, { ...docBase, version: v.version, headline: `Ferry ${type} sails late` }, editor);
       expect(v.key).toBe(key);
       const meta = { version: v.version, redirectUrl: null, location: "", summary: v.languages[0]!.summary, socialMediaSummary: null, keywords: null };
@@ -58,6 +59,18 @@ describe("release editing service — further rules", () => {
       const saved = await saveMeta(db(), v.id, { ...meta, key, location: "Victoria" }, editor);
       expect([saved.key, saved.languages[0]!.location]).toEqual([key, "Victoria"]);
     }
+  });
+
+  // Fix round 1 (review M3): a publication record alone (no release date, no atom id) counts too,
+  // and the view says so, so Page details greys the key out exactly when the server refuses it.
+  it("a publication record alone makes a story ever published, in the view and on save", async () => {
+    let v = await createRelease(db(), { ...sampleCreate, type: "story", headline: "Bus route opens" }, editor);
+    expect(v.everPublished).toBe(false);
+    await setStatus(v.id, "approved");
+    await tdb.db.execute(sql`INSERT INTO release_publications (release_id, published_at, actor_id, actor_name, record) VALUES (${v.id}, now(), 'system', 'System', '{}'::jsonb)`);
+    v = (await loadView(db(), v.id))!;
+    expect([v.releasedAt, v.atomId, v.everPublished]).toEqual([null, null, true]);
+    await expect(saveMeta(db(), v.id, { version: v.version, key: "elsewhere", redirectUrl: null, location: "", summary: v.languages[0]!.summary, socialMediaSummary: null, keywords: null }, editor)).rejects.toBeInstanceOf(ReleaseStateError);
   });
 
   it("a release's key can't be set through meta", async () => {

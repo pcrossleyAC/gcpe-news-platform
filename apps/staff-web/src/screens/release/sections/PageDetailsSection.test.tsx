@@ -59,12 +59,14 @@ describe("PageDetailsSection", () => {
   // Suite review R2: an unpublished Story/Factsheet is back to approved, but its key is still the
   // address people were sent, so it stays fixed.
   it("the URL key is read-only for a Story or Factsheet that has been published, saying why, and Save sends no key", async () => {
-    const calls = stubPut((body) => jsonResponse(200, releaseView({ type: "story", status: "approved", key: "my-story", releasedAt: "2026-10-01T17:00:00Z", version: (body as { version: number }).version + 1 })));
-    renderSection(releaseView({ type: "story", status: "approved", key: "my-story", releasedAt: "2026-10-01T17:00:00Z" }));
+    const calls = stubPut((body) => jsonResponse(200, releaseView({ type: "story", status: "approved", key: "my-story", everPublished: true, version: (body as { version: number }).version + 1 })));
+    renderSection(releaseView({ type: "story", status: "approved", key: "my-story", releasedAt: "2026-10-01T17:00:00Z", everPublished: true }));
     expect(screen.getByLabelText("URL key")).toBeDisabled();
     expect(screen.getByText("This Story has been published, so its URL key can't change.")).toBeInTheDocument();
     cleanup();
-    renderSection(releaseView({ type: "factsheet", status: "approved", key: "my-sheet", atomId: "tag:x" }));
+    // Fix round 1 (review M3): the server's test, which also counts a publication record with no
+    // release date or atom id, decides; the screen doesn't guess from the dates.
+    renderSection(releaseView({ type: "factsheet", status: "approved", key: "my-sheet", everPublished: true }));
     expect(screen.getByLabelText("URL key")).toBeDisabled();
     expect(screen.getByText("This Factsheet has been published, so its URL key can't change.")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Location"), "Victoria");
