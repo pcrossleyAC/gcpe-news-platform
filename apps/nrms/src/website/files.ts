@@ -3,7 +3,7 @@ import { desc, eq, ilike, sql, type SQL } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { Readable } from "node:stream";
 import { assertSafeKey, ATTACHMENT_TYPES, extensionOf, forceExtension, safeFileName, sniff, type ObjectStore, type SniffedType } from "@gcpe/storage";
-import { siteFiles } from "../db/schema";
+import { siteFiles, siteFileTombstones } from "../db/schema";
 import type { Actor } from "../releases/store";
 import { deleteQuietly } from "../storage-log";
 import { writeSiteLog } from "./events";
@@ -179,6 +179,7 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
         if (!created) throw new SiteConflictError("A file with that name already exists.");
         await store.move(tempKey, name);
         wroteRealKeyForNewRow = true;
+        await clearTombstone(tx, name);
         await writeSiteLog(tx, actor, "files", `Uploaded ${name}`);
         return created;
       }
@@ -188,6 +189,7 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
       if (!locked) throw new SiteNotFoundError(`no file named ${name}`);
       const [updated] = await tx.update(siteFiles).set({ contentType: recordedType(locked.name, sniffed), size }).where(eq(siteFiles.id, locked.id)).returning();
       await store.move(tempKey, locked.storageKey);
+      await clearTombstone(tx, locked.name);
       await writeSiteLog(tx, actor, "files", `Replaced ${locked.name}`);
       return updated!;
     });
@@ -241,9 +243,31 @@ export async function deleteFile(db: Db, store: ObjectStore, id: string, actor: 
     const [row] = await tx.select().from(siteFiles).where(eq(siteFiles.id, id)).for("update");
     if (!row) throw new SiteNotFoundError("file not found");
     await tx.delete(siteFiles).where(eq(siteFiles.id, id));
+    // Suite review W2: with nothing here of that name, the stack's /files gate would 302 the
+    // address to legacy's copy of an imported file. Remembering the name makes it a 404 instead.
+    await tx
+      .insert(siteFileTombstones)
+      .values({ nameLower: row.name.toLowerCase(), deletedBy: actor.id })
+      .onConflictDoUpdate({ target: siteFileTombstones.nameLower, set: { deletedAt: sql`now()`, deletedBy: actor.id } });
     await store.delete(row.storageKey);
     await writeSiteLog(tx, actor, "files", `Deleted ${row.name}`);
   });
+}
+
+/** A file is served under `name` again (a Hub upload or replace): it is no longer a deleted name. */
+async function clearTombstone(tx: DbOrTx, name: string): Promise<void> {
+  await tx.delete(siteFileTombstones).where(eq(siteFileTombstones.nameLower, name.toLowerCase()));
+}
+
+/**
+ * Whether `/files/<name>` names a site file staff deleted (in any letter case, as the gate and
+ * legacy's own resolver match names) and that no upload has put back. The stack's /files gate
+ * answers these with the site's 404 instead of the legacy fallback.
+ */
+export async function isDeletedSiteFileName(db: DbOrTx, name: string): Promise<boolean> {
+  if (!name) return false;
+  const [row] = await db.select({ n: siteFileTombstones.nameLower }).from(siteFileTombstones).where(eq(siteFileTombstones.nameLower, name.toLowerCase())).limit(1);
+  return row !== undefined;
 }
 
 // ---------------------------------------------------------------- legacy import
@@ -277,7 +301,8 @@ export interface ImportSiteFileInput {
   replace: boolean;
 }
 
-export type ImportSiteFileOutcome = "imported" | "replaced" | "exists";
+/** `deleted`: staff deleted a file of that name in the Hub, so the import leaves it deleted. */
+export type ImportSiteFileOutcome = "imported" | "replaced" | "exists" | "deleted";
 
 /**
  * Imports one legacy news.gov.bc.ca `/files` file (the legacy Hub's Website > Files uploads) as
@@ -299,6 +324,7 @@ export async function importSiteFile(db: Db, store: ObjectStore, input: ImportSi
     return await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"site_files:"} || lower(${input.name})))`);
       const [existing] = await tx.select().from(siteFiles).where(sql`lower(${siteFiles.name}) = lower(${input.name})`).for("update");
+      if (!existing && (await isDeletedSiteFileName(tx, input.name))) return { outcome: "deleted" as const, view: null };
       if (existing && !input.replace) return { outcome: "exists" as const, view: view(existing) };
       if (existing) {
         const [updated] = await tx.update(siteFiles).set({ contentType: input.contentType, size: input.bytes.length }).where(eq(siteFiles.id, existing.id)).returning();

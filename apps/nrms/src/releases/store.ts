@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { LANG_EN, type CategoryKind, type LanguageId, type ReleaseFeatureView, type ReleaseView } from "@gcpe/nrms-contract";
 import {
-  categoryFeatures, documentContacts, documentLanguages, mediaLists, newsReleases, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseLog, releaseMediaLists,
+  categoryFeatures, documentContacts, documentLanguages, mediaLists, newsReleases, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseLog, releaseMediaLists, releasePublications,
   type NewsReleaseRow,
 } from "../db/schema";
 import { ReleaseNotFoundError, VersionConflictError } from "./errors";
@@ -19,6 +19,17 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 /** Where an uploaded file is publicly served (the stack's `/files` mount; see apps/stack/src/stack.ts). */
 export const filePublicPath = (storageKey: string) => `/files/${storageKey.split("/").map(encodeURIComponent).join("/")}`;
 const langOrder = (a: number, b: number) => (a === LANG_EN ? -1 : b === LANG_EN ? 1 : a - b);
+
+/**
+ * Ever public: releasedAt, or (a legacy import with no ReleaseDateTime) an atomId — stamped on
+ * every publish and carried by imports — or a publication row. Its key is then a public URL, so
+ * it never goes back to draft (returnToDraft) and its key never changes (suite review R2). The
+ * view's `everPublished` is this same test.
+ */
+export async function hasBeenPublic(tx: DbOrTx, row: { id: string; releasedAt: Date | null; atomId: string | null }): Promise<boolean> {
+  if (row.releasedAt !== null || row.atomId !== null) return true;
+  return (await tx.select({ id: releasePublications.id }).from(releasePublications).where(eq(releasePublications.releaseId, row.id)).limit(1)).length > 0;
+}
 
 /** The whole release as the API and renditions see it. Deleted releases still load (callers decide). */
 export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | null> {
@@ -55,6 +66,7 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
   return {
     id: r.id, type: r.type, key: r.key, reference: r.reference, status: r.status, live: r.live, onHold: r.onHold, version: r.version,
     leadMinistryKey: r.leadMinistryKey, activityId: r.activityId, publishAt: iso(r.publishAt), releasedAt: iso(r.releasedAt),
+    everPublished: await hasBeenPublic(db, r),
     publishOptions: { toWeb: r.toWeb, toSubscribers: r.toSubscribers, toMediaLists: r.toMediaLists },
     assetUrl: r.assetUrl, assetAltText: r.assetAltText, hasMediaAssets: r.hasMediaAssets, hasTranslations: r.hasTranslations,
     redirectUrl: r.redirectUrl, keywords: r.keywords, atomId: r.atomId, nodSubscribers: r.nodSubscribers, mediaSubscribers: r.mediaSubscribers, lastError: r.lastError,

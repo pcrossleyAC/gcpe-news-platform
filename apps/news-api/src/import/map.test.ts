@@ -39,6 +39,12 @@ describe("mapLegacyRelease", () => {
     expect([r.kind, r.atomId]).toEqual(["stories", "tag:x"]);
   });
 
+  // Suite review R1: legacy NewModel.cs never put an Advisory on the website.
+  it("marks an Advisory (ReleaseType 5) as not for the web", () => {
+    const r = mapLegacyRelease({ ...row, ReleaseType: 5 }, [], [], []);
+    expect([r.kind, r.publishFlags.toWeb]).toEqual(["advisories", false]);
+  });
+
   it("throws on ReleaseType 0", () => {
     expect(() => mapLegacyRelease({ ...row, ReleaseType: 0 }, [], [], [])).toThrow(/ReleaseType 0/);
   });

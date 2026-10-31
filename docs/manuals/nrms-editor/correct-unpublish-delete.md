@@ -37,7 +37,7 @@ Advisories can't be unpublished.
 
 The status shows **Unpublishing...**, then the release goes back to **Drafts**, usually within a minute. Its page and files come off the public site, it leaves any Top or Feature spot, and emails not yet sent are stopped. See [Who is emailed, and when it goes public](manual:editor-what-happens-next).
 
-To put it back, choose **Publish now** or **Schedule**. It keeps its numbers and its web address.
+To put it back, choose **Publish now** or **Schedule**. It keeps its numbers and its web address, even if you change its headline while it is off the site.
 
 ## Delete
 

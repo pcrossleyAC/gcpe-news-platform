@@ -7,7 +7,7 @@ import { localStore, ObjectTooLargeError, type ObjectStore } from "@gcpe/storage
 import { createNrmsTestDb, editor } from "../../test/helpers";
 import { siteFiles } from "../db/schema";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
-import { deleteFile, findSiteFileByName, importSiteFile, listFiles, MAX_SITE_FILE_BYTES, uploadFile, type SiteFileView } from "./files";
+import { deleteFile, findSiteFileByName, importSiteFile, isDeletedSiteFileName, listFiles, MAX_SITE_FILE_BYTES, uploadFile, type SiteFileView } from "./files";
 
 const PDF = Buffer.from("%PDF-1.7\n% test\n");
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("rest-of-png")]);
@@ -300,7 +300,7 @@ describe("website/files — legacy import and name lookup", () => {
     await rm(root, { recursive: true, force: true });
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE site_files, site_log CASCADE");
+    await tdb.pool.query("TRUNCATE site_files, site_log, site_file_tombstones CASCADE");
   });
 
   const at = new Date("2019-03-04T05:06:07Z");
@@ -395,6 +395,32 @@ describe("website/files — legacy import and name lookup", () => {
     const view = await uploadFile(tdb.db, store, { name: "Plan Summary.docx", bytes: DOCX2, replace: true }, editor);
     expect(view).toMatchObject({ id: before!.id, name: "Plan Summary.docx", url: "/files/Plan%20Summary.docx" });
     expect((await store.get(before!.storageKey))!.bytes.equals(DOCX2)).toBe(true);
+  });
+
+  // Suite review W2: the /files gate 302s an unknown name to legacy's copy. A deleted name must not
+  // fall back there, so a delete records it (lowercased, as the fallback and lookups match it).
+  it("a delete remembers the name, in any case, so the public address can't fall back to legacy's copy; uploading that name again clears it", async () => {
+    const r = await importSiteFile(tdb.db, store, { name: "Fact Sheet.pdf", bytes: PDF, contentType: "application/pdf", createdAt: at, replace: false }, LEGACY);
+    expect(await isDeletedSiteFileName(tdb.db, "Fact Sheet.pdf")).toBe(false);
+    await deleteFile(tdb.db, store, (await tdb.db.select().from(siteFiles))[0]!.id, editor);
+    expect(r.outcome).toBe("imported");
+    for (const n of ["Fact Sheet.pdf", "fact sheet.pdf", "FACT SHEET.PDF"]) expect(await isDeletedSiteFileName(tdb.db, n)).toBe(true);
+    expect(await isDeletedSiteFileName(tdb.db, "other.pdf")).toBe(false);
+    expect(await isDeletedSiteFileName(tdb.db, "")).toBe(false);
+    // A later legacy copy run (even a refresh) doesn't bring it back.
+    expect((await importSiteFile(tdb.db, store, { name: "fact sheet.PDF", bytes: PDF, contentType: "application/pdf", createdAt: at, replace: true }, LEGACY)).outcome).toBe("deleted");
+    expect(await findSiteFileByName(tdb.db, "Fact Sheet.pdf")).toBeNull();
+    // A Hub upload of a file with that name puts it back, and the name is live again.
+    const back = await uploadFile(tdb.db, store, { name: "fact sheet.pdf", bytes: PDF }, editor);
+    expect(back.name).toBe("fact-sheet.pdf");
+    expect(await isDeletedSiteFileName(tdb.db, "fact-sheet.pdf")).toBe(false);
+    // ...but only the name it is served under: the legacy spelling it was slugged from stays deleted.
+    expect(await isDeletedSiteFileName(tdb.db, "Fact Sheet.pdf")).toBe(true);
+    const plain = await uploadFile(tdb.db, store, { name: "plain.pdf", bytes: PDF }, editor);
+    await deleteFile(tdb.db, store, plain.id, editor);
+    expect(await isDeletedSiteFileName(tdb.db, "Plain.PDF")).toBe(true);
+    await uploadFile(tdb.db, store, { name: "plain.pdf", bytes: PDF }, editor);
+    expect(await isDeletedSiteFileName(tdb.db, "plain.pdf")).toBe(false);
   });
 
   it("findSiteFileByName: case-insensitive (legacy parity), the exact spelling preferred; null when none", async () => {

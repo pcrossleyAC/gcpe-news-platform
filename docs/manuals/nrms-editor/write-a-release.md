@@ -73,7 +73,7 @@ A French PDF goes under **Files** instead. See [Photos, video and files](manual:
 
 ## Page details
 
-- **URL key**: the last part of the release's public address. A release or advisory gets one when it is approved. A story's or factsheet's comes from its headline, and you can change it until it is scheduled.
+- **URL key**: the last part of the release's public address. A release or advisory gets one when it is approved. A story's or factsheet's comes from its headline, and you can change it until it is scheduled. Once a story or factsheet has been published, its URL key never changes, even after an unpublish: changing the headline leaves it as it is, and the box says "This Story has been published, so its URL key can't change." (or Factsheet).
 - **Redirect URL**: fill this in only to send visitors to another page instead.
 - **Location**: the place at the start of the release, up to 50 characters.
 - **Summary**: what subscribers see in their email. It fills itself from the start of the body. **Documents** shows it, with "(auto)" until you change it, and an **Edit it in Page details** link.
