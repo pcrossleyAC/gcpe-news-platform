@@ -15,25 +15,28 @@ Subscriber records are personal information. Search for, download and keep addre
 
 ## What only you can do
 
-Subscribers viewers can open the same screens and see the same records, but can't change anything. These are yours:
+Subscribers viewers see the same records, media lists and reports, but can't change anything. These are yours:
 
 | Where | What you do there | Help page |
 |---|---|---|
 | A subscriber's record | Change their lists, timing and address. **Deactivate**, **Activate** and **Delete**. | [Find and change subscribers](manual:editor-find-and-change-subscribers) |
 | **Find subscribers** | Tick several subscribers and activate, deactivate or delete them at once. | [Find and change subscribers](manual:editor-find-and-change-subscribers) |
 | **Add a subscriber** | Sign someone up without a confirmation email. | [Add a subscriber](manual:editor-add-a-subscriber) |
-| A media list | Add and remove reporters, fix flagged members, and choose **Sync with Media Hub now**. | [Media lists](manual:editor-media-lists) |
+| A media list | Add and remove reporters, and fix flagged members. | [Media lists](manual:editor-media-lists) |
+| **Media lists** | Choose **Sync with Media Hub now**. | [Media lists](manual:editor-media-lists) |
 | **Reports** | Download the files that contain email addresses. | [Reports](manual:editor-subscriber-reports) |
 
-The [Subscribers viewer manual](manual:nod-viewer) is written for viewers.
+To see what a Subscribers viewer can see, read the [Subscribers viewer manual](manual:nod-viewer).
 
 ## What you can't do
 
 Subscribers administrators decide which lists people can choose, and in what order, on **Lists and categories**. You can see that screen but not change it. See [Lists and categories](manual:editor-lists-and-categories).
 
-Only Subscribers administrators can use **Operations**. It pauses and resumes outgoing email and holds the bounce settings. If email needs to stop, ask a Subscribers administrator. The Subscribers administrator manual covers it.
-
 Core administrators add, rename and retire media lists. Ask one if a list is missing or its name is wrong.
+
+## Operations
+
+Only Subscribers administrators can use **Operations**. It pauses and resumes outgoing email and holds the bounce settings. If email needs to stop, ask a Subscribers administrator. The Subscribers administrator manual covers it.
 
 ## Before you start
 

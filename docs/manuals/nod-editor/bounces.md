@@ -18,9 +18,9 @@ When a subscriber's last 10 emails within 15 days have all hard-bounced, News On
 - A subscriber who is not on any media list is disabled. Their status becomes **Disabled — after repeated bounces**, and they get nothing more. Their record and lists are kept.
 - A media list member is never disabled. They are flagged **Bouncing** on **Media lists** and keep being sent media and news release email. Tell Media Relations.
 
-A daily digest counts as one email, however many releases it lists. Soft bounces usually don't count.
+A daily digest counts as one email, however many releases it lists. Soft bounces don't count, unless a Subscribers administrator has chosen to count that kind.
 
-A subscriber's record shows **Bounced emails counted (last 15 days)** once any have bounced. Their **History** shows "An email bounced" for each hard bounce, and "Disabled after repeated bounces" or "Flagged: repeated bounces" when the limit is reached.
+A subscriber's record shows **Bounced emails counted (last 15 days)** once any have bounced. Their **History** shows "An email bounced" for each hard bounce. The bounce that reaches the limit shows "Disabled after repeated bounces" or "Flagged: repeated bounces" instead.
 
 ## Bring a bounced subscriber back
 
@@ -29,4 +29,4 @@ A subscriber's record shows **Bounced emails counted (last 15 days)** once any h
 
 For a bouncing media list member, choose **Resolve** on the list. See [Media lists](manual:editor-media-lists).
 
-Subscribers administrators choose where the daily bounce summary is emailed, and which soft bounces count.
+Subscribers administrators choose where the daily bounce summary is emailed.

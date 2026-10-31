@@ -17,10 +17,10 @@ At the top, **All news** shows how many active subscribers chose all news. Under
 |---|---|
 | **Yes** | People can choose it on the public site, and you can tick it under **Lists** on a subscriber's record. |
 | **No** | A Subscribers administrator stopped offering it. |
-| **No (retired)** | The list was retired where its name is set, such as a ministry that no longer exists. |
-| **No (category not offered)** | A Subscribers administrator stopped offering its whole category. |
+| **No (retired)** | Core administrators retired it, such as a ministry that no longer exists. Its name shows "(retired)". |
+| **No (category not offered)** | A Subscribers administrator stopped offering its whole category. The category says "Not offered to subscribers." |
 | **No (media list)** | A media list. People never choose media lists themselves. Manage its members on **Media lists**. |
 
 A subscriber who already has a list that is no longer offered keeps it, and still gets its releases. On their record it shows under **No longer offered**.
 
-List names come from elsewhere. Core administrators set the names of ministries, sectors, themes, tags and media lists.
+Under each category the screen says who sets its names, such as "Names are set by Core administrators." Under **Media distribution lists** it says "Media lists aren't changed here. Core administrators set these on Media list names."

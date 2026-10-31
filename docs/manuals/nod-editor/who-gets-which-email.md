@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Subscribers editors (NoD.Editor).
 
-Only **Active** subscribers get news email. **Pending**, **Disabled** and **Unsubscribed or deleted** subscribers get none.
+Only **Active** subscribers get news email. **Disabled** and **Unsubscribed or deleted** subscribers get none.
 
 ## News releases
 
@@ -34,7 +34,7 @@ Release editors choose media lists for a release. Each member of those lists get
 
 ## Emails about the subscription itself
 
-People who sign up on the public site get an email asking them to confirm. They have no record here until they do. They also get an email when they ask to change their preferences or address.
+People who sign up on the public site get an email asking them to confirm. They have no record here until they do, so the **Pending** choice under **Status** on **Find subscribers** finds no one. They also get an email when they ask to change their preferences or address.
 
 Nothing you do on the **Subscribers** screens emails the subscriber. Adding, changing, deactivating, deleting and media list changes are all silent. Tell the person yourself if they need to know.
 

@@ -39,7 +39,7 @@ The record shows **Status**, **Source**, **Registered** and, once they have left
 - **Source** says how they came: **Signed up themselves**, **Added by staff**, **Media Hub contact** or **Added to a media list by staff**.
 - **Media lists** names the media lists they are on. Change those on **Media lists**.
 - **Bounced emails counted (last 15 days)** shows how close they are to being disabled. It appears once an email has bounced. See [Bounces](manual:editor-bounces).
-- **History** opens a list of every change: **When**, **What**, **Who** and **Detail**. "Subscriber" means the person did it themselves. "Bounce processing" and "Media Hub sync" are automatic. Staff changes show the staff member's name. The most recent 500 entries are shown.
+- **History** opens a list of every change: **When**, **What**, **Who** and **Detail**. "Subscriber" means the person did it themselves. "Bounce processing" and "Media Hub sync" are automatic. "Admin API" means a system tool made the change, not a person using the Hub. Staff changes show the staff member's name. The most recent 500 entries are shown.
 
 ## Change their lists or timing
 

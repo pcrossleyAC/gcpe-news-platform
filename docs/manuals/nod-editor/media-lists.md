@@ -39,7 +39,7 @@ Nobody is emailed. The reporter gets the next release sent to this list. What el
 | Has no record | A new record is made for media email only. Its **Source** is "Media Hub contact", or "Added to a media list by staff" for an address added by hand. |
 | Is **Active** | They keep their news release email as it was. |
 | Is **Disabled** | See the next section. |
-| Is **Unsubscribed or deleted** | They become **Active** for media email only. Their timing and news lists are taken off. |
+| Is **Unsubscribed or deleted** | They become **Active** for media email only. Their timing and news lists are taken off. If they unsubscribed themselves, the Hub asks first; see below. |
 
 ### Adding a Disabled subscriber
 
@@ -57,9 +57,9 @@ If the person has also asked for news release email again:
 2. Tick **As it happens** or **Daily digest**, and their lists.
 3. Choose **Save preferences**.
 
-### If they unsubscribed from this list
+### If they unsubscribed
 
-If the person left this list by unsubscribing, the Hub asks "This person unsubscribed" and says when. It asks even if they have since signed up again for news releases, and even if their old record has since been removed for good.
+If the person unsubscribed from this list, or unsubscribed from all News On Demand email, the Hub asks "This person unsubscribed" and says when. It asks even if they have since signed up again for news releases, and even if their old record has since been removed for good.
 
 Choose **Add anyway** only if they have asked to get media releases again. Otherwise choose **Cancel**.
 
