@@ -24,7 +24,7 @@ import { uniqueKey } from "./keys";
 import { emitLinkChange, linkStateOf } from "./link-events";
 import { loadView, mutateRelease, writeLog, type Actor } from "./store";
 import { clearFeaturesFor } from "../website/features";
-import { parseLocalDateTime, type WorkflowDeps } from "./workflow";
+import { hasBeenPublic, parseLocalDateTime, type WorkflowDeps } from "./workflow";
 
 const EDITABLE_KEY_STATUSES = new Set(["draft", "approved"]);
 const PLANNING_STATUSES = new Set(["draft", "approved", "failed"]);
@@ -291,6 +291,10 @@ export function saveMeta(db: Db, id: string, input: MetaInput, actor: Actor): Pr
         if (!rules.keyEditable || !EDITABLE_KEY_STATUSES.has(row.status)) {
           throw new ReleaseStateError(`The URL key of this ${TYPE_LABEL[row.type]} can't be changed now.`);
         }
+        // Suite review R2: back to approved after an unpublish, it's still the address people were sent.
+        if (await hasBeenPublic(tx, row)) {
+          throw new ReleaseStateError(`This ${TYPE_LABEL[row.type]} has been published, so its URL key can't change.`);
+        }
         key = await uniqueKey(tx, generateSlug(input.key), row.id);
       }
       const [en] = await tx
@@ -363,7 +367,7 @@ export async function saveDocumentLanguage(
             .set({ summary: summaryFromBody(body) })
             .where(and(eq(releaseLanguages.releaseId, row.id), eq(releaseLanguages.languageId, LANG_EN)));
         }
-        if (rules.keyEditable && EDITABLE_KEY_STATUSES.has(row.status) && input.headline !== existing.headline) {
+        if (rules.keyEditable && EDITABLE_KEY_STATUSES.has(row.status) && input.headline !== existing.headline && !(await hasBeenPublic(tx, row))) {
           const key = await uniqueKey(tx, generateSlug(input.headline), row.id);
           await tx.update(newsReleases).set({ key }).where(eq(newsReleases.id, row.id));
         }

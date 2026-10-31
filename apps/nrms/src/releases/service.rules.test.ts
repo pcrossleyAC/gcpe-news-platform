@@ -39,6 +39,27 @@ describe("release editing service — further rules", () => {
     expect(after.key).toBe("my-custom-key");
   });
 
+  // Suite review R2 (owner, 2026-10-31): once a release has ever been public, its key is its web
+  // address and stays fixed, even while it's back to approved after an unpublish.
+  it("a story or factsheet that has been public keeps its key: no regeneration, no meta change", async () => {
+    for (const [type, everPublic] of [["story", sql`, released_at = now()`], ["factsheet", sql`, atom_id = 'tag:x'`]] as const) {
+      let v = await createRelease(db(), { ...sampleCreate, type, headline: `Ferry ${type} sails` }, editor);
+      const docId = v.documents[0]!.id;
+      const key = v.key;
+      await setStatus(v.id, "approved", everPublic);
+      v = (await loadView(db(), v.id))!;
+      v = await saveDocumentLanguage(db(), v.id, docId, 4105, { ...docBase, version: v.version, headline: `Ferry ${type} sails late` }, editor);
+      expect(v.key).toBe(key);
+      const meta = { version: v.version, redirectUrl: null, location: "", summary: v.languages[0]!.summary, socialMediaSummary: null, keywords: null };
+      await expect(saveMeta(db(), v.id, { ...meta, key: "new-address" }, editor)).rejects.toEqual(
+        new ReleaseStateError(`This ${type === "story" ? "Story" : "Factsheet"} has been published, so its URL key can't change.`),
+      );
+      // Sending the same key back (the field shown read-only) still saves the other details.
+      const saved = await saveMeta(db(), v.id, { ...meta, key, location: "Victoria" }, editor);
+      expect([saved.key, saved.languages[0]!.location]).toEqual([key, "Victoria"]);
+    }
+  });
+
   it("a release's key can't be set through meta", async () => {
     const v = await createRelease(db(), sampleCreate, editor);
     await expect(saveMeta(db(), v.id, { version: v.version, key: "anything", redirectUrl: null, location: "", summary: "", socialMediaSummary: null, keywords: null }, editor)).rejects.toBeInstanceOf(ReleaseStateError);

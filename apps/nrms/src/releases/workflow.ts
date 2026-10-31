@@ -219,6 +219,16 @@ export async function cancel(db: Db, id: string, version: number, actor: Actor, 
 }
 
 /**
+ * Ever public: releasedAt, or (a legacy import with no ReleaseDateTime) an atomId — stamped on
+ * every publish and carried by imports — or a publication row. Its key is then a public URL, so
+ * it never goes back to draft (returnToDraft) and its key never changes (suite review R2).
+ */
+export async function hasBeenPublic(tx: DbOrTx, row: { id: string; releasedAt: Date | null; atomId: string | null }): Promise<boolean> {
+  if (row.releasedAt !== null || row.atomId !== null) return true;
+  return (await tx.select({ id: releasePublications.id }).from(releasePublications).where(eq(releasePublications.releaseId, row.id)).limit(1)).length > 0;
+}
+
+/**
  * Owner decision 2026-10-29: an approved release that has never been published (approved, or
  * scheduled and not yet gone out) can go back to draft. Same role rule as Approve (the route's
  * `edit`). "Approved" is having a reference throughout (statusText, Cancel schedule, the
@@ -233,10 +243,7 @@ export async function returnToDraft(db: Db, id: string, version: number, actor: 
   return mutateRelease(
     db, id, version, actor,
     async (tx, row) => {
-      // Ever public: releasedAt, or (a legacy import with no ReleaseDateTime) an atomId — stamped on
-      // every publish and carried by imports — or a publication row. Its key is then a public URL.
-      const published = row.releasedAt !== null || row.atomId !== null ||
-        (await tx.select({ id: releasePublications.id }).from(releasePublications).where(eq(releasePublications.releaseId, id)).limit(1)).length > 0;
+      const published = await hasBeenPublic(tx, row);
       if (!row.reference || !RETURNABLE_STATUSES.has(row.status) || row.live || published) {
         throw new ReleaseStateError("Only an approved release that hasn't been published can go back to draft.");
       }
