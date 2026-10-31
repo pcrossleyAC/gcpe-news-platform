@@ -50,6 +50,7 @@ function statusText(d: Pick<SubscriberDetail, "status" | "disabledReason">): str
  * controls at all (not even disabled ones). */
 function PreferencesView({ detail, options }: { detail: SubscriberDetail; options: ListOptions | null }): React.JSX.Element {
   const names = new Map<string, string>();
+  for (const [k, n] of Object.entries(detail.listNames ?? {})) names.set(k, n);
   for (const c of options?.categories ?? []) for (const l of c.lists) names.set(l.listKey, l.name);
   return (
     <div className="gcpe-subscriber__preferences">
@@ -67,9 +68,10 @@ function PreferencesView({ detail, options }: { detail: SubscriberDetail; option
   );
 }
 
-/** Which form's success message is showing: one at a time, so a change of address never leaves
- * an earlier "Preferences saved." on screen (and the other way round). */
-type Notice = "preferences" | "email" | null;
+/** Which success message is showing: one at a time. Every action clears the last one when it
+ * starts, so a refusal, a change of address or an Activate never sits beside an earlier
+ * success. */
+type Notice = "preferences" | "email" | "activated" | null;
 interface NoticeProps {
   notice: Notice;
   setNotice(update: (n: Notice) => Notice): void;
@@ -92,7 +94,7 @@ function PreferencesForm({ detail, options, onSaved, notice, setNotice }: { deta
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setMessages([]);
-    setSaved(false);
+    setNotice(() => null);
     setSaving(true);
     try {
       await apiFetch(`/nod/api/subscribers/${detail.id}/preferences`, { method: "PUT", body: { asItHappens, digest, allNews, listKeys } });
@@ -149,6 +151,7 @@ function PreferencesForm({ detail, options, onSaved, notice, setNotice }: { deta
         allNews={allNews}
         listKeys={listKeys}
         heldKeys={detail.listKeys}
+        heldNames={detail.listNames}
         onChange={(next) => {
           setAllNews(next.allNews);
           setListKeys(next.listKeys);
@@ -164,20 +167,19 @@ function PreferencesForm({ detail, options, onSaved, notice, setNotice }: { deta
   );
 }
 
-function StatusSection({ detail, onChanged }: { detail: SubscriberDetail; onChanged(): void }): React.JSX.Element {
+function StatusSection({ detail, onChanged, notice, setNotice }: { detail: SubscriberDetail; onChanged(): void } & NoticeProps): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
-  const [activated, setActivated] = useState(false);
 
   const postStatus = async (status: "active" | "disabled") => {
     setBusy(true);
     setError(null);
-    setActivated(false);
+    setNotice(() => null);
     try {
       await apiFetch(`/nod/api/subscribers/${detail.id}/status`, { method: "POST", body: { status } });
       setDeactivateOpen(false);
-      if (status === "active") setActivated(true);
+      if (status === "active") setNotice(() => "activated");
       onChanged();
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) {
@@ -194,7 +196,7 @@ function StatusSection({ detail, onChanged }: { detail: SubscriberDetail; onChan
   return (
     <div className="gcpe-subscriber__status-actions">
       {error && <InlineAlert variant="danger" role="alert" description={error} />}
-      {activated && <p role="status">Activated. Their bounce count starts again.</p>}
+      {notice === "activated" && <p role="status">Activated. Their bounce count starts again.</p>}
       {detail.status === "disabled" && (
         // Reversible and harmless (unlike Deactivate/Delete), so this posts at once with no
         // confirm dialog.
@@ -304,7 +306,7 @@ function ChangeEmailSection({ detail, onChanged, notice, setNotice }: { detail: 
     e.preventDefault();
     setMessages([]);
     setTakenId(null);
-    setNotice(clearing("email"));
+    setNotice(() => null);
     const a = email.trim().toLowerCase();
     const b = confirmEmail.trim().toLowerCase();
     if (a !== b) {
@@ -376,7 +378,7 @@ function ChangeEmailSection({ detail, onChanged, notice, setNotice }: { detail: 
   );
 }
 
-function DeleteSection({ detail, onDeleted }: { detail: SubscriberDetail; onDeleted(): void }): React.JSX.Element {
+function DeleteSection({ detail, onDeleted, setNotice }: { detail: SubscriberDetail; onDeleted(): void } & Pick<NoticeProps, "setNotice">): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -384,6 +386,7 @@ function DeleteSection({ detail, onDeleted }: { detail: SubscriberDetail; onDele
   const confirmDelete = async () => {
     setBusy(true);
     setError(null);
+    setNotice(() => null);
     try {
       await apiFetch(`/nod/api/subscribers/${detail.id}`, { method: "DELETE" });
       setOpen(false);
@@ -554,12 +557,12 @@ export function SubscriberScreen(): React.JSX.Element {
 
       {canEdit && detail.status !== "deleted" && (
         <>
-          <StatusSection detail={detail} onChanged={reload} />
+          <StatusSection detail={detail} onChanged={reload} notice={notice} setNotice={setNotice} />
           {/* Changing a pending subscriber's address would leave a row that can never be
            * confirmed (the only way in is the verify link sent to the original address) — the
            * server refuses it (SubscriberStateError), and this hides the dead end up front. */}
           {detail.status !== "pending" && <ChangeEmailSection detail={detail} onChanged={reload} notice={notice} setNotice={setNotice} />}
-          <DeleteSection detail={detail} onDeleted={reload} />
+          <DeleteSection detail={detail} onDeleted={reload} setNotice={setNotice} />
         </>
       )}
 

@@ -5,6 +5,7 @@ import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { Pagination } from "../../releases/Pagination";
 import { canEditSubscribers } from "../access";
+import { STATUS_LABELS } from "../labels";
 import { CsvLink } from "./CsvLink";
 import { reportErrorText } from "./errors";
 import { bcDate, bcDateTime } from "./format";
@@ -15,7 +16,6 @@ import type { UnsubscribeRow, UnsubscribesPage } from "./types";
 import { TableScroll } from "../../../shared/TableScroll";
 
 const HOW: Record<UnsubscribeRow["how"], string> = { subscriber: "Unsubscribed", staff: "Deleted by staff" };
-const STATUS: Record<UnsubscribeRow["status"], string> = { pending: "Pending", active: "Active", disabled: "Disabled", deleted: "Deleted" };
 
 /** `/hub/subscribers/reports/unsubscribes` (spec §8; legacy RecentUnsubscribersReport): the last 90
  * days, fixed. Viewers export daily counts; Editors and Admins also export addresses (Q37). */
@@ -62,7 +62,7 @@ export function UnsubscribesReportScreen(): React.JSX.Element {
                       </td>
                       <td>{HOW[u.how]}</td>
                       <td>{bcDateTime(u.at, timeZone)}</td>
-                      <td>{STATUS[u.status]}</td>
+                      <td>{STATUS_LABELS[u.status]}</td>
                       <td>{bcDate(u.registeredAt, timeZone)}</td>
                     </tr>
                   ))}

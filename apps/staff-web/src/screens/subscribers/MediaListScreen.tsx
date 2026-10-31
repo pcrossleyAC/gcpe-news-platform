@@ -16,7 +16,7 @@ import { ResolveDialog } from "./ResolveDialog";
 import type { AddMemberBody, AddMemberResult, MediaListSummary, MediaMember, MediaOptOutPage } from "./types";
 
 /**
- * `/hub/subscribers/media-lists/:key`: one media list's members, who left it by unsubscribing,
+ * `/hub/subscribers/media-lists/:key`: one media list's members, who left it (unsubscribed, or left it in legacy),
  * and, for Editors, add (by hand or from Media Hub), remove and resolve. The h1 and title are
  * the static "Media list"; the list name is shown below it (no async titles). Re-adding someone
  * who unsubscribed always asks first and names when they left (C64).
@@ -129,7 +129,7 @@ export function MediaListScreen(): React.JSX.Element {
       {list && (
         <p>
           <strong>{list.name}</strong>
-          {!list.active && " (retired in NRMS: releases can no longer be sent to it)"}
+          {!list.active && " (retired: releases can no longer be sent to it)"}
         </p>
       )}
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
@@ -202,11 +202,12 @@ export function MediaListScreen(): React.JSX.Element {
       )}
 
       <section aria-labelledby="opted-out-heading">
-        <h2 id="opted-out-heading">Left this list by unsubscribing</h2>
+        <h2 id="opted-out-heading">Left this list</h2>
+        <p>They unsubscribed, or left it in the old system.</p>
         {optOuts && optOuts.items.length === 0 && <p>Nobody has.</p>}
         {optOuts && optOuts.items.length > 0 && (
-          <TableScroll label="Left this list by unsubscribing">
-            <table className="gcpe-table" aria-label="Left this list by unsubscribing">
+          <TableScroll label="Left this list">
+            <table className="gcpe-table" aria-label="Left this list">
               <thead>
                 <tr>
                   <th scope="col">Email</th>

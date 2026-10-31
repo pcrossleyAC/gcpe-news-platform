@@ -33,6 +33,8 @@ export interface SubscriberDetail extends SubscriberSummary {
   allNews: boolean;
   /** Public list keys (`<category>:<key>`), never `*` (see allNews) or a media key. */
   listKeys: string[];
+  /** Names of the public lists in `listKeys`, where one exists (a retired list included). */
+  listNames?: Record<string, string>;
   mediaLists: { listKey: string; name: string }[];
   /** Media Hub manages this address (sourced from it, or linked to a contact), so it's changed
    * there, not here. */

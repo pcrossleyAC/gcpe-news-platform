@@ -13,6 +13,13 @@ import type { StaffCategory, StaffList, StaffListsView } from "./types";
 
 const MEDIA_LISTS_TEXT = "Media lists aren't changed here. Core administrators set these on Media list names.";
 
+/** Where a category's names are set, in staff words (never the internal app names). */
+const NAMES_SET_BY: Record<StaffCategory["namesFrom"], string> = {
+  Core: "Names are set by Core administrators.",
+  NRMS: "Names are set by Core administrators on Media list names.",
+  NoD: "Names are set by News On Demand.",
+};
+
 function saveErrorText(e: unknown): string {
   if (e instanceof ApiError && e.status === 409 && e.message === "order-out-of-date") return "The lists changed while you were looking. They've been reloaded; try again.";
   if (e instanceof ApiError && e.status === 409 && e.message === "managed-in-nrms") return MEDIA_LISTS_TEXT;
@@ -152,7 +159,7 @@ export function ListsScreen(): React.JSX.Element {
           <h2 id={`category-${c.key}`}>{c.name}</h2>
           {c.editable ? (
             <p>
-              {`Names come from ${c.namesFrom}.`}
+              {NAMES_SET_BY[c.namesFrom]}
               {!c.enabled && " Not offered to subscribers."}
             </p>
           ) : (
@@ -196,7 +203,7 @@ export function ListsScreen(): React.JSX.Element {
                   <tr key={l.listKey}>
                     <td>
                       {l.name}
-                      {!l.active && ` (retired in ${c.namesFrom})`}
+                      {!l.active && " (retired)"}
                     </td>
                     <td>{l.subscribers}</td>
                     <td>

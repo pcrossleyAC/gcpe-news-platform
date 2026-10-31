@@ -63,10 +63,11 @@ describe("ListsScreen", () => {
     renderIt();
     expect(await screen.findByText("All news: 12 active subscribers.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Ministries" })).toBeInTheDocument();
-    expect(screen.getByText("Names come from Core.")).toBeInTheDocument();
+    expect(screen.getByText("Names are set by Core administrators.")).toBeInTheDocument();
+    expect(screen.queryByText(/Names come from|retired in/)).toBeNull();
     expect(screen.getByRole("row", { name: /Health 40 Yes/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /Energy 3 No/ })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /Old ministry \(retired in Core\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Old ministry \(retired\)/ })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(screen.queryByRole("button", { name: /Move/ })).toBeNull();
     await waitFor(() => expect(document.title).toBe("Lists and categories — GCPE News Staff"));
@@ -147,7 +148,7 @@ describe("ListsScreen", () => {
     renderIt();
     expect(await screen.findByRole("row", { name: /Health 40 Yes/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /Energy 3 No$/ })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /Old ministry \(retired in Core\) 0 No \(retired\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Old ministry \(retired\) 0 No \(retired\)/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /Energy sector 5 No \(category not offered\)/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /Budget 9 No \(media list\)/ })).toBeInTheDocument();
   });

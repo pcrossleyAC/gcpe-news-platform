@@ -9,6 +9,8 @@ export function ListPicker(props: {
   allNews: boolean;
   listKeys: string[];
   heldKeys?: string[];
+  /** Display names for `heldKeys`; a key with no name is shown as the key itself. */
+  heldNames?: Record<string, string>;
   onChange(next: { allNews: boolean; listKeys: string[] }): void;
   disabled?: boolean;
 }): React.JSX.Element {
@@ -37,7 +39,7 @@ export function ListPicker(props: {
       {!allNews && extra.length > 0 && (
         <fieldset className="gcpe-options">
           <legend>No longer offered</legend>
-          {extra.map((k) => box(k, k))}
+          {extra.map((k) => box(k, props.heldNames?.[k] ?? k))}
         </fieldset>
       )}
     </fieldset>

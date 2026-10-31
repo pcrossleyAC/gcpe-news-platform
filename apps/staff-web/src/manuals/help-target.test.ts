@@ -61,3 +61,23 @@ describe("Help on the release screens, with the compiled manuals", () => {
     expect(helpTargetFor(path, as("NRMS.Editor"))).toBe(`/help/manuals/nrms-editor/${editorPage}`);
   });
 });
+
+describe("Help on the Subscribers screens, with the compiled manuals", () => {
+  const ID = "68270e0a-27b4-4ea9-aceb-c7a9cfacf657";
+  const SCREENS: [string, string, string][] = [
+    ["/subscribers", "editor-find-and-change-subscribers", "find-and-change-subscribers"],
+    [`/subscribers/${ID}`, "editor-find-and-change-subscribers", "find-and-change-subscribers"],
+    [`/subscribers/${ID}/history`, "editor-find-and-change-subscribers", "find-and-change-subscribers"],
+    ["/subscribers/new", "editor-add-a-subscriber", "add-a-subscriber"],
+    ["/subscribers/lists", "editor-lists-and-categories", "lists-and-categories"],
+    ["/subscribers/media-lists", "editor-media-lists", "subscriber-media-lists"],
+    ["/subscribers/media-lists/201-e-legislature-press-gallery", "editor-media-lists", "subscriber-media-lists"],
+    ["/subscribers/reports", "editor-subscriber-reports", "subscriber-reports"],
+    ["/subscribers/reports/unsubscribes", "editor-subscriber-reports", "subscriber-reports"],
+    ["/subscribers/operations", "nod-editor-overview", "subscriber-operations"],
+  ];
+  it.each(SCREENS)("on %s, a Subscribers editor gets %s and a Subscribers administrator %s", (path, editorPage, adminPage) => {
+    expect(helpTargetFor(path, as("NoD.Editor"))).toBe(`/help/manuals/nod-editor/${editorPage}`);
+    expect(helpTargetFor(path, as("NoD.Admin"))).toBe(`/help/manuals/nod-admin/${adminPage}`);
+  });
+});

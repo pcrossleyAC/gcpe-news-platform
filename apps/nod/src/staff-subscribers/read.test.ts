@@ -79,6 +79,18 @@ describe("staff subscriber reads", () => {
     expect(await getSubscriberDetail(tdb.db, "00000000-0000-0000-0000-000000000000")).toBeNull();
   });
 
+  it("detail names each public list it holds, a retired one included; a key with no list row has no name", async () => {
+    const s = await add("n@example.test");
+    await tdb.db.insert(subscriptions).values([
+      { subscriberId: s.id, listKey: "ministries:health" },
+      { subscriberId: s.id, listKey: "ministries:old" },
+      { subscriberId: s.id, listKey: "ministries:gone" },
+      { subscriberId: s.id, listKey: "media-distribution-lists:budget" },
+    ]);
+    const d = await getSubscriberDetail(tdb.db, s.id);
+    expect(d!.listNames).toEqual({ "ministries:health": "Health", "ministries:old": "Old ministry" });
+  });
+
   it("detail says whether Media Hub manages the address: sourced from it, or linked to a contact", async () => {
     const own = await add("own@example.test");
     const sourced = await add("sourced@example.test", { source: "media-hub" });
