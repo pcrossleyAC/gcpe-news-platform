@@ -268,3 +268,21 @@ the publish bar in "Hub screens":
 - The hint above the buttons: "Publish and Discard draft apply to your whole draft, on every
   settings screen. Publish lets you publish only this screen instead."
 
+### Fix round 1 (owner approved 2026-10-31)
+
+- `onlySection` doesn't need the draft's base to be the live revision. It conflicts only when
+  someone else changed this same section since the draft's base (base document vs live, filled
+  from the defaults). Otherwise it publishes live with this section replaced, so other sections
+  they published stay. A draft based on an older revision is left exactly as it was (its base
+  unchanged), so a later full Publish still meets the conflict check; a draft based on live is
+  re-based as before.
+- The revision's note records the partial publish, as Restore does: "{Section} only" or
+  "{Section} only: {note}" (Settings history shows it; the log reads "Published revision {n}:
+  {that note}").
+- Rebase ("Keep mine on top of theirs") throws nothing of the editor's away. It is live plus this
+  section plus every other section the editor changed against their draft's base. It returns
+  `alsoChangedByThem` (the kept sections the other editor changed too) instead of `setAside`;
+  status suffix: " Your draft still has your changes on {list}, which they changed too: check
+  them before you publish them." This replaces the "set aside" wording in "Storage and
+  publishing — NRMS" and "Hub screens".
+

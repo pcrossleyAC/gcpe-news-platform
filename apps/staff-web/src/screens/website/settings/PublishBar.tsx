@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { SECTION_KEYS, type SectionKey } from "@gcpe/site-settings";
 import { Button } from "../../../shared/BusyButton";
+import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { settingsScreenFor } from "../WebsiteScreen";
 import { useShortcut } from "../../../shared/shortcuts";
 import { formatPublishedAt } from "./format";
@@ -90,10 +91,11 @@ export function PublishBar({ editor, canEdit, timeZone }: PublishBarProps): Reac
   useShortcut("save", canEdit && state ? () => void (busy ? undefined : editor.saveDraft()) : null);
   if (!state) return null;
 
-  // As Discard draft: the confirmation closes and the publish starts at once.
+  // As Discard draft: the confirmation closes and the publish starts at once; its result is
+  // announced once the dialog has gone (afterDialogsClose), so a screen reader hears it.
   const publish = (onlySection: boolean) => {
     setPublishOpen(false);
-    void editor.publish(note, onlySection).then((published) => {
+    void editor.publish(note, onlySection, afterDialogsClose).then((published) => {
       if (published) setNote("");
     });
   };

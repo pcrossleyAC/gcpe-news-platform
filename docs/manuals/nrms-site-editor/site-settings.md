@@ -32,16 +32,16 @@ The foot of each screen says where you are. "Draft saved · not yet live" means 
 
 When your draft also has changes on other settings screens, the box offers two buttons instead of **Publish**:
 
-- **Publish only Site banner** (the button names the screen you are on): only this screen's changes go live. Your changes on the other screens stay in your draft, unpublished. You see "Published revision 6, with only your Site banner changes. Visitors see it within a few minutes. Your draft still has changes on Footer links."
+- **Publish only Site banner** (the button names the screen you are on): only this screen's changes go live. Your changes on the other screens stay in your draft, unpublished. You see "Published revision 6, with only your Site banner changes. Visitors see it within a few minutes. Your draft still has changes on Footer links." In **Settings history** and **Website log**, the revision's note starts "Banner only", so it is clear that only that part was published.
 - **Publish all changes**: your whole draft goes live, as before.
 
-Use **Publish only** when something is urgent, such as an emergency banner, and you haven't finished or checked the other screens. If another screen in your draft has a problem, the box says so, such as "Footer links has problems that block publishing all changes. Publish only Site banner still works."
+Use **Publish only** when something is urgent, such as an emergency banner, and you haven't finished or checked the other screens. It works even if someone else has published other screens since you started your draft: what they published stays live, and your draft is kept as it was. It stops only if someone else has changed this same screen since you started (see "If someone else published first"). If another screen in your draft has a problem, the box says so, such as "Footer links has problems that block publishing all changes. Publish only Site banner still works."
 
 If the changes being published have a problem, nothing is published. You see "Draft saved, but it has problems to fix before it can be published." Each problem shows under its field. A problem on another settings screen shows in a list headed "Other parts of the draft have problems that block publishing:", led by a link to that screen. Fix it there, or choose **Discard draft** to start again from what is live.
 
 ## Links to files
 
-To link to a file from **Files**, such as a PDF in the footer or a banner link, paste the address from its **Copy public address** button. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." under its **Web address**: visitors couldn't open it.
+To link to a file from **Files**, such as a PDF in the footer, a banner link or the Connect page's **Policy link URL**, paste the address from its **Copy public address** button. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." under its **Web address**: visitors couldn't open it.
 
 ## If someone else published first
 
@@ -49,7 +49,7 @@ When another site editor publishes while you are working, your **Publish** doesn
 
 Choose one:
 
-- **Keep my site banner, on top of their version** (the button names the screen you are on, such as "Keep my footer links"): your changes on this screen are added to what they published. Changes you saved on other screens are set aside, and the message names them. Check the result, then choose **Publish**.
+- **Keep my site banner, on top of their version** (the button names the screen you are on, such as "Keep my footer links"): your changes on this screen are added to what they published. Changes you saved on other screens stay in your draft too. If they changed one of those screens as well, the message names it, such as "Your draft still has your changes on Footer links, which they changed too: check them before you publish them." Check the result, then choose **Publish**.
 - **Discard mine, use theirs**: your draft is thrown away and the screen shows what is live.
 
 ## Bring back an earlier version

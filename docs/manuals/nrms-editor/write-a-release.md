@@ -47,6 +47,8 @@ If a document already holds a byline but is Formal, or organizations but is Info
 
 The **Body** toolbar has **Bold**, **Italic**, **Bulleted list**, **Numbered list**, **Link** and **Insert asset**. Pasted text keeps only that formatting.
 
+If you give **Link** or **Insert asset** the address of a file as the Hub shows it (an address on the Hub itself, ending in /files/ and the file's name), the Hub puts in the file's public address instead, so visitors can open it. Any other address on the Hub asks first: "This address points at the Hub, which the public can't open. … Use this address anyway?" Choose **Cancel** and use the public address.
+
 To show a video or photo inside the body:
 
 1. Put the cursor where it should go.

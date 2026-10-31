@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STAFF_HOST_WARNING, publicFileUrl, publicFilesOrigin, staffHostWarning } from "./publicAddress";
+import { STAFF_HOST_WARNING, checkHubAddress, publicFileUrl, publicFilesOrigin, staffHostWarning } from "./publicAddress";
 
 const INTERNAL = "https://gcpe-app01.internal.gov.bc.ca";
 
@@ -31,5 +31,13 @@ describe("W1: public addresses for Website files", () => {
     expect(staffHostWarning(`${INTERNAL}/files/x`, "", hub)).toBeNull();
     expect(staffHostWarning("", "https://news.gov.bc.ca", hub)).toBeNull();
     expect(staffHostWarning("/files/x.jpg", "https://news.gov.bc.ca", hub)).toBeNull();
+  });
+
+  it("I4: a Hub /files/ address becomes the public one; any other Hub address keeps its text and a warning", () => {
+    const hub = "gcpe-app01.internal.gov.bc.ca";
+    expect(checkHubAddress(`${INTERNAL}/files/a%20b.pdf?x=1#p2`, "https://news.gov.bc.ca", hub)).toEqual({ url: "https://news.gov.bc.ca/files/a%20b.pdf?x=1#p2", warning: null });
+    expect(checkHubAddress(`${INTERNAL}/hub/releases/1`, "https://news.gov.bc.ca", hub)).toEqual({ url: `${INTERNAL}/hub/releases/1`, warning: STAFF_HOST_WARNING });
+    expect(checkHubAddress("https://youtu.be/x", "https://news.gov.bc.ca", hub)).toEqual({ url: "https://youtu.be/x", warning: null });
+    expect(checkHubAddress(`${INTERNAL}/files/a.pdf`, "", hub)).toEqual({ url: `${INTERNAL}/files/a.pdf`, warning: null });
   });
 });

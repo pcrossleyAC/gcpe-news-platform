@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BodyEditor } from "./BodyEditor";
 import { caretToEnd } from "../../test/editorCaret";
+import { jsonResponse } from "../../test/jsonResponse";
 
 /** Pastes through ProseMirror's own paste path (transformPastedHTML included). jsdom has no
  * ClipboardEvent, which view.pasteHTML constructs, so a plain Event stands in. */
@@ -66,6 +67,56 @@ describe("BodyEditor", () => {
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     const last = onChange.mock.calls.at(-1)![0] as string;
     expect(last).toContain("<asset>https://youtu.be/abcdef12345</asset>");
+  });
+
+  describe("I4: addresses on the Hub's own host", () => {
+    const withPublicBase = () =>
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.gov.bc.ca", filesBase: "https://news.gov.bc.ca" });
+          throw new Error(`unhandled: ${url}`);
+        }),
+      );
+
+    it("Insert asset turns a Hub /files/ address into the public one", async () => {
+      withPublicBase();
+      const onChange = vi.fn();
+      vi.stubGlobal("prompt", vi.fn(() => `${window.location.origin}/files/clip.mp4`));
+      render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={onChange} readOnly={false} />);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Insert asset" }));
+      await waitFor(() => expect(onChange).toHaveBeenCalled());
+      expect(onChange.mock.calls.at(-1)![0]).toContain("<asset>https://news.gov.bc.ca/files/clip.mp4</asset>");
+    });
+
+    it("Link turns a Hub /files/ address into the public one, and asks before using any other Hub address", async () => {
+      withPublicBase();
+      const onChange = vi.fn();
+      const confirm = vi.fn(() => false);
+      vi.stubGlobal("confirm", confirm);
+      const prompt = vi.fn(() => `${window.location.origin}/files/report.pdf`);
+      vi.stubGlobal("prompt", prompt);
+      render(<BodyEditor id="body" label="Body" value="<p>Read</p>" onChange={onChange} readOnly={false} />);
+      const user = userEvent.setup();
+      const area = screen.getByRole("textbox", { name: "Body" });
+      await user.click(area);
+      await user.keyboard("{Control>}a{/Control}");
+      await user.click(screen.getByRole("button", { name: "Link" }));
+      await waitFor(() => expect(onChange).toHaveBeenCalled());
+      expect(onChange.mock.calls.at(-1)![0]).toContain('href="https://news.gov.bc.ca/files/report.pdf"');
+      expect(confirm).not.toHaveBeenCalled();
+
+      onChange.mockClear();
+      await user.click(screen.getByRole("button", { name: "Link" })); // unlinks
+      prompt.mockReturnValue(`${window.location.origin}/hub/releases/123`);
+      await user.click(area);
+      await user.keyboard("{Control>}a{/Control}");
+      await user.click(screen.getByRole("button", { name: "Link" }));
+      await waitFor(() => expect(confirm).toHaveBeenCalled());
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining("This address points at the Hub, which the public can't open."));
+      expect(onChange.mock.calls.some((c) => String(c[0]).includes("/hub/releases/123"))).toBe(false);
+    });
   });
 
   it("does not call onChange on mount, even when TipTap rewrites the given HTML", async () => {

@@ -59,22 +59,59 @@ export function staffHostWarning(url: string, publicOrigin: string, hubHost: str
   return publicHost === "" || publicHost === hubHost ? null : STAFF_HOST_WARNING;
 }
 
-/** `GET /nrms/api/config`'s public origin for files ({@link publicFilesOrigin}); "" until it answers, or if it fails. */
-export function usePublicFilesOrigin(): string {
-  const [origin, setOrigin] = useState("");
+/**
+ * Fix round 1 (I4), for addresses typed into a prompt (the rich-text Link and Insert asset): a
+ * `/files/…` address on the Hub's own host is unambiguous, so it becomes the same file's public
+ * address; any other Hub address keeps its text and carries {@link STAFF_HOST_WARNING} for the
+ * caller to ask about. Everything else passes through with no warning.
+ */
+export function checkHubAddress(url: string, publicOrigin: string, hubHost: string = window.location.host): { url: string; warning: string | null } {
+  const warning = staffHostWarning(url, publicOrigin, hubHost);
+  if (!warning) return { url, warning: null };
+  const parsed = new URL(url.trim());
+  if (parsed.pathname.startsWith("/files/")) return { url: new URL(`${parsed.pathname}${parsed.search}${parsed.hash}`, publicOrigin).href, warning: null };
+  return { url, warning };
+}
+
+/** One `GET /nrms/api/config` for the public origin ({@link publicFilesOrigin}); "" if it fails. For
+ * code that only needs it at the moment of use (the rich-text prompts), not on every mount. */
+export function fetchPublicFilesOrigin(): Promise<string> {
+  return apiFetch<ConfigResponse>("/nrms/api/config").then(publicFilesOrigin, () => "");
+}
+
+export interface PublicFiles {
+  /** "loading" until `GET /nrms/api/config` answers; "failed" if it didn't. */
+  status: "loading" | "ready" | "failed";
+  /** The configured public origin ({@link publicFilesOrigin}); "" when not (yet) known or not configured. */
+  origin: string;
+}
+
+/**
+ * `GET /nrms/api/config`'s public origin for files. Fix round 1 (I3): a screen that offers an
+ * address to copy waits for "ready", so it never offers the Hub's own address as the public one
+ * while the answer is pending or after it failed; only a ready answer with no public base
+ * configured (a development stack) falls back to the page's origin, in {@link publicFileUrl}.
+ */
+export function usePublicFiles(): PublicFiles {
+  const [state, setState] = useState<PublicFiles>({ status: "loading", origin: "" });
   useEffect(() => {
     let active = true;
     apiFetch<ConfigResponse>("/nrms/api/config").then(
       (config) => {
-        if (active) setOrigin(publicFilesOrigin(config));
+        if (active) setState({ status: "ready", origin: publicFilesOrigin(config) });
       },
       () => {
-        // Keep "": addresses fall back to the page's origin, and no warning is shown.
+        if (active) setState({ status: "failed", origin: "" });
       },
     );
     return () => {
       active = false;
     };
   }, []);
-  return origin;
+  return state;
+}
+
+/** {@link usePublicFiles}'s origin alone, for the Hub-address warnings (none while it is unknown). */
+export function usePublicFilesOrigin(): string {
+  return usePublicFiles().origin;
 }

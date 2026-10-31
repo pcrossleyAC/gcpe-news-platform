@@ -21,7 +21,7 @@ interface Call {
   body: unknown;
 }
 
-function stub(roles: string[], initial: SettingsState) {
+function stub(roles: string[], initial: SettingsState, filesBase = "") {
   const calls: Call[] = [];
   vi.stubGlobal(
     "fetch",
@@ -29,7 +29,7 @@ function stub(roles: string[], initial: SettingsState) {
       const call: Call = { url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(init.body as string) : undefined };
       calls.push(call);
       if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
-      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase, isTestSite: true });
       if (url === "/nrms/api/site/settings" && call.method === "GET") return jsonResponse(200, initial);
       if (url === "/nrms/api/site/settings/publish" && call.method === "POST") return jsonResponse(200, { revision: 5, state: initial });
       // The tenant defaults: BC's Blogs never collapses (0); the other networks have no value (2).
@@ -285,6 +285,20 @@ describe("SocialScreen", () => {
     expect(within(box).getByLabelText("Policy link URL")).toHaveAccessibleDescription(/https:\/\/ only \(or a page on this site starting with \/\), no spaces/);
     expect(within(box).getByLabelText("Policy link text")).toHaveAccessibleDescription(/200 characters or fewer, plain text/);
     expect(within(box).getByLabelText("Introduction")).toHaveAccessibleDescription(/top of the Connect page/);
+  });
+
+  it("I4: a Policy link URL on the Hub's own host warns that the public can't open it", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC), "https://news.gov.bc.ca");
+    renderScreen();
+    const user = userEvent.setup();
+    const box = await screen.findByRole("group", { name: "Connect page" });
+    const url = within(box).getByLabelText("Policy link URL");
+    await user.clear(url);
+    await user.type(url, `${window.location.origin}/files/policy.pdf`);
+    await waitFor(() => expect(url).toHaveAccessibleDescription(expect.stringContaining("This address points at the Hub, which the public can't open.")));
+    await user.clear(url);
+    await user.type(url, "https://news.gov.bc.ca/files/policy.pdf");
+    expect(url).not.toHaveAccessibleDescription(expect.stringContaining("the public can't open"));
   });
 
   it("a server error on connect.policyLink.url shows beside Policy link URL", async () => {

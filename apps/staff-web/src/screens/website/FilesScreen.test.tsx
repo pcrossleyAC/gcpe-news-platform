@@ -99,6 +99,43 @@ describe("FilesScreen", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Copied the public address of report.pdf.");
   });
 
+  it("I3: until the public site's address is known, no address is shown or copied and Copy says why", async () => {
+    let answerConfig: (r: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return new Promise<Response>((resolve) => (answerConfig = resolve));
+        if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, ONE_FILE);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    const copy = await screen.findByRole("button", { name: "Copy public address of report.pdf" });
+    expect(copy).toBeDisabled();
+    expect(copy).toHaveAccessibleDescription("Working out the public address…");
+    expect(screen.queryByText(/\/files\/report\.pdf$/)).toBeNull();
+    answerConfig(jsonResponse(500, { error: "boom" }));
+    await waitFor(() => expect(copy).toHaveAccessibleDescription("Couldn\u2019t work out the public address. Reload the page."));
+    expect(copy).toBeDisabled();
+    expect(screen.queryByText(/\/files\/report\.pdf$/)).toBeNull();
+  });
+
+  it("I3: with no public base configured (a development stack), the page's own address is used", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, ONE_FILE);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    expect(await screen.findByText(`${window.location.origin}/files/report.pdf`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy public address of report.pdf" })).toBeEnabled();
+  });
+
   it("deletes a file after confirming", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal(

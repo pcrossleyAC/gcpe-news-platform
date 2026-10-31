@@ -26,7 +26,7 @@ PDFs, images, Office documents, audio, video and text open in the visitor's brow
 
 To put a file in a minister's photo on [Organizations](manual:site-editor-organizations), a slide, an emergency pin, a banner link or a link on [Resource links](manual:resource-links):
 
-1. Choose **Copy public address** beside the file. You see "Copied the public address of {name}."
+1. Choose **Copy public address** beside the file. You see "Copied the public address of {name}." While the page is still working out the public address, the button is greyed out and the page says "Working out the public address…".
 2. Paste the address into the other screen's web address box.
 
 Don't copy the address from your browser's address bar while you are in the Hub. That address points at the Hub's own server, which the public can't open: you would see the file, but visitors would get a broken image or link. A web address box holding such an address says "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead."
@@ -62,5 +62,6 @@ Links to a deleted file stop working. Check that nothing still points to it firs
 | "{name}: A file can be at most 512 MB." | The file is too big to upload. |
 | "The file is empty." | The file has nothing in it. Check you picked the right one. |
 | "{name}" is a reserved Windows device name; rename the file. | Names such as con, aux, nul or prn can't be used. Rename the file and upload it again. |
+| "Couldn't work out the public address. Reload the page." | The Hub couldn't find out the public site's address, so it shows no addresses and won't copy one. Reload the page. If it keeps happening, tell the support team. |
 | "Couldn't copy. Select the address of {name} and copy it." | Your browser didn't allow the copy. Select the address under the file's name and copy it yourself. |
 | "The upload wasn't accepted. Reload the page and try again." | Most often this happens just after the Hub was updated: a page left open from before the update sends the file in a way the Hub no longer accepts. |

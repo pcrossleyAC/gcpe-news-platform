@@ -221,7 +221,7 @@ describe("BannerScreen", () => {
     const live = { revision: 2, publishedAt: "2026-10-27T18:00:00.000Z", publishedBy: "Sam", note: null };
     const calls = stub(["NRMS.SiteEditor"], (c) => {
       if (c.url === "/nrms/api/site/settings/publish") return jsonResponse(409, { error: "published", code: "published", live, differing: ["banner"] });
-      if (c.url === "/nrms/api/site/settings/rebase") return jsonResponse(200, { ...NOTHING_LIVE, live, baseRevision: 2, draft: { baseRevision: 2, updatedAt: live.publishedAt }, setAside: ["theme"] });
+      if (c.url === "/nrms/api/site/settings/rebase") return jsonResponse(200, { ...NOTHING_LIVE, live, baseRevision: 2, draft: { baseRevision: 2, updatedAt: live.publishedAt }, alsoChangedByThem: ["theme"] });
       return undefined;
     });
     renderScreen();
@@ -234,10 +234,10 @@ describe("BannerScreen", () => {
     expect(within(panel).getByRole("heading", { name: "Someone published while you were editing" })).toHaveFocus();
 
     await user.click(within(panel).getByRole("button", { name: "Keep my site banner, on top of their version" }));
-    expect(await screen.findByText("Your site banner changes now build on revision 2. Check them, then publish. Unpublished changes to Theme colours were set aside.")).toBeInTheDocument();
+    expect(await screen.findByText("Your site banner changes now build on revision 2. Check them, then publish. Your draft still has your changes on Theme colours, which they changed too: check them before you publish them.")).toBeInTheDocument();
     expect(calls.find((c) => c.url === "/nrms/api/site/settings/rebase")!.body).toMatchObject({ section: "banner" });
     expect(screen.queryByRole("region", { name: "Someone published while you were editing" })).toBeNull();
-    expect(screen.getByText("Your site banner changes now build on revision 2. Check them, then publish. Unpublished changes to Theme colours were set aside.")).toHaveFocus();
+    expect(screen.getByText("Your site banner changes now build on revision 2. Check them, then publish. Your draft still has your changes on Theme colours, which they changed too: check them before you publish them.")).toHaveFocus();
   });
 
   it("Discard mine, use theirs deletes the draft and shows what is live", async () => {
@@ -441,6 +441,8 @@ describe("BannerScreen", () => {
       await user.click(within(dialog).getByRole("button", { name: "Publish only Site banner" }));
       expect(await screen.findByText("Published revision 2, with only your Site banner changes. Visitors see it within a few minutes. Your draft still has changes on Footer links.")).toBeInTheDocument();
       expect(calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body).toMatchObject({ section: "banner", baseRevision: 1, onlySection: true });
+      // M1: announced once the dialog has gone, in the Hub's live region.
+      await waitFor(() => expect(screen.getAllByRole("status").some((e) => e.textContent?.startsWith("Published revision 2, with only"))).toBe(true));
     });
 
     it("with changes on this screen only, it offers just Publish; a problem elsewhere in the draft is pointed at Publish only", async () => {

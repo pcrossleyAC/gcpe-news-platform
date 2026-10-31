@@ -4,7 +4,7 @@ import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
-import { publicFileUrl, usePublicFilesOrigin } from "../../shared/publicAddress";
+import { publicFileUrl, usePublicFiles } from "../../shared/publicAddress";
 import { canManageWebsite } from "./access";
 import type { ListFilesResult, SiteFileView } from "./types";
 
@@ -46,7 +46,10 @@ export function FilesScreen(): React.JSX.Element {
   const [removeTarget, setRemoveTarget] = useState<SiteFileView | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   // W1: addresses to copy are on the public site's base, never the Hub's own (internal) host.
-  const publicOrigin = usePublicFilesOrigin();
+  // Fix round 1 (I3): nothing is shown or copied as "the public address" until it is known.
+  const publicFiles = usePublicFiles();
+  const addressKnown = publicFiles.status === "ready";
+  const addressOf = (f: SiteFileView) => publicFileUrl(f.url, publicFiles.origin);
   const [copyResult, setCopyResult] = useState("");
 
   const reload = useCallback((query: string) => {
@@ -111,7 +114,8 @@ export function FilesScreen(): React.JSX.Element {
 
   const copyAddress = async (f: SiteFileView) => {
     try {
-      await navigator.clipboard.writeText(publicFileUrl(f.url, publicOrigin));
+      if (!addressKnown) return;
+      await navigator.clipboard.writeText(addressOf(f));
       setCopyResult(`Copied the public address of ${f.name}.`);
     } catch {
       setCopyResult(`Couldn\u2019t copy. Select the address of ${f.name} and copy it.`);
@@ -140,6 +144,11 @@ export function FilesScreen(): React.JSX.Element {
       {upload.error && <InlineAlert variant="danger" role="alert" description={upload.error} />}
       {removeError && <InlineAlert variant="danger" role="alert" description={removeError} />}
       <p className="gcpe-hint">Each file&rsquo;s public address is shown under its name. Use Copy public address when you paste a file into a slide, a pin, a link or a minister&rsquo;s photo.</p>
+      {!addressKnown && (
+        <p id="files-address-pending" className="gcpe-hint">
+          {publicFiles.status === "loading" ? "Working out the public address\u2026" : "Couldn\u2019t work out the public address. Reload the page."}
+        </p>
+      )}
       {/* Mounted from the start, empty, so a screen reader hears the first result too. */}
       <p role="status" className="gcpe-hint">
         {copyResult}
@@ -149,10 +158,10 @@ export function FilesScreen(): React.JSX.Element {
         {result.files.map((f) => (
           <li key={f.id}>
             <span className="gcpe-files__file">
-              <a href={publicFileUrl(f.url, publicOrigin)}>{f.name}</a>
-              <span className="gcpe-files__address">{publicFileUrl(f.url, publicOrigin)}</span>
+              <a href={addressKnown ? addressOf(f) : f.url}>{f.name}</a>
+              {addressKnown && <span className="gcpe-files__address">{addressOf(f)}</span>}
             </span>
-            <Button variant="secondary" onPress={() => void copyAddress(f)}>
+            <Button variant="secondary" onPress={() => void copyAddress(f)} isDisabled={!addressKnown} aria-describedby={addressKnown ? undefined : "files-address-pending"}>
               <span>
                 Copy public address <span className="gcpe-visually-hidden">of {f.name}</span>
               </span>

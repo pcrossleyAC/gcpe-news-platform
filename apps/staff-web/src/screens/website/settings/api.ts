@@ -54,7 +54,7 @@ export const publishSettings = (body: { baseRevision: number | null; section: Se
 export const discardSettingsDraft = () => apiFetch<void>(`${BASE}/draft`, { method: "DELETE" });
 
 export const rebaseSettings = (body: { section: SectionKey; value: unknown }) =>
-  apiFetch<SettingsState & { setAside: SectionKey[] }>(`${BASE}/rebase`, { method: "POST", body });
+  apiFetch<SettingsState & { alsoChangedByThem: SectionKey[] }>(`${BASE}/rebase`, { method: "POST", body });
 
 /** The tenant's own defaults (what "Reset to defaults" puts back). */
 export const getSettingsDefaults = () => apiFetch<SiteSettings>(`${BASE}/defaults`);

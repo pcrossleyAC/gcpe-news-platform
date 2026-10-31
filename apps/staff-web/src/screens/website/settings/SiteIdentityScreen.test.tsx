@@ -107,7 +107,8 @@ describe("SiteIdentityScreen", () => {
     expect(body.section).toBe("siteIdentity");
     expect(body.baseRevision).toBe(4);
     expect(body.value).toEqual({ ...IDENTITY, description: "Updated description" });
-    expect(await screen.findByRole("status")).toHaveTextContent("Published revision 5");
+    // Announced once the Publish confirmation has gone (M1).
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Published revision 5"));
   });
 
   it("a server error on siteIdentity.blueBridge.message shows beside Banner message and tied to it", async () => {
