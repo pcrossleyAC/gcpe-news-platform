@@ -44,7 +44,7 @@ const LEASE_MS = 60_000;
 const MAX_ERROR = 300;
 
 export const outWithoutPhotoAlert = (lastError: string | null) =>
-  `The Flickr photo couldn't be made public (${lastError ?? "unknown error"}). The release went out without it; NRMS keeps trying for 24 hours.`;
+  `The Flickr photo couldn't be made public (${lastError ?? "unknown error"}). The release went out without it; adding the photo is retried for 24 hours.`;
 export const gaveUpAlert = (lastError: string | null) =>
   `The Flickr photo couldn't be made public after 24 hours (${lastError ?? "unknown error"}). The release is live without it — re-add or replace the photo.`;
 

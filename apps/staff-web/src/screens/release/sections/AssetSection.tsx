@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
-import { assetUrlProblem, typeRules, TYPE_LABEL, type AssetStatus, type ReleaseView } from "@gcpe/nrms-contract";
+import { aType, assetUrlProblem, typeRules, type AssetStatus, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
@@ -80,7 +80,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
     return (
       <section className="gcpe-release-editor__asset" aria-label="Media asset" id="section-asset" tabIndex={-1}>
         <h2>Media asset</h2>
-        <p>A {TYPE_LABEL[view.type]} has no media asset.</p>
+        <p>{aType(view.type)} has no media asset.</p>
       </section>
     );
   }

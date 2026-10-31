@@ -45,6 +45,11 @@ describe("PageDetailsSection", () => {
     expect(screen.getByText("A Release's URL key is generated automatically.")).toBeInTheDocument();
   });
 
+  it("an Advisory's reason uses An", () => {
+    renderSection(releaseView({ type: "advisory", status: "draft", key: null }));
+    expect(screen.getByText("An Advisory's URL key is generated automatically.")).toBeInTheDocument();
+  });
+
   it("the URL key is disabled for a Story once scheduled, with a different reason", () => {
     renderSection(releaseView({ type: "story", status: "scheduled", key: "my-story" }));
     expect(screen.getByLabelText("URL key")).toBeDisabled();
@@ -57,7 +62,7 @@ describe("PageDetailsSection", () => {
 
     rerender(<PageDetailsSection view={releaseView({ type: "advisory" })} setView={() => {}} readOnly={false} />);
     expect(screen.queryByLabelText("Summary")).not.toBeInTheDocument();
-    expect(screen.getByText("A Advisory has no summary, keywords or social media summary.")).toBeInTheDocument();
+    expect(screen.getByText("An Advisory has no summary, keywords or social media summary.")).toBeInTheDocument();
   });
 
   it("saves with PUT /meta carrying the current version and the English release-language fields", async () => {

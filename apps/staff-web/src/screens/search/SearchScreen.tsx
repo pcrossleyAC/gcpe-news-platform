@@ -175,7 +175,7 @@ export function SearchScreen(): React.JSX.Element {
 
       {!q && (
         <>
-          <p className="gcpe-search__hint">Search releases by words in the headline, summary or body; filter by ministry or sector.</p>
+          <p className="gcpe-search__hint">Type part of a headline, a reference number or a web address; filter by ministry or sector.</p>
           {/* Unfiltered, so not shown once a ministry or sector is chosen. */}
           {!ministry && !sector && recent && recent.length > 0 && (
             <section aria-labelledby="search-recent-heading">

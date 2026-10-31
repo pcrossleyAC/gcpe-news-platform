@@ -376,6 +376,7 @@ function pseudoView(raw: RawReleaseRow, bundle: Bundle): ReleaseView {
     key: raw.Key,
     reference: bundle.release.reference ?? null,
     status: bundle.status,
+    live: false,
     onHold: Boolean(bundle.release.onHold),
     version: 1,
     leadMinistryKey: (bundle.release.leadMinistryKey as string | null) ?? null,

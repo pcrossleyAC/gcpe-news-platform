@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
-import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
+import { aType, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { UnsavedMarker } from "../UnsavedMarker";
@@ -106,7 +106,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
             value={form.key}
             onChange={(v) => setForm((f) => ({ ...f, key: v }))}
             isDisabled={readOnly || !keyEditable}
-            description={!rules.keyEditable ? `A ${TYPE_LABEL[view.type]}'s URL key is generated automatically.` : !keyEditable ? "The URL key can no longer be changed." : undefined}
+            description={!rules.keyEditable ? `${aType(view.type)}'s URL key is generated automatically.` : !keyEditable ? "The URL key can no longer be changed." : undefined}
           />
           <TextField label="Redirect URL" value={form.redirectUrl} onChange={(v) => setForm((f) => ({ ...f, redirectUrl: v }))} isDisabled={readOnly} />
           <TextField label="Location" value={form.location} onChange={(v) => setForm((f) => ({ ...f, location: v }))} isDisabled={readOnly} maxLength={50} />
@@ -124,7 +124,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
             <TextField label="Keywords" value={form.keywords} onChange={(v) => setForm((f) => ({ ...f, keywords: v }))} isDisabled={readOnly} />
           </>
         )}
-        {!showSummaryFields && <p>A {TYPE_LABEL[view.type]} has no summary, keywords or social media summary.</p>}
+        {!showSummaryFields && <p>{aType(view.type)} has no summary, keywords or social media summary.</p>}
 
       </Form>
     </section>

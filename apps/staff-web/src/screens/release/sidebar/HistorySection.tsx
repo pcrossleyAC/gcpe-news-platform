@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Checkbox } from "@bcgov/design-system-react-components";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
@@ -36,17 +36,29 @@ export function HistorySection({ view, timeZone }: HistorySectionProps): React.J
   const [log, setLog] = useState<LogEntry[]>([]);
   const [publications, setPublications] = useState<Publication[]>([]);
 
-  const loadLog = useCallback((all: boolean) => {
-    apiFetch<LogEntry[]>(`/nrms/api/releases/${view.id}/log${all ? "?all=true" : ""}`).then(setLog, () => {
-      // The log just stays empty — the rest of the sidebar still works.
-    });
-  }, [view.id]);
-
-  useEffect(() => loadLog(showAll), [loadLog, showAll]);
+  // Reloaded whenever the release changes (its version goes up after every save and action,
+  // including the publisher's own, which the page picks up by polling), so a new entry shows
+  // without a page reload. A late reply for an older version never overwrites a newer one.
+  useEffect(() => {
+    let active = true;
+    apiFetch<LogEntry[]>(`/nrms/api/releases/${view.id}/log${showAll ? "?all=true" : ""}`).then(
+      (l) => active && setLog(l),
+      () => {
+        // The log just stays as it was — the rest of the sidebar still works.
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [view.id, view.version, showAll]);
 
   useEffect(() => {
-    apiFetch<Publication[]>(`/nrms/api/releases/${view.id}/publications`).then(setPublications, () => {});
-  }, [view.id]);
+    let active = true;
+    apiFetch<Publication[]>(`/nrms/api/releases/${view.id}/publications`).then((p) => active && setPublications(p), () => {});
+    return () => {
+      active = false;
+    };
+  }, [view.id, view.version]);
 
   const now = new Date();
 

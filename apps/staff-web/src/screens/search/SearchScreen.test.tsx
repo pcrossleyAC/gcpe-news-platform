@@ -139,7 +139,7 @@ describe("SearchScreen", () => {
   it("before any search, says what it searches and lists the latest published releases", async () => {
     stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
     renderSearch();
-    expect(await screen.findByText("Search releases by words in the headline, summary or body; filter by ministry or sector.")).toBeInTheDocument();
+    expect(await screen.findByText("Type part of a headline, a reference number or a web address; filter by ministry or sector.")).toBeInTheDocument();
     const recent = await screen.findByRole("region", { name: "Recently published" });
     expect(within(recent).getByText("Latest published release")).toBeInTheDocument();
   });
@@ -147,7 +147,7 @@ describe("SearchScreen", () => {
   it("with a ministry or sector chosen but no words, doesn't show the unfiltered recent releases", async () => {
     stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
     renderSearch("/search?ministry=educ");
-    expect(await screen.findByText("Search releases by words in the headline, summary or body; filter by ministry or sector.")).toBeInTheDocument();
+    expect(await screen.findByText("Type part of a headline, a reference number or a web address; filter by ministry or sector.")).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole("region", { name: "Recently published" })).toBeNull();
   });

@@ -95,7 +95,7 @@ export async function approve(db: Db, id: string, version: number, actor: Actor,
       if (typeRules(row.type).generatesKey) {
         const year = bcYear((await dbClock(tx)).now, deps.timeZone);
         const abbr = lead ? await ministryAbbreviation(tx, lead) : null;
-        if (lead && !abbr) throw new ReleaseRuleError(["The lead ministry has no abbreviation in Core; add one before approving."]);
+        if (lead && !abbr) throw new ReleaseRuleError(["The lead ministry has no abbreviation yet. Ask an administrator to add one, then approve again."]);
         // Counted per printed abbreviation, so two ministries sharing one over time can never issue the same number.
         const n = await nextCounter(tx, "ministry", year, (abbr ?? "").toUpperCase());
         const m = await nextCounter(tx, "year", year, "");

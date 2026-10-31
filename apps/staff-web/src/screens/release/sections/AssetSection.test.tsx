@@ -78,7 +78,7 @@ describe("AssetSection (acceptance: asset URL validation messages)", () => {
   it("has no media asset for an Advisory, and shows why", () => {
     stubFetch();
     renderSection(releaseView({ type: "advisory", assetUrl: null, mediaListKeys: ["list1"] }));
-    expect(screen.getByText("A Advisory has no media asset.")).toBeInTheDocument();
+    expect(screen.getByText("An Advisory has no media asset.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Asset URL")).not.toBeInTheDocument();
   });
 

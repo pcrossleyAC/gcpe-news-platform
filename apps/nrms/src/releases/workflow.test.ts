@@ -59,6 +59,18 @@ describe("workflow", () => {
     await expect(approve(db(), v.id, v.version, editor, deps)).rejects.toEqual(new ReleaseRuleError(["Choose the lead ministry."]));
   });
 
+  it("a lead ministry with no abbreviation is refused in plain words (no internal names)", async () => {
+    await tdb.db.execute(sql`UPDATE organizations SET abbreviation = NULL WHERE key = 'finance'`);
+    try {
+      const v = await createRelease(db(), { ...sampleCreate, ministries: ["finance"], leadMinistryKey: "finance" }, editor);
+      await expect(approve(db(), v.id, v.version, editor, deps)).rejects.toEqual(
+        new ReleaseRuleError(["The lead ministry has no abbreviation yet. Ask an administrator to add one, then approve again."]),
+      );
+    } finally {
+      await tdb.db.execute(sql`UPDATE organizations SET abbreviation = 'FIN' WHERE key = 'finance'`);
+    }
+  });
+
   it("20 concurrent approvals get 20 distinct numbers", async () => {
     const created = await Promise.all(Array.from({ length: 20 }, () => createRelease(db(), sampleCreate, editor)));
     const approved = await Promise.all(created.map((v) => approve(db(), v.id, v.version, editor, deps)));

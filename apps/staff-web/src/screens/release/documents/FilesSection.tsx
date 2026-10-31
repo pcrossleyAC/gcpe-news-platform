@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
-import type { ReleaseFileView, ReleaseView } from "@gcpe/nrms-contract";
+import { aType, RELEASE_FILE_MAX_MB, RELEASE_FILE_TOO_LARGE, typeRules, type ReleaseFileView, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE } from "../useReleaseSection";
@@ -39,6 +39,11 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
   const setGroup = (kind: Kind, patch: Partial<GroupState>) => setState((s) => ({ ...s, [kind]: { ...s[kind], ...patch } }));
 
   const upload = async (kind: Kind, file: File) => {
+    // The server's own cap (media/files.ts), checked here so a large file isn't sent for nothing.
+    if (file.size > RELEASE_FILE_MAX_MB * 1024 * 1024) {
+      setGroup(kind, { ...INITIAL, problems: [`${file.name} is too large to upload. ${RELEASE_FILE_TOO_LARGE}`] });
+      return;
+    }
     setGroup(kind, { ...INITIAL, busy: true, waiting: true });
     try {
       const next = await queue.run((version) => {
@@ -54,6 +59,8 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) setGroup(kind, { busy: false, conflict: true, problems: null, error: null });
       else if (caught instanceof ApiError && caught.status === 422) setGroup(kind, { busy: false, conflict: false, problems: caught.problems ?? [caught.message], error: null });
+      // Over the size cap (whatever said so: the server, or a proxy in front of it).
+      else if (caught instanceof ApiError && caught.status === 413) setGroup(kind, { busy: false, conflict: false, problems: [RELEASE_FILE_TOO_LARGE], error: null });
       else setGroup(kind, { busy: false, conflict: false, problems: null, error: caught instanceof ApiError ? caught.message : "Upload failed." });
     }
   };
@@ -84,6 +91,11 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
     e.target.value = "";
     if (file) void upload(kind, file);
   };
+
+  // An Advisory takes no translations or media files (the server refuses them): no upload is
+  // offered, and any file it already has can still be opened or removed.
+  const uploadsAllowed = typeRules(view.type).categoriesBeyondMinistries;
+  const canUpload = !readOnly && uploadsAllowed;
 
   const group = (kind: Kind, title: string, accept: string | undefined, inputLabel: string) => {
     const files = view.files.filter((f) => f.kind === kind);
@@ -135,7 +147,7 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
           ))}
           {files.length === 0 && <li>No files yet.</li>}
         </ul>
-        {!readOnly && (
+        {canUpload && (
           <label className="gcpe-file-input">
             <span>{inputLabel}</span>
             <input type="file" accept={accept} onChange={onPick(kind)} disabled={s.busy} />
@@ -149,8 +161,13 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
   return (
     <section className="gcpe-release-editor__files" aria-label="Files" id="section-files" tabIndex={-1}>
       <h2>Files</h2>
-      {group("translation", "Translations", "application/pdf", "Upload a translation (PDF)")}
-      {group("asset", "Media files", undefined, "Upload a media file")}
+      {!uploadsAllowed && <p>{aType(view.type)} has no translations or media files.</p>}
+      {(uploadsAllowed || view.files.length > 0) && (
+        <>
+          {group("translation", "Translations", "application/pdf", "Upload a translation (PDF)")}
+          {group("asset", "Media files", undefined, "Upload a media file")}
+        </>
+      )}
     </section>
   );
 }

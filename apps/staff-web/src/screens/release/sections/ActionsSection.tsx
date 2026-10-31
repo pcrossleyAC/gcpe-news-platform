@@ -13,9 +13,9 @@ import type { Categories } from "../categories";
 import { useSaveQueue, withVersion } from "../saveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
-import { instantToBcLocal, wallClockNowMinute } from "../timezone";
+import { bcLocalToInstant, instantToBcLocal, wallClockNowMinute } from "../timezone";
 import { placeholderHits } from "../placeholders";
-import { dateTimeText } from "../../calendar/list/dates";
+import { addDaysTo, bcDateOf, dateTimeText } from "../../calendar/list/dates";
 
 /** Schedule's field error for a time that isn't in the future. */
 export const PAST_SCHEDULE = "Choose a time in the future, or use Publish now.";
@@ -54,11 +54,11 @@ function useServerZoneOffset(enabled: boolean): number | null {
   return offset;
 }
 
-/** apps/nrms/src/releases/service.ts's DELETABLE_STATUSES. */
+/** apps/nrms/src/releases/service.ts's DELETABLE_STATUSES (and, like the server, never while live). */
 const DELETABLE_STATUSES = new Set(["draft", "approved", "failed"]);
 /** apps/nrms/src/releases/workflow.ts's RETURNABLE_STATUSES (plus: has a reference, never released). */
 const RETURNABLE_STATUSES = new Set(["approved", "scheduled"]);
-/** apps/nrms/src/releases/workflow.ts's UNPUBLISHABLE_STATUSES. */
+/** apps/nrms/src/releases/workflow.ts's UNPUBLISHABLE_STATUSES (and, like the server, only while live). */
 const UNPUBLISHABLE_STATUSES = new Set(["published", "publishing", "failed", "scheduled"]);
 
 export interface ActionsSectionProps {
@@ -142,10 +142,14 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const canApprove = view.status === "draft";
   const canPublish = (view.status === "approved" || view.status === "failed") && view.key !== null;
   const needsKeyFirst = (view.status === "approved" || view.status === "failed") && view.key === null;
+  // The server refuses to schedule a live release's correction: it goes out immediately (workflow.ts schedule).
+  const canSchedule = canPublish && !view.live;
   const canCancel = view.status === "scheduled";
   const canReturnToDraft = view.reference !== null && view.releasedAt === null && view.atomId === null && RETURNABLE_STATUSES.has(view.status);
-  const canUnpublish = rules.unpublishable && view.releasedAt !== null && UNPUBLISHABLE_STATUSES.has(view.status);
-  const canDelete = DELETABLE_STATUSES.has(view.status);
+  // Both follow the server's `live` check: a failed correction is still on the site, so it can be
+  // unpublished but not deleted; a failed republish after an unpublish is the other way round.
+  const canUnpublish = rules.unpublishable && view.live && UNPUBLISHABLE_STATUSES.has(view.status);
+  const canDelete = DELETABLE_STATUSES.has(view.status) && !view.live;
   // Why Approve/Publish are greyed out, said next to the buttons themselves (the header's
   // checklists are a long scroll away) — hand-check feedback on boxs.ca.
   const unsavedBlockers: Blocker[] = unsaved.map((s) => ({ text: `Save your changes to ${unsavedName(s.label)} first.`, target: unsavedTarget(s.key, view) }));
@@ -332,21 +336,23 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                     </>
                   }
                 >
-                  <PublishConsequences view={view} />
+                  <PublishConsequences view={view} timeZone={timeZone} />
                   <ActionErrors section={section} />
                 </AlertDialog>
               </Modal>
             </DialogTrigger>
-            <Button
-              variant="secondary"
-              onPress={openScheduler}
-              aria-expanded={schedulerOpen && canPublish}
-              aria-controls="actions-scheduler"
-              isDisabled={publishBlockers.length > 0}
-              aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}
-            >
-              Schedule
-            </Button>
+            {canSchedule && (
+              <Button
+                variant="secondary"
+                onPress={openScheduler}
+                aria-expanded={schedulerOpen}
+                aria-controls="actions-scheduler"
+                isDisabled={publishBlockers.length > 0}
+                aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}
+              >
+                Schedule
+              </Button>
+            )}
           </>
         )}
         {needsKeyFirst && <p>Set a URL key in Page details before this can be published.</p>}
@@ -410,7 +416,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                   </>
                 }
               >
-                <p>This takes the release down from the public site and the News API. It can be republished afterwards.</p>
+                <p>This takes the release down from the public site. It can be republished afterwards.</p>
               </AlertDialog>
             </Modal>
           </DialogTrigger>
@@ -455,9 +461,9 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
 
       {approveBlockers.length > 0 && <BlockerList id="actions-approve-why" lead="Approve is unavailable until:" items={approveBlockers} />}
       {canApprove && <p className="gcpe-release-editor__why">Publish now and Schedule appear once this is approved.</p>}
-      {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead="Publish now and Schedule are unavailable until:" items={publishBlockers} />}
+      {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead={canSchedule ? "Publish now and Schedule are unavailable until:" : "Publish now is unavailable until:"} items={publishBlockers} />}
 
-      {schedulerOpen && canPublish && (
+      {schedulerOpen && canSchedule && (
         // data-unsaved: Esc leaves it open once a date or time is typed (shared/escapeClosesPanels.ts).
         <div id="actions-scheduler" className="gcpe-release-editor__scheduler" data-unsaved={scheduleTyped !== scheduleOpenedWith || undefined}>
           <SchedulePicker
@@ -499,7 +505,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                   </>
                 }
               >
-                {scheduleValue && <PublishConsequences view={view} at={scheduleText(scheduleValue.local)} />}
+                {scheduleValue && <PublishConsequences view={view} at={scheduleText(scheduleValue.local)} atInstant={scheduleValue.instant} timeZone={timeZone} />}
                 <ActionErrors section={section} />
               </AlertDialog>
             </Modal>
@@ -577,6 +583,21 @@ interface MediaListName {
  * themselves ("Transportation and Transit"), so "A, B and C" would be ambiguous. */
 const listText = (items: string[]): string => items.join("; ");
 
+/** NoD's daily digest hour (apps/nod/src/digest.ts DIGEST_HOUR), BC time. */
+const DIGEST_TIME = "17:00";
+
+/** The daily digest cutoff whose window holds `releasedAt`: 5 pm BC time on its day, or on the
+ * next day when it went out after 5 pm. NoD's digest takes items first released in
+ * (previous cutoff, cutoff] that are on the site when it runs (apps/nod/src/digest.ts). */
+export function digestCutoffFor(releasedAt: string, timeZone: string): string {
+  const day = bcDateOf(releasedAt, timeZone);
+  const same = bcLocalToInstant(day, DIGEST_TIME, timeZone);
+  return Date.parse(releasedAt) <= Date.parse(same) ? same : bcLocalToInstant(addDaysTo(day, 1), DIGEST_TIME, timeZone);
+}
+
+/** "Oct 1, 2026" in the tenant's zone. */
+const dayText = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
+
 /**
  * What Publish now (or, given `at`, Schedule) will do, from the release as saved (publishing is blocked while anything is
  * unsaved, so saved is what goes out): the public site it goes on, the media distribution lists
@@ -584,28 +605,47 @@ const listText = (items: string[]): string => items.join("; ");
  * subscribers would get this" endpoint, so it names the categories subscribers follow instead
  * of a count. Names come from the same lists the Categories and Publish settings sections read;
  * if a lookup fails, the keys are shown instead.
+ *
+ * Who is emailed (apps/nod/src/items.ts, as-it-happens.ts, media-send.ts):
+ * - first publish: the media lists and News on Demand subscribers;
+ * - a correction of a live release: nobody;
+ * - publishing again after an unpublish: nobody already emailed. An unpublish deletes the
+ *   sends that hadn't gone out yet, and this publish sends to the people they hadn't reached.
+ *   This screen can't tell whether that happened, so it says it conditionally.
  */
-function PublishConsequences({ view, at }: { view: ReleaseView; /** When a scheduled send goes out ("Sunday, June 15, 2031 at 2:30 PM Pacific time"); omitted for Publish now. */ at?: string }): React.JSX.Element {
+function PublishConsequences({
+  view,
+  at,
+  atInstant,
+  timeZone,
+}: {
+  view: ReleaseView;
+  /** When a scheduled send goes out ("Sunday, June 15, 2031 at 2:30 PM Pacific time"); omitted for Publish now. */
+  at?: string;
+  /** The same moment as an instant; omitted for Publish now. */
+  atInstant?: string;
+  timeZone: string;
+}): React.JSX.Element {
   const rules = typeRules(view.type);
   const publicSiteUrl = usePublicSiteUrl();
   const [lists, setLists] = useState<MediaListName[] | null>(null);
   const [categories, setCategories] = useState<Categories | null>(null);
 
-  // NoD and media sends go out once per release (apps/nrms/src/releases/workflow.ts: the send
-  // keys are insert-or-ignore), so a release published before (a correction, or one unpublished
-  // and published again) emails nobody this time.
-  const alreadySent = view.releasedAt !== null;
-  const toLists = !alreadySent && rules.mediaListsAllowed && view.publishOptions.toMediaLists && view.mediaListKeys.length > 0;
-  const toSubscribers = !alreadySent && rules.nodAllowed && view.publishOptions.toSubscribers;
+  const correction = view.live;
+  const again = !view.live && view.releasedAt !== null;
+  const listsOn = rules.mediaListsAllowed && view.publishOptions.toMediaLists && view.mediaListKeys.length > 0;
+  const subscribersOn = rules.nodAllowed && view.publishOptions.toSubscribers;
+  const toLists = !correction && listsOn;
+  const toSubscribers = !correction && subscribersOn;
 
   useEffect(() => {
     let active = true;
     if (toLists) apiFetch<MediaListName[]>("/nrms/api/media-lists").then((l) => active && setLists(l), () => {});
-    if (toSubscribers) apiFetch<Categories>("/nrms/api/categories").then((c) => active && setCategories(c), () => {});
+    if (toSubscribers && !again) apiFetch<Categories>("/nrms/api/categories").then((c) => active && setCategories(c), () => {});
     return () => {
       active = false;
     };
-  }, [toLists, toSubscribers]);
+  }, [toLists, toSubscribers, again]);
 
   let host = "";
   try {
@@ -621,22 +661,43 @@ function PublishConsequences({ view, at }: { view: ReleaseView; /** When a sched
     ...view.themes.map((k) => nameIn(categories?.themes, k)),
     ...view.tags.map((k) => nameIn(categories?.tags, k)),
   ];
+  const web = <li>{view.publishOptions.toWeb ? `Publishes to ${host || "the public news site"} ${at ? `on ${at}` : "now"}.` : "Doesn't go on the public news site."}</li>;
+
+  if (correction) {
+    return (
+      <ul className="gcpe-publish-consequences">
+        {web}
+        <li>Subscribers and media lists already received this when it was first published; they won&rsquo;t be emailed again.</li>
+      </ul>
+    );
+  }
+
+  if (again && (toLists || toSubscribers)) {
+    const reached = [toLists ? `members of ${listText(listNames)}` : null, toSubscribers ? "News on Demand subscribers who chose As it happens" : null].filter(Boolean).join(", and ");
+    const cutoff = digestCutoffFor(view.releasedAt!, timeZone);
+    const goesUp = atInstant ? Date.parse(atInstant) : Date.now();
+    const digestRule = `Daily digest subscribers get it only if it\u2019s on the site again before 5:00 PM on ${dayText(cutoff, timeZone)}.`;
+    return (
+      <ul className="gcpe-publish-consequences">
+        {web}
+        <li>Anyone already emailed about it won&rsquo;t be emailed again.</li>
+        <li>{`If unpublishing stopped its emails before they all went out, the people they hadn\u2019t reached yet are emailed ${atInstant ? "when it goes out" : "now"}: ${reached}.`}</li>
+        {toSubscribers && (
+          <li>{goesUp > Date.parse(cutoff) ? `${digestRule} That time has passed, so daily digest subscribers who didn\u2019t get it then won\u2019t.` : digestRule}</li>
+        )}
+      </ul>
+    );
+  }
 
   return (
     <ul className="gcpe-publish-consequences">
-      <li>{view.publishOptions.toWeb ? `Publishes to ${host || "the public news site"} ${at ? `on ${at}` : "now"}.` : "Doesn't go on the public news site."}</li>
-      {alreadySent ? (
-        <li>Subscribers and media lists already received this when it was first published; they won&rsquo;t be emailed again.</li>
-      ) : (
-        <>
-          <li>{toLists ? `Sends to media distribution lists: ${listText(listNames)}.` : "No media distribution lists."}</li>
-          <li>
-            {toSubscribers
-              ? `Emails News on Demand subscribers who follow ${followed.length > 0 ? `any of: ${listText([...new Set(followed)])}` : "this release's categories"}${view.ministries.length > 0 ? " — and everyone subscribed to all news" : ""}.`
-              : "News on Demand subscribers will not be emailed."}
-          </li>
-        </>
-      )}
+      {web}
+      <li>{toLists ? `Sends to media distribution lists: ${listText(listNames)}.` : "No media distribution lists."}</li>
+      <li>
+        {toSubscribers
+          ? `Emails News on Demand subscribers who follow ${followed.length > 0 ? `any of: ${listText([...new Set(followed)])}` : "this release's categories"}${view.ministries.length > 0 ? " — and everyone subscribed to all news" : ""}.`
+          : "News on Demand subscribers will not be emailed."}
+      </li>
     </ul>
   );
 }

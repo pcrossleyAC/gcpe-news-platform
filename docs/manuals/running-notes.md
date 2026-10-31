@@ -13,17 +13,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Phase 3 — NRMS (releases, media, website, staff app)
 
-- **Editor** — Each release-editor section saves on its own. While any section has unsaved
-  edits, a bar at the bottom of the page lists them.
-- **Editor** — When Approve or Publish is greyed out, the reasons are listed right under the
-  buttons (the same list as the header's checklist).
-- **Editor** — Publishing and unpublishing happen in the background. The release page updates by
-  itself until the release settles; no need to reload.
-- **Editor** — A NoD email only goes to subscribers of the release's ministries. A release for a
-  ministry nobody subscribes to publishes normally and sends no email (seen on boxs.ca with a
-  CITZ release, 2026-10-05).
-- **Editor** — If Flickr is down at publish time, the release still goes out on time without the
-  photo. A Flickr alert shows on the release, and the photo appears once Flickr recovers.
 - **Administrator** — The break-glass administrator (LOCAL_ADMIN_*) has no email address, so
   "Email me a copy" is disabled for it. Use a real staff account to test email.
 - **Administrator** — A fresh install comes with the default page types (News Release,
@@ -65,14 +54,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   catches up on the next one, in one digest.
 - **Operations** — Pause holds every NoD send (nothing is dropped). Pause and resume are logged
   and emailed to `NOD_OPS_EMAIL` when it is set.
-- **Editor** — A correction never re-emails subscribers. Unpublishing stops anything not yet
-  sent and keeps the release out of later digests.
-- **Editor** — Subscriber emails show the release's Summary (pre-filled from the body,
-  editable), not the subheadline — the same as legacy.
-- **Editor** — A release's media lists (if any) are chosen in Publish settings; picking any
-  media list sends the full-text media version to that list's members, replacing the
-  As-It-Happens copy for anyone who's both (one email, never two). Media lists lock once a
-  Release or Factsheet has gone live; an Advisory must have at least one.
 - **Operations** — Media list membership (who's on each list, where they came from, and anyone
   flagged "needs attention" — a Media Hub contact whose chosen address collided with someone
   else's, or whose address disappeared) is managed through NoD's admin API, not a staff-web
@@ -207,9 +188,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   Subscribers. Bold means a media-list member: tell Media Relations.
 - **Operations** — A summary list stops at 500 lines and says how many more there were; the rest are
   in the bounce mailbox.
-- **Editor** — Replies to a release, advisory, story or factsheet email go to the address set as
-  `NOD_REPLY_TO` (gcpe.news in production). Replies to the digest, emergency alerts and
-  subscription emails go to the sending mailbox (noreply.newsondemand), as in legacy.
 - **Operations** — Keep `DIST_MAIL_REPLY_TO` unset in production: if set, it becomes the Reply-To of
   every NoD email that has none (digest, emergency, subscription emails).
 - **Developer** — Distribution's `GET /api/bounces/summary` (Distribution.Operate) replaced
@@ -218,11 +196,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Operations** — A media-list member already flagged "bouncing" still shows, in bold, every time
   they bounce again — not just the first time. Tell Media Relations each time it reappears; the flag
   alone doesn't mean anyone has fixed the mailbox.
-- **Editor** — In the release editor you can save one section while another is still saving (or
-  press several Save buttons in the sticky bar in a row). Each save waits its turn — the section
-  shows "Waiting to save…", then "Saving…" — and nothing you typed is lost. "Someone else changed
-  this — reload to see their changes" now only appears when another person really did change the
-  release.
 
 ## Phase 4i — emergency alerts feed, retention purge, legacy import
 
@@ -442,12 +415,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Phase 5h — The NRMS link and the Forecast
 
-- **Editor** — Releases has a new first tab, Forecast: releases planned or scheduled from now on, and the Calendar activities a release may be planned for (confirmed, not confidential, an "Approved…" category, starting from now on), in time order.
-- **Editor** — On the Forecast, "Start a release" opens New release with the activity's id, and fills in the planned publish time (its start), the location (its city), its lead and shared ministries, sectors, themes and tags. Check them before creating.
-- **Editor** — On New release, type a Calendar activity id to see what it is; "Fill in from activity N" copies its details. Nothing is filled in for an activity that has ended, or whose category doesn't start with "Approved"; the page says which.
-- **Editor** — A release can be linked only to an activity the Calendar has, and not a deleted one. A release imported with an activity that wasn't migrated shows "Legacy activity N, not migrated" and keeps it until you change it.
-- **Editor** — Calendar activities show on the Forecast and in the lookup only if your Calendar access lets you see them in the Calendar. Without Calendar access you see only releases; ask a Calendar administrator for access.
-- **Editor** — "Translations required" under the activity id is the activity's Translations list from the Calendar. Has Translations still follows the translation files you upload.
 - **All Calendar users** — An activity's "BC Gov News" shows each linked release's status (Draft, Approved, Scheduled, Published, Failed) within a minute of the change in NRMS. A release being corrected or taken down still shows Published until it's done. A deleted release disappears.
 - **Operations** — The NRMS migration adds `calendar_activities`, `calendar_viewers` and `organizations.is_hq`. On first start with the Calendar mounted, the stack asks Core to republish once, so NRMS learns who has Calendar access and which organizations are HQ.
 - **Operations** — `npm run calendar:replay-to-nrms` and then `npm run nrms:replay-activity-links` (each a dry run until `-- --confirm`) fill NRMS's copy of the Calendar's activities and the Calendar's release lists. Run them in that order after any legacy release import too: the bulk importer doesn't emit link changes itself, so `nrms:replay-activity-links` is what sends status to the Calendar for the releases it just imported. The second reports how many releases name an activity that wasn't migrated.
@@ -508,8 +475,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Developer** — The News API has a service-only `POST /api/v2/internal/similar` for NRMS (role `NewsApi.Similar`). It never stores, caches or logs the draft text it is sent, and only ever returns published posts.
 - **Operations** — With the staff-AI flag on (and a provider and pgvector), the News API's embedding worker runs even when semantic search is off: AI matching compares drafts with published posts' vectors. Search and related posts stay in text mode until `semanticSearch` is also on.
 - **Administrator** — Standalone (OpenShift): NRMS needs `NEWS_API_URL` and an Entra app registration holding the News API's `NewsApi.Similar` app role (`NEWS_API_TOKEN_URL`, `NEWS_API_CLIENT_ID`, `NEWS_API_CLIENT_SECRET`, `NEWS_API_SCOPE`) for "Similar published releases". Without `NEWS_API_URL` the panel doesn't appear. On the stack it's wired automatically.
-- **Editor** — The release editor has a "Similar published releases" panel. Press **Find similar** to see up to 10 published posts like this release, each with its date, lead ministry, a link to the public page (it opens in a new tab) and whether it's an *AI match* or a *Text match*. It compares the release as last saved, so save first. Nothing is sent until you press the button.
-- **Editor** — While staff AI is on, the panel says "Sends this draft's text to the AI service to compare." If the AI service is unavailable, the panel says so and shows text matches instead.
 - **Viewer** — The panel is for editors only; viewers don't see it.
 - **Developer** — `npm run site:quality` builds a fictional, production-config copy of the public site and runs axe (zero violations allowed) and Lighthouse (accessibility ≥ 95, performance, best practices and SEO ≥ 90) on every page type. It needs Playwright's Chromium (`npx playwright install chromium`). CI runs it as the `site-quality` job.
 - **Developer** — `npm run search:spot-check` runs 20 searches over a fictional corpus in a throwaway database and lists the top 5 for each. Text mode must find every expected post. With the stand-in provider the semantic column proves only that the plumbing works; set `EMBEDDINGS_PROVIDER=azure-openai` and the Azure settings to check real relevance once Azure is available (Q70).
@@ -524,14 +489,13 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Entra staff sign-in
 
-- **Editor**, **Site editor**, **Viewer** — "Sign in with Microsoft" signs you in with your government Microsoft account. You need a Core account first: if the screen says "Your account hasn't been set up", ask an administrator to create you. Signing out of the staff app doesn't sign you out of Microsoft.
+- **Viewer** — "Sign in with Microsoft" signs you in with your government Microsoft account. You need a Core account first: if the screen says "Your account hasn't been set up", ask an administrator to create you. Signing out of the staff app doesn't sign you out of Microsoft.
 - **Administrator** — Switching on Entra sign-in also switches on Entra token checks in every app (`ENTRA_TENANT_ID` is a shared, stack-wide setting), so each app's `<PREFIX>_AUTH_AUDIENCE` must be filled in too, or the site won't start.
 - **Operations** — In *real* production with Entra sign-in on, user passwords are refused unless `CORE_LOCAL_PASSWORDS_ALLOWED=true`. A test site run with `NODE_ENV=production` (`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` or `SITE_ENVIRONMENT=test`, e.g. boxs.ca) is unaffected either way. The break-glass administrator (`LOCAL_ADMIN_*`) is unaffected too.
 - **Developer** — `FAKE_ENTRA_ENABLED=true` (tests and test sites only) mounts a fake Microsoft sign-in at `/fake-entra` with two made-up identities, `entra-staff@example.test` and `entra-unknown@example.test`. It needs `CORE_PUBLIC_BASE_URL` and is refused in real production and alongside real Entra settings, by the same test-site rule as `CORE_LOCAL_PASSWORDS_ALLOWED` above.
 
 ## Hardening batch 1
 
-- **Editor**, **Site editor** — Saving no longer throws keyboard focus back to the top of the page: the button you pressed (or the field you pressed Enter in) keeps focus. It shows and reads as busy until the save finishes: sighted users see a highlighted border on the button, and a screen reader announces it as unavailable.
 - **Operations** — The tick now runs `calendar.orphan-sweep`. It deletes Calendar attachment bytes that no attachment references any more (left behind when a delete failed after a replace or remove), only once they are a day old, at most 50 per tick. A failure logs "[calendar] orphan sweep could not delete a stored file" with the error's type only; it retries on its next pass.
 - **Developer** — `npm run test:clean-dbs` lists leftover test databases (`test_<20 hex>`, `test_nr_<16 hex>`) and roles (`nr_<16 hex>`); `-- --confirm` drops them. It skips anything in use or created in the last hour (`-- --min-age-minutes=N` to change), so it is safe while another checkout's tests run.
 - **Developer** — NRMS's upload routes (release files, site files, page images) take the name in the `X-GCPE-File-Name` header, percent-encoded, like the Calendar's. `?name=` is refused with a 400.

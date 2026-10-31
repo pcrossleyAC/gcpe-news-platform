@@ -1,11 +1,13 @@
-import { and, asc, desc, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm";
+import { visible, type Viewer } from "@gcpe/calendar-contract";
 import type { DbOrTx } from "@gcpe/db-kit";
 import type { ReleaseRecord } from "@gcpe/events";
 import {
   LANG_EN, POST_KIND, statusText, type ListQuery, type ReleaseListItem, type ReleasePage, type ReleaseStatus, type ReleaseType, type SearchQuery,
 } from "@gcpe/nrms-contract";
+import { factsOf } from "../calendar/lookup";
 import {
-  documentLanguages, newsReleases, organizations, pageImageLanguages, pageImages, pageTypes, releaseCategories, releaseDocuments,
+  calendarActivities, documentLanguages, newsReleases, organizations, pageImageLanguages, pageImages, pageTypes, releaseCategories, releaseDocuments,
   releaseLanguages, releaseLog as releaseLogTable, releasePublications, type NewsReleaseRow,
 } from "../db/schema";
 
@@ -75,22 +77,43 @@ const ACTIVITY_QUERY = /^[A-Za-z]+-(\d+)$/;
 const MAX_INT = 2_147_483_647;
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
-export function searchReleases(db: DbOrTx, q: SearchQuery, opts: QueryOptions): Promise<ReleasePage<ReleaseListItem>> {
-  const filters: (SQL | undefined)[] = [ne(newsReleases.status, "deleted")];
+/** Whether `viewer` can see Calendar activity `id` (the release editor's lookup rule, calendar/lookup.ts). */
+async function activityVisibleTo(db: DbOrTx, id: number, viewer: Viewer | null): Promise<boolean> {
+  if (viewer === null) return false;
+  const [a] = await db.select().from(calendarActivities).where(eq(calendarActivities.id, id));
+  return !!a && !a.isDeleted && !a.isConfidential && visible(viewer, factsOf(a));
+}
+
+/**
+ * Headline search, or a Calendar activity search for a LETTERS-digits query (not NEWS-). The
+ * activity search answers alone only when `viewer` can see that activity in the Calendar and a
+ * release is linked to it; otherwise ("COVID-19" names no activity anyone means) the releases
+ * linked to it and the headline matches are both returned, with the same filters.
+ */
+export async function searchReleases(db: DbOrTx, q: SearchQuery, opts: QueryOptions, viewer: Viewer | null): Promise<ReleasePage<ReleaseListItem>> {
+  const base: (SQL | undefined)[] = [ne(newsReleases.status, "deleted")];
+  const inCategory = (kind: "ministries" | "sectors", key: string) =>
+    sql`EXISTS (SELECT 1 FROM ${releaseCategories} c WHERE c.release_id = ${newsReleases.id} AND c.kind = ${kind} AND c.key = ${key})`;
+  if (q.ministry) base.push(inCategory("ministries", q.ministry));
+  if (q.sector) base.push(inCategory("sectors", q.sector));
+  const order = [sql`coalesce(${newsReleases.releasedAt}, ${newsReleases.publishAt}) DESC NULLS LAST`, sql`${firstHeadline} ASC`];
+  const run = (match: SQL | undefined) => pageOf(db, and(...base, match), order, q.page, SEARCH_PAGE_SIZE, opts);
+  const headline = q.q
+    ? sql`EXISTS (SELECT 1 FROM ${releaseDocuments} d JOIN ${documentLanguages} dl ON dl.document_id = d.id
+      WHERE d.release_id = ${newsReleases.id} AND dl.headline ILIKE ${`%${likeEscape(q.q)}%`})`
+    : undefined;
   const activity = ACTIVITY_QUERY.exec(q.q);
   if (activity && !/^NEWS-/i.test(q.q)) {
     const n = Number(activity[1]);
-    filters.push(n <= MAX_INT ? eq(newsReleases.activityId, n) : sql`false`);
-  } else if (q.q) {
-    filters.push(sql`EXISTS (SELECT 1 FROM ${releaseDocuments} d JOIN ${documentLanguages} dl ON dl.document_id = d.id
-      WHERE d.release_id = ${newsReleases.id} AND dl.headline ILIKE ${`%${likeEscape(q.q)}%`})`);
+    if (n > MAX_INT) return run(headline);
+    const linked = eq(newsReleases.activityId, n);
+    if (await activityVisibleTo(db, n, viewer)) {
+      const byActivity = await run(linked);
+      if (byActivity.total > 0) return byActivity;
+    }
+    return run(or(linked, headline));
   }
-  const inCategory = (kind: "ministries" | "sectors", key: string) =>
-    sql`EXISTS (SELECT 1 FROM ${releaseCategories} c WHERE c.release_id = ${newsReleases.id} AND c.kind = ${kind} AND c.key = ${key})`;
-  if (q.ministry) filters.push(inCategory("ministries", q.ministry));
-  if (q.sector) filters.push(inCategory("sectors", q.sector));
-  const order = [sql`coalesce(${newsReleases.releasedAt}, ${newsReleases.publishAt}) DESC NULLS LAST`, sql`${firstHeadline} ASC`];
-  return pageOf(db, and(...filters), order, q.page, SEARCH_PAGE_SIZE, opts);
+  return run(headline);
 }
 
 /** Legacy GetFirstOrganization. */

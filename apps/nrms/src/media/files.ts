@@ -1,6 +1,6 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
-import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
+import { aType, RELEASE_FILE_MAX_MB, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { appendMatchingExtension, randomFileKey, sniff, type ObjectStore, type SniffedType } from "@gcpe/storage";
 import { newsReleases, releaseFiles } from "../db/schema";
 import { ReleaseNotFoundError, ReleaseRuleError } from "../releases/errors";
@@ -18,7 +18,7 @@ export interface AddReleaseFileInput {
 }
 
 /** Release files (translations and media assets) — 25 MiB per upload (constraints.md). */
-export const MAX_RELEASE_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_RELEASE_FILE_BYTES = RELEASE_FILE_MAX_MB * 1024 * 1024;
 const MAX_LABEL = 200;
 
 const LOG_NOUN: Record<ReleaseFileKind, string> = { translation: "translation", asset: "media file" };
@@ -62,7 +62,7 @@ export async function addReleaseFile(db: Db, store: ObjectStore, id: string, inp
     return await mutateRelease(db, id, input.version, actor, async (tx, row) => {
       // Same rule as spec §4 (no categories beyond ministries ⇒ no translations or media files).
       if (!typeRules(row.type).categoriesBeyondMinistries) {
-        throw new ReleaseRuleError([`An ${TYPE_LABEL[row.type]} has no translations or media files.`]);
+        throw new ReleaseRuleError([`${aType(row.type)} has no translations or media files.`]);
       }
       await tx.insert(releaseFiles).values({ releaseId: row.id, kind: input.kind, storageKey: key, label, contentType, size: input.bytes.length });
       await syncFlag(tx, row.id, input.kind);

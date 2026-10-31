@@ -3,7 +3,7 @@ import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { wallClockToInstant } from "@gcpe/config";
 import {
-  assetUrlProblem, LANG_EN, LANG_FR, TYPE_LABEL, typeRules,
+  aType, assetUrlProblem, LANG_EN, LANG_FR, TYPE_LABEL, typeRules,
   type AddDocumentInput, type AddTranslationInput, type AssetInput, type CategoriesInput, type CreateReleaseInput, type DocumentLanguageInput,
   type LanguageId, type Layout, type MetaInput, type ReleaseType, type ReleaseView, type ReorderDocumentsInput, type SettingsInput,
 } from "@gcpe/nrms-contract";
@@ -84,9 +84,9 @@ function leadOf(lead: string | null, ministries: string[]): string | null {
 function assertTypeAllows(type: ReleaseType, x: { sectors?: string[]; themes?: string[]; tags?: string[]; mediaListKeys?: string[]; pageImageId?: string | null }): void {
   const r = typeRules(type);
   const p: string[] = [];
-  if (!r.categoriesBeyondMinistries && ((x.sectors?.length ?? 0) || (x.themes?.length ?? 0) || (x.tags?.length ?? 0))) p.push(`A ${TYPE_LABEL[type]} has no sectors, themes or tags.`);
-  if (!r.mediaListsAllowed && (x.mediaListKeys?.length ?? 0)) p.push(`A ${TYPE_LABEL[type]} has no media distribution lists.`);
-  if (!r.pageImageAllowed && x.pageImageId) p.push(`A ${TYPE_LABEL[type]} has no page image.`);
+  if (!r.categoriesBeyondMinistries && ((x.sectors?.length ?? 0) || (x.themes?.length ?? 0) || (x.tags?.length ?? 0))) p.push(`${aType(type)} has no sectors, themes or tags.`);
+  if (!r.mediaListsAllowed && (x.mediaListKeys?.length ?? 0)) p.push(`${aType(type)} has no media distribution lists.`);
+  if (!r.pageImageAllowed && x.pageImageId) p.push(`${aType(type)} has no page image.`);
   if (p.length) throw new ReleaseRuleError(p);
 }
 
@@ -223,7 +223,7 @@ export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Ac
     let toSubscribers: boolean;
     if (rules.nodAllowed) toSubscribers = input.toSubscribers;
     else if (row.type === "update") toSubscribers = row.toSubscribers; // imported Updates keep what they had
-    else if (input.toSubscribers) throw new ReleaseRuleError([`A ${TYPE_LABEL[row.type]} can't be sent to News On Demand subscribers.`]);
+    else if (input.toSubscribers) throw new ReleaseRuleError([`${aType(row.type)} can't be sent to News On Demand subscribers.`]);
     else toSubscribers = false;
 
     // Fix round 1 follow-up: plannedPublishAtLocal (BC wall-clock, no offset) is converted
@@ -265,7 +265,7 @@ export function saveCategories(db: Db, id: string, input: CategoriesInput, actor
 export function saveAsset(db: Db, id: string, input: AssetInput, actor: Actor): Promise<ReleaseView> {
   return mutateRelease(db, id, input.version, actor, async (tx, row) => {
     if (!typeRules(row.type).assetsAllowed && (input.assetUrl || input.assetAltText || input.hasMediaAssets)) {
-      throw new ReleaseRuleError([`A ${TYPE_LABEL[row.type]} has no media asset.`]);
+      throw new ReleaseRuleError([`${aType(row.type)} has no media asset.`]);
     }
     const problem = input.assetUrl ? (assetUrlProblem(input.assetUrl) ?? flickrAssetProblem(input.assetUrl)) : null;
     if (problem) throw new ReleaseRuleError([problem]);
@@ -284,7 +284,7 @@ export function saveMeta(db: Db, id: string, input: MetaInput, actor: Actor): Pr
     mutateRelease(db, id, input.version, actor, async (tx, row) => {
       const rules = typeRules(row.type);
       if (!rules.categoriesBeyondMinistries && (input.summary.trim() || input.keywords?.trim() || input.socialMediaSummary?.trim())) {
-        throw new ReleaseRuleError([`A ${TYPE_LABEL[row.type]} has no summary, keywords or social media summary.`]);
+        throw new ReleaseRuleError([`${aType(row.type)} has no summary, keywords or social media summary.`]);
       }
       let key = row.key;
       if (input.key !== null && input.key !== row.key) {

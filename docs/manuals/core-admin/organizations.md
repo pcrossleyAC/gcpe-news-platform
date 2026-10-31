@@ -31,7 +31,7 @@ The public page shows the alternate contact only when there is a primary contact
 
 ### The abbreviation
 
-Every release number contains the lead ministry's abbreviation, as in 2026HLTH0001. Use 2 to 10 capital letters or digits. No two active ministries may share one. A release can't be approved until its lead ministry has an abbreviation: release editors see "The lead ministry has no abbreviation in Core; add one before approving." Changing it affects only releases approved from then on.
+Every release number contains the lead ministry's abbreviation, as in 2026HLTH0001. Use 2 to 10 capital letters or digits. No two active ministries may share one. A release can't be approved until its lead ministry has an abbreviation: release editors see "The lead ministry has no abbreviation yet. Ask an administrator to add one, then approve again." Changing it affects only releases approved from then on.
 
 ## Add a ministry
 
