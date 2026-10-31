@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { upsertOrganization } from "./organizations";
 import { setCalendarAccess } from "./calendar-access";
-import { BREAK_GLASS_ID, endSession, sessionGate, startSession } from "./sessions";
+import { BREAK_GLASS_ID, breakGlassSessionKnown, endSession, sessionGate, startSession } from "./sessions";
 import { createUser, createUserSchema, sessionUserFor, setRoles, updateUser } from "./users";
 
 const SECRET = "session-secret-for-gate-tests-0123456789";
@@ -55,5 +55,13 @@ describe("Core's session gate", () => {
     const glass = await startSession(tdb.db, BREAK_GLASS_ID, now());
     expect(await gate(v(BREAK_GLASS_ID, glass))).toMatchObject({ id: BREAK_GLASS_ID });
     expect(await sessionGate(tdb.db, { localConfigured: false, secret: SECRET })(v(BREAK_GLASS_ID, glass))).toBeNull();
+  });
+
+  // Review S N2: the in-memory break-glass list doesn't grow for ever.
+  it("forgets break-glass sessions older than the limit plus an hour when a new one starts", async () => {
+    const old = await startSession(tdb.db, BREAK_GLASS_ID, now() - 13 * 3600 - 60);
+    const recent = await startSession(tdb.db, BREAK_GLASS_ID, now() - 11 * 3600);
+    expect(breakGlassSessionKnown(old)).toBe(false);
+    expect(breakGlassSessionKnown(recent)).toBe(true);
   });
 });
