@@ -23,7 +23,7 @@ You add activities for your ministries, and change the activities your ministrie
 
 1. Open the activity: choose its title in the list or the calendar, or its number on **Updates**.
 2. Make your changes. As soon as you change something, the activity is yours to edit: anyone else who opens it sees it read-only until you finish.
-3. Choose **Save**. You are back where you came from and see, for example, "Saved HLTH-21."
+3. Choose **Save**. You are back where you came from and see, for example, "Saved HLTH-21." In an HQ organization you also see **Save and review**, which saves and marks it reviewed in one step. See [HQ review and corporate queries](manual:calendar-advanced-hq).
 
 **Cancel** goes back without saving. If you have unsaved changes, the Hub asks "You have unsaved changes to this activity. Leave anyway and discard them?" Choose **Stay** or **Leave**.
 
