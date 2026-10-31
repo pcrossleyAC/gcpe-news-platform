@@ -177,3 +177,14 @@ describe("plainLanguageProblems", () => {
     expect(plainLanguageProblems("## Government terms\n\nPick the term you need.\n")).toEqual([]);
   });
 });
+
+describe("the retired running notes", () => {
+  it("stay retired", async () => {
+    const { existsSync } = await import("node:fs");
+    const notes = new URL("../docs/manuals/running-notes.md", import.meta.url);
+    expect(
+      existsSync(notes),
+      "docs/manuals/running-notes.md was retired: staff notes go in a manual page, operations notes in docs/deploy/ and developer notes in docs/developer-notes.md. See docs/manuals/README.md.",
+    ).toBe(false);
+  });
+});
