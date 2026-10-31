@@ -156,6 +156,8 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [failure, setFailure] = useState<{ text: string; conflict: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  /** The save under way is a Save and review. */
+  const [reviewing, setReviewing] = useState(false);
   const [dirty, setDirtyState] = useState(restored !== null);
   const dirtyRef = useRef(restored !== null);
   const setDirty = (v: boolean) => {
@@ -319,7 +321,29 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   useShortcut("save", readOnly ? null : submitForm);
   useShortcut("submit", !readOnly && isNew ? submitForm : null);
 
-  const save = async () => {
+  /** Why Review refused, once the save before it had gone through (Save and review). */
+  const reviewRefusal = (e: unknown): { text: string; conflict: boolean } | null => {
+    const saved = `Saved ${minIdOf(view!)}, but it wasn't marked reviewed:`;
+    if (!(e instanceof ApiError)) return { text: `${saved} couldn't reach the server. Choose Review to try again.`, conflict: false };
+    if (e.status === 401) return null;
+    if (e.status === 409 && e.code === "version_conflict") return { text: `${saved} someone changed it in between. Reload to see their change, then choose Review.`, conflict: true };
+    return { text: `${saved} ${e.message}`, conflict: false };
+  };
+  /** The save went through but Review didn't: the page holds the saved activity, nothing unsaved. */
+  const showSaved = (v: ActivityView) => {
+    setView(v);
+    setFields(v.fields);
+    original.current = v.fields;
+    setDirty(false);
+    setOverridden(v.lookAhead ? initialOverride(v.lookAhead.hqSection, v.lookAhead.inferred) : false);
+  };
+
+  /**
+   * Save; with `andReview` (Save and review, for those who can review: owner, 2026-10-31), then
+   * Review at the version the save returned, exactly as choosing Review after Save would. A failed
+   * save reviews nothing; a failed review leaves the activity saved and says so.
+   */
+  const save = async (andReview = false) => {
     setFailure(null);
     const problems = checkActivity(fields, {
       rules: config.rules,
@@ -344,6 +368,18 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
       } else {
         const r = await activityApi.update(view!.id, { ...body, version: view!.version, tabId: lock.tabId });
         forgetDraft();
+        if (andReview && r.activity) {
+          try {
+            await activityApi.review(r.activity.id, r.activity.version);
+          } catch (e) {
+            showSaved(r.activity);
+            const refused = reviewRefusal(e);
+            if (refused) setFailure(refused);
+            return;
+          }
+          leave(returnTo, `Saved and reviewed ${minIdOf(r.activity)}.${extra(r.warnings)}`, true);
+          return;
+        }
         // Replaces the editor's entry: Back doesn't reopen it, and a reload doesn't repeat the notice.
         leave(returnTo, r.activity ? `Saved ${minIdOf(r.activity)}.${extra(r.warnings)}` : r.warnings.join(" "), true);
       }
@@ -469,8 +505,23 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
         </fieldset>
         <div className="gcpe-actions">
           {!readOnly && (
-            <Button type="submit" isPending={saving} pendingLabel="Saving…" shortcut={isNew ? ["save", "submit"] : "save"}>
+            <Button type="submit" isPending={saving && !reviewing} pendingLabel="Saving…" shortcut={isNew ? ["save", "submit"] : "save"}>
               Save
+            </Button>
+          )}
+          {/* No shortcut: ⌘/Ctrl+S stays a plain Save, and marking reviewed takes a deliberate choice. */}
+          {!readOnly && !isNew && view!.can.review && (
+            <Button
+              variant="secondary"
+              isPending={saving && reviewing}
+              pendingLabel="Saving and reviewing…"
+              onPress={() => {
+                if (saving) return;
+                setReviewing(true);
+                void save(true).finally(() => setReviewing(false));
+              }}
+            >
+              Save and review
             </Button>
           )}
           <Button variant="secondary" onPress={() => navigate(returnTo, { state: backOnList(returnTo) })}>

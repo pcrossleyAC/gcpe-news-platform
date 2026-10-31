@@ -109,6 +109,94 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(calls.filter((c) => c.url.endsWith("/lock") && c.init?.method === "PUT")).toHaveLength(1);
   });
 
+  describe("Save and review (form-order audit #4; owner, 2026-10-31)", () => {
+    const REVIEW = `${ACTIVITY}/review`;
+    const isReview = (c: Call) => c.url === REVIEW && c.init?.method === "POST";
+    const reviewer = { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, view: view({ can: { edit: true, clone: true, delete: false, review: true } }) };
+    const saveAndReview = () => screen.getByRole("button", { name: "Save and review" });
+
+    it("is offered beside Save only to someone who can review, and not on a new activity", async () => {
+      stubActivity([], reviewer);
+      renderActivity("/calendar/activities/20001");
+      await title();
+      const save = screen.getByRole("button", { name: "Save" });
+      expect(saveAndReview().previousElementSibling).toBe(save);
+      expect(saveAndReview()).not.toHaveAttribute("aria-keyshortcuts");
+      cleanup();
+      vi.unstubAllGlobals();
+      stubActivity([]);
+      renderActivity("/calendar/activities/20001");
+      await title();
+      expect(screen.queryByRole("button", { name: "Save and review" })).toBeNull();
+      cleanup();
+      vi.unstubAllGlobals();
+      stubActivity([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG });
+      renderActivity("/calendar/activities/new");
+      await title();
+      expect(screen.queryByRole("button", { name: "Save and review" })).toBeNull();
+    });
+
+    it("saves, then reviews at the version the save returned, and goes back saying both", async () => {
+      const calls: Call[] = [];
+      stubActivity(calls, { ...reviewer, other: (url, init) => savedOk(url, init) ?? (url === REVIEW && init?.method === "POST" ? jsonResponse(200, view({ version: 5, status: "reviewed" })) : undefined) });
+      const { router } = renderActivity(`/calendar/activities/20001?return=${encodeURIComponent("/calendar")}`);
+      await userEvent.type(await title(), " fixed");
+      await userEvent.click(saveAndReview());
+      expect(await screen.findByRole("heading", { level: 1, name: "Sample list" })).toBeInTheDocument();
+      expect(router.state.location.state).toEqual({ calendarNotice: "Saved and reviewed HLTH-20001.", calendarActivityId: 20001 });
+      expect(putBody(calls)).toMatchObject({ title: "Sample activity fixed", version: 3 });
+      const order = calls.filter((c) => isPut(c) || isReview(c)).map((c) => (isPut(c) ? "save" : "review"));
+      expect(order).toEqual(["save", "review"]);
+      expect(JSON.parse(String(calls.find(isReview)!.init!.body))).toEqual({ version: 4 });
+    });
+
+    it("a save that fails reviews nothing", async () => {
+      const calls: Call[] = [];
+      stubActivity(calls, { ...reviewer, other: (url, init) => (isPut({ url, init }) ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity. Reload to see their changes." }) : undefined) });
+      renderActivity("/calendar/activities/20001");
+      await userEvent.type(await title(), " fixed");
+      await userEvent.click(saveAndReview());
+      expect(await screen.findByText("Someone else changed this activity. Reload to see their changes.")).toBeInTheDocument();
+      expect(calls.some(isReview)).toBe(false);
+      expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Sample activity fixed");
+    });
+
+    it("a review that fails after a good save says so plainly, and the page shows the saved activity, ready to Review", async () => {
+      const calls: Call[] = [];
+      stubActivity(calls, {
+        ...reviewer,
+        other: (url, init) =>
+          url === ACTIVITY && init?.method === "PUT"
+            ? jsonResponse(200, { id: 20001, activity: view({ version: 4, status: "changed", fields: { ...FIELDS, title: "Sample activity fixed" }, can: reviewer.view.can }), warnings: [] })
+            : url === REVIEW && init?.method === "POST"
+              ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity. Reload to see their changes." })
+              : undefined,
+      });
+      const { router } = renderActivity("/calendar/activities/20001");
+      await userEvent.type(await title(), " fixed");
+      await userEvent.click(saveAndReview());
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Saved HLTH-20001, but it wasn't marked reviewed: someone changed it in between. Reload to see their change, then choose Review.");
+      expect(within(alert).getByRole("button", { name: "Reload" })).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe("/calendar/activities/20001");
+      expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Sample activity fixed");
+      // Saved: nothing is unsaved any more, so Review is offered again.
+      expect(screen.getByRole("button", { name: "Review" })).toBeEnabled();
+      expect(screen.queryByText("Save or cancel your changes to review or clone.")).toBeNull();
+    });
+
+    it("any other review failure after a good save gives the server's reason", async () => {
+      stubActivity([], {
+        ...reviewer,
+        other: (url, init) => savedOk(url, init) ?? (url === REVIEW && init?.method === "POST" ? jsonResponse(403, { error: "HQ reviews activities" }) : undefined),
+      });
+      renderActivity("/calendar/activities/20001");
+      await userEvent.type(await title(), " fixed");
+      await userEvent.click(saveAndReview());
+      expect(await screen.findByRole("alert")).toHaveTextContent("Saved HLTH-20001, but it wasn't marked reviewed: HQ reviews activities");
+    });
+  });
+
   it("Cancel, with nothing changed, goes back to the list naming this activity, so its row is brought into view", async () => {
     stubActivity([]);
     const { router } = renderActivity(`/calendar/activities/20001?return=${encodeURIComponent("/calendar")}`);

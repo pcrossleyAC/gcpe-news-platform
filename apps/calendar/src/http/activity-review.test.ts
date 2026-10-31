@@ -74,6 +74,40 @@ describe("review, review selected and Clear LA Status (spec addendum §7.1)", ()
     });
   });
 
+  describe("Save and review (the editor's two steps: the save, then Review at the version the save returned; form-order audit #4)", () => {
+    const review = (who: keyof World["as"], id: number, version: number) => call(app, "post", `/api/activities/${id}/review`, w.as[who].cookie, { version });
+    const save = (who: keyof World["as"], a: { id: number; version: number; fields: ActivityFields }, over: Partial<ActivityFields>) =>
+      call(app, "put", `/api/activities/${a.id}`, w.as[who].cookie, { ...a.fields, ...over, version: a.version, tabId: null });
+
+    it("HQ Advanced's own save raises flags; reviewing at the saved version clears them: one history entry each", async () => {
+      const a = await make();
+      const saved = await save("hqAdvanced", a, { title: "Fixed typo" });
+      expect(saved.status).toBe(200);
+      const after = saved.body.activity as { id: number; version: number };
+      expect(await row(a.id)).toMatchObject({ status: "changed", needsReview: ["title"], version: after.version });
+      expect((await review("hqAdvanced", a.id, after.version)).status).toBe(200);
+      expect(await row(a.id)).toMatchObject({ status: "reviewed", needsReview: [], version: after.version + 1, title: "Fixed typo" });
+      expect((await historyOf(tdb.db, a.id)).slice(-2).map((h) => h.action)).toEqual(["updated", "reviewed"]);
+    });
+
+    it("someone else's save in between: the save step conflicts, so nothing is saved or reviewed", async () => {
+      const a = await make();
+      expect((await save("editor", a, { venue: "Someone else's hall" })).status).toBe(200);
+      expect((await save("hqAdvanced", a, { title: "Mine" })).body).toMatchObject({ code: "version_conflict" });
+      expect(await row(a.id)).toMatchObject({ title: a.fields.title, venue: "Someone else's hall", status: "changed" });
+    });
+
+    it("a change between the two steps: the save stands and the review conflicts", async () => {
+      const a = await make();
+      const after = (await save("hqAdvanced", a, { title: "Saved first" })).body.activity as { id: number; version: number; fields: ActivityFields };
+      // The ministry editor saves from their own view (no Look Ahead fields) at the version HQ's save left.
+      const theirs = (await call(app, "get", `/api/activities/${a.id}`, w.as.editor.cookie)).body as { fields: ActivityFields };
+      expect((await save("editor", { ...after, fields: theirs.fields }, { venue: "In between" })).status).toBe(200);
+      expect((await review("hqAdvanced", a.id, after.version)).body).toMatchObject({ code: "version_conflict" });
+      expect(await row(a.id)).toMatchObject({ title: "Saved first", venue: "In between", status: "changed" });
+    });
+  });
+
   describe("Review selected", () => {
     const reviewSelected = (who: keyof World["as"], items: { id: number; version: number }[]) => call(app, "post", "/api/activities/review-selected", w.as[who].cookie, { items });
 

@@ -152,7 +152,8 @@ test.describe("the activity editor, as each role (spec addendum §3 row 5e, §6)
     await expect(page.getByRole("group", { name: "Look Ahead" })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "LA Section" })).toBeVisible();
     await expect(titleBox(page)).toHaveAccessibleDescription(/Changed: needs review/);
-    await expect(page.getByRole("button", { name: "Review" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save and review" })).toHaveCount(0);
     await expectNoSeriousA11yViolations(page, "the editor as an HQ Editor");
     await page.goto(activityUrl(f.ids.B));
     await expect(page.getByRole("heading", { level: 1, name: "Activity not found" })).toBeVisible();
@@ -166,9 +167,22 @@ test.describe("the activity editor, as each role (spec addendum §3 row 5e, §6)
     const hqAdvanced = await sessionOf(CAL_HQ_ADVANCED_EMAIL);
     await useCookie(context, hqAdvanced);
     await page.goto(activityUrl(id));
-    await page.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Review", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: `Reviewed HLTH-${id}.` })).toBeVisible();
     expect((await apiCall<{ status: string }>(hqAdvanced, `/calendar/api/activities/${id}`)).status).toBe("reviewed");
+  });
+
+  test("HQ Advanced: Save and review saves the fix and marks it reviewed in one step", async ({ page, context }) => {
+    const f = await listFixture();
+    const stamp = stampOf();
+    const id = await scratch(f, `Save and review ${stamp}`);
+    const hqAdvanced = await sessionOf(CAL_HQ_ADVANCED_EMAIL);
+    await useCookie(context, hqAdvanced);
+    await page.goto(activityUrl(id));
+    await titleBox(page).fill(`Fixed ${stamp}`);
+    await page.getByRole("button", { name: "Save and review" }).click();
+    await expect(page.getByRole("status").filter({ hasText: `Saved and reviewed HLTH-${id}.` })).toBeVisible();
+    expect(await apiCall<{ status: string; needsReview: string[]; fields: { title: string } }>(hqAdvanced, `/calendar/api/activities/${id}`)).toMatchObject({ status: "reviewed", needsReview: [], fields: { title: `Fixed ${stamp}` } });
   });
 
   test("HQ Administrator: a deleted activity opens read-only, with Review its only action", async ({ page, context }) => {
@@ -176,7 +190,7 @@ test.describe("the activity editor, as each role (spec addendum §3 row 5e, §6)
     await useCookie(context, await sessionOf(CAL_HQ_ADMIN_EMAIL));
     await page.goto(activityUrl(f.ids.F));
     await expect(page.getByText("This activity is deleted.", { exact: false })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Review" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Review", exact: true })).toBeEnabled();
     for (const name of ["Save", "Clone", "Delete"]) await expect(page.getByRole("button", { name })).toHaveCount(0);
     await expect(titleBox(page)).toBeDisabled();
   });
