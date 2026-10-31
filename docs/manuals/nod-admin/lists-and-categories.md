@@ -22,7 +22,7 @@ The **Offered** column shows whether people can choose each list:
 |---|---|
 | **Yes** | People can choose it. |
 | **No** | You stopped offering it. |
-| **No (retired)** | The list was retired where its name is set, such as a ministry that no longer exists. |
+| **No (retired)** | Core administrators retired it, such as a ministry that no longer exists. Its name shows "(retired)". |
 | **No (category not offered)** | You stopped offering its whole category. |
 | **No (media list)** | A media list. People never choose media lists themselves. |
 

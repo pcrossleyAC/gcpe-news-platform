@@ -39,7 +39,12 @@ Use this for people who aren't in Media Hub.
 - For a **Disabled** person, their bounce count starts again, and **History** shows "Added to a media list while Disabled. News release email stays off", with what was switched off under **Detail**.
 - When the address was **Disabled**, you see "Added to the list. Their news release email stays off; open their record to turn it on." instead of "Added to the list."
 - If a **Disabled** person also wants news release email again, choose **open their record** in that message. Tick **As it happens** or **Daily digest** and their lists, then choose **Save preferences**.
-- If the person unsubscribed from this list, or unsubscribed from all News On Demand email, the Hub asks "This person unsubscribed" and says when. It asks even if they have since signed up again for news releases, and even if their old record has since been removed for good. Choose **Add anyway** only if they have asked to get media releases again.
+- The Hub asks "This person unsubscribed" and says when, in these cases:
+  - They unsubscribed while they were on this list. Unsubscribing stops all their email, media lists included. The Hub asks even if they have signed up again since.
+  - They unsubscribed from all News On Demand email while they weren't on this list, and haven't signed up again since. Once they sign up again, it doesn't ask.
+  - Their old record was removed for good after they unsubscribed. The Hub asks even if they have signed up again since.
+
+  It doesn't ask when staff deleted them or removed them from the list, or once you have added them back to this list. Choose **Add anyway** only if they have asked to get media releases again.
 
 ## Remove a reporter
 
