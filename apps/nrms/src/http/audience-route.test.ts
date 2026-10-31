@@ -18,7 +18,7 @@ describe("GET /api/releases/:id/audience", () => {
       db: tdb.db,
       auth: { session: { secret: SECRET } },
       eventSecrets: {},
-      workflow: { timeZone: "America/Vancouver", countSubscribers: async () => 41_000, countMediaContacts: async () => 312 },
+      workflow: { timeZone: "America/Vancouver", releaseAudience: async () => ({ asItHappens: 40_000, digest: 1_200, mediaContacts: 312 }) },
     });
   const cookie = async (roles: string[]) => `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000c", name: "Pat", email: "pat@example.invalid", roles })).token}`;
 
@@ -39,7 +39,7 @@ describe("GET /api/releases/:id/audience", () => {
 
     const res = await request(app()).get(`/api/releases/${id}/audience`).set("cookie", editor);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ subscribers: { count: 41_000 }, mediaContacts: { count: 312 } });
+    expect(res.body).toEqual({ asItHappens: { count: 40_000 }, digest: { count: 1_200 }, mediaContacts: { count: 312 } });
 
     expect((await request(app()).get(`/api/releases/${id}/audience`).set("cookie", viewer)).status).toBe(403);
     expect((await request(app()).get("/api/releases/00000000-0000-4000-8000-0000000000ff/audience").set("cookie", editor)).status).toBe(404);

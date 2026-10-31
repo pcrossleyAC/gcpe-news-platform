@@ -629,7 +629,7 @@ describe("ReleaseEditorPage", () => {
           if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "health", name: "Health" }, { key: "sector1", name: "Sector One" }], themes: [], tags: [] });
           if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
           if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
-          if (url.endsWith("/audience")) return jsonResponse(200, { subscribers: null, mediaContacts: null });
+          if (url.endsWith("/audience")) return jsonResponse(200, { asItHappens: null, digest: null, mediaContacts: null });
           const write = Object.entries(writes).find(([suffix]) => url.endsWith(suffix));
           if (write && init?.method && init.method !== "GET") {
             const result = write[1](current, init.body ? JSON.parse(init.body as string) : {});

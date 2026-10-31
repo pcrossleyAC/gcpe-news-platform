@@ -26,7 +26,7 @@ function renderActions(view: ReleaseView, setView: (v: ReleaseView) => void = ()
 
 /** The Publish now dialog's own lookups (site address, list and category names) plus the POSTs it
  * may send, recorded in `posts`. */
-function publishFetch(posts: { url: string; body: unknown }[], next: ReleaseView, audience: unknown = { subscribers: null, mediaContacts: null }) {
+function publishFetch(posts: { url: string; body: unknown }[], next: ReleaseView, audience: unknown = { asItHappens: null, digest: null, mediaContacts: null }) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith("/audience")) return audience instanceof Response ? audience : jsonResponse(200, audience);
     if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.example.test/" });
@@ -297,16 +297,29 @@ describe("ActionsSection", () => {
       return screen.findByRole("dialog");
     };
 
-    it("says about how many subscribers and media contacts it reaches", async () => {
-      vi.stubGlobal("fetch", publishFetch([], firstPublish, { subscribers: { count: 41000 }, mediaContacts: { count: 312 } }));
+    it("says how many are emailed now, how many get the daily digest, and how many media contacts", async () => {
+      vi.stubGlobal("fetch", publishFetch([], firstPublish, { asItHappens: { count: 40000 }, digest: { count: 1200 }, mediaContacts: { count: 312 } }));
       const dialog = await open();
-      await waitFor(() => expect(dialog).toHaveTextContent("Reaches about 41,000 News on Demand subscribers and about 312 media contacts."));
+      await waitFor(() => expect(dialog).toHaveTextContent("Emails about 40,000 News on Demand subscribers and about 312 media contacts now. About 1,200 daily digest subscribers get it in the next 5 PM digest."));
+    });
+
+    it("the Schedule confirmation says they're emailed when it goes out", async () => {
+      const v = releaseView({ ...firstPublish, publishAt: null });
+      vi.stubGlobal("fetch", publishFetch([], v, { asItHappens: { count: 5 }, digest: { count: 1 }, mediaContacts: { count: 3 } }));
+      renderActions(v);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Schedule" }));
+      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-11" } });
+      fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "10:00" } });
+      await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+      const dialog = await screen.findByRole("dialog");
+      await waitFor(() => expect(dialog).toHaveTextContent("Emails about 5 News on Demand subscribers and about 3 media contacts when it goes out. About 1 daily digest subscriber gets it in the next 5 PM digest."));
     });
 
     it("says when a count isn't available", async () => {
-      vi.stubGlobal("fetch", publishFetch([], firstPublish, { subscribers: { count: null }, mediaContacts: { count: 312 } }));
+      vi.stubGlobal("fetch", publishFetch([], firstPublish, { asItHappens: { count: null }, digest: { count: null }, mediaContacts: { count: 312 } }));
       const dialog = await open();
-      await waitFor(() => expect(dialog).toHaveTextContent("Reaches News on Demand subscribers (count unavailable) and about 312 media contacts."));
+      await waitFor(() => expect(dialog).toHaveTextContent("Emails News on Demand subscribers (count unavailable) and about 312 media contacts now. Daily digest subscribers get it in the next 5 PM digest (count unavailable)."));
     });
 
     it("says the counts aren't available when they can't be fetched, and still lets it publish", async () => {

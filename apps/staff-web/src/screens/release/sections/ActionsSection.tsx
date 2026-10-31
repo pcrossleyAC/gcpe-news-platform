@@ -789,23 +789,36 @@ function PublishConsequences({
           ? `Emails News on Demand subscribers who follow ${followed.length > 0 ? `any of: ${listText([...new Set(followed)])}` : "this release's categories"}${view.ministries.length > 0 ? " — and everyone subscribed to all news" : ""}.`
           : "News on Demand subscribers will not be emailed."}
       </li>
-      {countable && <li>{audienceText(audience, toSubscribers, toLists)}</li>}
+      {countable && <li>{audienceText(audience, toSubscribers, toLists, atInstant ? "when it goes out" : "now")}</li>}
     </ul>
   );
 }
 
-/** `GET /nrms/api/releases/:id/audience` (apps/nrms/src/releases/workflow.ts audiencePreview):
- * null for an audience this publish doesn't email; `count` null when NoD couldn't say. */
+/** `GET /nrms/api/releases/:id/audience` (apps/nrms/src/releases/workflow.ts audiencePreview,
+ * from NoD's own send rules): null for an audience this publish doesn't email; `count` null when
+ * NoD couldn't say. */
 interface Audience {
-  subscribers: { count: number | null } | null;
+  asItHappens: { count: number | null } | null;
+  digest: { count: number | null } | null;
   mediaContacts: { count: number | null } | null;
 }
 
-/** "Reaches about 41,000 News on Demand subscribers and about 312 media contacts." */
-function audienceText(audience: Audience | null | undefined, toSubscribers: boolean, toLists: boolean): string {
+/** "Emails about 40,000 News on Demand subscribers and about 312 media contacts now. About 1,200
+ * daily digest subscribers get it in the next 5 PM digest." `when` is "now" or "when it goes out". */
+function audienceText(audience: Audience | null | undefined, toSubscribers: boolean, toLists: boolean, when: string): string {
   if (audience === undefined) return "Counting how many people it reaches…";
   if (audience === null) return "How many people it reaches isn't available right now.";
-  const about = (a: { count: number | null } | null, what: string) => (a?.count != null ? `about ${a.count.toLocaleString("en-CA")} ${what}` : `${what} (count unavailable)`);
-  const parts = [toSubscribers ? about(audience.subscribers, "News on Demand subscribers") : null, toLists ? about(audience.mediaContacts, "media contacts") : null].filter(Boolean);
-  return `Reaches ${parts.join(" and ")}.`;
+  const num = (n: number) => n.toLocaleString("en-CA");
+  const about = (a: { count: number | null } | null, what: string) => (a?.count != null ? `about ${num(a.count)} ${what}` : `${what} (count unavailable)`);
+  const now = [toSubscribers ? about(audience.asItHappens, "News on Demand subscribers") : null, toLists ? about(audience.mediaContacts, "media contacts") : null].filter(Boolean);
+  const sentences = [`Emails ${now.join(" and ")} ${when}.`];
+  if (toSubscribers) {
+    const d = audience.digest?.count;
+    sentences.push(
+      d != null
+        ? `About ${num(d)} daily digest subscriber${d === 1 ? " gets" : "s get"} it in the next 5 PM digest.`
+        : "Daily digest subscribers get it in the next 5 PM digest (count unavailable).",
+    );
+  }
+  return sentences.join(" ");
 }

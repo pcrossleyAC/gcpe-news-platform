@@ -3,6 +3,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { wallClockToInstant } from "@gcpe/config";
 import type { Db, Tx } from "@gcpe/db-kit";
 import { matchesItem } from "./matching";
+import { DIGEST_ITEM_RULE, DIGEST_SUBSCRIBER } from "./recipients";
 import { itemCategories, renderDigest, type Rendered, type RenderItem, type RenderOptions } from "./render";
 import { digestRuns, items, nodSettings, sendJobs } from "./db/schema";
 import { safeErrorLabel } from "./subscribe/journeys";
@@ -179,15 +180,14 @@ export async function runDigestIfDue(
     const { rows: groupRows } = await tx.execute<{ keys: string[]; subscriber_ids: string[] }>(sql`
       WITH win AS (
         SELECT key, list_keys FROM items
-         WHERE kind = 'release' AND to_subscribers AND withdrawn_at IS NULL
-           AND COALESCE(post_kind, '') <> 'advisories'
+         WHERE ${DIGEST_ITEM_RULE}
            AND published_at > ${windowStart} AND published_at <= ${cutoff}),
       m AS (
         SELECT DISTINCT s.id AS subscriber_id, w.key
           FROM subscribers s
           JOIN subscriptions sub ON sub.subscriber_id = s.id
           JOIN win w ON ${matchesItem(sql`sub.list_key`, sql`w.list_keys`)}
-         WHERE s.status = 'active' AND s.digest),
+         WHERE ${DIGEST_SUBSCRIBER}),
       per AS (SELECT subscriber_id, array_agg(key ORDER BY key) AS keys FROM m GROUP BY subscriber_id)
       SELECT keys, array_agg(subscriber_id ORDER BY subscriber_id) AS subscriber_ids FROM per GROUP BY keys
     `);

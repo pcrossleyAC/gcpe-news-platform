@@ -205,30 +205,30 @@ describe("workflow", () => {
     expect(log.rows.map((r) => r.text)).toEqual(["Created Release", "Approved Release", "Scheduled for Immediate Release", "Scheduled for Immediate Release"]);
   });
 
-  // Suite review R6: the counts schedule() stores, worked out before the Publish now / Schedule
-  // dialog opens, read-only. null = that audience isn't emailed; { count: null } = unavailable.
-  it("audiencePreview: the same two counts as schedule(), read-only, with unavailable and not-emailed kept apart", async () => {
+  // Suite review R6 (fix round 1): who a first publish reaches, from NoD's breakdown by its own
+  // send rules (apps/nod/src/audience.test.ts pins those against real sends). Read-only.
+  it("audiencePreview: NoD's emailed-now, digest and media counts for a first publish, read-only; unavailable kept apart from not emailed", async () => {
     const v = await createRelease(db(), { ...sampleCreate, headline: "Audience preview", mediaListKeys: ["regional"] }, editor);
     const a = await approve(db(), v.id, v.version, editor, deps);
-    let subKeys: string[] = [];
-    let mediaKeys: string[] = [];
-    const counting = { timeZone: TZ, countSubscribers: async (k: string[]) => ((subKeys = k), 41_000), countMediaContacts: async (k: string[]) => ((mediaKeys = k), 312) };
-    expect(await audiencePreview(db(), v.id, counting)).toEqual({ subscribers: { count: 41_000 }, mediaContacts: { count: 312 } });
-    expect(subKeys).toEqual(["ministries:health", "sectors:health"]);
-    expect(mediaKeys).toEqual(["media-distribution-lists:regional"]);
-    // Nothing changed: same version, nothing stored, no history line.
+    let asked: unknown = null;
+    const counting = { timeZone: TZ, releaseAudience: async (input: unknown) => ((asked = input), { asItHappens: 40_000, digest: 1_200, mediaContacts: 312 }) };
+    expect(await audiencePreview(db(), v.id, counting)).toEqual({ asItHappens: { count: 40_000 }, digest: { count: 1_200 }, mediaContacts: { count: 312 } });
+    expect(asked).toEqual({ listKeys: ["ministries:health", "sectors:health"], mediaListKeys: ["media-distribution-lists:regional"], toSubscribers: true, postKind: "releases" });
     const after = (await loadView(db(), v.id))!;
     expect(after.version).toBe(a.version);
-    expect(after.nodSubscribers).toBeNull();
     const log = await tdb.db.execute<{ text: string }>(sql`SELECT text FROM release_log WHERE release_id = ${v.id} ORDER BY id`);
     expect(log.rows.map((r) => r.text)).toEqual(["Created Release", "Approved Release"]);
 
     // A failing or missing NoD: unavailable, not "nobody".
-    const down = { timeZone: TZ, countSubscribers: async () => { throw new Error("down"); } };
-    expect(await audiencePreview(db(), v.id, down)).toEqual({ subscribers: { count: null }, mediaContacts: { count: null } });
+    const down = { timeZone: TZ, releaseAudience: async () => { throw new Error("down"); } };
+    expect(await audiencePreview(db(), v.id, down)).toEqual({ asItHappens: { count: null }, digest: { count: null }, mediaContacts: { count: null } });
+    expect(await audiencePreview(db(), v.id, { timeZone: TZ })).toEqual({ asItHappens: { count: null }, digest: { count: null }, mediaContacts: { count: null } });
+    // Media lists off: no media number; subscribers off: no subscriber numbers.
+    await tdb.db.execute(sql`UPDATE news_releases SET to_subscribers = false WHERE id = ${v.id}`);
+    expect(await audiencePreview(db(), v.id, counting)).toMatchObject({ asItHappens: null, digest: null, mediaContacts: { count: 312 } });
     // Already released (republish after an unpublish): no first-publish counts.
     await tdb.db.execute(sql`UPDATE news_releases SET released_at = now() WHERE id = ${v.id}`);
-    expect(await audiencePreview(db(), v.id, counting)).toEqual({ subscribers: null, mediaContacts: null });
+    expect(await audiencePreview(db(), v.id, counting)).toEqual({ asItHappens: null, digest: null, mediaContacts: null });
     expect(await audiencePreview(db(), "00000000-0000-4000-8000-0000000000ff", counting)).toBeNull();
   });
 
