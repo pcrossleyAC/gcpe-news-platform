@@ -193,6 +193,66 @@ describe("media list members", () => {
     expect(s).toMatchObject({ status: "active", asItHappens: false, digest: false, source: "self" });
     const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, self!.id));
     expect(subs.map((r) => r.listKey)).toEqual(["media-distribution-lists:budget"]);
+    const history = await tdb.db.select().from(subscriberHistory).where(and(eq(subscriberHistory.subscriberId, self!.id), sql`${subscriberHistory.action} <> 'unsubscribed'`));
+    expect(history).toMatchObject([{ action: "media-list-added", detail: "media-distribution-lists:budget" }]);
+    expect(result.newsEmailOff).toBe(false);
+  });
+
+  // Owner decision 2026-10-30: a Disabled address added to a media list gets media email only.
+  for (const status of ["disabled", "pending"] as const) {
+    it(`adding a ${status} subscriber makes them media-only: timings off, public lists dropped, other media lists kept, bounce count restarted, history says so`, async () => {
+      const [self] = await tdb.db
+        .insert(subscribers)
+        .values({ email: "off@example.test", status, source: "self", asItHappens: true, digest: true, bounceWindowFrom: sql`now() - interval '30 days'` })
+        .returning();
+      await tdb.db.execute(
+        sql`INSERT INTO lists (list_key, category, key, name) VALUES ('media-distribution-lists:arts', 'media-distribution-lists', 'arts', 'Arts')`,
+      );
+      await tdb.db.insert(subscriptions).values([
+        { subscriberId: self!.id, listKey: "ministries:health" },
+        { subscriberId: self!.id, listKey: "*" },
+        { subscriberId: self!.id, listKey: "media-distribution-lists:arts" },
+      ]);
+
+      const before = new Date();
+      const result = await addMediaMember(tdb.db, "budget", { email: "off@example.test", source: "manual-media" }, ACTOR);
+      expect(result).toEqual({ subscriberId: self!.id, created: false, newsEmailOff: true });
+      const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, self!.id));
+      expect(s).toMatchObject({ status: "active", asItHappens: false, digest: false, source: "self", endedAt: null });
+      expect(s!.bounceWindowFrom!.getTime()).toBeGreaterThanOrEqual(before.getTime() - 5_000);
+      const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, self!.id));
+      expect(subs.map((r) => r.listKey).sort()).toEqual(["media-distribution-lists:arts", "media-distribution-lists:budget"]);
+      // Both rows share the transaction's timestamp, so their order isn't fixed.
+      const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, self!.id)).orderBy(subscriberHistory.action);
+      expect(history.map((h) => [h.action, h.detail])).toEqual([
+        ["media-list-added", "media-distribution-lists:budget"],
+        ["media-news-email-off", `was ${status}: as-it-happens, digest; *, ministries:health`],
+      ]);
+    });
+  }
+
+  it("adding an active subscriber leaves their timings, public lists and bounce count alone and reports news email unchanged", async () => {
+    const [self] = await tdb.db
+      .insert(subscribers)
+      .values({ email: "on@example.test", status: "active", source: "self", asItHappens: true, digest: false })
+      .returning();
+    await tdb.db.insert(subscriptions).values({ subscriberId: self!.id, listKey: "ministries:health" });
+    const result = await addMediaMember(tdb.db, "budget", { email: "on@example.test", source: "manual-media" }, ACTOR);
+    expect(result).toEqual({ subscriberId: self!.id, created: false, newsEmailOff: false });
+    const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, self!.id));
+    expect(s).toMatchObject({ status: "active", asItHappens: true, digest: false, bounceWindowFrom: null });
+    const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, self!.id));
+    expect(subs.map((r) => r.listKey).sort()).toEqual(["media-distribution-lists:budget", "ministries:health"]);
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, self!.id));
+    expect(history.map((h) => h.action)).toEqual(["media-list-added"]);
+  });
+
+  it("a disabled subscriber who opted out of the list still needs confirmOptOut before becoming media-only", async () => {
+    const [self] = await tdb.db.insert(subscribers).values({ email: "oo@example.test", status: "disabled", source: "self", asItHappens: true, digest: true }).returning();
+    await tdb.db.insert(subscriberHistory).values({ subscriberId: self!.id, actor: "subscriber", action: "media-list-opted-out", detail: "media-distribution-lists:budget" });
+    await expect(addMediaMember(tdb.db, "budget", { email: "oo@example.test", source: "manual-media" }, ACTOR)).rejects.toBeInstanceOf(OptedOutError);
+    const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, self!.id));
+    expect(s).toMatchObject({ status: "disabled", asItHappens: true, digest: true });
   });
 
   it("listMediaLists reports live member counts", async () => {

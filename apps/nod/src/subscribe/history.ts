@@ -14,6 +14,7 @@ export const HISTORY_ACTIONS = [
   "record-merged",
   "unsubscribed",
   "media-list-added",
+  "media-news-email-off",
   "media-list-removed",
   "media-list-opted-out",
   "media-ended",

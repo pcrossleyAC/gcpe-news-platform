@@ -78,6 +78,17 @@ describe("staff media-list routes", () => {
     expect(actions.map((h) => [h.action, h.actor])).toEqual(expect.arrayContaining([["media-list-added", "Erin Editor"], ["media-list-removed", "Erin Editor"]]));
   });
 
+  it("adding a Disabled address says its news release email stays off; a new or active one doesn't", async () => {
+    const fresh = await as(editor).post("/api/media-lists/budget/members", { email: "fresh-add@example.test" });
+    expect(fresh.body).toMatchObject({ created: true, newsEmailOff: false });
+    const [off] = await tdb.db.insert(subscribers).values({ email: "off-add@example.test", status: "disabled", source: "self", asItHappens: true, digest: true }).returning();
+    const added = await as(editor).post("/api/media-lists/budget/members", { email: "off-add@example.test" });
+    expect(added.status).toBe(200);
+    expect(added.body).toEqual({ subscriberId: off!.id, created: false, newsEmailOff: true });
+    const again = await as(editor).post("/api/media-lists/budget/members", { email: "off-add@example.test" });
+    expect(again.body).toMatchObject({ created: false, newsEmailOff: false });
+  });
+
   it("search travels in a POST body with a fixed page size; the old GET path is gone", async () => {
     mediaHub.search.mockResolvedValue({ contacts: [contact], page: 2, pageSize: 25, total: 26 });
     const res = await as(editor).post("/api/media-hub/contacts/search", { q: " Sam ", page: 2 });

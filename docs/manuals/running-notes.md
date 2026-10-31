@@ -56,10 +56,9 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   the `NOD_` prefix) is optional. Unset, every NoD email (As-It-Happens, emergency, digest, and
   the manage/verify emails) shows a plain blue "Government of B.C." heading instead of a banner
   image.
-- **Administrator** — Emergency alerts go out through `POST /api/emergency-items` (NoD.Admin
-  only), to every active subscriber on the `emergency:alerts` list regardless of their own
-  As-It-Happens/digest preference. The same guid always resolves to the same item (201 the first
-  time, 200 after).
+- **Developer** — Besides the EMCR feed, an emergency item can be posted through
+  `POST /api/emergency-items` (NoD.Admin only). The same guid always resolves to the same item
+  (201 the first time, 200 after). Who it goes to is in the Subscribers administrator manual.
 - **Developer** — An item's email summary is the release's own Summary field (`r.summary`),
   never the English document's subheadline, even when one is set.
 - **Operations** — The digest runs from the scheduled tick at 17:00 BC time. A missed tick
@@ -106,16 +105,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   NoD's own pause (4b). `npm run distribution:capacity` measures local send throughput and
   confirms the per-minute cap holds under concurrent workers; it only ever runs against
   localhost and is never run against SiteGround (see `docs/deploy/siteground.md`).
-- **Administrator** — Pausing Distribution holds every message below `system` priority
-  (As-It-Happens, digests, media lists). It does not hold verification, manage-link or ops-notice
-  mail, so subscribers can still confirm/unsubscribe and staff still get the pause/resume email
-  while paused. Nothing is dropped — held messages send once resumed. A row already claimed by
-  the sender when the switch flips still finishes sending; pausing only stops new claims.
-- **Administrator** — A message held by a Distribution pause for longer than `MAIL_MAX_AGE_MS`
-  (24 hours by default) fails on its first post-resume send error rather than retrying further,
-  and otherwise still goes out on resume however old it is — age alone never blocks a send. A
-  long pause (for example, across a writ period) releases whatever stale mail is still pending
-  as soon as sending resumes; decide whether that's acceptable before resuming.
 - **Operations** — Bounce handling's own env keys: Distribution's `BOUNCE_SOURCE` (`fake` on
   every test site, including boxs.ca — `graph` is built but not run live until Q23 is answered),
   and, in `graph` mode only, `GRAPH_TENANT_ID`/`GRAPH_CLIENT_ID`/`GRAPH_CLIENT_SECRET`/
@@ -127,27 +116,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   `{"raw": "<the .eml's full text>"}`; the next scheduled bounce run (every 15 minutes, or the
   next tick in dev) picks it up. Distribution's own `/api/bounces/inbox`
   (`Distribution.Operate`) 404s unless it's actually running in fake mode.
-- **Administrator** — A bounce-disabled subscriber is `disabled`, exactly like a staff-disabled
-  one (4a): kept, sent nothing, still shown as a member by the membership endpoint, and
-  reactivated by re-subscribing themselves — the verify email reaching them again proves the
-  mailbox works. Never deleted, unlike legacy. A media-list member is flagged "needs attention"
-  instead and is never disabled; staff clear the flag by hand.
-- **Administrator** — The 10-in-15-days disable/flag rule counts *emails*, not delivery rows: a
-  digest that lands in a subscriber's inbox as one message is one count toward the 10, even
-  though it leaves several delivery rows (one per item). Ten consecutive bounced digests disable
-  (or flag) a subscriber just as fast as ten consecutive bounced As-It-Happens emails would — it
-  is never easier to trip for a digest subscriber than for anyone else.
-- **Administrator** — The daily bounce summary (`BOUNCE_SUMMARY_EMAIL`, unset means none) goes
-  out at 08:00 BC time, only when there was a bounce to report since the last one — one line per
-  bounced subscriber (address, hard/soft and status code, and the outcome: recorded/disabled/
-  flagged, media-list members shown in bold), then the counts of unmatched and ignored messages.
-  Soft bounces are recorded on the subscriber's deliveries but never counted or listed.
-- **Administrator** — "Something to report" (what decides whether that daily summary sends at
-  all) includes an *unmatched* bounce (a bounce report Distribution couldn't tie to any message
-  it sent) — it still shows up in the unmatched count even with no subscriber line of its own.
-  Mail Distribution classified `ignored` (not recognisable as a bounce at all — an auto-reply, a
-  calendar response, anything else that landed in the inbox) never does; a window with only
-  ignored mail sends no summary.
 - **Editor** — Bulk actions apply to the rows ticked on the current page only, always after a
   confirmation. Skipped rows (already in that state, or a deleted subscriber you tried to
   activate) are counted in the message, not treated as errors.
@@ -172,10 +140,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   other links in those emails, such as manage preferences, stop working.
 - **Viewer** — For an all-news subscriber, the subscriber page shows "All news" and also their
   timing (As it happens, Daily digest, or both).
-- **Administrator** — "Lists and categories" (Subscribers) shows each list's active subscribers.
-  NoD Admins can stop offering a list or a whole category (existing subscribers keep it and
-  still get its releases) and set the order the public sees. Names come from Core, and media
-  lists from NRMS.
 - **Editor** — Media lists: add a reporter from Media Hub (choose which of their emails) or type
   an address for someone not in Media Hub. If they unsubscribed, you'll be asked to confirm, and
   you'll see when they left; add them only if they've asked to come back.
@@ -243,9 +207,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   Subscribers. Bold means a media-list member: tell Media Relations.
 - **Operations** — A summary list stops at 500 lines and says how many more there were; the rest are
   in the bounce mailbox.
-- **Administrator** — Operations → "Soft bounces counted as hard" lists 4.x.x codes that count like a
-  hard bounce. It is empty until the business supplies its list (Q42). A change applies from the
-  next bounce on, never to earlier ones, and is recorded in the operations log.
 - **Editor** — Replies to a release, advisory, story or factsheet email go to the address set as
   `NOD_REPLY_TO` (gcpe.news in production). Replies to the digest, emergency alerts and
   subscription emails go to the sending mailbox (noreply.newsondemand), as in legacy.
@@ -273,12 +234,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Operations** — The first time NoD reads a feed (or after its address changes), it records the
   alerts already there without emailing anyone. Only alerts posted after that are sent.
 - **Operations** — An alert edited on the EMCR site updates our copy but is not sent again.
-- **Administrator** — Operations → "Retention purge" is off until the business sets retention rules
-  (Q25). It lists what it would delete if it ran now. Turning it on asks first; from then on it
-  deletes, every night at 3:00, for good. Turning it off stops further deletions. Subscribers
-  disabled by bounces are never deleted by it.
-- **Administrator** — Links in sent emails are cleared 10 days after they expire whether or not the
-  purge is on. They stopped working long before.
 - **Editor** — If you add a journalist to a media list and are asked to confirm because they opted
   out, that holds even if their old record was purged: the opt-out is kept without the address. The
   same applies to an address that simply unsubscribed and was later purged, even if it was never on
@@ -312,9 +267,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
   NoD keeps them and the report lists them as "unsubscribed in legacy before a newer subscribe in
   NoD". A media list
   staff removed and re-added in NoD after legacy's own removal stays.
-- **Administrator** — Imported subscribers who had already ended in legacy are kept for 90 days from
-  cutover, whatever their legacy end date (confirmed by Paul, Q47), so a bad import can still be
-  redone from legacy before the purge removes anything.
 - **Operations** — The NoD migrations `0031_items_link_identity` (a column) and
   `0032_items_link_identity_index` (an index only, on the small `items` table) speed up the
   emergency feed's check of which alerts it already has. The first check after the deploy fills

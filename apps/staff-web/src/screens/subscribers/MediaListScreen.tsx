@@ -13,7 +13,7 @@ import { canEditSubscribers } from "./access";
 import { attentionLabel, mediaErrorText, memberSourceLabel } from "./labels";
 import { MediaHubSearch } from "./MediaHubSearch";
 import { ResolveDialog } from "./ResolveDialog";
-import type { AddMemberBody, MediaListSummary, MediaMember, MediaOptOutPage } from "./types";
+import type { AddMemberBody, AddMemberResult, MediaListSummary, MediaMember, MediaOptOutPage } from "./types";
 
 /**
  * `/hub/subscribers/media-lists/:key`: one media list's members, who left it by unsubscribing,
@@ -32,7 +32,7 @@ export function MediaListScreen(): React.JSX.Element {
   const [members, setMembers] = useState<MediaMember[] | null>(null);
   const [optOuts, setOptOuts] = useState<MediaOptOutPage | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<React.ReactNode>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,10 +66,19 @@ export function MediaListScreen(): React.JSX.Element {
     setActionError(null);
     setMessage(null);
     try {
-      await apiFetch(`${base}/members`, { method: "POST", body });
+      const added = await apiFetch<AddMemberResult>(`${base}/members`, { method: "POST", body });
       setOptOutPrompt(null);
       setEmail("");
-      setMessage("Added to the list.");
+      // A Disabled address comes onto the list for media email only (owner decision 2026-10-30).
+      setMessage(
+        added?.newsEmailOff ? (
+          <>
+            Added to the list. Their news release email stays off; <Link to={`/subscribers/${added.subscriberId}`}>open their record</Link> to turn it on.
+          </>
+        ) : (
+          "Added to the list."
+        ),
+      );
       reload();
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.message === "opted-out") {

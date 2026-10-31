@@ -89,6 +89,7 @@ const OPS: OperationsStatus = {
     checkedAt: "2026-10-07T18:00:00.000Z",
     result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, failed: 0, error: null },
   },
+  opsEmailSet: true,
 };
 const LISTS_VIEW: StaffListsView = {
   allNews: 12,

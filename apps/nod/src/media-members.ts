@@ -4,6 +4,7 @@
  * `media-distribution-lists` category (global constraints, "Members").
  */
 import { and, asc, eq, sql } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { lists, subscribers, subscriptions, type SubscriberSource, type SubscriptionRow } from "./db/schema";
 import { MEDIA_CATEGORY, mediaListKey } from "./lists";
@@ -105,11 +106,20 @@ export async function optOutMediaMemberships(tx: DbOrTx, subscriberId: string, a
  * throws {@link OptedOutError}.
  * Reactivating a `deleted` subscriber -- confirmed opt-out or not (they may simply never have
  * resubscribed publicly since) -- must not restart their old public mail: their timing flags are
- * reset to off and their non-media subscriptions are dropped. From `pending`/`disabled`, public
- * state is left untouched. `source` is never changed on an existing row.
- *
+ * reset to off and their non-media subscriptions are dropped. A `disabled` (or `pending`)
+ * subscriber is made media-only the same way (owner decision 2026-10-30: being added to a media
+ * list is not consent to news release email again); their bounce count restarts as a staff
+ * Activate's does, and history `media-news-email-off` records what was switched off, so staff
+ * can turn it back on if the person asks. `newsEmailOff` reports that case to the caller. An
+ * `active` subscriber's public state is left untouched. `source` is never changed on an
+ * existing row.
  */
-export async function addMediaMember(db: Db, listKey: string, input: AddMediaMemberInput, actor: string): Promise<{ subscriberId: string; created: boolean }> {
+export async function addMediaMember(
+  db: Db,
+  listKey: string,
+  input: AddMediaMemberInput,
+  actor: string,
+): Promise<{ subscriberId: string; created: boolean; newsEmailOff: boolean }> {
   const key = mediaListKey(listKey);
   const email = normaliseEmail(input.email);
   return db.transaction(async (tx) => {
@@ -124,23 +134,34 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
     }
     let subscriberId: string;
     let created = false;
+    let newsOffDetail: string | null = null;
 
     if (existing) {
       const wasDeleted = existing.status === "deleted";
+      const wasOff = existing.status === "disabled" || existing.status === "pending";
       subscriberId = existing.id;
-      const fields: Partial<typeof subscribers.$inferInsert> = { endedAt: null };
+      const fields: PgUpdateSetSource<typeof subscribers> = { endedAt: null };
       if (existing.status === "pending" || existing.status === "deleted" || existing.status === "disabled") fields.status = "active";
       if (input.mediaHubContactId !== undefined) fields.mediaHubContactId = input.mediaHubContactId;
       if (input.mediaHubEmailRef !== undefined) fields.mediaHubEmailRef = input.mediaHubEmailRef;
-      if (wasDeleted) {
+      if (wasDeleted || wasOff) {
         fields.asItHappens = false;
         fields.digest = false;
       }
+      // Bounces from before this add can't re-disable them (as staff-subscribers/actions.ts setStatus).
+      if (wasOff) fields.bounceWindowFrom = sql`now()`;
       await tx.update(subscribers).set(fields).where(eq(subscribers.id, subscriberId));
-      if (wasDeleted) {
-        await tx
+      if (wasDeleted || wasOff) {
+        const dropped = await tx
           .delete(subscriptions)
-          .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
+          .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`))
+          .returning({ listKey: subscriptions.listKey });
+        if (wasOff) {
+          // Same detail shape as staff-preferences-updated: timings; lists.
+          const timing = [existing.asItHappens && "as-it-happens", existing.digest && "digest"].filter(Boolean).join(", ") || "none";
+          const keys = dropped.map((d) => d.listKey).sort().join(", ") || "no lists";
+          newsOffDetail = `was ${existing.status}: ${timing}; ${keys}`;
+        }
       }
     } else {
       const [row] = await tx
@@ -161,7 +182,8 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
 
     await tx.insert(subscriptions).values({ subscriberId, listKey: key }).onConflictDoNothing();
     await writeHistory(tx, subscriberId, actor, "media-list-added", key);
-    return { subscriberId, created };
+    if (newsOffDetail !== null) await writeHistory(tx, subscriberId, actor, "media-news-email-off", newsOffDetail);
+    return { subscriberId, created, newsEmailOff: newsOffDetail !== null };
   });
 }
 

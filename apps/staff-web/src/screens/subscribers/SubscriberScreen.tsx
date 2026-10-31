@@ -67,16 +67,27 @@ function PreferencesView({ detail, options }: { detail: SubscriberDetail; option
   );
 }
 
+/** Which form's success message is showing: one at a time, so a change of address never leaves
+ * an earlier "Preferences saved." on screen (and the other way round). */
+type Notice = "preferences" | "email" | null;
+interface NoticeProps {
+  notice: Notice;
+  setNotice(update: (n: Notice) => Notice): void;
+}
+/** Clears `mine` if it's the message showing, leaving the other form's alone. */
+const clearing = (mine: Exclude<Notice, null>) => (n: Notice) => (n === mine ? null : n);
+
 /** Seeded once per subscriber (the caller keys it by id): a reload after Activate, Deactivate
  * or this form's own save keeps whatever the staff member has ticked but not yet saved. */
-function PreferencesForm({ detail, options, onSaved }: { detail: SubscriberDetail; options: ListOptions | null; onSaved(): void }): React.JSX.Element {
+function PreferencesForm({ detail, options, onSaved, notice, setNotice }: { detail: SubscriberDetail; options: ListOptions | null; onSaved(): void } & NoticeProps): React.JSX.Element {
   const [allNews, setAllNews] = useState(detail.allNews);
   const [listKeys, setListKeys] = useState(detail.listKeys);
   const [asItHappens, setAsItHappens] = useState(detail.asItHappens);
   const [digest, setDigest] = useState(detail.digest);
   const [messages, setMessages] = useState<string[]>([]);
-  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const saved = notice === "preferences";
+  const setSaved = (on: boolean) => setNotice(on ? () => "preferences" : clearing("preferences"));
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -227,7 +238,7 @@ interface OptOutPrompt {
   at: string;
 }
 
-function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; onChanged(): void }): React.JSX.Element {
+function ChangeEmailSection({ detail, onChanged, notice, setNotice }: { detail: SubscriberDetail; onChanged(): void } & NoticeProps): React.JSX.Element {
   const timeZone = useTenantTimeZone();
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
@@ -255,6 +266,7 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
       setEmail("");
       setConfirmEmail("");
       setOptOutPrompt(null);
+      setNotice(() => "email");
       onChanged();
     } catch (caught) {
       const body =
@@ -292,6 +304,7 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
     e.preventDefault();
     setMessages([]);
     setTakenId(null);
+    setNotice(clearing("email"));
     const a = email.trim().toLowerCase();
     const b = confirmEmail.trim().toLowerCase();
     if (a !== b) {
@@ -309,6 +322,7 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
           {m}
         </p>
       ))}
+      {notice === "email" && <p role="status">Email address changed. No confirmation email was sent.</p>}
       {takenId && <Link to={`/subscribers/${takenId}`}>Open that record</Link>}
       <TextField
         label="New email"
@@ -430,6 +444,10 @@ export function SubscriberScreen(): React.JSX.Element {
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [options, setOptions] = useState<ListOptions | null>(null);
+  const [notice, setNoticeState] = useState<Notice>(null);
+  const setNotice = useCallback((update: (n: Notice) => Notice) => setNoticeState(update), []);
+  // Another subscriber's record never inherits this one's success message.
+  useEffect(() => setNoticeState(null), [id]);
 
   const reload = useCallback(() => {
     apiFetch<SubscriberDetail>(`/nod/api/subscribers/${id}`).then(
@@ -532,7 +550,7 @@ export function SubscriberScreen(): React.JSX.Element {
         <Link to={`/subscribers/${detail.id}/history`}>History</Link>
       </p>
 
-      {showPreferences && (canEdit ? <PreferencesForm key={detail.id} detail={detail} options={options} onSaved={reload} /> : <PreferencesView detail={detail} options={options} />)}
+      {showPreferences && (canEdit ? <PreferencesForm key={detail.id} detail={detail} options={options} onSaved={reload} notice={notice} setNotice={setNotice} /> : <PreferencesView detail={detail} options={options} />)}
 
       {canEdit && detail.status !== "deleted" && (
         <>
@@ -540,7 +558,7 @@ export function SubscriberScreen(): React.JSX.Element {
           {/* Changing a pending subscriber's address would leave a row that can never be
            * confirmed (the only way in is the verify link sent to the original address) — the
            * server refuses it (SubscriberStateError), and this hides the dead end up front. */}
-          {detail.status !== "pending" && <ChangeEmailSection detail={detail} onChanged={reload} />}
+          {detail.status !== "pending" && <ChangeEmailSection detail={detail} onChanged={reload} notice={notice} setNotice={setNotice} />}
           <DeleteSection detail={detail} onDeleted={reload} />
         </>
       )}

@@ -7,20 +7,23 @@ import { Button } from "../../shared/BusyButton";
 import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { moveBy } from "../../shared/reorder";
+import { isCoreAdmin } from "../admin/organizations/access";
 import { canAdminSubscribers } from "./access";
 import type { StaffCategory, StaffList, StaffListsView } from "./types";
 
+const MEDIA_LISTS_TEXT = "Media lists aren't changed here. Core administrators set these on Media list names.";
+
 function saveErrorText(e: unknown): string {
   if (e instanceof ApiError && e.status === 409 && e.message === "order-out-of-date") return "The lists changed while you were looking. They've been reloaded; try again.";
-  if (e instanceof ApiError && e.status === 409 && e.message === "managed-in-nrms") return "Media lists are managed in NRMS.";
+  if (e instanceof ApiError && e.status === 409 && e.message === "managed-in-nrms") return MEDIA_LISTS_TEXT;
   return "Couldn't save. Try again.";
 }
 
 /** Whether the public and the staff preferences form are offered `l` (active, switched on, and
  * in a category that's switched on), and if not, the reason staff can't see from the checkbox
- * alone. Media lists are never offered publicly; NRMS manages them. */
+ * alone. Media lists are never offered publicly; Core administrators set them on Media list names. */
 function offeredText(c: StaffCategory, l: StaffList): string {
-  if (!c.editable) return "Managed in NRMS";
+  if (!c.editable) return "No (media list)";
   if (!l.enabled) return "No";
   if (!l.active) return "No (retired)";
   if (!c.enabled) return "No (category not offered)";
@@ -33,7 +36,8 @@ function offeredText(c: StaffCategory, l: StaffList): string {
  * one's subscription is removed or stops being sent. */
 export function ListsScreen(): React.JSX.Element {
   useDocumentTitle("Lists and categories");
-  const canAdmin = canAdminSubscribers(useSession());
+  const session = useSession();
+  const canAdmin = canAdminSubscribers(session);
   const [view, setView] = useState<StaffListsView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -153,7 +157,14 @@ export function ListsScreen(): React.JSX.Element {
             </p>
           ) : (
             <p>
-              Names, order and status come from NRMS (<Link to="/media-list-names">Media list names</Link>).
+              {/* Only Core administrators can open Media list names (shell/nav.ts). */}
+              {isCoreAdmin(session) ? (
+                <>
+                  Media lists aren't changed here. Core administrators set these on <Link to="/media-list-names">Media list names</Link>.
+                </>
+              ) : (
+                MEDIA_LISTS_TEXT
+              )}
             </p>
           )}
           {canAdmin && (

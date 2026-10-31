@@ -55,6 +55,7 @@ describe("operations routes", () => {
       softCodesCounted: [],
       purge: { enabled: false, preview: { pendingSubscribers: 0, endedSubscribers: 0, unusedLinks: 0, expiredSendLinks: 0 }, lastRun: null, nextRunAt: expect.any(String) },
       emergencyFeed: { url: "https://emergency.example.test/feed.xml", checkedAt: null, result: null },
+      opsEmailSet: false,
     });
   });
 

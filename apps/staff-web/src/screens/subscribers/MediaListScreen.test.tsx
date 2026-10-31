@@ -125,6 +125,26 @@ describe("MediaListScreen", () => {
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   });
 
+  it("adding a previously Disabled address says their news release email stays off and links to their record", async () => {
+    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID2, created: false, newsEmailOff: true }) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Email address" }), "lee@example.test{Enter}");
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Added to the list. Their news release email stays off; open their record to turn it on.");
+    expect(within(status).getByRole("link", { name: "open their record" })).toHaveAttribute("href", `/subscribers/${ID2}`);
+  });
+
+  it("adding an address whose news email is unchanged just says it was added", async () => {
+    stub(["NoD.Editor"], { onAdd: () => jsonResponse(200, { subscriberId: ID2, created: false, newsEmailOff: false }) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Email address" }), "lee@example.test{Enter}");
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^Added to the list\.$/);
+    expect(within(status).queryByRole("link")).toBeNull();
+  });
+
   it("Media Hub search posts the term (never in the URL) and adds the chosen email", async () => {
     const calls = stub(["NoD.Editor"]);
     renderIt();

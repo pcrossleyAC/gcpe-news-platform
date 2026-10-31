@@ -232,6 +232,30 @@ describe("SubscriberScreen", () => {
     expect(screen.queryByRole("link", { name: "Open that record" })).toBeNull();
   });
 
+  it("Change email says it worked and clears an earlier Preferences saved; saving preferences again clears the email message", async () => {
+    let current = detail({ status: "active", disabledReason: null });
+    stub(["NoD.Editor"], () => current, {
+      [`PUT /nod/api/subscribers/${ID}/preferences`]: () => [200, { ok: true }],
+      [`POST /nod/api/subscribers/${ID}/email`]: () => {
+        current = { ...current, email: "new@example.test" };
+        return [200, { changed: true }];
+      },
+    });
+    renderAt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Save preferences" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Preferences saved.");
+
+    await user.type(screen.getByLabelText("New email"), "new@example.test");
+    await user.type(screen.getByLabelText("Confirm new email"), "new@example.test");
+    await user.click(screen.getByRole("button", { name: "Change email" }));
+    await screen.findByText("Email address changed. No confirmation email was sent.");
+    expect(screen.getAllByRole("status").map((s) => s.textContent)).toEqual(["Email address changed. No confirmation email was sent."]);
+
+    await user.click(screen.getByRole("button", { name: "Save preferences" }));
+    await waitFor(() => expect(screen.getAllByRole("status").map((s) => s.textContent)).toEqual(["Preferences saved."]));
+  });
+
   it("Change email onto an address that opted out of a media list asks first, and sends confirmOptOut only on confirm", async () => {
     const calls = stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null }), {
       [`POST /nod/api/subscribers/${ID}/email`]: (body) =>
