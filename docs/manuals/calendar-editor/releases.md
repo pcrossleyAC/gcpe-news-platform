@@ -29,7 +29,7 @@ Release editors see Calendar activities on **Releases** > **Forecast** only if t
 
 - its category starts with "Approved", such as **Approved Release**;
 - **Dates Confirmed** is ticked;
-- it isn't marked **Not for Look Ahead**;
+- it isn't marked **Confidential (not for Look Ahead)**;
 - it starts from now on, and isn't deleted;
 - no upcoming release is linked to it yet.
 
@@ -39,6 +39,6 @@ From the **Forecast**, a release editor can start a release for the activity. Th
 
 - Your changes reach **Releases** within a minute.
 - Changing an activity doesn't change a release already linked to it. What was copied into the release stays as it was. Tell the release editor if the release needs to change.
-- Marking an activity **Not for Look Ahead** takes it off the **Forecast**. A release editor who types its number sees, for example, "Calendar activity 3: its details aren't shown to you."
+- Marking an activity **Confidential (not for Look Ahead)** takes it off the **Forecast**. A release editor who types its number sees, for example, "Calendar activity 3: its details aren't shown to you."
 - A deleted activity leaves the **Forecast**, and no release can be linked to it from then on.
 - Nobody is emailed.

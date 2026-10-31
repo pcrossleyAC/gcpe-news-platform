@@ -13,7 +13,7 @@ HQ reviews what the ministries enter. If none of your ministries is an HQ organi
 
 ## What HQ sees
 
-- Every ministry's activities, including those marked **Not for Look Ahead**.
+- Every ministry's activities, including those marked **Confidential (not for Look Ahead)**.
 - On an activity, each field changed since the last review says "Changed: needs review".
 - The **Look Ahead** section on every activity. See [Activity fields](manual:calendar-advanced-fields).
 - **Search for** in the list's **Filters** also searches the **Executive Summary**.
@@ -46,13 +46,15 @@ A corporate query lists every ministry's upcoming activities by status. It repla
 
 **Deleted** finds nothing for you, since you can't see deleted activities.
 
-## The Look Ahead filter
+## The Confidential filter
 
-The **Look Ahead filter** above the list narrows the list, and the reports made from it:
+The **Confidential filter** above the list (the old Calendar's Look Ahead filter) narrows the list, and the reports made from it:
 
-- **Look Ahead Only** shows activities that aren't marked **Not for Look Ahead**.
-- **Not for Look Ahead Only** shows only those that are.
+- **Not confidential only** shows activities that aren't marked **Confidential (not for Look Ahead)**.
+- **Confidential only** shows only those that are.
 - **Show All** turns it off.
+
+It works straight away, without **Apply filters**. While it is on, the line beside **Filters** names it. A saved query doesn't keep it.
 
 ## Clear LA Status
 

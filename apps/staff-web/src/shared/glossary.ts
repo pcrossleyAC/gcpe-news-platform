@@ -84,17 +84,18 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     id: "not-for-look-ahead",
-    term: "Not for Look Ahead",
+    term: "Confidential (not for Look Ahead)",
+    alsoShownAs: ["Not for Look Ahead"],
     area: "Calendar",
     definition:
-      "Marks the activity confidential (the old Calendar's Confidential flag): only its lead and shared ministries, and HQ Advanced users and above, see it in the list, reports, the updates feed and search; it isn't offered on the releases Forecast, and a new activity isn't given a Look Ahead section (one it already has is kept).",
+      "Marks the activity confidential; the old Calendar called it Not for Look Ahead. Only its lead and shared ministries, and HQ Advanced users and above, see it in the list, reports, the updates feed and search. It isn't offered on the releases Forecast. A new activity isn't given a Look Ahead section, but ticking it doesn't take away a section the activity already has. HQ Advanced users and above can narrow the list to confidential activities, or leave them out, with the list's Confidential filter.",
   },
   {
     id: "la-section",
     term: "LA Section",
     area: "Calendar",
     definition:
-      "The Look Ahead section an activity is listed under. It's worked out from the activity's category, Issue, whether its date is confirmed and its comm materials; HQ Editors and above can choose another (marked Override).",
+      "The Look Ahead section an activity is listed under. It's worked out from the fields above it on the activity: Category, Issue, Confidential, Lead Ministry, Comm Materials, Dates Confirmed and the start and end dates. HQ Editors and above can choose another (marked Override).",
   },
   {
     id: "la-status",
@@ -117,7 +118,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Comm Contact",
     alsoShownAs: ["Comm. Contact"],
     area: "Calendar",
-    definition: "Communications contact: the communications staff member responsible for the activity, chosen from the lead ministry's Calendar users (choose the lead ministry first).",
+    definition: "Communications contact: the communications staff member responsible for the activity, chosen from the lead ministry's comm contacts, so the Lead Ministry above it comes first.",
   },
   {
     id: "government-representative",

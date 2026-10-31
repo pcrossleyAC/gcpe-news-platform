@@ -6,7 +6,7 @@ import { Button } from "../../../shared/BusyButton";
 import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { messagesOf } from "../../admin/messages";
 import { downloadExport, listApi } from "./api";
-import { corporateSummary } from "./FilterPanel";
+import { corporateSummary, LOOK_AHEAD_LABELS } from "./FilterPanel";
 import { ToolMessages } from "./ToolMessages";
 
 /** POST /activities/review-selected takes at most this many. */
@@ -234,13 +234,11 @@ export function CorporateBanner({ active, onClear }: { active: CorporateQuery; o
   );
 }
 
-const LOOK_AHEAD_LABELS: Record<LookAheadFilter, string> = { all: "Show All", look_ahead_only: "Look Ahead Only", not_for_look_ahead_only: "Not for Look Ahead Only" };
-
-/** The Admin Settings' Look Ahead filter (Default.aspx:684-698; HQ Advanced and above). */
+/** The Admin Settings' Look Ahead filter (Default.aspx:684-698; HQ Advanced and above), named the Confidential filter. */
 export function LookAheadFilterChoice({ value, onChange }: { value: LookAheadFilter; onChange: (v: LookAheadFilter) => void }): React.JSX.Element {
   return (
     <fieldset role="group" aria-labelledby="la-filter-legend" className="gcpe-inline-choice">
-      <legend id="la-filter-legend">Look Ahead filter</legend>
+      <legend id="la-filter-legend">Confidential filter</legend>
       {(Object.keys(LOOK_AHEAD_LABELS) as LookAheadFilter[]).map((v) => (
         <div key={v} className="gcpe-check">
           <input type="radio" id={`la-filter-${v}`} name="la-filter" checked={value === v} onChange={() => onChange(v)} />

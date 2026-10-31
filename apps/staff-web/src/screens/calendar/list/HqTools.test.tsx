@@ -28,7 +28,7 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     expect(screen.getByRole("button", { name: "Excel export" })).toBeInTheDocument();
     for (const name of [/^Review selected/, "Clear LA Status"]) expect(screen.queryByRole("button", { name })).toBeNull();
     expect(screen.queryByRole("region", { name: "Corporate Queries" })).toBeNull();
-    expect(screen.queryByRole("group", { name: "Look Ahead filter" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Confidential filter" })).toBeNull();
     expect(screen.queryByRole("checkbox", { name: "Select HLTH-20001" })).toBeNull();
   });
 
@@ -203,8 +203,10 @@ describe("the list's HQ tools and the export (spec addendum §8.1)", () => {
     await user.click(await screen.findByRole("button", { name: "Back to the filter" }));
     await waitFor(() => expect(qOf(listCalls(calls).at(-1)!.url)).toMatchObject({ corporate: null }));
     expect(screen.queryByText("Showing a corporate query.")).toBeNull();
-    await user.click(within(screen.getByRole("group", { name: "Look Ahead filter" })).getByLabelText("Not for Look Ahead Only"));
+    // The confidential filter (legacy's Look Ahead filter) applies at once, and the Filters summary says so.
+    await user.click(within(screen.getByRole("group", { name: "Confidential filter" })).getByLabelText("Confidential only"));
     await waitFor(() => expect(qOf(listCalls(calls).at(-1)!.url)).toMatchObject({ lookAhead: "not_for_look_ahead_only" }));
+    expect(screen.getByRole("form", { name: "Filter activities" }).closest("details")!.querySelector("summary")).toHaveTextContent("Confidential only");
   });
 
   it("an export the server refuses shows its reason", async () => {

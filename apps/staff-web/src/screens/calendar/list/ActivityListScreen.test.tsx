@@ -43,10 +43,19 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     stubFetch([], { preferences: { display: "my_ministries", hiddenColumns: [] } });
     renderList();
     await screen.findByText("Sample listed");
-    const header = screen.getByRole("columnheader", { name: /Comm\. Materials/ });
+    const header = screen.getByRole("columnheader", { name: /^Comm Materials/ });
     expect(header.querySelector("abbr")).toHaveAttribute("title", "Communication materials");
-    expect(screen.getByRole("columnheader", { name: /Govt Rep\./ }).querySelector("abbr")).toHaveAttribute("title", "Government representative");
+    expect(screen.getByRole("columnheader", { name: /^Representative/ }).querySelector("abbr")).toHaveAttribute("title", "Government representative");
     expect(screen.getByRole("link", { name: "What the column names mean" })).toHaveAttribute("href", "/help#glossary-calendar");
+  });
+
+  it("names each column as the activity's form names its field (form-order audit #20)", async () => {
+    stubFetch([], { preferences: { display: "my_ministries", hiddenColumns: [] } });
+    renderList();
+    await screen.findByText("Sample listed");
+    const names = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(names).toEqual(expect.arrayContaining(["Lead Ministry", "Comm Materials", "Premier Requested", "Lead Organization", "Comm Contact", "Representative"]));
+    for (const legacy of ["Ministry", "Comm. Materials", "Premier", "Lead Org.", "Comm. Contact", "Govt Rep."]) expect(names).not.toContain(legacy);
   });
 
   it("puts the filter in a closed Filters disclosure, and the list actions and view switch above the results", async () => {
@@ -149,7 +158,7 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     expect(await screen.findByRole("columnheader", { name: "Title & Summary" })).toHaveAttribute("aria-sort", "ascending");
     await user.click(screen.getByRole("button", { name: "Title & Summary" }));
     await waitFor(() => expect(qOf(listCalls(calls).at(-1)!.url)).toMatchObject({ sort: "title", dir: "desc" }));
-    expect(screen.queryByRole("button", { name: "Premier" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Premier Requested" })).toBeNull();
   });
 
   it("loads 30 more at a time without duplicates", async () => {
@@ -338,17 +347,17 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     const user = userEvent.setup();
     await user.click(screen.getByText("Columns"));
     await user.click(screen.getByRole("checkbox", { name: "City" }));
-    await user.click(screen.getByRole("checkbox", { name: "Premier" }));
+    await user.click(screen.getByRole("checkbox", { name: "Premier Requested" }));
     await waitFor(() => expect(puts).toBe(2));
-    await waitFor(() => expect(screen.queryByRole("columnheader", { name: "Premier" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("columnheader", { name: "Premier Requested" })).toBeNull());
     await act(async () => {
       releaseFirst();
       await first;
     });
     await waitFor(() => expect(calls.filter((c) => c.url === "/calendar/api/list/preferences")).toHaveLength(3));
     expect(screen.queryByRole("columnheader", { name: "City" })).toBeNull();
-    expect(screen.queryByRole("columnheader", { name: "Premier" })).toBeNull();
-    expect(screen.getByRole("checkbox", { name: "Premier" })).not.toBeChecked();
+    expect(screen.queryByRole("columnheader", { name: "Premier Requested" })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Premier Requested" })).not.toBeChecked();
   });
 
   it("a retried next page clears the earlier failure", async () => {

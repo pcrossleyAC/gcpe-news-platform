@@ -2,12 +2,17 @@ import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSearchShortcut } from "../../../shared/shortcuts";
 import { Button } from "@bcgov/design-system-react-components";
-import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateQuery, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery } from "@gcpe/calendar-contract";
+import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateQuery, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery, type LookAheadFilter } from "@gcpe/calendar-contract";
 
 const DISPLAY_LABELS: Record<ListDisplay, string> = {
   all: "Show All", my_ministries: "My Ministries' Activities Only", my_activities: "My Activities Only", my_watchlist: "My Watchlist Only",
 };
 const STATUS_LABELS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
+/**
+ * HqTools' Look Ahead filter. Legacy's "Look Ahead Only" and "Not for Look Ahead Only" mean not
+ * confidential and confidential (form-order audit #7), so they are named for what they do.
+ */
+export const LOOK_AHEAD_LABELS: Record<LookAheadFilter, string> = { all: "Show All", look_ahead_only: "Not confidential only", not_for_look_ahead_only: "Confidential only" };
 /** HqTools' Corporate Queries labels. */
 const CORPORATE_LABELS: Record<CorporateStatus, string> = { new: "New", changed: "Changed", reviewed: "Reviewed", deleted: "Deleted", la_new: "LA New", la_changed: "LA Changed" };
 const tri = (v: boolean | null) => (v === null ? "" : String(v));
@@ -70,12 +75,18 @@ export function activeFilterParts(query: ListQuery, options: ListOptions): strin
   }
   if (f.commContactUserId) parts.push(`Comm Contact: ${options.commContacts.find((c) => c.userId === f.commContactUserId)?.name ?? GONE}`);
   if (f.representativeId !== null) parts.push(`Representative: ${nameOf(options.representatives, f.representativeId)}`);
-  if (f.initiativeId !== null) parts.push(`Initiative: ${nameOf(options.initiatives, f.initiativeId)}`);
+  if (f.initiativeId !== null) parts.push(`HQ Initiatives & Leads: ${nameOf(options.initiatives, f.initiativeId)}`);
   if (f.premierRequestedId !== null) parts.push(`Premier Requested: ${nameOf(options.premierRequested, f.premierRequestedId)}`);
   if (f.distributionId !== null) parts.push(`Distribution: ${nameOf(options.distributions, f.distributionId)}`);
   if (query.display !== "all") parts.push(DISPLAY_LABELS[query.display]);
+  // The Confidential filter sits outside the panel and applies at once, but it narrows the list too (form-order audit #14).
+  if (query.lookAhead !== "all") parts.push(LOOK_AHEAD_LABELS[query.lookAhead]);
   return parts;
 }
+
+/** The filter Apply filters would send: what the panel's fields hold, tidied as submit tidies them. */
+const applied = (f: ListFilter): ListFilter => ({ ...f, quickSearch: f.quickSearch.trim(), to: f.thisDayOnly ? null : f.to });
+const filterKey = (f: ListFilter) => JSON.stringify(Object.keys(f).sort().map((k) => [k, f[k as keyof ListFilter]]));
 
 /** Whether Filters is open, for this browser tab only: the screen keeps no other per-user UI state locally. */
 const OPEN_KEY = "gcpe.calendar.filtersOpen";
@@ -94,7 +105,13 @@ function storedOpen(): boolean | null {
  * line beside "Filters", so the activities start within the first screen; opening or closing it
  * is remembered for the tab.
  */
-export function FilterPanel({ query, options, onSearch }: { query: ListQuery; options: ListOptions; onSearch: (q: ListQuery) => void }): React.JSX.Element {
+export function FilterPanel({ query, options, onSearch, onUnapplied }: {
+  query: ListQuery;
+  options: ListOptions;
+  onSearch: (q: ListQuery) => void;
+  /** Hears whether the panel's filter differs from the one the list is running (not yet applied). */
+  onUnapplied?: (unapplied: boolean) => void;
+}): React.JSX.Element {
   const [filter, setFilter] = useState<ListFilter>(query.filter);
   const [display, setDisplay] = useState<ListDisplay>(query.display);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +121,8 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     setDisplay(query.display);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const parts = activeFilterParts(query, options);
+  const unapplied = filterKey(applied(filter)) !== filterKey(applied(query.filter));
+  useEffect(() => onUnapplied?.(unapplied), [unapplied]); // eslint-disable-line react-hooks/exhaustive-deps
   // Open, the panel is most of a screen (three on a phone) before the first activity: closed until asked for.
   const [open, setOpen] = useState<boolean>(() => storedOpen() ?? false);
   // ⌘/Ctrl+K: opens Filters (if closed) and goes to Search for.
@@ -115,7 +134,7 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     e.preventDefault();
     if (filter.from && filter.to && filter.from > filter.to && !filter.thisDayOnly) return setError("From must be on or before To.");
     setError(null);
-    onSearch({ ...query, corporate: null, display, filter: { ...filter, quickSearch: filter.quickSearch.trim(), to: filter.thisDayOnly ? null : filter.to } });
+    onSearch({ ...query, corporate: null, display, filter: applied(filter) });
   };
   return (
     <details
@@ -185,17 +204,18 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
           )}
         </fieldset>
         <Choice id="list-issue" label="Issue" value={tri(filter.isIssue)} onChange={(v) => set("isIssue", fromTri(v))} options={[{ value: "true", label: "Is an Issue" }, { value: "false", label: "Not an Issue" }]} any="Any" />
-        <Choice id="list-confirmed" label="Date Confirmed" value={tri(filter.dateConfirmed)} onChange={(v) => set("dateConfirmed", fromTri(v))} options={[{ value: "true", label: "Date is Confirmed" }, { value: "false", label: "Date is not Confirmed" }]} any="Any" />
+        <Choice id="list-confirmed" label="Dates Confirmed" value={tri(filter.dateConfirmed)} onChange={(v) => set("dateConfirmed", fromTri(v))} options={[{ value: "true", label: "Date is Confirmed" }, { value: "false", label: "Date is not Confirmed" }]} any="Any" />
         <Choice id="list-status" label="Status" value={filter.status ?? ""} onChange={(v) => set("status", v === "" ? null : (v as ListFilter["status"]))} options={ACTIVITY_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))} any="Any status" />
         <Choice id="list-category" label="Category" value={num(filter.categoryId)} onChange={(v) => set("categoryId", fromNum(v))} options={choices(options.categories)} any="Any category" />
         <Choice id="list-ministry" label="Lead Ministry" value={filter.ministryKey ?? ""} onChange={(v) => set("ministryKey", v || null)} options={options.ministries.map((m) => ({ value: m.key, label: m.abbreviation ?? m.name }))} any="Any ministry" />
         <Choice id="list-contact" label="Comm Contact" value={filter.commContactUserId ?? ""} onChange={(v) => set("commContactUserId", v || null)} options={options.commContacts.map((c) => ({ value: c.userId, label: c.name }))} any="Any comm contact" />
         <Choice id="list-representative" label="Representative" value={num(filter.representativeId)} onChange={(v) => set("representativeId", fromNum(v))} options={choices(options.representatives)} any="Any representative" />
-        <Choice id="list-initiative" label="Initiative" value={num(filter.initiativeId)} onChange={(v) => set("initiativeId", fromNum(v))} options={choices(options.initiatives)} any="Any initiative" />
+        <Choice id="list-initiative" label="HQ Initiatives & Leads" value={num(filter.initiativeId)} onChange={(v) => set("initiativeId", fromNum(v))} options={choices(options.initiatives)} any="Any initiative" />
         <Choice id="list-premier" label="Premier Requested" value={num(filter.premierRequestedId)} onChange={(v) => set("premierRequestedId", fromNum(v))} options={choices(options.premierRequested)} any="Any" />
         <Choice id="list-distribution" label="Distribution" value={num(filter.distributionId)} onChange={(v) => set("distributionId", fromNum(v))} options={choices(options.distributions)} any="Any distribution" />
         <fieldset className="gcpe-calendar-filter__group">
           <legend>Display</legend>
+          <p className="gcpe-hint">Kept for next time. A saved query doesn&rsquo;t include it.</p>
           {LIST_DISPLAYS.map((d) => (
             <div key={d} className="gcpe-check">
               <input type="radio" id={`list-display-${d}`} name="list-display" checked={display === d} onChange={() => setDisplay(d)} />

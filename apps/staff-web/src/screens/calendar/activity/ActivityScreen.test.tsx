@@ -20,16 +20,63 @@ describe("the activity editor (spec addendum §8.2)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens an activity with legacy's fieldsets, in legacy's order, holding the stored values", async () => {
+  it("opens an activity with legacy's fieldsets, Ministry before Planning (owner, 2026-10-30), holding the stored values", async () => {
     stubActivity([]);
     const { container } = renderActivity("/calendar/activities/20001");
     expect(await screen.findByRole("heading", { level: 1, name: "Activity HLTH-20001" })).toBeInTheDocument();
-    expect([...container.querySelectorAll(".gcpe-fieldset > legend")].map((l) => l.textContent)).toEqual(["Overview", "Planning", "Ministry", "Schedule", "Release", "Event"]);
+    expect([...container.querySelectorAll(".gcpe-fieldset > legend")].map((l) => l.textContent)).toEqual(["Overview", "Ministry", "Planning", "Schedule", "Release", "Event"]);
     expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Sample activity");
     expect(screen.getByRole("combobox", { name: "Comm Contact" })).toHaveValue("11");
     expect(screen.getByRole("combobox", { name: "Start time" })).toHaveValue("09:00");
     expect(screen.getByRole("textbox", { name: "Potential Dates" })).toHaveValue("");
     expect(screen.queryByRole("textbox", { name: "Other City" })).toBeNull();
+  });
+
+  it("works down the page: Lead Ministry before Comm Contact, All Day and Dates Confirmed before the times they affect (form-order audit #3, #15)", async () => {
+    stubActivity([]);
+    renderActivity("/calendar/activities/20001");
+    await title();
+    const before = (a: HTMLElement, b: HTMLElement) => expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    before(screen.getByRole("combobox", { name: "Lead Ministry" }), screen.getByRole("combobox", { name: "Comm Contact" }));
+    before(screen.getByRole("checkbox", { name: "All Day" }), screen.getByLabelText(/^Start date/));
+    before(screen.getByRole("checkbox", { name: "Dates Confirmed" }), screen.getByLabelText(/^Start date/));
+    before(screen.getByRole("combobox", { name: "End time" }), screen.getByRole("textbox", { name: "Potential Dates" }));
+  });
+
+  it("HQ's Look Ahead fieldset comes after every field its section is inferred from, last before Records (form-order audit #8)", async () => {
+    const la = { hqComments: "", hqStatus: null, hqSection: "in_the_news" as const, longTermOutlook: false };
+    stubActivity([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, view: view({ fields: { ...FIELDS, lookAhead: la }, lookAhead: { ...la, inferred: { kind: "section", section: "in_the_news" } } }) });
+    const { container } = renderActivity("/calendar/activities/20001");
+    const section = await screen.findByRole("combobox", { name: "LA Section" });
+    expect([...container.querySelectorAll(".gcpe-fieldset > legend")].map((l) => l.textContent)).toEqual(["Overview", "Ministry", "Planning", "Schedule", "Release", "Event", "Look Ahead"]);
+    expect(section).toHaveAccessibleDescription("Inferred from Category, Issue, Confidential, Lead Ministry, Comm Materials, Dates Confirmed and the start and end dates");
+  });
+
+  it("the confidential checkbox says what it does, keeping legacy's name in brackets (form-order audit #7)", async () => {
+    stubActivity([]);
+    renderActivity("/calendar/activities/20001");
+    const box = await screen.findByRole("checkbox", { name: "Confidential (not for Look Ahead)" });
+    expect(box).toHaveAccessibleDescription("Only its lead and shared ministries, and HQ Advanced users and above, see it. A Look Ahead section it already has is kept.");
+  });
+
+  it("the release time's empty choice doesn't offer what Save refuses, and the hint gives the rule (form-order audit #5)", async () => {
+    stubActivity([]);
+    renderActivity("/calendar/activities/20001");
+    const time = await screen.findByRole("combobox", { name: "Release time" });
+    expect(within(time).getAllByRole("option")[0]).toHaveTextContent("Choose a time");
+    expect(screen.queryByText("No release time")).toBeNull();
+    expect(time).toHaveAccessibleDescription("Fill in both the release date and time, or leave both empty.");
+  });
+
+  it("read-only, nothing is marked required and no empty choice asks to be chosen (form-order audit #13)", async () => {
+    stubActivity([], { me: { ...ME, role: "Calendar.ReadOnly", level: 1 }, view: view({ can: NOT_EDITABLE, fields: { ...FIELDS, commContactId: null, categoryId: 12 } }) });
+    const { container } = renderActivity("/calendar/activities/20001");
+    await title();
+    expect(container.textContent).not.toContain("(required)");
+    expect(container.querySelector("[aria-required]")).toBeNull();
+    expect(container.textContent).not.toMatch(/Choose (a|the) /);
+    expect(screen.getByRole("combobox", { name: "Comm Contact" })).toHaveDisplayValue("None");
+    expect(screen.getByRole("group", { name: "Comm Materials" })).toBeInTheDocument();
   });
 
   it("marks required fields \"(required)\", the design system's way, without changing their names", async () => {
@@ -423,7 +470,7 @@ describe("the activity editor (spec addendum §8.2)", () => {
         url === ACTIVITY && init?.method === "PUT" ? jsonResponse(200, { id: 20001, activity: null, warnings: ["Saved. You can't view confidential activities for this ministry."] }) : undefined,
     });
     renderActivity("/calendar/activities/20001");
-    await userEvent.click(await screen.findByRole("checkbox", { name: "Not for Look Ahead" }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Confidential (not for Look Ahead)" }));
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Saved. You can't view confidential activities for this ministry.")).toBeInTheDocument();
   });

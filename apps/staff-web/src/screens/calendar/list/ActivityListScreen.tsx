@@ -139,6 +139,8 @@ export function ActivityListScreen(): React.JSX.Element {
   const [prefsError, setPrefsError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [runningQuery, setRunningQuery] = useState<string | null>(null);
+  /** The Filters panel holds changes not yet applied, so My Queries won't save the old filter as if it were them. */
+  const [filterUnapplied, setFilterUnapplied] = useState(false);
   const latest = useRef(0);
 
   useEffect(() => {
@@ -266,9 +268,10 @@ export function ActivityListScreen(): React.JSX.Element {
           if (q.display !== prefs.display) displayToSave.current = q.display;
           setQuery(q);
         }}
+        onUnapplied={setFilterUnapplied}
       />
       <SavedViews running={query.corporate ? "Running a corporate query" : runningQuery && `Running “${runningQuery}”`}>
-        <MyQueries current={query.filter} onRun={(filter) => setQuery({ ...query, corporate: null, filter })} onRunning={setRunningQuery} />
+        <MyQueries current={query.filter} unapplied={filterUnapplied} onRun={(filter) => setQuery({ ...query, corporate: null, filter })} onRunning={setRunningQuery} />
         {config.list.corporateQueries && <CorporateQueries active={query.corporate} onRun={(corporate) => setQuery({ ...query, corporate })} />}
       </SavedViews>
       {query.corporate && <CorporateBanner active={query.corporate} onClear={() => setQuery({ ...query, corporate: null })} />}

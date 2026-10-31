@@ -32,15 +32,15 @@ From the top:
 - Choose an activity's title to open it. See [Read an activity](manual:calendar-readonly-activity).
 - The **Activity Id** column shows the ministry and number, such as HLTH-12. It also shows **Reviewed** when HQ has reviewed the activity, **Shared** when it is shared with other ministries, and **Release** when a news release is linked to it.
 - Under the title you see when it was last updated, by whom, and when it was created.
-- **Not for Look Ahead** under **Categories** marks an activity kept out of the Look Ahead.
-- Point at the date to see the scheduling considerations, at the title to see the significance, and at **Comm. Materials** to see the origin and distribution.
-- Choose a column heading to sort by it, except **Premier**. Choose it again to reverse the order.
+- **Confidential (not for Look Ahead)** under **Categories** marks a confidential activity.
+- Point at the date to see the scheduling considerations, at the title to see the significance, and at **Comm Materials** to see the origin and distribution.
+- Choose a column heading to sort by it, except **Premier Requested**. Choose it again to reverse the order.
 - **What the column names mean**, under the list, explains the short names.
 
 ## Filter the list
 
 1. Open **Filters**. The line beside it shows the filter in use, or "No filters".
-2. Fill in what you want. You can use **From**, **To**, **This day only**, **Search for**, **HQ Tags**, **Issue**, **Date Confirmed**, **Status**, **Category**, **Lead Ministry**, **Comm Contact**, **Representative**, **Initiative**, **Premier Requested** and **Distribution**.
+2. Fill in what you want. You can use **From**, **To**, **This day only**, **Search for**, **HQ Tags**, **Issue**, **Dates Confirmed**, **Status**, **Category**, **Lead Ministry**, **Comm Contact**, **Representative**, **HQ Initiatives & Leads**, **Premier Requested** and **Distribution**.
 3. Under **Display**, choose **Show All**, **My Ministries' Activities Only**, **My Activities Only** or **My Watchlist Only**.
 4. Choose **Apply filters**.
 
@@ -62,8 +62,10 @@ Under **Saved views**, **My Queries** keeps filters you use often. Only you see 
 
 1. Set the filter and choose **Apply filters**.
 2. Open **Saved views**.
-3. Type a name in **Name for this filter**.
-4. Choose **Save query**. You see, for example, "Saved the query “My week”."
+3. Type a name in **Name for this query**.
+4. Choose **Save this filter as a query**. You see, for example, "Saved the query “My week”."
+
+A query saves the filter the list is running. While **Filters** has changes you haven't applied, **Save this filter as a query** waits and says "Apply filters first". **Display** isn't saved with a query.
 
 To run a saved filter, choose its name. **Saved views** then shows, for example, "Running “My week”". Each query also has **Rename**, **Up**, **Down** and **Delete**.
 
@@ -72,7 +74,7 @@ To run a saved filter, choose its name. **Saved views** then shows, for example,
 1. Choose **Columns**.
 2. Tick or untick the columns under **Show these columns**.
 
-The Hub keeps your choice for next time. **Activity Id** always shows. At first, **HQ Tags**, **Ministry**, **Status** and **Translations** are hidden.
+The Hub keeps your choice for next time. **Activity Id** always shows. At first, **HQ Tags**, **Lead Ministry**, **Status** and **Translations** are hidden.
 
 ## Month and Week
 

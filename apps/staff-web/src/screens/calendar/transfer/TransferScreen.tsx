@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { InlineAlert } from "@bcgov/design-system-react-components";
+import { useSearchParams } from "react-router";
 import { ApiError, apiFetch } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
+import { canonicalId } from "../../admin/calendar-access/calendar-roles";
 import { plural, type TransferContact, type TransferPreview } from "./types";
 
 interface TransferResult {
@@ -18,12 +20,20 @@ interface TransferResult {
 const errorsOf = (caught: unknown) =>
   caught instanceof ApiError && caught.status === 404 ? ["That comm contact is no longer available: reload the page."] : messagesOf(caught);
 
-/** `/hub/calendar/transfer` (spec addendum §8.5): move every activity of one comm contact to another. */
+/**
+ * `/hub/calendar/transfer` (spec addendum §8.5): move every activity of one comm contact to another.
+ * `?user=` (from a user's page, before deactivating) starts From on that person's comm contact
+ * when they have exactly one; with several, the reader chooses which ministry's.
+ */
 export function TransferScreen(): React.JSX.Element {
   useDocumentTitle("Transfer activities");
+  const [params] = useSearchParams();
+  const forUser = params.get("user");
   const [contacts, setContacts] = useState<TransferContact[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [from, setFrom] = useState("");
+  /** Opened for someone who is a comm contact for several ministries: From waits, and says why. */
+  const [several, setSeveral] = useState(false);
   const [to, setTo] = useState("");
   const [preview, setPreview] = useState<TransferPreview | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -34,7 +44,13 @@ export function TransferScreen(): React.JSX.Element {
   useEffect(() => {
     const call = ++latest.current;
     apiFetch<TransferContact[]>("/calendar/api/transfer/comm-contacts").then(
-      (c) => call === latest.current && setContacts(c),
+      (c) => {
+        if (call !== latest.current) return;
+        setContacts(c);
+        const theirs = forUser === null ? [] : c.filter((x) => canonicalId(x.userId) === canonicalId(forUser));
+        if (theirs.length === 1) setFrom(String(theirs[0]!.id));
+        setSeveral(theirs.length > 1);
+      },
       () => call === latest.current && setLoadError("Couldn't load comm contacts."),
     );
   }, []);
@@ -96,7 +112,7 @@ export function TransferScreen(): React.JSX.Element {
         >
           <div className="gcpe-field">
             <label htmlFor="transfer-from">From comm contact</label>
-            <select id="transfer-from" value={from} onChange={choose(setFrom)}>
+            <select id="transfer-from" value={from} onChange={choose(setFrom)} aria-describedby={several && !from ? "transfer-from-hint" : undefined}>
               <option value="">Choose a comm contact</option>
               {contacts.map((c) => (
                 <option key={c.id} value={String(c.id)}>
@@ -104,6 +120,11 @@ export function TransferScreen(): React.JSX.Element {
                 </option>
               ))}
             </select>
+            {several && !from && (
+              <p id="transfer-from-hint" className="gcpe-hint">
+                They are a comm contact for more than one ministry: choose which.
+              </p>
+            )}
           </div>
           <div className="gcpe-field">
             <label htmlFor="transfer-to">To comm contact</label>

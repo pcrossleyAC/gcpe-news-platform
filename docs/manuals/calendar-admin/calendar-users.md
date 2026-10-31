@@ -28,7 +28,7 @@ Choose **Edit Calendar access for** followed by their name. The choices and limi
 1. Fill in **Phone** (up to 20 characters), **Mobile** (12 digits and hyphens, like 250-555-0100), **Job title** and **Description**. Leave any of them empty if you like.
 2. Choose **Save contact details**. You see "Saved contact details."
 
-The phone number shows under the person's name in the list's **Comm. Contact** column and in the Excel export.
+The phone number shows under the person's name in the list's **Comm Contact** column and in the Excel export.
 
 ## Comm-contact rank
 
@@ -39,7 +39,7 @@ A rank makes the person a comm contact for that ministry, so editors can choose 
 
 Choose **Not a comm contact** to stop offering them. Activities that already have them as comm contact keep them, but can't be cloned until they have an active comm contact.
 
-"Give this user a ministry first." means they have no ministry yet. Give them one under **Calendar access**, wait a minute, then reload the page.
+"Give this user a ministry under Calendar access (Edit Calendar access) first." means they have no ministry yet. Choose **Edit Calendar access** above and give them one, wait a minute, then reload the page.
 
 ## Deactivate someone
 
@@ -48,7 +48,7 @@ Deactivating closes the person's Hub account. They can't sign in again until rea
 1. Under **Account**, choose **Deactivate** followed by their name.
 2. The page lists their **Open activities**: activities you can see where they are the comm contact, that aren't deleted and haven't ended, even if you set them to **Not a comm contact**. Only the first 500 are listed.
 3. If they also work for ministries you don't belong to, the page says "They also work for ministries you don't belong to. Ask an HQ Administrator to check and transfer their activities there." You can't see their activities in those ministries, so the page doesn't say whether there are any. With none listed, it says "No open activities in your ministries." instead of "No open activities."
-4. To hand the listed activities over first, choose **Transfer their activities first**. See [Transfer activities](manual:calendar-transfer).
+4. To hand the listed activities over first, choose **Transfer their activities first**. **Transfer** opens with them already chosen as **From comm contact** when they are a comm contact for one ministry; for several, choose which. See [Transfer activities](manual:calendar-transfer).
 5. Choose **Deactivate**, or **Deactivate anyway** when activities are listed. You see that the person "is deactivated. The Calendar picks this up within a minute."
 
 Deactivating doesn't move their activities. Each one keeps them as comm contact and can still be saved, but can't be cloned until it has an active comm contact. Editors can't choose them as a comm contact any more.

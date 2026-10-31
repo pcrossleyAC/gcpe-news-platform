@@ -84,8 +84,8 @@ test.describe("the Calendar list: journeys", () => {
     await expect(titles(page)).toHaveCount(3);
     const queries = page.getByRole("region", { name: "My Queries" });
     await openSavedViews(page);
-    await queries.getByLabel("Name for this filter").fill(`Sample query ${f.tag}`);
-    await queries.getByRole("button", { name: "Save query" }).click();
+    await queries.getByLabel("Name for this query").fill(`Sample query ${f.tag}`);
+    await queries.getByRole("button", { name: "Save this filter as a query" }).click();
     await expect(queries.getByRole("status")).toHaveText(`Saved the query “Sample query ${f.tag}”.`);
     await page.goto(`${baseUrl()}/hub/calendar`);
     await openSavedViews(page);
@@ -178,9 +178,9 @@ test.describe("the Calendar list: journeys", () => {
     await page.goto(listUrl({ filter: { ...MAY, quickSearch: f.tag } }));
     await expect(titles(page)).toHaveCount(6);
     // The radio is checked once the URL carries the new query, a beat after the click.
-    const notForLookAhead = page.getByRole("group", { name: "Look Ahead filter" }).getByLabel("Not for Look Ahead Only");
-    await notForLookAhead.click();
-    await expect(notForLookAhead).toBeChecked();
+    const confidentialOnly = page.getByRole("group", { name: "Confidential filter" }).getByLabel("Confidential only", { exact: true });
+    await confidentialOnly.click();
+    await expect(confidentialOnly).toBeChecked();
     await expect(titles(page)).toHaveText([`Vis B ${f.tag}`, `Vis D ${f.tag}`, `Vis E ${f.tag}`]);
   });
 

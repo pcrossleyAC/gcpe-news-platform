@@ -16,7 +16,7 @@ You plan the Corporate Calendar: the government-wide schedule of announcements a
 Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.
 
 - **In a ministry:** you see your ministries' activities and the activities shared with them. You add and change your ministries' activities. You can do exactly what a Calendar editor can.
-- **In an HQ organization:** you see every ministry's activities, including those marked **Not for Look Ahead**. You add and change any ministry's activities, and the daily change freeze doesn't stop you. You also review activities and run corporate queries.
+- **In an HQ organization:** you see every ministry's activities, including those marked **Confidential (not for Look Ahead)**. You add and change any ministry's activities, and the daily change freeze doesn't stop you. You also review activities and run corporate queries.
 
 ## What you can do that editors and read-only users can't
 
@@ -26,9 +26,9 @@ In an HQ organization, Advanced gives you four things that HQ editors don't have
 
 | Where | What you do there | Help page |
 |---|---|---|
-| The list, **Updates**, reports and activities | See other ministries' activities marked **Not for Look Ahead**. | [The activity list](manual:calendar-advanced-list) |
+| The list, **Updates**, reports and activities | See other ministries' activities marked **Confidential (not for Look Ahead)**. | [The activity list](manual:calendar-advanced-list) |
 | **Saved views** > **Corporate Queries** | List every ministry's upcoming activities by status. | [HQ review and corporate queries](manual:calendar-advanced-hq) |
-| **Look Ahead filter**, above the list | Show only the activities for the Look Ahead, or only those not for it. | [HQ review and corporate queries](manual:calendar-advanced-hq) |
+| **Confidential filter**, above the list | Show only the confidential activities, or only those that aren't. | [HQ review and corporate queries](manual:calendar-advanced-hq) |
 | **Review**, on an activity | Mark the activity reviewed. | [HQ review and corporate queries](manual:calendar-advanced-hq) |
 
 In a ministry that isn't HQ, Advanced gives you nothing more than Editor.
@@ -63,7 +63,7 @@ HQ Administrators also review deletions, review many activities at once and make
 
 - Its lead ministry, and every ministry ticked in **Shared With**, see it.
 - HQ organizations see every ministry's activities.
-- An activity marked **Not for Look Ahead** is seen only by its lead and shared ministries, and by HQ advanced users and HQ Administrators. HQ editors don't see other ministries' ones.
+- An activity marked **Confidential (not for Look Ahead)** is seen only by its lead and shared ministries, and by HQ advanced users and HQ Administrators. HQ editors don't see other ministries' ones.
 - Only the lead ministry and HQ can change an activity. A ministry it is only shared with can open it but not change it.
 - A deleted activity leaves the Calendar for everyone except HQ Administrators.
 

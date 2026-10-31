@@ -150,8 +150,8 @@ describe("accessibility: the activity list in every state", () => {
     const { container } = renderList();
     const user = userEvent.setup();
     const region = await screen.findByRole("region", { name: "My Queries" });
-    await user.type(within(region).getByLabelText("Name for this filter"), "Sample new");
-    await user.click(within(region).getByRole("button", { name: "Save query" }));
+    await user.type(within(region).getByLabelText("Name for this query"), "Sample new");
+    await user.click(within(region).getByRole("button", { name: "Save this filter as a query" }));
     await screen.findByText("Saved the query “Sample new”.");
     expect(await seriousViolations(container)).toEqual([]);
     await user.click(within(region).getByRole("button", { name: "Move Sample two up" }));

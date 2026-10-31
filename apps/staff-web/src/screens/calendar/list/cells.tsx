@@ -95,7 +95,7 @@ export function CellContent({ column, row: r, today, timeZone, tools, update, me
           {r.isConfidential && (
             <>
               <br />
-              <small className="gcpe-not-la">Not for Look Ahead</small>
+              <small className="gcpe-not-la">Confidential (not for Look Ahead)</small>
             </>
           )}
         </>

@@ -17,13 +17,13 @@ const CONTACTS = [
   { id: 5, userId: "u5", displayName: "Lee Dormant", ministryKey: "health", ministryAbbreviation: "HLTH", ministryName: "Health", isActive: true, userIsActive: false, canReceive: false, label: "Lee Dormant (HLTH)" },
 ];
 
-function stub(calls: { url: string; init?: RequestInit }[], transferred = 3) {
+function stub(calls: { url: string; init?: RequestInit }[], transferred = 3, contacts = CONTACTS) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
       if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "a1", name: "Pat", email: "pat@x.invalid", roles: ["Calendar.Administrator"] }, expiresAt: new Date().toISOString() });
-      if (url === "/calendar/api/transfer/comm-contacts") return jsonResponse(200, CONTACTS);
+      if (url === "/calendar/api/transfer/comm-contacts") return jsonResponse(200, contacts);
       if (url.startsWith("/calendar/api/transfer/preview")) return jsonResponse(200, { from: CONTACTS[1], to: CONTACTS[2], count: 2 });
       if (url === "/calendar/api/transfer") return jsonResponse(200, { transferred });
       throw new Error(`unhandled: ${url}`);
@@ -31,10 +31,10 @@ function stub(calls: { url: string; init?: RequestInit }[], transferred = 3) {
   );
 }
 
-const renderScreen = () =>
+const renderScreen = (path = "/calendar/transfer") =>
   render(
     <SessionProvider>
-      <MemoryRouter initialEntries={["/calendar/transfer"]}>
+      <MemoryRouter initialEntries={[path]}>
         <RequireAuth>
           <Routes>
             <Route path="/calendar/transfer" element={<TransferScreen />} />
@@ -48,6 +48,31 @@ describe("TransferScreen", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("opened from a user's page, From starts on that user's comm contact (form-order audit #17)", async () => {
+    stub([]);
+    renderScreen("/calendar/transfer?user=u2");
+    const from = (await screen.findByLabelText("From comm contact")) as HTMLSelectElement;
+    expect(from).toHaveValue("2");
+    expect(screen.getByLabelText("To comm contact")).toHaveValue("");
+  });
+
+  it("opened for a user with several comm contacts, From waits for a choice and says why", async () => {
+    stub([], 3, [...CONTACTS, { ...CONTACTS[0]!, id: 6, ministryKey: "finance", ministryAbbreviation: "FIN", ministryName: "Finance", label: "Robin Staff (FIN)" }]);
+    renderScreen("/calendar/transfer?user=u1");
+    const from = await screen.findByLabelText("From comm contact");
+    expect(from).toHaveValue("");
+    expect(from).toHaveAccessibleDescription("They are a comm contact for more than one ministry: choose which.");
+  });
+
+  it("opened for someone with no comm contact, or with no user, From waits and says nothing more", async () => {
+    stub([]);
+    renderScreen("/calendar/transfer?user=nobody");
+    const from = await screen.findByLabelText("From comm contact");
+    expect(from).toHaveValue("");
+    expect(from).not.toHaveAccessibleDescription();
+    expect(screen.queryByText(/more than one ministry/)).toBeNull();
   });
 
   it("offers every contact as From, inactive ones included, and only those that canReceive as To", async () => {

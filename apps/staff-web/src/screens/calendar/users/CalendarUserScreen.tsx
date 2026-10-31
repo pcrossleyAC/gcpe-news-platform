@@ -288,7 +288,7 @@ export function CalendarUserScreen(): React.JSX.Element {
       <ProfileForm userId={u.id} profile={detail.profile} onSaved={done} showMessages={shown === "profile"} onFailed={() => setShown("profile")} />
 
       <h2>Comm contact</h2>
-      {u.ministryKeys.length === 0 && <p>Give this user a ministry first.</p>}
+      {u.ministryKeys.length === 0 && <p>Give this user a ministry under Calendar access (Edit Calendar access) first.</p>}
       {u.ministryKeys.map((k) => {
         const o = byKey.get(k);
         const label = `${o?.displayName ?? k}${o?.abbreviation ? ` (${o.abbreviation})` : ""}`;
@@ -315,6 +315,7 @@ export function CalendarUserScreen(): React.JSX.Element {
           <Button variant="secondary" onPress={() => void showPreview()}>{`Deactivate ${u.displayName}`}</Button>
           {preview && (
             <DeactivatePreview
+              userId={u.id}
               name={u.displayName}
               preview={preview}
               otherMinistries={otherMinistries}
@@ -345,7 +346,9 @@ export function CalendarUserScreen(): React.JSX.Element {
  * even a count (it would reveal confidential activities); when the user also works for ministries
  * the administrator doesn't, the preview says so and who can check them.
  */
-function DeactivatePreview({ name, preview, otherMinistries, onDeactivate, onCancel }: {
+function DeactivatePreview({ userId, name, preview, otherMinistries, onDeactivate, onCancel }: {
+  /** Transfer opens with this user's comm contact as From (form-order audit #17). */
+  userId: string;
   name: string;
   preview: OpenActivities;
   otherMinistries: boolean;
@@ -368,7 +371,7 @@ function DeactivatePreview({ name, preview, otherMinistries, onDeactivate, onCan
           </ul>
           {preview.truncated && <p>Only the first 500 are listed.</p>}
           <p>
-            <Link to="/calendar/transfer">Transfer their activities first</Link>
+            <Link to={`/calendar/transfer?user=${encodeURIComponent(userId)}`}>Transfer their activities first</Link>
           </p>
         </>
       )}

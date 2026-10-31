@@ -27,7 +27,7 @@ Calendar editors also add, change and clone activities. Their manual is the Cale
 Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you see.
 
 - **In a ministry:** you see the activities your ministries lead, and the ones shared with them.
-- **In an HQ organization:** you see every ministry's activities, except other ministries' ones marked **Not for Look Ahead**.
+- **In an HQ organization:** you see every ministry's activities, except other ministries' ones marked **Confidential (not for Look Ahead)**.
 
 Deleted activities leave the Calendar for you.
 

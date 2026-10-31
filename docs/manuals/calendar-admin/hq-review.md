@@ -52,7 +52,7 @@ A corporate query lists every ministry's upcoming activities by status. It repla
 
 **Changed** also finds deletions waiting for review. **Deleted** finds every deletion, reviewed or not.
 
-The **Look Ahead filter** above the list narrows it to **Look Ahead Only** or **Not for Look Ahead Only**. **Show All** turns it off.
+The **Confidential filter** above the list (the old Calendar's Look Ahead filter) narrows it to **Not confidential only** or **Confidential only**. **Show All** turns it off. The line beside **Filters** names the choice while it is on.
 
 ## Exec Look Ahead
 
