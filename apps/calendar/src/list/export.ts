@@ -88,7 +88,7 @@ function rowCells(r: ListRow, scope: ListScope): SheetCell[] {
   ];
 }
 
-/** The workbook's one sheet. `filter` is the list filter in the list's words (filterSummary), stated under the heading (suite review CAL-3). */
+/** The workbook's one sheet. `filter` is the list filter in the list's words (filterSummary), stated on the last row, after legacy's footer (suite review CAL-3). */
 export function exportSheet(rows: ListRow[], q: ListQuery, scope: ListScope, now: Date, filter: string): Sheet {
   const banner = scope.rules.reportBanner.province;
   return {
@@ -102,10 +102,11 @@ export function exportSheet(rows: ListRow[], q: ListQuery, scope: ListScope, now
           { runs: [{ text: printed(now, scope.rules.timeZone) }], style: "heading", span: 4 },
         ],
       },
-      { cells: [{ runs: [{ text: `Filter: ${filter}` }], style: "heading", span: EXPORT_HEADERS.length }] },
       { cells: EXPORT_HEADERS.map((h) => ({ runs: [{ text: h }], style: "header" as const })) },
       ...rows.map((r) => ({ cells: rowCells(r, scope) })),
       { cells: [{ runs: [{ text: CONFIDENTIALITY_NOTICE }], style: "notice", span: 10 }], height: 60 },
+      // After legacy's footer, so the banner, header row, data and footer stay where legacy put them (suite review CAL-3).
+      { cells: [{ runs: [{ text: `Filter: ${filter}` }], style: "heading", span: 10 }] },
     ],
   };
 }

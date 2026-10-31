@@ -28,7 +28,7 @@ One report is prepared at a time. If you leave the page before it downloads, mak
 | **30/60/90** | One table for each month, from the start of the **From** month. With no **To** date it covers about 90 days. |
 | **Planning** | One line for each activity: its schedule, title and summary, significance and number. |
 
-- Each report, and the Excel export, says under its heading which filter it used, for example "Filter: Dates: 2026-11-01 to 2026-11-14 · Lead Ministry: HLTH", or "Filter: none (every activity you can see)".
+- Each report says under its heading which filter it used, and the Excel export says it on its last row, below the confidentiality notice, for example "Filter: Dates: 2026-11-01 to 2026-11-14 · Lead Ministry: HLTH", or "Filter: none (every activity you can see)".
 - A report holds only activities you can see. Deleted activities are never in it.
 - Reports include Awareness dates even when the list leaves them out.
 - Unless you are an HQ editor, your Look Ahead shows no Executive Summary and no NEW or CHANGED flags.
