@@ -139,15 +139,17 @@ describe("SearchScreen", () => {
   it("before any search, says what it searches and lists the latest published releases", async () => {
     stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
     renderSearch();
-    expect(await screen.findByText("Type part of a headline, a reference number or a web address; filter by ministry, sector, type or date.")).toBeInTheDocument();
+    expect(await screen.findByText("Type part of a headline, a reference number or a web address, or choose a ministry, sector, type or dates.")).toBeInTheDocument();
     const recent = await screen.findByRole("region", { name: "Recently published" });
     expect(within(recent).getByText("Latest published release")).toBeInTheDocument();
   });
 
-  it("with a ministry or sector chosen but no words, doesn't show the unfiltered recent releases", async () => {
-    stubFetch({ recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
+  // Fix round 1: a filter alone now searches, so the unfiltered recent list doesn't show.
+  it("with a ministry or sector chosen but no words, searches by it and doesn't show the unfiltered recent releases", async () => {
+    const searchCalls: string[] = [];
+    stubFetch({ searchCalls, recent: searchPage([item({ id: "recent-1", headline: "Latest published release" })]) });
     renderSearch("/search?ministry=educ");
-    expect(await screen.findByText("Type part of a headline, a reference number or a web address; filter by ministry, sector, type or date.")).toBeInTheDocument();
+    await waitFor(() => expect(searchCalls.at(-1)).toBe("/nrms/api/search?page=1&ministry=educ"));
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole("region", { name: "Recently published" })).toBeNull();
   });
@@ -235,6 +237,32 @@ describe("SearchScreen", () => {
     expect(searchCalls.at(-1)).toContain("type=factsheet");
     expect(searchCalls.at(-1)).toContain("q=schools");
     expect(screen.getByLabelText("Type")).toHaveValue("factsheet");
+  });
+
+  // Fix round 1: the filters work without words (a date range alone is the usual "everything
+  // from last week"), and an impossible date in a hand-edited address is no filter, not an error.
+  it("filters alone, without words, search and say what they matched", async () => {
+    const searchCalls: string[] = [];
+    stubFetch({ searchCalls, searchResult: searchPage([item({ headline: "Factsheet from 2024" })]) });
+    renderSearch("/search?type=factsheet&from=2024-01-01");
+    expect(await screen.findByText("Factsheet from 2024")).toBeInTheDocument();
+    expect(searchCalls.at(-1)).toBe("/nrms/api/search?page=1&type=factsheet&from=2024-01-01");
+    expect(screen.queryByText("Recently published")).not.toBeInTheDocument();
+  });
+
+  it("with only filters and nothing matching, says no releases match these filters", async () => {
+    stubFetch({ searchResult: searchPage([]) });
+    renderSearch("/search?sector=econ");
+    expect(await screen.findByText("No releases match these filters.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Clear filters" })).toBeInTheDocument();
+  });
+
+  it("an impossible date in the address is left out of the search", async () => {
+    const searchCalls: string[] = [];
+    stubFetch({ searchCalls, searchResult: searchPage([item()]) });
+    renderSearch("/search?q=schools&from=2026-02-30");
+    await screen.findByText("A headline");
+    expect(searchCalls.at(-1)).toBe("/nrms/api/search?q=schools&page=1");
   });
 
   it("a From date after the To date says so and isn't searched", async () => {

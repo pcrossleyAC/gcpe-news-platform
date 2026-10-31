@@ -173,8 +173,15 @@ export type ListQuery = z.infer<typeof listQuerySchema>;
 /** `GET /forecast` (spec addendum §11): one page of the merged releases and activities. */
 export const forecastQuerySchema = z.object({ page: z.coerce.number().int().min(1).max(1000).default(1) });
 export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
+/** "2026-09-02" names a real calendar day (not "2026-02-30", which Date.parse rolls over to
+ * March 2): the round trip gives the same day back. */
+export function isRealDay(d: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const t = Date.parse(`${d}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d;
+}
 /** A calendar day ("2026-09-02"), as an `<input type="date">` gives it. */
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-09-02.").refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), "That isn't a real date.");
+const isoDay = z.string().refine(isRealDay, "That isn't a real date.");
 export const searchQuerySchema = z
   .object({
     q: z.string().trim().max(200).default(""),

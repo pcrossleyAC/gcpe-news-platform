@@ -23,7 +23,7 @@ The release opens. If nothing has that number, you get **Search** results for wh
 
 1. Choose **Search** in the side menu.
 2. Type part of the headline in **Search**, word for word. Capitals don't matter.
-3. To narrow it, choose a **Ministry**, **Sector** or **Type**, or a **From** and **To** date. The dates are the release date: when it went out, or for one that hasn't, its planned or scheduled time. Both days are included; leave either empty for no limit on that side. If **From** is after **To**, it says "The From date is after the To date." and doesn't search. On their own, without words in **Search**, these do nothing.
+3. To narrow it, choose a **Ministry**, **Sector** or **Type**, or a **From** and **To** date. The dates are the release date: when it went out, or for one that hasn't, its planned or scheduled time. Both days are included; leave either empty for no limit on that side. If **From** is after **To**, it says "The From date is after the To date." and doesn't search. They work on their own too: choose only a **Type** and dates, for example, to list everything of that type from those days.
 4. Choose **Search**.
 
 Typing a reference number, key or web address here opens the release directly, as **Find a release** does.

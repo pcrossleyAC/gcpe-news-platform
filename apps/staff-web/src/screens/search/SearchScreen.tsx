@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Button, Form, TextField } from "@bcgov/design-system-react-components";
-import { RELEASE_TYPES, TYPE_LABEL, type ReleaseListItem, type ReleasePage, type ReleaseType } from "@gcpe/nrms-contract";
+import { isRealDay, RELEASE_TYPES, TYPE_LABEL, type ReleaseListItem, type ReleasePage, type ReleaseType } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
@@ -42,10 +42,18 @@ export function SearchScreen(): React.JSX.Element {
   const sector = searchParams.get("sector") ?? "";
   const typeParam = searchParams.get("type") ?? "";
   const type = (FILTERABLE_TYPES as readonly string[]).includes(typeParam) ? typeParam : "";
-  const from = searchParams.get("from") ?? "";
-  const to = searchParams.get("to") ?? "";
+  // An impossible day in a hand-edited address ("2026-02-30") is no filter, never a failed search.
+  const dayParam = (key: "from" | "to") => {
+    const v = searchParams.get(key) ?? "";
+    return isRealDay(v) ? v : "";
+  };
+  const from = dayParam("from");
+  const to = dayParam("to");
   const backwards = from !== "" && to !== "" && from > to;
-  const filtered = FILTER_KEYS.some((k) => (searchParams.get(k) ?? "") !== "");
+  const filters: Record<FilterKey, string> = { ministry, sector, type, from, to };
+  const filtered = FILTER_KEYS.some((k) => filters[k] !== "");
+  // Words, or any filter on its own (fix round 1: "everything from last week" needs no words).
+  const searching = q !== "" || filtered;
   const page = Number(searchParams.get("page") ?? "1") || 1;
 
   const [qInput, setQInput] = useState(q);
@@ -61,7 +69,7 @@ export function SearchScreen(): React.JSX.Element {
   // all if they can't be loaded; the hint and the search box still work.
   const [recent, setRecent] = useState<ReleaseListItem[] | null>(null);
   useEffect(() => {
-    if (q || recent) return;
+    if (searching || recent) return;
     let active = true;
     apiFetch<ReleasePage<ReleaseListItem>>("/nrms/api/releases?folder=published&type=all&page=1&pageSize=5").then(
       (data) => active && setRecent(data.items),
@@ -70,7 +78,7 @@ export function SearchScreen(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searching]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     apiFetch<Categories>("/nrms/api/categories").then(setCategories, () => {
@@ -79,17 +87,15 @@ export function SearchScreen(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (!q || backwards) {
+    if (!searching || backwards) {
       setResult(null);
       return;
     }
     let active = true;
-    const params = new URLSearchParams({ q, page: String(page) });
-    if (ministry) params.set("ministry", ministry);
-    if (sector) params.set("sector", sector);
-    if (type) params.set("type", type);
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    params.set("page", String(page));
+    for (const k of FILTER_KEYS) if (filters[k]) params.set(k, filters[k]);
     apiFetch<ReleasePage<ReleaseListItem>>(`/nrms/api/search?${params}`).then(
       (data) => {
         if (active) {
@@ -104,7 +110,7 @@ export function SearchScreen(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, [q, ministry, sector, type, from, to, backwards, page]);
+  }, [q, ministry, sector, type, from, to, searching, backwards, page]);
 
   // Fix round 1, finding 3: if `page` no longer has any results (the result set shrank —
   // a filter now matches fewer, or someone deleted releases) but is still in the URL, replace
@@ -216,11 +222,10 @@ export function SearchScreen(): React.JSX.Element {
         </p>
       )}
 
-      {!q && (
+      {!searching && (
         <>
-          <p className="gcpe-search__hint">Type part of a headline, a reference number or a web address; filter by ministry, sector, type or date.</p>
-          {/* Unfiltered, so not shown once a filter is chosen. */}
-          {!filtered && recent && recent.length > 0 && (
+          <p className="gcpe-search__hint">Type part of a headline, a reference number or a web address, or choose a ministry, sector, type or dates.</p>
+          {recent && recent.length > 0 && (
             <section aria-labelledby="search-recent-heading">
               <h2 id="search-recent-heading" className="gcpe-search__recent-heading">
                 Recently published
@@ -236,12 +241,12 @@ export function SearchScreen(): React.JSX.Element {
       )}
 
       {error && <p role="alert">{error}</p>}
-      {!error && q && result && result.items.length === 0 && (
+      {!error && searching && result && result.items.length === 0 && (
         <div className="gcpe-search__empty">
-          <p>{`No releases match “${q}”.`}</p>
+          <p>{q ? `No releases match “${q}”.` : "No releases match these filters."}</p>
           {filtered && (
             <p>
-              <Link to={`?${new URLSearchParams({ q })}`}>Clear filters</Link>
+              <Link to={`?${new URLSearchParams(q ? { q } : {})}`}>Clear filters</Link>
             </p>
           )}
         </div>
