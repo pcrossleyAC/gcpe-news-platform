@@ -3,7 +3,7 @@ export { CALENDAR_LEVELS, calendarLevel, checkCalendarGrant, grantCeiling, isCal
 export { createClientCredentialsProvider } from "./client-credentials";
 export { authFromEnv } from "./from-env";
 export { INTERNAL_AUDIENCE, INTERNAL_ISSUER, INTERNAL_ORIGIN, isInternalRequest, isInternalUrl, markInternalSocket, mintInternalToken } from "./internal";
-export { ADMIN_ROLES, BREAK_GLASS_ID, breakGlassFingerprint, LOCAL_AUDIENCE, LOCAL_ISSUER, localLoginRouter, mintLocalToken, verifyBreakGlassToken, type BreakGlassCheck, type LocalAuthConfig } from "./local";
+export { ADMIN_ROLES, BREAK_GLASS_ID, breakGlassFingerprint, fingerprintMatches, LOCAL_AUDIENCE, LOCAL_ISSUER, localLoginRouter, mintLocalToken, verifyBreakGlassToken, type BreakGlassCheck, type LocalAuthConfig } from "./local";
 export { hashPassword, isValidPasswordHash, verifyPassword } from "./password";
 export {
   CALENDAR_ROLES,

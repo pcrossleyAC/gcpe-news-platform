@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, type Db, type DbOrTx } from "@gcpe/db-kit";
-import { ADMIN_ROLES, BREAK_GLASS_ID, DEFAULT_SESSION_MAX_SECONDS, type SessionGate, type SessionUser } from "@gcpe/auth";
+import { ADMIN_ROLES, BREAK_GLASS_ID, breakGlassFingerprint, DEFAULT_SESSION_MAX_SECONDS, fingerprintMatches, type SessionGate, type SessionUser } from "@gcpe/auth";
 import { roleGrants, staffSessions, users } from "../db/schema";
 
 /** Session id for the environment break-glass admin (LOCAL_ADMIN_*); it has no users row. */
@@ -100,7 +100,10 @@ const isUuid = (v: string) => z.string().uuid().safeParse(v).success;
  * the limit has no `sid`: only the person's being active is checked, until its renewal records it.
  */
 
-export function sessionGate(db: Db, opts: { localConfigured: boolean; secret: string }): SessionGate {
+/** `breakGlass`: the LOCAL_ADMIN_* settings (LOCAL_AUTH_SECRET and the password hash), or null
+ * when break-glass is off; `secret` is SESSION_SECRET (legacySid). */
+export function sessionGate(db: Db, opts: { breakGlass: { secret: string; passwordHash: string } | null; secret: string }): SessionGate {
+  const fingerprint = opts.breakGlass ? breakGlassFingerprint(opts.breakGlass.secret, opts.breakGlass.passwordHash) : null;
   return async (s) => {
     // A pre-limit token has no sid: its fixed one is looked up, and may have no row (not ended).
     const sid = s.sid ?? legacySid(opts.secret, s.id, s.signedAt);
@@ -109,7 +112,9 @@ export function sessionGate(db: Db, opts: { localConfigured: boolean; secret: st
     // Break-glass has no users row; it's only valid while LOCAL_ADMIN_* config exists. Memory first,
     // then the database; with the database down, break-glass alone is let through (I2).
     if (s.id === BREAK_GLASS_ID) {
-      if (!opts.localConfigured) return null;
+      if (fingerprint === null) return null;
+      // Review BG M1: made with a password that is no longer current (or before this check): refused.
+      if (!fingerprintMatches(s.pwf, fingerprint)) return null;
       const held = breakGlassSessions.get(sid);
       if (held !== undefined) return held.ended ? null : breakGlassUser();
       let row: { userId: string; endedAt: Date | null } | undefined;

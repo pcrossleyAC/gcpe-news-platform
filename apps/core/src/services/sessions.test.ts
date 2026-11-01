@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
+import { breakGlassFingerprint } from "@gcpe/auth";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { upsertOrganization } from "./organizations";
 import { setCalendarAccess } from "./calendar-access";
@@ -8,7 +9,9 @@ import { createUser, createUserSchema, sessionUserFor, setRoles, updateUser } fr
 
 const SECRET = "session-secret-for-gate-tests-0123456789";
 const now = () => Math.floor(Date.now() / 1000);
-const v = (id: string, sid?: string) => ({ id, name: "x", email: "", roles: [], expiresAt: now() + 60, signedAt: now(), ...(sid ? { sid } : {}) });
+const v = (id: string, sid?: string, pwf?: string) => ({ id, name: "x", email: "", roles: [], expiresAt: now() + 60, signedAt: now(), ...(sid ? { sid } : {}), ...(pwf ? { pwf } : {}) });
+const GLASS = { secret: "local-secret-for-gate-tests-0123456789", passwordHash: "scrypt$16384$8$1$salt$hash-one" };
+const PWF = breakGlassFingerprint(GLASS.secret, GLASS.passwordHash);
 
 describe("Core's session gate", () => {
   let tdb: TestDatabase;
@@ -25,7 +28,7 @@ describe("Core's session gate", () => {
     const admin = { id: "admin", roles: ["Core.Admin"] };
     await setCalendarAccess(tdb.db, admin, u.id, { role: "Calendar.Editor", organizationKeys: [healthOrg.key] }, []);
     const sid = await startSession(tdb.db, u.id, now());
-    const gate = sessionGate(tdb.db, { localConfigured: false, secret: SECRET });
+    const gate = sessionGate(tdb.db, { breakGlass: null, secret: SECRET });
     expect(await gate(v(u.id, sid))).toEqual(await sessionUserFor(tdb.db, u.id));
     expect((await gate(v(u.id, sid)))!.roles).toContain("Calendar.Editor");
     await setRoles(tdb.db, u.id, [], []);
@@ -35,7 +38,7 @@ describe("Core's session gate", () => {
   it("refuses an unknown or ended session, someone else's session id, an unknown or inactive person, and break-glass once its settings are gone", async () => {
     const a = await createUser(tdb.db, createUserSchema.parse({ email: "gate-a@example.test", displayName: "A", roles: [] }), []);
     const b = await createUser(tdb.db, createUserSchema.parse({ email: "gate-b@example.test", displayName: "B", roles: [] }), []);
-    const gate = sessionGate(tdb.db, { localConfigured: true, secret: SECRET });
+    const gate = sessionGate(tdb.db, { breakGlass: GLASS, secret: SECRET });
     const sidA = await startSession(tdb.db, a.id, now());
     expect(await gate(v(a.id, sidA))).not.toBeNull();
     expect(await gate(v(a.id))).not.toBeNull(); // a pre-limit token: active is enough
@@ -53,8 +56,18 @@ describe("Core's session gate", () => {
     expect(await gate(v(b.id))).not.toBeNull();
 
     const glass = await startSession(tdb.db, BREAK_GLASS_ID, now());
-    expect(await gate(v(BREAK_GLASS_ID, glass))).toMatchObject({ id: BREAK_GLASS_ID });
-    expect(await sessionGate(tdb.db, { localConfigured: false, secret: SECRET })(v(BREAK_GLASS_ID, glass))).toBeNull();
+    expect(await gate(v(BREAK_GLASS_ID, glass, PWF))).toMatchObject({ id: BREAK_GLASS_ID });
+    expect(await sessionGate(tdb.db, { breakGlass: null, secret: SECRET })(v(BREAK_GLASS_ID, glass, PWF))).toBeNull();
+  });
+
+  // Review BG M1: a break-glass sign-in stands only while the password it was made with is current.
+  it("refuses a break-glass session whose password fingerprint is missing or no longer current", async () => {
+    const glass = await startSession(tdb.db, BREAK_GLASS_ID, now());
+    const gate = sessionGate(tdb.db, { breakGlass: GLASS, secret: SECRET });
+    expect(await gate(v(BREAK_GLASS_ID, glass, PWF))).not.toBeNull();
+    expect(await gate(v(BREAK_GLASS_ID, glass))).toBeNull();
+    const changed = sessionGate(tdb.db, { breakGlass: { ...GLASS, passwordHash: "scrypt$16384$8$1$salt$hash-two" }, secret: SECRET });
+    expect(await changed(v(BREAK_GLASS_ID, glass, PWF))).toBeNull();
   });
 
   // Review S N2: the in-memory break-glass list doesn't grow for ever.

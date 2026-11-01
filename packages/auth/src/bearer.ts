@@ -213,12 +213,14 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
           // Owner decision 2026-10-31 (review S M8): a break-glass token stands only while its
           // password is current, within min(8 h, SESSION_MAX_HOURS), and not signed out.
           if (!breakGlass) throw new Error("break-glass token without the break-glass settings");
+          // Review BG N1: renaming the account ends the old name's tokens too.
+          if (payload.sub !== breakGlass.username) throw new Error("break-glass token for another user name");
           const sid = breakGlassSid(payload, breakGlass);
           const gate = opts.session?.gate ?? installedGate;
           if (gate) {
             let current: SessionUser | null;
             try {
-              current = await gate({ id: BREAK_GLASS_ID, name: String(payload.sub), email: "", roles: [], expiresAt: payload.exp!, signedAt: payload.iat!, sid, fromToken: true });
+              current = await gate({ id: BREAK_GLASS_ID, name: String(payload.sub), email: "", roles: [], expiresAt: payload.exp!, signedAt: payload.iat!, sid, fromToken: true, pwf: String(payload.pwf) });
             } catch (e) {
               logCheckUnavailable(e);
               res.setHeader("retry-after", "5");

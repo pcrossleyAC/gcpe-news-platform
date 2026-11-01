@@ -195,4 +195,13 @@ describe("break-glass bearer tokens", () => {
     expect((await call(app, access_token)).status).toBe(200);
     expect(first).toHaveBeenCalled();
   });
+
+  // Review BG N1: renaming the break-glass account ends the old name's tokens.
+  it("refuses a token for a break-glass user name that is no longer the current one", async () => {
+    const app = appWith(bearerFor());
+    const { access_token } = await signIn(app);
+    const renamed = express();
+    renamed.get("/api/x", requireBearer({ local: { secret, breakGlass: { username: "ops", passwordHash } } }), (_req, res) => void res.json({ ok: true }));
+    expect((await call(renamed, access_token)).status).toBe(401);
+  });
 });
