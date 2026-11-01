@@ -1541,7 +1541,7 @@ Hash`) on each server; T4's first row still prints `200`. To see expiry dates:
 
 | Task | How |
 |---|---|
-| Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, `cmd /c rmdir C:\gcpe\current`, `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. (Core `0014_outbox_dismissals` only adds the table recording who dismissed an undelivered update; an older release ignores it.) One exception to watch: News API migration `0012_unpublish_advisories` takes Advisories off the public site, and a release older than it puts an Advisory published or corrected after the rollback back on the site. |
+| Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, `cmd /c rmdir C:\gcpe\current`, `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. (Core `0014_outbox_dismissals` only adds the table recording who dismissed an undelivered update, and the outbox index below; an older release ignores both. The outbox index migrations, Core `0014`, NRMS `0025`, Distribution `0012`, News API `0013` and Calendar `0002`, build an index on each app's outbox inside the deploy's restart: writes to that outbox wait a few seconds while it builds; see openshift.md.) One exception to watch: News API migration `0012_unpublish_advisories` takes Advisories off the public site, and a release older than it puts an Advisory published or corrected after the rollback back on the site. |
 | Change a setting | Edit `C:\gcpe\config\gcpe.env` as Administrator, then `Restart-Service gcpe-stack`. |
 | Restart | `Restart-Service gcpe-stack` (IIS doesn't need restarting). |
 | Health | `https://<internal host>/stack/health`; `curl.exe http://127.0.0.1:3000/stack/health` on the server skips IIS. What it reports and how to monitor it: §7.7. |
@@ -1603,7 +1603,7 @@ out over a backlog.
 
 | Check | Red when | Look at |
 |---|---|---|
-| `outbox.nrms`, `outbox.core`, `outbox.distribution`, `outbox.news-api`, `outbox.calendar` | The oldest delivery waiting (`oldestPendingMinutes`) has waited over 60 minutes, or an update queued in the last 7 days was given up on (`recentUndelivered`). `pending` is how many wait; `undelivered` counts every one given up on. An update a newer one for the same record replaced (`replaced`), or that an administrator dismissed, never turns it red. | Hub → **Undelivered updates**: retry there once the receiving app works, or **Dismiss** one that doesn't need sending (that clears the alarm); and the **Error log**. The 7 days are a backstop: an undelivered update nobody acts on stops alerting after that. |
+| `outbox.nrms`, `outbox.core`, `outbox.distribution`, `outbox.news-api`, `outbox.calendar` | The oldest delivery waiting (`oldestPendingMinutes`) has waited over 60 minutes, or an update queued in the last 7 days was given up on (`recentUndelivered`). `pending` is how many wait; `undelivered` counts every one given up on. An update a newer one for the same record replaced (`replaced`), or that an administrator dismissed, never turns it red; one a later change overtook (it reached the app first, so resending is ignored) still does, until it is dismissed. | Hub → **Undelivered updates**: retry there once the receiving app works, or **Dismiss** one that doesn't need sending (that clears the alarm); and the **Error log**. The 7 days are a backstop: an undelivered update nobody acts on stops alerting after that. |
 | `releases.overdue` | A scheduled release, not on hold, is over 10 minutes past its time and still not published (`count`, `oldestMinutes`). | The release in the Hub, and the **Error log** for `[nrms] publish failed`. |
 | `nod.digest` | The daily digest hasn't run for over 26 hours (`minutesSinceLastRun`). | Subscribers → **Operations**, and the **Error log**. |
 | `nod.emergency-feed` (only when the feed is on) | The last feed check failed (`lastCheckOk: false`), or none ran for 30 minutes. | Subscribers → **Operations**. |
@@ -1613,7 +1613,11 @@ out over a backlog.
 
 Something that has never run (a fresh install, or just after a restart) counts as late only once the
 stack has been up longer than that check's limit. A check that can't be read says
-`"error": "couldn't check"` and is red.
+`"error": "couldn't check"` and is red. Each check's queries are cancelled after 2 seconds
+(`HEALTH_LIMITS.checkTimeoutMs`), so the whole answer stays well inside the deploy's 10-second health
+wait however big the tables grow; a check that ran out of time says `"ok": null, "error": "timed out"`:
+unknown, which doesn't make the answer `degraded`. If one keeps timing out, the database is slow:
+look at it.
 
 **Without a monitoring service**, a scheduled task on the app server can email the team. Save as
 `C:\gcpe\config\Watch-GcpeHealth.ps1` (fill in the mail server and addresses):
