@@ -413,7 +413,7 @@ Get-NetFirewallRule -PolicyStore ActiveStore -Enabled True -Direction Inbound -A
 
 | Expect | |
 |---|---|
-| `{"status":"ok","apps":{…}}` with every app `true` | the stack is up and IIS forwards to it |
+| `{"status":"ok","apps":{…},"checks":{…}}` with every app `true` (`"degraded"` on a server that has been running: see §7.7) | the stack is up and IIS forwards to it |
 | `State: Running`, `StartName: NT SERVICE\gcpe-stack` | the service |
 | the `<proxy …>` line contains `includePortInXForwardedFor="false"` and `preserveHostHeader="true"` | ARR settings |
 | `RemoteAddress` lists your staff ranges (Windows may show them as address/mask) | the restriction |
@@ -547,7 +547,9 @@ run on Windows.
 
 **Cutover only, never on Dev or Test while legacy is live:** turning legacy's publisher off and
 handing scheduling to NRMS (`replay-to-news-api`, `release-holds`) is in siteground.md, "Cutover
-order".
+order". Run the replay early on cutover day, and wait until NRMS pending deliveries are 0 before
+`release-holds` (the health check's `outbox.nrms` field, §7.7):
+`(curl.exe -k -s https://localhost/stack/health | ConvertFrom-Json).checks.'outbox.nrms'.pending`.
 
 **Check it**
 
@@ -1270,7 +1272,8 @@ Get-Content C:\gcpe\current\VERSION.json
 curl.exe -k -s https://localhost/stack/health
 ```
 
-Expect the new commit and `"status":"ok"`. Then, for Test and Prod, from outside:
+Expect the new commit and `"status":"ok"` (or `"degraded"`: every app is up but a background check
+is red, §7.7; the deploy accepts it, so look at which check). Then, for Test and Prod, from outside:
 `curl.exe -s -o NUL -w '%{http_code}' https://<public host>/` is `200` and `/hub/` is `404`.
 
 **Precompressed pages.** The public site writes a `.br` and `.gz` copy next to each page as it
@@ -1541,7 +1544,7 @@ Hash`) on each server; T4's first row still prints `200`. To see expiry dates:
 | Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, `cmd /c rmdir C:\gcpe\current`, `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. One exception to watch: News API migration `0012_unpublish_advisories` takes Advisories off the public site, and a release older than it puts an Advisory published or corrected after the rollback back on the site. |
 | Change a setting | Edit `C:\gcpe\config\gcpe.env` as Administrator, then `Restart-Service gcpe-stack`. |
 | Restart | `Restart-Service gcpe-stack` (IIS doesn't need restarting). |
-| Health | `https://<internal host>/stack/health`; `curl.exe http://127.0.0.1:3000/stack/health` on the server skips IIS. |
+| Health | `https://<internal host>/stack/health`; `curl.exe http://127.0.0.1:3000/stack/health` on the server skips IIS. What it reports and how to monitor it: §7.7. |
 | Empty the proxy cache | On the DMZ server: `iisreset /stop`, delete `C:\gcpe-proxy\cache\*`, `iisreset /start`. |
 | Roll back the proxy's rules | Each `Install-GcpeProxy.ps1` run keeps the rules it replaced as `C:\gcpe-proxy\logs\web.config.<time>.bak`. Copy the one you want over `C:\gcpe-proxy\site\web.config` (IIS picks it up at once). IIS also keeps copies of its own server settings (`applicationHost.config`) in `C:\inetpub\history`. Or re-run the previous proxy package's `Install-GcpeProxy.ps1`. |
 | Scheduled tasks | `Get-ScheduledTask -TaskName 'GCPE*' \| Get-ScheduledTaskInfo \| Format-Table TaskName, LastRunTime, LastTaskResult, NextRunTime` |
@@ -1569,6 +1572,68 @@ C:\gcpe\
 
 On the DMZ proxy: `C:\gcpe-proxy\site\web.config` (the rules), `C:\gcpe-proxy\cache\` (the ARR
 cache), `C:\gcpe-proxy\logs\` (install logs).
+
+### 7.7 Monitoring: the health check
+
+Point the organisation's uptime monitor at the app server's health check, from inside the network
+(the DMZ proxy answers 404 for it, §8.1):
+
+```
+https://<internal host>/stack/health
+```
+
+It answers within a few seconds (cached for 5 s, so polling every minute costs nothing):
+
+| `status` | HTTP | Means | Do |
+|---|---|---|---|
+| `ok` | 200 | Every app answers and every check below is green. | Nothing. |
+| `degraded` | 200 | Every app answers, but at least one check is red: background work is late or failing. The site works. | Look at which check (`"ok": false`) and act on it. |
+| `unavailable` | 503 | At least one app can't reach its database (`apps` shows which). | Check PostgreSQL and the service logs. |
+
+Alert on anything other than `ok`. A monitor that can only check the status code catches
+`unavailable` alone; one that can match text should look for `"status":"ok"`. HTTP stays 200 when
+degraded on purpose: a load balancer or the deploy's own health wait must not take a working site
+out over a backlog.
+
+**The checks** (`checks` in the answer; each has `"ok"` and its numbers). The limits are constants in
+`apps/stack/src/ops-checks.ts` (`HEALTH_LIMITS`), not settings:
+
+| Check | Red when | Look at |
+|---|---|---|
+| `outbox.nrms`, `outbox.core`, `outbox.distribution`, `outbox.news-api`, `outbox.calendar` | The oldest delivery waiting (`oldestPendingMinutes`) has waited over 60 minutes, or an update queued in the last 7 days was given up on (`recentUndelivered`). `pending` is how many wait; `undelivered` counts every one given up on. | Hub → **Undelivered updates** (retry there once the receiving app works) and **Error log**. |
+| `releases.overdue` | A scheduled release, not on hold, is over 10 minutes past its time and still not published (`count`, `oldestMinutes`). | The release in the Hub, and the **Error log** for `[nrms] publish failed`. |
+| `nod.digest` | The daily digest hasn't run for over 26 hours (`minutesSinceLastRun`). | Subscribers → **Operations**, and the **Error log**. |
+| `nod.emergency-feed` (only when the feed is on) | The last feed check failed (`lastCheckOk: false`), or none ran for 30 minutes. | Subscribers → **Operations**. |
+| `nod.media-sync` (only with a Media Hub) | The last nightly sync failed, or none succeeded for 26 hours. | Subscribers → **Operations**. |
+| `nod.send-loop` | NoD's sender hasn't finished a run for 15 minutes. It keeps this time in memory, so it is unknown again after every restart. | The **Error log** for `[nod] send failed`; restart the service. |
+| `site.rebuild-queue` | A page has waited over 12 hours to be rebuilt (`oldestMinutes`). A long queue (`pages`) alone isn't red: a whole-site rebuild queues every page and takes hours. | The **Error log**. |
+
+Something that has never run (a fresh install, or just after a restart) counts as late only once the
+stack has been up longer than that check's limit. A check that can't be read says
+`"error": "couldn't check"` and is red.
+
+**Without a monitoring service**, a scheduled task on the app server can email the team. Save as
+`C:\gcpe\config\Watch-GcpeHealth.ps1` (fill in the mail server and addresses):
+
+```powershell
+$h = curl.exe -s --max-time 20 http://127.0.0.1:3000/stack/health | Out-String
+$status = try { ($h | ConvertFrom-Json).status } catch { 'no answer' }
+if ($status -ne 'ok') {
+    Send-MailMessage -SmtpServer '<mail relay>' -From 'gcpe-stack@<domain>' -To '<team address>' `
+        -Subject "GCPE health: $status" -Body $h
+}
+```
+
+and register it every 15 minutes, as SYSTEM:
+
+```powershell
+$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\gcpe\config\Watch-GcpeHealth.ps1'
+$t = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15)
+Register-ScheduledTask -TaskName 'GCPE health watch' -Action $a -Trigger $t -User 'SYSTEM' -RunLevel Highest
+```
+
+It emails every 15 minutes while something stays red; that is the point. The Hub's **Error log**
+shows each problem once with how many times it happened.
 
 ## 8. DMZ proxy reference
 

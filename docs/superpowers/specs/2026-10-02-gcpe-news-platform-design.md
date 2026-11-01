@@ -151,6 +151,7 @@ Single-tenant deployments, configured per customer through `packages/config` + s
 - A dispatcher worker POSTs each event to subscriber URLs from config, `Content-Type: application/json`, headers `X-Event-Id`, `X-Event-Type`, `X-Event-Timestamp`, `X-Signature` (HMAC-SHA256 over timestamp + body, per-subscriber secret).
 - Receivers reject signatures older than 5 minutes (replay protection) and record `event_id` in an `inbox` table; duplicates are acknowledged and ignored (handlers idempotent).
 - Retry with exponential backoff for 24 h, then move to `outbox_dead_letter`. Each app has an admin page listing dead letters with replay.
+  - **Amendment 2026-10-31 (owner approved, suite review O1):** dead deliveries stay in `outbox_deliveries` with `status = 'dead'`, and each one is logged once to the Error log when it goes dead. Instead of a page per app, one Core.Admin Hub screen, **Undelivered updates** (`/hub/undelivered-updates`, served by the stack's `/stack/undelivered`), lists every app's dead deliveries with Retry per row and Retry all per app. The Calendar keeps its own SysAdmin page (spec addendum §5.1). `/stack/health` reports each outbox's backlog and dead count (windows.md §7.7).
 - Ordering: per-aggregate ordering via a monotonically increasing `sequence` per aggregate id; receivers ignore events with a sequence lower than the last applied for that aggregate.
 - Every event carries `correlationId` (propagated into downstream events and emails) for end-to-end tracing.
 

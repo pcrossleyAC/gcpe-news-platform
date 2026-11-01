@@ -58,7 +58,7 @@ deploy/openshift/smoke-test.sh gcpe-stack
 It starts `pgvector/pgvector:pg16` on a private Docker network, creates the seven databases, runs
 `node stack.js --migrate` twice (the second must find nothing to do), starts the stack as a random
 UID in group 0 with `--read-only`, `--cap-drop ALL`, `no-new-privileges` and a volume at `/data`,
-waits for `/stack/health` to be `ok`, checks `/`, `/hub/` and `/hub/manuals/core-admin.docx` (a manual's Word file) answer 200, then stops it with SIGTERM
+waits for `/stack/health` to be `ok` (or `degraded`: every app up, a background check red), checks `/`, `/hub/` and `/hub/manuals/core-admin.docx` (a manual's Word file) answer 200, then stops it with SIGTERM
 and requires exit code 0.
 
 By hand, against a Postgres of your own (the container must reach it by name or address, so put
@@ -151,7 +151,7 @@ OpenShift ignores a Dockerfile `HEALTHCHECK`, so the image has none; the Deploym
 | Probe | Path | Why |
 | --- | --- | --- |
 | startup | `/core/health/live` | The server listens only once every app has migrated and started; the first start on empty databases migrates everything. Allows 5 minutes (60 × 5 s). |
-| readiness | `/core/health/live` | 200 while the process serves HTTP. Not `/stack/health`: with one replica, one app's database blip (Calendar, NoD) would take the only pod out of the Service and the Route would answer 503 for everything, the public site included. Watch `/stack/health` (every app's readiness, databases included; cached 5 s) from monitoring and alert on it instead. |
+| readiness | `/core/health/live` | 200 while the process serves HTTP. Not `/stack/health`: with one replica, one app's database blip (Calendar, NoD) would take the only pod out of the Service and the Route would answer 503 for everything, the public site included. Watch `/stack/health` (every app's readiness, databases included, and the background checks; cached 5 s) from monitoring and alert on anything but `"status":"ok"` instead: [windows.md §7.7](windows.md#77-monitoring-the-health-check) lists the checks. |
 | liveness | `/core/health/live` | 200 while the process serves HTTP. Deliberately not `/stack/health`: a database outage fails that too, and restarting the pod would not fix the database but would stop the public site, which can still serve its pages from `/data`. |
 
 ## Migrations
