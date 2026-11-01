@@ -233,7 +233,7 @@ describe("Core session limits", () => {
     const { token } = await mintSession(SECRET, { id: u.id, name: `Limits ${n}`, email: u.email, roles: ["NRMS.Editor"] }, { sid, signedAt: sec(T0) });
     await setRoles(tdb.db, u.id, ["NRMS.Viewer"], []);
     vi.setSystemTime(new Date(T0.getTime() + 12 * 3600_000 - 1000));
-    const real = sessionGate(tdb.db, { localConfigured: false, secret: SECRET });
+    const real = sessionGate(tdb.db, { breakGlass: null, secret: SECRET });
     // The clock reaches the limit between the token check and the re-issue.
     const racing = createApp({ db: tdb.db, subscribers: [], auth: { session: { secret: SECRET } }, session: { secret: SECRET, secure: true, local: null }, sessionGate: async (s) => {
       const r = await real(s);
@@ -251,7 +251,7 @@ describe("Core session limits", () => {
     const dead = createDb(tdb.url, { max: 1, connectionTimeoutMillis: 500 });
     await dead.pool.end();
     const local = { username: "admin", passwordHash: await hashPassword(ADMIN_PW), secret: "local-secret-for-limits-tests-0123456789" };
-    const gate = sessionGate(dead.db, { localConfigured: true, secret: SECRET });
+    const gate = sessionGate(dead.db, { breakGlass: local, secret: SECRET });
     const down = createApp({ db: dead.db, subscribers: [], auth: { session: { secret: SECRET } }, session: { secret: SECRET, secure: true, local, ratePerMinute: 1000 }, sessionGate: gate });
     // Another app in the stack (its own database is fine), checking with Core's gate.
     const otherApp = express();

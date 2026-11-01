@@ -3,7 +3,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { deliveries, items, jobRecipients, nodSettings, operationsLog, sendJobs, subscribers } from "./db/schema";
-import { cancelHeldEmail, getOutgoing, NotPausedError } from "./outgoing";
+import { cancelAllHeldEmail, cancelHeldEmail, getOutgoing, HeldChangedError, NotPausedError } from "./outgoing";
 
 describe("outgoing news email (N3)", () => {
   let tdb: TestDatabase;
@@ -78,7 +78,7 @@ describe("outgoing news email (N3)", () => {
   });
 
   it("nothing held: zero, no oldest", async () => {
-    expect(await getOutgoing(tdb.db)).toEqual({ held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] });
+    expect(await getOutgoing(tdb.db)).toEqual({ held: { emails: 0, releases: 0, oldestAt: null, jobs: 0, heldKey: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", newestAt: null, groups: [] }, failed: [] });
   });
 
   it("cancels only the named jobs that are still held, logs it, and refuses while sending is running", async () => {
@@ -142,5 +142,96 @@ describe("outgoing news email (N3)", () => {
     ]);
     expect((await getOutgoing(tdb.db)).held).toMatchObject({ emails: 1 });
     expect(await cancelHeldEmail(tdb.db, [a], "Avery Admin")).toEqual({ cancelledJobs: 1, cancelledEmails: 1 });
+  });
+
+  // Cancel all (suite review NC): the request carries a marker, not 2,500+ ids, so the shared 100 kb
+  // JSON limit can't stop it. These make many jobs in one statement.
+  const manyJobs = async (n: number, prefix = "bulk") => {
+    await tdb.db.execute(sql`
+      INSERT INTO send_jobs (job_key, kind, created_at)
+      SELECT ${prefix} || ':' || g, 'media', now() - (g || ' seconds')::interval FROM generate_series(1, ${n}) g`);
+    await tdb.db.execute(sql`
+      INSERT INTO job_recipients (job_id, subscriber_id)
+      SELECT j.id, ${subs[0]!}::uuid FROM send_jobs j WHERE j.job_key LIKE ${prefix + ":%"}`);
+  };
+  const snapshot = async () => {
+    const { held } = await getOutgoing(tdb.db);
+    return { heldKey: held.heldKey, newestAt: held.newestAt! };
+  };
+  const statuses = async () =>
+    Object.fromEntries((await tdb.db.execute<{ status: string; n: number }>(sql`SELECT status, count(*)::int AS n FROM send_jobs GROUP BY status`)).rows.map((r) => [r.status, r.n]));
+
+  it("NC: Cancel all cancels 3,000 held jobs from a marker, in one go, and logs it", async () => {
+    await manyJobs(3000);
+    const snap = await snapshot();
+    expect((await getOutgoing(tdb.db)).held.jobs).toBe(3000);
+    expect(await cancelAllHeldEmail(tdb.db, snap, "Avery Admin")).toEqual({ cancelledJobs: 3000, cancelledEmails: 3000 });
+    expect(await statuses()).toEqual({ cancelled: 3000 });
+    const log = await tdb.db.select().from(operationsLog);
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ actor: "Avery Admin", action: "held-email-cancelled" });
+    expect(log[0]!.detail).toMatch(/^3,000 send jobs, 3,000 emails: Media list /);
+    expect(log[0]!.detail.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("NC: Cancel all refuses, changing nothing, when a job the screen showed has gone meanwhile", async () => {
+    await manyJobs(5);
+    const snap = await snapshot();
+    await tdb.db.execute(sql`UPDATE send_jobs SET status = 'sent' WHERE job_key = 'bulk:2'`);
+    await expect(cancelAllHeldEmail(tdb.db, snap, "Avery Admin")).rejects.toBeInstanceOf(HeldChangedError);
+    expect(await statuses()).toEqual({ pending: 4, sent: 1 });
+    expect(await tdb.db.select().from(operationsLog)).toHaveLength(0);
+  });
+
+  it("NC: Cancel all leaves alone a job that was made after the screen loaded", async () => {
+    await manyJobs(5);
+    const snap = await snapshot();
+    await tdb.db.execute(sql`INSERT INTO send_jobs (job_key, kind, created_at) VALUES ('later:1', 'media', now() + interval '1 minute')`);
+    expect(await cancelAllHeldEmail(tdb.db, snap, "Avery Admin")).toMatchObject({ cancelledJobs: 5 });
+    expect(await statuses()).toEqual({ cancelled: 5, pending: 1 });
+  });
+
+  it("NC review I1: an equal add and remove doesn't fool Cancel all (same count, older timestamp), and nothing is cancelled", async () => {
+    await manyJobs(3);
+    const snap = await snapshot();
+    // A digest-style job that committed late but carries an earlier start time, and one shown job gone.
+    await tdb.db.execute(sql`INSERT INTO send_jobs (job_key, kind, created_at) VALUES ('late:1', 'media', now() - interval '1 hour')`);
+    await tdb.db.execute(sql`UPDATE send_jobs SET status = 'cancelled' WHERE job_key = 'bulk:1'`);
+    await expect(cancelAllHeldEmail(tdb.db, snap, "Avery Admin")).rejects.toBeInstanceOf(HeldChangedError);
+    expect(await statuses()).toEqual({ cancelled: 1, pending: 3 });
+    expect(await tdb.db.select().from(operationsLog)).toHaveLength(0);
+  });
+
+  it("NC review M2: Cancel all locks the set it checked, so a concurrent cancel waits and can't make it 'partly'", async () => {
+    await manyJobs(3);
+    const snap = await snapshot();
+    const { rows: [one] } = await tdb.db.execute<{ id: string }>(sql`SELECT id FROM send_jobs WHERE job_key = 'bulk:1'`);
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const other = tdb.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM send_jobs WHERE id = ${one!.id}::uuid FOR UPDATE`);
+      locked();
+      await held;
+      await tx.execute(sql`UPDATE send_jobs SET status = 'cancelled' WHERE id = ${one!.id}::uuid`);
+    });
+    await isLocked;
+    const all = cancelAllHeldEmail(tdb.db, snap, "Avery Admin");
+    const settled = await Promise.race([all.then(() => "done", () => "done"), new Promise((r) => setTimeout(() => r("waiting"), 300))]);
+    expect(settled).toBe("waiting"); // the cancel-all SELECT is blocked on the row lock, not racing past it
+    release();
+    await other;
+    // The other admin's cancel committed first; the set differs, so it is refused rather than reported as "partly".
+    await expect(all).rejects.toBeInstanceOf(HeldChangedError);
+    expect(await statuses()).toEqual({ cancelled: 1, pending: 2 });
+  });
+
+  it("NC: Cancel all refuses while sending is running", async () => {
+    await manyJobs(2);
+    const snap = await snapshot();
+    await tdb.db.update(nodSettings).set({ paused: false }).where(eq(nodSettings.id, 1));
+    await expect(cancelAllHeldEmail(tdb.db, snap, "Avery Admin")).rejects.toBeInstanceOf(NotPausedError);
+    expect(await statuses()).toEqual({ pending: 2 });
   });
 });

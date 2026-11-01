@@ -28,7 +28,7 @@ describe("local admin auth", () => {
 
   it("logs in and the token works on the API", async () => {
     const login = localLoginRouter({ username: "admin", passwordHash, secret });
-    const app = appWith({ ...entra, keys, local: { secret } }, login);
+    const app = appWith({ ...entra, keys, local: { secret, breakGlass: { username: "admin", passwordHash } } }, login);
     const res = await request(app).post("/auth/local/token").send({ username: "admin", password: "s3cret-pass" });
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ token_type: "Bearer", expires_in: 28800 });

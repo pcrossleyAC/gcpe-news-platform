@@ -10,6 +10,8 @@ import {
   SESSION_COOKIE,
   SESSION_RENEW_WINDOW_SECONDS,
   SessionLimitError,
+  breakGlassFingerprint,
+  verifyBreakGlassToken,
   verifyPassword,
   verifySession,
   type LocalAuthConfig,
@@ -19,7 +21,7 @@ import {
 } from "@gcpe/auth";
 import type { EntraClient } from "../entra/client";
 import { entraRoutes } from "../entra/routes";
-import { breakGlassUser, endSession, legacySid, sessionGate, startSession } from "../services/sessions";
+import { BREAK_GLASS_ID, breakGlassUser, endSession, legacySid, sessionGate, startSession } from "../services/sessions";
 import { passwordSignIn, sessionRolesOf } from "../services/users";
 import { newSessionCookie } from "./session-cookie";
 
@@ -58,18 +60,18 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
   const requireCsrf: RequestHandler = (req, res, next) =>
     req.header(CSRF_HEADER) === "1" ? next() : void res.status(403).json({ error: "missing X-GCPE-Request header" });
   const maxSessionSeconds = deps.maxSessionSeconds ?? DEFAULT_SESSION_MAX_SECONDS;
-  const gate = deps.gate ?? sessionGate(deps.db, { localConfigured: deps.local !== null, secret: deps.secret });
+  const gate = deps.gate ?? sessionGate(deps.db, { breakGlass: deps.local, secret: deps.secret });
   /** How long a session lasts, for the Hub's own wording (review S M2). */
   const sessionHours = Math.round((maxSessionSeconds / 3600) * 100) / 100;
-  const issue = async (res: Response, user: SessionUser, terms: { sid: string; signedAt: number }) => {
+  const issue = async (res: Response, user: SessionUser, terms: { sid: string; signedAt: number; pwf?: string }) => {
     const { cookie, expiresAt } = await newSessionCookie(deps.secret, deps.secure, user, { ...terms, maxSessionSeconds });
     res.setHeader("set-cookie", cookie);
     res.json({ user, expiresAt: new Date(expiresAt * 1000).toISOString(), sessionHours });
   };
   /** A new sign-in: recorded, then issued. */
-  const signIn = async (res: Response, user: SessionUser) => {
+  const signIn = async (res: Response, user: SessionUser, pwf?: string) => {
     const signedAt = Math.floor(Date.now() / 1000);
-    await issue(res, user, { sid: await startSession(deps.db, user.id, signedAt, maxSessionSeconds), signedAt });
+    await issue(res, user, { sid: await startSession(deps.db, user.id, signedAt, maxSessionSeconds), signedAt, pwf });
   };
   const userPasswordsAllowed = deps.userPasswordsAllowed ?? true;
   const notSignedIn = (res: Response) => {
@@ -95,7 +97,8 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
         // Exactly one scrypt verification on every path, so timing doesn't reveal which path ran.
         if (deps.local && username === deps.local.username) {
           if (!(await verifyPassword(password, deps.local.passwordHash))) return void res.status(401).json({ error: "invalid credentials" });
-          return void (await signIn(res, breakGlassUser()));
+          // The password's fingerprint goes in the cookie: a later password change ends it (review BG M1).
+          return void (await signIn(res, breakGlassUser(), breakGlassFingerprint(deps.local.secret, deps.local.passwordHash)));
         }
         const result = await passwordSignIn(deps.db, username, password, { usersAllowed: userPasswordsAllowed });
         // The right password for an account that is switched off: say so (the sign-in screen's
@@ -119,6 +122,17 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
   // Ends this session on the server too (owner decision 2026-10-31), so a copy of the cookie
   // can't be used afterwards. Only this sign-in: the person's other computers stay signed in.
   // The browser's cookie is cleared first, so Sign out works even when Core can't record it (M5).
+  // A break-glass bearer token from /<app>/auth/local/token (review S M8) signs out the same way,
+  // with the token itself: it is refused in every app from its next request (no cookie involved,
+  // so no CSRF header needed). Held in memory too, so this works with Core's database down.
+  r.post("/auth/logout", async (req, res, next) => {
+    const header = req.header("authorization");
+    if (!header?.startsWith("Bearer ")) return next();
+    const t = deps.local ? await verifyBreakGlassToken(header.slice(7), deps.local.secret, { ...deps.local, maxSessionSeconds }).catch(() => null) : null;
+    if (!t) return void res.status(401).json({ error: "invalid token" });
+    await endSession(deps.db, t.sid, BREAK_GLASS_ID);
+    res.status(204).end();
+  });
   r.post("/auth/logout", requireCsrf, async (req, res) => {
     clear(res);
     const cookie = readCookie(req.header("cookie"), SESSION_COOKIE);
@@ -161,12 +175,12 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
       try {
         if (!session.sid) {
           const sid = await startSession(deps.db, current.id, session.signedAt, maxSessionSeconds, legacySid(deps.secret, current.id, session.signedAt));
-          return void (await issue(res, current, { sid, signedAt: session.signedAt }));
+          return void (await issue(res, current, { sid, signedAt: session.signedAt, pwf: session.pwf }));
         }
         const changed = !sameRoles(session.roles, current.roles) || session.name !== current.name;
         // Renewal can't go past the limit: once the token already runs to it, there is nothing to renew.
         const renew = session.expiresAt - now <= SESSION_RENEW_WINDOW_SECONDS && session.expiresAt < limit;
-        if (renew || changed) return void (await issue(res, current, { sid: session.sid, signedAt: session.signedAt }));
+        if (renew || changed) return void (await issue(res, current, { sid: session.sid, signedAt: session.signedAt, pwf: session.pwf }));
       } catch (e) {
         // The limit came while this ran (M4): the same answer as a token past it.
         if (e instanceof SessionLimitError) return notSignedIn(res);
