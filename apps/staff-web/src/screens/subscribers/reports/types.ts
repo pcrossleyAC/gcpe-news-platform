@@ -61,6 +61,8 @@ export interface ReleaseSendRow {
   publishedAt: string;
   asItHappens: ModeCounts;
   media: ModeCounts;
+  /** Corrected copies to subscribers and media lists (owner decision 2026-10-31). */
+  corrected: ModeCounts;
 }
 export interface RangedPage<T> {
   from: string;

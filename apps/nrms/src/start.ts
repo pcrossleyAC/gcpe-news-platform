@@ -301,7 +301,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const filesBase = parsed.PUBLIC_FILES_BASE;
   // Media contact count calls the same NoD count endpoint as the subscriber count — workflow.ts
   // supplies the `media-distribution-lists:<key>` keys, NoD counts whatever keys it's given.
-  const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, releaseAudience: nod?.releaseAudience, filesBase };
+  const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, releaseAudience: nod?.releaseAudience, correctionAudience: nod?.correctionAudience, filesBase };
   const store = localStore(parsed.STORAGE_DIR, "/files/");
   const slideFiles = { store, filesBase };
   const siteSettingsDefaults = loadSiteSettingsDefaults(parsed.TENANT_CONFIG, tenant.site.theme);

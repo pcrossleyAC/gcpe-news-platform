@@ -58,7 +58,7 @@ describe("Core HTTP API", () => {
     expect((await request(app).get("/api/time-zone-check")).status).toBe(401);
     const res = await request(app).get("/api/time-zone-check").set("authorization", `Bearer ${reader}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ timeZone: "America/Vancouver", tzCheck: { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 } });
+    expect(res.body).toEqual({ timeZone: "America/Vancouver", tzCheck: { at: "2026-12-15T20:00:00Z", offsetMinutes: -420, fixedSince: "2026-03-08T10:00:00.000Z" } });
   });
 
   it("authenticates before parsing request bodies", async () => {

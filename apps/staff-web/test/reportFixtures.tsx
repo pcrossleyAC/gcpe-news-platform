@@ -69,6 +69,7 @@ export const RELEASE_SENDS: RangedPage<ReleaseSendRow> = {
       publishedAt: "2026-10-06T16:30:00.000Z",
       asItHappens: { recipients: 4, handedOffNotBounced: 1, bounced: 2, notSent: 1 },
       media: { recipients: 1, handedOffNotBounced: 1, bounced: 0, notSent: 0 },
+      corrected: { recipients: 3, handedOffNotBounced: 2, bounced: 0, notSent: 1 },
     },
   ],
 };

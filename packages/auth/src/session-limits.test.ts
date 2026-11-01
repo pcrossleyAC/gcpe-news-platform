@@ -206,3 +206,23 @@ describe("when the session check can't answer", () => {
     await expect(mintSession(secret, user, { sid: "sid-1", signedAt: s(T0) })).rejects.toBeInstanceOf(SessionLimitError);
   });
 });
+
+// Review S N4: the throttled log line names the failure (its code or kind), never the error's own
+// message, which can carry what a failing query bound.
+it("the session-check log line gives a safe label only", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2031-01-01T00:00:00Z")); // well past any earlier test's log, so this one logs
+  const { token } = await mintSession(secret, user, { sid: "sid-1" });
+  const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    const failure = Object.assign(new Error("password authentication failed for editor@example.test"), { code: "28P01" });
+    const a = express();
+    a.get("/x", requireBearer({ session: { secret, gate: async () => Promise.reject(failure) } }), (_req, res) => void res.json({}));
+    expect((await request(a).get("/x").set("cookie", `${SESSION_COOKIE}=${token}`)).status).toBe(503);
+    const line = errors.mock.calls.map((c) => String(c[0])).find((l) => l.includes("session check unavailable"))!;
+    expect(line).toContain("28P01");
+    expect(line).not.toContain("editor@example.test");
+  } finally {
+    errors.mockRestore();
+  }
+});

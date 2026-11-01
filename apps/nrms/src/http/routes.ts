@@ -8,7 +8,7 @@ import { EventTooLargeError, type SubscriberConfig } from "@gcpe/events";
 import { tzCheckFor } from "@gcpe/config";
 import {
   addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, forecastQuerySchema, listQuerySchema, MAX_ACTIVITY_ID, metaSchema,
-  reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
+  emailAgainSchema, reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
 } from "@gcpe/nrms-contract";
 import { calendarViewerOf } from "../calendar/viewer";
 import { forecast } from "../calendar/forecast";
@@ -38,7 +38,7 @@ import { buildEmailCopy } from "../renditions/email";
 import { buildRenditionModel } from "../renditions/model";
 import { renderPdf } from "../renditions/pdf";
 import { renderText } from "../renditions/text";
-import { approve, audiencePreview, cancel, returnToDraft, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
+import { approve, audiencePreview, cancel, emailAgainAudience, requestEmailAgain, returnToDraft, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
 import { listCategories } from "../taxonomy";
 import { openReleasesOf } from "../succession";
 import { setFeature } from "../website/features";
@@ -315,6 +315,21 @@ export function apiRoutes(deps: RouteDeps): Router {
       res.json(preview);
     }),
   );
+
+  // Owner decision 2026-10-31: about how many people "Also email it again?" reaches per tick (only
+  // people who already got it). Read-only; 404 for a release that hasn't gone out.
+  r.get(
+    "/releases/:id/email-again-audience",
+    edit,
+    run(async (req, res) => {
+      if (!(await visibleView(req.params.id))) return notFound(res);
+      const counts = await emailAgainAudience(db, req.params.id, workflow);
+      if (!counts) return notFound(res);
+      res.json(counts);
+    }),
+  );
+  // Email the correction: republish a live release and email it again, per tick. Same role as Publish now.
+  r.post("/releases/:id/email-again", edit, run(async (req, res) => void res.json(withStatus(await requestEmailAgain(db, req.params.id, emailAgainSchema.parse(req.body), actorOf(req))))));
 
   r.post("/releases/:id/approve", edit, run(async (req, res) => void res.json(withStatus(await approve(db, req.params.id, version(req), actorOf(req), workflow)))));
   r.post("/releases/:id/schedule", edit, run(async (req, res) => void res.json(withStatus(await schedule(db, req.params.id, scheduleSchema.parse(req.body), actorOf(req), workflow)))));

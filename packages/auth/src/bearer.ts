@@ -1,4 +1,5 @@
 import type { Request, RequestHandler, Response } from "express";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { INTERNAL_AUDIENCE, INTERNAL_ISSUER, internalKey, isInternalRequest } from "./internal";
 import { assertSecretStrength, LOCAL_AUDIENCE, LOCAL_ISSUER, localKey } from "./local";
@@ -75,8 +76,8 @@ function logCheckUnavailable(e: unknown): void {
   const now = Date.now();
   if (now - lastCheckLog < 30_000) return;
   lastCheckLog = now;
-  const label = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-  console.error(`[auth] session check unavailable (requests answer 503 until it recovers; logged at most every 30 s): ${label.slice(0, 200)}`);
+  // The error's code or kind only, never its message (review S N4).
+  console.error(`[auth] session check unavailable (requests answer 503 until it recovers; logged at most every 30 s): ${safeErrorLabel(e)}`);
 }
 
 /** The stack installs Core's gate here once Core has started, for every app in the process; null

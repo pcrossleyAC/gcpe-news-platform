@@ -8,6 +8,7 @@
     "./cli/read-hidden": "./src/cli/read-hidden.ts"
   },
   "dependencies": {
+    "@gcpe/http-kit": "0.0.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
     "jose": "^6.1.3",

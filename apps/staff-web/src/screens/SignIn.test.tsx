@@ -15,11 +15,15 @@ function jsonResponse(status: number, body: unknown): Response {
 /** /core/auth/session (SessionProvider's own initial load) always answers 401 here — these
  * tests start signed out, same as a real visit to /hub/sign-in. /core/auth/methods answers
  * `methods` (password only, unless a test says otherwise). */
-function stubFetch(loginHandler: (init: RequestInit) => Response, methods: Response = jsonResponse(200, { entra: false, local: true })) {
+function stubFetch(
+  loginHandler: (init: RequestInit) => Response,
+  methods: Response = jsonResponse(200, { entra: false, local: true }),
+  session: () => Response = () => jsonResponse(401, { error: "not signed in" }),
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init: RequestInit = {}) => {
-      if (url === "/core/auth/session") return jsonResponse(401, { error: "not signed in" });
+      if (url === "/core/auth/session") return session();
       if (url === "/core/auth/methods") return methods.clone();
       if (url === "/core/auth/login") return loginHandler(init);
       throw new Error(`unexpected fetch: ${url}`);
@@ -94,6 +98,24 @@ describe("SignIn", () => {
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Your account is not active. Contact a Core administrator.");
+  });
+
+  // Review S N3: a server error is not a wrong password, and Core being unable to check sign-ins
+  // is said here too, not only inside the Hub.
+  it.each([500, 502, 503])("a %i says plainly that signing in can't work right now", async (status) => {
+    stubFetch(() => jsonResponse(status, { error: "internal error" }));
+    renderSignIn();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/user name/i), "pat");
+    await user.type(screen.getByLabelText(/password/i), "s3cret");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("We can't sign you in right now. Try again in a few minutes.");
+  });
+
+  it("when Core can't check the sign-in, the sign-in screen says so", async () => {
+    stubFetch(noLogin, undefined, () => jsonResponse(503, { error: "sign-in check unavailable" }));
+    renderSignIn();
+    expect(await screen.findByText("The Hub can't check your sign-in right now. Try again in a minute.")).toBeInTheDocument();
   });
 
   it("429 shows the rate-limit message", async () => {

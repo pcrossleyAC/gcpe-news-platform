@@ -8,6 +8,7 @@ import { DistributionError, type DistributionClient } from "../distribution-clie
 import type { MediaHubClient } from "../media-hub/client";
 import { getSettings, setDistributionPaused, setPaused } from "../settings";
 import { releaseAudience } from "../audience";
+import { correctionAudience } from "../correction";
 import { countSubscribers } from "../subscribers";
 import { emailAddressSchema } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
@@ -131,6 +132,24 @@ export function apiRoutes(
         })
         .parse({ listKeys: split(req.query.lists), mediaListKeys: split(req.query.media), toSubscribers: req.query.subscribers === "true", postKind: req.query.kind });
       res.json(await releaseAudience(db, input));
+    }),
+  );
+
+  // Owner decision 2026-10-31: who "Also email it again?" reaches, per tick, by correction.ts's own
+  // rules (only people who already got the release). Read-only; same roles as the count.
+  r.get(
+    "/subscribers/correction-audience",
+    requireAnyRole("NoD.Admin", "NRMS.Editor", "NoD.SubscriberCount", "Core.Admin"),
+    run(async (req, res) => {
+      const split = (v: unknown) => (typeof v === "string" && v !== "" ? v.split(",") : []);
+      const input = z
+        .object({
+          itemKey: z.string().min(1).max(200),
+          listKeys: z.array(listKeySchema),
+          mediaListKeys: z.array(z.string().regex(/^media-distribution-lists:.+$/i, "must be 'media-distribution-lists:<key>'")),
+        })
+        .parse({ itemKey: req.query.key, listKeys: split(req.query.lists), mediaListKeys: split(req.query.media) });
+      res.json(await correctionAudience(db, input));
     }),
   );
 

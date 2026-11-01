@@ -34,7 +34,12 @@ export function legacySid(secret: string, userId: string, issuedAt: number): str
  * without it. The database row is still written when it can be (a SiteGround restart, which
  * happens whenever the process sits idle, would otherwise sign break-glass out). sid → ended.
  */
-const breakGlassSessions = new Map<string, boolean>();
+const breakGlassSessions = new Map<string, { ended: boolean; signedAt: number }>();
+
+/** For tests: whether this process still holds a break-glass session in memory. */
+export function breakGlassSessionKnown(sid: string): boolean {
+  return breakGlassSessions.has(sid);
+}
 
 const pruneOld = (db: Db, maxSessionSeconds: number) =>
   db.delete(staffSessions).where(lt(staffSessions.signedAt, new Date(Date.now() - (maxSessionSeconds + 3600) * 1000)));
@@ -48,7 +53,10 @@ const pruneOld = (db: Db, maxSessionSeconds: number) =>
  */
 export async function startSession(db: Db, userId: string, signedAt: number, maxSessionSeconds = DEFAULT_SESSION_MAX_SECONDS, sid = randomBytes(18).toString("base64url")): Promise<string> {
   if (userId === BREAK_GLASS_ID) {
-    if (!breakGlassSessions.has(sid)) breakGlassSessions.set(sid, false);
+    // Review S N2: past the limit (plus an hour's slack) a session can't be used anyway.
+    const cutoff = Math.floor(Date.now() / 1000) - maxSessionSeconds - 3600;
+    for (const [k, v] of breakGlassSessions) if (v.signedAt < cutoff) breakGlassSessions.delete(k);
+    if (!breakGlassSessions.has(sid) && signedAt >= cutoff) breakGlassSessions.set(sid, { ended: false, signedAt });
     try {
       await db.insert(staffSessions).values({ sid, userId, signedAt: new Date(signedAt * 1000) }).onConflictDoNothing();
     } catch (e) {
@@ -66,7 +74,7 @@ export async function startSession(db: Db, userId: string, signedAt: number, max
 export async function endSession(db: Db, sid: string, userId: string): Promise<void> {
   const end = () => db.insert(staffSessions).values({ sid, userId, signedAt: new Date(), endedAt: new Date() }).onConflictDoUpdate({ target: staffSessions.sid, set: { endedAt: sql`coalesce(${staffSessions.endedAt}, now())` } });
   if (userId === BREAK_GLASS_ID) {
-    breakGlassSessions.set(sid, true);
+    breakGlassSessions.set(sid, { ended: true, signedAt: breakGlassSessions.get(sid)?.signedAt ?? Math.floor(Date.now() / 1000) });
     try {
       await end();
     } catch (e) {
@@ -101,8 +109,8 @@ export function sessionGate(db: Db, opts: { localConfigured: boolean; secret: st
     // then the database; with the database down, break-glass alone is let through (I2).
     if (s.id === BREAK_GLASS_ID) {
       if (!opts.localConfigured) return null;
-      const ended = breakGlassSessions.get(sid);
-      if (ended !== undefined) return ended ? null : breakGlassUser();
+      const held = breakGlassSessions.get(sid);
+      if (held !== undefined) return held.ended ? null : breakGlassUser();
       let row: { userId: string; endedAt: Date | null } | undefined;
       try {
         [row] = await db.select({ userId: staffSessions.userId, endedAt: staffSessions.endedAt }).from(staffSessions).where(eq(staffSessions.sid, sid));

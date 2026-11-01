@@ -30,6 +30,15 @@ describe("release and site events", () => {
     expect(parseEvent(env("release.updated", { ...sampleRelease, notify: false })).type).toBe("release.updated");
   });
 
+  // Owner decision 2026-10-31: a republish can ask NoD to email a corrected copy again.
+  it("release.published and release.updated may carry an email-again request, checked", () => {
+    const emailAgain = { seq: 1, subscribers: true, mediaLists: false, requestedBy: "Pat Editor", requestedAt: "2026-10-31T21:15:00.000Z" };
+    expect(parseEvent(env("release.updated", { ...sampleRelease, notify: true, emailAgain })).data).toMatchObject({ emailAgain });
+    expect(parseEvent(env("release.published", { ...sampleRelease, emailAgain })).data).toMatchObject({ emailAgain });
+    expect(() => parseEvent(env("release.updated", { ...sampleRelease, notify: true, emailAgain: { ...emailAgain, seq: 0 } }))).toThrow();
+    expect(() => parseEvent(env("release.published", { ...sampleRelease, emailAgain: { ...emailAgain, requestedBy: "" } }))).toThrow();
+  });
+
   it("a record without mediaText (an older stored envelope) parses with mediaText null", () => {
     const { mediaText, ...withoutMediaText } = sampleRelease;
     expect(mediaText).toBeNull(); // sanity: the fixture itself carries the field

@@ -18,6 +18,26 @@ import {
 import type { CalendarRole } from "@gcpe/auth";
 import type { ReleaseRecord } from "@gcpe/events";
 import type { Layout, ReleaseStatus, ReleaseType } from "@gcpe/nrms-contract";
+
+/** The request as passed to NoD (news_releases.last_email_again): the event's `emailAgain`. */
+export interface SentEmailAgain {
+  seq: number;
+  subscribers: boolean;
+  mediaLists: boolean;
+  requestedBy: string;
+  requestedAt: string;
+  /** NRMS-only (never sent): the outbox events that carried it, newest last, to tell whether NoD got it. */
+  eventIds: string[];
+}
+
+/** A waiting "Also email it again?" (news_releases.email_again): the ticks, and who asked and when (ISO). */
+export interface EmailAgainRequest {
+  subscribers: boolean;
+  mediaLists: boolean;
+  actorId: string;
+  actorName: string;
+  at: string;
+}
 import type { StoredSiteSettings } from "@gcpe/site-settings";
 
 export * from "@gcpe/events/tables";
@@ -109,6 +129,20 @@ export const newsReleases = pgTable(
     lastError: text("last_error"),
     /** Phase 3c: the release went out without its Flickr photo (see media/flickr-jobs.ts). */
     flickrAlert: text("flickr_alert"),
+    /**
+     * Owner decision 2026-10-31: "Also email it again?" asked for on this release's next republish
+     * and not yet sent with it (the publisher clears it as it republishes): which audiences, and
+     * who asked and when. Null when nothing is waiting.
+     */
+    emailAgain: jsonb("email_again").$type<EmailAgainRequest>(),
+    /** How many times a corrected copy has been sent: the next one is this plus one, so each is its own send in NoD. */
+    correctionsEmailed: integer("corrections_emailed").notNull().default(0),
+    /**
+     * Review I2: the latest request the publisher passed on (its correction number, ticks, who and
+     * when). Repeated on every later republish event, so an event that is overtaken or given up on
+     * can't lose it; NoD acts on each number once. Cleared by an unpublish.
+     */
+    lastEmailAgain: jsonb("last_email_again").$type<SentEmailAgain>(),
     version: integer("version").notNull().default(1),
     /**
      * Phase 3e (NRMS legacy importer, apps/nrms/src/import/): the `version` this row had the

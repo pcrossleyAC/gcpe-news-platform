@@ -3,6 +3,6 @@ export { contrastRatio, siteThemeSchema, WCAG_AA_TEXT_CONTRAST, type SiteTheme }
 export { calendarTenantSchema, type CalendarTenantConfig } from "./calendar";
 export { parseEnv } from "./env";
 export { eventSecretsSchema } from "./event-secrets";
-export { TZ_CHECK_AT, tzCheckFor, utcOffsetMinutes, wallClockToInstant } from "./timezone";
+export { offsetFixedSince, TZ_CHECK_AT, tzCheckFor, utcOffsetMinutes, wallClockToInstant } from "./timezone";
 export { isRealProduction, isTestSite, siteEnvironment, type TestSiteEnv } from "./test-site";
 export { trustProxyHopsFrom, trustProxyHopsSchema } from "./trust-proxy";
