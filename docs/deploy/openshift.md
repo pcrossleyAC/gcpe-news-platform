@@ -168,7 +168,7 @@ Postgres advisory lock; a later run finds nothing to apply):
    is replaced. The same command works as an initContainer.
 
 Migrations are additive, so rolling back to the previous image after a migration is safe (as on
-Windows). News API `0012_unpublish_advisories` changes data, not structure: it takes any Advisory an
+Windows). Core `0014_outbox_dismissals` (fix round 1 of the 2026-10-31 suite review) adds one table, `outbox_dismissals`: who dismissed which undelivered update on the Hub's **Undelivered updates**. An older image ignores it, and an update it marked dismissed stays unsent; leave the table in place. News API `0012_unpublish_advisories` changes data, not structure: it takes any Advisory an
 older build put on the public site back off it (`docs/deploy/siteground.md`, "Pages and rebuilds").
 Rolling back past it doesn't put existing ones back, but an older image puts any Advisory published
 or corrected after the rollback on the site again. It takes the change feed's lock, so the public

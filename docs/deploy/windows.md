@@ -686,7 +686,7 @@ the way in.
 
 **Check it**
 
-`curl.exe -k -s https://localhost/stack/health` is `ok` (a wrong Entra setting stops the stack
+`curl.exe -k -s https://localhost/stack/health` is `ok`, or `degraded` with every app `true` (a background check is red, §7.7: this step itself worked) (a wrong Entra setting stops the stack
 from starting; the reason is in `C:\gcpe\service\logs\gcpe-stack.err.log`). On
 `https://<internal host>/hub/`, **Sign in with Microsoft** returns you to the Hub signed in.
 
@@ -741,7 +741,7 @@ your edit again.
 
 **Check it**
 
-After each restart, `curl.exe -k -s https://localhost/stack/health` is `ok` and the stack no longer
+After each restart, `curl.exe -k -s https://localhost/stack/health` is `ok`, or `degraded` with every app `true` (a background check is red, §7.7: this step itself worked) and the stack no longer
 warns that it is using that service's fake (the warnings go to the error log):
 
 ```powershell
@@ -811,7 +811,7 @@ Get-NetFirewallRule -DisplayName 'GCPE web: allowed client ranges only' -PolicyS
 Get-NetFirewallRule -Name 'IIS-WebServerRole-*' | Select-Object Name, Enabled
 ```
 
-Expect: health `ok`; `TRUST_PROXY_HOPS=2`, `SITE_PUBLIC_SITE_URL=https://<public host>`,
+Expect: health `ok`, or `degraded` with every app `true` (§7.7: this step itself worked); `TRUST_PROXY_HOPS=2`, `SITE_PUBLIC_SITE_URL=https://<public host>`,
 `SITE_ENVIRONMENT=test`; the rule in the **active** store (if it is missing there, Group Policy
 does not merge local firewall rules: ask the GPO owner, or every client including the DMZ is
 refused) with the DMZ address and staff ranges; every IIS rule for 80/443 (HTTP, HTTPS, QUIC)
@@ -1424,7 +1424,7 @@ $files = '\\<backup server>\<share>\<APP SERVER>\<yyyyMMdd-HHmmss>'
 
    It prints `[public-site] queued <n> pages; they render over the next ticks`.
 
-**Check it**: `curl.exe -k -s https://localhost/stack/health` is `ok`; the Hub lists the releases
+**Check it**: `curl.exe -k -s https://localhost/stack/health` is `ok`, or `degraded` with every app `true` (a background check is red, §7.7: this step itself worked). Right after a restore, `outbox.*` and `site.rebuild-queue` may be red until the deliveries and pages queued before the backup drain; that is expected. The Hub lists the releases
 from the night of the backup; a release with an attachment downloads it; the public site's home
 page fills in as the queue drains (`/hub/error-log` shows no failed site sync).
 
@@ -1541,7 +1541,7 @@ Hash`) on each server; T4's first row still prints `200`. To see expiry dates:
 
 | Task | How |
 |---|---|
-| Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, `cmd /c rmdir C:\gcpe\current`, `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. One exception to watch: News API migration `0012_unpublish_advisories` takes Advisories off the public site, and a release older than it puts an Advisory published or corrected after the rollback back on the site. |
+| Roll back | Deploy the previous package again; or `Stop-Service gcpe-stack`, `cmd /c rmdir C:\gcpe\current`, `New-Item -ItemType Junction -Path C:\gcpe\current -Target C:\gcpe\releases\<older>`, `Start-Service gcpe-stack`. The last five releases are kept. A rollback doesn't undo database migrations; they are additive, so the older release still runs. (Core `0014_outbox_dismissals` only adds the table recording who dismissed an undelivered update; an older release ignores it.) One exception to watch: News API migration `0012_unpublish_advisories` takes Advisories off the public site, and a release older than it puts an Advisory published or corrected after the rollback back on the site. |
 | Change a setting | Edit `C:\gcpe\config\gcpe.env` as Administrator, then `Restart-Service gcpe-stack`. |
 | Restart | `Restart-Service gcpe-stack` (IIS doesn't need restarting). |
 | Health | `https://<internal host>/stack/health`; `curl.exe http://127.0.0.1:3000/stack/health` on the server skips IIS. What it reports and how to monitor it: §7.7. |
@@ -1576,7 +1576,10 @@ cache), `C:\gcpe-proxy\logs\` (install logs).
 ### 7.7 Monitoring: the health check
 
 Point the organisation's uptime monitor at the app server's health check, from inside the network
-(the DMZ proxy answers 404 for it, §8.1):
+(the DMZ proxy answers 404 for it, §8.1). The app server's 443 accepts only the ranges in the rule
+**GCPE web: allowed client ranges only** (D2), so add the monitor's address to those ranges
+(re-run `Install-Gcpe.ps1` with it in `-AllowedClientRanges`), or a monitor outside them times out
+and reads as "down". Or use the scheduled task below, which runs on the server itself.
 
 ```
 https://<internal host>/stack/health
@@ -1600,7 +1603,7 @@ out over a backlog.
 
 | Check | Red when | Look at |
 |---|---|---|
-| `outbox.nrms`, `outbox.core`, `outbox.distribution`, `outbox.news-api`, `outbox.calendar` | The oldest delivery waiting (`oldestPendingMinutes`) has waited over 60 minutes, or an update queued in the last 7 days was given up on (`recentUndelivered`). `pending` is how many wait; `undelivered` counts every one given up on. | Hub → **Undelivered updates** (retry there once the receiving app works) and **Error log**. |
+| `outbox.nrms`, `outbox.core`, `outbox.distribution`, `outbox.news-api`, `outbox.calendar` | The oldest delivery waiting (`oldestPendingMinutes`) has waited over 60 minutes, or an update queued in the last 7 days was given up on (`recentUndelivered`). `pending` is how many wait; `undelivered` counts every one given up on. An update a newer one for the same record replaced (`replaced`), or that an administrator dismissed, never turns it red. | Hub → **Undelivered updates**: retry there once the receiving app works, or **Dismiss** one that doesn't need sending (that clears the alarm); and the **Error log**. The 7 days are a backstop: an undelivered update nobody acts on stops alerting after that. |
 | `releases.overdue` | A scheduled release, not on hold, is over 10 minutes past its time and still not published (`count`, `oldestMinutes`). | The release in the Hub, and the **Error log** for `[nrms] publish failed`. |
 | `nod.digest` | The daily digest hasn't run for over 26 hours (`minutesSinceLastRun`). | Subscribers → **Operations**, and the **Error log**. |
 | `nod.emergency-feed` (only when the feed is on) | The last feed check failed (`lastCheckOk: false`), or none ran for 30 minutes. | Subscribers → **Operations**. |
