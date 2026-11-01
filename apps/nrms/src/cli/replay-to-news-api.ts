@@ -16,7 +16,8 @@
  * Ordering: the dispatcher delivers oldest first, so a live publish made while the replay's
  * events are still being delivered waits behind them. Run it after legacy's publisher is off and
  * let its deliveries finish before release-holds (docs/deploy/siteground.md, "Cutover order").
- * Run with EVENT_SUBSCRIBERS naming `news-api` and `nod` for release.updated, as a republish goes.
+ * Run with EVENT_SUBSCRIBERS naming `news-api` only (the runbook says why not `nod`); the
+ * correction-request handling above is defensive, for a run that does list `nod`.
  *
  * I4: each release is replayed inside its own savepoint (a nested `tx.transaction`), so one bad
  * release (e.g. its current content now builds an oversized envelope -- `MAX_EVENT_BYTES`)
