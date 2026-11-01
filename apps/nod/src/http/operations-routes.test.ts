@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
@@ -60,7 +60,7 @@ describe("operations routes", () => {
       breakGlassOn: false,
       staffPasswordsOn: false,
       opsEmailSet: false,
-      outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
+      outgoing: { held: { emails: 0, releases: 0, oldestAt: null, jobs: 0, newestAt: null, groups: [] }, failed: [] },
     });
   });
 
@@ -79,6 +79,28 @@ describe("operations routes", () => {
       expect((await tdb.db.select({ status: sendJobs.status }).from(sendJobs).where(eq(sendJobs.id, job!.id)))[0]!.status).toBe("cancelled");
     } finally {
       await tdb.db.update(nodSettings).set({ paused: false }).where(eq(nodSettings.id, 1));
+    }
+  });
+
+  it("NC: Cancel all takes a marker, not ids: Admin only, 409 when the held email changed or sending is running, and works past the body limit's worth of jobs", async () => {
+    await tdb.db.execute(sql`DELETE FROM send_jobs`);
+    await tdb.db.execute(sql`INSERT INTO send_jobs (job_key, kind, created_at) SELECT 'nc:' || g, 'media', now() - (g || ' seconds')::interval FROM generate_series(1, 3000) g`);
+    const cancelAll = (tok: string, body: object) => request(app).post("/api/operations/held-email/cancel-all").set("authorization", `Bearer ${tok}`).send(body);
+    const newestAt = new Date((await tdb.db.execute<{ t: string }>(sql`SELECT max(created_at) AS t FROM send_jobs`)).rows[0]!.t).toISOString();
+    expect((await cancelAll(editor, { jobs: 3000, newestAt })).status).toBe(403);
+    expect((await cancelAll(admin, { jobs: -1, newestAt })).status).toBe(400);
+    expect((await cancelAll(admin, { jobs: 3000, newestAt: "yesterday" })).status).toBe(400);
+    const running = await cancelAll(admin, { jobs: 3000, newestAt });
+    expect([running.status, running.body]).toEqual([409, { error: "not-paused" }]);
+    await tdb.db.update(nodSettings).set({ paused: true }).where(eq(nodSettings.id, 1));
+    try {
+      const changed = await cancelAll(admin, { jobs: 2999, newestAt });
+      expect([changed.status, changed.body]).toEqual([409, { error: "held-changed" }]);
+      const ok = await cancelAll(admin, { jobs: 3000, newestAt });
+      expect([ok.status, ok.body]).toEqual([200, { cancelledJobs: 3000, cancelledEmails: 0 }]);
+    } finally {
+      await tdb.db.update(nodSettings).set({ paused: false }).where(eq(nodSettings.id, 1));
+      await tdb.db.execute(sql`DELETE FROM send_jobs`);
     }
   });
 

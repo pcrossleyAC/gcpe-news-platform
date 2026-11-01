@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole } from "@gcpe/auth";
 import { getOperations } from "../operations";
-import { cancelHeldEmail, NotPausedError } from "../outgoing";
+import { cancelAllHeldEmail, cancelHeldEmail, HeldChangedError, NotPausedError } from "../outgoing";
 import { getPurgeStatus, setPurgeEnabled } from "../purge";
 import { getSoftCodesCounted, resolveBounceSummaryAddress, setBounceSummaryAddress, setSoftCodesCounted, SOFT_CODE_RE } from "../settings";
 import { privateErrorsWith } from "./private-errors";
@@ -17,8 +17,12 @@ const purgeBody = z.object({ enabled: z.boolean() });
 /** The send jobs the screen showed and the admin confirmed (N3); a long pause's digests run to a few thousand. */
 const cancelBody = z.object({ jobIds: z.array(z.string().uuid()).min(1).max(20_000) });
 
+/** "Cancel all held email" sends what the screen showed (how many held jobs, when the newest was made), not every id (NC). */
+const cancelAllBody = z.object({ jobs: z.number().int().min(0), newestAt: z.string().datetime() });
+
 function mapError(e: unknown, res: Response): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
+  if (e instanceof HeldChangedError) return void res.status(409).json({ error: "held-changed" }), true;
   if (e instanceof NotPausedError) return void res.status(409).json({ error: "not-paused" }), true;
   return false;
 }
@@ -71,6 +75,11 @@ export function operationsRoutes(db: Db, deps: SettingsRouteDeps): Router {
   r.post("/operations/held-email/cancel", admin, privateErrors(async (req, res) => {
     const { jobIds } = cancelBody.parse(req.body);
     res.json(await cancelHeldEmail(db, jobIds, actorOf(req).name));
+  }));
+
+  // Cancel all (NC): the whole held set the admin was shown, however large; refused if it changed since.
+  r.post("/operations/held-email/cancel-all", admin, privateErrors(async (req, res) => {
+    res.json(await cancelAllHeldEmail(db, cancelAllBody.parse(req.body), actorOf(req).name));
   }));
 
   return r;

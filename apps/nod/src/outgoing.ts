@@ -40,8 +40,25 @@ export interface OutgoingGroup {
 }
 
 export interface OutgoingStatus {
-  held: { emails: number; releases: number; oldestAt: string | null; groups: OutgoingGroup[] };
+  held: {
+    emails: number;
+    releases: number;
+    oldestAt: string | null;
+    /** How many held send jobs there are, and when the newest was made: the marker "Cancel all"
+     * sends back so the server cancels exactly the jobs the screen showed, however many. */
+    jobs: number;
+    newestAt: string | null;
+    groups: OutgoingGroup[];
+  };
   failed: OutgoingGroup[];
+}
+
+/** The held email changed since the screen loaded (a job went out or was cancelled): "Cancel all"
+ * refuses rather than cancel a different set than the admin confirmed. → 409. */
+export class HeldChangedError extends Error {
+  constructor() {
+    super("held-changed");
+  }
 }
 
 /** NoD's sending isn't paused, so held email may be on its way: nothing is cancelled. → 409. */
@@ -123,7 +140,8 @@ function group(rows: JobRow[]): (OutgoingGroup & { itemKeys: Set<string> })[] {
 const strip = ({ itemKeys: _, ...g }: OutgoingGroup & { itemKeys: Set<string> }): OutgoingGroup => g;
 
 export async function getOutgoing(db: DbOrTx): Promise<OutgoingStatus> {
-  const held = group(await jobRows(db, sql`j.status = 'pending'`, true));
+  const heldRows = await jobRows(db, sql`j.status = 'pending'`, true);
+  const held = group(heldRows);
   const failed = group(await jobRows(db, sql`j.status = 'failed' AND j.created_at > now() - ${`${FAILED_DAYS} days`}::interval`, false))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, FAILED_LIMIT);
@@ -134,6 +152,8 @@ export async function getOutgoing(db: DbOrTx): Promise<OutgoingStatus> {
       emails: held.reduce((n, g) => n + g.emails, 0),
       releases: items.size,
       oldestAt: held[0]?.createdAt ?? null,
+      jobs: heldRows.length,
+      newestAt: heldRows.length ? iso(heldRows[heldRows.length - 1]!.created_at) : null,
       groups: held.map(strip),
     },
     failed: failed.map(strip),
@@ -184,24 +204,54 @@ function cancelLogDetail(groups: OutgoingGroup[], jobs: number, emails: number):
  * skipped. Cancelled jobs keep their delivery rows (never handed off), so the reports still show
  * those emails as not sent. Writes one operations-log row when anything was cancelled.
  */
-export async function cancelHeldEmail(db: Db, jobIds: string[], actor: string): Promise<{ cancelledJobs: number; cancelledEmails: number }> {
+export async function cancelHeldEmail(db: Db, jobIds: string[], actor: string): Promise<CancelResult> {
   if (jobIds.length === 0) return { cancelledJobs: 0, cancelledEmails: 0 };
   return db.transaction(async (tx) => {
-    const { rows: settings } = await tx.execute<{ paused: boolean }>(sql`SELECT paused FROM nod_settings WHERE id = 1 FOR SHARE`);
-    if (!settings[0]?.paused) throw new NotPausedError();
-    // Counted before the update, so the log records the emails each cancelled row held.
-    const before = await jobRows(tx, sql`j.id = ANY(${sql.param(jobIds)}::uuid[])`, true);
-    const { rows } = await tx.execute<{ id: string }>(sql`
-      UPDATE send_jobs SET status = 'cancelled', locked_until = NULL
-       WHERE id = ANY(${sql.param(jobIds)}::uuid[])
-         AND status = 'pending'
-         AND (locked_until IS NULL OR locked_until < now())
-      RETURNING id`);
-    if (rows.length === 0) return { cancelledJobs: 0, cancelledEmails: 0 };
-    const cancelledIds = new Set(rows.map((r) => r.id));
-    const groups = group(before.filter((r) => cancelledIds.has(r.id))).map(strip);
-    const emails = groups.reduce((n, g) => n + g.emails, 0);
-    await writeOpsLog(tx, actor, "held-email-cancelled", cancelLogDetail(groups, rows.length, emails));
-    return { cancelledJobs: rows.length, cancelledEmails: emails };
+    await requirePaused(tx);
+    return cancelJobs(tx, jobIds, actor);
   });
+}
+
+/**
+ * "Cancel all held email" for any number of jobs. The screen sends the marker it showed (how many
+ * held jobs, and when the newest was made) instead of every id, so the request stays small. In one
+ * transaction (paused, settings row `FOR SHARE`): if the held jobs made up to that time are not
+ * exactly that many, a job went out or was cancelled meanwhile and nothing is cancelled
+ * ({@link HeldChangedError}); otherwise exactly those jobs are cancelled. A job made after the
+ * screen loaded was never shown, so it stays held. The log detail is the same as {@link cancelHeldEmail}'s.
+ */
+export async function cancelAllHeldEmail(db: Db, shown: { jobs: number; newestAt: string }, actor: string): Promise<CancelResult> {
+  if (shown.jobs === 0) return { cancelledJobs: 0, cancelledEmails: 0 };
+  return db.transaction(async (tx) => {
+    await requirePaused(tx);
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      SELECT id FROM send_jobs
+       WHERE status = 'pending' AND date_trunc('milliseconds', created_at) <= ${shown.newestAt}::timestamptz`);
+    if (rows.length !== shown.jobs) throw new HeldChangedError();
+    return cancelJobs(tx, rows.map((r) => r.id), actor);
+  });
+}
+
+type CancelResult = { cancelledJobs: number; cancelledEmails: number };
+
+async function requirePaused(tx: DbOrTx): Promise<void> {
+  const { rows } = await tx.execute<{ paused: boolean }>(sql`SELECT paused FROM nod_settings WHERE id = 1 FOR SHARE`);
+  if (!rows[0]?.paused) throw new NotPausedError();
+}
+
+async function cancelJobs(tx: DbOrTx, jobIds: string[], actor: string): Promise<CancelResult> {
+  // Counted before the update, so the log records the emails each cancelled row held.
+  const before = await jobRows(tx, sql`j.id = ANY(${sql.param(jobIds)}::uuid[])`, true);
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    UPDATE send_jobs SET status = 'cancelled', locked_until = NULL
+     WHERE id = ANY(${sql.param(jobIds)}::uuid[])
+       AND status = 'pending'
+       AND (locked_until IS NULL OR locked_until < now())
+    RETURNING id`);
+  if (rows.length === 0) return { cancelledJobs: 0, cancelledEmails: 0 };
+  const cancelledIds = new Set(rows.map((r) => r.id));
+  const groups = group(before.filter((r) => cancelledIds.has(r.id))).map(strip);
+  const emails = groups.reduce((n, g) => n + g.emails, 0);
+  await writeOpsLog(tx, actor, "held-email-cancelled", cancelLogDetail(groups, rows.length, emails));
+  return { cancelledJobs: rows.length, cancelledEmails: emails };
 }

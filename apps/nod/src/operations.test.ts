@@ -50,7 +50,7 @@ describe("operations", () => {
       breakGlassOn: false,
       staffPasswordsOn: false,
       opsEmailSet: false,
-      outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
+      outgoing: { held: { emails: 0, releases: 0, oldestAt: null, jobs: 0, newestAt: null, groups: [] }, failed: [] },
     });
     expect(JSON.stringify(spy.mock.calls)).not.toContain("@");
     spy.mockRestore();

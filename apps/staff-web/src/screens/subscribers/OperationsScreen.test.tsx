@@ -31,7 +31,7 @@ const OPS: OperationsStatus = {
   breakGlassOn: false,
   staffPasswordsOn: false,
   opsEmailSet: true,
-  outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
+  outgoing: { held: { emails: 0, releases: 0, oldestAt: null, jobs: 0, newestAt: null, groups: [] }, failed: [] },
 };
 
 const J1 = "11111111-1111-1111-1111-111111111111";
@@ -52,6 +52,8 @@ const HELD: OperationsStatus = {
       emails: 1205,
       releases: 3,
       oldestAt: "2026-09-25T17:00:00.000Z",
+      jobs: 3,
+      newestAt: "2026-10-01T00:00:00.000Z",
       groups: [
         group({ jobIds: [J1], title: "Budget 2027", itemKey: "r1", emails: 1200, createdAt: "2026-09-25T17:00:00.000Z" }),
         group({ jobIds: [J2, J3], kind: "digest", digestCutoff: "2026-10-01T00:00:00.000Z", releases: 2, emails: 5, createdAt: "2026-10-01T00:00:00.000Z", attempts: 1, lastError: "Distribution 503: unavailable" }),
@@ -85,7 +87,7 @@ function stub(
     if (url === "/nod/api/operations/purge") return opts.purge?.() ?? jsonResponse(200, { changed: true, purge: { ...ops.purge, enabled: true } });
     if (url.endsWith("/pause")) return jsonResponse(200, { paused: true, changed: true });
     if (url === "/nod/api/settings/resume") return opts.resume?.() ?? jsonResponse(200, { paused: false, changed: true, released: { emails: 0, releases: 0 } });
-    if (url === "/nod/api/operations/held-email/cancel") return opts.cancel?.() ?? jsonResponse(200, { cancelledJobs: 1, cancelledEmails: 1200 });
+    if (url === "/nod/api/operations/held-email/cancel" || url === "/nod/api/operations/held-email/cancel-all") return opts.cancel?.() ?? jsonResponse(200, { cancelledJobs: 1, cancelledEmails: 1200 });
     if (url === "/nod/api/operations/bounce-summary-address") return opts.bounceAddress?.() ?? jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } });
     if (url === "/nod/api/operations/bounce-soft-codes") return opts.softCodes?.() ?? jsonResponse(200, { changed: true, softCodesCounted: ["4.2.2", "4.4.7"] });
     if (url === "/nod/api/bounces/inbox") return opts.upload?.() ?? jsonResponse(201, { id: "b1" });
@@ -214,7 +216,7 @@ describe("OperationsScreen", () => {
     expect(calls.filter((c) => c.url === "/nod/api/operations").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("N3: Cancel all held email names every release and posts every job", async () => {
+  it("N3: Cancel all held email names every release and posts what was shown, not every job", async () => {
     const calls = stub(["NoD.Admin"], HELD, { cancel: () => jsonResponse(200, { cancelledJobs: 3, cancelledEmails: 1205 }) });
     renderIt();
     const user = userEvent.setup();
@@ -227,7 +229,36 @@ describe("OperationsScreen", () => {
       expect.stringMatching(/^Daily digest of .*, 2 releases \(Daily digest\): 5 emails$/),
     ]);
     await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
-    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/held-email/cancel", method: "POST", body: { jobIds: [J1, J2, J3] } }));
+    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/held-email/cancel-all", method: "POST", body: { jobs: 3, newestAt: "2026-10-01T00:00:00.000Z" } }));
+  });
+
+  it("NC: Cancel all with thousands of held jobs sends a small request, whatever the number of jobs", async () => {
+    const many = Array.from({ length: 3000 }, (_, i) => group({ jobIds: [`00000000-0000-4000-8000-${String(i).padStart(12, "0")}`], title: `Release ${i}`, itemKey: `r${i}`, emails: 1 }));
+    const big: OperationsStatus = { ...HELD, outgoing: { ...HELD.outgoing, held: { ...HELD.outgoing.held, emails: 3000, jobs: 3000, groups: many } } };
+    const calls = stub(["NoD.Admin"], big, { cancel: () => jsonResponse(200, { cancelledJobs: 3000, cancelledEmails: 3000 }) });
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel all held email" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel held email" }));
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/cancel-all"))).toBe(true));
+    const sent = calls.find((c) => c.url.endsWith("/cancel-all"))!;
+    expect(sent.body).toEqual({ jobs: 3000, newestAt: "2026-10-01T00:00:00.000Z" });
+    expect(JSON.stringify(sent.body).length).toBeLessThan(200);
+    expect(await screen.findByText("Cancelled 3,000 held emails.")).toBeInTheDocument();
+  }, 30_000);
+
+  it("NC: if the held email changed since the page loaded, Cancel all says nothing was cancelled and refreshes the list", async () => {
+    const calls = stub(["NoD.Admin"], HELD, { cancel: () => jsonResponse(409, { error: "held-changed" }) });
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel all held email" }));
+    const dialog = await screen.findByRole("alertdialog");
+    const loadsBefore = calls.filter((c) => c.url === "/nod/api/operations").length;
+    await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Some of this email went out or was cancelled since this page loaded, so nothing was cancelled.");
+    await waitFor(() => expect(calls.filter((c) => c.url === "/nod/api/operations").length).toBe(loadsBefore + 1));
   });
 
   it("review M3: a partial cancel says some had already started going out", async () => {

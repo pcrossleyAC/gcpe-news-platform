@@ -99,6 +99,8 @@ const OPS: OperationsStatus = {
       emails: 12,
       releases: 1,
       oldestAt: "2026-10-06T17:00:00.000Z",
+      jobs: 1,
+      newestAt: "2026-10-06T17:00:00.000Z",
       groups: [{ jobIds: ["66666666-6666-6666-6666-666666666666"], kind: "as_it_happens", title: "Budget 2027", itemKey: "r1", digestCutoff: null, releases: 1, emails: 12, createdAt: "2026-10-06T17:00:00.000Z", attempts: 0, lastError: null }],
     },
     failed: [{ jobIds: ["77777777-7777-7777-7777-777777777777"], kind: "media", title: "Wildfire update", itemKey: "r2", digestCutoff: null, releases: 1, emails: 4, createdAt: "2026-10-06T17:00:00.000Z", attempts: 2, lastError: "Distribution 400: bad request" }],
