@@ -1,3 +1,5 @@
+import { formatInZone } from "../../format/bcTime";
+
 /**
  * W8 (suite review, owner approved 2026-10-31): the visible result of the last save or publish on
  * a Website screen ("Saved at 2:30 PM. Live now: …"), so an editor under time pressure can see
@@ -19,5 +21,5 @@ export function SaveResult({ text }: { text: string }): React.JSX.Element {
 
 /** The time of day in the tenant's zone, as the Hub shows times: "2:30 PM". */
 export function clockTime(at: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(at);
+  return formatInZone(at, timeZone, { hour: "numeric", minute: "2-digit", hour12: true });
 }
