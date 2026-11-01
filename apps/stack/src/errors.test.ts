@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, chmod } from "node:fs/promises";
+import { mkdtemp, readFile, rm, chmod, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -84,6 +84,31 @@ describe("installErrorCapture", () => {
     expect(capture.entries().map((e) => e.message)).toEqual(["e2", "e3", "e4"]);
   });
 
+  // Suite review fix round 1, M2: folded as they are captured, so one error repeating every minute
+  // can't push every other one out of the kept log.
+  it("folds a repeat of a message already kept into that entry: count, first and last time", () => {
+    capture = installErrorCapture(1000);
+    console.error("other");
+    for (let i = 0; i < 1500; i++) console.error("feed down");
+    const entries = capture.entries();
+    expect(entries.map((e) => [e.message, e.count ?? 1])).toEqual([
+      ["other", 1],
+      ["feed down", 1500],
+    ]);
+    const feed = entries[1]!;
+    expect(feed.firstAt! <= feed.timestamp).toBe(true);
+  });
+
+  it("a folded repeat moves to the newest end, so the ring trims the oldest distinct errors first", () => {
+    capture = installErrorCapture(2);
+    console.error("a");
+    console.error("b");
+    console.error("a");
+    console.error("c");
+    expect(capture.entries().map((e) => e.message)).toEqual(["a", "c"]);
+    expect(capture.entries()[0]!.count).toBe(2);
+  });
+
   it("close() restores the original console.error", () => {
     const original = console.error;
     capture = installErrorCapture();
@@ -141,6 +166,27 @@ describe("installErrorCapture", () => {
         const lines = raw.trim().split("\n");
         expect(lines).toHaveLength(2);
       });
+    });
+
+    it("a folded repeat survives a restart with its count, and an older file's repeated lines are folded on load", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "gcpe-errlog-"));
+      made.push(dir);
+      const filePath = join(dir, "errors.jsonl");
+      // An older build's file: the same message on three plain lines.
+      const old = (m: string, t: string) => JSON.stringify({ timestamp: t, message: m, pid: 1, startedAt: "s" });
+      await writeFile(filePath, [old("x", "2026-10-01T00:00:00.000Z"), old("y", "2026-10-01T00:01:00.000Z"), old("x", "2026-10-01T00:02:00.000Z"), old("x", "2026-10-01T00:03:00.000Z")].join("\n") + "\n");
+      const first = installErrorCapture({ filePath });
+      expect(first.entries().map((e) => [e.message, e.count ?? 1, e.firstAt ?? e.timestamp])).toEqual([
+        ["y", 1, "2026-10-01T00:01:00.000Z"],
+        ["x", 3, "2026-10-01T00:00:00.000Z"],
+      ]);
+      console.error("x");
+      first.close();
+      capture = installErrorCapture({ filePath });
+      expect(capture.entries().map((e) => [e.message, e.count ?? 1, e.firstAt])).toEqual([
+        ["y", 1, undefined],
+        ["x", 4, "2026-10-01T00:00:00.000Z"],
+      ]);
     });
 
     it("the in-memory ring, and the persisted file, trim to the cap", () => {

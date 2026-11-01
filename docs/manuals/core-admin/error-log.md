@@ -17,7 +17,7 @@ topics: []
 2. Choose **Refresh** to load newer entries.
 3. Each row shows **When** it last happened, **How often**, a **Process ID** and the **Message**.
 
-An error that happened more than once, with exactly the same message, is shown once. **How often** says "Once", or how many times and when it first happened, such as "212 times, first Oct 4, 2026 10:00 AM". So one problem that repeats every few minutes doesn't push the other errors out of view.
+An error that happened more than once, with exactly the same message, is shown once. **How often** says "Once", or how many times and when it first happened, such as "212 times, first Oct 4, 2026 10:00 AM". The log keeps one entry per message, so one problem that repeats every few minutes doesn't push the other errors out of the log.
 
 When you report a problem, copy the time and the whole message. The **Process ID** tells the support team which run of the system logged the last one.
 
