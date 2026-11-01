@@ -28,6 +28,8 @@ const OPS: OperationsStatus = {
     switchedOff: false,
   },
   testSite: true,
+  breakGlassOn: false,
+  staffPasswordsOn: false,
   opsEmailSet: true,
   outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
 };
@@ -582,11 +584,26 @@ describe("OperationsScreen on the live site", () => {
     expect(feed).not.toHaveTextContent("EMERGENCY_FEED");
   });
 
+  it("break-glass on and staff passwords allowed on the live site each say so at the top (fix round 1, M2, M3)", async () => {
+    stub(["NoD.Admin"], { ...OPS, testSite: false, bounceSource: "graph", breakGlassOn: true, staffPasswordsOn: true });
+    renderIt();
+    const signIn = await screen.findByRole("region", { name: "Sign-in on the live site" });
+    expect(within(signIn).getByText("The break-glass admin is on: anyone with its password can sign in with every admin role. Ask IT to turn it off once the problem is fixed.")).toBeInTheDocument();
+    expect(within(signIn).getByText("Staff passwords are allowed: staff can sign in without Microsoft. Ask IT to turn this off unless it is meant to be on.")).toBeInTheDocument();
+    cleanup();
+    // Neither on a test site, where both are normal.
+    stub(["NoD.Admin"], { ...OPS, breakGlassOn: true, staffPasswordsOn: true });
+    renderIt();
+    await screen.findByRole("region", { name: "Emergency alerts feed" });
+    expect(screen.queryByRole("region", { name: "Sign-in on the live site" })).toBeNull();
+  });
+
   it("both warnings together pass axe with no violations", async () => {
     const axe = (await import("axe-core")).default;
-    stub(["NoD.Admin"], { ...OPS, testSite: false, emergencyFeed: { url: null, checkedAt: null, result: null, switchedOff: true } });
+    stub(["NoD.Admin"], { ...OPS, testSite: false, breakGlassOn: true, staffPasswordsOn: true, emergencyFeed: { url: null, checkedAt: null, result: null, switchedOff: true } });
     renderIt();
     await screen.findByRole("region", { name: "Bounce upload" });
+    await screen.findByRole("region", { name: "Sign-in on the live site" });
     const results = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
     expect(results.violations.map((v) => v.id)).toEqual([]);
   });

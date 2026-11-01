@@ -244,6 +244,8 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     emergencyFeedUrl: parsed.EMERGENCY_FEED_URL ?? null,
     emergencyFeedOff: parsed.EMERGENCY_FEED === "off",
     testSite: isTestSite(env),
+    breakGlassOn: auth.local !== null,
+    staffPasswordsOn: env.CORE_LOCAL_PASSWORDS_ALLOWED === "true",
     mediaHub,
     membership:
       parsed.MEMBERSHIP_API_USERNAME && parsed.MEMBERSHIP_API_PASSWORD_HASH

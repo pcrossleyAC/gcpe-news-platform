@@ -91,6 +91,8 @@ const OPS: OperationsStatus = {
     switchedOff: false,
   },
   testSite: true,
+  breakGlassOn: false,
+  staffPasswordsOn: false,
   opsEmailSet: true,
   outgoing: {
     held: {

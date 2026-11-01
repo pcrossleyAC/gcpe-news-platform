@@ -334,7 +334,8 @@ password manager. Every parameter:
 | `-PostgresDataDir` | PostgreSQL's data folder when installed here, default `C:\gcpe\pgdata`. |
 | `-SmtpHost`, `-SmtpPort` (25), `-SmtpSecure`, `-SmtpUser`, `-SmtpPassword` | The relay. Asked for if `-SmtpHost` is missing. With `-SmtpUser` and no `-SmtpPassword`, the password is asked for. |
 | `-MailFrom` | From address. |
-| `-MailRedirectTo` | Every outgoing message goes to these inboxes instead. Required for `-Environment Test`. With `Prod`, optional: given, mail is redirected until go-live (P4); empty, mail goes to its real recipients from the first start. |
+| `-MailRedirectTo` | Every outgoing message goes to these inboxes instead. Asked for if missing; an empty answer stops the install. With `Prod`, mail is redirected until go-live (P4). |
+| `-SendRealMail` | `-Environment Prod` only, instead of `-MailRedirectTo`: mail goes to its real recipients from the first start. Never the default. |
 | `-AdminUsername` (`admin`), `-AdminPassword` | The break-glass login; asked for if missing. |
 | `-EntraTenantId`, `-EntraClientId`, `-EntraClientSecret`, `-EntraAudience` | Staff sign-in, all four together (or later, D7; required with `-Environment Prod`, which asks for the secret). `-EntraAudience` is `api://<client id>`. |
 | `-EmergencyFeedUrl`, `-EmergencyFeedOff` | `-Environment Prod` only, one of the two: the emergency alerts feed (D8's address), or emergency alerts switched off on purpose. |
@@ -958,8 +959,10 @@ uses the same scripts; what differs is below.
 ### Real production: what the stack refuses
 
 A deployment is the **real production site** when `NODE_ENV=production` and there is no
-`SITE_ENVIRONMENT=test` line (Dev, Test and boxs.ca have that line). Break-glass
-(`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`) doesn't change that: it only allows the local admin login.
+`SITE_ENVIRONMENT=test` line (Dev, Test and boxs.ca have that line). `-Environment Prod` writes
+`SITE_ENVIRONMENT=production` to say so; keep that line. Break-glass
+(`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`) doesn't change which it is: it only allows the local admin
+login, and on the real production site only alongside `SITE_ENVIRONMENT=production`.
 On the real production site the stack checks these at startup, before it opens any database; a
 refusal stops the start (and a deploy's own `stack.js --check` fails first, so the running site isn't
 changed), a warning starts it and says so:
@@ -971,6 +974,9 @@ changed), a warning starts it and says so:
 | `NOD_EMERGENCY_FEED=off` | Starts; logs that emergency alerts are switched off; Operations says so. | warning |
 | `DIST_BOUNCE_SOURCE` | Unset or `fake`: starts; logs "Bounces aren't being read: bounce handling is set to manual upload"; Operations says so. `graph` needs all its settings (D8). | warning |
 | `DIST_MAIL_REDIRECT_TO` with `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true` | Refused: the redirect would still catch every message. | refuse |
+| `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` with no `SITE_ENVIRONMENT` | Refused, whatever else is set: before 2026-10-31 that setting alone made a test site (boxs.ca's env), so such an env must never come up as the indexable live site. Set `SITE_ENVIRONMENT=test` for a test site, or `SITE_ENVIRONMENT=production` (or remove the setting) for the real one. | refuse |
+| `LOCAL_ADMIN_ENABLED=true` | Starts; logs that the break-glass admin is on; Operations says so. | warning |
+| `CORE_LOCAL_PASSWORDS_ALLOWED=true` | Starts; logs that staff passwords are allowed; Operations says so. | warning |
 
 The apps' calls to each other inside the stack don't need the break-glass admin: they use a key
 the stack derives from `STACK_EVENT_SECRET` (owner decision 2026-10-31), and that key is accepted
@@ -1041,10 +1047,12 @@ change it to `'*'` and `Restart-Service postgresql-x64-17`). From the app server
 It asks for the superuser password (copy it from `postgres-superuser.txt` on the database server)
 and the Entra client secret, and does not install PostgreSQL here. `-Environment Prod` writes the
 real production site from the first start ([Real production](#real-production-what-the-stack-refuses)):
-no `SITE_ENVIRONMENT=test`, so the stack makes its production checks and uses no fakes. The site is
+`SITE_ENVIRONMENT=production`, so the stack makes its production checks and uses no fakes. The site is
 not public yet: DMZ proxy #2 lets only the staff ranges in until go-live (P3). The break-glass admin
 is written on, for setting up; P4 turns it off. `-MailRedirectTo` keeps mail redirected until
-go-live; leave it out only if real mail may go from the first start. Then D3 (final import, at
+go-live. Prod never sends real mail by default: without `-MailRedirectTo` it asks for an inbox, an
+empty answer stops the install, and only `-SendRealMail` sends to the real recipients from the
+first start. Then D3 (final import, at
 cutover, while break-glass is still on), D7 (Entra: the redirect URI on the internal host), D8,
 and the backup for the files:
 
@@ -1092,9 +1100,10 @@ At go-live: `.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<
    Administrators only, as `gcpe.env` is: `icacls C:\gcpe\config\break-glass.env /inheritance:r /grant:r Administrators:F`):
    `LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION`, `LOCAL_ADMIN_USERNAME`,
    `LOCAL_ADMIN_PASSWORD_HASH`, `LOCAL_AUTH_SECRET`.
-2. **Remove `SITE_ENVIRONMENT=test`** if the file has it (an install made with `-Environment Test`,
-   or before `-Environment Prod` existed): the site stops being noindex and `robots.txt` stops
-   disallowing.
+2. **`SITE_ENVIRONMENT=production`**: if the file says `SITE_ENVIRONMENT=test` instead (an install
+   made with `-Environment Test`, or before `-Environment Prod` existed), change it to
+   `SITE_ENVIRONMENT=production`. The site stops being noindex and `robots.txt` stops disallowing.
+   Keep the line: break-glass in an emergency (below) needs it.
 3. **Real mail:** remove `DIST_MAIL_REDIRECT_TO` **and** add `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true`
    (if it isn't there). Removing the redirect alone stops Distribution starting; both together is
    refused.
@@ -1135,11 +1144,19 @@ down). It makes no change to how the public site looks or is indexed:
    ```
 
 2. Copy the five lines from `C:\gcpe\config\break-glass.env` back into `gcpe.env`, with the new
-   hash as `LOCAL_ADMIN_PASSWORD_HASH` and the new 64-character value as `LOCAL_AUTH_SECRET`, then
-   `Restart-Service gcpe-stack`. Sign in with the `admin` user name and the new password.
+   hash as `LOCAL_ADMIN_PASSWORD_HASH` and the new 64-character value as `LOCAL_AUTH_SECRET`.
+   Check, then restart, so a pasted typo can't take the site down:
+
+   ```powershell
+   & 'C:\Program Files\nodejs\node.exe' --env-file=C:\gcpe\config\gcpe.env C:\gcpe\current\stack.js --check
+   Restart-Service gcpe-stack
+   ```
+
+   `--check` must say `"ok": true` (it warns that the break-glass admin is on, and Operations shows
+   that too). Sign in with the `admin` user name and the new password.
 3. Fix the problem (for example, give a second person Core Admin).
-4. Cut the five lines out of `gcpe.env` again and `Restart-Service gcpe-stack`. Every break-glass
-   session ends at that restart.
+4. Cut the five lines out of `gcpe.env` again, run the same `--check`, and `Restart-Service
+   gcpe-stack`. Every break-glass session ends at that restart.
 5. Record in the operations log who turned it on, when, why and when it went off.
 
 ### P5. Static fallback for patch reboots (planned, not built)
@@ -1589,10 +1606,13 @@ runners (not on government servers, and not on a domain-joined machine):
   the IIS log while a control request does; no `Referer` field; the log cleanup task deletes a
   40-day-old log and keeps a fresh one. The next step, `-AllowedClientRanges`, failed on a script
   bug (an empty result's `.Count` under StrictMode), fixed after that run; nothing after it ran.
-- Added 2026-10-31 and **not yet run on Windows** (PowerShell wasn't available to the change):
-  `Install-Gcpe.ps1 -Environment Prod` and its `-EmergencyFeedUrl`/`-EmergencyFeedOff`;
+- Added 2026-10-31, in the `windows` workflow's "Production configuration" step and **not yet
+  run on Windows** when written: `Install-Gcpe.ps1 -Environment Prod` refusing an incomplete Prod
+  before installing anything; the Prod `gcpe.env` passing `stack.js --check` before go-live, after
+  P4, and refused when `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` has no `SITE_ENVIRONMENT`;
   `Import-GcpeLegacy.ps1` stopping early with break-glass off; the bundled
-  `packages\auth\src\cli\hash-password.js`. The production-shaped stack itself (break-glass off,
+  `packages\auth\src\cli\hash-password.js`. A full second install in Prod mode isn't run (one
+  IIS site per runner). The production-shaped stack itself (break-glass off,
   every app-to-app call) is checked on every pull request by `apps/stack/src/stack-production.test.ts`.
 - Added since and **not yet run on Windows**: `-AllowedClientRanges` on the app server (only the
   rule set is checked: CI has no second machine to be refused, and Windows never filters

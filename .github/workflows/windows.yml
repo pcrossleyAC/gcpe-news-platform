@@ -270,6 +270,80 @@ jobs:
           Write-Host 'ok: the bundled importer started and tried to connect'
           # The step's result would otherwise be the importer's expected exit code 1.
           exit 0
+      # Production configuration (owner approved 2026-10-31): -Environment Prod refuses an incomplete
+      # Prod before installing anything; what it writes passes stack.js --check before go-live, after
+      # P4, and with break-glass turned back on in an emergency; an env that relied on
+      # LOCAL_ADMIN_ALLOW_IN_PRODUCTION alone is refused; the import stops without break-glass; the
+      # bundled hash tool runs. A second root, so the install above is untouched.
+      - name: Production configuration (-Environment Prod, stack.js --check, P4, break-glass, import)
+        run: |
+          $node = 'C:\Program Files\nodejs\node.exe'
+          Import-Module C:\pkg\gcpe-windows\lib\Gcpe.psm1 -Force
+          $app = Get-GcpeJunctionTarget -Path C:\gcpe\current
+          if (-not $app) { throw 'nothing is deployed at C:\gcpe\current' }
+          function Refused([string]$Label, [scriptblock]$Run, [string]$Pattern) {
+            $msg = $null
+            try { & $Run | Out-Null } catch { $msg = "$_" }
+            if (-not $msg) { throw "$Label was not refused" }
+            if ($msg -notmatch $Pattern) { throw "$Label was refused for another reason: $msg" }
+            Write-Host "ok: $Label refused ($msg)"
+          }
+          $common = @{ Environment = 'Prod'; Root = 'C:\gcpe-prod-ci'; HostName = 'gcpe-prod-ci.example.test'; SmtpHost = '127.0.0.1'; MailFrom = 'noreply@example.test' }
+          Refused 'Prod without Entra' { C:\pkg\gcpe-windows\Install-Gcpe.ps1 @common -MailRedirectTo ci@example.test -EmergencyFeedOff } 'Microsoft sign-in'
+          Refused 'Prod without an emergency feed decision' { C:\pkg\gcpe-windows\Install-Gcpe.ps1 @common -MailRedirectTo ci@example.test -EntraTenantId 11111111-1111-4111-8111-111111111111 -EntraClientId 22222222-2222-4222-8222-222222222222 -EntraAudience api://x } 'EmergencyFeedUrl'
+          Refused 'Prod with both a redirect and real mail' { C:\pkg\gcpe-windows\Install-Gcpe.ps1 @common -MailRedirectTo ci@example.test -SendRealMail -EmergencyFeedOff -EntraTenantId 11111111-1111-4111-8111-111111111111 -EntraClientId 22222222-2222-4222-8222-222222222222 -EntraAudience api://x } 'not both'
+          Refused 'real mail on a test site' { C:\pkg\gcpe-windows\Install-Gcpe.ps1 -Root C:\gcpe-prod-ci -HostName gcpe-prod-ci.example.test -SendRealMail } 'Prod only'
+          if (Test-Path C:\gcpe-prod-ci) { throw 'a refused Prod install wrote something' }
+
+          # What -Environment Prod writes, from the bundled generator, exactly as the installer calls it.
+          $settings = @{
+            environment = 'prod'; hostName = 'gcpe-prod-ci.example.test'; dataDir = 'C:\gcpe-prod-ci\data'; port = 3999; proxyHops = 2
+            adminUsername = 'admin'; adminPassword = 'ci-admin-password-0001'
+            db = @{ host = 'localhost'; port = 5432; user = 'gcpe_app'; password = 'not-used-by-check'; prefix = 'gcpe' }
+            smtp = @{ host = '127.0.0.1'; port = 25; secure = $false }; mailFrom = 'noreply@example.test'; mailRedirectTo = @('ci@example.test')
+            emergencyFeedOff = $true
+            entra = @{ tenantId = '11111111-1111-4111-8111-111111111111'; clientId = '22222222-2222-4222-8222-222222222222'; clientSecret = 'ci-secret'; audience = 'api://22222222-2222-4222-8222-222222222222' }
+          }
+          New-Item -ItemType Directory -Force C:\gcpe-prod-ci\config, C:\gcpe-prod-ci\data | Out-Null
+          $envFile = 'C:\gcpe-prod-ci\config\gcpe.env'
+          $lines = ($settings | ConvertTo-Json -Depth 5 -Compress) | & $node (Join-Path $app 'scripts\windows-env.js')
+          if ($LASTEXITCODE -ne 0) { throw 'windows-env.js refused the Prod settings' }
+          [IO.File]::WriteAllText($envFile, (($lines -join "`n") + "`n"))
+          if (-not (Select-String -Path $envFile -Pattern '^SITE_ENVIRONMENT=production$' -Quiet)) { throw 'Prod must write SITE_ENVIRONMENT=production' }
+          function Check-Config([string]$Label, [bool]$ExpectOk, [string]$Pattern) {
+            # Continue, and stderr turned into text: under Stop, Windows PowerShell 5.1 ends the step at
+            # the stack's first warning line, before the exit code is read.
+            $ErrorActionPreference = 'Continue'
+            $out = (& $node "--env-file=$envFile" (Join-Path $app 'stack.js') --check 2>&1 | ForEach-Object { "$_" } | Out-String)
+            $ok = $LASTEXITCODE -eq 0
+            if ($ok -ne $ExpectOk) { Write-Host $out; throw "$Label`: stack.js --check exit $LASTEXITCODE" }
+            if ($Pattern -and $out -notmatch $Pattern) { Write-Host $out; throw "$Label`: expected $Pattern" }
+            Write-Host "ok: $Label"
+          }
+          Check-Config 'Prod before go-live passes --check' $true 'Bounces aren''t being read'
+          # P4: break-glass off (its five lines moved out), real mail.
+          $kept = @([IO.File]::ReadAllLines($envFile) | Where-Object { $_ -notmatch '^(LOCAL_ADMIN_|LOCAL_AUTH_SECRET=|DIST_MAIL_REDIRECT_TO=)' })
+          [IO.File]::WriteAllLines($envFile, $kept + 'DIST_MAIL_ALLOW_REAL_RECIPIENTS=true')
+          Check-Config 'Prod after P4 passes --check' $true $null
+          # An env that relied on LOCAL_ADMIN_ALLOW_IN_PRODUCTION alone to be a test site is refused.
+          [IO.File]::WriteAllLines($envFile, @($kept | Where-Object { $_ -notmatch '^SITE_ENVIRONMENT=' }) + 'DIST_MAIL_ALLOW_REAL_RECIPIENTS=true' + 'LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true')
+          Check-Config 'ALLOW without SITE_ENVIRONMENT is refused' $false 'used to mark a test site'
+
+          # The import stops before doing anything without break-glass.
+          [IO.File]::WriteAllLines($envFile, $kept + 'DIST_MAIL_ALLOW_REAL_RECIPIENTS=true')
+          Set-GcpeJunction -Path C:\gcpe-prod-ci\current -Target $app
+          $sqlpw = ConvertTo-SecureString 'not-a-real-password' -AsPlainText -Force
+          Refused 'the Nod import with break-glass off' { C:\pkg\gcpe-windows\Import-GcpeLegacy.ps1 -Root C:\gcpe-prod-ci -SqlServer 127.0.0.1 -SqlUser nobody -SqlPassword $sqlpw -Only Nod } 'sign in as the break-glass admin'
+
+          # The emergency procedure's hash tool.
+          $ErrorActionPreference = 'Continue'
+          $hash = ('ci-emergency-password-01' | & $node (Join-Path $app 'packages\auth\src\cli\hash-password.js') 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match '^scrypt\$' })
+          $ErrorActionPreference = 'Stop'
+          if ("$hash" -notmatch '^scrypt\$') { throw "the bundled hash tool printed: $hash" }
+          Write-Host 'ok: the bundled hash tool prints a scrypt hash'
+          # rmdir removes only the link, never the release it points at.
+          cmd /c rmdir C:\gcpe-prod-ci\current
+          Remove-Item -Recurse -Force C:\gcpe-prod-ci
       # The DMZ reverse proxy (docs/deploy/windows.md, 8 "DMZ proxy reference"), as a second IIS site on
       # this runner in front of the install above: its own host name and ports, the app's
       # self-signed certificate trusted by thumbprint. Every request uses the proxy's host name,

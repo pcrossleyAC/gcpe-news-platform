@@ -57,6 +57,8 @@ describe("operations routes", () => {
       emergencyFeed: { url: "https://emergency.example.test/feed.xml", checkedAt: null, result: null, switchedOff: false },
       // createApp's default when start.ts doesn't say: a test site, so no real-production warnings.
       testSite: true,
+      breakGlassOn: false,
+      staffPasswordsOn: false,
       opsEmailSet: false,
       outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
     });

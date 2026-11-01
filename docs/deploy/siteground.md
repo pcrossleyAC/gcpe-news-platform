@@ -209,10 +209,12 @@ SITE_ENVIRONMENT=test
 ```
 
 Until then boxs.ca was a test site only because of `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`, which no
-longer counts (owner decision 2026-10-31). Without the line the new build treats boxs.ca as the
-real production site and refuses to start (no Microsoft sign-in, no emergency feed setting); the
-error log names what it wants. Adding the line first is harmless with the older build: it
-already reads `SITE_ENVIRONMENT=test` the same way.
+longer counts (owner decision 2026-10-31). Without the line the new build refuses to start, whatever
+else the env has: `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` with no `SITE_ENVIRONMENT` is refused on
+purpose ("This deployment still has LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test
+site …" in the error log), so boxs.ca can never come up as the indexable production site. Adding
+the line first is harmless with the older build: it already reads `SITE_ENVIRONMENT=test` the same
+way.
 
 **`TRUST_PROXY_HOPS`** (optional, a whole number 1 to 5, default `1`). How many reverse proxies sit
 in front of the stack and add to `X-Forwarded-For`. Every app, and the stack itself, uses it to
@@ -766,8 +768,9 @@ break-glass admin under `NODE_ENV=production` (owner decision 2026-10-31), so tu
 never changes how the public site looks. **An env generated before 2026-10-31 has no
 `SITE_ENVIRONMENT` line:** add `SITE_ENVIRONMENT=test` in Site Tools → Devs → Node.js → your
 project → Environment Variables **before** deploying a build from 2026-10-31 or later. Without it,
-boxs.ca counts as the real production site, and the stack refuses to start until the real-production
-settings are in place (see "Real production: what the stack refuses" in docs/deploy/windows.md).
+the stack refuses to start, whatever else is set, with "This deployment still has
+LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test site …" (see "Real production: what
+the stack refuses" in docs/deploy/windows.md).
 
 **Running the walkthrough.** From your Mac, against a stack already confirmed to be a test site
 (the script checks this itself and refuses otherwise):

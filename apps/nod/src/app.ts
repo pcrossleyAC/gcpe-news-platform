@@ -57,6 +57,9 @@ export interface AppDeps {
   emergencyFeedOff?: boolean;
   /** @gcpe/config's isTestSite(env), for Operations. Default true (no real-production warnings). */
   testSite?: boolean;
+  /** LOCAL_ADMIN_ENABLED=true and Core's LOCAL_PASSWORDS_ALLOWED=true, for Operations. Default false. */
+  breakGlassOn?: boolean;
+  staffPasswordsOn?: boolean;
 }
 
 const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce" | "bounceSource" | "dailyReport"> = {
@@ -134,6 +137,8 @@ export function createApp(deps: AppDeps): express.Express {
         emergencyFeedUrl: deps.emergencyFeedUrl ?? null,
         emergencyFeedOff: deps.emergencyFeedOff ?? false,
         testSite: deps.testSite ?? true,
+        breakGlassOn: deps.breakGlassOn ?? false,
+        staffPasswordsOn: deps.staffPasswordsOn ?? false,
       },
       deps.mediaHub ?? null,
     ),

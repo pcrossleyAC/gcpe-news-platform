@@ -89,6 +89,13 @@ A soft bounce is a temporary failure, such as a full mailbox. Its code starts wi
 
 Leave the box empty to count none.
 
+## Sign-in on the live site
+
+On the live site only, this section shows at the top of Operations when sign-in that is normally off is on:
+
+- "The break-glass admin is on": the emergency administrator login is turned on. Anyone with its password can sign in with every admin role. It is meant to be on only while IT fixes a problem. Ask IT to turn it off once the problem is fixed.
+- "Staff passwords are allowed": staff can sign in with a password instead of Microsoft. Ask IT to turn this off unless it is meant to be on.
+
 ## Emergency alerts feed
 
 This section shows when the Emergency Info BC feed was last checked and how many alerts were new. Nothing here can be changed. A warning means the last check failed; it tries again every 5 minutes by itself.

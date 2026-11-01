@@ -37,7 +37,7 @@ describe("operations", () => {
       getSettings: vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED ops@example.test")),
       bounceSource: vi.fn().mockRejectedValue(new Error("timeout")),
     } as unknown as Pick<DistributionClient, "getSettings" | "bounceSource">;
-    const ops = await getOperations(tdb.db, distribution, { bounceSummaryFallback: "server@example.test", timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: false, testSite: true, opsEmail: null });
+    const ops = await getOperations(tdb.db, distribution, { bounceSummaryFallback: "server@example.test", timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: false, testSite: true, breakGlassOn: false, staffPasswordsOn: false, opsEmail: null });
     expect(ops).toEqual({
       nod: { paused: false, lastDigestCutoff: null },
       distribution: null,
@@ -47,6 +47,8 @@ describe("operations", () => {
       purge: expect.objectContaining({ enabled: false }),
       emergencyFeed: { url: null, checkedAt: null, result: null, switchedOff: false },
       testSite: true,
+      breakGlassOn: false,
+      staffPasswordsOn: false,
       opsEmailSet: false,
       outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
     });
@@ -60,7 +62,7 @@ describe("operations", () => {
       bounceSource: vi.fn().mockResolvedValue({ source: "fake" }),
     } as unknown as Pick<DistributionClient, "getSettings" | "bounceSource">;
     expect(
-      await getOperations(tdb.db, distribution, { bounceSummaryFallback: null, timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: false, testSite: true, opsEmail: "ops@example.test" }),
+      await getOperations(tdb.db, distribution, { bounceSummaryFallback: null, timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: false, testSite: true, breakGlassOn: false, staffPasswordsOn: false, opsEmail: "ops@example.test" }),
     ).toMatchObject({ distribution: { paused: true }, bounceSource: "fake", opsEmailSet: true });
   });
 
@@ -70,7 +72,7 @@ describe("operations", () => {
       bounceSource: vi.fn().mockResolvedValue({ source: "fake" }),
     } as unknown as Pick<DistributionClient, "getSettings" | "bounceSource">;
     expect(
-      await getOperations(tdb.db, distribution, { bounceSummaryFallback: null, timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: true, testSite: false, opsEmail: null }),
-    ).toMatchObject({ testSite: false, bounceSource: "fake", emergencyFeed: { url: null, switchedOff: true } });
+      await getOperations(tdb.db, distribution, { bounceSummaryFallback: null, timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: true, testSite: false, breakGlassOn: true, staffPasswordsOn: true, opsEmail: null }),
+    ).toMatchObject({ testSite: false, breakGlassOn: true, staffPasswordsOn: true, bounceSource: "fake", emergencyFeed: { url: null, switchedOff: true } });
   });
 });

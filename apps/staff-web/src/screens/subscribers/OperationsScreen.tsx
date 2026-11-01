@@ -70,6 +70,7 @@ function OperationsPanels(): React.JSX.Element {
       {message && <p role="status">{message}</p>}
       {ops && (
         <>
+          {!ops.testSite && (ops.breakGlassOn || ops.staffPasswordsOn) && <LiveSignInNotice breakGlassOn={ops.breakGlassOn} staffPasswordsOn={ops.staffPasswordsOn} />}
           {/* Who hears about a pause or resume: NOD_OPS_EMAIL, when one is set up (settings.ts). */}
           <PauseControl
             title="News On Demand sending"
@@ -113,6 +114,19 @@ function OperationsPanels(): React.JSX.Element {
         </>
       )}
     </div>
+  );
+}
+
+/** Fix round 1 (M2, M3): on the live site, sign-in that should normally be off is never silent. */
+function LiveSignInNotice({ breakGlassOn, staffPasswordsOn }: { breakGlassOn: boolean; staffPasswordsOn: boolean }): React.JSX.Element {
+  return (
+    <section aria-labelledby="ops-live-sign-in">
+      <h2 id="ops-live-sign-in">Sign-in on the live site</h2>
+      {breakGlassOn && (
+        <InlineAlert variant="warning" description="The break-glass admin is on: anyone with its password can sign in with every admin role. Ask IT to turn it off once the problem is fixed." />
+      )}
+      {staffPasswordsOn && <InlineAlert variant="warning" description="Staff passwords are allowed: staff can sign in without Microsoft. Ask IT to turn this off unless it is meant to be on." />}
+    </section>
   );
 }
 

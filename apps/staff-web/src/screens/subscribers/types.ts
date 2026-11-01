@@ -218,6 +218,9 @@ export interface OperationsStatus {
   emergencyFeed: EmergencyFeedStatus;
   /** False on the live (real production) site. */
   testSite: boolean;
+  /** The break-glass admin is on / staff passwords are allowed (shown on the live site only). */
+  breakGlassOn: boolean;
+  staffPasswordsOn: boolean;
   opsEmailSet: boolean;
   outgoing: OutgoingStatus;
 }

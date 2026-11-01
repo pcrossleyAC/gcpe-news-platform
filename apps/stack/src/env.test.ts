@@ -853,13 +853,46 @@ describe("productionProblems: what real production refuses or warns about (2026-
   });
 
   it("break-glass allowed in production is still real production: the rules apply", () => {
-    const env = { ...good(), LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", NOD_EMERGENCY_FEED_URL: undefined };
+    const env = { ...good(), SITE_ENVIRONMENT: "production", LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", NOD_EMERGENCY_FEED_URL: undefined };
     expect(productionProblems(env).errors.length).toBe(1);
+  });
+
+  // Fix round 1, M1: an env from before 2026-10-31 (boxs.ca) relied on this setting alone to be a
+  // test site. Whatever else it has, it must never come up as indexable production.
+  it("refuses LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true with no SITE_ENVIRONMENT, even when everything else is complete", () => {
+    const old = { ...good(), LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" };
+    for (const site of [undefined, ""]) {
+      expect(productionProblems({ ...old, SITE_ENVIRONMENT: site }).errors, String(site)).toEqual([
+        "This deployment still has LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test site. Set SITE_ENVIRONMENT=test for a test site, or remove LOCAL_ADMIN_ALLOW_IN_PRODUCTION for real production (or set SITE_ENVIRONMENT=production to keep break-glass allowed on the real production site).",
+      ]);
+    }
+    expect(productionProblems({ ...old, SITE_ENVIRONMENT: "production" }).errors).toEqual([]);
+    expect(productionProblems({ ...old, SITE_ENVIRONMENT: "test" })).toEqual({ errors: [], warnings: [] });
+    expect(productionProblems({ ...old, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "false" }).errors).toEqual([]);
+  });
+
+  it("break-glass on, and staff passwords allowed, on real production start with a warning each (fix round 1, M2, M3)", () => {
+    const on = { ...good(), SITE_ENVIRONMENT: "production", LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", CORE_LOCAL_PASSWORDS_ALLOWED: "true" };
+    const p = productionProblems(on);
+    expect(p.errors).toEqual([]);
+    expect(p.warnings).toEqual([
+      expect.stringMatching(/^The break-glass admin is on \(LOCAL_ADMIN_ENABLED=true\)/),
+      expect.stringMatching(/^Staff passwords are allowed \(CORE_LOCAL_PASSWORDS_ALLOWED=true\)/),
+    ]);
+    expect(productionProblems({ ...on, LOCAL_ADMIN_ENABLED: "false", CORE_LOCAL_PASSWORDS_ALLOWED: "false" }).warnings).toEqual([]);
   });
 
   it("NOD_EMERGENCY_FEED=off turns the fake feed off on a test site too", () => {
     expect(usesFakeEmergencyFeed({ NOD_EMERGENCY_FEED: "off" })).toBe(false);
     expect(envFor({ NOD_EMERGENCY_FEED: "off" }, "NOD").EMERGENCY_FEED_URL).toBeUndefined();
     expect(envFor({ NOD_EMERGENCY_FEED: "off" }, "NOD").EMERGENCY_FEED).toBe("off");
+  });
+});
+
+describe("Operations' live-site sign-in notices (fix round 1, M2, M3)", () => {
+  it("NoD's view carries Core's CORE_LOCAL_PASSWORDS_ALLOWED under that name, and no other app's does", () => {
+    expect(envFor({ CORE_LOCAL_PASSWORDS_ALLOWED: "true" }, "NOD").CORE_LOCAL_PASSWORDS_ALLOWED).toBe("true");
+    expect(envFor({}, "NOD").CORE_LOCAL_PASSWORDS_ALLOWED).toBeUndefined();
+    expect(envFor({ CORE_LOCAL_PASSWORDS_ALLOWED: "true" }, "NRMS").CORE_LOCAL_PASSWORDS_ALLOWED).toBeUndefined();
   });
 });

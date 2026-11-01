@@ -79,6 +79,9 @@ export interface SettingsRouteDeps {
   emergencyFeedOff: boolean;
   /** @gcpe/config's isTestSite, for Operations' real-production warnings. */
   testSite: boolean;
+  /** For Operations' live-site sign-in notices (fix round 1, M2, M3). */
+  breakGlassOn: boolean;
+  staffPasswordsOn: boolean;
 }
 
 export function apiRoutes(

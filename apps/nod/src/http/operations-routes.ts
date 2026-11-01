@@ -39,6 +39,8 @@ export function operationsRoutes(db: Db, deps: SettingsRouteDeps): Router {
         emergencyFeedUrl: deps.emergencyFeedUrl,
         emergencyFeedOff: deps.emergencyFeedOff,
         testSite: deps.testSite,
+        breakGlassOn: deps.breakGlassOn,
+        staffPasswordsOn: deps.staffPasswordsOn,
         opsEmail: deps.opsEmail,
       }),
     );

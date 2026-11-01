@@ -214,6 +214,16 @@ export function productionProblems(env: NodeJS.ProcessEnv): ProductionProblems {
   const warnings: string[] = [];
   if (!isRealProduction(env)) return { errors, warnings };
 
+  // Fix round 1 (M1): until 2026-10-31, LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true alone made a test site
+  // (boxs.ca's env). Such an env must never come up as the indexable production site, whatever else
+  // it has: the real production site says so with SITE_ENVIRONMENT=production to keep it.
+  if (env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" && !setting(env, "SITE_ENVIRONMENT")) {
+    errors.push(
+      "This deployment still has LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test site. Set SITE_ENVIRONMENT=test for a test site, or remove LOCAL_ADMIN_ALLOW_IN_PRODUCTION for real production (or set SITE_ENVIRONMENT=production to keep break-glass allowed on the real production site).",
+    );
+    return { errors, warnings };
+  }
+
   const signIn = ["ENTRA_TENANT_ID", "CORE_ENTRA_CLIENT_ID", "CORE_ENTRA_CLIENT_SECRET", "CORE_PUBLIC_BASE_URL"];
   const missing = signIn.filter((k) => !setting(env, k));
   if (missing.length > 0) {
@@ -238,6 +248,14 @@ export function productionProblems(env: NodeJS.ProcessEnv): ProductionProblems {
   const bounceSource = env.DIST_BOUNCE_SOURCE || "fake";
   if (bounceSource === "fake") {
     warnings.push("Bounces aren't being read: bounce handling is set to manual upload (DIST_BOUNCE_SOURCE is not graph). Ask IT to set up the bounce mailbox.");
+  }
+
+  // Fix round 1 (M2, M3): on purpose in an emergency, but never silent.
+  if (env.LOCAL_ADMIN_ENABLED === "true") {
+    warnings.push("The break-glass admin is on (LOCAL_ADMIN_ENABLED=true): anyone with its password can sign in with every admin role. Turn it off once the problem is fixed (docs/deploy/windows.md, P4).");
+  }
+  if (env.CORE_LOCAL_PASSWORDS_ALLOWED === "true") {
+    warnings.push("Staff passwords are allowed (CORE_LOCAL_PASSWORDS_ALLOWED=true): staff can sign in without Microsoft.");
   }
 
   if (setting(env, "DIST_MAIL_REDIRECT_TO") && env.DIST_MAIL_ALLOW_REAL_RECIPIENTS === "true") {
@@ -397,6 +415,9 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // No Media Hub configured at all → the stack's fake Media Hub (see stack.ts).
   if (prefix === "NOD" && usesFakeMediaHub(env)) Object.assign(view, FAKE_MEDIA_HUB_ENV);
   if (prefix === "NOD" && usesFakeEmergencyFeed(env)) Object.assign(view, FAKE_EMERGENCY_FEED_ENV);
+  // Fix round 1 (M3): Operations says when staff passwords are allowed on the live site, which is
+  // Core's setting; NoD gets it under Core's own name, read for that notice only.
+  if (prefix === "NOD" && env.CORE_LOCAL_PASSWORDS_ALLOWED !== undefined) view.CORE_LOCAL_PASSWORDS_ALLOWED = env.CORE_LOCAL_PASSWORDS_ALLOWED;
   // FAKE_ENTRA_ENABLED on a test site → Core signs staff in through the stack's fake Microsoft.
   if (prefix === "CORE" && usesFakeEntra(env)) Object.assign(view, FAKE_ENTRA_CORE_ENV);
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
