@@ -42,13 +42,20 @@ describe("canReplace", () => {
 
   // Fix round 3, M5: a request to email a release again is an action the receiver takes only from
   // the event that carries it.
+  const both = { subscribers: true, mediaLists: true };
+  const subs = { subscribers: true, mediaLists: false };
+  const media = { subscribers: false, mediaLists: true };
   it.each([
-    [{ type: "release.updated", emailAgain: true }, { type: "release.updated" }, false],
-    [{ type: "release.updated", emailAgain: true }, { type: "release.updated", emailAgain: true }, true],
-    [{ type: "release.published", emailAgain: true }, { type: "release.published" }, false],
-    [{ type: "release.published", emailAgain: true }, { type: "release.updated", emailAgain: true }, false],
-    [{ type: "release.updated", emailAgain: true }, { type: "release.unpublished" }, true],
-    [{ type: "release.updated" }, { type: "release.updated", emailAgain: true }, true],
+    [{ type: "release.updated", emailAgain: subs }, { type: "release.updated" }, false],
+    [{ type: "release.updated", emailAgain: subs }, { type: "release.updated", emailAgain: subs }, true],
+    [{ type: "release.published", emailAgain: subs }, { type: "release.published" }, false],
+    [{ type: "release.published", emailAgain: subs }, { type: "release.updated", emailAgain: subs }, false],
+    [{ type: "release.updated", emailAgain: both }, { type: "release.unpublished" }, true],
+    [{ type: "release.updated" }, { type: "release.updated", emailAgain: subs }, true],
+    // Fix round 4, N9: only a newer request covering every audience the older one had.
+    [{ type: "release.updated", emailAgain: both }, { type: "release.updated", emailAgain: subs }, false],
+    [{ type: "release.updated", emailAgain: media }, { type: "release.updated", emailAgain: subs }, false],
+    [{ type: "release.updated", emailAgain: subs }, { type: "release.updated", emailAgain: both }, true],
   ])("%o is replaced by a newer %o: %s", (older, newer, expected) => {
     expect(canReplace(older, newer)).toBe(expected);
   });

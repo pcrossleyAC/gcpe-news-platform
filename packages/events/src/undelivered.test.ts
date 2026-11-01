@@ -84,8 +84,8 @@ describe("undelivered updates", () => {
 
   it("retries all of them at once", async () => {
     for (let i = 0; i < 2; i++) await deadEvent({ type: "org.deactivated", source: "core", aggregateId: `org:a${i}`, data: { key: `a${i}` } });
-    expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 2, replaced: 0, overtaken: 0 });
-    expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 0, replaced: 0, overtaken: 0 });
+    expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 2, replaced: 0, overtaken: 0, busy: 0 });
+    expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 0, replaced: 0, overtaken: 0, busy: 0 });
   });
 
   // Suite review I1 (controller ruling 2026-11-01): a published-then-unpublished release, both
@@ -114,7 +114,7 @@ describe("undelivered updates", () => {
 
     it("is skipped by Retry all, which resends only the newest", async () => {
       const { published, unpublished } = await publishedThenUnpublished();
-      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 1, replaced: 1, overtaken: 0 });
+      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 1, replaced: 1, overtaken: 0, busy: 0 });
       expect(await statusOf(published.id)).toBe("dead");
       expect(await statusOf(unpublished.id)).toBe("pending");
     });
@@ -150,7 +150,7 @@ describe("undelivered updates", () => {
       expect(item).toMatchObject({ replaced: false, overtaken: true });
       expect(await outboxHealth(tdb.db, { recentMs: 7 * 24 * HOUR })).toMatchObject({ undelivered: 1, replaced: 0, recentUndelivered: 1 });
       expect(await retryUndelivered(tdb.db, published.id, "nod")).toBe("overtaken");
-      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 0, replaced: 0, overtaken: 1 });
+      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 0, replaced: 0, overtaken: 1, busy: 0 });
       expect(await statusOf(published.id)).toBe("dead");
     });
 
@@ -174,6 +174,13 @@ describe("undelivered updates", () => {
       expect(await outboxHealth(tdb.db, { recentMs: 7 * 24 * HOUR })).toMatchObject({ undelivered: 1, replaced: 0, recentUndelivered: 1 });
     });
 
+    // Fix round 4, N9.
+    it("a request to email subscribers and media lists is not replaced by a later one for subscribers only", async () => {
+      const wide = await deadEvent({ type: "release.updated", source: "nrms", aggregateId: "release:ec", data: { ...sampleRelease, notify: true, emailAgain: { ...emailAgain, mediaLists: true } } });
+      await deadEvent({ type: "release.updated", source: "nrms", aggregateId: "release:ec", data: { ...sampleRelease, notify: true, emailAgain: { ...emailAgain, seq: 2 } } });
+      expect((await listUndelivered(tdb.db)).items.find((i) => i.eventId === wide.id)!.replaced).toBe(false);
+    });
+
     it("a correction asking to email it again is replaced by the release's unpublish", async () => {
       const asked = await deadEvent({ type: "release.updated", source: "nrms", aggregateId: "release:eb", data: { ...sampleRelease, notify: true, emailAgain } });
       await deadEvent({ type: "release.unpublished", source: "nrms", aggregateId: "release:eb", data: { key: sampleRelease.key } });
@@ -184,7 +191,7 @@ describe("undelivered updates", () => {
       const renamed = await deadEvent({ type: "media_list.updated", source: "nrms", aggregateId: "media_list:radio", data: { key: "radio", displayName: "Radio (new)", sortOrder: 1, isActive: true } });
       const deactivated = await deadEvent({ type: "media_list.deactivated", source: "nrms", aggregateId: "media_list:radio", data: { key: "radio" } });
       expect((await listUndelivered(tdb.db)).items.find((i) => i.eventId === renamed.id)!.replaced).toBe(false);
-      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 2, replaced: 0, overtaken: 0 });
+      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 2, replaced: 0, overtaken: 0, busy: 0 });
       expect(deactivated.sequence).toBeGreaterThan(renamed.sequence);
     });
   });
@@ -271,6 +278,17 @@ describe("undelivered updates", () => {
       expect(await retryUndelivered(tdb.db, published.id, "nod")).toBe("queued");
       expect(await dispatchOnce({ db: tdb.db, subscribers: live })).toEqual({ delivered: 2, retried: 0, dead: 0 });
       expect(received).toEqual([published.id, updated.id]);
+    });
+
+    // Fix round 4, N10: while the newer one is being sent, the older one waits.
+    it("refuses to retry while a newer one for the same record is being sent, and Retry all skips it", async () => {
+      const { published, updated } = await publishDeadUpdateWaiting();
+      await tdb.pool.query("UPDATE outbox_deliveries SET locked_until = now() + interval '1 minute' WHERE event_id = $1", [updated.id]);
+      expect(await retryUndelivered(tdb.db, published.id, "nod")).toBe("busy");
+      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 0, replaced: 0, overtaken: 0, busy: 1 });
+      expect((await tdb.pool.query("SELECT status FROM outbox_deliveries WHERE event_id = $1", [published.id])).rows[0].status).toBe("dead");
+      await tdb.pool.query("UPDATE outbox_deliveries SET locked_until = NULL WHERE event_id = $1", [updated.id]);
+      expect(await retryUndelivered(tdb.db, published.id, "nod")).toBe("queued");
     });
 
     it("Retry all sends the older one first too", async () => {

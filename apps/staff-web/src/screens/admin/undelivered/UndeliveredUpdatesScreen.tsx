@@ -198,9 +198,11 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
 
   const retryAll = (app: string) =>
     withBusy(`all:${app}`, async () => {
-      const { retried } = await apiFetch<{ retried: number; replaced: number }>("/stack/undelivered/retry-all", { method: "POST", body: { app } });
+      const { retried, busy: waiting = 0 } = await apiFetch<{ retried: number; replaced: number; overtaken?: number; busy?: number }>("/stack/undelivered/retry-all", { method: "POST", body: { app } });
       setConfirming(null);
-      reload(() => afterDialogsClose(() => report(`${plural(retried, "update", "updates")} queued for delivery again. Any that come back here after the next minute are still being refused.`)));
+      // Fix round 4, N10: ones whose newer version was being sent right then were left for later.
+      const later = waiting > 0 ? ` ${waiting} ${waiting === 1 ? "wasn't sent because its newer version is being sent right now: try it" : "weren't sent because their newer versions are being sent right now: try them"} again in a minute.` : "";
+      reload(() => afterDialogsClose(() => report(`${plural(retried, "update", "updates")} queued for delivery again. Any that come back here after the next minute are still being refused.${later}`)));
     }).finally(() => setConfirming(null));
 
   const dismissAll = () =>

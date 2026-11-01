@@ -170,6 +170,17 @@ describe("UndeliveredUpdatesScreen", () => {
     expect(calls.find((c) => c.url === "/stack/undelivered/retry-all")?.body).toEqual({ app: "nrms" });
   });
 
+  // Fix round 4, N10.
+  it("says how many Retry all left for later because a newer version was being sent", async () => {
+    stub({ before: lists([RELEASE, RELEASE_2]), replies: { "/stack/undelivered/retry-all": { status: 200, body: { retried: 1, replaced: 0, overtaken: 0, busy: 1 } } } });
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Retry all 2 from Releases" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Resend" }));
+    await waitFor(() => expect(statusLine()).toHaveTextContent("1 update queued for delivery again."));
+    expect(statusLine()).toHaveTextContent("1 wasn't sent because its newer version is being sent right now: try it again in a minute.");
+  });
+
   it("Cancel on the Retry all question sends nothing", async () => {
     const calls = stub({ before: lists([RELEASE, RELEASE_2]) });
     renderScreen();

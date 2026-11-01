@@ -26,6 +26,7 @@ export function deadLetterRoutes(deps: ApiDeps): Router {
       if (outcome === "replaced") return void res.status(409).json({ error: REPLACED_MESSAGE });
       // Every activity event carries the whole activity, so a newer one always replaces an older one
       // (packages/events replacement.ts) and this can't happen today; kept so the outcome is handled.
+      if (outcome === "busy") return void res.status(409).json({ error: "This update's newer version is being sent right now. Try again in a minute." });
       if (outcome === "overtaken") return void res.status(409).json({ error: "A later change to the same activity already arrived, so this can't be sent again." });
       res.status(204).end();
     } catch (e) {

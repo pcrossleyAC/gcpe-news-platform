@@ -16,6 +16,9 @@ export const REPLACED_MESSAGE = "A newer update replaced this one, so it isn't s
 /** Why an overtaken update is refused (fix round 2, M4): the receiving app would ignore it. */
 export const OVERTAKEN_MESSAGE = "A later change to the same record already arrived, so this can't be sent again.";
 
+/** Why a retry waits (fix round 4, N10): a newer update for the same record is being sent right now. */
+export const BUSY_MESSAGE = "This update's newer version is being sent right now. Try again in a minute.";
+
 /** How many recent dismissals the screen lists. */
 export const RECENT_DISMISSALS = 50;
 
@@ -31,7 +34,8 @@ const DISMISS_BATCH = 500;
  *   most recent dismissals, newest first, with who and when;
  * - `POST /stack/undelivered/retry` `{ app, eventId, subscriber }`: 204; 409 when a newer update for
  *   the same record replaced it (never resent: fix round 1, I1); 404 when it is no longer undelivered;
- * - `POST /stack/undelivered/retry-all` `{ app }`: `{ retried, replaced }` — the replaced ones skipped;
+ * - `POST /stack/undelivered/retry-all` `{ app }`: `{ retried, replaced, overtaken, busy }` — those
+ *   skipped (busy: a newer version is being sent right now, fix round 4, N10);
  * - `POST /stack/undelivered/dismiss` `{ app, eventId, subscriber }`: 204, or 404 (fix round 1, M1);
  * - `POST /stack/undelivered/dismiss-all` `{}`: `{ dismissed }`, every app's undelivered updates,
  *   listed or not.
@@ -65,6 +69,7 @@ export function undeliveredRouter(auth: Parameters<typeof requireBearer>[0], out
       const outcome = await byName.get(b.data.app)!.retry(b.data.eventId, b.data.subscriber);
       if (outcome === "replaced") return void res.status(409).json({ error: REPLACED_MESSAGE });
       if (outcome === "overtaken") return void res.status(409).json({ error: OVERTAKEN_MESSAGE });
+      if (outcome === "busy") return void res.status(409).json({ error: BUSY_MESSAGE });
       if (outcome === "not-found") return void res.status(404).json({ error: "not found" });
       res.status(204).end();
     } catch (e) {

@@ -1097,7 +1097,7 @@ describe("apps/stack", () => {
       expect(row.status).toBe("pending");
 
       const all = await fetch(`${instance.stackUrl}/stack/undelivered/retry-all`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms" }) });
-      expect(await all.json()).toEqual({ retried: 1, replaced: 0, overtaken: 0 });
+      expect(await all.json()).toEqual({ retried: 1, replaced: 0, overtaken: 0, busy: 0 });
       await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
     });
 
@@ -1128,6 +1128,21 @@ describe("apps/stack", () => {
       const body = (await (await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() })).json()) as { apps: { items: { eventId: string; replaced: boolean; overtaken: boolean }[]; overtaken: number }[] };
       expect(body.apps[0]!.items.find((i) => i.eventId === published)).toMatchObject({ replaced: false, overtaken: true });
       expect(body.apps[0]!.overtaken).toBe(1);
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 4, N10.
+    it("asks to try again in a minute while a newer version of the update is being sent", async () => {
+      const aggregate = `release:${randomUUID()}`;
+      const older = await deadInNrms("Busy probe", aggregate, 1);
+      const newer = await deadInNrms("Busy probe", aggregate, 2);
+      await instance.dbs.nrms.pool.query("UPDATE outbox_events SET type = 'release.updated' WHERE id = $1", [newer]);
+      await instance.dbs.nrms.pool.query("UPDATE outbox_deliveries SET status = 'pending', locked_until = now() + interval '1 minute' WHERE event_id = $1", [newer]);
+      const res = await fetch(`${instance.stackUrl}/stack/undelivered/retry`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms", eventId: older, subscriber: "nod" }) });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "This update's newer version is being sent right now. Try again in a minute." });
+      const all = await fetch(`${instance.stackUrl}/stack/undelivered/retry-all`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms" }) });
+      expect(await all.json()).toMatchObject({ retried: 0, busy: 1 });
       await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
     });
 

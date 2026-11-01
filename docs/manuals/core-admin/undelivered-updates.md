@@ -36,7 +36,7 @@ A row that says "Replaced by a newer update: not sent again" has no **Retry**. A
 Only an update that carries everything the older one did replaces it:
 
 - A release's correction doesn't replace its publish: subscribers only hear about a release from the publish.
-- An update that asked to email a release again is replaced only by a later one that also asks, or by the release's unpublish.
+- An update that asked to email a release again is replaced only by a later one that asks to email at least the same people (subscribers, media lists, or both), or by the release's unpublish.
 - A deactivation doesn't replace an earlier change, such as a rename, to the same organization, sector, theme, tag or media list.
 
 ## Overtaken updates
@@ -54,6 +54,8 @@ Before you retry, check that the part named under **Not accepted by** is working
 2. You see "Queued for delivery again." and the row leaves the table. The system tries once more within the next minute.
 
 If it fails again, it comes straight back to the table, without another 24 hours of tries. Choose **Refresh** after a minute to check.
+
+If a newer update about the same record is being sent at that very moment, **Retry** says "This update's newer version is being sent right now. Try again in a minute." and sends nothing: the older one has to go first. **Retry all** leaves such updates for later and says how many.
 
 Retrying sends the update as it was, now. A "Release published" update then emails that release's subscribers, however late. Check the release is still published, and still worth emailing, before you retry it.
 

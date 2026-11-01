@@ -162,10 +162,19 @@ const requeue = sql`status = 'pending', attempts = 0, locked_until = NULL, last_
      WHERE d4.subscriber = d.subscriber AND e4.aggregate_id = e.aggregate_id AND e4.sequence > e.sequence
        AND d4.status = 'pending'), now()))`;
 
-export type RetryOutcome = "queued" | "replaced" | "overtaken" | "not-found";
+export type RetryOutcome = "queued" | "replaced" | "overtaken" | "busy" | "not-found";
+
+/**
+ * Fix round 4, N10: a newer delivery for the same record to the same app is being sent right now
+ * (claimed by a dispatcher). The older one can't be put ahead of it, so it waits for a moment.
+ */
+const BUSY = sql`EXISTS (
+  SELECT 1 FROM outbox_deliveries d5 JOIN outbox_events e5 ON e5.id = d5.event_id
+   WHERE d5.subscriber = d.subscriber AND e5.aggregate_id = e.aggregate_id AND e5.sequence > e.sequence
+     AND d5.status = 'pending' AND d5.locked_until > now())`;
 
 /** Resending it would help: nothing replaced or overtook it. */
-const RESENDABLE = sql`NOT ${REPLACED} AND NOT EXISTS (
+const RESENDABLE = sql`NOT ${REPLACED} AND NOT ${BUSY} AND NOT EXISTS (
   SELECT 1 FROM outbox_deliveries d3 JOIN outbox_events e3 ON e3.id = d3.event_id
    WHERE d3.subscriber = d.subscriber AND e3.aggregate_id = e.aggregate_id AND e3.sequence > e.sequence
      AND d3.status = 'delivered')`;
@@ -181,9 +190,11 @@ export async function retryUndelivered(db: Db, eventId: string, subscriber: stri
   const one = sql`d.event_id = ${eventId} AND d.subscriber = ${subscriber} AND d.status = 'dead'`;
   const r = await db.execute(sql`UPDATE outbox_deliveries d SET ${requeue} FROM outbox_events e WHERE e.id = d.event_id AND ${one} AND ${RESENDABLE}`);
   if ((r.rowCount ?? 0) > 0) return "queued";
-  const { rows } = await db.execute<{ replaced: boolean }>(sql`SELECT ${REPLACED} AS replaced FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id WHERE ${one}`);
+  const { rows } = await db.execute<{ replaced: boolean; overtaken: boolean }>(
+    sql`SELECT ${REPLACED} AS replaced, ${OVERTAKEN} AS overtaken FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id WHERE ${one}`,
+  );
   if (rows.length === 0) return "not-found";
-  return rows[0]!.replaced ? "replaced" : "overtaken";
+  return rows[0]!.replaced ? "replaced" : rows[0]!.overtaken ? "overtaken" : "busy";
 }
 
 /**
@@ -191,12 +202,13 @@ export async function retryUndelivered(db: Db, eventId: string, subscriber: stri
  * all due at the same instant, so the dispatcher sends them oldest first (its claim orders by queue
  * time and sequence). The others are left undelivered and counted.
  */
-export async function retryAllUndelivered(db: Db): Promise<{ retried: number; replaced: number; overtaken: number }> {
+export async function retryAllUndelivered(db: Db): Promise<{ retried: number; replaced: number; overtaken: number; busy: number }> {
   const r = await db.execute(sql`UPDATE outbox_deliveries d SET ${requeue} FROM outbox_events e WHERE e.id = d.event_id AND d.status = 'dead' AND ${RESENDABLE}`);
-  const { rows } = await db.execute<{ replaced: number; overtaken: number }>(sql`
-    SELECT count(*) FILTER (WHERE ${REPLACED})::int AS replaced, count(*) FILTER (WHERE ${OVERTAKEN})::int AS overtaken
+  const { rows } = await db.execute<{ replaced: number; overtaken: number; busy: number }>(sql`
+    SELECT count(*) FILTER (WHERE ${REPLACED})::int AS replaced, count(*) FILTER (WHERE ${OVERTAKEN})::int AS overtaken,
+           count(*) FILTER (WHERE NOT ${REPLACED} AND NOT ${OVERTAKEN} AND ${BUSY})::int AS busy
       FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id WHERE d.status = 'dead'`);
-  return { retried: r.rowCount ?? 0, replaced: Number(rows[0]?.replaced ?? 0), overtaken: Number(rows[0]?.overtaken ?? 0) };
+  return { retried: r.rowCount ?? 0, replaced: Number(rows[0]?.replaced ?? 0), overtaken: Number(rows[0]?.overtaken ?? 0), busy: Number(rows[0]?.busy ?? 0) };
 }
 
 async function dismissWhere(db: Db, where: SQL): Promise<UndeliveredUpdate[]> {
@@ -272,7 +284,7 @@ export interface OutboxAdmin {
   list(limit?: number): Promise<UndeliveredList>;
   listDismissed(limit?: number): Promise<UndeliveredList>;
   retry(eventId: string, subscriber: string): Promise<RetryOutcome>;
-  retryAll(): Promise<{ retried: number; replaced: number; overtaken: number }>;
+  retryAll(): Promise<{ retried: number; replaced: number; overtaken: number; busy: number }>;
   find(eventId: string, subscriber: string): Promise<UndeliveredUpdate | null>;
   dismiss(keys: { eventId: string; subscriber: string }[]): Promise<UndeliveredUpdate[]>;
   /** With `timeoutMs`, its queries run under that statement timeout (fix round 2, I2). */
