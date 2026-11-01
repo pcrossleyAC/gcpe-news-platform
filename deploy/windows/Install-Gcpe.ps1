@@ -11,8 +11,8 @@
   2. On first install, writes <Root>\config\gcpe.env (every setting and generated secret; readable
      only by Administrators and the service). Later runs keep it. -Environment Test (the default)
      writes a test site; -Environment Prod writes the real production site (docs/deploy/windows.md,
-     section 5): Entra required, the emergency feed or -EmergencyFeedOff, and real mail unless
-     -MailRedirectTo is given until go-live.
+     section 5): Entra required, the emergency feed or -EmergencyFeedOff, and either
+     -MailRedirectTo (until go-live) or -SendRealMail; never real mail by default.
   3. Creates the PostgreSQL login and the seven databases, and enables pgvector.
   4. Installs the gcpe-stack Windows service (WinSW running node.exe as NT SERVICE\gcpe-stack).
   5. Creates the IIS site "GCPE": https on 443 (and http on 80 redirecting to it), forwarding
@@ -66,6 +66,8 @@ param(
     [Security.SecureString]$SmtpPassword,
     [string]$MailFrom,
     [string[]]$MailRedirectTo,
+    # Prod only: send mail to its real recipients from the first start, instead of -MailRedirectTo.
+    [switch]$SendRealMail,
     [string]$AdminUsername = 'admin',
     [Security.SecureString]$AdminPassword,
     [string]$EntraTenantId,
@@ -104,7 +106,9 @@ if ($Environment -eq 'Prod' -and -not (Test-Path -LiteralPath (Join-Path $Root '
     # Checked before anything is installed (windows-env.js checks the same again).
     if (-not ($EntraTenantId -and $EntraClientId -and $EntraAudience)) { throw 'Prod needs Microsoft sign-in for staff: pass -EntraTenantId, -EntraClientId and -EntraAudience (the client secret is asked for).' }
     if ([bool]$EmergencyFeedUrl -eq [bool]$EmergencyFeedOff) { throw 'Prod needs -EmergencyFeedUrl <the emergency alerts feed>, or -EmergencyFeedOff to switch emergency alerts off on purpose (not both).' }
+    if ($MailRedirectTo -and $SendRealMail) { throw 'Pass -MailRedirectTo (mail redirected until go-live) or -SendRealMail, not both.' }
 }
+if ($SendRealMail -and $Environment -ne 'Prod') { throw '-SendRealMail is for -Environment Prod only: a test site always redirects mail.' }
 # Checked before anything is installed: a typo must never become a wider (or empty) allow-list.
 $clientRanges = @()
 foreach ($r in @($AllowedClientRanges)) { if ($r) { ConvertFrom-GcpeCidr -Cidr $r.Trim() | Out-Null; $clientRanges += $r.Trim() } }
@@ -129,7 +133,7 @@ if (Test-Path -LiteralPath $paths.EnvFile) {
     if (-not $PostgresAdminUrl -and @('localhost', '127.0.0.1', '::1') -notcontains $dbHost) {
         throw "This server's databases are on $dbHost (gcpe.env). Re-run with -PostgresAdminUrl postgres://postgres@$($dbHost):5432/postgres, or PostgreSQL would be installed here instead."
     }
-    $ignored = @('Environment', 'SmtpHost', 'SmtpPort', 'SmtpSecure', 'SmtpUser', 'SmtpPassword', 'MailFrom', 'MailRedirectTo', 'AdminUsername', 'AdminPassword', 'EntraTenantId', 'EntraClientId', 'EntraClientSecret', 'EntraAudience', 'EmergencyFeedUrl', 'EmergencyFeedOff', 'Port') | Where-Object { $PSBoundParameters.ContainsKey($_) }
+    $ignored = @('Environment', 'SmtpHost', 'SmtpPort', 'SmtpSecure', 'SmtpUser', 'SmtpPassword', 'MailFrom', 'MailRedirectTo', 'SendRealMail', 'AdminUsername', 'AdminPassword', 'EntraTenantId', 'EntraClientId', 'EntraClientSecret', 'EntraAudience', 'EmergencyFeedUrl', 'EmergencyFeedOff', 'Port') | Where-Object { $PSBoundParameters.ContainsKey($_) }
     $configuredHost = ([Uri]$existingEnv['SITE_PUBLIC_SITE_URL']).Host
 }
 
@@ -235,9 +239,11 @@ if ($existingEnv) {
 } else {
     if (-not $SmtpHost) { $SmtpHost = Read-Host 'SMTP relay host (e.g. apps.smtp.gov.bc.ca)' }
     if (-not $MailFrom) { $MailFrom = Read-Host 'From address for outgoing mail' }
-    if (-not $MailRedirectTo) {
-        $question = if ($Environment -eq 'Prod') { 'Until go-live, send ALL outgoing mail to (comma-separated inboxes; leave empty to send to the real recipients)' } else { 'Send ALL outgoing mail to (comma-separated test inboxes)' }
+    if (-not $MailRedirectTo -and -not $SendRealMail) {
+        $question = if ($Environment -eq 'Prod') { 'Until go-live, send ALL outgoing mail to (comma-separated inboxes; for real mail, re-run with -SendRealMail)' } else { 'Send ALL outgoing mail to (comma-separated test inboxes)' }
         $MailRedirectTo = @((Read-Host $question).Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        # An empty answer is never real mail (fix round 1, I1).
+        if (@($MailRedirectTo).Count -eq 0) { throw 'No inbox given. Give at least one -MailRedirectTo inbox, or (Prod only) -SendRealMail to send to the real recipients.' }
     }
     if ($Environment -eq 'Prod' -and $EntraTenantId -and -not $EntraClientSecret) { $EntraClientSecret = Read-Host 'Entra client secret for staff sign-in' -AsSecureString }
     if (-not $AdminPassword) { $AdminPassword = Read-Host "Password for the break-glass admin '$AdminUsername' (12+ characters)" -AsSecureString }
@@ -252,12 +258,12 @@ if ($existingEnv) {
         proxyHops = $ProxyHops
         adminUsername = $AdminUsername; adminPassword = ConvertFrom-GcpeSecureString $AdminPassword
         db = @{ host = $admin.Host; port = $(if ($admin.Port -gt 0) { $admin.Port } else { 5432 }); user = $db.user; password = $db.password; prefix = $db.prefix }
-        smtp = $smtp; mailFrom = $MailFrom; mailRedirectTo = @($MailRedirectTo)
+        smtp = $smtp; mailFrom = $MailFrom; mailRedirectTo = @($MailRedirectTo | Where-Object { $_ })
         environment = $Environment.ToLowerInvariant()
     }
     if ($EmergencyFeedUrl) { $settings.emergencyFeedUrl = $EmergencyFeedUrl }
     if ($EmergencyFeedOff) { $settings.emergencyFeedOff = $true }
-    if ($Environment -eq 'Prod' -and @($MailRedirectTo).Count -eq 0) { Write-GcpeNote 'no -MailRedirectTo: mail goes to its real recipients from the first start.' }
+    if ($SendRealMail) { $settings.realMail = $true; Write-GcpeNote '-SendRealMail: mail goes to its real recipients from the first start.' }
     if ($GoogleVerificationFile) { $settings.googleVerificationFile = $GoogleVerificationFile }
     if ($GoogleSiteVerification) { $settings.googleSiteVerification = $GoogleSiteVerification }
     if ($EntraTenantId) {
