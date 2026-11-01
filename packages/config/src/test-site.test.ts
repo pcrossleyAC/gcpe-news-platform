@@ -4,7 +4,8 @@ import { isRealProduction, isTestSite, type TestSiteEnv } from "./index";
 // The rule as an oracle, so any change to the shared helper's behaviour fails this table. Owner
 // decision 2026-10-31 (production configuration, T1): LOCAL_ADMIN_ALLOW_IN_PRODUCTION no longer
 // marks a test site; it only permits the break-glass admin. Only NODE_ENV and SITE_ENVIRONMENT count.
-const before = (env: TestSiteEnv & { LOCAL_ADMIN_ALLOW_IN_PRODUCTION?: string }) => env.NODE_ENV !== "production" || env.SITE_ENVIRONMENT === "test";
+// Fix round 2 (R1): SITE_ENVIRONMENT is read ignoring case and surrounding spaces, failing toward a test site.
+const before = (env: TestSiteEnv & { LOCAL_ADMIN_ALLOW_IN_PRODUCTION?: string }) => env.NODE_ENV !== "production" || env.SITE_ENVIRONMENT?.trim().toLowerCase() === "test";
 
 const NODE_ENV = [undefined, "", "production", "Production", "development", "test"];
 const ALLOW = [undefined, "", "true", "TRUE", "false", "1"];
@@ -37,5 +38,10 @@ describe("the test-site rule", () => {
     expect(isTestSite({})).toBe(true);
     const env: NodeJS.ProcessEnv = { NODE_ENV: "production", FAKE_ENTRA_ENABLED: "true" };
     expect(isRealProduction(env)).toBe(true);
+  });
+
+  it("reads SITE_ENVIRONMENT ignoring case and surrounding spaces (fix round 2, R1)", () => {
+    for (const v of ["Test", "test ", " TEST\t"]) expect(isTestSite({ NODE_ENV: "production", SITE_ENVIRONMENT: v }), JSON.stringify(v)).toBe(true);
+    for (const v of [undefined, "", "production", "staging"]) expect(isRealProduction({ NODE_ENV: "production", SITE_ENVIRONMENT: v }), JSON.stringify(v)).toBe(true);
   });
 });

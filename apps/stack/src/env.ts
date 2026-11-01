@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isRealProduction, isTestSite, trustProxyHopsSchema } from "@gcpe/config";
+import { isRealProduction, isTestSite, siteEnvironment, trustProxyHopsSchema } from "@gcpe/config";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { DEFAULT_LEGACY_FILES_ORIGIN, parseOrigin } from "./legacy-files/options";
 import { createProjectionHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
@@ -214,10 +214,17 @@ export function productionProblems(env: NodeJS.ProcessEnv): ProductionProblems {
   const warnings: string[] = [];
   if (!isRealProduction(env)) return { errors, warnings };
 
+  // Fix round 2 (R1): a misspelt value ("staging", "prod") must never quietly mean the live site.
+  const site = siteEnvironment(env);
+  if (site !== "" && site !== "production") {
+    errors.push(`SITE_ENVIRONMENT must be "test" (a test site) or "production" (the real production site), or not set; it is "${(env.SITE_ENVIRONMENT ?? "").slice(0, 30)}"`);
+    return { errors, warnings };
+  }
+
   // Fix round 1 (M1): until 2026-10-31, LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true alone made a test site
   // (boxs.ca's env). Such an env must never come up as the indexable production site, whatever else
   // it has: the real production site says so with SITE_ENVIRONMENT=production to keep it.
-  if (env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" && !setting(env, "SITE_ENVIRONMENT")) {
+  if (env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" && site === "") {
     errors.push(
       "This deployment still has LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test site. Set SITE_ENVIRONMENT=test for a test site, or remove LOCAL_ADMIN_ALLOW_IN_PRODUCTION for real production (or set SITE_ENVIRONMENT=production to keep break-glass allowed on the real production site).",
     );
@@ -252,7 +259,7 @@ export function productionProblems(env: NodeJS.ProcessEnv): ProductionProblems {
 
   // Fix round 1 (M2, M3): on purpose in an emergency, but never silent.
   if (env.LOCAL_ADMIN_ENABLED === "true") {
-    warnings.push("The break-glass admin is on (LOCAL_ADMIN_ENABLED=true): anyone with its password can sign in with every admin role. Turn it off once the problem is fixed (docs/deploy/windows.md, P4).");
+    warnings.push("The break-glass admin is on (LOCAL_ADMIN_ENABLED=true): anyone with its password can sign in with every admin role. Turn it off at go-live (P4), or once an emergency is over.");
   }
   if (env.CORE_LOCAL_PASSWORDS_ALLOWED === "true") {
     warnings.push("Staff passwords are allowed (CORE_LOCAL_PASSWORDS_ALLOWED=true): staff can sign in without Microsoft.");

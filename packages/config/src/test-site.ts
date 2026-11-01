@@ -15,7 +15,14 @@ export interface TestSiteEnv {
  * No imports, so any package can use it.
  */
 export function isTestSite(env: TestSiteEnv): boolean {
-  return env.NODE_ENV !== "production" || env.SITE_ENVIRONMENT === "test";
+  return env.NODE_ENV !== "production" || siteEnvironment(env) === "test";
+}
+
+/** SITE_ENVIRONMENT as the rule reads it (fix round 2, R1): trimmed and lower-cased, so "Test " is a
+ * test site (failing toward test); "" when unset. The stack refuses any other value than "test" or
+ * "production" under NODE_ENV=production (apps/stack/src/env.ts productionProblems). */
+export function siteEnvironment(env: TestSiteEnv): string {
+  return (env.SITE_ENVIRONMENT ?? "").trim().toLowerCase();
 }
 
 /** The real production deployment: not a test site. */

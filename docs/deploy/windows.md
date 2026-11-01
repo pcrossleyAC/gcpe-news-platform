@@ -975,7 +975,8 @@ changed), a warning starts it and says so:
 | `DIST_BOUNCE_SOURCE` | Unset or `fake`: starts; logs "Bounces aren't being read: bounce handling is set to manual upload"; Operations says so. `graph` needs all its settings (D8). | warning |
 | `DIST_MAIL_REDIRECT_TO` with `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true` | Refused: the redirect would still catch every message. | refuse |
 | `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` with no `SITE_ENVIRONMENT` | Refused, whatever else is set: before 2026-10-31 that setting alone made a test site (boxs.ca's env), so such an env must never come up as the indexable live site. Set `SITE_ENVIRONMENT=test` for a test site, or `SITE_ENVIRONMENT=production` (or remove the setting) for the real one. | refuse |
-| `LOCAL_ADMIN_ENABLED=true` | Starts; logs that the break-glass admin is on; Operations says so. | warning |
+| `SITE_ENVIRONMENT` | Read ignoring case and spaces (`Test ` is a test site). With `NODE_ENV=production`, any value other than `test` or `production` (a typo such as `staging` or `prod`) is refused. | refuse |
+| `LOCAL_ADMIN_ENABLED=true` | Starts; logs that the break-glass admin is on ("Turn it off at go-live (P4), or once an emergency is over"); Operations says so. | warning |
 | `CORE_LOCAL_PASSWORDS_ALLOWED=true` | Starts; logs that staff passwords are allowed; Operations says so. | warning |
 
 The apps' calls to each other inside the stack don't need the break-glass admin: they use a key

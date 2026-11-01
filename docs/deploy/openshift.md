@@ -106,7 +106,7 @@ finds its own `config/` and `migrations/` beside it.
 | `NOD_DISTRIBUTION_URL` | yes | | `self:/distribution` |
 | `DIST_SMTP_HOST`, `DIST_MAIL_FROM` | yes | | `DIST_SMTP_PORT`, `DIST_SMTP_SECURE` optional; `DIST_SMTP_USER`/`DIST_SMTP_PASS` optional and secret. |
 | `DIST_MAIL_REDIRECT_TO` | test sites | | Every message goes here instead. The real production site removes it and sets `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true` (both together is refused). |
-| `SITE_ENVIRONMENT` | test sites | | `test` on anything but the real production site. |
+| `SITE_ENVIRONMENT` | test sites | | `test` on anything but the real production site; `production` (or unset) on it. Case and spaces are ignored; under `NODE_ENV=production` any other value is refused at startup. |
 | `LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_USERNAME`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION` | test sites | | The break-glass admin login; `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` is needed with `NODE_ENV=production`. It only allows the login: it does not make a test site (`SITE_ENVIRONMENT=test` does). |
 | `LOCAL_ADMIN_PASSWORD_HASH` | with local admin | yes | `npm run auth:hash-password` |
 | `TRUST_PROXY_HOPS` | no | | Default `1`: the OpenShift router. `2` if another proxy is in front of it. |

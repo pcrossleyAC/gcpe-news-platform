@@ -861,7 +861,7 @@ describe("productionProblems: what real production refuses or warns about (2026-
   // test site. Whatever else it has, it must never come up as indexable production.
   it("refuses LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true with no SITE_ENVIRONMENT, even when everything else is complete", () => {
     const old = { ...good(), LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" };
-    for (const site of [undefined, ""]) {
+    for (const site of [undefined, "", "  "]) {
       expect(productionProblems({ ...old, SITE_ENVIRONMENT: site }).errors, String(site)).toEqual([
         "This deployment still has LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test site. Set SITE_ENVIRONMENT=test for a test site, or remove LOCAL_ADMIN_ALLOW_IN_PRODUCTION for real production (or set SITE_ENVIRONMENT=production to keep break-glass allowed on the real production site).",
       ]);
@@ -871,12 +871,25 @@ describe("productionProblems: what real production refuses or warns about (2026-
     expect(productionProblems({ ...old, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "false" }).errors).toEqual([]);
   });
 
+  // Fix round 2 (R1): a misspelt SITE_ENVIRONMENT must never quietly mean the live site.
+  it("SITE_ENVIRONMENT: Test and 'test ' are test sites; staging is refused; production and unset are the live site", () => {
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: "Test" })).toEqual({ errors: [], warnings: [] });
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: "test " })).toEqual({ errors: [], warnings: [] });
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: "staging" }).errors).toEqual([
+      'SITE_ENVIRONMENT must be "test" (a test site) or "production" (the real production site), or not set; it is "staging"',
+    ]);
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: " Production " }).errors).toEqual([]);
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: undefined }).errors).toEqual([]);
+    // ALLOW=true with a misspelt value is refused too, never accepted as "set".
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: "prod", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }).errors.join("\n")).toMatch(/SITE_ENVIRONMENT must be "test"/);
+  });
+
   it("break-glass on, and staff passwords allowed, on real production start with a warning each (fix round 1, M2, M3)", () => {
     const on = { ...good(), SITE_ENVIRONMENT: "production", LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", CORE_LOCAL_PASSWORDS_ALLOWED: "true" };
     const p = productionProblems(on);
     expect(p.errors).toEqual([]);
     expect(p.warnings).toEqual([
-      expect.stringMatching(/^The break-glass admin is on \(LOCAL_ADMIN_ENABLED=true\)/),
+      "The break-glass admin is on (LOCAL_ADMIN_ENABLED=true): anyone with its password can sign in with every admin role. Turn it off at go-live (P4), or once an emergency is over.",
       expect.stringMatching(/^Staff passwords are allowed \(CORE_LOCAL_PASSWORDS_ALLOWED=true\)/),
     ]);
     expect(productionProblems({ ...on, LOCAL_ADMIN_ENABLED: "false", CORE_LOCAL_PASSWORDS_ALLOWED: "false" }).warnings).toEqual([]);
