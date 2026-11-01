@@ -86,7 +86,7 @@ Staff sign in to the staff web app with their government Microsoft account. Loca
 | `expired` | The `gcpe_entra` cookie is missing or expired, or the state doesn't match | "Your sign-in took too long. Please try again." |
 | `failed` | Code exchange, token validation, wrong `tid`, or discovery or network error | "We couldn't sign you in with Microsoft. Please try again." |
 | `not_provisioned` | No matching user | "Your account hasn't been set up. Contact an administrator." |
-| `inactive` | The matching user is inactive | the same as `not_provisioned` |
+| `inactive` | The matching user is inactive | "Your account is not active. Contact a Core administrator." (*amended 2026-10-31, owner: was the same as `not_provisioned`; password sign-in with the right password says the same*) |
 | `conflict` | The email belongs to another linked identity | "Your account needs an administrator to check it. Contact an administrator." |
 
 **Logging:**

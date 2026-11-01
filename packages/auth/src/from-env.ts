@@ -20,6 +20,15 @@ const schema = z
     LOCAL_ADMIN_PASSWORD_HASH: z.string().optional(),
     LOCAL_AUTH_SECRET: z.string().optional(),
     SESSION_SECRET: z.string().optional(),
+    /** Set by the stack for every app: refuse a cookie (503) while Core's session check isn't installed. */
+    SESSION_GATE_REQUIRED: boolString,
+    SESSION_COOKIE_SECURE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+    /** Owner decision 2026-10-31: how long a staff session lasts from sign-in, whatever the renewals. */
+    SESSION_MAX_HOURS: z.coerce
+      .number({ invalid_type_error: "SESSION_MAX_HOURS must be a number of hours" })
+      .positive("SESSION_MAX_HOURS must be more than 0")
+      .max(168, "SESSION_MAX_HOURS must be at most 168 (a week)")
+      .default(12),
   })
   .superRefine((e, ctx) => {
     if (e.SESSION_SECRET !== undefined && e.SESSION_SECRET.length < 32)
@@ -43,20 +52,21 @@ const schema = z
 
 export function authFromEnv(
   env: NodeJS.ProcessEnv,
-): { bearer: BearerOptions; loginRouter: Router | null; local: LocalAuthConfig | null; session: { secret: string } | null } {
+): { bearer: BearerOptions; loginRouter: Router | null; local: LocalAuthConfig | null; session: { secret: string; secure: boolean; maxSessionSeconds: number } | null } {
   const parsed = schema.safeParse(env);
   if (!parsed.success) throw new Error(`auth configuration: ${parsed.error.issues.map((i) => i.message).join("; ")}`);
   const e = parsed.data;
   const local = e.LOCAL_ADMIN_ENABLED ? { username: e.LOCAL_ADMIN_USERNAME, passwordHash: e.LOCAL_ADMIN_PASSWORD_HASH!, secret: e.LOCAL_AUTH_SECRET! } : null;
   if (local) console.warn("[auth] LOCAL ADMIN LOGIN ENABLED — test environments only");
+  const session = e.SESSION_SECRET ? { secret: e.SESSION_SECRET, secure: e.SESSION_COOKIE_SECURE, maxSessionSeconds: Math.round(e.SESSION_MAX_HOURS * 3600) } : null;
   return {
     bearer: {
       ...(e.ENTRA_TENANT_ID ? { issuer: entraIssuer(e.ENTRA_TENANT_ID), audience: e.AUTH_AUDIENCE!, keys: entraJwks(e.ENTRA_TENANT_ID) } : {}),
       ...(local ? { local: { secret: local.secret } } : {}),
-      ...(e.SESSION_SECRET ? { session: { secret: e.SESSION_SECRET } } : {}),
+      ...(session ? { session: { ...session, gateRequired: e.SESSION_GATE_REQUIRED } } : {}),
     },
     loginRouter: local ? localLoginRouter(local) : null,
     local,
-    session: e.SESSION_SECRET ? { secret: e.SESSION_SECRET } : null,
+    session,
   };
 }

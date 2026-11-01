@@ -2,14 +2,18 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import { Form, Header, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { Button } from "../shared/BusyButton";
-import { ApiError, apiFetch } from "../api/client";
+import { ApiError, apiFetch, SIGN_IN_CHECK_UNAVAILABLE_MESSAGE } from "../api/client";
 import { safeReturnTo } from "../session/safeReturnTo";
 import { useSession } from "../session/SessionContext";
 import { useDocumentTitle } from "../shared/useDocumentTitle";
 
 const SIGN_IN_FAILED = "Sign-in failed. Check your user name and password.";
 const RATE_LIMITED = "Too many attempts, wait a minute";
+/** Review S N3: a server error isn't a wrong password. */
+const SERVER_ERROR = "We can't sign you in right now. Try again in a few minutes.";
 const NOT_SET_UP = "Your account hasn't been set up. Contact an administrator.";
+/** Owner decision 2026-10-31: a deactivated account, by password (Core's 403) or Microsoft. */
+const NOT_ACTIVE = "Your account is not active. Contact a Core administrator.";
 const METHODS_UNAVAILABLE = "Microsoft sign-in is unavailable right now.";
 /** Suite review H1: why someone who was working is back here. */
 export const SESSION_ENDED = "Your session ended. Sign in to carry on where you left off.";
@@ -20,7 +24,7 @@ export const ENTRA_ERRORS: Record<string, string> = {
   expired: "Your sign-in took too long. Please try again.",
   failed: "We couldn't sign you in with Microsoft. Please try again.",
   not_provisioned: NOT_SET_UP,
-  inactive: NOT_SET_UP,
+  inactive: NOT_ACTIVE,
   conflict: "Your account needs an administrator to check it. Contact an administrator.",
 };
 
@@ -32,7 +36,7 @@ interface SignInMethods {
 const DEFAULT_METHODS: SignInMethods = { entra: false, local: true };
 
 export function SignIn(): React.JSX.Element {
-  const { user, ended, signIn } = useSession();
+  const { user, ended, signIn, checkUnavailable } = useSession();
   useDocumentTitle("Sign in");
   const [params] = useSearchParams();
   const [username, setUsername] = useState("");
@@ -74,7 +78,9 @@ export function SignIn(): React.JSX.Element {
       await signIn(username, password);
       // Render falls through to the `user` redirect above on the next render.
     } catch (caught) {
-      setError(caught instanceof ApiError && caught.status === 429 ? RATE_LIMITED : SIGN_IN_FAILED);
+      const inactive = caught instanceof ApiError && caught.status === 403 && caught.message === "inactive";
+      const serverError = caught instanceof ApiError && caught.status >= 500;
+      setError(caught instanceof ApiError && caught.status === 429 ? RATE_LIMITED : inactive ? NOT_ACTIVE : serverError ? SERVER_ERROR : SIGN_IN_FAILED);
     } finally {
       setSubmitting(false);
     }
@@ -85,6 +91,7 @@ export function SignIn(): React.JSX.Element {
       <Header title="GCPE News — Staff" />
       <h1>Sign in</h1>
       {ended && <InlineAlert variant="info" title="You were signed out" description={SESSION_ENDED} />}
+      {checkUnavailable && <InlineAlert variant="warning" role="status" title="Can't check your sign-in" description={SIGN_IN_CHECK_UNAVAILABLE_MESSAGE} />}
       {(error ?? entraError) && <InlineAlert variant="danger" role="alert" description={(error ?? entraError)!} />}
       {methodsUnavailable && !methods.entra && <InlineAlert variant="info" description={METHODS_UNAVAILABLE} />}
       {methods.entra && (

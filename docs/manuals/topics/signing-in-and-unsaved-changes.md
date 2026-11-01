@@ -13,6 +13,12 @@ topics: []
 
 While a Hub tab is open, it keeps you signed in, even when the tab sits behind other windows. Your session can still end: when you sign out in another tab or window, when your computer has been asleep or offline for a while (it can be as little as a few minutes, and is never more than an hour), when the browser has put a tab it hasn't shown for a long time to sleep, or when an administrator changes your account.
 
+A session lasts up to 12 hours from when you signed in, however long the tab stays open. After that you sign in again.
+
+**Sign out** ends the session in that browser, including its other tabs. You stay signed in on any other computer or browser where you signed in. If an administrator deactivates your account, you are signed out at once, and signing in again tells you "Your account is not active. Contact a Core administrator."
+
+If the Hub says "The Hub can't check your sign-in right now. Try again in a minute.", you are still signed in and nothing on the screen is lost, but nothing can be saved or opened for now. Wait a minute and try again. The message goes away by itself once the Hub can check again. The sign-in page shows the same message then, and if signing in itself can't work for a while it says "We can't sign you in right now. Try again in a few minutes."
+
 ## When your session ends
 
 If the screen you are on has nothing unsaved, the Hub goes to the sign-in page, which says "Your session ended. Sign in to carry on where you left off." Once you sign in, you are back where you were.

@@ -292,7 +292,7 @@ function UserEditor({ user, onChanged, id, reportDirty }: { user: UserView; onCh
                   </>
                 }
               >
-                <p>They can&rsquo;t sign in until reactivated.</p>
+                <p>They&rsquo;re signed out at once and can&rsquo;t sign in until reactivated.</p>
               </AlertDialog>
             </Modal>
           </div>

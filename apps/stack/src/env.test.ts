@@ -401,6 +401,21 @@ describe("SESSION_SECRET for the stack", () => {
     expect(view.SESSION_COOKIE_SECURE).toBe("false");
   });
 
+  // Owner decision 2026-10-31: one session limit for every app, or a cookie Core renews to its
+  // limit would be refused by an app still on the default.
+  // Review S M6: in the stack, an app never falls back to the cookie's signature alone.
+  it("every app's view requires the session check (SESSION_GATE_REQUIRED), and an operator can't turn it off", () => {
+    for (const prefix of ["CORE", "NRMS", "NOD", "DIST", "CALENDAR", "NEWSAPI", "SITE"] as const) {
+      expect(envFor({ STACK_EVENT_SECRET: stackSecret, SESSION_GATE_REQUIRED: "false", NRMS_SESSION_GATE_REQUIRED: "false" }, prefix).SESSION_GATE_REQUIRED, prefix).toBe("true");
+    }
+  });
+
+  it("SESSION_MAX_HOURS is shared with every app, unprefixed", () => {
+    for (const prefix of ["CORE", "NRMS", "NOD", "DIST", "CALENDAR", "NEWSAPI", "SITE"] as const) {
+      expect(envFor({ STACK_EVENT_SECRET: stackSecret, SESSION_MAX_HOURS: "8" }, prefix).SESSION_MAX_HOURS, prefix).toBe("8");
+    }
+  });
+
   it("no STACK_EVENT_SECRET and no SESSION_SECRET means no session secret", () => {
     expect(envFor({}, "CORE").SESSION_SECRET).toBeUndefined();
   });

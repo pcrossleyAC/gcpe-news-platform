@@ -66,6 +66,17 @@ function notifyUnauthorized(returnTo: string, byUser: boolean): void {
   for (const listener of unauthorizedListeners) listener(returnTo, { byUser });
 }
 
+/** Review S I1: Core couldn't check the sign-in (its database slow or down). Not a sign-out: the
+ * screen shows this, and the shell a notice, until a check-in gets through. */
+export const SIGN_IN_CHECK_UNAVAILABLE_MESSAGE = "The Hub can't check your sign-in right now. Try again in a minute.";
+const checkListeners = new Set<() => void>();
+
+/** Subscribes to apiFetch's "sign-in check unavailable" 503s (SessionContext's own use). */
+export function onSignInCheckUnavailable(listener: () => void): () => void {
+  checkListeners.add(listener);
+  return () => checkListeners.delete(listener);
+}
+
 /** For a call that can't go through {@link apiFetch} (a file download): its 401 is treated the same way. */
 export function reportUnauthorized(byUser = true): void {
   notifyUnauthorized(currentReturnPath(), byUser);
@@ -129,6 +140,8 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
   if (!res.ok) {
     if (res.status === 401) notifyUnauthorized(currentReturnPath(), !SAFE_METHODS.has(method) && !background);
     const errObj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+    const checkUnavailable = res.status === 503 && errObj.error === "sign-in check unavailable";
+    if (checkUnavailable) for (const listener of checkListeners) listener();
     // The Website section's 422s (apps/nrms/src/website/errors.ts's SiteRuleError,
     // mapped in apps/nrms/src/http/routes.ts's handleError) send `{ errors: string[] }` with no
     // `error`/`problems` at all — a different shape from every release 422 (`{error, problems}`).
@@ -142,7 +155,9 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
     const message =
       res.status === 401
         ? SESSION_ENDED_MESSAGE
-        : typeof errObj.error === "string"
+        : checkUnavailable
+          ? SIGN_IN_CHECK_UNAVAILABLE_MESSAGE
+          : typeof errObj.error === "string"
           ? errObj.error
           : problems
             ? problems.join(" ")

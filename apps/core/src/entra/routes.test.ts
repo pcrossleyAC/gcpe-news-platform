@@ -120,6 +120,14 @@ describe("Entra sign-in routes", () => {
 
     const session = await request(app).get("/auth/session").set("cookie", `gcpe_session=${cookieValue(res, "gcpe_session")}`);
     expect(session.body.user).toEqual({ id: staffId, name: "Staff Person", email: "staff.person@example.test", roles: ["NRMS.Editor"] });
+
+    // Owner decision 2026-10-31: a Microsoft sign-in is recorded like a password one (sign-in
+    // time and session id, for the 12-hour limit), so Sign out ends it on the server.
+    expect(typeof entraClaims.sat).toBe("number");
+    expect(typeof entraClaims.sid).toBe("string");
+    const cookie = `gcpe_session=${cookieValue(res, "gcpe_session")}`;
+    expect((await request(app).post("/auth/logout").set("x-gcpe-request", "1").set("cookie", cookie)).status).toBe(204);
+    expect((await request(app).get("/auth/session").set("cookie", cookie)).status).toBe(401);
   });
 
   it.each([

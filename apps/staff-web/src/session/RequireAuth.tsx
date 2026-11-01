@@ -50,7 +50,9 @@ export function useSignInAgain(): () => void {
 }
 
 function SessionEndedGate({ children }: { children: ReactNode }): React.JSX.Element {
-  const { ended, endedCount } = useSession();
+  const { ended, endedCount, sessionHours } = useSession();
+  // The length Core gives (SESSION_MAX_HOURS), said only when known (review S M2).
+  const lasts = sessionHours ? ` Sessions last ${sessionHours} ${sessionHours === 1 ? "hour" : "hours"}.` : "";
   const unsaved = useUnsavedChangesState();
   const location = useLocation();
   const signInAgain = useSignInAgain();
@@ -82,7 +84,7 @@ function SessionEndedGate({ children }: { children: ReactNode }): React.JSX.Elem
         >
           <p>
             You were signed out, so the changes on this page can&rsquo;t be saved until you sign in again. This happens when you sign out in another tab or window,
-            when your computer has been asleep or offline for a while, or when an administrator changes your account.
+            when your computer has been asleep or offline for a while, or when an administrator changes your account.{lasts}
           </p>
           <p>
             {unsaved?.allKeepDrafts

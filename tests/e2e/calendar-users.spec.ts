@@ -42,7 +42,7 @@ test.describe("Calendar users", () => {
     const preview = page.getByRole("region", { name: `Before deactivating Calendar User ${stamp}` });
     await expect(preview.getByText("No open activities.")).toBeVisible();
     await preview.getByRole("button", { name: "Deactivate", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "is deactivated." })).toContainText(`Calendar User ${stamp} is deactivated.`);
+    await expect(page.getByRole("status").filter({ hasText: "is deactivated and signed out." })).toContainText(`Calendar User ${stamp} is deactivated and signed out. The Calendar's lists catch up within a minute.`);
 
     // Q55: a user who also holds an NRMS role is a Core admin's to change, not a Calendar
     // Administrator's — even once they also hold a Calendar role.

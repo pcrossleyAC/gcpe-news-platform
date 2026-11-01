@@ -12,6 +12,8 @@ data:
   # One hop: the OpenShift router. 2 if another proxy sits in front of the router.
   TRUST_PROXY_HOPS: "1"
   STACK_LOOPS: "true"
+  # A staff session ends this many hours after sign-in, whatever the renewals (default 12).
+  SESSION_MAX_HOURS: "12"
   # The News API's live-updates hub (WebSockets); OpenShift routes pass WebSocket upgrades.
   UPDATES_HUB_ENABLED: "true"
 

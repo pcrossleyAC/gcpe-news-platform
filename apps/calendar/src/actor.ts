@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
-import { CALENDAR_LEVELS, type CalendarRole } from "@gcpe/auth";
+import { CALENDAR_LEVELS, isCalendarRole, type CalendarRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { orgs, users } from "./db/schema";
 
@@ -54,7 +54,15 @@ export async function loadCalendarActor(db: DbOrTx, subject: string): Promise<Ca
 export function requireCalendarActor(db: Db): RequestHandler {
   return async (req, res, next) => {
     try {
-      const actor = req.auth?.claims.via === "session" ? await loadCalendarActor(db, req.auth.subject) : null;
+      let actor = req.auth?.claims.via === "session" ? await loadCalendarActor(db, req.auth.subject) : null;
+      // Review S M1: roles Core's session check vouched for (rolesCurrent) are Core's as of now, so
+      // a Calendar role removed or lowered there counts before its user.upserted arrives. Only ever
+      // the lower of the two: a new or raised grant still waits for the projection.
+      if (actor && req.auth!.claims.rolesCurrent === true) {
+        const now = req.auth!.roles.find(isCalendarRole);
+        if (!now) actor = null;
+        else if (CALENDAR_LEVELS[now] < actor.level) actor = { ...actor, role: now, level: CALENDAR_LEVELS[now] };
+      }
       if (!actor) return void res.status(403).json({ error: "no Calendar access" });
       req.calendar = actor;
       next();

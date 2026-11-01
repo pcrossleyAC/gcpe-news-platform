@@ -225,7 +225,7 @@ describe("CalendarUserScreen", () => {
     await user.click(within(preview).getByRole("button", { name: "Deactivate" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/calendar-access/u1/active")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.url.endsWith("/active"))!.init!.body as string)).toEqual({ isActive: false });
-    await waitFor(() => expect(said()).toEqual(["Robin Staff is deactivated. The Calendar picks this up within a minute."]));
+    await waitFor(() => expect(said()).toEqual(["Robin Staff is deactivated and signed out. The Calendar's lists catch up within a minute."]));
   });
 
   it("lists the user's open activities before deactivating, with a way to Transfer them", async () => {

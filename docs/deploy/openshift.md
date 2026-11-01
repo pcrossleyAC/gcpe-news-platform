@@ -110,6 +110,7 @@ finds its own `config/` and `migrations/` beside it.
 | `LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_USERNAME`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION` | test sites | | The break-glass admin login; `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` is needed with `NODE_ENV=production`. |
 | `LOCAL_ADMIN_PASSWORD_HASH` | with local admin | yes | `npm run auth:hash-password` |
 | `TRUST_PROXY_HOPS` | no | | Default `1`: the OpenShift router. `2` if another proxy is in front of it. |
+| `SESSION_MAX_HOURS` | no | | Default `12`: a staff session ends this many hours after sign-in, whatever the renewals (more than 0, at most 168). One value for every app. The manual pages say 12 hours: edit them if you change it. Rolling back past Core migration 0012: deploy the previous image and leave `staff_sessions` in place; never drop it by hand. |
 | `STACK_LOOPS` | no | | Default `true`: background work runs in the process (no scheduler needed). |
 | `UPDATES_HUB_ENABLED` | no | | `true` for the News API's live-updates hub; OpenShift routes pass WebSockets. |
 | `ENTRA_TENANT_ID`, `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET`, `CORE_PUBLIC_BASE_URL`, `<PREFIX>_AUTH_AUDIENCE` | for Microsoft sign-in | client secret | As `scripts/windows-env.ts` writes them. |

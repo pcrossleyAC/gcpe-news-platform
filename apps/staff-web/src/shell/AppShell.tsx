@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { SIGN_IN_CHECK_UNAVAILABLE_MESSAGE } from "../api/client";
 import { flushSync } from "react-dom";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { AlertDialog, Header, InlineAlert, Modal } from "@bcgov/design-system-react-components";
@@ -124,6 +125,11 @@ export function AppShell(): React.JSX.Element {
                 </Button>
               }
             />
+          )}
+          {/* Review S I1: Core can't check the sign-in for now (its database is slow or down). Not a
+           * sign-out: nothing is lost, and it goes at the next check-in that gets through. */}
+          {session.checkUnavailable && !session.ended && (
+            <InlineAlert variant="warning" role="status" isCloseable={false} title="Can't check your sign-in" description={SIGN_IN_CHECK_UNAVAILABLE_MESSAGE} />
           )}
           {/* Persistent — not closeable — since it stays true for the whole session; the only
            * real fix is updating the browser. The title is what the design system's alert names
