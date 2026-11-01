@@ -41,6 +41,7 @@ describe("users service", () => {
       roles: ["NRMS.Editor"],
       calendarRole: null,
       organizationKeys: [],
+      lastSignInAt: null,
     });
     expect(Object.keys(u)).not.toContain("passwordHash");
     expect(await getUser(tdb.db, u.id)).toEqual(u);

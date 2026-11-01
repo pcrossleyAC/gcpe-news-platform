@@ -8,6 +8,7 @@ import { CORE_SOURCE, lockAggregate, orgAggregateId, orgSuccessionAggregateId, u
 import { sameLegacyExtras, type LegacyExtras } from "./legacy-extras";
 import { MAX_BIO_CHARS, isBlankHtml, sanitizeBioHtml } from "./bio-html";
 import { emitUserUpserted } from "./users";
+import { recordAudit, type AuditActor } from "./audit";
 
 export { MAX_BIO_CHARS };
 
@@ -41,6 +42,40 @@ export function isNonPublicAbbreviation(abbreviation: string | null | undefined)
 }
 
 type Row = typeof organizations.$inferSelect;
+
+/**
+ * Who is making an organization change, for Core's audit trail (services/audit.ts), and through
+ * what: a cabinet change, or a hand-over (the successor taking the abbreviation). Omitted by the
+ * seed and the importer, which leave no entry.
+ */
+export type OrgAudit = AuditActor & { via?: "cabinet-change" | "hand-over" };
+
+async function orgAudit(tx: Tx, audit: OrgAudit | undefined, action: string, key: string, label: string, details: Record<string, unknown> = {}): Promise<void> {
+  if (!audit) return;
+  const { via, ...actor } = audit;
+  await recordAudit(tx, actor, { action, targetType: "organization", targetId: key, targetLabel: label, details: { ...details, ...(via ? { via } : {}) } });
+}
+
+/** JSON with object keys sorted, so two copies of one value compare equal whatever order their keys came in (jsonb reorders them). */
+function stable(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x,
+  );
+}
+
+/** The fields an edit changed, named but not copied (a biography can be 20,000 characters); the name, abbreviation and active flag with before and after. */
+function orgChanges(before: Omit<OrgRecord, "updatedAt">, after: OrgInput & { isHq: boolean; isPublic: boolean }): Record<string, unknown> | null {
+  const details: Record<string, unknown> = {};
+  if (before.displayName !== after.displayName) details.name = { from: before.displayName, to: after.displayName };
+  if ((before.abbreviation ?? null) !== (after.abbreviation ?? null)) details.abbreviation = { from: before.abbreviation ?? null, to: after.abbreviation ?? null };
+  if (before.isActive !== after.isActive) details.active = { from: before.isActive, to: after.isActive };
+  const skip = new Set(["key", "displayName", "abbreviation", "isActive", "successorKeys"]);
+  const fields = (Object.keys(after) as (keyof typeof after)[])
+    .filter((f) => !skip.has(f) && stable(before[f as keyof typeof before] ?? null) !== stable(after[f] ?? null))
+    .sort();
+  if (!Object.keys(details).length && !fields.length) return null;
+  return { ...details, fields };
+}
 
 export function toOrgRecord(row: Row): OrgRecord {
   return {
@@ -102,6 +137,8 @@ export async function upsertOrganization(
      * (it is not part of OrgRecord), no updatedAt, and it is refreshed even for a staff-edited organization.
      */
     legacyExtras?: LegacyExtras | null;
+    /** Who is making the change, for the audit trail. */
+    audit?: OrgAudit;
   } = {},
 ): Promise<{ record: OrgRecord; changed: boolean; skippedStaffEdit?: true }> {
   const parsed = orgInputSchema.parse(input);
@@ -161,6 +198,12 @@ export async function upsertOrganization(
       .returning();
     const record = toOrgRecord(row!);
     await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(record.key), data: record }, subscribers);
+    if (!existing) await orgAudit(tx, opts.audit, "org.created", record.key, record.displayName, { abbreviation: record.abbreviation });
+    else {
+      const { updatedAt: _u, ...before } = toOrgRecord(existing);
+      const changes = orgChanges(before, data);
+      if (changes) await orgAudit(tx, opts.audit, "org.edited", record.key, record.displayName, changes);
+    }
     return { record, changed: true };
   });
 }
@@ -340,6 +383,7 @@ export async function patchOrganizationProfile(
   subscribers: SubscriberConfig[],
   tx?: Tx,
   now?: TestClock,
+  audit?: OrgAudit,
 ): Promise<OrgRecord | null> {
   const parsed = orgProfilePatchSchema.parse(patch);
   const run = async (tx: Tx): Promise<OrgRecord | null> => {
@@ -357,7 +401,7 @@ export async function patchOrganizationProfile(
     }
     const merged: OrgInput = { ...current, ...rest, minister: { ...current.minister, ...minister }, social: { ...current.social, ...social } };
     // tx is a Db-compatible handle; upsertOrganization opens a nested transaction (savepoint) on it and re-takes the same lock.
-    return (await upsertOrganization(tx as unknown as Db, merged, subscribers, { staffEdit: true, now })).record;
+    return (await upsertOrganization(tx as unknown as Db, merged, subscribers, { staffEdit: true, now, audit })).record;
   };
   return tx ? run(tx) : db.transaction(run);
 }
@@ -385,6 +429,7 @@ export async function createOrganization(
   subscribers: SubscriberConfig[],
   tx?: Tx,
   clock?: TestClock,
+  audit?: OrgAudit,
 ): Promise<{ record: OrgRecord } | { conflict: string }> {
   const displayName = input.displayName.trim();
   const key = orgKeyFromName(displayName);
@@ -424,13 +469,14 @@ export async function createOrganization(
     if (!row) return { conflict: key };
     const record = toOrgRecord(row);
     await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: record }, subscribers);
+    await orgAudit(tx, audit, "org.created", key, displayName, { abbreviation });
     return { record };
   };
   return tx ? run(tx) : db.transaction(run);
 }
 
 /** Core.Admin's HQ switch. Emits org.upserted only when the flag changes. */
-export async function setOrganizationHq(db: Db, key: string, isHq: boolean, subscribers: SubscriberConfig[]): Promise<OrgRecord | null> {
+export async function setOrganizationHq(db: Db, key: string, isHq: boolean, subscribers: SubscriberConfig[], audit?: OrgAudit): Promise<OrgRecord | null> {
   return db.transaction(async (tx) => {
     await lockAggregate(tx, orgAggregateId(key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
@@ -439,12 +485,13 @@ export async function setOrganizationHq(db: Db, key: string, isHq: boolean, subs
     const [row] = await tx.update(organizations).set({ isHq, updatedAt: new Date() }).where(eq(organizations.key, key)).returning();
     const record = toOrgRecord(row!);
     await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: record }, subscribers);
+    await orgAudit(tx, audit, "org.hq", key, record.displayName, { isHq });
     return record;
   });
 }
 
 /** Core.Admin's public switch (Q54). Emits org.upserted only when the flag changes. */
-export async function setOrganizationPublic(db: Db, key: string, isPublic: boolean, subscribers: SubscriberConfig[]): Promise<OrgRecord | null> {
+export async function setOrganizationPublic(db: Db, key: string, isPublic: boolean, subscribers: SubscriberConfig[], audit?: OrgAudit): Promise<OrgRecord | null> {
   return db.transaction(async (tx) => {
     await lockAggregate(tx, orgAggregateId(key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
@@ -453,12 +500,13 @@ export async function setOrganizationPublic(db: Db, key: string, isPublic: boole
     const [row] = await tx.update(organizations).set({ isPublic, updatedAt: new Date() }).where(eq(organizations.key, key)).returning();
     const record = toOrgRecord(row!);
     await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: record }, subscribers);
+    await orgAudit(tx, audit, "org.public", key, record.displayName, { isPublic });
     return record;
   });
 }
 
 /** Plain deactivation (no successor). Uses the caller's transaction when `tx` is given (a cabinet change's abolish). */
-export async function deactivateOrganization(db: Db, key: string, subscribers: SubscriberConfig[], tx?: Tx, clock?: TestClock): Promise<boolean> {
+export async function deactivateOrganization(db: Db, key: string, subscribers: SubscriberConfig[], tx?: Tx, clock?: TestClock, audit?: OrgAudit): Promise<boolean> {
   const run = async (tx: Tx): Promise<boolean> => {
     await lockAggregate(tx, orgAggregateId(key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
@@ -467,6 +515,7 @@ export async function deactivateOrganization(db: Db, key: string, subscribers: S
     const now = clock ? clock() : new Date();
     await tx.update(organizations).set({ isActive: false, updatedAt: now, staffEditedAt: now }).where(eq(organizations.key, key));
     await enqueueEvent(tx, { type: "org.deactivated", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: { key } }, subscribers);
+    await orgAudit(tx, audit, "org.deactivated", key, existing.displayName);
     return true;
   };
   return tx ? run(tx) : db.transaction(run);
@@ -524,6 +573,7 @@ export async function succeedOrganization(
   subscribers: SubscriberConfig[],
   tx?: Tx,
   now?: TestClock,
+  audit?: OrgAudit,
 ): Promise<OrgRecord | null> {
   const run = async (tx: Tx): Promise<OrgRecord | null> => {
     const successorKeys = [...new Set(input.successorKeys)];
@@ -599,6 +649,17 @@ export async function succeedOrganization(
     // Its own aggregate, never `org:<key>`: see orgSuccessionAggregateId.
     await event("org.succeeded", key, succeeded, orgSuccessionAggregateId(key));
     for (const id of movers) await emitUserUpserted(tx, id, subscribers);
+    await orgAudit(tx, audit, "org.handed-over", key, a.displayName, {
+      successors: successorKeys.map((k) => ({ key: k, name: byKey.get(k)!.displayName })),
+      moveStaff: input.moveStaff,
+      moveSubscribers: input.moveSubscribers,
+      moveCalendar: input.moveCalendar,
+      moveDrafts: input.moveDrafts,
+      takeAbbreviation,
+      staffMoved: movers.length,
+    });
+    if (recordB)
+      await orgAudit(tx, audit && { ...audit, via: audit.via ?? "hand-over" }, "org.edited", b.key, b.displayName, { abbreviation: { from: b.abbreviation, to: recordB.abbreviation }, fields: [] });
     return recordA;
   };
   return tx ? run(tx) : db.transaction(run);

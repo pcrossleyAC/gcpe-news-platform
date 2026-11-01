@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
+import { actorOf } from "@gcpe/auth";
 import {
   createUser,
   createUserSchema,
@@ -45,13 +46,13 @@ export function usersRouter(db: Db, subscribers: SubscriberConfig[]): Router {
   const r = Router();
 
   r.get("/", run(async (_req, res) => void res.json(await listUsers(db))));
-  r.post("/", run(async (req, res) => void res.status(201).json(await createUser(db, createUserSchema.parse(req.body), subscribers))));
+  r.post("/", run(async (req, res) => void res.status(201).json(await createUser(db, createUserSchema.parse(req.body), subscribers, { audit: actorOf(req as Request) }))));
   r.patch(
     "/:id",
     run<IdParams>(async (req, res) => {
       const patch = updateUserSchema.parse(req.body);
       if (isSelf(req) && patch.isActive === false) throw new SelfLockoutError();
-      res.json(await updateUser(db, req.params.id, patch, subscribers));
+      res.json(await updateUser(db, req.params.id, patch, subscribers, { audit: actorOf(req) }));
     }),
   );
   r.put(
@@ -59,13 +60,13 @@ export function usersRouter(db: Db, subscribers: SubscriberConfig[]): Router {
     run<IdParams>(async (req, res) => {
       const { roles } = setRolesSchema.parse(req.body);
       if (isSelf(req) && !roles.includes("Core.Admin")) throw new SelfLockoutError();
-      res.json(await setRoles(db, req.params.id, roles, subscribers));
+      res.json(await setRoles(db, req.params.id, roles, subscribers, { audit: actorOf(req) }));
     }),
   );
   r.post(
     "/:id/password",
     run<IdParams>(async (req, res) => {
-      await setPassword(db, req.params.id, setPasswordSchema.parse(req.body).password);
+      await setPassword(db, req.params.id, setPasswordSchema.parse(req.body).password, { audit: actorOf(req) });
       res.status(204).end();
     }),
   );
@@ -73,12 +74,12 @@ export function usersRouter(db: Db, subscribers: SubscriberConfig[]): Router {
     "/:id/link",
     run<IdParams>(async (req, res) => {
       const { email } = linkUserSchema.parse(req.body);
-      res.json(await linkUser(db, req.params.id, email, subscribers));
+      res.json(await linkUser(db, req.params.id, email, subscribers, { audit: actorOf(req) }));
     }),
   );
   r.post(
     "/:id/unlink-entra",
-    run<IdParams>(async (req, res) => void res.json(await unlinkEntra(db, req.params.id, subscribers))),
+    run<IdParams>(async (req, res) => void res.json(await unlinkEntra(db, req.params.id, subscribers, { audit: actorOf(req) }))),
   );
   return r;
 }

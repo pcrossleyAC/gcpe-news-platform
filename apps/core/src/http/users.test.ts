@@ -55,6 +55,7 @@ describe("Core users API", () => {
       roles: ["NRMS.SiteEditor"],
       calendarRole: null,
       organizationKeys: [],
+      lastSignInAt: null,
     });
     expect(JSON.stringify(created.body)).not.toContain("scrypt");
     const id = created.body.id as string;
