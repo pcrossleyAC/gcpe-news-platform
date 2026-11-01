@@ -909,3 +909,15 @@ describe("Operations' live-site sign-in notices (fix round 1, M2, M3)", () => {
     expect(envFor({ CORE_LOCAL_PASSWORDS_ALLOWED: "true" }, "NRMS").CORE_LOCAL_PASSWORDS_ALLOWED).toBeUndefined();
   });
 });
+
+describe("the Hub's internal host names (suite fix W2, M3)", () => {
+  it("NRMS's INTERNAL_HOSTS is NRMS_INTERNAL_HOSTS plus the sign-in host CORE_PUBLIC_BASE_URL; no other app gets it", () => {
+    expect(envFor({ CORE_PUBLIC_BASE_URL: "https://gcpe-prod-app.internal.example" }, "NRMS").INTERNAL_HOSTS).toBe("https://gcpe-prod-app.internal.example");
+    expect(envFor({ NRMS_INTERNAL_HOSTS: "gcpe-prod-app, hub.example", CORE_PUBLIC_BASE_URL: "https://gcpe-prod-app.internal.example" }, "NRMS").INTERNAL_HOSTS).toBe(
+      "gcpe-prod-app, hub.example,https://gcpe-prod-app.internal.example",
+    );
+    expect(envFor({ NRMS_INTERNAL_HOSTS: "hub.example" }, "NRMS").INTERNAL_HOSTS).toBe("hub.example");
+    expect(envFor({}, "NRMS").INTERNAL_HOSTS).toBeUndefined();
+    expect(envFor({ CORE_PUBLIC_BASE_URL: "https://gcpe-prod-app.internal.example" }, "NOD").INTERNAL_HOSTS).toBeUndefined();
+  });
+});

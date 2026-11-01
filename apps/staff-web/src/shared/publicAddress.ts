@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { hostNameOf } from "@gcpe/site-settings";
 import { apiFetch } from "../api/client";
 
 /**
@@ -9,6 +10,10 @@ import { apiFetch } from "../api/client";
  * carry that host, so the public would get a broken image or link while staff see it working.
  * Every address the Hub offers to copy is built on the configured public base instead, and an
  * address pasted into a URL field that points at the Hub's own host gets a warning.
+ *
+ * Suite fix W2 (M3): "the Hub's own host" is the page's host plus every internal name the server
+ * knows (`GET /nrms/api/config`'s internalHosts: NRMS_INTERNAL_HOSTS and the sign-in host), so an
+ * address on another alias of the same server is caught too.
  */
 
 interface ConfigResponse {
@@ -16,6 +21,8 @@ interface ConfigResponse {
   filesBase?: string;
   /** The public site's base URL. */
   publicSiteUrl?: string;
+  /** Suite fix W2 (M3): the Hub's other internal host names (never the public site's). */
+  internalHosts?: string[];
 }
 
 const originOf = (url: string | undefined): string => {
@@ -42,21 +49,23 @@ export function publicFileUrl(path: string, origin: string, pageOrigin: string =
 export const STAFF_HOST_WARNING = "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead.";
 
 /**
- * The warning for an address on the Hub's own host (`hubHost`, the page's `location.host`) when
- * the public site lives elsewhere; null for any other address, a blank or unparseable one, when
- * the Hub and the public site share a host (a test site such as boxs.ca), where it works, or while
- * the public origin isn't known.
+ * The warning for an address on one of the Hub's hosts (`hubHosts`: the page's `location.host`,
+ * plus the server's internal names) when the public site lives elsewhere; null for any other
+ * address, a blank or unparseable one, one on the public site's own host (a test site such as
+ * boxs.ca shares it with the Hub, and it works there), or while the public origin isn't known.
+ * Hosts compare by name, ignoring case and port.
  */
-export function staffHostWarning(url: string, publicOrigin: string, hubHost: string = window.location.host): string | null {
+export function staffHostWarning(url: string, publicOrigin: string, hubHosts: string | readonly string[] = window.location.host): string | null {
   let host: string;
   try {
-    host = new URL(url.trim()).host;
+    host = new URL(url.trim()).hostname.toLowerCase();
   } catch {
     return null;
   }
-  if (host === "" || host !== hubHost) return null;
-  const publicHost = originOf(publicOrigin) ? new URL(publicOrigin).host : "";
-  return publicHost === "" || publicHost === hubHost ? null : STAFF_HOST_WARNING;
+  const publicHost = originOf(publicOrigin) ? new URL(publicOrigin).hostname.toLowerCase() : "";
+  if (host === "" || publicHost === "" || host === publicHost) return null;
+  const hosts = (typeof hubHosts === "string" ? [hubHosts] : hubHosts).map(hostNameOf);
+  return hosts.includes(host) ? STAFF_HOST_WARNING : null;
 }
 
 /**
@@ -65,18 +74,25 @@ export function staffHostWarning(url: string, publicOrigin: string, hubHost: str
  * address; any other Hub address keeps its text and carries {@link STAFF_HOST_WARNING} for the
  * caller to ask about. Everything else passes through with no warning.
  */
-export function checkHubAddress(url: string, publicOrigin: string, hubHost: string = window.location.host): { url: string; warning: string | null } {
-  const warning = staffHostWarning(url, publicOrigin, hubHost);
+export function checkHubAddress(url: string, publicOrigin: string, hubHosts: string | readonly string[] = window.location.host): { url: string; warning: string | null } {
+  const warning = staffHostWarning(url, publicOrigin, hubHosts);
   if (!warning) return { url, warning: null };
   const parsed = new URL(url.trim());
   if (parsed.pathname.startsWith("/files/")) return { url: new URL(`${parsed.pathname}${parsed.search}${parsed.hash}`, publicOrigin).href, warning: null };
   return { url, warning };
 }
 
-/** One `GET /nrms/api/config` for the public origin ({@link publicFilesOrigin}); "" if it fails. For
- * code that only needs it at the moment of use (the rich-text prompts), not on every mount. */
-export function fetchPublicFilesOrigin(): Promise<string> {
-  return apiFetch<ConfigResponse>("/nrms/api/config").then(publicFilesOrigin, () => "");
+/** The page's own host and the server's internal names: every host {@link staffHostWarning} treats as the Hub's. */
+const hubHostsFrom = (config: ConfigResponse | null): string[] => [window.location.host, ...(config?.internalHosts ?? [])];
+
+/** One `GET /nrms/api/config` for the public origin ({@link publicFilesOrigin}) and the Hub's
+ * hosts; origin "" if it fails. For code that only needs them at the moment of use (the
+ * rich-text prompts), not on every mount. */
+export function fetchHubAddresses(): Promise<{ origin: string; hubHosts: string[] }> {
+  return apiFetch<ConfigResponse>("/nrms/api/config").then(
+    (config) => ({ origin: publicFilesOrigin(config), hubHosts: hubHostsFrom(config) }),
+    () => ({ origin: "", hubHosts: hubHostsFrom(null) }),
+  );
 }
 
 export interface PublicFiles {
@@ -84,6 +100,8 @@ export interface PublicFiles {
   status: "loading" | "ready" | "failed";
   /** The configured public origin ({@link publicFilesOrigin}); "" when not (yet) known or not configured. */
   origin: string;
+  /** The page's host and the server's internal host names (W2, M3). */
+  hubHosts: string[];
 }
 
 /**
@@ -93,15 +111,15 @@ export interface PublicFiles {
  * configured (a development stack) falls back to the page's origin, in {@link publicFileUrl}.
  */
 export function usePublicFiles(): PublicFiles {
-  const [state, setState] = useState<PublicFiles>({ status: "loading", origin: "" });
+  const [state, setState] = useState<PublicFiles>({ status: "loading", origin: "", hubHosts: hubHostsFrom(null) });
   useEffect(() => {
     let active = true;
     apiFetch<ConfigResponse>("/nrms/api/config").then(
       (config) => {
-        if (active) setState({ status: "ready", origin: publicFilesOrigin(config) });
+        if (active) setState({ status: "ready", origin: publicFilesOrigin(config), hubHosts: hubHostsFrom(config) });
       },
       () => {
-        if (active) setState({ status: "failed", origin: "" });
+        if (active) setState({ status: "failed", origin: "", hubHosts: hubHostsFrom(null) });
       },
     );
     return () => {
@@ -111,7 +129,8 @@ export function usePublicFiles(): PublicFiles {
   return state;
 }
 
-/** {@link usePublicFiles}'s origin alone, for the Hub-address warnings (none while it is unknown). */
-export function usePublicFilesOrigin(): string {
-  return usePublicFiles().origin;
+/** {@link staffHostWarning} with this deployment's public origin and Hub hosts (no warning while they are unknown). */
+export function useStaffHostWarning(): (url: string) => string | null {
+  const { origin, hubHosts } = usePublicFiles();
+  return useCallback((url: string) => staffHostWarning(url, origin, hubHosts), [origin, hubHosts]);
 }

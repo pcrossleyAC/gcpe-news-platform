@@ -79,6 +79,14 @@ export const nrmsEnvSchema = z.object({
   // The public origin /files/<key> is served from, prefixed to file URLs in published records
   // (e.g. https://boxs.ca). "" keeps them root-relative; the stack derives it from the site URL.
   PUBLIC_FILES_BASE: z.union([z.literal(""), z.string().url()]).default("").transform((v) => v.replace(/\/+$/, "")),
+  // Suite fix W2 (M3): the other names staff reach the Hub on that the public can't open (an alias,
+  // the short server name), comma-separated: bare names or full addresses. The stack adds Core's
+  // sign-in host (CORE_PUBLIC_BASE_URL). The Hub warns about an address on any of them and lists
+  // the stored ones (Website → Hub address check); the public site's own host never counts.
+  INTERNAL_HOSTS: z
+    .string()
+    .default("")
+    .transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
   // Phase 3c: Flickr (OAuth 1.0a). No FLICKR_API_KEY → no Flickr: asset status reports
   // "unavailable" and the publisher treats Flickr releases as it does an outage. The stack runs
   // its fake Flickr in that case and sets FLICKR_MODE=fake plus the fake's credentials and URLs.
@@ -363,6 +371,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     liveFeedDefaults,
     siteSettingsDefaults,
     siteUrl: tenant.publicSiteBaseUrl,
+    internalHosts: parsed.INTERNAL_HOSTS,
     forecastCategoryPrefix: tenant.calendar?.forecastCategoryPrefix ?? null,
     isTestSite: isTestSite(env),
     blueBridgeNotify,

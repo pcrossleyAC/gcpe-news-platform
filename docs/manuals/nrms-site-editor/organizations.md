@@ -57,4 +57,4 @@ If you have changes you haven't saved and you go to another screen or choose you
 | "Enter a whole number." | **Sort order** must be a whole number, such as 10. |
 | "Enter the full address, starting with https://, to see a preview." | The photo address is incomplete. |
 | "This address didn't load an image. Check that it's the right URL." | The photo address doesn't lead to an image. Check it on **Files**. |
-| "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." | The address was copied from the Hub, so the preview works for you but visitors would get a broken image. Copy the photo's public address on **Files** and paste it instead. |
+| "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." | The address was copied from the Hub, so the preview works for you but visitors would get a broken image. Copy the photo's public address on **Files** and paste it instead. This applies to every web address of the Hub's server, not just the one you are using. |

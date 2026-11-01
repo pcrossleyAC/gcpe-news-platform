@@ -7,7 +7,7 @@ import { createEventReceiver, MAX_EVENT_BYTES, type SubscriberConfig } from "@gc
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import type { DistributionClient } from "./clients";
 import { localStore, type ObjectStore } from "@gcpe/storage";
-import type { SiteSettings } from "@gcpe/site-settings";
+import { internalHostNames, type SiteSettings } from "@gcpe/site-settings";
 import type { FlickrClient } from "./media/flickr-client";
 import type { EmbedDeps } from "./media/embeds";
 import { mediaRoutes } from "./http/media-routes";
@@ -51,6 +51,9 @@ export function createApp(deps: {
   /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject; unset → "".
    * Task 1 (staff-web): also GET /config's siteUrl and publicSiteUrl (the two names the staff UI uses). */
   siteUrl?: string;
+  /** Suite fix W2 (M3), env INTERNAL_HOSTS: the Hub's internal host names or addresses. The public
+   * site's own hosts (siteUrl, workflow.filesBase) are dropped; unset → none beyond the page's own. */
+  internalHosts?: string[];
   /** The tenant's `calendar.forecastCategoryPrefix` (Forecast and the activity lookup); unset → no activity can be planned against. */
   forecastCategoryPrefix?: string | null;
   /** GET /config's isTestSite: @gcpe/config's isTestSite(env). Unset → true (fail safe: an
@@ -63,6 +66,7 @@ export function createApp(deps: {
   /** Test seam: the clock the government-term routes read "today" from; production leaves it unset (database clock). */
   clock?: TestClock;
 }): express.Express {
+  const internalHosts = internalHostNames(deps.internalHosts ?? [], [deps.siteUrl ?? "", deps.workflow.filesBase ?? ""]);
   const slideFiles: SlideImageFiles = deps.slideFiles ?? { store: deps.store ?? localStore(tmpdir(), "/files/"), filesBase: deps.workflow.filesBase ?? "" };
 
   const app = express();
@@ -105,7 +109,7 @@ export function createApp(deps: {
       store: deps.store,
       embeds: deps.embeds,
       subscribers: deps.subscribers ?? [],
-      config: { siteUrl: deps.siteUrl ?? "", publicSiteUrl: deps.siteUrl ?? "", isTestSite: deps.isTestSite ?? true },
+      config: { siteUrl: deps.siteUrl ?? "", publicSiteUrl: deps.siteUrl ?? "", isTestSite: deps.isTestSite ?? true, internalHosts },
       forecastCategoryPrefix: deps.forecastCategoryPrefix ?? null,
       similar: deps.similar,
     }),

@@ -222,6 +222,11 @@ describe("Flickr configuration", () => {
     FLICKR_ACCESS_SECRET: "token-secret-1",
   };
 
+  it("suite fix W2 (M3): INTERNAL_HOSTS is a comma-separated list, empty when unset", () => {
+    expect(nrmsEnvSchema.parse(base).INTERNAL_HOSTS).toEqual([]);
+    expect(nrmsEnvSchema.parse({ ...base, INTERNAL_HOSTS: " gcpe-app01 , https://hub.example ,," }).INTERNAL_HOSTS).toEqual(["gcpe-app01", "https://hub.example"]);
+  });
+
   it("no FLICKR_API_KEY means no Flickr (features report unavailable)", () => {
     const parsed = nrmsEnvSchema.parse(base);
     expect(parsed.FLICKR_MODE).toBe("real");

@@ -13,7 +13,7 @@ import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { HiddenPrefixLabel } from "../../shared/ShortLabel";
 import { HostWarning } from "../../shared/HostWarning";
-import { staffHostWarning, usePublicFilesOrigin } from "../../shared/publicAddress";
+import { useStaffHostWarning } from "../../shared/publicAddress";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
 import { canManageWebsite } from "./access";
 import { SaveResult, clockTime } from "./SaveResult";
@@ -86,7 +86,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved, ne
   const { announce } = useAnnouncer();
   const moveFocus = useMoveFocusRestore<HTMLDivElement>();
   const nextClientKey = useRef(0);
-  const publicOrigin = usePublicFilesOrigin();
+  const staffHostWarning = useStaffHostWarning();
   // W9: slides changed, added, removed or moved, or a new go-live time, not yet saved. The card
   // remounts with each saved version, so a save starts it clean again.
   const dirty = canEdit && (goLive !== null || JSON.stringify(slides) !== JSON.stringify(toForm(carousel.slides)));
@@ -228,7 +228,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved, ne
         // label drops the "Slide N" the card heading already shows; the accessible name keeps it.
         const label = (text: string) => (<HiddenPrefixLabel prefix={prefix} text={text} />) as unknown as string;
         const imageUrl = carousel.slides.find((s) => s.id === slide.id)?.imageUrl;
-        const actionWarning = staffHostWarning(slide.actionUrl, publicOrigin);
+        const actionWarning = staffHostWarning(slide.actionUrl);
         const actionWarningId = `slide-${carousel.id}-${slide.clientKey}-action-host`;
         return (
           <div key={slide.clientKey} className="gcpe-carousel__slide" {...dragReorder.dropZoneProps(index)}>

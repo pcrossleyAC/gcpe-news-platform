@@ -45,7 +45,7 @@ If the changes being published have a problem, nothing is published. You see "Dr
 
 ## Links to files
 
-To link to a file from **Files**, such as a PDF in the footer, a banner link or the Connect page's **Policy link URL**, paste the address from its **Copy public address** button. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." under its **Web address**: visitors couldn't open it.
+To link to a file from **Files**, such as a PDF in the footer, a banner link or the Connect page's **Policy link URL**, paste the address from its **Copy public address** button. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." under its **Web address**: visitors couldn't open it. It shows for every web address of the Hub's server, not just the one you are using.
 
 ## If someone else published first
 

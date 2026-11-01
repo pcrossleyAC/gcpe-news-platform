@@ -7,7 +7,7 @@ import { Button } from "../../shared/BusyButton";
 import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { HostWarning } from "../../shared/HostWarning";
-import { staffHostWarning, usePublicFilesOrigin } from "../../shared/publicAddress";
+import { useStaffHostWarning } from "../../shared/publicAddress";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
@@ -53,7 +53,7 @@ export function LinksScreen(): React.JSX.Element {
   const { announce } = useAnnouncer();
   const moveFocus = useMoveFocusRestore<HTMLDivElement>();
   const nextClientKey = useRef(0);
-  const publicOrigin = usePublicFilesOrigin();
+  const staffHostWarning = useStaffHostWarning();
 
   const resetFrom = (v: LinksView) => {
     setView(v);
@@ -146,8 +146,8 @@ export function LinksScreen(): React.JSX.Element {
         <div key={link.clientKey} className="gcpe-links__item" {...dragReorder.dropZoneProps(index)}>
           {canEdit && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder link ${index + 1}`} />}
           <TextField label={`Link ${index + 1} text`} value={link.text} onChange={(v) => update(index, { text: v })} isDisabled={!canEdit} />
-          <TextField label={`Link ${index + 1} URL`} value={link.url} onChange={(v) => update(index, { url: v })} isDisabled={!canEdit} aria-describedby={staffHostWarning(link.url, publicOrigin) ? `link-${link.clientKey}-host` : undefined} />
-          <HostWarning id={`link-${link.clientKey}-host`} text={staffHostWarning(link.url, publicOrigin)} />
+          <TextField label={`Link ${index + 1} URL`} value={link.url} onChange={(v) => update(index, { url: v })} isDisabled={!canEdit} aria-describedby={staffHostWarning(link.url) ? `link-${link.clientKey}-host` : undefined} />
+          <HostWarning id={`link-${link.clientKey}-host`} text={staffHostWarning(link.url)} />
           {canEdit && (
             <>
               <span data-move-id={link.clientKey} data-move-dir="up">

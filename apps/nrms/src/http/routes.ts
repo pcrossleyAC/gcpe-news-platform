@@ -67,7 +67,7 @@ export interface RouteDeps {
    * default to "" (createApp's own deps.siteUrl is unset in most tests); filesBase defaults to
    * `workflow.filesBase` (PUBLIC_FILES_BASE); isTestSite defaults to true (fail safe: an
    * unconfigured caller is treated as a test site, never silently as production). */
-  config?: { siteUrl?: string; publicSiteUrl?: string; isTestSite?: boolean };
+  config?: { siteUrl?: string; publicSiteUrl?: string; isTestSite?: boolean; internalHosts?: string[] };
   /** The tenant's `calendar.forecastCategoryPrefix` (Forecast and the activity lookup); unset → no activity can be planned against. */
   forecastCategoryPrefix?: string | null;
   /** "Similar published releases" (addendum §7): the News API client and NRMS's own staffAi flag; unset → 503. */
@@ -159,6 +159,8 @@ export function apiRoutes(deps: RouteDeps): Router {
         publicSiteUrl: deps.config?.publicSiteUrl ?? "",
         filesBase: deps.workflow.filesBase ?? "",
         isTestSite: deps.config?.isTestSite ?? true,
+        // Suite fix W2 (M3): host names the Hub's address warnings treat like the page's own.
+        internalHosts: deps.config?.internalHosts ?? [],
         tzCheck: tzCheckFor(deps.workflow.timeZone),
         similarAvailable: deps.similar !== undefined,
         staffAi: deps.similar?.staffAi ?? false,

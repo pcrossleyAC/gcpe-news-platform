@@ -425,6 +425,9 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // Fix round 1 (M3): Operations says when staff passwords are allowed on the live site, which is
   // Core's setting; NoD gets it under Core's own name, read for that notice only.
   if (prefix === "NOD" && env.CORE_LOCAL_PASSWORDS_ALLOWED !== undefined) view.CORE_LOCAL_PASSWORDS_ALLOWED = env.CORE_LOCAL_PASSWORDS_ALLOWED;
+  // Suite fix W2 (M3): the Hub's internal names, for its warnings about addresses the public can't
+  // open and its Hub address check: NRMS_INTERNAL_HOSTS (aliases) plus Core's sign-in host.
+  if (prefix === "NRMS" && env.CORE_PUBLIC_BASE_URL) view.INTERNAL_HOSTS = [view.INTERNAL_HOSTS, env.CORE_PUBLIC_BASE_URL].filter(Boolean).join(",");
   // FAKE_ENTRA_ENABLED on a test site → Core signs staff in through the stack's fake Microsoft.
   if (prefix === "CORE" && usesFakeEntra(env)) Object.assign(view, FAKE_ENTRA_CORE_ENV);
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
