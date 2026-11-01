@@ -35,7 +35,7 @@ Saving any change republishes it at once, with no box asking first. The status s
 
 - The public page shows the change within a couple of minutes.
 - Nobody is emailed again. People already emailed keep the first version; the 5 pm digest carries the corrected one if you correct it before 5 pm.
-- Media lists can't be changed on a release or factsheet once it has gone out.
+- Media lists can't be changed on a release or factsheet once it has gone out: the boxes in **Publish settings** are greyed out, with "Media lists can't change after it has gone out."
 
 ## When you unpublish
 

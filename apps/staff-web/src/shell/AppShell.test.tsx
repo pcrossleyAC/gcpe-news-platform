@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { dateTimeText } from "../screens/calendar/list/dates";
+import { playOldRulesBrowser } from "../format/oldRulesBrowser.testkit";
 import { SessionProvider } from "../session/SessionContext";
 import { AppShell } from "./AppShell";
 
@@ -8,7 +10,7 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-function stubSession(roles: string[], tzCheck?: { at: string; offsetMinutes: number }) {
+function stubSession(roles: string[], tzCheck?: object) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -22,7 +24,7 @@ function stubSession(roles: string[], tzCheck?: { at: string; offsetMinutes: num
   );
 }
 
-async function renderShell(roles: string[], tzCheck?: { at: string; offsetMinutes: number }) {
+async function renderShell(roles: string[], tzCheck?: object) {
   stubSession(roles, tzCheck);
   render(
     <SessionProvider>
@@ -130,35 +132,76 @@ describe("AppShell header", () => {
   });
 });
 
-// Fix round 1 (3f Task 3), finding 3: a persistent warning when the browser's own tzdata
-// disagrees with the server's for GET /config's tzCheck instant — compared *for the tenant
-// zone specifically* (fix round 2, bug 2), never the device's own default zone.
-describe("AppShell — browser time-zone drift warning", () => {
+// A persistent notice when the browser's own tzdata disagrees with the server's for the
+// tzCheck instant — compared *for the tenant zone specifically*, never the device's own zone.
+// Owner decision 2026-10-31: when the server says since when BC's offset is fixed, the Hub
+// corrects the times itself, and the screen waits for the check so no wrong time is ever shown.
+const BC_CHECK = { at: "2026-12-15T20:00:00Z", offsetMinutes: -420, fixedSince: "2026-03-08T10:00:00.000Z" };
+
+function TimeProbe(): React.JSX.Element {
+  return <p data-testid="probe">{dateTimeText("2026-11-03T16:00:00Z", "America/Vancouver")}</p>;
+}
+
+async function renderShellWithScreen(roles: string[], tzCheck: object) {
+  stubSession(roles, tzCheck);
+  const seen: string[] = [];
+  const observer = new MutationObserver(() => {
+    const t = document.querySelector('[data-testid="probe"]')?.textContent;
+    if (t) seen.push(t);
+  });
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  render(
+    <SessionProvider>
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<TimeProbe />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </SessionProvider>,
+  );
+  await waitFor(() => expect(screen.getByTestId("probe")).toBeInTheDocument());
+  observer.disconnect();
+  return seen;
+}
+
+describe("AppShell — browser time-zone drift", () => {
+  let undo: (() => void) | null = null;
   afterEach(() => {
+    undo?.();
+    undo = null;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     cleanup();
   });
 
-  it("shows nothing when there's no tzCheck mismatch (real tzdata, no device-zone mocking needed)", async () => {
-    await renderShell(["NRMS.Viewer"], { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
+  it("an up-to-date browser: no notice, and the screen's times as the browser has them", async () => {
+    const seen = await renderShellWithScreen(["NRMS.Viewer"], BC_CHECK);
     expect(screen.queryByText(/time-zone information is out of date/i)).not.toBeInTheDocument();
+    expect(seen.every((t) => t === "Nov 3, 2026 9:00 AM")).toBe(true);
   });
 
-  it("shows a persistent warning when the browser's own Intl answer for the tenant zone disagrees with the server's (stale tzdata)", async () => {
-    const RealDateTimeFormat = Intl.DateTimeFormat;
-    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (this: unknown, locale?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
-      if (options?.timeZone === "America/Vancouver" && options.timeZoneName === "longOffset") {
-        return { formatToParts: () => [{ type: "timeZoneName", value: "GMT-08:00" }] } as unknown as Intl.DateTimeFormat; // stuck on UTC-8
-      }
-      return new RealDateTimeFormat(locale, options);
-    });
-    await renderShell(["NRMS.Viewer"], { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
-    expect(await screen.findByText(/time-zone information is out of date/i)).toBeInTheDocument();
-    // Staff with no NRMS role (NRMS's /config refuses them) are warned too.
+  it("an old-rules browser: the screen's times are corrected from the first paint, and the notice says so", async () => {
+    undo = playOldRulesBrowser();
+    const seen = await renderShellWithScreen(["NRMS.Viewer"], BC_CHECK);
+    expect(screen.getByTestId("probe")).toHaveTextContent("Nov 3, 2026 9:00 AM");
+    expect(seen.filter((t) => t !== "Nov 3, 2026 9:00 AM")).toEqual([]);
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Update your browser");
+    expect(notice).toHaveTextContent("The times shown here have been corrected for BC time, but other websites and apps may show times an hour off. Update your browser when you can.");
+    expect(within(notice).queryByRole("button")).toBeNull(); // not closeable
+    // Staff with no NRMS role (NRMS's /config refuses them) are covered too.
     cleanup();
-    await renderShell(["NoD.Viewer"], { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
-    expect(await screen.findByText(/time-zone information is out of date/i)).toBeInTheDocument();
+    await renderShellWithScreen(["NoD.Viewer"], BC_CHECK);
+    expect(screen.getByTestId("probe")).toHaveTextContent("Nov 3, 2026 9:00 AM");
+    expect(screen.getByText(/have been corrected for BC time/)).toBeInTheDocument();
+  });
+
+  it("an old-rules browser and nothing to correct with: the old warning", async () => {
+    undo = playOldRulesBrowser();
+    await renderShellWithScreen(["NRMS.Viewer"], { ...BC_CHECK, fixedSince: null });
+    expect(await screen.findByText("Your browser's time-zone information is out of date, so times shown here may be off by an hour. Update your browser.")).toBeInTheDocument();
   });
 });
 

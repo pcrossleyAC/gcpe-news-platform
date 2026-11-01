@@ -79,6 +79,8 @@ function setup(
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
+      // W1: the public site's base, for the photo and link address warnings (not a save).
+      if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.gov.bc.ca", filesBase: "https://news.gov.bc.ca" });
       calls.push({ url, init });
       return patch(init);
     }),
@@ -147,6 +149,22 @@ describe("OrganizationEditForm", () => {
       expect(
         screen.getByRole("img", { name: "Preview of the minister photo" }),
       ).toHaveAttribute("src", "https://boxs.ca/files/new-minister.jpg");
+    });
+
+    it("W1: a photo address on the Hub's own host warns that the public can't open it", async () => {
+      const { user } = setup(false);
+      const field = screen.getByLabelText("Minister photo URL");
+      await user.type(field, `${window.location.origin}/files/minister.jpg`);
+      await waitFor(() =>
+        expect(field).toHaveAccessibleDescription(
+          expect.stringContaining("This address points at the Hub, which the public can't open."),
+        ),
+      );
+      await user.clear(field);
+      await user.type(field, "https://news.gov.bc.ca/files/minister.jpg");
+      expect(field).not.toHaveAccessibleDescription(
+        expect.stringContaining("the public can't open"),
+      );
     });
 
     it("shows no preview until the address starts with https://", async () => {

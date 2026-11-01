@@ -242,3 +242,60 @@ Component structure, the exact preview styling, how the hook shares draft/publis
 state between screens, the inline banner script's markup, and test layout — following the
 existing Website screens (`useVersionedSave`, `InlineAlert`, `BusyButton`, `useAnnouncer`,
 focus rules, axe sweep).
+
+## Amendment 2026-10-31: Publish asks first, and can publish only this screen (W4)
+
+Owner approved 2026-10-31 (suite review W4). This changes "Storage and publishing — NRMS" and
+the publish bar in "Hub screens":
+
+- **Publish** opens a confirmation, "Publish your changes?", worded as Restore's: "Compared with
+  what is live now, this publishes changes on: {screens}." (the draft's `draftSections`, plus
+  this screen when it has unsaved typing), then "Visitors see it within a few minutes." With
+  nothing different: "Your draft is the same as what is live now. Publishing it makes a new
+  revision with the same settings."
+- When the changes cover other screens as well as this one, the confirmation offers **Publish
+  only {screen}** beside **Publish all changes** (else just **Publish**). It names other screens
+  with problems: "{screens} has problems that block publishing all changes. Publish only {screen}
+  still works."
+- `POST /site/settings/publish` takes `onlySection: true`. NRMS saves the draft as before, then,
+  under the same lock and the same base-revision check, publishes live (or the defaults) with
+  only this section replaced, so another section's stale or invalid draft neither goes live nor
+  blocks it. The publisher's draft is kept for its other sections, re-based on the new revision;
+  with nothing else left it is deleted, as Publish does. Log: "Published revision {n}, {Section}
+  only[: note]".
+- Status after it: "Published revision {n}, with only your {screen} changes. Visitors see it
+  within a few minutes." plus " Your draft still has changes on {screens}." when some remain.
+- The hint above the buttons: "Publish and Discard draft apply to your whole draft, on every
+  settings screen. Publish lets you publish only this screen instead."
+
+### Fix round 1 (owner approved 2026-10-31)
+
+- `onlySection` doesn't need the draft's base to be the live revision. It conflicts only when
+  someone else changed this same section since the draft's base (base document vs live, filled
+  from the defaults). Otherwise it publishes live with this section replaced, so other sections
+  they published stay. A draft based on an older revision is left exactly as it was (its base
+  unchanged), so a later full Publish still meets the conflict check; a draft based on live is
+  re-based as before.
+- The revision's note records the partial publish, as Restore does: "{Section} only" or
+  "{Section} only: {note}" (Settings history shows it; the log reads "Published revision {n}:
+  {that note}").
+- Rebase ("Keep mine on top of theirs") throws nothing of the editor's away. It is live plus this
+  section plus every other section the editor changed against their draft's base. It returns
+  `alsoChangedByThem` (the kept sections the other editor changed too) instead of `setAside`;
+  status suffix: " Your draft still has your changes on {list}, which they changed too: check
+  them before you publish them." This replaces the "set aside" wording in "Storage and
+  publishing — NRMS" and "Hub screens".
+
+### Fix round 2 (owner approved 2026-10-31)
+
+- "Someone else changed this section" is judged revision by revision after the draft's base,
+  leaving out the publisher's own revisions, so a second Publish only on the same screen isn't a
+  conflict with the editor's own first one. Rebase's `alsoChangedByThem` uses the same rule.
+- After a stale Publish only, the draft is re-based on the new revision (new revision plus the
+  editor's other changed sections) unless one of those sections overlaps what someone else
+  changed since the base; then it is left as it was.
+- Publish, Save draft and Rebase read the editor's draft row FOR UPDATE, so a save from another
+  tab is never silently overwritten.
+- For one release, `POST /site/settings/rebase` also returns `setAside: []` for Hub tabs opened
+  before this change.
+

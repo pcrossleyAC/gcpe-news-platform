@@ -23,6 +23,24 @@ describe("nodClient", () => {
   });
 });
 
+describe("nodClient.releaseAudience (suite review R6)", () => {
+  it("asks NoD for the breakdown of who a first publish reaches", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({ asItHappens: 2, digest: 3, mediaContacts: 4 }), { status: 200 }));
+    const client = nodClient({ baseUrl: "https://nod.example/", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    const a = await client.releaseAudience({ listKeys: ["ministries:health"], mediaListKeys: ["media-distribution-lists:budget"], toSubscribers: true, postKind: "releases" });
+    expect(a).toEqual({ asItHappens: 2, digest: 3, mediaContacts: 4 });
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(String(url)).toBe("https://nod.example/api/subscribers/release-audience?lists=ministries%3Ahealth&media=media-distribution-lists%3Abudget&subscribers=true&kind=releases");
+    expect(init?.headers).toMatchObject({ authorization: "Bearer tok" });
+  });
+
+  it("rejects on a non-200 response", async () => {
+    const fetchImpl = vi.fn(async () => new Response("boom", { status: 503 }));
+    const client = nodClient({ baseUrl: "https://nod.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.releaseAudience({ listKeys: [], mediaListKeys: [], toSubscribers: false, postKind: "releases" })).rejects.toThrow(/HTTP 503/);
+  });
+});
+
 describe("coreClient", () => {
   it("fetches admin emails via a signed GET", async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({ emails: ["a@example.test", "b@example.test"] }), { status: 200 }));

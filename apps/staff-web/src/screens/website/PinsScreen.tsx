@@ -5,7 +5,11 @@ import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
 import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { HostWarning } from "../../shared/HostWarning";
+import { staffHostWarning, usePublicFilesOrigin } from "../../shared/publicAddress";
+import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { canManageWebsite } from "./access";
+import { SaveResult, clockTime } from "./SaveResult";
 import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressErrors } from "./slideChecks";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { Justify, PinSlot, PinView } from "./types";
@@ -13,13 +17,19 @@ import type { Justify, PinSlot, PinView } from "./types";
 interface PinFormProps {
   pin: PinView;
   canEdit: boolean;
-  onSaved(): void;
+  /** Reloads the pins: after a save `result` is what to show (W8); a plain reload passes none. */
+  onSaved(result?: string): void;
+  timeZone: string;
 }
 
 const SLOT_LABEL: Record<PinSlot, string> = { primary: "Primary", secondary: "Secondary" };
 
-function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
-  const section = useVersionedSave<PinView>();
+/** W8: what a save did, said on screen. A pinned notice is on the public home page. */
+const LIVE_NOW = "Live now: the home page shows it within a few minutes.";
+
+function PinForm({ pin, canEdit, onSaved, timeZone }: PinFormProps): React.JSX.Element {
+  const section = useVersionedSave<PinView>({ quiet: true });
+  const at = () => clockTime(new Date(), timeZone);
   const [headline, setHeadline] = useState(pin.slide.headline);
   const [summary, setSummary] = useState(pin.slide.summary);
   const [actionUrl, setActionUrl] = useState(pin.slide.actionUrl);
@@ -27,6 +37,8 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
   const [facebookPostUrl, setFacebookPostUrl] = useState(pin.slide.facebookPostUrl);
   const [justify, setJustify] = useState<Justify>(pin.slide.justify);
   const [imageError, setImageError] = useState<string | null>(null);
+  const publicOrigin = usePublicFilesOrigin();
+  const actionWarning = staffHostWarning(actionUrl, publicOrigin);
 
   const [addressErrors, setAddressErrors] = useState<{ actionUrl?: string; facebookPostUrl?: string }>({});
   const addressProblems = Object.values(addressErrors);
@@ -40,7 +52,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
         apiFetch<PinView>(`/nrms/api/site/pins/${pin.slot}`, { method: "PUT", body: { version: pin.version, headline, summary, actionUrl, actionLabel, facebookPostUrl, justify } }),
       )
       .then((next) => {
-        if (next) onSaved();
+        if (next) onSaved(next.pinned ? `Saved at ${at()}. ${LIVE_NOW}` : `Saved at ${at()}. Not on the home page: this notice isn\u2019t pinned.`);
       });
   };
 
@@ -66,7 +78,13 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
     }
     setSwitchRefused(false);
     void section.run(() => apiFetch<PinView>(`/nrms/api/site/pins/${pin.slot}/pinned`, { method: "POST", body: { version: pin.version, pinned: next } })).then((result) => {
-      if (result) onSaved();
+      if (result) {
+        onSaved(
+          result.pinned
+            ? `Pinned at ${at()}. Live now: the home page shows this notice within a few minutes.`
+            : `Unpinned at ${at()}. The home page stops showing this notice within a few minutes.`,
+        );
+      }
     });
   };
 
@@ -78,7 +96,8 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
     }
     try {
       await apiFetch(`/nrms/api/site/pins/${pin.slot}/image`, { method: "PUT", raw: file });
-      onSaved();
+      // W7: the reload brings the image's new address, so the new picture shows at once.
+      onSaved(pin.pinned ? `Image saved at ${at()}. ${LIVE_NOW}` : `Image saved at ${at()}.`);
     } catch (caught) {
       setImageError(imageUploadMessage(caught));
     }
@@ -88,7 +107,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
     <section ref={sectionRef} aria-label={`${SLOT_LABEL[pin.slot]} emergency pin`}>
       <h2>{SLOT_LABEL[pin.slot]}</h2>
 
-      {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={onSaved}>Reload</Button>} />}
+      {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => onSaved()}>Reload</Button>} />}
       {section.problems && (
         <ul role="alert" className="gcpe-release-editor__problems">
           {section.problems.map((p) => (
@@ -110,7 +129,8 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
 
       <TextField label={`${SLOT_LABEL[pin.slot]} headline`} value={headline} onChange={setHeadline} isDisabled={!canEdit} />
       <TextField label={`${SLOT_LABEL[pin.slot]} summary`} value={summary} onChange={setSummary} isDisabled={!canEdit} />
-      <TextField label={`${SLOT_LABEL[pin.slot]} action URL`} value={actionUrl} onChange={setActionUrl} isDisabled={!canEdit} isInvalid={addressErrors.actionUrl !== undefined} errorMessage={addressErrors.actionUrl} />
+      <TextField label={`${SLOT_LABEL[pin.slot]} action URL`} value={actionUrl} onChange={setActionUrl} isDisabled={!canEdit} isInvalid={addressErrors.actionUrl !== undefined} errorMessage={addressErrors.actionUrl} aria-describedby={actionWarning ? `pin-${pin.slot}-action-host` : undefined} />
+      <HostWarning id={`pin-${pin.slot}-action-host`} text={actionWarning} />
       <TextField label={`${SLOT_LABEL[pin.slot]} action label`} description="The link text. Leave empty for the default set in Navigation and labels." value={actionLabel} onChange={setActionLabel} isDisabled={!canEdit} />
       <TextField label={`${SLOT_LABEL[pin.slot]} Facebook post URL`} value={facebookPostUrl} onChange={setFacebookPostUrl} isDisabled={!canEdit} isInvalid={addressErrors.facebookPostUrl !== undefined} errorMessage={addressErrors.facebookPostUrl} />
       <label>
@@ -165,6 +185,8 @@ export function PinsScreen(): React.JSX.Element {
   const canEdit = session.has("NRMS.SiteEditor");
   const [pins, setPins] = useState<PinView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const timeZone = useTenantTimeZone();
+  const [results, setResults] = useState<Partial<Record<PinSlot, string>>>({});
 
   const reload = useCallback(() => {
     apiFetch<PinView[]>("/nrms/api/site/pins").then(setPins, () => setLoadError("Couldn't load the emergency pins."));
@@ -190,7 +212,22 @@ export function PinsScreen(): React.JSX.Element {
       <h1>Emergency pins</h1>
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {pins === null && !loadError && <p>Loading…</p>}
-      {pins?.map((pin) => <PinForm key={`${pin.slot}:${pin.version}`} pin={pin} canEdit={canEdit} onSaved={reload} />)}
+      {pins?.map((pin) => (
+        // The form remounts with each saved version; its result sits outside it so it stays put (and is announced).
+        <div key={pin.slot}>
+          <PinForm
+            key={`${pin.slot}:${pin.version}`}
+            pin={pin}
+            canEdit={canEdit}
+            timeZone={timeZone}
+            onSaved={(result) => {
+              if (result) setResults((r) => ({ ...r, [pin.slot]: result }));
+              reload();
+            }}
+          />
+          <SaveResult text={results[pin.slot] ?? ""} />
+        </div>
+      ))}
     </div>
   );
 }

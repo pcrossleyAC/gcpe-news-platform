@@ -19,14 +19,14 @@ You can change several parts of the release, then save them all at once.
 
 1. Make your changes. Each part you changed says **Unsaved** beside its heading.
 2. A bar along the bottom lists them: "You have unsaved changes in: …".
-3. Choose **Save changes** in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too.
+3. Choose **Save changes** in that bar, or press Ctrl+S (Command+S on a Mac). Pressing Enter in a one-line field saves too. On a published release the button reads **Save and republish**, because saving puts the change on the public site: see [Correct, feature, unpublish or delete](manual:editor-correct-unpublish-delete).
 4. The bar says "All changes saved." for a moment, then goes.
 
 If one part can't be saved, the bar says "Couldn't save page details. See why in that section." Choose the link to go to the message. Parts after it are not saved yet and keep your changes.
 
 While anything is unsaved, **Approve**, **Publish now** and **Schedule** are greyed out, with "Save your changes to … first." under them.
 
-If you try to leave with unsaved changes, a box asks "Leave anyway and discard them?" Choose **Stay** to go back, or **Leave** to lose them. If your sign-in runs out while you are writing, sign in again in the same browser tab: the text you typed in a document comes back.
+If you try to leave with unsaved changes, a box asks "Leave anyway and discard them?" Choose **Stay** to go back, or **Leave** to lose them; they don't come back the next time you open the release. If your sign-in runs out while you are writing, sign in again in the same browser tab: the text you typed in a document comes back, with "Your unsaved changes were restored." If someone changed the release in the meantime, it also says saving them will ask you to reload first, so your older text can't overwrite their newer changes. Reloading shows their version instead of yours, so copy anything you want to keep before you choose **Reload**.
 
 "Someone else changed this — reload to see their changes." means another person saved this release after you opened it. Choose **Reload**. Copy anything you typed first, because reloading shows their version.
 
@@ -46,6 +46,8 @@ Every document also has a **Page title**, **Headline**, **Subheadline**, **Body*
 If a document already holds a byline but is Formal, or organizations but is Informal, that text shows, but can't be edited, with a note such as "A formal document doesn't keep a byline. It's removed the next time this tab is saved." Copy it first if you need it.
 
 The **Body** toolbar has **Bold**, **Italic**, **Bulleted list**, **Numbered list**, **Link** and **Insert asset**. Pasted text keeps only that formatting.
+
+If you give **Link** or **Insert asset** the address of a file as the Hub shows it (an address on the Hub itself, ending in /files/ and the file's name), the Hub puts in the file's public address instead, so visitors can open it. Any other address on the Hub asks first: "This address points at the Hub, which the public can't open. … Use this address anyway?" Choose **Cancel** and use the public address.
 
 To show a video or photo inside the body:
 

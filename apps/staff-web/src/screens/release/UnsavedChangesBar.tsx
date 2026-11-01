@@ -10,6 +10,9 @@ export interface UnsavedChangesBarProps {
   onSave(): void;
   /** The id of the element a section's failure message links to, if any. */
   targetOf?(key: string): string | null;
+  /** A save republishes the release (it's live on the public site): suite review R7. The bar
+   * says so and the button reads "Save and republish". Only the wording changes. */
+  republishes?: boolean;
 }
 
 /** A dirty section's label ("Save page details") as the word(s) a sentence names it by
@@ -28,7 +31,7 @@ export function sectionName(label: string): string {
  * which sections after it were not sent; they keep their edits. After everything saved it shows
  * "All changes saved" for a moment (the polite "Saved" announcement is the guard's).
  */
-export function UnsavedChangesBar({ sections, state, onSave, targetOf = () => null }: UnsavedChangesBarProps): React.JSX.Element | null {
+export function UnsavedChangesBar({ sections, state, onSave, targetOf = () => null, republishes = false }: UnsavedChangesBarProps): React.JSX.Element | null {
   if (sections.length === 0) {
     if (state.status !== "saved") return null;
     return (
@@ -46,6 +49,7 @@ export function UnsavedChangesBar({ sections, state, onSave, targetOf = () => nu
     <div className="gcpe-save-bar" role="region" aria-label="Unsaved changes">
       <div className="gcpe-save-bar__text">
         <p className="gcpe-save-bar__message">You have unsaved changes in: {sections.map((s) => sectionName(s.label)).join(", ")}</p>
+        {republishes && <p className="gcpe-save-bar__message">Saving republishes this release on the public site.</p>}
         {failed && (
           <p role="alert" className="gcpe-save-bar__problem">
             Couldn&rsquo;t save {sectionName(failed.label)}.{" "}
@@ -68,7 +72,7 @@ export function UnsavedChangesBar({ sections, state, onSave, targetOf = () => nu
       </div>
       <div className="gcpe-save-bar__buttons">
         <Button onPress={onSave} isPending={state.status === "saving"} pendingLabel="Saving…" shortcut="save">
-          Save changes
+          {republishes ? "Save and republish" : "Save changes"}
         </Button>
       </div>
     </div>

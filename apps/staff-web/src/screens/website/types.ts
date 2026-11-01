@@ -27,6 +27,10 @@ export interface CarouselView {
   goLiveAt: string | null;
   wentLiveAt: string | null;
   version: number;
+  /** W3: when it was made — for a next carousel, when it copied the live slides. */
+  createdAt: string;
+  /** W3: its last change (a save, or going live). */
+  updatedAt: string;
   slides: SlideView[];
 }
 

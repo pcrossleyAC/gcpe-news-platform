@@ -117,6 +117,39 @@ describe("home-page carousel", () => {
     await expect(createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ)).rejects.toThrow(SiteConflictError);
   });
 
+  it("W3: each carousel carries when it was made and last changed, so a live change after the next copy shows", async () => {
+    await seedLiveCarousel([slide("H1")]);
+    const created = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
+    expect(Date.parse(created.createdAt)).not.toBeNaN();
+    let { live, next } = await getCarousels(tdb.db);
+    expect(next!.createdAt).toBe(created.createdAt);
+    expect(Date.parse(live!.updatedAt)).toBeLessThanOrEqual(Date.parse(next!.createdAt));
+
+    await tdb.pool.query("UPDATE carousels SET created_at = created_at - interval '1 minute' WHERE state = 'next'");
+    await saveCarousel(tdb.db, live!.id, { version: live!.version, slides: [slide("Fixed link")] }, editor, subs, TZ, files);
+    ({ live, next } = await getCarousels(tdb.db));
+    expect(Date.parse(live!.updatedAt)).toBeGreaterThan(Date.parse(next!.createdAt));
+  });
+
+  it("W7: replacing a slide's or a pin's image changes its address, so the Hub shows the new image", async () => {
+    const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
+    const saved = await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("N")] }, editor, subs, TZ, files);
+    const slideId = saved.slides[0]!.id;
+    await setSlideImage(tdb.db, slideId, PNG, editor, subs, files);
+    await tdb.pool.query("UPDATE slides SET updated_at = updated_at - interval '1 minute'");
+    const before = (await getCarousels(tdb.db)).next!.slides[0]!.imageUrl!;
+    expect(before).toMatch(new RegExp(`^/nrms/api/site/slides/${slideId}/image\\?v=\\d+$`));
+    await setSlideImage(tdb.db, slideId, PNG, editor, subs, files);
+    expect((await getCarousels(tdb.db)).next!.slides[0]!.imageUrl).not.toBe(before);
+
+    await setPinImage(tdb.db, "primary", PNG, editor, subs, files);
+    await tdb.pool.query("UPDATE emergency_pins SET updated_at = updated_at - interval '1 minute'");
+    const pinBefore = (await getPins(tdb.db)).find((p) => p.slot === "primary")!.slide.imageUrl!;
+    expect(pinBefore).toMatch(/^\/nrms\/api\/site\/pins\/primary\/image\?v=\d+$/);
+    await setPinImage(tdb.db, "primary", PNG, editor, subs, files);
+    expect((await getPins(tdb.db)).find((p) => p.slot === "primary")!.slide.imageUrl).not.toBe(pinBefore);
+  });
+
   it("createNextCarousel refuses a go-live time that isn't in the future", async () => {
     await expect(createNextCarousel(tdb.db, { goLiveAt: new Date(t.getTime() - 60_000).toISOString() }, editor, subs, TZ)).rejects.toThrow(/future/i);
   });
@@ -330,7 +363,7 @@ describe("home-page carousel", () => {
     const { live: reloaded } = await getCarousels(tdb.db);
     expect(reloaded!.slides[0]!.hasImage).toBe(true);
     // This is the staff-facing authenticated route, distinct from the public imageUrl below.
-    expect(reloaded!.slides[0]!.imageUrl).toBe(`/nrms/api/site/slides/${slideId}/image`);
+    expect(reloaded!.slides[0]!.imageUrl).toMatch(new RegExp(`^/nrms/api/site/slides/${slideId}/image\\?v=\\d+$`));
     const sha = createHash("sha256").update(PNG).digest("hex");
     const ev = await lastSlidesEvent();
     expect(ev!.data.slides![0]!.imageBase64).toBeNull();

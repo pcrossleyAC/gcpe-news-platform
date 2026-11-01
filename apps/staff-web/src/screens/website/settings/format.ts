@@ -1,6 +1,8 @@
+import { formatInZone } from "../../../format/bcTime";
+
 /** A publish time as the history and publish bar show it, in the tenant time zone: "Oct 27, 2026, 11:00 AM". */
 export function formatPublishedAt(iso: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone, dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+  return formatInZone(iso, timeZone, { dateStyle: "medium", timeStyle: "short" });
 }
 
 /** Paragraphs holding nothing visible: what the rich-text editor leaves when its box is cleared. */

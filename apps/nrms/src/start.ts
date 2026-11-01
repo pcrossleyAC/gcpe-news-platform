@@ -279,16 +279,17 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   // runtime's tzdata disagrees with the tenant's pinned self-check (as the News API does).
   const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
-  const countSubscribers = parsed.NOD_URL
+  const nod = parsed.NOD_URL
     ? nodClient({
         baseUrl: parsed.NOD_URL,
         getToken: serviceTokenProvider(nodServiceTokenOptions(parsed, auth.local)),
-      }).countSubscribers
+      })
     : undefined;
+  const countSubscribers = nod?.countSubscribers;
   const filesBase = parsed.PUBLIC_FILES_BASE;
   // Media contact count calls the same NoD count endpoint as the subscriber count — workflow.ts
   // supplies the `media-distribution-lists:<key>` keys, NoD counts whatever keys it's given.
-  const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, filesBase };
+  const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, releaseAudience: nod?.releaseAudience, filesBase };
   const store = localStore(parsed.STORAGE_DIR, "/files/");
   const slideFiles = { store, filesBase };
   const siteSettingsDefaults = loadSiteSettingsDefaults(parsed.TENANT_CONFIG, tenant.site.theme);

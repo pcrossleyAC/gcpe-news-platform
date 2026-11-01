@@ -20,7 +20,7 @@ Both addresses come from whoever runs the webcast. Choose **?** beside a field f
 
 1. Enter the **M3U URL**, and the **Manifest URL** if you have one.
 2. Switch **Live Feed on** on.
-3. Choose **Save Live Feed**.
+3. Choose **Save Live Feed**. You see "Saved at 2:30 PM. Live now: the Live Webcast button shows on the public site within a few minutes." (with the time).
 
 The **Live Webcast** button shows on every page while **Live Feed on** is switched on. Pages that are already open pick up the change within a minute. Turn the feed off when the webcast ends.
 
@@ -29,7 +29,7 @@ The wording around the webcast, such as the button's label and the text shown wh
 ## Turn the Live Feed off
 
 1. Switch **Live Feed on** off.
-2. Choose **Save Live Feed**.
+2. Choose **Save Live Feed**. You see "Saved at 2:30 PM. The Live Feed is off: the Live Webcast button goes from the public site within a few minutes."
 
 ## What happens next
 

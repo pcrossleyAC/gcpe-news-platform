@@ -97,6 +97,10 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   const mediaFlagOff = flagOff && view.releasedAt === null;
   const flagOffForRepublish = flagOff && view.releasedAt !== null;
   const dirty = !readOnly && (edited || mediaFlagOff);
+  // Suite review R11: the server refuses to change a Release's or Factsheet's lists once it has
+  // been released, even after an unpublish (apps/nrms/src/releases/service.ts saveSettings), so
+  // the boxes can't be changed then, and say why.
+  const listsLocked = rules.mediaListsLockAfterRelease && view.releasedAt !== null;
   const plannedValue = form.planned;
   const setPlannedValue = (planned: ScheduleValue | null) => setForm((f) => ({ ...f, planned }));
 
@@ -208,7 +212,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
         {rules.mediaListsAllowed && (
           // No separate "Send to media distribution lists" box: the server sends the media email
           // to the ticked lists whatever such a box said (saveSettings), so the lists alone decide.
-          <fieldset className="gcpe-options" aria-describedby="settings-media-lists-hint">
+          <fieldset className="gcpe-options" aria-describedby={listsLocked && !readOnly ? "settings-media-lists-hint settings-media-lists-locked" : "settings-media-lists-hint"}>
             <legend>Media distribution lists</legend>
             {onlyRetired ? (
               <p id="settings-media-lists-hint" className="gcpe-options__wide gcpe-release-editor__media-warning">
@@ -227,12 +231,17 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
                 {readOnly ? "The lists ticked here get the media email when this is published." : "The lists you tick get the media email when this is published. With none ticked, no media email goes out."}
               </p>
             )}
+            {listsLocked && !readOnly && (
+              <p id="settings-media-lists-locked" className="gcpe-options__wide gcpe-hint">
+                {"Media lists can't change after it has gone out."}
+              </p>
+            )}
             {lists
               .filter((l) => l.isActive || view.mediaListKeys.includes(l.key))
               .map((l) =>
                 l.isActive ? (
                   <label key={l.key}>
-                    <input type="checkbox" checked={form.mediaListKeys.includes(l.key)} disabled={readOnly} onChange={() => toggleMediaList(l.key)} />
+                    <input type="checkbox" checked={form.mediaListKeys.includes(l.key)} disabled={readOnly || listsLocked} onChange={() => toggleMediaList(l.key)} />
                     {l.displayName}
                   </label>
                 ) : (

@@ -3,6 +3,7 @@ import type { Tx } from "@gcpe/db-kit";
 import { replaceCancelledJob } from "./as-it-happens";
 import { items, sendJobs } from "./db/schema";
 import { itemCategories, renderMedia, type RenderOptions } from "./render";
+import { mediaRecipient } from "./recipients";
 
 /**
  * Creates (and populates recipients/deliveries for) the media-list send job for `itemKey`, if
@@ -45,13 +46,9 @@ export async function createMediaSend(tx: Tx, itemKey: string, render: RenderOpt
   // still active -- a member of a list staff has since deactivated gets nothing.
   const inserted = await tx.execute(sql`
     INSERT INTO deliveries (item_key, subscriber_id, mode, job_id)
-    SELECT DISTINCT ${itemKey}, s.id, 'media', ${jobId}::uuid
+    SELECT ${itemKey}, s.id, 'media', ${jobId}::uuid
       FROM subscribers s
-      JOIN subscriptions sub ON sub.subscriber_id = s.id
-      JOIN lists l ON l.list_key = sub.list_key
-     WHERE s.status = 'active'
-       AND l.active = true
-       AND sub.list_key = ANY(${sql.param(item.mediaListKeys)}::text[])
+     WHERE ${mediaRecipient(sql`${sql.param(item.mediaListKeys)}::text[]`)}
     ON CONFLICT DO NOTHING
     RETURNING 1
   `);

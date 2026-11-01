@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { formatLongDate } from "@gcpe/nrms-contract";
+import { zonedDate } from "../../format/bcTime";
 import type { HubManualPage as ManualPage, HubManualsData as ManualsData, ManualPreviousVersions } from "../../../../../scripts/manuals-lib.mjs";
 import { ApiError, apiFetch } from "../../api/client";
 import { MANUALS } from "../../manuals/catalog";
@@ -26,7 +27,7 @@ const key = (pageId: string, hash: string) => `${pageId}\u0000${hash}`;
 
 /** The calendar date a moment falls on in Pacific time, so "reviewed on" matches the clock staff use. */
 function pacificDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+  return zonedDate(iso, "America/Vancouver");
 }
 
 const manualTitle = (page: ManualPage) => MANUALS.find((m) => m.id === page.manual)?.title ?? "Shared topics";

@@ -23,7 +23,7 @@ Core administrators add, deactivate and hand over ministries, and set each one's
    - **Sort order**: a whole number that places the ministry in lists.
    - **Minister name**, with the title, such as "Honourable Jane Doe" or "Premier Jane Doe". If you leave it empty, the ministry shows no minister.
    - **Minister summary** and **Minister email**.
-   - **Minister photo URL**. Upload the photo on [Files](manual:website-files) first, then paste its full address here. A preview appears once the address starts with https://.
+   - **Minister photo URL**. Upload the photo on [Files](manual:website-files) first, choose **Copy public address** beside it, then paste the address here. A preview appears once the address starts with https://.
    - **Minister biography**: shown on the minister's biography page, linked as Read Bio from the ministry page. **Clear the biography** empties it, and the biography page goes when you save.
    - **Meet the Team links**: shown as Meet the Team on the ministry page.
    - Under **Media contacts**: **Primary contact** and **Alternate contact** (each with **Name**, **Phone**, **Cell** and **Email**), and **After-hours phone**. **Phone** shows as Direct on the ministry page.
@@ -53,3 +53,4 @@ When a new government takes office, you update every minister's name, photo and 
 | "Enter a whole number." | **Sort order** must be a whole number, such as 10. |
 | "Enter the full address, starting with https://, to see a preview." | The photo address is incomplete. |
 | "This address didn't load an image. Check that it's the right URL." | The photo address doesn't lead to an image. Check it on **Files**. |
+| "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." | The address was copied from the Hub, so the preview works for you but visitors would get a broken image. Copy the photo's public address on **Files** and paste it instead. |

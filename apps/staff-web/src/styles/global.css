@@ -751,6 +751,14 @@ body {
   color: #b00020;
 }
 
+/* Suite review R8: "Planned" is only a plan (nothing goes out), so it doesn't look like
+ * "Scheduled": amber, with a dashed edge so it differs by more than colour. */
+.gcpe-badge--planned {
+  border-style: dashed;
+  border-color: var(--support-border-color-warning, #f8bb47);
+  background: var(--support-surface-color-warning, #fef1d8);
+}
+
 /* Visually hidden but still reachable by aria-describedby/aria-labelledby (used for the
  * Flickr alert badge's accessible description). */
 .gcpe-visually-hidden {
@@ -1114,9 +1122,27 @@ body {
  * Only found once axe-sweep.spec.ts started scanning a populated Files list (I6). */
 .gcpe-files li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
   padding: 0.25rem 0;
+}
+/* W1: the file's name (its link) over its full public address, which wraps rather than
+ * pushing the row past a 390 px screen. */
+.gcpe-files__file {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.gcpe-files__file > a {
+  display: inline-block;
+  padding: 0.25rem 0;
+  min-height: 24px;
+}
+.gcpe-files__address {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
 }
 .gcpe-files li > a {
   display: inline-block;
@@ -1612,6 +1638,13 @@ body {
 .gcpe-notice {
   border-color: var(--support-border-color-success, #42814a);
   background: var(--support-surface-color-success, #f6fff8);
+}
+/* W8: a Website screen's save result is always in the page (so it is announced when it fills),
+ * but takes no room until then. */
+.gcpe-save-result:empty {
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .gcpe-settings-conflict,
 .gcpe-settings-other-errors {
@@ -2146,6 +2179,16 @@ body {
 .gcpe-link-list__error,
 .gcpe-link-list__actions {
   grid-column: 1 / -1;
+}
+/* W1: an address on the Hub's own host, under its URL field. */
+.gcpe-host-warning {
+  grid-column: 1 / -1;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem 0.5rem;
+  border-left: 4px solid var(--support-border-color-warning, #f8bb47);
+  background: var(--support-surface-color-warning, #fef1d8);
+  color: var(--typography-color-primary, #2d2d2d);
+  font-size: 0.875rem;
 }
 .gcpe-link-list__error {
   margin: 0;

@@ -13,9 +13,10 @@ import { useLocation } from "react-router";
  * then disconnects. `location.pathname` (not the whole `location` object, which also changes
  * on every search-param update) is what re-triggers it, which also covers navigating between
  * two different ids on the same route (e.g. `/releases/A` → `/releases/B` doesn't remount
- * {@link ReleaseEditorPage}, but its pathname still changes).
+ * {@link ReleaseEditorPage}, but its pathname still changes). `redraw` re-triggers it too: AppShell
+ * passes its time-zone redraw count, since a late correction redraws the screen on the same path.
  */
-export function useFocusH1OnRouteChange<T extends HTMLElement = HTMLElement>() {
+export function useFocusH1OnRouteChange<T extends HTMLElement = HTMLElement>(redraw: unknown = 0) {
   const ref = useRef<T>(null);
   const { pathname } = useLocation();
 
@@ -38,7 +39,7 @@ export function useFocusH1OnRouteChange<T extends HTMLElement = HTMLElement>() {
     });
     observer.observe(main, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [pathname]);
+  }, [pathname, redraw]);
 
   return ref;
 }

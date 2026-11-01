@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { utcOffsetMinutes, wallClockToInstant } from "./timezone";
+import { offsetFixedSince, tzCheckFor, utcOffsetMinutes, wallClockToInstant } from "./timezone";
 
 const TZ = "America/Vancouver";
 
@@ -43,5 +43,32 @@ describe("utcOffsetMinutes", () => {
 
   it("America/Vancouver after BC's permanent UTC-7 switch (2026-11-01) stays -420 even in December (requires Node 24+ tzdata)", () => {
     expect(utcOffsetMinutes("2026-12-15T20:00:00Z", TZ)).toBe(-420);
+  });
+});
+
+// BC's change (2026-10-31 owner decision): the server tells the Hub since when the zone has kept
+// one fixed offset, so a browser whose tzdata predates the change can be corrected — by the
+// server's own rules, never a second hand-written copy of them.
+describe("offsetFixedSince", () => {
+  it("Vancouver: UTC-7 since the 2026-03-08 spring-forward, and for good (requires Node 24+ tzdata)", () => {
+    // 2026-03-08 02:00 PST is 10:00Z; from then on it is UTC-7 (PDT, then permanent MST from 2026-11-01).
+    expect(offsetFixedSince(TZ)).toBe("2026-03-08T10:00:00.000Z");
+    expect(utcOffsetMinutes("2026-03-08T09:59:59Z", TZ)).toBe(-480);
+  });
+
+  it("a zone that still changes its clocks has no fixed offset", () => {
+    expect(offsetFixedSince("America/Toronto")).toBeNull();
+    expect(offsetFixedSince("Europe/London")).toBeNull();
+  });
+
+  it("a zone that has not changed within the look-back gives the earliest instant it checked, which is still true", () => {
+    const since = offsetFixedSince("UTC");
+    expect(since).not.toBeNull();
+    expect(Date.parse(since!)).toBeLessThan(Date.parse("2017-01-01T00:00:00Z"));
+  });
+
+  it("tzCheckFor carries it beside the pinned instant and offset", () => {
+    expect(tzCheckFor(TZ)).toEqual({ at: "2026-12-15T20:00:00Z", offsetMinutes: -420, fixedSince: "2026-03-08T10:00:00.000Z" });
+    expect(tzCheckFor("America/Toronto").fixedSince).toBeNull();
   });
 });

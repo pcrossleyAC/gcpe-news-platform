@@ -124,7 +124,8 @@ describe("LinksScreen", () => {
     moveDown.focus();
     await user.click(moveDown);
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Link 1 moved to position 2");
+    // The Hub's announcer (the screen's own save result is a status region too, still empty).
+    await waitFor(() => expect(screen.getAllByRole("status").map((e) => e.textContent).join(" ")).toContain("Link 1 moved to position 2"));
     await waitFor(() => expect(screen.getByRole("button", { name: "Move link 2 up" })).toHaveFocus());
   });
 
@@ -142,5 +143,20 @@ describe("LinksScreen", () => {
     await screen.findByText("You don’t have permission to view the resource links.");
     expect(screen.queryByDisplayValue("First")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save links" })).toBeNull();
+  });
+  it("W8: saving shows the result on screen", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/links" && init?.method === "PUT") return jsonResponse(200, { ...TWO_LINKS, version: 2 });
+        if (url === "/nrms/api/site/links") return jsonResponse(200, TWO_LINKS);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<LinksScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Save links" }));
+    expect(await screen.findByText(/^Saved at \d{1,2}:\d{2}\s?[AP]M\. Live now: the public home page shows the resource links within a few minutes\.$/)).toHaveAttribute("role", "status");
   });
 });
