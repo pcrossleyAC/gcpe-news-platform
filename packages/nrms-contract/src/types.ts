@@ -26,6 +26,19 @@ export const RELEASE_FILE_TOO_LARGE = `A file can be at most ${RELEASE_FILE_MAX_
 
 export const TYPE_LABEL: Record<ReleaseType, string> = { release: "Release", story: "Story", factsheet: "Factsheet", update: "Update", advisory: "Advisory" };
 
+export interface EmailAgainPendingView {
+  subscribers: boolean;
+  mediaLists: boolean;
+  requestedBy: string;
+  requestedAt: string;
+}
+
+export interface LastCorrectionView extends EmailAgainPendingView {
+  /** The release's correction number (1 for its first corrected email). */
+  seq: number;
+  state: "waiting" | "delivered" | "not-delivered" | "unknown";
+}
+
 export interface PublishOptions {
   toWeb: boolean;
   toSubscribers: boolean;
@@ -114,6 +127,12 @@ export interface ReleaseView {
   lastError: string | null;
   /** Set when the release went out without its Flickr photo (it couldn't be made public); cleared once it's republished with the photo. */
   flickrAlert: string | null;
+  /** Owner decision 2026-10-31: "Also email it again?" asked for and waiting for the release to
+   * republish; null when nothing is waiting. */
+  emailAgainPending: EmailAgainPendingView | null;
+  /** The latest corrected email this release passed to News On Demand, and whether News On Demand
+   * received it ("waiting", "delivered", "not-delivered", or "unknown" when NRMS can't tell). */
+  lastCorrection: LastCorrectionView | null;
   languages: ReleaseLanguageView[];
   documents: DocumentView[];
   ministries: string[];

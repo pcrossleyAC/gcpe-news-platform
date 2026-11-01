@@ -178,7 +178,7 @@ describe("report routes", () => {
       const csv = await getCsv(app, "/api/reports/release-sends.csv", viewer);
       expect(csv.status).toBe(200);
       expect(csv.headers["content-disposition"]).toMatch(/filename="release-sends-\d{4}-\d{2}-\d{2}\.csv"/);
-      expect((csv.body as Buffer).toString("utf8")).toContain(",'-1 days to go,News release,1,1,0,0,0,0,0,0\r\n");
+      expect((csv.body as Buffer).toString("utf8")).toContain(",'-1 days to go,News release,1,1,0,0,0,0,0,0,0,0,0,0\r\n");
     });
 
     it("refuses a range longer than 92 days, a reversed one and an impossible date", async () => {

@@ -26,6 +26,8 @@ export interface ReleaseSendRow {
   publishedAt: string;
   asItHappens: ModeCounts;
   media: ModeCounts;
+  /** Corrected copies, to subscribers and media lists together (owner decision 2026-10-31). */
+  corrected: ModeCounts;
 }
 export interface RangedPage<T> {
   from: string;
@@ -60,7 +62,7 @@ type After = { publishedAt: string; key: string };
 export function releaseSendsSql(range: ReportRange, limit: number, offset: number, after: After | null = null): SQL {
   const resume = after ? sql`AND (i.published_at, i.key) < (${after.publishedAt}::timestamptz, ${after.key})` : sql``;
   return sql`
-    SELECT i.key, i.title, i.kind, i.post_kind, i.published_at, c.*
+    SELECT i.key, i.title, i.kind, i.post_kind, i.published_at, c.*, k.*
       FROM items i
       JOIN LATERAL (
         SELECT count(*) FILTER (WHERE d.mode = 'as_it_happens')::int AS aih_recipients,
@@ -71,6 +73,15 @@ export function releaseSendsSql(range: ReportRange, limit: number, offset: numbe
                count(*) FILTER (WHERE d.mode = 'media' AND d.bounce_status IS NOT NULL)::int AS media_bounced
           FROM deliveries d
          WHERE d.item_key = i.key AND d.mode IN ('as_it_happens', 'media')) c ON c.aih_recipients + c.media_recipients > 0
+      -- Corrected copies, from the release's own deliveries (re-review N1: not through their jobs,
+      -- which an unpublish deletes while keeping the emails already sent). The primary key leads
+      -- with item_key, so this reads only this release's rows.
+      JOIN LATERAL (
+        SELECT count(*)::int AS cor_recipients,
+               count(*) FILTER (WHERE d.distribution_batch_id IS NOT NULL)::int AS cor_sent,
+               count(*) FILTER (WHERE d.bounce_status IS NOT NULL)::int AS cor_bounced
+          FROM deliveries d
+         WHERE d.item_key = i.key AND d.mode LIKE 'correction:%') k ON true
      WHERE i.published_at >= ${range.start} AND i.published_at < ${range.end} ${resume}
      ORDER BY i.published_at DESC, i.key DESC
      LIMIT ${limit} OFFSET ${offset}`;
@@ -88,6 +99,9 @@ type RawRow = {
   media_recipients: number;
   media_sent: number;
   media_bounced: number;
+  cor_recipients: number;
+  cor_sent: number;
+  cor_bounced: number;
 };
 const counts = (recipients: number, sent: number, bounced: number): ModeCounts => ({ recipients, handedOffNotBounced: sent - bounced, bounced, notSent: recipients - sent });
 const toRow = (r: RawRow): ReleaseSendRow => ({
@@ -97,6 +111,7 @@ const toRow = (r: RawRow): ReleaseSendRow => ({
   publishedAt: new Date(r.published_at).toISOString(),
   asItHappens: counts(r.aih_recipients, r.aih_sent, r.aih_bounced),
   media: counts(r.media_recipients, r.media_sent, r.media_bounced),
+  corrected: counts(r.cor_recipients, r.cor_sent, r.cor_bounced),
 });
 
 export async function releaseSendsPage(db: DbOrTx, range: ReportRange, page: number): Promise<RangedPage<ReleaseSendRow>> {
@@ -123,8 +138,9 @@ export const RELEASE_SENDS_CSV_HEADER = [
   "Published (BC time)", "Title", "Type",
   "As it happens: recipients", "As it happens: handed off, not bounced", "As it happens: bounced", "As it happens: not sent",
   "Media: recipients", "Media: handed off, not bounced", "Media: bounced", "Media: not sent",
+  "Corrected copies: recipients", "Corrected copies: handed off, not bounced", "Corrected copies: bounced", "Corrected copies: not sent",
 ];
 export function releaseSendCsvRow(r: ReleaseSendRow, timeZone: string): CsvCell[] {
   const m = (c: ModeCounts): CsvCell[] => [c.recipients, c.handedOffNotBounced, c.bounced, c.notSent];
-  return [localDateTime(new Date(r.publishedAt), timeZone), r.title, r.type, ...m(r.asItHappens), ...m(r.media)];
+  return [localDateTime(new Date(r.publishedAt), timeZone), r.title, r.type, ...m(r.asItHappens), ...m(r.media), ...m(r.corrected)];
 }

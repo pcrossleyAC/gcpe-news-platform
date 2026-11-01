@@ -241,6 +241,19 @@ describe("GET /api/subscribers/count", () => {
     expect((await request(app).get("/api/subscribers/release-audience?lists=bogus&kind=releases").set("authorization", `Bearer ${editor}`)).status).toBe(400);
     expect((await request(app).get("/api/subscribers/release-audience?lists=ministries:health&media=ministries:health&kind=releases").set("authorization", `Bearer ${editor}`)).status).toBe(400);
   });
+  // Owner decision 2026-10-31: "Also email it again?" counts, by correction.ts's own rules
+  // (correction.test.ts pins them against the copies created). Same roles as the count.
+  it("correction-audience answers who'd get a corrected copy; validates; same roles", async () => {
+    const q = "/api/subscribers/correction-audience?key=NEVER-SENT&lists=ministries:health&media=media-distribution-lists:budget";
+    const res = await request(app).get(q).set("authorization", `Bearer ${subscriberCountService}`);
+    expect(res.status).toBe(200);
+    // Nobody got a release NoD never sent.
+    expect(res.body).toEqual({ subscribers: 0, mediaContacts: 0, both: 0 });
+    expect((await request(app).get(q).set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).get("/api/subscribers/correction-audience?lists=ministries:health").set("authorization", `Bearer ${editor}`)).status).toBe(400);
+    expect((await request(app).get("/api/subscribers/correction-audience?key=K&lists=bogus").set("authorization", `Bearer ${editor}`)).status).toBe(400);
+    expect((await request(app).get("/api/subscribers/correction-audience?key=K&media=ministries:health").set("authorization", `Bearer ${editor}`)).status).toBe(400);
+  });
 });
 
 describe("POST /api/emergency-items", () => {

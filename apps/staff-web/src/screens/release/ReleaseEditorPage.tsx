@@ -84,6 +84,10 @@ export function ReleaseEditorPage(): React.JSX.Element {
   // though `view` didn't change.
   const [retry, setRetry] = useState(0);
   const lastStatus = useRef<string | null>(null);
+  // Review I3: the page's one Save just republished a live release. Whether this save republishes
+  // is noted as it starts (the view moves on to "Republishing..." while it saves).
+  const [republishedBySave, setRepublishedBySave] = useState(false);
+  const savingRepublishes = useRef(false);
   // ⌘/Ctrl+S: the page's one Save, from anywhere on the page (text fields included) — for an
   // editor; a viewer has nothing to save.
   const canEdit = session.has("NRMS.Editor");
@@ -150,6 +154,18 @@ export function ReleaseEditorPage(): React.JSX.Element {
     };
   }, [view, retry, setView]);
 
+  const saveStatus = guard.saveState.status;
+  const liveNow = view?.live ?? false;
+  const republishesNow = Boolean(view?.live && (view.status === "published" || view.status === "publishing"));
+  useEffect(() => {
+    if (saveStatus === "saving") savingRepublishes.current = republishesNow;
+    else if (saveStatus === "saved" && savingRepublishes.current) setRepublishedBySave(true);
+    // Runs only as a save starts or ends: republishesNow is read then, not followed.
+  }, [saveStatus]);
+  useEffect(() => {
+    if (!liveNow) setRepublishedBySave(false);
+  }, [liveNow]);
+
   // Say so when a refresh (or anything else) moves the release to a new status.
   useEffect(() => {
     if (!view) return;
@@ -202,7 +218,7 @@ export function ReleaseEditorPage(): React.JSX.Element {
              * the facts on the right (styles/global.css). The DOM order is the same at every width,
              * so keyboard order always matches what's on screen, and no section is ever remounted
              * (losing its unsaved edits) when the window crosses the breakpoint. */}
-            {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} unsaved={guard.dirtySections} />}
+            {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} unsaved={guard.dirtySections} republishedBySave={republishedBySave} />}
             <div className="gcpe-release-editor__main">
               <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
               <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />

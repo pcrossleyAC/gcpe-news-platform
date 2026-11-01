@@ -3,6 +3,7 @@ import { Button } from "../../../shared/Button";
 import { Link } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import type { OrgRecord } from "@gcpe/events/catalogue";
+import { formatToPartsInZone } from "../../../format/bcTime";
 import { ApiError, apiFetch } from "../../../api/client";
 import { useTenantTimeZoneStatus } from "../../../format/tenantTimeZone";
 import { useSession } from "../../../session/SessionContext";
@@ -102,15 +103,7 @@ export function scheduledCopy(change: { scheduledFor: string | null; scheduledFo
 }
 
 function browserScheduledCopy(iso: string, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).formatToParts(new Date(iso));
+  const parts = formatToPartsInZone(iso, timeZone, { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   const period = get("dayPeriod").toUpperCase().startsWith("A") ? "a.m." : "p.m.";
   return `Publishes on ${get("month")} ${get("day")}, ${get("year")} at ${get("hour")}:${get("minute")} ${period} Pacific.`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { releaseRecordSchema } from "@gcpe/events";
+import { envelopeByteLength, MAX_EVENT_BYTES, releaseRecordSchema, sizingEnvelope } from "@gcpe/events";
 import { view } from "@gcpe/nrms-contract/testing";
 import { assertPublishable, splitContact, toReleaseRecord } from "./record";
 import { ReleaseTooLargeError } from "./errors";
@@ -41,5 +41,17 @@ describe("toReleaseRecord", () => {
     expect(splitContact("Title\r\nLine 1\nLine 2")).toEqual({ title: "Title", details: "Line 1\nLine 2" });
     const huge = view({ key: "k", documents: [{ id: "d", sortIndex: 0, layout: "formal", languages: [{ languageId: 4105, pageTitle: "T", headline: "H", subheadline: null, organizations: "O", byline: null, bodyHtml: "x".repeat(2_000_000), pageImageId: null, contacts: [] }] }] });
     expect(() => assertPublishable(toReleaseRecord(huge, at))).toThrow(ReleaseTooLargeError);
+  });
+  // Review M8: the size check leaves room for what a republish adds (notify, an email-again request).
+  it("the size guard leaves room for a republish's additions", () => {
+    const sized = (n: number) => {
+      const v = view({ key: "k", documents: [{ id: "d", sortIndex: 0, layout: "formal", languages: [{ languageId: 4105, pageTitle: "T", headline: "H", subheadline: null, organizations: "O", byline: null, bodyHtml: "x".repeat(n), pageImageId: null, contacts: [] }] }] });
+      const r = toReleaseRecord(v, at);
+      return { r, bytes: envelopeByteLength(sizingEnvelope({ type: "release.published", source: "nrms", aggregateId: r.key, data: r })) };
+    };
+    const base = sized(10).bytes;
+    const near = sized(10 + (MAX_EVENT_BYTES - 50 - base));
+    expect(near.bytes).toBeLessThan(MAX_EVENT_BYTES);
+    expect(() => assertPublishable(near.r)).toThrow(ReleaseTooLargeError);
   });
 });

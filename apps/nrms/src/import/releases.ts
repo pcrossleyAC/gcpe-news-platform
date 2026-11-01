@@ -396,6 +396,8 @@ function pseudoView(raw: RawReleaseRow, bundle: Bundle): ReleaseView {
     mediaSubscribers: (bundle.release.mediaSubscribers as number | null) ?? null,
     lastError: null,
     flickrAlert: null,
+    emailAgainPending: null,
+    lastCorrection: null,
     languages: bundle.languages.map((l) => ({
       languageId: l.languageId as 4105 | 3084,
       location: l.location ?? "",

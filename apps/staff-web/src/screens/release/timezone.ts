@@ -2,95 +2,14 @@
  * BC-local date/time <-> UTC instant conversion for the schedule picker (task-3-brief.md:
  * "input a BC local date+time ... and convert to an ISO instant DST-correctly").
  *
- * `wallClockToInstant` below is ported verbatim from packages/legacy-import/src/timezone.ts
- * (same zone-math pattern the importer uses for legacy `DATETIME` columns) rather than imported
- * from that package: @gcpe/legacy-import's package.json depends on `mssql`, a Node-only
- * dependency, and browser code must never import a Node-only module (constraints.md) even
- * transitively. This file and its own test below have no such dependency.
+ * The zone math itself lives in format/bcTime.ts, the Hub's one BC-time path (owner decision
+ * 2026-10-31), so these agree with every time the Hub shows — and are right on a browser whose
+ * tzdata predates BC's permanent UTC-7. Saving never depends on them: Schedule and the planned
+ * publish date send the typed BC wall-clock string, and the server converts it.
  */
+import { offsetMinutesAt, wallClockToInstant, zonedDateTime } from "../../format/bcTime";
 
-interface ZonedParts {
-  year: number;
-  month: number; // 1-12
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-}
-
-const formatterCache = new Map<string, Intl.DateTimeFormat>();
-
-function formatterFor(timeZone: string): Intl.DateTimeFormat {
-  let f = formatterCache.get(timeZone);
-  if (!f) {
-    f = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    });
-    formatterCache.set(timeZone, f);
-  }
-  return f;
-}
-
-/** The wall-clock fields `timeZone` shows for the real instant `epochMs`. */
-function zonedPartsAt(epochMs: number, timeZone: string): ZonedParts {
-  const parts = formatterFor(timeZone).formatToParts(new Date(epochMs));
-  const get = (type: string) => Number(parts.find((p) => p.type === type)!.value);
-  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute"), second: get("second") };
-}
-
-/** `instant`'s wall-clock fields in `timeZone`, re-interpreted as if they were themselves UTC. */
-function localAsUtcMs(epochMs: number, timeZone: string): number {
-  const p = zonedPartsAt(epochMs, timeZone);
-  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second, new Date(epochMs).getUTCMilliseconds());
-}
-
-/** How far ahead of local wall-clock time `timeZone`'s real instant `epochMs` is, in ms (e.g. +7h for PDT). */
-function offsetAt(epochMs: number, timeZone: string): number {
-  return epochMs - localAsUtcMs(epochMs, timeZone);
-}
-
-/**
- * `d`'s UTC fields hold a wall-clock time meant for `timeZone`. Returns the real instant that
- * wall-clock time represents in `timeZone`.
- *
- *  - an ordinary wall-clock time has exactly one matching instant — returned directly.
- *  - the repeated "fall back" hour (e.g. 1:00-1:59 happening twice) has two matching instants —
- *    the earlier (pre-fall-back, DST) one is picked.
- *  - the skipped "spring forward" hour (e.g. 2:00-2:59 never happening) has no matching instant —
- *    the wall-clock time is shifted forward by the size of the gap (into the DST side) first.
- */
-export function wallClockToInstant(d: Date, timeZone: string): Date {
-  const wallMs = d.getTime();
-
-  const offset1 = offsetAt(wallMs, timeZone);
-  const instant1 = wallMs + offset1;
-  const offset2 = offsetAt(instant1, timeZone);
-
-  if (offset2 === offset1) return new Date(instant1); // unambiguous — the common case
-
-  const instant2 = wallMs + offset2;
-  const roundTrips = (instant: number) => localAsUtcMs(instant, timeZone) === wallMs;
-
-  const valid = [instant1, instant2].filter(roundTrips);
-  if (valid.length > 0) {
-    // Overlap (fall-back): both instants map back to the same wall-clock time. Pick the earlier
-    // one (the controller ruling: the earlier, DST instant wins the ambiguous hour).
-    return new Date(Math.min(...valid));
-  }
-
-  // Gap (spring-forward): no instant maps back to this wall-clock time at all. Shift the
-  // wall-clock time forward by the size of the gap (into the DST side) and resolve from there.
-  const gap = Math.abs(offset1 - offset2);
-  const dstOffset = Math.min(offset1, offset2);
-  return new Date(wallMs + gap + dstOffset);
-}
+export { wallClockToInstant };
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_RE = /^(\d{2}):(\d{2})$/;
@@ -116,14 +35,7 @@ export function bcLocalToInstant(date: string, time: string, timeZone: string): 
 /** The inverse of {@link bcLocalToInstant}: the BC-local date/time an ISO instant shows as, for
  * pre-filling the picker when editing an existing scheduled/planned time. */
 export function instantToBcLocal(iso: string, timeZone: string): { date: string; time: string } {
-  const parts = formatterFor(timeZone).formatToParts(new Date(iso));
-  const get = (type: string) => parts.find((p) => p.type === type)!.value;
-  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
-}
-
-/** The browser's own UTC offset for `timeZone` at `epochMs`, in minutes (negative west of UTC). */
-function browserOffsetMinutes(epochMs: number, timeZone: string): number {
-  return -offsetAt(epochMs, timeZone) / 60_000;
+  return zonedDateTime(iso, timeZone);
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -134,17 +46,16 @@ const pad = (n: number) => String(n).padStart(2, "0");
  * agree with the server (it converts `publishAtLocal` with its own tzdata and publishes a time
  * at or before now at once).
  *
- * `serverOffsetMinutes` is `GET /nrms/api/config`'s `tzCheck.offsetMinutes`: the server's own
- * offset for the zone (UTC-7 for BC from 2026-11-01, permanently). A browser with stale tzdata
- * still puts BC winters at UTC-8, an hour behind; so when both answers are known, the later wall
- * clock wins — a time is only "in the future" if it is by both reckonings. Without the server's
- * answer (not loaded yet, or failed), the browser's is used.
+ * The offset is format/bcTime.ts's, so already corrected on an old-tzdata browser once AppShell
+ * has the server's rule. `serverOffsetMinutes` (`GET /nrms/api/config`'s `tzCheck.offsetMinutes`,
+ * UTC-7 for BC) stays as a second guard for the moment before that: when both answers are known
+ * the later wall clock wins, so a time is only "in the future" if it is by both reckonings.
  */
 export function wallClockNowMinute(
   nowMs: number,
   timeZone: string,
   serverOffsetMinutes: number | null,
-  browserOffset: (epochMs: number, timeZone: string) => number = browserOffsetMinutes,
+  browserOffset: (epochMs: number, timeZone: string) => number = offsetMinutesAt,
 ): string {
   const offsets = [browserOffset(nowMs, timeZone), ...(serverOffsetMinutes === null ? [] : [serverOffsetMinutes])];
   const wall = new Date(nowMs + Math.max(...offsets) * 60_000);

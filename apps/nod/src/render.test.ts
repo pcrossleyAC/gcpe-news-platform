@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
-import { itemCategories, neutralizeHtml, neutralizeText, renderAsItHappens, renderDigest, renderEmergency, renderMedia, renderSystemShell, type RenderItem, type RenderOptions } from "./render";
+import { correctedSubject, itemCategories, neutralizeHtml, neutralizeText, renderAsItHappens, renderDigest, renderEmergency, renderMedia, renderSystemShell, type RenderItem, type RenderOptions } from "./render";
 
 const RENDER: RenderOptions = { siteUrl: "https://news.gov.bc.ca", bannerUrl: null };
 const RENDER_WITH_BANNER: RenderOptions = { siteUrl: "https://news.gov.bc.ca", bannerUrl: "https://news.gov.bc.ca/assets/banner.png" };
@@ -20,6 +20,15 @@ function item(over: Partial<RenderItem> = {}): RenderItem {
 }
 
 describe("subjects", () => {
+  // Owner decision 2026-10-31: a corrected copy keeps its kind's subject, with "Corrected: " before it.
+  it("a corrected copy: 'Corrected: ' before the subject as its kind renders it, still within Distribution's limit", () => {
+    expect(correctedSubject(renderAsItHappens(item({ title: "Highway 11 closure" }), RENDER).subject)).toBe("Corrected: BC Gov News - Highway 11 closure");
+    const long = correctedSubject(renderAsItHappens(item({ title: "x".repeat(2000) }), RENDER).subject);
+    expect(long.startsWith("Corrected: BC Gov News - xxx")).toBe(true);
+    expect(long.length).toBeLessThanOrEqual(998);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
   it("As-It-Happens: 'BC Gov News - <title>'", () => {
     expect(renderAsItHappens(item({ title: "Highway 11 closure" }), RENDER).subject).toBe("BC Gov News - Highway 11 closure");
   });

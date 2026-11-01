@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { AlertDialog, Header, InlineAlert, Modal } from "@bcgov/design-system-react-components";
@@ -19,9 +19,10 @@ export { helpFor };
 export function AppShell(): React.JSX.Element {
   const session = useSession();
   const navigate = useNavigate();
-  const tzMismatch = useTimeZoneWarning();
+  const tzCheck = useTimeZoneWarning();
   // I5 (WCAG 2.4.2): move focus to the new screen's h1 on every route change.
-  const mainRef = useFocusH1OnRouteChange<HTMLElement>();
+  // A late time-zone correction redraws the screen on the same path: focus its h1 again too.
+  const mainRef = useFocusH1OnRouteChange<HTMLElement>(tzCheck.generation);
   // Esc closes the panel or disclosure the user is in, on every screen (dialogs close themselves).
   useEscapeClosesPanels();
   const uid = useId();
@@ -110,9 +111,6 @@ export function AppShell(): React.JSX.Element {
         </nav>
         <main id="main-content" tabIndex={-1} className="gcpe-shell__main" ref={mainRef}>
           {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
-          {/* Fix round 1, finding 3: persistent — not closeable — since it stays true for the
-           * whole session; the only real fix is updating the browser. The title is what the design
-           * system's alert names itself by (its aria-labelledby always points at a title). */}
           {session.ended && (
             <InlineAlert
               variant="danger"
@@ -127,7 +125,20 @@ export function AppShell(): React.JSX.Element {
               }
             />
           )}
-          {tzMismatch && (
+          {/* Persistent — not closeable — since it stays true for the whole session; the only
+           * real fix is updating the browser. The title is what the design system's alert names
+           * itself by (its aria-labelledby always points at a title). Owner decision 2026-10-31:
+           * the Hub corrects the times itself (format/bcTime.ts) when the server says how. */}
+          {tzCheck.warning === "corrected" && (
+            <InlineAlert
+              variant="warning"
+              role="alert"
+              isCloseable={false}
+              title="Update your browser"
+              description="Your browser's time-zone information is out of date. The times shown here have been corrected for BC time, but other websites and apps may show times an hour off. Update your browser when you can."
+            />
+          )}
+          {tzCheck.warning === "stale" && (
             <InlineAlert
               variant="warning"
               role="alert"
@@ -136,7 +147,12 @@ export function AppShell(): React.JSX.Element {
               description="Your browser's time-zone information is out of date, so times shown here may be off by an hour. Update your browser."
             />
           )}
-          <Outlet />
+          {/* The screen waits for the time-zone check (a moment), so its first times are right. */}
+          {tzCheck.settled && (
+            <Fragment key={tzCheck.generation}>
+              <Outlet />
+            </Fragment>
+          )}
         </main>
       </div>
       <Modal isOpen={confirmSignOut} onOpenChange={(open) => { if (!open) setConfirmSignOut(false); }} isDismissable>
