@@ -85,6 +85,32 @@ describe("dispatchOnce", () => {
     expect(await dispatchOnce({ db: tdb.db, subscribers: subs, now: () => later })).toEqual({ delivered: 0, retried: 0, dead: 1 });
   });
 
+  // Suite review O1.1 (owner 2026-10-31): a delivery that goes dead is logged once, so it reaches
+  // the Hub's Error log. Its type, aggregate, subscriber and last error, never the payload.
+  it("logs one error naming the event, never its payload, when a delivery goes dead", async () => {
+    respondWith = 502;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: "org:secretive", data: { key: "secretive" } }, subs);
+      const now = await dbClock(tdb.db);
+      // A retry is not a death: nothing logged.
+      expect(await dispatchOnce({ db: tdb.db, subscribers: subs, now: () => now })).toEqual({ delivered: 0, retried: 1, dead: 0 });
+      expect(errors).not.toHaveBeenCalled();
+      const later = new Date(now.getTime() + 25 * 3_600_000);
+      expect(await dispatchOnce({ db: tdb.db, subscribers: subs, now: () => later })).toEqual({ delivered: 0, retried: 0, dead: 1 });
+      expect(errors).toHaveBeenCalledTimes(1);
+      const line = errors.mock.calls[0]!.map(String).join(" ");
+      expect(line).toContain("org.deactivated");
+      expect(line).toContain("org:secretive");
+      expect(line).toContain("target");
+      expect(line).toContain("HTTP 502");
+      expect(line).not.toContain('"key"');
+      expect(line).not.toContain("{");
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   // P2-R26: SKIP LOCKED, not just the lock predicate, keeps a claim from *waiting* on a row
   // another transaction holds — the earliest-due delivery here — instead of delivering the rest.
   it("does not wait on a delivery row locked by another transaction (FOR UPDATE SKIP LOCKED)", async () => {
