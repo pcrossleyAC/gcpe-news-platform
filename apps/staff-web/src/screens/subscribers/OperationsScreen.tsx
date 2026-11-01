@@ -170,34 +170,41 @@ const groupLabel = (g: OutgoingGroup, timeZone: string) => `${groupTitle(g, time
 /** Held and failed news email, and cancelling held email while paused (N3). */
 function OutgoingPanel({ outgoing, paused, timeZone, onDone, onRefresh }: { outgoing: OutgoingStatus; paused: boolean; timeZone: string; onDone(text: string): void; onRefresh(): void }): React.JSX.Element {
   const [cancelling, setCancelling] = useState<OutgoingGroup[] | null>(null);
-  // True when the dialog was opened by "Cancel all held email": that sends a marker of what was shown, not every job id.
-  const [cancellingAll, setCancellingAll] = useState(false);
+  // Set when the dialog was opened by "Cancel all held email": the marker of what was shown at that moment
+  // (sent instead of every job id). Kept with the dialog, so a refresh behind it can't change what it cancels.
+  const [cancellingAll, setCancellingAll] = useState<{ jobs: number; heldKey: string; newestAt: string } | null>(null);
+  // After "the held email changed" the dialog's list is out of date: only Keep it is left.
+  const [stale, setStale] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { held, failed } = outgoing;
   const close = () => {
     setCancelling(null);
-    setCancellingAll(false);
+    setCancellingAll(null);
+    setStale(false);
     setError(null);
   };
   const cancel = async (groups: OutgoingGroup[]) => {
     setBusy(true);
     setError(null);
     const jobIds = groups.flatMap((g) => g.jobIds);
-    const shownJobs = cancellingAll ? held.jobs : jobIds.length;
+    const shownJobs = cancellingAll ? cancellingAll.jobs : jobIds.length;
     try {
       const r = await apiFetch<{ cancelledJobs: number; cancelledEmails: number }>(
         cancellingAll ? "/nod/api/operations/held-email/cancel-all" : "/nod/api/operations/held-email/cancel",
-        { method: "POST", body: cancellingAll ? { jobs: held.jobs, newestAt: held.newestAt } : { jobIds } },
+        { method: "POST", body: cancellingAll ? { heldKey: cancellingAll.heldKey, newestAt: cancellingAll.newestAt } : { jobIds } },
       );
       setCancelling(null);
-      setCancellingAll(false);
+      setCancellingAll(null);
       // Some may have been claimed by a send that started just before the pause (review M3).
       const partly = r.cancelledJobs < shownJobs ? " Some had already started going out, so they weren’t cancelled." : "";
       onDone(r.cancelledJobs === 0 ? "Nothing was cancelled: that email had already gone out or been cancelled." : `Cancelled ${plural(r.cancelledEmails, "held email")}.${partly}`);
     } catch (e) {
       const changed = e instanceof ApiError && e.status === 409 && (e.body as { error?: string } | undefined)?.error === "held-changed";
-      if (changed) onRefresh();
+      if (changed) {
+        setStale(true);
+        onRefresh();
+      }
       setError(
         changed
           ? "Some of this email went out or was cancelled since this page loaded, so nothing was cancelled. Choose Keep it, then check the updated list and try again."
@@ -254,7 +261,11 @@ function OutgoingPanel({ outgoing, paused, timeZone, onDone, onRefresh }: { outg
             </table>
           </TableScroll>
           {paused && (
-            <Button variant="secondary" danger onPress={() => { setCancellingAll(true); setCancelling(held.groups); }}>
+            <Button variant="secondary" danger onPress={() => {
+                if (held.newestAt === null) return;
+                setCancellingAll({ jobs: held.jobs, heldKey: held.heldKey, newestAt: held.newestAt });
+                setCancelling(held.groups);
+              }}>
               Cancel all held email
             </Button>
           )}
@@ -303,7 +314,7 @@ function OutgoingPanel({ outgoing, paused, timeZone, onDone, onRefresh }: { outg
                 <Button onPress={close} isPending={busy}>
                   Keep it
                 </Button>
-                <Button danger onPress={() => void cancel(cancelling)} isPending={busy}>
+                <Button danger onPress={() => void cancel(cancelling)} isPending={busy} isDisabled={stale}>
                   Cancel held email
                 </Button>
               </>

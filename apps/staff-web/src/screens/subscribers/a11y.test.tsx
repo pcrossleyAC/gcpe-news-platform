@@ -100,6 +100,7 @@ const OPS: OperationsStatus = {
       releases: 1,
       oldestAt: "2026-10-06T17:00:00.000Z",
       jobs: 1,
+      heldKey: "b".repeat(64),
       newestAt: "2026-10-06T17:00:00.000Z",
       groups: [{ jobIds: ["66666666-6666-6666-6666-666666666666"], kind: "as_it_happens", title: "Budget 2027", itemKey: "r1", digestCutoff: null, releases: 1, emails: 12, createdAt: "2026-10-06T17:00:00.000Z", attempts: 0, lastError: null }],
     },

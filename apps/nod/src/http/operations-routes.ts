@@ -17,8 +17,8 @@ const purgeBody = z.object({ enabled: z.boolean() });
 /** The send jobs the screen showed and the admin confirmed (N3); a long pause's digests run to a few thousand. */
 const cancelBody = z.object({ jobIds: z.array(z.string().uuid()).min(1).max(20_000) });
 
-/** "Cancel all held email" sends what the screen showed (how many held jobs, when the newest was made), not every id (NC). */
-const cancelAllBody = z.object({ jobs: z.number().int().min(0), newestAt: z.string().datetime() });
+/** "Cancel all held email" sends what the screen showed (a fingerprint of the held jobs, when the newest was made), not every id (NC). */
+const cancelAllBody = z.object({ heldKey: z.string().regex(/^[0-9a-f]{64}$/), newestAt: z.string().datetime() });
 
 function mapError(e: unknown, res: Response): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;

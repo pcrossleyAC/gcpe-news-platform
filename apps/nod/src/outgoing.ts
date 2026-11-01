@@ -7,6 +7,7 @@
  * or holds jobs waiting to retry. "Failed" is a job the sender gave up on (send-jobs.ts: not
  * retryable, or 24 hours old), which until now only reached the server log.
  */
+import { createHash } from "node:crypto";
 import { sql, type SQL } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { writeOpsLog } from "./settings";
@@ -44,14 +45,19 @@ export interface OutgoingStatus {
     emails: number;
     releases: number;
     oldestAt: string | null;
-    /** How many held send jobs there are, and when the newest was made: the marker "Cancel all"
-     * sends back so the server cancels exactly the jobs the screen showed, however many. */
+    /** How many held send jobs there are, a fingerprint of exactly which ({@link heldKeyOf}), and when
+     * the newest was made: the marker "Cancel all" sends back so the server cancels exactly the jobs
+     * the screen showed, however many. */
     jobs: number;
+    heldKey: string;
     newestAt: string | null;
     groups: OutgoingGroup[];
   };
   failed: OutgoingGroup[];
 }
+
+/** Identifies a set of send jobs (order doesn't matter), so "Cancel all" can tell the set it would cancel is the set shown. */
+export const heldKeyOf = (ids: string[]): string => createHash("sha256").update([...ids].sort().join(",")).digest("hex");
 
 /** The held email changed since the screen loaded (a job went out or was cancelled): "Cancel all"
  * refuses rather than cancel a different set than the admin confirmed. → 409. */
@@ -153,6 +159,7 @@ export async function getOutgoing(db: DbOrTx): Promise<OutgoingStatus> {
       releases: items.size,
       oldestAt: held[0]?.createdAt ?? null,
       jobs: heldRows.length,
+      heldKey: heldKeyOf(heldRows.map((r) => r.id)),
       newestAt: heldRows.length ? iso(heldRows[heldRows.length - 1]!.created_at) : null,
       groups: held.map(strip),
     },
@@ -213,22 +220,24 @@ export async function cancelHeldEmail(db: Db, jobIds: string[], actor: string): 
 }
 
 /**
- * "Cancel all held email" for any number of jobs. The screen sends the marker it showed (how many
- * held jobs, and when the newest was made) instead of every id, so the request stays small. In one
- * transaction (paused, settings row `FOR SHARE`): if the held jobs made up to that time are not
- * exactly that many, a job went out or was cancelled meanwhile and nothing is cancelled
- * ({@link HeldChangedError}); otherwise exactly those jobs are cancelled. A job made after the
- * screen loaded was never shown, so it stays held. The log detail is the same as {@link cancelHeldEmail}'s.
+ * "Cancel all held email" for any number of jobs. The screen sends a marker of what it showed (a
+ * fingerprint of the held job ids, and when the newest was made) instead of every id, so the request
+ * stays small. In one transaction (paused, settings row `FOR SHARE`) the held jobs made up to that
+ * time are locked and fingerprinted; if that isn't the same set, a job went out, was cancelled or
+ * appeared meanwhile and nothing is cancelled ({@link HeldChangedError}). Locking the rows means the
+ * set can't change under the update. A job made after the screen loaded was never shown, so it
+ * stays held. The log detail is the same as {@link cancelHeldEmail}'s.
  */
-export async function cancelAllHeldEmail(db: Db, shown: { jobs: number; newestAt: string }, actor: string): Promise<CancelResult> {
-  if (shown.jobs === 0) return { cancelledJobs: 0, cancelledEmails: 0 };
+export async function cancelAllHeldEmail(db: Db, shown: { heldKey: string; newestAt: string }, actor: string): Promise<CancelResult> {
   return db.transaction(async (tx) => {
     await requirePaused(tx);
     const { rows } = await tx.execute<{ id: string }>(sql`
       SELECT id FROM send_jobs
-       WHERE status = 'pending' AND date_trunc('milliseconds', created_at) <= ${shown.newestAt}::timestamptz`);
-    if (rows.length !== shown.jobs) throw new HeldChangedError();
-    return cancelJobs(tx, rows.map((r) => r.id), actor);
+       WHERE status = 'pending' AND date_trunc('milliseconds', created_at) <= ${shown.newestAt}::timestamptz
+       ORDER BY id FOR UPDATE`);
+    const ids = rows.map((r) => r.id);
+    if (heldKeyOf(ids) !== shown.heldKey) throw new HeldChangedError();
+    return cancelJobs(tx, ids, actor);
   });
 }
 

@@ -31,7 +31,7 @@ const OPS: OperationsStatus = {
   breakGlassOn: false,
   staffPasswordsOn: false,
   opsEmailSet: true,
-  outgoing: { held: { emails: 0, releases: 0, oldestAt: null, jobs: 0, newestAt: null, groups: [] }, failed: [] },
+  outgoing: { held: { emails: 0, releases: 0, oldestAt: null, jobs: 0, heldKey: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", newestAt: null, groups: [] }, failed: [] },
 };
 
 const J1 = "11111111-1111-1111-1111-111111111111";
@@ -53,6 +53,7 @@ const HELD: OperationsStatus = {
       releases: 3,
       oldestAt: "2026-09-25T17:00:00.000Z",
       jobs: 3,
+      heldKey: "a".repeat(64),
       newestAt: "2026-10-01T00:00:00.000Z",
       groups: [
         group({ jobIds: [J1], title: "Budget 2027", itemKey: "r1", emails: 1200, createdAt: "2026-09-25T17:00:00.000Z" }),
@@ -229,7 +230,7 @@ describe("OperationsScreen", () => {
       expect.stringMatching(/^Daily digest of .*, 2 releases \(Daily digest\): 5 emails$/),
     ]);
     await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
-    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/held-email/cancel-all", method: "POST", body: { jobs: 3, newestAt: "2026-10-01T00:00:00.000Z" } }));
+    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/held-email/cancel-all", method: "POST", body: { heldKey: "a".repeat(64), newestAt: "2026-10-01T00:00:00.000Z" } }));
   });
 
   it("NC: Cancel all with thousands of held jobs sends a small request, whatever the number of jobs", async () => {
@@ -243,7 +244,7 @@ describe("OperationsScreen", () => {
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel held email" }));
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/cancel-all"))).toBe(true));
     const sent = calls.find((c) => c.url.endsWith("/cancel-all"))!;
-    expect(sent.body).toEqual({ jobs: 3000, newestAt: "2026-10-01T00:00:00.000Z" });
+    expect(sent.body).toEqual({ heldKey: "a".repeat(64), newestAt: "2026-10-01T00:00:00.000Z" });
     expect(JSON.stringify(sent.body).length).toBeLessThan(200);
     expect(await screen.findByText("Cancelled 3,000 held emails.")).toBeInTheDocument();
   }, 30_000);
@@ -259,6 +260,36 @@ describe("OperationsScreen", () => {
     await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Some of this email went out or was cancelled since this page loaded, so nothing was cancelled.");
     await waitFor(() => expect(calls.filter((c) => c.url === "/nod/api/operations").length).toBe(loadsBefore + 1));
+  });
+
+  it("NC review I2: after 'changed', the confirm button is off, so the refreshed set can't be cancelled under the old list", async () => {
+    const refreshed: OperationsStatus = { ...HELD, outgoing: { ...HELD.outgoing, held: { ...HELD.outgoing.held, jobs: 4, heldKey: "c".repeat(64), newestAt: "2026-10-02T00:00:00.000Z" } } };
+    let loads = 0;
+    const calls = stub(["NoD.Admin"], HELD, {
+      load: () => jsonResponse(200, ++loads === 1 ? HELD : refreshed),
+      cancel: () => jsonResponse(409, { error: "held-changed" }),
+    });
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel all held email" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
+    await within(dialog).findByRole("alert");
+    await waitFor(() => expect(loads).toBe(2));
+    expect(within(dialog).getByRole("button", { name: "Cancel held email" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel held email" }));
+    expect(calls.filter((c) => c.url.endsWith("/cancel-all"))).toHaveLength(1);
+    // Close and reopen: the new request carries the refreshed marker.
+    await user.click(within(dialog).getByRole("button", { name: "Keep it" }));
+    await user.click(within(out).getByRole("button", { name: "Cancel all held email" }));
+    const again = await screen.findByRole("alertdialog");
+    expect(within(again).getByRole("button", { name: "Cancel held email" })).toBeEnabled();
+    await user.click(within(again).getByRole("button", { name: "Cancel held email" }));
+    await waitFor(() => expect(calls.filter((c) => c.url.endsWith("/cancel-all")).map((c) => c.body)).toEqual([
+      { heldKey: "a".repeat(64), newestAt: "2026-10-01T00:00:00.000Z" },
+      { heldKey: "c".repeat(64), newestAt: "2026-10-02T00:00:00.000Z" },
+    ]));
   });
 
   it("review M3: a partial cancel says some had already started going out", async () => {

@@ -5,6 +5,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
+import { heldKeyOf } from "../outgoing";
 import { nodSettings, operationsLog, sendJobs } from "../db/schema";
 import type { DistributionClient } from "../distribution-client";
 
@@ -60,7 +61,7 @@ describe("operations routes", () => {
       breakGlassOn: false,
       staffPasswordsOn: false,
       opsEmailSet: false,
-      outgoing: { held: { emails: 0, releases: 0, oldestAt: null, jobs: 0, newestAt: null, groups: [] }, failed: [] },
+      outgoing: { held: { emails: 0, releases: 0, oldestAt: null, jobs: 0, heldKey: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", newestAt: null, groups: [] }, failed: [] },
     });
   });
 
@@ -87,16 +88,17 @@ describe("operations routes", () => {
     await tdb.db.execute(sql`INSERT INTO send_jobs (job_key, kind, created_at) SELECT 'nc:' || g, 'media', now() - (g || ' seconds')::interval FROM generate_series(1, 3000) g`);
     const cancelAll = (tok: string, body: object) => request(app).post("/api/operations/held-email/cancel-all").set("authorization", `Bearer ${tok}`).send(body);
     const newestAt = new Date((await tdb.db.execute<{ t: string }>(sql`SELECT max(created_at) AS t FROM send_jobs`)).rows[0]!.t).toISOString();
-    expect((await cancelAll(editor, { jobs: 3000, newestAt })).status).toBe(403);
-    expect((await cancelAll(admin, { jobs: -1, newestAt })).status).toBe(400);
-    expect((await cancelAll(admin, { jobs: 3000, newestAt: "yesterday" })).status).toBe(400);
-    const running = await cancelAll(admin, { jobs: 3000, newestAt });
+    const heldKey = heldKeyOf((await tdb.db.execute<{ id: string }>(sql`SELECT id FROM send_jobs`)).rows.map((r) => r.id));
+    expect((await cancelAll(editor, { heldKey, newestAt })).status).toBe(403);
+    expect((await cancelAll(admin, { heldKey: "x", newestAt })).status).toBe(400);
+    expect((await cancelAll(admin, { heldKey, newestAt: "yesterday" })).status).toBe(400);
+    const running = await cancelAll(admin, { heldKey, newestAt });
     expect([running.status, running.body]).toEqual([409, { error: "not-paused" }]);
     await tdb.db.update(nodSettings).set({ paused: true }).where(eq(nodSettings.id, 1));
     try {
-      const changed = await cancelAll(admin, { jobs: 2999, newestAt });
+      const changed = await cancelAll(admin, { heldKey: heldKeyOf(["not", "the", "set"]), newestAt });
       expect([changed.status, changed.body]).toEqual([409, { error: "held-changed" }]);
-      const ok = await cancelAll(admin, { jobs: 3000, newestAt });
+      const ok = await cancelAll(admin, { heldKey, newestAt });
       expect([ok.status, ok.body]).toEqual([200, { cancelledJobs: 3000, cancelledEmails: 0 }]);
     } finally {
       await tdb.db.update(nodSettings).set({ paused: false }).where(eq(nodSettings.id, 1));
