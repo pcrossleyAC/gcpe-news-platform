@@ -64,7 +64,7 @@ export const UNDELIVERED_LIMIT = 200;
 const REPLACED = sql`EXISTS (
   SELECT 1 FROM outbox_deliveries d2 JOIN outbox_events e2 ON e2.id = d2.event_id
    WHERE d2.subscriber = d.subscriber AND e2.aggregate_id = e.aggregate_id AND e2.sequence > e.sequence
-     AND ${canReplaceSql(sql`e.type`, sql`e2.type`)})`;
+     AND ${canReplaceSql("e", "e2")})`;
 
 /**
  * Not replaced, but a newer event for its record already reached its subscriber: the receiver would
@@ -148,7 +148,19 @@ export const listUndelivered = (db: Db, limit = UNDELIVERED_LIMIT): Promise<Unde
 /** The updates an administrator dismissed, newest queued first. */
 export const listDismissed = (db: Db, limit = UNDELIVERED_LIMIT): Promise<UndeliveredList> => listByStatus(db, "dismissed", limit);
 
-const requeue = sql`status = 'pending', attempts = 0, next_attempt_at = now(), locked_until = NULL, last_error = NULL`;
+/**
+ * Back in the queue, due now (round 1, N1: behind what is already due) — but just ahead of any newer
+ * delivery for the same record to the same app that is already waiting (round 3, M6). The dispatcher
+ * claims by due time, then queue time and sequence, and the receiver drops an older sequence once a
+ * newer one is applied, so the older one must go first. Used with `outbox_deliveries d` and
+ * `outbox_events e` in scope.
+ */
+const requeue = sql`status = 'pending', attempts = 0, locked_until = NULL, last_error = NULL,
+  next_attempt_at = LEAST(now(), COALESCE((
+    SELECT min(d4.next_attempt_at) - interval '1 millisecond'
+      FROM outbox_deliveries d4 JOIN outbox_events e4 ON e4.id = d4.event_id
+     WHERE d4.subscriber = d.subscriber AND e4.aggregate_id = e.aggregate_id AND e4.sequence > e.sequence
+       AND d4.status = 'pending'), now()))`;
 
 export type RetryOutcome = "queued" | "replaced" | "overtaken" | "not-found";
 

@@ -1,45 +1,78 @@
 import { sql, type SQL } from "drizzle-orm";
 
 /**
- * Suite review fix round 2, M4 (controller ruling 2026-11-01): which newer event for the same record
+ * Suite review fix rounds 2–3 (controller rulings 2026-11-01): which newer event for the same record
  * can stand in for an older one, so the older one never needs sending again (undelivered.ts
- * "replaced"). Defined once, per event family:
+ * "replaced"). One rule per event family, below; anything not listed is never replaced, so it keeps
+ * alerting until it is sent or dismissed.
  *
- * - A full-record event (an upsert, a deactivation, an activity, a terms or settings publish)
- *   is replaced by any newer event of its family: the newer one carries the whole current state.
- * - `release.published` is replaced only by a newer publish or an unpublish. A `release.updated`
- *   can't stand in for it: News On Demand only refreshes an item it already has, and creates or
- *   emails nothing.
- * - An event that is an action rather than a state (a bounce, an organization hand-over, a
- *   rebuild request), or a type not listed here, is never replaced: it keeps alerting until it is
- *   sent or dismissed.
+ * On top of the table: an event that carries a request to email a release again (`emailAgain`) is an
+ * action, which the receiver takes only from the event carrying it. It is replaced only by a newer
+ * event that also carries one, or by the release's unpublish (round 3, M5).
  *
  * Each entry: the older event's types, and the newer types that replace it.
  */
 const RULES: { types: string[]; replacedBy: string[] }[] = [
+  // Releases. News On Demand creates an item, and emails, only from a publish; a correction just
+  // refreshes an item it already has. So only a newer publish, or the unpublish, stands in for a publish.
   { types: ["release.published"], replacedBy: ["release.published", "release.unpublished"] },
+  // A correction is the whole record: any newer publish, correction or unpublish stands in for it.
   { types: ["release.updated"], replacedBy: ["release.published", "release.updated", "release.unpublished"] },
+  // An unpublish is undone or repeated only by a newer publish or unpublish.
   { types: ["release.unpublished"], replacedBy: ["release.published", "release.unpublished"] },
+  // The release's status for the Calendar: the newest is the whole story.
   { types: ["release.status_changed"], replacedBy: ["release.status_changed"] },
-  { types: ["org.upserted", "org.deactivated"], replacedBy: ["org.upserted", "org.deactivated"] },
+
+  // Organizations, terms and media lists (round 3, M5). An upsert is the full record, its active
+  // flag included, so it stands in for an older upsert or deactivation. A deactivation carries only
+  // the key, so it stands in only for an older deactivation: an older upsert (a rename, or the
+  // record's first appearance) still has to be sent.
+  { types: ["org.upserted"], replacedBy: ["org.upserted"] },
+  { types: ["org.deactivated"], replacedBy: ["org.upserted", "org.deactivated"] },
+  ...["sector", "theme", "tag", "service"].flatMap((k) => [
+    { types: [`${k}.upserted`], replacedBy: [`${k}.upserted`] },
+    { types: [`${k}.deactivated`], replacedBy: [`${k}.upserted`, `${k}.deactivated`] },
+  ]),
+  { types: ["media_list.created", "media_list.updated"], replacedBy: ["media_list.created", "media_list.updated"] },
+  { types: ["media_list.deactivated"], replacedBy: ["media_list.created", "media_list.updated", "media_list.deactivated"] },
+
+  // A user: the whole record every time.
   { types: ["user.upserted"], replacedBy: ["user.upserted"] },
-  ...["sector", "theme", "tag", "service"].map((k) => ({ types: [`${k}.upserted`, `${k}.deactivated`], replacedBy: [`${k}.upserted`, `${k}.deactivated`] })),
-  { types: ["media_list.created", "media_list.updated", "media_list.deactivated"], replacedBy: ["media_list.created", "media_list.updated", "media_list.deactivated"] },
+  // Calendar activities: each event carries the whole activity (or its deletion), and NRMS applies
+  // them all through one upsert.
   { types: ["activity.created", "activity.updated", "activity.deleted"], replacedBy: ["activity.created", "activity.updated", "activity.deleted"] },
+  // Website content, settings and government terms: each publish carries the whole current state.
   { types: ["site.content.changed"], replacedBy: ["site.content.changed"] },
   { types: ["site.settings.published"], replacedBy: ["site.settings.published"] },
   { types: ["government_terms.published"], replacedBy: ["government_terms.published"] },
+  // Never replaced, as actions rather than state: delivery.bounced, org.succeeded (a hand-over),
+  // site.rebuild_requested.
 ];
 
 const BY_TYPE = new Map(RULES.flatMap((r) => r.types.map((t) => [t, r.replacedBy] as const)));
 
-/** A newer event of type `newer`, for the same record and receiving app, stands in for one of type `older`. */
-export function canReplace(older: string, newer: string): boolean {
-  return BY_TYPE.get(older)?.includes(newer) ?? false;
+/** The unpublish that also ends any request to email the release again. */
+const WITHDRAW = "release.unpublished";
+
+export interface EventKind {
+  type: string;
+  /** The event carries a request to email the release again. */
+  emailAgain?: boolean;
 }
 
-/** The same rule in SQL, comparing the older event's type column with the newer one's. */
-export function canReplaceSql(older: SQL, newer: SQL): SQL {
-  const cases = [...BY_TYPE].map(([t, by]) => sql`WHEN ${older} = ${t} THEN ${newer} IN (${sql.join(by.map((b) => sql`${b}`), sql`, `)})`);
-  return sql`(CASE ${sql.join(cases, sql` `)} ELSE false END)`;
+/** A newer event, for the same record and receiving app, stands in for the older one. */
+export function canReplace(older: EventKind, newer: EventKind): boolean {
+  if (!(BY_TYPE.get(older.type)?.includes(newer.type) ?? false)) return false;
+  return !older.emailAgain || newer.emailAgain === true || newer.type === WITHDRAW;
+}
+
+/** Whether the event row aliased `alias` carries an email-again request. */
+const emailAgainOf = (alias: string) => sql.raw(`(${alias}.envelope -> 'data' ? 'emailAgain')`);
+
+/** The same rule in SQL, comparing the older event row (alias) with the newer one (alias). */
+export function canReplaceSql(older: string, newer: string): SQL {
+  const o = sql.raw(`${older}.type`);
+  const n = sql.raw(`${newer}.type`);
+  const cases = [...BY_TYPE].map(([t, by]) => sql`WHEN ${o} = ${t} THEN ${n} IN (${sql.join(by.map((b) => sql`${b}`), sql`, `)})`);
+  return sql`((CASE ${sql.join(cases, sql` `)} ELSE false END) AND (NOT ${emailAgainOf(older)} OR ${emailAgainOf(newer)} OR ${n} = ${WITHDRAW}))`;
 }

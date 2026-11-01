@@ -33,7 +33,11 @@ If one part has more than 200 waiting, a line above the table says so, and only 
 
 A row that says "Replaced by a newer update: not sent again" has no **Retry**. A later update about the same record, to the same part of the system, takes its place. For example, a release was published and then unpublished while **Subscribers (News On Demand)** was refusing both. The unpublish is what counts now, so the system never sends the older one again: it would email subscribers about a release that was withdrawn. Send the newer one, or dismiss both. Replaced updates don't count in the health check.
 
-Only an update that carries everything the older one did replaces it. A release's correction doesn't replace its publish: subscribers only hear about a release from the publish.
+Only an update that carries everything the older one did replaces it:
+
+- A release's correction doesn't replace its publish: subscribers only hear about a release from the publish.
+- An update that asked to email a release again is replaced only by a later one that also asks, or by the release's unpublish.
+- A deactivation doesn't replace an earlier change, such as a rename, to the same organization, sector, theme, tag or media list.
 
 ## Overtaken updates
 

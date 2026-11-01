@@ -163,4 +163,22 @@ describe("runOpsChecks", () => {
     expect(asked).toEqual([50, 50]);
     expect(HEALTH_LIMITS.checkTimeoutMs).toBe(2_000);
   });
+
+  // Fix round 3, N8: a check that keeps timing out has stopped being checked, so it turns red.
+  it("turns a check red once it has timed out several times in a row, and clears when it answers", async () => {
+    const timedOut = Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    let slow = true;
+    const s = sources({ overdueScheduled: async () => (slow ? Promise.reject(timedOut) : { count: 0, oldestMinutes: null }) });
+    const streaks = new Map<string, number>();
+    const run = () => runOpsChecks(s, HEALTH_LIMITS, streaks);
+    expect(HEALTH_LIMITS.timeoutsBeforeRed).toBe(3);
+    expect((await run())["releases.overdue"]).toEqual({ ok: null, error: "timed out" });
+    expect((await run())["releases.overdue"]).toEqual({ ok: null, error: "timed out" });
+    expect((await run())["releases.overdue"]).toEqual({ ok: false, error: "timed out repeatedly" });
+    expect((await run())["releases.overdue"]).toEqual({ ok: false, error: "timed out repeatedly" });
+    slow = false;
+    expect((await run())["releases.overdue"]!.ok).toBe(true);
+    slow = true;
+    expect((await run())["releases.overdue"]).toEqual({ ok: null, error: "timed out" });
+  });
 });

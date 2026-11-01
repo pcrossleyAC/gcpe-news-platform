@@ -1616,8 +1616,10 @@ stack has been up longer than that check's limit. A check that can't be read say
 `"error": "couldn't check"` and is red. Each check's queries are cancelled after 2 seconds
 (`HEALTH_LIMITS.checkTimeoutMs`), so the whole answer stays well inside the deploy's 10-second health
 wait however big the tables grow; a check that ran out of time says `"ok": null, "error": "timed out"`:
-unknown, which doesn't make the answer `degraded`. If one keeps timing out, the database is slow:
-look at it.
+unknown, which doesn't make the answer `degraded`. A check that times out three answers in a row
+(`HEALTH_LIMITS.timeoutsBeforeRed`) says `"ok": false, "error": "timed out repeatedly"` and makes
+it `degraded`, so the monitor notices: the database is slow, look at it. It clears at the first
+answer that gets through.
 
 **Without a monitoring service**, a scheduled task on the app server can email the team. Save as
 `C:\gcpe\config\Watch-GcpeHealth.ps1` (fill in the mail server and addresses):

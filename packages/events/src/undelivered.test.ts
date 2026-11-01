@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { createTestDatabase, dbClock, type TestDatabase } from "@gcpe/db-kit";
 import { dispatchOnce } from "./dispatcher";
@@ -159,6 +161,34 @@ describe("undelivered updates", () => {
     });
   });
 
+  // Fix round 3, M5.
+  describe("an update a newer one can't fully stand in for", () => {
+    const emailAgain = { seq: 1, subscribers: true, mediaLists: false, requestedBy: "Pat Editor", requestedAt: "2026-10-31T10:00:00-07:00" };
+
+    it("a correction asking to email it again is not replaced by a later plain correction, and keeps alerting", async () => {
+      const asked = await deadEvent({ type: "release.updated", source: "nrms", aggregateId: "release:ea", data: { ...sampleRelease, notify: true, emailAgain } });
+      const plain = await enqueueEvent(tdb.db, { type: "release.updated", source: "nrms", aggregateId: "release:ea", data: { ...sampleRelease, notify: false } }, subs);
+      await tdb.pool.query("UPDATE outbox_deliveries SET status = 'delivered' WHERE event_id = $1", [plain.id]);
+      const item = (await listUndelivered(tdb.db)).items.find((i) => i.eventId === asked.id)!;
+      expect(item.replaced).toBe(false);
+      expect(await outboxHealth(tdb.db, { recentMs: 7 * 24 * HOUR })).toMatchObject({ undelivered: 1, replaced: 0, recentUndelivered: 1 });
+    });
+
+    it("a correction asking to email it again is replaced by the release's unpublish", async () => {
+      const asked = await deadEvent({ type: "release.updated", source: "nrms", aggregateId: "release:eb", data: { ...sampleRelease, notify: true, emailAgain } });
+      await deadEvent({ type: "release.unpublished", source: "nrms", aggregateId: "release:eb", data: { key: sampleRelease.key } });
+      expect((await listUndelivered(tdb.db)).items.find((i) => i.eventId === asked.id)!.replaced).toBe(true);
+    });
+
+    it("a rename then a deactivation, both undelivered: the rename isn't replaced, and Retry all resends both", async () => {
+      const renamed = await deadEvent({ type: "media_list.updated", source: "nrms", aggregateId: "media_list:radio", data: { key: "radio", displayName: "Radio (new)", sortOrder: 1, isActive: true } });
+      const deactivated = await deadEvent({ type: "media_list.deactivated", source: "nrms", aggregateId: "media_list:radio", data: { key: "radio" } });
+      expect((await listUndelivered(tdb.db)).items.find((i) => i.eventId === renamed.id)!.replaced).toBe(false);
+      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 2, replaced: 0, overtaken: 0 });
+      expect(deactivated.sequence).toBeGreaterThan(renamed.sequence);
+    });
+  });
+
   // Suite review M1: an update an administrator decided not to send.
   describe("dismissing", () => {
     it("takes one off the list and out of health, onto the dismissed list, and it can't be retried", async () => {
@@ -205,5 +235,49 @@ describe("undelivered updates", () => {
     await tdb.pool.query("ANALYZE outbox_events");
     const plan = (await tdb.pool.query("EXPLAIN SELECT * FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id WHERE d.status = 'dead' AND EXISTS (SELECT 1 FROM outbox_deliveries d2 JOIN outbox_events e2 ON e2.id = d2.event_id WHERE d2.subscriber = d.subscriber AND e2.aggregate_id = e.aggregate_id AND e2.sequence > e.sequence)")).rows.map((r) => r["QUERY PLAN"]).join("\n");
     expect(plan).toContain("outbox_events_aggregate_seq_idx");
+  });
+
+  // Fix round 3, M6: a retried update goes out before a newer one for the same record that is
+  // already waiting, or the receiver would apply the newer one first and drop the retried one as stale.
+  describe("a retried update and a newer one already waiting", () => {
+    let server: Server;
+    let received: string[] = [];
+    let live: SubscriberConfig[];
+    beforeAll(async () => {
+      server = createServer((req, res) => {
+        received.push(String(req.headers["x-event-id"]));
+        req.resume();
+        req.on("end", () => res.end());
+      });
+      await new Promise<void>((r) => server.listen(0, r));
+      live = [{ name: "nod", url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/events`, secret: "k", types: ["*"] }];
+    });
+    afterAll(() => {
+      server.close();
+    });
+
+    async function publishDeadUpdateWaiting() {
+      received = [];
+      const published = await enqueueEvent(tdb.db, { type: "release.published", source: "nrms", aggregateId: "release:m6", data: sampleRelease }, live);
+      const updated = await enqueueEvent(tdb.db, { type: "release.updated", source: "nrms", aggregateId: "release:m6", data: { ...sampleRelease, notify: false } }, live);
+      await tdb.pool.query("UPDATE outbox_deliveries SET status = 'dead', attempts = 9, last_error = 'HTTP 503' WHERE event_id = $1", [published.id]);
+      // The correction is in backoff and already due again.
+      await tdb.pool.query("UPDATE outbox_deliveries SET attempts = 3, next_attempt_at = now() - interval '1 minute' WHERE event_id = $1", [updated.id]);
+      return { published, updated };
+    }
+
+    it("Retry sends the older one first", async () => {
+      const { published, updated } = await publishDeadUpdateWaiting();
+      expect(await retryUndelivered(tdb.db, published.id, "nod")).toBe("queued");
+      expect(await dispatchOnce({ db: tdb.db, subscribers: live })).toEqual({ delivered: 2, retried: 0, dead: 0 });
+      expect(received).toEqual([published.id, updated.id]);
+    });
+
+    it("Retry all sends the older one first too", async () => {
+      const { published, updated } = await publishDeadUpdateWaiting();
+      expect(await retryAllUndelivered(tdb.db)).toMatchObject({ retried: 1 });
+      await dispatchOnce({ db: tdb.db, subscribers: live });
+      expect(received).toEqual([published.id, updated.id]);
+    });
   });
 });

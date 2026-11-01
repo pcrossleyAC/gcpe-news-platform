@@ -35,6 +35,9 @@ export const HEALTH_LIMITS = {
    * waiting for it a moment later, so /stack/health stays well inside the 10 s a deploy's health
    * wait allows. A check past it reports "timed out" with `ok: null` (unknown), not red. */
   checkTimeoutMs: 2_000,
+  /** Fix round 3, N8: a check that times out this many health computations in a row has stopped
+   * being checked at all, so it turns red ("timed out repeatedly") until it answers again. */
+  timeoutsBeforeRed: 3,
 };
 
 export type HealthLimits = typeof HEALTH_LIMITS;
@@ -56,6 +59,8 @@ export interface OpsSources {
 const UNREADABLE: Check = { ok: false, error: "couldn't check" };
 /** Fix round 2, I2: took longer than HEALTH_LIMITS.checkTimeoutMs; unknown, not red. */
 const TIMED_OUT: Check = { ok: null, error: "timed out" };
+/** Fix round 3, N8: timed out several computations in a row: red. */
+const TIMED_OUT_REPEATEDLY: Check = { ok: false, error: "timed out repeatedly" };
 const failed = (v: unknown): v is Check => v === UNREADABLE || v === TIMED_OUT;
 
 /** The source's answer; or TIMED_OUT when the database cancelled it, or it didn't answer in time; or UNREADABLE. */
@@ -77,7 +82,10 @@ async function readOr<T>(read: () => Promise<T>, timeoutMs: number): Promise<T |
 /** Within `max` minutes; a thing that never ran is late only once the process has been up longer than `max`. */
 const fresh = (minutesAgo: number | null, max: number, uptime: number) => (minutesAgo === null ? uptime <= max : minutesAgo <= max);
 
-export async function runOpsChecks(s: OpsSources, L: HealthLimits = HEALTH_LIMITS): Promise<Record<string, Check>> {
+/** Fix round 3, N8: each check's run of consecutive timeouts, kept by the caller across computations. */
+export type TimeoutStreaks = Map<string, number>;
+
+export async function runOpsChecks(s: OpsSources, L: HealthLimits = HEALTH_LIMITS, streaks: TimeoutStreaks = new Map()): Promise<Record<string, Check>> {
   const uptime = s.uptimeMinutes();
   const recentMs = L.undeliveredRecentDays * 24 * 3_600_000;
   const t = L.checkTimeoutMs;
@@ -120,5 +128,14 @@ export async function runOpsChecks(s: OpsSources, L: HealthLimits = HEALTH_LIMIT
     checks["nod.send-loop"] = nod;
   }
   checks["site.rebuild-queue"] = failed(queue) ? queue : { ok: (queue.oldestMinutes ?? 0) <= L.rebuildQueueOldestMaxMinutes, pages: queue.pages, oldestMinutes: queue.oldestMinutes };
+  for (const [name, check] of Object.entries(checks)) {
+    if (check !== TIMED_OUT) {
+      streaks.delete(name);
+      continue;
+    }
+    const n = (streaks.get(name) ?? 0) + 1;
+    streaks.set(name, n);
+    if (n >= L.timeoutsBeforeRed) checks[name] = TIMED_OUT_REPEATEDLY;
+  }
   return checks;
 }

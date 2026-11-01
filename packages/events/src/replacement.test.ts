@@ -17,24 +17,44 @@ describe("canReplace", () => {
     ["release.unpublished", "release.published", true],
     ["release.unpublished", "release.updated", false],
     ["release.status_changed", "release.status_changed", true],
-    ["org.upserted", "org.deactivated", true],
+    // Fix round 3, M5: a key-only deactivation can't stand in for an upsert; an upsert (a full
+    // record, active flag included) stands in for either.
+    ["org.upserted", "org.deactivated", false],
+    ["org.upserted", "org.upserted", true],
     ["org.deactivated", "org.upserted", true],
+    ["org.deactivated", "org.deactivated", true],
     ["org.succeeded", "org.upserted", false],
     ["org.upserted", "org.succeeded", false],
-    ["sector.upserted", "sector.deactivated", true],
+    ["sector.upserted", "sector.deactivated", false],
+    ["sector.deactivated", "sector.upserted", true],
     ["sector.upserted", "theme.upserted", false],
     ["media_list.created", "media_list.updated", true],
+    ["media_list.updated", "media_list.deactivated", false],
+    ["media_list.deactivated", "media_list.updated", true],
     ["activity.created", "activity.deleted", true],
     ["activity.deleted", "activity.updated", true],
     ["delivery.bounced", "delivery.bounced", false],
     ["site.rebuild_requested", "site.rebuild_requested", false],
     ["government_terms.published", "government_terms.published", true],
   ])("%s is replaced by a newer %s: %s", (older, newer, expected) => {
+    expect(canReplace({ type: older }, { type: newer })).toBe(expected);
+  });
+
+  // Fix round 3, M5: a request to email a release again is an action the receiver takes only from
+  // the event that carries it.
+  it.each([
+    [{ type: "release.updated", emailAgain: true }, { type: "release.updated" }, false],
+    [{ type: "release.updated", emailAgain: true }, { type: "release.updated", emailAgain: true }, true],
+    [{ type: "release.published", emailAgain: true }, { type: "release.published" }, false],
+    [{ type: "release.published", emailAgain: true }, { type: "release.updated", emailAgain: true }, false],
+    [{ type: "release.updated", emailAgain: true }, { type: "release.unpublished" }, true],
+    [{ type: "release.updated" }, { type: "release.updated", emailAgain: true }, true],
+  ])("%o is replaced by a newer %o: %s", (older, newer, expected) => {
     expect(canReplace(older, newer)).toBe(expected);
   });
 
   it("names every catalogue type it knows in some rule, and an unknown type replaces only nothing", () => {
-    expect(canReplace("something.new", "something.new")).toBe(false);
-    for (const type of Object.keys(eventDataSchemas)) expect(typeof canReplace(type, type)).toBe("boolean");
+    expect(canReplace({ type: "something.new" }, { type: "something.new" })).toBe(false);
+    for (const type of Object.keys(eventDataSchemas)) expect(typeof canReplace({ type }, { type })).toBe("boolean");
   });
 });

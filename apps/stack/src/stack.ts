@@ -43,7 +43,7 @@ import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { checkCalendarDbTimeZone, pgOffsetOf, type DbTimeZoneStatus } from "./db-time-zone";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { groupErrors, installErrorCapture, type ErrorEntry } from "./errors";
-import { runOpsChecks, type Check, type OpsSources } from "./ops-checks";
+import { HEALTH_LIMITS, runOpsChecks, type Check, type OpsSources, type TimeoutStreaks } from "./ops-checks";
 import { undeliveredRouter } from "./undelivered";
 import { mountSite, rootSiteNotFound, siteBasePath } from "./site-mount";
 import {
@@ -276,6 +276,8 @@ function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "
   if (withCalendar) checks.push({ name: "calendar", path: "/calendar/health/ready" });
   let cached: { expiresAt: number; status: number; body: { status: string; apps: Record<string, boolean>; checks: Record<string, Check> } } | undefined;
   const r = Router();
+  // Fix round 3, N8: kept across computations so a check that keeps timing out turns red.
+  const timeoutStreaks: TimeoutStreaks = new Map();
   type Computed = { status: number; body: { status: string; apps: Record<string, boolean>; checks: Record<string, Check> } };
   const compute = async (): Promise<Computed> => {
     const apps: Record<string, boolean> = {};
@@ -290,7 +292,7 @@ function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "
           }
         }),
       ),
-      runOpsChecks(ops),
+      runOpsChecks(ops, HEALTH_LIMITS, timeoutStreaks),
     ]);
     // Suite review O2.1 (owner 2026-10-31): an app down is "unavailable" (503, as before); every app
     // up but a background check red is "degraded", still 200 so a load balancer or the deploy's
