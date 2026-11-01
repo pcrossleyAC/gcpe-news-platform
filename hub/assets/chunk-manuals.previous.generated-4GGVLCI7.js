@@ -19,7 +19,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <tr>
 <td><strong>Calendar access</strong></td>
 <td>Each person&#39;s Calendar role and ministries.</td>
-<td>The person you change, within a minute. Calendar administrators use this screen too.</td>
+<td>The person you change, within a minute. Calendar administrators and Calendar system administrators use this screen too, with limits that don&#39;t apply to you.</td>
 <td><a href="/hub/help/manuals/core-admin/calendar-access">Calendar access</a></td>
 </tr>
 <tr>
@@ -138,10 +138,10 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Change someone&#39;s account</h2>
 <ol>
 <li>Find the person and choose <strong>Edit</strong> on their row. Their settings open under the row.</li>
-<li>Make one change, then choose the button beside it:<ul>
-<li>To rename them, change the display name and choose <strong>Save name</strong>.</li>
-<li>To change what they can do, tick or untick roles and choose <strong>Save roles</strong>. Saving replaces all their roles with the ticked ones.</li>
-<li>To set a new password, type it and choose <strong>Set password</strong>. You see &quot;Password updated.&quot; This only appears for people who sign in with a password.</li>
+<li>Make one change, then choose the button beside it. Each button saves only its own part:<ul>
+<li>To rename them, change the display name and choose <strong>Save name</strong>. Until you do, &quot;Name not saved yet.&quot; shows beside it.</li>
+<li>To change what they can do, tick or untick roles and choose <strong>Save roles</strong>. Until you do, &quot;Roles not saved yet.&quot; shows beside it. Saving replaces all their roles with the ticked ones.</li>
+<li>Under <strong>Account</strong>, each action takes effect on its own: <strong>Active</strong>, <strong>Unlink Microsoft sign-in</strong>, and <strong>Set password</strong>. To set a new password, type it and choose <strong>Set password</strong>. You see &quot;Password updated.&quot; This only appears for people who sign in with a password.</li>
 </ul>
 </li>
 <li>Choose <strong>Close</strong> on their row when you are done. Anything you typed but did not save stays there until you leave the page.</li>
@@ -207,7 +207,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The person was linked already. Reload the page.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},o={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+`,changed:"2026-10-31"},o={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p><strong>Calendar access</strong> gives staff a Calendar role and the ministries they work for. Calendar administrators and Calendar system administrators use this screen too, but with limits that don&#39;t apply to you.</p>
 <p>The table shows each person&#39;s <strong>Name</strong>, <strong>Email</strong>, <strong>Calendar role</strong> and <strong>Ministries</strong>. Inactive people are hidden until you tick <strong>Show inactive users, including those with no email</strong>.</p>
 <h2>The Calendar roles</h2>
@@ -239,9 +239,9 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>You may change anyone, including yourself. Calendar administrators and Calendar system administrators can&#39;t, and the screen shows them a note instead of <strong>Edit</strong>:</p>
 <ul>
 <li>&quot;You can&#39;t change your own Calendar access.&quot;</li>
-<li>&quot;Only a System Administrator or a Core admin can change this user&#39;s access.&quot;</li>
-<li>&quot;Only an HQ Administrator, a System Administrator or a Core admin can change this user&#39;s access.&quot;</li>
-<li>&quot;Only a Core admin can give Calendar access to an inactive user who has none.&quot;</li>
+<li>&quot;Only a System Administrator or a Core administrator can change this user&#39;s access.&quot;</li>
+<li>&quot;Only an HQ Administrator, a System Administrator or a Core administrator can change this user&#39;s access.&quot;</li>
+<li>&quot;Only a Core administrator can give Calendar access to an inactive user who has none.&quot;</li>
 </ul>
 <p>When one of them sends a request like this to you, make the change yourself.</p>
 <h2>Can&#39;t do this?</h2>
@@ -257,8 +257,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Tick a ministry, or choose <strong>No Calendar access</strong>.</td>
 </tr>
 <tr>
-<td>&quot;unknown or inactive ministry: health&quot;</td>
-<td>The named ministry (shown by its short web name) was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
+<td>&quot;Health is no longer active or doesn&#39;t exist. Untick it, then save again.&quot;</td>
+<td>The named ministry was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
 </tr>
 </tbody></table></div>
 `,changed:"2026-10-30"},r={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
@@ -272,7 +272,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li><strong>Ministry name (required)</strong> and <strong>Additional display name</strong>, which shows in brackets under the ministry on the Media Contacts page.</li>
 <li><strong>Abbreviation</strong> and <strong>Parent ministry</strong>, straight after the names. Only you see these.</li>
 <li><strong>Sort order</strong>: a whole number that places the ministry in lists.</li>
-<li><strong>Minister name</strong> (with the title, such as &quot;Honourable Jane Doe&quot;), <strong>Minister summary</strong>, <strong>Minister email</strong> and <strong>Minister photo URL</strong>. Upload the photo under <strong>Website</strong> &gt; <strong>Files</strong> first, then paste its address. A preview appears once the address starts with https://.</li>
+<li><strong>Minister name</strong> (with the title, such as &quot;Honourable Jane Doe&quot;), <strong>Minister summary</strong>, <strong>Minister email</strong> and <strong>Minister photo URL</strong>. Upload the photo under <strong>Website</strong> &gt; <strong>Files</strong> first, choose <strong>Copy public address</strong> beside it, then paste the address. A preview appears once the address starts with https://. An address copied from the Hub itself shows &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot; Visitors couldn&#39;t see that photo.</li>
 <li><strong>Minister biography</strong>: shown on the minister&#39;s biography page, linked as Read Bio. <strong>Clear the biography</strong> removes that page. After you rename the minister, a note warns &quot;The biography still describes the previous minister.&quot;</li>
 <li><strong>Meet the Team links</strong>, <strong>Media contacts</strong> (<strong>Primary contact</strong>, <strong>Alternate contact</strong>, <strong>After-hours phone</strong>) and <strong>Ministry page links</strong> (<strong>Ministry website</strong>, <strong>Photos (Flickr) address</strong>, <strong>Videos (YouTube) address</strong>, <strong>Featured Topics</strong>, <strong>Featured Services</strong>).</li>
 <li><strong>Active</strong>, last, before <strong>Save</strong>. Only you see it.</li>
@@ -378,7 +378,165 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>That successor was itself handed over to this ministry. Choose a different successor.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},a=null,i=null,d={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+`,changed:"2026-10-31"},a={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Cabinet change</strong> lets you prepare every ministry change for a new cabinet, then publish them all together, right away or at the swearing-in time. Open it from the <strong>Cabinet change</strong> link on <strong>Organizations</strong>. Nothing changes on the public site or for staff until you publish.</p>
+<p>One cabinet change is open at a time. It saves as you go, so you can leave and come back.</p>
+<h2>Add the changes</h2>
+<p>To merge ministries, add the new ministry first, then hand each old ministry over to it. To split one, hand it over to more than one successor. To abolish one, hand it over with no successor.</p>
+<ol>
+<li>Under <strong>Add a change</strong>, choose one of:<ul>
+<li><strong>Rename or change a ministry</strong>: pick the <strong>Ministry</strong>, then change its <strong>Name</strong>, <strong>Abbreviation</strong> or <strong>Minister</strong>. Renaming keeps the ministry&#39;s web address, subscribers and staff.</li>
+<li><strong>Add a new ministry</strong>: enter its <strong>Name</strong>, and optionally its <strong>Abbreviation (optional)</strong> and <strong>Minister (optional)</strong>.</li>
+<li><strong>Hand over a ministry</strong>: pick the <strong>Ministry to hand over</strong>, then its <strong>Successor</strong>. A new ministry added in this change can be the successor. Choose &quot;No successor (abolish it)&quot; to close it with nothing moved. The &quot;What moves to \u2026&quot; boxes work as on <a href="/hub/help/manuals/core-admin/organizations">Organizations</a>.</li>
+</ul>
+</li>
+<li>Choose <strong>Add this change</strong>. You see &quot;Added:&quot; and a summary. The change is listed under &quot;Changes in this cabinet change&quot;.</li>
+</ol>
+<p><strong>Remove</strong> beside a change takes it out. Removing a new ministry also removes the hand-overs to it, and the page says which.</p>
+<h2>Preview</h2>
+<ol>
+<li>Choose <strong>Preview</strong>. It runs the whole change without saving it.</li>
+<li>Read &quot;What will change&quot;: each ministry, <strong>Now</strong> and <strong>After publishing</strong>. Then &quot;What each hand-over moves&quot; and &quot;Ministries after this change&quot;.</li>
+<li>If you see &quot;Fix these before publishing&quot;, fix each problem listed, then choose <strong>Preview again</strong>.</li>
+</ol>
+<p>When it says &quot;No problems found. You can publish it or schedule it below.&quot;, you can publish.</p>
+<h2>Publish now</h2>
+<ol>
+<li>Under <strong>Publish</strong>, choose <strong>Publish now\u2026</strong>. The page asks &quot;Publish these {n} changes now? This can&#39;t be undone in one step.&quot;</li>
+<li>Choose <strong>Yes, publish now</strong>, or <strong>Not yet</strong> to go back.</li>
+</ol>
+<p>You see &quot;The cabinet change is published.&quot;</p>
+<h2>Schedule it for the swearing-in</h2>
+<ol>
+<li>Under <strong>Publish</strong>, choose <strong>Schedule\u2026</strong>.</li>
+<li>Enter the <strong>Date</strong> and <strong>Time (BC time)</strong> under &quot;Publish at (BC time)&quot;, usually the swearing-in time.</li>
+<li>Choose <strong>Schedule</strong>. The page shows &quot;Publishes on {date} at {time} Pacific.&quot;</li>
+</ol>
+<p>It publishes by itself; nobody needs to be there. Until then you can still edit it, publish it now, or choose <strong>Don&#39;t publish at that time (keep it as a draft)</strong>. Editing a scheduled change takes it off its schedule: preview it and schedule it again.</p>
+<h2>Start over</h2>
+<p>Choose <strong>Discard this cabinet change\u2026</strong>, then <strong>Yes, discard it</strong>. Nothing is published.</p>
+<h2>What happens next</h2>
+<ul>
+<li>Publishing makes every change at once: all of it or none of it.</li>
+<li>The public Ministries page updates within a few minutes.</li>
+<li>Old ministry pages send visitors to their successors.</li>
+<li>Subscribers, staff, Calendar activities and draft releases move to their new ministries shortly after.</li>
+<li>If a scheduled publish can&#39;t go through, the change goes back to a draft and the page shows &quot;This change wasn&#39;t published&quot; with the reason. Nothing is half done. Fix it, preview again, then publish or schedule it.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Changed by someone else since you added this.&quot;</td>
+<td>Someone edited that ministry after you added the change. Check it on <strong>Organizations</strong>, then choose <strong>Keep this change</strong> or <strong>Remove</strong>.</td>
+</tr>
+<tr>
+<td>&quot;{ministries} would both use the abbreviation {abbreviation}.&quot;</td>
+<td>Two active ministries would end up with the same abbreviation. Change one.</td>
+</tr>
+<tr>
+<td>&quot;{ministry} is handed over more than once in this change.&quot;</td>
+<td>Remove one of the hand-overs.</td>
+</tr>
+<tr>
+<td>&quot;{successor} is handed over in this change, so it can&#39;t also take over {ministry}&#39;s work.&quot;</td>
+<td>Hand the ministry straight to the final ministry instead.</td>
+</tr>
+<tr>
+<td>&quot;Choose a successor for {ministry}, or choose \u201CNo successor (abolish it)\u201D.&quot;</td>
+<td>The hand-over has no successor. Remove it and add it again.</td>
+</tr>
+<tr>
+<td>&quot;Nothing was published. Fix the problems listed under Preview, then try again.&quot;</td>
+<td>Preview found problems. Fix them first.</td>
+</tr>
+<tr>
+<td>&quot;Enter the date and time to publish.&quot;</td>
+<td>Fill in both fields before <strong>Schedule</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Nothing was scheduled. Choose a time in the future.&quot;</td>
+<td>The time you entered has passed.</td>
+</tr>
+<tr>
+<td>&quot;This cabinet change is no longer open. Someone else may have published or discarded it.&quot;</td>
+<td>Reload the page to see what happened.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},i={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Government terms</strong> sets the dates of each government term. The public archive groups releases by term. You enter only a start date: a term runs until the day before the next one starts, so terms never overlap and no end date is typed.</p>
+<p>The table &quot;Government terms, newest first&quot; shows each term&#39;s <strong>Term</strong>, <strong>Dates</strong>, <strong>Status</strong> and how many <strong>Releases</strong> it holds. <strong>Status</strong> is Current, Past, Scheduled or Undated.</p>
+<h2>Start a new government term</h2>
+<p>Do this as soon as the swearing-in date is announced. You can enter it weeks ahead.</p>
+<ol>
+<li>Choose <strong>Start new government term</strong>.</li>
+<li>Enter the <strong>Start date (required)</strong>: the first day of the new government, normally the swearing-in date.</li>
+<li>Leave <strong>Name (optional)</strong> empty unless you want one. The public archive always shows the term&#39;s dates, with the name beside them if there is one.</li>
+<li>Choose <strong>Continue</strong>. The Hub asks you to confirm, for example &quot;Start a new government term on November 20, 2028? The current term will end November 19, 2028. Releases published from that day are listed under the new term.&quot;</li>
+<li>Check the dates: the start date decides where every release is listed in the archive.</li>
+<li>Choose <strong>Confirm</strong>, or <strong>Go back</strong> to change the date.</li>
+</ol>
+<p>You see &quot;Saved. The archive switches to the new term on {date}.&quot; If the date is today or earlier, you see &quot;Saved. The new term is now the current term.&quot;</p>
+<h2>Fix a term&#39;s dates or name</h2>
+<ol>
+<li>Choose <strong>Edit</strong> on the term&#39;s row.</li>
+<li>Change the <strong>Name</strong>, the <strong>Start date</strong>, or the <strong>Old archive web address</strong>. The address is optional and must start with https://.</li>
+<li>Choose <strong>Save</strong>.</li>
+<li>If the term has already started and you changed its start date, the Hub asks first, because releases move between terms: &quot;Change the start date to {date}? Releases published from that day will be listed under this term, and the term before it will end the day before.&quot; Choose <strong>Confirm</strong>.</li>
+</ol>
+<p>You see &quot;Saved.&quot; The archive pages and the current-term link rebuild by themselves.</p>
+<h2>Delete a scheduled term</h2>
+<p><strong>Delete</strong> appears only on a term that hasn&#39;t started and has no releases.</p>
+<ol>
+<li>Choose <strong>Delete</strong> on its row. The Hub asks &quot;Delete the term starting {date}? Nothing is listed under it yet, and the current term stays as it is.&quot;</li>
+<li>Choose <strong>Confirm</strong>. You see &quot;The term starting {date} is deleted.&quot;</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>Each release is listed under the term that covers the day it was published, in BC time. A release published at 11:59 p.m. the day before the start date stays in the old term. One published at 12:00 a.m. on the start date is in the new term.</li>
+<li>At midnight Pacific on the start date, the public archive gets a page for the new term, and its current-term link points there. This happens even if nothing is published that day.</li>
+<li>Until the first release, the new term&#39;s page says &quot;Nothing has been published in this term yet.&quot;</li>
+<li>An undated term never counts as current and is left out of the public archive. Give it a start date with <strong>Edit</strong>.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Another term already starts on that date.&quot;</td>
+<td>Choose a different start date.</td>
+</tr>
+<tr>
+<td>&quot;Must be after {date} and before {date}.&quot;</td>
+<td>A term&#39;s start date can&#39;t move past its neighbours. Choose a date between the two shown.</td>
+</tr>
+<tr>
+<td>&quot;A term that has started can&#39;t be moved to a date after today.&quot;</td>
+<td>Start a new term instead.</td>
+</tr>
+<tr>
+<td>&quot;Only a term that hasn&#39;t started can be deleted.&quot;</td>
+<td>Started terms stay. Fix their dates with <strong>Edit</strong>.</td>
+</tr>
+<tr>
+<td>&quot;A term with releases can&#39;t be deleted.&quot;</td>
+<td>Releases are already listed under it.</td>
+</tr>
+<tr>
+<td>&quot;No changes to save.&quot;</td>
+<td>Nothing in the form changed.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},d={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p><strong>Sectors, themes and tags</strong> keeps the three lists that release editors use to file releases. The public site has a page for each one, and subscribers can follow them.</p>
 <p>Choose <strong>Sectors</strong>, <strong>Themes</strong> or <strong>Tags</strong> under <strong>Show</strong> to see one list. Each row has a <strong>Key</strong>, a <strong>Name</strong>, an <strong>Order</strong> and an <strong>Active</strong> box. The key is part of the public web address and never changes.</p>
 <h2>Rename, reorder or retire entries</h2>
@@ -432,10 +590,6 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The key is taken, and the message names the entry that has it. Choose another key. To bring a retired entry back, tick <strong>Active</strong> on its row.</td>
 </tr>
 <tr>
-<td>&quot;That key is already used. To bring a retired one back, tick Active on its row.&quot;</td>
-<td>You renamed or changed a row, and the key matches another entry except for capital letters. Use the existing row.</td>
-</tr>
-<tr>
 <td>&quot;{n} rows couldn&#39;t be saved \u2014 see the message on those rows.&quot;</td>
 <td>The other rows were saved. Fix the rows with a message and save again.</td>
 </tr>
@@ -444,8 +598,72 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Nothing was changed.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},h=null,l={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
-<p><strong>Media list names</strong> decides which media lists exist, what they are called and the order they appear in. Release editors pick these lists to send a release to reporters. The reporters on each list are managed by News On Demand staff under <strong>Subscribers</strong> &gt; <strong>Media lists</strong>.</p>
+`,changed:"2026-10-30"},h={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Release page titles</strong> lists the titles a new release can choose, such as News Release or Information Bulletin. The title shows above the headline on the public release page.</p>
+<p>Titles are grouped by release type: Release, Story, Factsheet, Update and Advisory. Each row has a <strong>Page title</strong>, <strong>Language</strong> (English or French), <strong>Order</strong>, <strong>Layout</strong> (Formal or Informal) and <strong>Page image</strong>.</p>
+<h2>Change a page title</h2>
+<ol>
+<li>Change the fields on the row.</li>
+<li>Choose <strong>Save</strong> on that row. You see &quot;Saved {title}.&quot;</li>
+</ol>
+<h2>Add a page title</h2>
+<ol>
+<li>Under <strong>Add a page title</strong>, choose the <strong>Type</strong>.</li>
+<li>Enter the <strong>Page title</strong>: up to 50 characters, without &lt; or &gt;.</li>
+<li>Choose the <strong>Language</strong>. Release editors choosing a title on <strong>New release</strong> see the English titles.</li>
+<li>Leave <strong>Order</strong> as suggested, or change it. Lower numbers come first.</li>
+<li>Choose the <strong>Layout</strong> and <strong>Page image</strong> that a new release with this title starts with. A Formal document has an organizations line; an Informal document has a byline.</li>
+<li>Choose <strong>Add page title</strong>. You see &quot;Added {title}.&quot;</li>
+</ol>
+<h2>Delete a page title</h2>
+<ol>
+<li>Choose <strong>Delete</strong> on its row. The Hub asks &quot;Delete {title}?&quot; and explains &quot;New releases can no longer choose it. Releases that already use it keep it.&quot;</li>
+<li>Choose <strong>Delete</strong>.</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>Release editors see the change the next time they open <strong>New release</strong>.</li>
+<li>A release keeps the title it was given. To change a published release&#39;s title, edit that release.</li>
+</ul>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Page title is required.&quot;</td>
+<td>Enter a title.</td>
+</tr>
+<tr>
+<td>&quot;Page title can&#39;t contain &lt; or &gt;.&quot;</td>
+<td>Remove those characters.</td>
+</tr>
+<tr>
+<td>&quot;Order must be a whole number from 0 to 9999.&quot;</td>
+<td>Fix the order.</td>
+</tr>
+<tr>
+<td>&quot;A page title with that name already exists in that language.&quot;</td>
+<td>Choose another title, or edit the existing one.</td>
+</tr>
+<tr>
+<td>&quot;This is the only English page title for {type}. Add another first.&quot;</td>
+<td>Each release type needs at least one English title. Add the new one, then delete the old one.</td>
+</tr>
+<tr>
+<td>&quot;That page image does not exist.&quot;</td>
+<td>The image was removed. Choose another one.</td>
+</tr>
+<tr>
+<td>&quot;That page title no longer exists.&quot;</td>
+<td>Someone else deleted or renamed it. The list reloads.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},l={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+<p><strong>Media list names</strong> decides which media lists exist, what they are called and the order they appear in. Release editors pick these lists to send a release to reporters. The reporters on each list are managed by News On Demand staff under <strong>Subscribers</strong> &gt; <strong>Media lists</strong>. If you also have a News on Demand role, the screen&#39;s &quot;Subscribers, Media lists&quot; is a link there.</p>
 <p>Each row has a <strong>Key</strong>, a <strong>Name</strong>, an <strong>Order</strong> and an <strong>Active</strong> box.</p>
 <h2>Rename or reorder a list</h2>
 <ol>
@@ -495,7 +713,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Enter a number such as 3.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},g=null,u={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+`,changed:"2026-10-31"},g=null,u={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p>In <strong>Website</strong>, the one thing only you can change is <strong>Project Blue Bridge</strong>: the switch that puts the public site into mourning when the King dies. Everything else in <strong>Website</strong> is view-only for you.</p>
 <h2>What you can and can&#39;t change in Website</h2>
 <p>You can open every <strong>Website</strong> tab: <strong>Carousel</strong>, <strong>Emergency pins</strong>, <strong>Live Feed</strong>, <strong>What&#39;s featured where</strong>, <strong>Resource links</strong>, <strong>Files</strong>, <strong>Website log</strong> and <strong>Site settings</strong>. You see what is live, but there are no <strong>Save</strong> or <strong>Publish</strong> buttons.</p>
@@ -532,7 +750,67 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Someone else changed the switch while you had the page open. Choose <strong>Reload</strong> and check its state.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},c=null,p={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},c={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p>You run what the public news site shows around the news releases: the home page carousel, emergency notices, links, files, the banner, the footer, colours and wording. You also keep each ministry&#39;s minister and contact details up to date.</p>
+<h2>What only you can do</h2>
+<p>Release editors and release viewers can open <strong>Website</strong>, but they see only <strong>What&#39;s featured where</strong> and <strong>Website log</strong>. Core administrators see every <strong>Website</strong> tab but can&#39;t change anything except Project Blue Bridge. Everything below is yours.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>What it controls</th>
+<th>When visitors see it</th>
+<th>Help page</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Website</strong> &gt; <strong>Carousel</strong></td>
+<td>The slides at the top of the home page, and the next set of slides with its go-live time.</td>
+<td>A few minutes after you publish, or after the next set&#39;s go-live time.</td>
+<td><a href="/hub/help/manuals/nrms-site-editor/carousel">Carousel</a></td>
+</tr>
+<tr>
+<td><strong>Website</strong> &gt; <strong>Emergency pins</strong></td>
+<td>Two emergency notices you can pin to the home page.</td>
+<td>A few minutes after you save a pinned notice, or pin it.</td>
+<td><a href="/hub/help/manuals/nrms-site-editor/emergency-pins">Emergency pins</a></td>
+</tr>
+<tr>
+<td><strong>Website</strong> &gt; <strong>Live Feed</strong></td>
+<td>The Live Webcast button and the stream it plays.</td>
+<td>A few minutes after you save.</td>
+<td><a href="/hub/help/manuals/nrms-site-editor/live-feed">Live Feed</a></td>
+</tr>
+<tr>
+<td><strong>Website</strong> &gt; <strong>Resource links</strong></td>
+<td>The list of links on the home page.</td>
+<td>A few minutes after you save.</td>
+<td><a href="/hub/help/manuals/nrms-site-editor/resource-links">Resource links</a></td>
+</tr>
+<tr>
+<td><strong>Website</strong> &gt; <strong>Files</strong></td>
+<td>Files the public can open at a fixed web address, such as PDFs and minister photos.</td>
+<td>As soon as the upload finishes.</td>
+<td><a href="/hub/help/manuals/nrms-site-editor/website-files">Files</a></td>
+</tr>
+<tr>
+<td><strong>Website</strong> &gt; <strong>Site settings</strong></td>
+<td>The banner, footer, social links, colours, headings, page wording, menu and site description.</td>
+<td>A few minutes after you publish.</td>
+<td><a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a></td>
+</tr>
+<tr>
+<td><strong>Organizations</strong></td>
+<td>Each ministry&#39;s name, minister, biography, media contacts and page links.</td>
+<td>Within a few minutes of saving.</td>
+<td><a href="/hub/help/manuals/nrms-site-editor/site-editor-organizations">Organizations</a></td>
+</tr>
+</tbody></table></div>
+<p><strong>What&#39;s featured where</strong> and <strong>Website log</strong> are read-only for everyone. See <a href="/hub/help/manuals/nrms-site-editor/featured-and-website-log">What&#39;s featured where and the Website log</a>.</p>
+<h2>What you see in the side menu</h2>
+<p>Under <strong>Work</strong> you see <strong>Releases</strong>, <strong>Search</strong> and <strong>Website</strong>. Under <strong>Administration</strong> you see <strong>Organizations</strong>.</p>
+<p>On <strong>Releases</strong> and <strong>Search</strong> you can read releases but not change them. Choosing a release&#39;s Top or Feature spot is done on the release itself, by release editors. To write or publish releases, ask a Core administrator for the release editor role as well. The <a href="/hub/help/manuals/nrms-editor">Releases editor manual</a> and the <a href="/hub/help/manuals/nrms-viewer">Releases viewer manual</a> cover release work.</p>
+`,changed:"2026-10-30"},p={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>The carousel is the set of slides at the top of the public home page. Visitors see one slide at a time and move between them with <strong>Previous</strong> and <strong>Next</strong>; the slides don&#39;t turn by themselves.</p>
 <p><strong>Carousel</strong> has three parts:</p>
 <ul>
@@ -549,9 +827,11 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>To remove a slide, choose <strong>Remove</strong> on it, then <strong>Confirm remove</strong>. It leaves the live slides when you publish.</li>
 <li>To add a slide, choose <strong>Add slide</strong> and fill in its fields.</li>
 <li>Choose <strong>Publish carousel changes</strong>. A box asks &quot;Publish these carousel changes now?&quot;</li>
-<li>Choose <strong>Publish carousel changes</strong> again to confirm.</li>
+<li>Choose <strong>Publish carousel changes</strong> again to confirm. Under the live slides you see &quot;Published at 2:30 PM. Live now: the public home page shows the changes within a few minutes.&quot; (with the time).</li>
 </ol>
+<p>If next slides are waiting to go live, the box also says &quot;The next carousel was copied from these slides on {date and time}, so it won&#39;t include these changes. When it goes live on {date and time}, it replaces them. Make the same changes on the next carousel too.&quot; The next slides are a copy made when you created them, and they replace the live slides whole. So a fix you publish now, such as a corrected link, is undone at the go-live time unless you make it on the next slides as well.</p>
 <p>Leave <strong>Action label</strong> empty to use the standard link words, set on <a href="/hub/help/manuals/nrms-site-editor/footer-and-navigation">Navigation and labels</a>.</p>
+<p>To link to a file from <strong>Files</strong>, paste the address from its <strong>Copy public address</strong> button. An address copied from the Hub itself shows &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot;</p>
 <h2>Add or change a slide&#39;s image</h2>
 <p>Use a JPEG or PNG image of up to 2 MB. Any slide can take an image, including one you have just added.</p>
 <ol>
@@ -559,19 +839,21 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>What happens next depends on the slide:<ul>
 <li><strong>On the live slides</strong>, the slide says &quot;New image chosen:&quot; and the file&#39;s name. The image goes live with your other changes when you choose <strong>Publish carousel changes</strong> and confirm. Until then the slide keeps the image it had. <strong>Website log</strong> notes that you chose it.</li>
 <li><strong>On a slide you have just added to the next slides</strong>, the image is saved when you choose <strong>Save carousel</strong>.</li>
-<li><strong>On a slide already saved in the next slides</strong>, the image saves as soon as you choose it. Nothing changes on the public site.</li>
+<li><strong>On a slide already saved in the next slides</strong>, the image saves as soon as you choose it, and you see &quot;Slide 2 image saved at 2:30 PM. Not live yet.&quot; Nothing changes on the public site.</li>
 </ul>
 </li>
 </ol>
+<p>The slide shows the new image as soon as it is saved or published.</p>
 <h2>Prepare the next slides</h2>
 <ol>
 <li>Under <strong>Next</strong>, enter the <strong>Date</strong> and <strong>Time (BC time)</strong> in <strong>Go live at (BC time)</strong>.</li>
-<li>Choose <strong>Create next carousel</strong>. It starts as a copy of the live slides, images included.</li>
+<li>Choose <strong>Create next carousel</strong>. It starts as a copy of the live slides, images included. <strong>Next</strong> then says &quot;Copied from the live carousel on {date and time}. It goes live on {date and time}.&quot;</li>
 <li>Change, add, remove and reorder slides as above.</li>
-<li>Choose <strong>Save carousel</strong>. Nothing changes on the public site.</li>
+<li>Choose <strong>Save carousel</strong>. Nothing changes on the public site. You see &quot;Saved at 2:30 PM. Not live yet: this carousel goes live on {date and time}.&quot;</li>
 </ol>
+<p>If someone publishes changes to the live slides after the copy was made, <strong>Next</strong> warns &quot;The live carousel was changed on {date and time}, after this copy was made. Those changes aren&#39;t in this carousel: make them here too, or they&#39;ll be undone when it goes live.&quot; Compare the two sets and make the same changes on the next slides.</p>
 <p>At the go-live time, the next slides replace the live ones by themselves, and the old live slides move to <strong>Past</strong>. To change the time, enter a new one in <strong>Go live at (BC time)</strong> and choose <strong>Save carousel</strong>.</p>
-<p>To switch now instead, choose <strong>Make live now</strong>, then <strong>Confirm make live</strong>.</p>
+<p>To switch now instead, choose <strong>Make live now</strong>, then <strong>Confirm make live</strong>. You see &quot;The next carousel went live at 2:30 PM. Live now: the public home page shows it within a few minutes.&quot;</p>
 <p>To throw the next slides away, choose <strong>Delete next carousel</strong>, then <strong>Confirm delete</strong>. This can&#39;t be undone.</p>
 <h2>What happens next</h2>
 <ul>
@@ -623,17 +905,18 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Fill in the notice&#39;s fields, such as <strong>Primary headline</strong> and <strong>Primary summary</strong>.</li>
 <li>Choose <strong>Save primary pin</strong> (or <strong>Save secondary pin</strong>).</li>
 </ol>
-<p>If the notice is already pinned, the change goes to the public site when you save.</p>
+<p>If the notice is already pinned, the change goes to the public site when you save. Under the notice you see &quot;Saved at 2:30 PM. Live now: the home page shows it within a few minutes.&quot; (with the time). An unpinned notice says &quot;Saved at 2:30 PM. Not on the home page: this notice isn&#39;t pinned.&quot;</p>
+<p>To link to a file from <strong>Files</strong>, paste the address from its <strong>Copy public address</strong> button into the action URL. An address copied from the Hub itself shows &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot;</p>
 <h2>Pin or unpin a notice</h2>
 <p>Save the notice first. If you have typed changes you haven&#39;t saved, the switch does nothing and shows &quot;Save your changes first.&quot; Your typing stays.</p>
 <ol>
-<li>Choose the switch beside <strong>Primary is not pinned</strong>, below <strong>Save primary pin</strong>. It saves at once, with no question, and changes only the pin; it now reads <strong>Primary is pinned</strong>.</li>
-<li>To take the notice down, choose the switch again.</li>
+<li>Choose the switch beside <strong>Primary is not pinned</strong>, below <strong>Save primary pin</strong>. It saves at once, with no question, and changes only the pin; it now reads <strong>Primary is pinned</strong>, and you see &quot;Pinned at 2:30 PM. Live now: the home page shows this notice within a few minutes.&quot;</li>
+<li>To take the notice down, choose the switch again. You see &quot;Unpinned at 2:30 PM. The home page stops showing this notice within a few minutes.&quot;</li>
 </ol>
 <h2>Add or change the image</h2>
 <ol>
 <li>Choose <strong>Primary image (JPEG or PNG, up to 2 MB)</strong> and pick the file.</li>
-<li>The image appears above the button. It saves at once. On a pinned notice, the public site changes too.</li>
+<li>It saves at once, and the new image shows above the button straight away. You see &quot;Image saved at 2:30 PM.&quot; On a pinned notice the public site changes too, and the message adds &quot;Live now: the home page shows it within a few minutes.&quot;</li>
 </ol>
 <h2>What happens next</h2>
 <ul>
@@ -677,7 +960,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Another site editor changed this notice while you had the page open. Choose <strong>Reload</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},y={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},b={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Live Feed</strong> controls the public site&#39;s <strong>Live Webcast</strong> button, which plays a live stream such as a news conference.</p>
 <ul>
 <li><strong>M3U URL</strong> is the address of the stream itself. It is needed to turn the feed on.</li>
@@ -688,14 +971,14 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ol>
 <li>Enter the <strong>M3U URL</strong>, and the <strong>Manifest URL</strong> if you have one.</li>
 <li>Switch <strong>Live Feed on</strong> on.</li>
-<li>Choose <strong>Save Live Feed</strong>.</li>
+<li>Choose <strong>Save Live Feed</strong>. You see &quot;Saved at 2:30 PM. Live now: the Live Webcast button shows on the public site within a few minutes.&quot; (with the time).</li>
 </ol>
 <p>The <strong>Live Webcast</strong> button shows on every page while <strong>Live Feed on</strong> is switched on. Pages that are already open pick up the change within a minute. Turn the feed off when the webcast ends.</p>
 <p>The wording around the webcast, such as the button&#39;s label and the text shown when nothing is live, is on <a href="/hub/help/manuals/nrms-site-editor/footer-and-navigation">Navigation and labels</a> and <a href="/hub/help/manuals/nrms-site-editor/page-text">Page text</a>.</p>
 <h2>Turn the Live Feed off</h2>
 <ol>
 <li>Switch <strong>Live Feed on</strong> off.</li>
-<li>Choose <strong>Save Live Feed</strong>.</li>
+<li>Choose <strong>Save Live Feed</strong>. You see &quot;Saved at 2:30 PM. The Live Feed is off: the Live Webcast button goes from the public site within a few minutes.&quot;</li>
 </ol>
 <h2>What happens next</h2>
 <ul>
@@ -723,7 +1006,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Another site editor saved the Live Feed while you had the page open. Choose <strong>Reload</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},b={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},y={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Resource links</strong> is the list of links shown on the public home page under the <strong>Resources</strong> heading, in the order you set.</p>
 <h2>Change the links</h2>
 <ol>
@@ -731,9 +1014,9 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>To add one, choose <strong>Add link</strong> and fill in the new boxes at the end.</li>
 <li>To move one, choose <strong>Move link 1 up</strong> or <strong>Move link 1 down</strong>, or drag it by its handle.</li>
 <li>To remove one, choose <strong>Remove link 1</strong>. It goes at once, with no question, but nothing is saved yet.</li>
-<li>Choose <strong>Save links</strong>. This saves the whole list as it stands.</li>
+<li>Choose <strong>Save links</strong>. This saves the whole list as it stands. You see &quot;Saved at 2:30 PM. Live now: the public home page shows the resource links within a few minutes.&quot; (with the time).</li>
 </ol>
-<p>A link&#39;s address must start with http:// or https://, or with / for a page on the public site, such as /files/media-guide.pdf.</p>
+<p>A link&#39;s address must start with http:// or https://, or with / for a page on the public site, such as /files/media-guide.pdf. For a file, you can also paste the address from its <strong>Copy public address</strong> button on <a href="/hub/help/manuals/nrms-site-editor/website-files">Files</a>. An address copied from the Hub itself shows &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot;</p>
 <p>If you change your mind before saving, reload the page. The list goes back to what is saved.</p>
 <h2>What happens next</h2>
 <ul>
@@ -761,7 +1044,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Another site editor saved the list while you had the page open. Choose <strong>Reload</strong>. Your unsaved changes are lost.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},f={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},f={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Files</strong> holds documents and images the public can open at a fixed web address, such as a media guide or a minister&#39;s photo. You can upload any type of file of up to 512 MB.</p>
 <p>The list shows the 50 newest files, each linked to its public address. To find an older one, type part of its name in <strong>Search files</strong> and choose <strong>Search</strong>.</p>
 <h2>Upload a file</h2>
@@ -817,28 +1100,38 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Most often this happens just after the Hub was updated: a page left open from before the update sends the file in a way the Hub no longer accepts.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},v=null,w={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},w=null,v={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Website</strong> &gt; <strong>Site settings</strong> lists the screens that set how the public site looks and reads: <strong>Site banner</strong>, <strong>Footer links</strong>, <strong>Social links</strong>, <strong>Theme colours</strong>, <strong>Ministry page headings</strong>, <strong>Media contacts page</strong>, <strong>Page text</strong>, <strong>Navigation and labels</strong> and <strong>Site identity</strong>. They all save and publish the same way. <strong>Settings history</strong> lists everything published so far.</p>
 <h2>Your draft</h2>
 <p>You have one private draft that covers all of these screens. Other site editors have their own, and nobody else sees yours.</p>
 <ul>
 <li><strong>Save draft</strong> keeps your changes in your draft. The public site doesn&#39;t change.</li>
-<li><strong>Publish</strong> puts your whole draft live: the changes on this screen, and any you saved as a draft on other settings screens.</li>
+<li><strong>Publish</strong> puts your draft live: the changes on this screen, and any you saved as a draft on other settings screens. It asks first, and can publish only this screen instead (see below).</li>
 <li><strong>Discard draft</strong> throws your whole draft away, on every settings screen. A box asks &quot;Discard your whole draft?&quot; and names the other screens it clears, such as &quot;This also throws away your draft changes on Theme colours and Footer links.&quot; If you have typed something on this screen and not saved it, the box says that goes too. Choose <strong>Discard draft</strong> to confirm, or <strong>Cancel</strong>. The screen then shows what is live: &quot;Draft discarded. Showing what is live.&quot;</li>
 </ul>
-<p>The foot of each screen says where you are. &quot;Draft saved \xB7 not yet live&quot; means you have a draft; &quot;No unpublished changes&quot; means you don&#39;t. With a draft, &quot;Your draft has changes on:&quot; names each screen it changes, with a link to it. The next line shows the live revision, who published it and when. Above the buttons, &quot;Publish and Discard draft apply to your whole draft, on every settings screen, not just this one.&quot;</p>
+<p>The foot of each screen says where you are. &quot;Draft saved \xB7 not yet live&quot; means you have a draft; &quot;No unpublished changes&quot; means you don&#39;t. With a draft, &quot;Your draft has changes on:&quot; names each screen it changes, with a link to it. The next line shows the live revision, who published it and when. Above the buttons, &quot;Publish and Discard draft apply to your whole draft, on every settings screen. Publish lets you publish only this screen instead.&quot;</p>
 <h2>Publish a change</h2>
 <ol>
 <li>Make the change on the settings screen.</li>
 <li>If you like, type a <strong>Note for the history log (optional)</strong>, such as &quot;Election notice&quot;. It shows in <strong>Settings history</strong> and <strong>Website log</strong>.</li>
-<li>Choose <strong>Publish</strong>. You see &quot;Published revision 5. Visitors see it within a few minutes.&quot; (with the new number).</li>
+<li>Choose <strong>Publish</strong>. A box asks &quot;Publish your changes?&quot; and lists the screens whose changes go live, such as &quot;Compared with what is live now, this publishes changes on: Site banner and Footer links.&quot; Anything you have typed on this screen counts, even if you haven&#39;t saved it.</li>
+<li>Choose <strong>Publish</strong> to confirm, or <strong>Cancel</strong>. You see &quot;Published revision 5. Visitors see it within a few minutes.&quot; (with the new number).</li>
 </ol>
-<p>If the draft has a problem, nothing is published. You see &quot;Draft saved, but it has problems to fix before it can be published.&quot; Each problem shows under its field. A problem on another settings screen shows in a list headed &quot;Other parts of the draft have problems that block publishing:&quot;, led by a link to that screen. Fix it there, or choose <strong>Discard draft</strong> to start again from what is live.</p>
+<h3>Publish only this screen</h3>
+<p>When your draft also has changes on other settings screens, the box offers two buttons instead of <strong>Publish</strong>:</p>
+<ul>
+<li><strong>Publish only Site banner</strong> (the button names the screen you are on): only this screen&#39;s changes go live. Your changes on the other screens stay in your draft, unpublished. You see &quot;Published revision 6, with only your Site banner changes. Visitors see it within a few minutes. Your draft still has changes on Footer links.&quot; In <strong>Settings history</strong> and <strong>Website log</strong>, the revision&#39;s note starts &quot;Banner only&quot;, so it is clear that only that part was published.</li>
+<li><strong>Publish all changes</strong>: your whole draft goes live, as before.</li>
+</ul>
+<p>Use <strong>Publish only</strong> when something is urgent, such as an emergency banner, and you haven&#39;t finished or checked the other screens. It works even if someone else has published other screens since you started your draft: what they published stays live, and your draft keeps your other changes. You can use <strong>Publish only</strong> on the same screen again, for example to fix a typo. It stops only if someone else has changed this same screen since you started (see &quot;If someone else published first&quot;). If another screen in your draft has a problem, the box says so, such as &quot;Footer links has problems that block publishing all changes. Publish only Site banner still works.&quot;</p>
+<p>If the changes being published have a problem, nothing is published. You see &quot;Draft saved, but it has problems to fix before it can be published.&quot; Each problem shows under its field. A problem on another settings screen shows in a list headed &quot;Other parts of the draft have problems that block publishing:&quot;, led by a link to that screen. Fix it there, or choose <strong>Discard draft</strong> to start again from what is live.</p>
+<h2>Links to files</h2>
+<p>To link to a file from <strong>Files</strong>, such as a PDF in the footer, a banner link or the Connect page&#39;s <strong>Policy link URL</strong>, paste the address from its <strong>Copy public address</strong> button. An address copied from the Hub itself shows &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot; under its <strong>Web address</strong>: visitors couldn&#39;t open it.</p>
 <h2>If someone else published first</h2>
 <p>When another site editor publishes while you are working, your <strong>Publish</strong> doesn&#39;t go through. You see &quot;Someone published while you were editing&quot;, with who published and when, and &quot;Nothing of yours was published, and your draft is saved.&quot; It also lists the screens where your draft differs.</p>
 <p>Choose one:</p>
 <ul>
-<li><strong>Keep my site banner, on top of their version</strong> (the button names the screen you are on, such as &quot;Keep my footer links&quot;): your changes on this screen are added to what they published. Changes you saved on other screens are set aside, and the message names them. Check the result, then choose <strong>Publish</strong>.</li>
+<li><strong>Keep my site banner, on top of their version</strong> (the button names the screen you are on, such as &quot;Keep my footer links&quot;): your changes on this screen are added to what they published. Changes you saved on other screens stay in your draft too. If they changed one of those screens as well, the message names it, such as &quot;Your draft still has your changes on Footer links, which they changed too: check them before you publish them.&quot; Check the result, then choose <strong>Publish</strong>.</li>
 <li><strong>Discard mine, use theirs</strong>: your draft is thrown away and the screen shows what is live.</li>
 </ul>
 <h2>Bring back an earlier version</h2>
@@ -967,7 +1260,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Text on or in this colour would be hard to read. The message says where: on the page background, on panels, on the header, as link text or behind white text.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},k={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},T={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>Two settings screens set the wording around every public page: <strong>Footer</strong> for the footer&#39;s links, and <strong>Navigation and labels</strong> for the menu, buttons and headings. Open them from <strong>Website</strong> &gt; <strong>Site settings</strong>. Both change the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
 <h2>Footer</h2>
 <p>The screen is titled <strong>Footer links</strong>.</p>
@@ -1041,7 +1334,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Shorten <strong>Land acknowledgement</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},T=null,A={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},k=null,A={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>Two settings screens set the wording that every ministry shares. A single ministry&#39;s own details, such as its minister and contacts, are on <a href="/hub/help/manuals/nrms-site-editor/site-editor-organizations">Organizations</a>. Both screens change the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
 <h2>Ministry page headings</h2>
 <p><strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Ministry pages</strong> sets the seven headings on every ministry&#39;s public page: <strong>More from this Ministry heading</strong>, <strong>Ministry website heading</strong>, <strong>Ministry photos heading</strong>, <strong>Ministry videos heading</strong>, <strong>Featured topics heading</strong>, <strong>Featured services heading</strong> and <strong>Media contacts heading</strong>.</p>
@@ -1112,7 +1405,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li><strong>Sort order</strong>: a whole number that places the ministry in lists.</li>
 <li><strong>Minister name</strong>, with the title, such as &quot;Honourable Jane Doe&quot; or &quot;Premier Jane Doe&quot;. If you leave it empty, the ministry shows no minister.</li>
 <li><strong>Minister summary</strong> and <strong>Minister email</strong>.</li>
-<li><strong>Minister photo URL</strong>. Upload the photo on <a href="/hub/help/manuals/nrms-site-editor/website-files">Files</a> first, then paste its full address here. A preview appears once the address starts with https://.</li>
+<li><strong>Minister photo URL</strong>. Upload the photo on <a href="/hub/help/manuals/nrms-site-editor/website-files">Files</a> first, choose <strong>Copy public address</strong> beside it, then paste the address here. A preview appears once the address starts with https://.</li>
 <li><strong>Minister biography</strong>: shown on the minister&#39;s biography page, linked as Read Bio from the ministry page. <strong>Clear the biography</strong> empties it, and the biography page goes when you save.</li>
 <li><strong>Meet the Team links</strong>: shown as Meet the Team on the ministry page.</li>
 <li>Under <strong>Media contacts</strong>: <strong>Primary contact</strong> and <strong>Alternate contact</strong> (each with <strong>Name</strong>, <strong>Phone</strong>, <strong>Cell</strong> and <strong>Email</strong>), and <strong>After-hours phone</strong>. <strong>Phone</strong> shows as Direct on the ministry page.</li>
@@ -1159,8 +1452,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>&quot;This address didn&#39;t load an image. Check that it&#39;s the right URL.&quot;</td>
 <td>The photo address doesn&#39;t lead to an image. Check it on <strong>Files</strong>.</td>
 </tr>
+<tr>
+<td>&quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot;</td>
+<td>The address was copied from the Hub, so the preview works for you but visitors would get a broken image. Copy the photo&#39;s public address on <strong>Files</strong> and paste it instead.</td>
+</tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},H={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},H={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>You write news releases, stories, factsheets and media advisories, approve them, and publish them now or at a set time. Publishing puts a release on the public news site and emails the subscribers and media lists it is meant for.</p>
 <h2>The everyday path</h2>
 <ol>
@@ -1168,7 +1465,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li><a href="/hub/help/manuals/nrms-editor/editor-write-a-release">Write it</a>: the text, page details and categories. <strong>Save changes</strong> saves everything you changed.</li>
 <li><a href="/hub/help/manuals/nrms-editor/editor-files-and-media">Add photos, video and files</a> if it has any.</li>
 <li><a href="/hub/help/manuals/nrms-editor/editor-approve-and-publish">Approve it, then publish it now or schedule it</a>. Each step asks you to confirm and says who will be emailed.</li>
-<li><a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct it, unpublish it or delete it</a> if you need to.</li>
+<li><a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct it, feature it, unpublish it or delete it</a> if you need to.</li>
 </ol>
 <p><a href="/hub/help/manuals/nrms-editor/editor-what-happens-next">Who is emailed, and when it goes public</a> sums up what each step does.</p>
 <h2>What only you can do</h2>
@@ -1199,7 +1496,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <tr>
 <td><strong>Top / Feature</strong>, on a published release</td>
 <td>Put a release in a Top or Feature spot on the home page or a ministry, sector or theme page.</td>
-<td><a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct, unpublish or delete</a></td>
+<td><a href="/hub/help/manuals/nrms-editor/editor-correct-unpublish-delete">Correct, feature, unpublish or delete</a></td>
 </tr>
 <tr>
 <td><strong>Similar published releases</strong>, on the release</td>
@@ -1303,15 +1600,15 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ol>
 <li>In <strong>Releases</strong>, choose <strong>New release</strong>.</li>
 <li>Choose the <strong>Type</strong>: <strong>Release</strong>, <strong>Story</strong>, <strong>Factsheet</strong> or <strong>Advisory</strong>.</li>
-<li>Choose the <strong>Page title</strong>, such as <strong>News Release</strong> or <strong>Backgrounder</strong>. Choosing one also sets the usual <strong>Layout</strong> and <strong>Page image</strong> for it; you can change them.</li>
-<li>Choose the <strong>Layout</strong>: <strong>Formal</strong> or <strong>Informal</strong>.</li>
+<li>Choose the <strong>Page title</strong> (required), such as <strong>News Release</strong> or <strong>Backgrounder</strong>. Choosing one also sets the usual <strong>Layout</strong> and <strong>Page image</strong> for it; you can change them.</li>
+<li>Choose the <strong>Layout</strong>: <strong>Formal</strong> documents have an <strong>Organizations</strong> line, <strong>Informal</strong> ones a <strong>Byline</strong>.</li>
 <li>Choose a <strong>Page image</strong>, or <strong>(none)</strong>. Advisories have none.</li>
 <li>Enter the <strong>Headline</strong>.</li>
-<li>If the release is for a Calendar activity, enter its number in <strong>Activity ID</strong>. See below.</li>
+<li>If the release is for a Calendar activity, enter its number in <strong>Calendar activity ID</strong>. See below.</li>
 <li>Enter the <strong>Location</strong>, such as VICTORIA.</li>
-<li>Tick the <strong>Ministries</strong>. If you tick more than one, choose the <strong>Lead ministry</strong>.</li>
+<li>Tick the <strong>Ministries</strong>. If you tick more than one, choose the <strong>Lead ministry (needed before approving)</strong>. An advisory doesn&#39;t need one.</li>
 <li>Tick the <strong>Sectors</strong>, <strong>Themes</strong> and <strong>Tags</strong> that fit. Advisories have none.</li>
-<li>Tick any <strong>Media distribution lists</strong> the release should go to. An advisory must have at least one before it can be published.</li>
+<li>Tick any <strong>Media distribution lists</strong> the release should go to. For an advisory the heading reads <strong>Media distribution lists (needed before publishing)</strong>: you can create it without one.</li>
 <li>Choose <strong>Create release</strong>.</li>
 </ol>
 <p>The release opens, ready to write. It is a <strong>Draft</strong> in the <strong>Drafts</strong> folder. Nobody is emailed and nothing is public.</p>
@@ -1366,8 +1663,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>If you have Calendar access, a release can be linked to a Calendar activity.</p>
 <ul>
 <li>On <strong>Forecast</strong>, choose <strong>Start a release</strong> under the activity. <strong>New release</strong> opens with the activity filled in.</li>
-<li>Or type the number in <strong>Activity ID</strong>. The activity&#39;s title, ministry and start appear under the field, and its &quot;Translations required&quot;, if any.</li>
-<li>Choose <strong>Fill in from activity 3</strong> (the button names the number) to copy its start (as the planned publish date), its city (as the location), its lead and shared ministries, sectors, themes and tags. Check them before you create the release.</li>
+<li>Or type the number in <strong>Calendar activity ID</strong>. The activity&#39;s title, ministry and start appear under the field, and its &quot;Translations required&quot;, if any.</li>
+<li>Choose <strong>Fill in from activity 3</strong> (the button names the number) to copy its start (as the planned publish date), its city (as the location), its lead and shared ministries, sectors, themes and tags. Check them before you create the release. The planned publish date shows as a line, such as &quot;Planned publish date: Jun 11, 2031 10:00 AM, from the activity. You can change it in Publish settings once the release is created.&quot;</li>
 </ul>
 <p>Nothing is filled in for an activity that has ended, or whose category doesn&#39;t start with &quot;Approved&quot;; the page says which. Other things you may see under the field:</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
@@ -1395,7 +1692,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <p>You can link or change the activity later in <strong>Publish settings</strong> on the release, as <strong>Calendar activity ID</strong>. Once a release is linked, the activity shows its status in the Calendar within a minute of each change.</p>
-`,changed:"2026-10-30"},N={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},N={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>At the top of a release you see its type, status, reference number and headline. If something is still missing, a line such as &quot;Not ready: 2 things to fix.&quot; follows. Choose <strong>See them under Actions</strong> to go to the list, where each item links to the part to fix.</p>
 <p>On a wide screen, the release is on the left, and <strong>Actions</strong>, <strong>Publish settings</strong> and <strong>Release info</strong> are on the right. On a narrow screen they come one after another.</p>
 <h2>Save your changes</h2>
@@ -1421,6 +1718,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Every document also has a <strong>Page title</strong>, <strong>Headline</strong>, <strong>Subheadline</strong>, <strong>Body</strong> and <strong>Contacts</strong>.</p>
 <p>If a document already holds a byline but is Formal, or organizations but is Informal, that text shows, but can&#39;t be edited, with a note such as &quot;A formal document doesn&#39;t keep a byline. It&#39;s removed the next time this tab is saved.&quot; Copy it first if you need it.</p>
 <p>The <strong>Body</strong> toolbar has <strong>Bold</strong>, <strong>Italic</strong>, <strong>Bulleted list</strong>, <strong>Numbered list</strong>, <strong>Link</strong> and <strong>Insert asset</strong>. Pasted text keeps only that formatting.</p>
+<p>If you give <strong>Link</strong> or <strong>Insert asset</strong> the address of a file as the Hub shows it (an address on the Hub itself, ending in /files/ and the file&#39;s name), the Hub puts in the file&#39;s public address instead, so visitors can open it. Any other address on the Hub asks first: &quot;This address points at the Hub, which the public can&#39;t open. \u2026 Use this address anyway?&quot; Choose <strong>Cancel</strong> and use the public address.</p>
 <p>To show a video or photo inside the body:</p>
 <ol>
 <li>Put the cursor where it should go.</li>
@@ -1566,7 +1864,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <p>Uploading or removing a file on a published release republishes it at once, as a correction.</p>
-`,changed:"2026-10-30"},E={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-30"},I={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>A release goes from <strong>Draft</strong> to <strong>Approved</strong>, then out now or at a set time. <strong>Actions</strong> shows only the buttons that fit the release&#39;s status. Each step acts on the release as saved, so save your changes first.</p>
 <p>When a button is greyed out, the reasons are listed under it, such as &quot;Approve is unavailable until:&quot; and &quot;Choose at least one ministry.&quot;. On a draft, &quot;Also needed before it can be published:&quot; lists what publishing will need too. A scheduled release can still have something missing, listed under &quot;Before the scheduled time:&quot;, and a published one under &quot;Before your next save can republish it:&quot;, because each publish checks again. Each reason links to the part of the release to fix.</p>
 <h2>Approve</h2>
@@ -1646,7 +1944,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>A failed correction of a published release can&#39;t be scheduled, so <strong>Schedule</strong> isn&#39;t offered for it. If you see this, reload the page and choose <strong>Publish now</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},I={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},E={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>Publishing emails people. Publishing again after an unpublish emails only people who weren&#39;t reached the first time. Saving, approving, scheduling, correcting and unpublishing don&#39;t email anyone.</p>
 <h2>When you publish</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -1707,7 +2005,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>The <strong>Publish now</strong> box says so, with the date. Once that 5 pm has passed, it says &quot;That time has passed, so daily digest subscribers who didn&#39;t get it then won&#39;t.&quot;</p>
 <h2>Embargoes</h2>
 <p>There is no separate embargo setting. <strong>Schedule</strong> is the embargo: until the scheduled time, the public page, the files and the emails don&#39;t exist outside the Hub. Anyone with Hub access can read the release before then.</p>
-`,changed:"2026-10-31"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},F={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <h2>Correct a published release</h2>
 <ol>
 <li>Open the release and make the change. The bar along the bottom says &quot;Saving republishes this release on the public site.&quot;</li>
@@ -1741,7 +2039,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>A draft that was never approved is deleted for good: &quot;This draft has never been approved \u2014 deleting it is permanent and can&#39;t be undone.&quot;</li>
 <li>A release with a reference number disappears from the folders and <strong>Search</strong>, but its record is kept: &quot;This release has a reference number (NEWS-00010) \u2014 deleting it hides it from the lists but keeps the record.&quot;</li>
 </ul>
-`,changed:"2026-10-31"},O={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <h2>Open a release you know</h2>
 <ol>
 <li>Type into <strong>Find a release</strong>, at the top of the side menu, one of:<ul>
@@ -1766,7 +2064,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Results include drafts, scheduled and published releases, newest first, 20 to a page. Deleted releases don&#39;t appear. If nothing matches, you see &quot;No releases match&quot; and your words; if a ministry or sector is chosen, choose <strong>Clear ministry and sector filters</strong> to try again without them.</p>
 <p>Search looks at headlines only. To find a release by other words, use <strong>Similar published releases</strong> on a release, or the public site&#39;s own search.</p>
 <p>A reference such as HLTH-123 also finds the releases linked to that Calendar activity. Anything that looks like this, such as COVID-19, is also searched for in headlines. The headlines are left out only when it names an activity you can see in the Calendar that has releases linked to it.</p>
-`,changed:"2026-10-30"},F={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-30"},O={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>On <strong>Website</strong> you see two tabs. Both only show information.</p>
 <h2>What&#39;s featured where</h2>
 <p>The table lists each place on the public site that has a Top or Feature release: <strong>Home</strong>, and each ministry, sector or theme page. <strong>Top</strong> and <strong>Feature</strong> show the release&#39;s headline. A dash means the spot is empty. If nothing is set anywhere, the tab says &quot;Nothing is currently Top or Feature anywhere.&quot;</p>
@@ -1850,6 +2148,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>You may also see <strong>Subscribers</strong> or <strong>Calendar</strong> if you have a role there. Those have their own manuals.</p>
 <h2>Signing in</h2>
 <p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
+<p>If the sign-in page also shows <strong>User name</strong> and <strong>Password</strong>, you can sign in with those instead: fill them in and choose <strong>Sign in</strong>.</p>
 `,changed:"2026-10-30"},Y={html:`<p><strong>Who this is for:</strong> Release viewers (NRMS.Viewer).</p>
 <p><strong>Releases</strong> has four tabs. <strong>Releases</strong> in the side menu opens the tab you had open last, or <strong>Drafts</strong>.</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -2055,7 +2354,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td><a href="/hub/help/manuals/nod-admin/subscriber-operations">Operations</a></td>
 </tr>
 </tbody></table></div>
-<p><strong>Operations</strong> is in the <strong>Subscribers</strong> menu for you only.</p>
+<p>Only you see the <strong>Operations</strong> tab.</p>
 <h2>What you share with Subscribers editors</h2>
 <p>Subscribers editors can do these as well. Subscribers viewers can only look.</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
@@ -2245,7 +2544,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>Their status becomes <strong>Unsubscribed or deleted</strong> at once. Staff can&#39;t undo it, and <strong>Add a subscriber</strong> refuses their address while the record exists.</li>
 <li>They are taken off every media list.</li>
-<li>With <strong>They asked us to stop sending them email</strong>, it counts as their unsubscribe, as if they had unsubscribed themselves. <strong>History</strong> shows &quot;Unsubscribed&quot; and &quot;Left a media list&quot; with your name, and they appear under <strong>Left this list</strong> on each media list they were on. If anyone later adds them to any media list, the Hub asks &quot;This person unsubscribed&quot; first. This is kept even after the retention purge removes the record. On <strong>Recent unsubscribes</strong> they show as &quot;Unsubscribed&quot;.</li>
+<li>With <strong>They asked us to stop sending them email</strong>, it counts as their unsubscribe, as if they had unsubscribed themselves. <strong>History</strong> shows &quot;Unsubscribed&quot;, with &quot;asked staff&quot; under <strong>Detail</strong>, and &quot;Left a media list&quot;, both with your name, and they appear under <strong>Left this list</strong> on each media list they were on. If anyone later adds them to any media list, the Hub asks &quot;This person unsubscribed&quot; first. This is kept even after the retention purge removes the record. On <strong>Recent unsubscribes</strong> they show as &quot;Unsubscribed&quot;.</li>
 <li>With <strong>Something else</strong>, deleting isn&#39;t an unsubscribe, so it doesn&#39;t by itself make the Hub ask when you add them to a media list later. <strong>History</strong> shows &quot;Deleted by staff&quot;.</li>
 <li>The record, with their address and history, stays until the retention purge removes it. When the purge is on, it permanently deletes these records 90 days after they ended. See <a href="/hub/help/manuals/nod-admin/subscriber-operations">Operations</a>.</li>
 <li>Nobody is emailed.</li>
@@ -2297,7 +2596,52 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The record was removed by the retention purge, or the address in your browser is wrong.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},J=null,X={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+`,changed:"2026-10-31"},J={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+<p><strong>Add a subscriber</strong> signs someone up for news release email on their behalf. Add only people who have asked to receive it.</p>
+<h2>Add someone</h2>
+<ol>
+<li>Enter their address in <strong>Email</strong> and again in <strong>Confirm email</strong>.</li>
+<li>Under <strong>Lists</strong>, tick <strong>All news</strong>, or tick the lists they want.</li>
+<li>Tick <strong>As it happens</strong>, <strong>Daily digest</strong>, or both. <strong>As it happens</strong> starts ticked.</li>
+<li>Choose <strong>Add subscriber</strong>. Their new record opens.</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>They are <strong>Active</strong> straight away. No confirmation email is sent, and they are not told they were added.</li>
+<li>They get the next release that matches their lists. See <a href="/hub/help/manuals/nod-admin/who-gets-which-email">Who gets which email</a>.</li>
+<li>Their record shows <strong>Source</strong> &quot;Added by staff&quot;, and <strong>History</strong> shows &quot;Added by staff&quot; with your name.</li>
+</ul>
+<p>To put a reporter on a media list, use <strong>Media lists</strong> instead. See <a href="/hub/help/manuals/nod-admin/subscriber-media-lists">Media lists</a>.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;The two email addresses don&#39;t match.&quot;</td>
+<td>Type the same address in both boxes.</td>
+</tr>
+<tr>
+<td>&quot;Choose at least one list, or all news.&quot;</td>
+<td>Tick a list or <strong>All news</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Choose As It Happens, Daily Digest, or both.&quot;</td>
+<td>Tick at least one timing.</td>
+</tr>
+<tr>
+<td>&quot;That address already has a subscriber record.&quot;</td>
+<td>Choose <strong>Open their record</strong>. If they are <strong>Disabled</strong>, activate them there. If they unsubscribed or were deleted, only they can sign up again, on the public site.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t load the list of lists. \u201CAll news\u201D still works.&quot;</td>
+<td>The lists didn&#39;t load. Reload the page, or add them to <strong>All news</strong>.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},X={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
 <p><strong>Lists and categories</strong> decides which lists people can choose when they subscribe, and the order they see them in. Each list shows how many active subscribers it has.</p>
 <p>The categories are <strong>Ministries</strong>, <strong>Sectors</strong>, <strong>Themes</strong>, <strong>Tags</strong>, <strong>Emergency Info BC</strong> and <strong>Media distribution lists</strong>. List names come from elsewhere and can&#39;t be changed here:</p>
 <ul>
@@ -2391,7 +2735,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Under <strong>Add an address by hand</strong>, enter the <strong>Email address</strong>.</li>
 <li>Choose <strong>Add to list</strong>. You see &quot;Added to the list.&quot;</li>
 </ol>
-<p>If the address is already on the list, nothing changes and you see &quot;Already on this list.&quot; instead. If they&#39;re on it but <strong>Disabled</strong>, you see &quot;Already on this list, but Disabled, so they get nothing. Open their record to activate them.&quot; Adding them again doesn&#39;t activate them.</p>
+<p>If the address is already on the list, you see &quot;[their address] was already on this list.&quot; instead. If they were on it but <strong>Disabled</strong>, adding them again makes them <strong>Active</strong> for media email, as for any Disabled address (see below), and you see &quot;[their address] was on this list but Disabled; they\u2019re Active again, for media email.&quot; If you added them from Media Hub and their record followed a different contact or email, it now follows the one you chose, and the message adds &quot;Their record now follows the Media Hub contact and email you chose.&quot;</p>
 <h2>What adding does</h2>
 <ul>
 <li>The reporter is not emailed. They get the next release sent to this list.</li>
@@ -2603,7 +2947,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>To resume, choose <strong>Resume Distribution</strong>, then <strong>Confirm resume</strong>. The Hub warns that queued email starts going out straight away.</p>
 <h2>Outgoing news email</h2>
 <p>This section shows news email that hasn&#39;t gone out yet, and news email that failed.</p>
-<p>While News On Demand sending is paused, it says how much is held, for example &quot;Held while paused: 1,205 emails for 3 releases. The oldest has waited 12 days, since \u2026&quot;. The <strong>Held news email</strong> table has one row per release and type: <strong>As it happens</strong>, <strong>Media list</strong>, <strong>Emergency alert</strong>, or <strong>Daily digest</strong> (one row per daily digest, with how many releases it carries). <strong>Emails</strong> counts the active subscribers it would still go to, leaving out anyone an earlier try already reached. <strong>Note</strong> shows when an email has already been tried and what went wrong.</p>
+<p>While News On Demand sending is paused, it says how much is held, for example &quot;Held while paused: 1,205 emails for 3 releases. The oldest has waited 12 days, since \u2026&quot;. The <strong>Held news email</strong> table has one row per release and type: <strong>As it happens</strong>, <strong>Media list</strong>, <strong>Emergency alert</strong>, <strong>Daily digest</strong> (one row per daily digest, with how many releases it carries), or <strong>Corrected copy to subscribers</strong> and <strong>Corrected copy to media lists</strong> (a corrected release a release editor chose to email again to the people who already got it). <strong>Emails</strong> counts the active subscribers it would still go to, leaving out anyone an earlier try already reached. <strong>Note</strong> shows when an email has already been tried and what went wrong.</p>
 <p>While sending is running, the section normally says &quot;Nothing is waiting to go out.&quot; Anything listed is waiting to be tried again.</p>
 <h3>Before you resume after a long pause</h3>
 <p>Everything held goes out when you resume, however old it is. After a long pause, decide first whether old releases should still be sent, and cancel the ones that shouldn&#39;t:</p>
@@ -2756,7 +3100,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>You look after the people who get news release email from News On Demand: you find and change subscribers, add them, keep the media lists up to date and download reports.</p>
 <p>Subscriber records are personal information. Search for, download and keep addresses only when your work needs them.</p>
 <h2>What only you can do</h2>
-<p>Subscribers viewers can open the same screens and see the same records, but can&#39;t change anything. These are yours:</p>
+<p>Subscribers viewers see the same records, media lists and reports, but can&#39;t change anything. These are yours:</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
@@ -2782,7 +3126,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 <tr>
 <td>A media list</td>
-<td>Add and remove reporters, fix flagged members, and choose <strong>Sync with Media Hub now</strong>.</td>
+<td>Add and remove reporters, and fix flagged members.</td>
+<td><a href="/hub/help/manuals/nod-editor/editor-media-lists">Media lists</a></td>
+</tr>
+<tr>
+<td><strong>Media lists</strong></td>
+<td>Choose <strong>Sync with Media Hub now</strong>.</td>
 <td><a href="/hub/help/manuals/nod-editor/editor-media-lists">Media lists</a></td>
 </tr>
 <tr>
@@ -2791,11 +3140,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td><a href="/hub/help/manuals/nod-editor/editor-subscriber-reports">Reports</a></td>
 </tr>
 </tbody></table></div>
-<p>The <a href="/hub/help/manuals/nod-viewer">Subscribers viewer manual</a> is written for viewers.</p>
+<p>To see what a Subscribers viewer can see, read the <a href="/hub/help/manuals/nod-viewer">Subscribers viewer manual</a>.</p>
 <h2>What you can&#39;t do</h2>
 <p>Subscribers administrators decide which lists people can choose, and in what order, on <strong>Lists and categories</strong>. You can see that screen but not change it. See <a href="/hub/help/manuals/nod-editor/editor-lists-and-categories">Lists and categories</a>.</p>
-<p>Only Subscribers administrators can use <strong>Operations</strong>. It pauses and resumes outgoing email and holds the bounce settings. If email needs to stop, ask a Subscribers administrator. The Subscribers administrator manual covers it.</p>
 <p>Core administrators add, rename and retire media lists. Ask one if a list is missing or its name is wrong.</p>
+<h2>Operations</h2>
+<p>Only Subscribers administrators can use <strong>Operations</strong>. It pauses and resumes outgoing email and holds the bounce settings. If email needs to stop, ask a Subscribers administrator. The Subscribers administrator manual covers it.</p>
 <h2>Before you start</h2>
 <ul>
 <li><a href="/hub/help/manuals/nod-editor/editor-who-gets-which-email">Who gets which email</a> explains what each subscriber receives and when.</li>
@@ -2982,7 +3332,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>Their status becomes <strong>Unsubscribed or deleted</strong> at once. You can&#39;t undo it. <strong>Add a subscriber</strong> refuses their address while the record exists.</li>
 <li>They are taken off every media list.</li>
-<li>With <strong>They asked us to stop sending them email</strong>, it counts as their unsubscribe, as if they had unsubscribed themselves. <strong>History</strong> shows &quot;Unsubscribed&quot; and &quot;Left a media list&quot; with your name, and they appear under <strong>Left this list</strong> on each media list they were on. If anyone later adds them to any media list, the Hub asks &quot;This person unsubscribed&quot; first. This is kept even after the retention purge removes the record. On <strong>Recent unsubscribes</strong> they show as &quot;Unsubscribed&quot;.</li>
+<li>With <strong>They asked us to stop sending them email</strong>, it counts as their unsubscribe, as if they had unsubscribed themselves. <strong>History</strong> shows &quot;Unsubscribed&quot;, with &quot;asked staff&quot; under <strong>Detail</strong>, and &quot;Left a media list&quot;, both with your name, and they appear under <strong>Left this list</strong> on each media list they were on. If anyone later adds them to any media list, the Hub asks &quot;This person unsubscribed&quot; first. This is kept even after the retention purge removes the record. On <strong>Recent unsubscribes</strong> they show as &quot;Unsubscribed&quot;.</li>
 <li>With <strong>Something else</strong>, deleting isn&#39;t an unsubscribe, so it doesn&#39;t by itself make the Hub ask when you add them to a media list later. <strong>History</strong> shows &quot;Deleted by staff&quot;. See <a href="/hub/help/manuals/nod-editor/editor-media-lists">Media lists</a>.</li>
 <li>The record, with their address and history, stays. When a Subscribers administrator has the retention purge on, it is removed for good 90 days after they ended.</li>
 <li>Nobody is emailed.</li>
@@ -3057,7 +3407,52 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The record has been removed for good, or the address in your browser is wrong.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},ot=null,rt={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+`,changed:"2026-10-31"},ot={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+<p><strong>Add a subscriber</strong> signs someone up for news release email on their behalf. Add only people who have asked to receive it.</p>
+<h2>Add someone</h2>
+<ol>
+<li>Enter their address in <strong>Email</strong> and again in <strong>Confirm email</strong>.</li>
+<li>Under <strong>Lists</strong>, tick <strong>All news</strong>, or tick the lists they want.</li>
+<li>Tick <strong>As it happens</strong>, <strong>Daily digest</strong>, or both. <strong>As it happens</strong> starts ticked.</li>
+<li>Choose <strong>Add subscriber</strong>. Their new record opens.</li>
+</ol>
+<h2>What happens next</h2>
+<ul>
+<li>They are <strong>Active</strong> straight away. No confirmation email is sent, and they are not told they were added.</li>
+<li>They get the next release that matches their lists. See <a href="/hub/help/manuals/nod-editor/editor-who-gets-which-email">Who gets which email</a>.</li>
+<li>Their record shows <strong>Source</strong> &quot;Added by staff&quot;, and <strong>History</strong> shows &quot;Added by staff&quot; with your name.</li>
+</ul>
+<p>To put a reporter on a media list, use <strong>Media lists</strong> instead. See <a href="/hub/help/manuals/nod-editor/editor-media-lists">Media lists</a>.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;The two email addresses don&#39;t match.&quot;</td>
+<td>Type the same address in both boxes.</td>
+</tr>
+<tr>
+<td>&quot;Choose at least one list, or all news.&quot;</td>
+<td>Tick a list or <strong>All news</strong>.</td>
+</tr>
+<tr>
+<td>&quot;Choose As It Happens, Daily Digest, or both.&quot;</td>
+<td>Tick at least one timing.</td>
+</tr>
+<tr>
+<td>&quot;That address already has a subscriber record.&quot;</td>
+<td>Choose <strong>Open their record</strong>. If they are <strong>Disabled</strong>, choose <strong>Activate</strong> there. If they unsubscribed or were deleted, only they can sign up again, on the public site.</td>
+</tr>
+<tr>
+<td>&quot;Couldn&#39;t load the list of lists. \u201CAll news\u201D still works.&quot;</td>
+<td>The lists didn&#39;t load. Reload the page, or add them to <strong>All news</strong>.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-10-30"},rt={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
 <p><strong>Media lists</strong> holds the reporters on each media list. Release editors pick these lists on a release, and every member gets the full-text media version.</p>
 <p>The table shows each list&#39;s <strong>Members</strong>, how many <strong>Need attention</strong>, and its <strong>Status</strong>. <strong>Members</strong> counts only the members who get the list&#39;s email. Disabled members get nothing, so they aren&#39;t counted; the cell then adds, for example, &quot;(and 2 Disabled, who get nothing)&quot;. A <strong>Retired</strong> list can&#39;t be put on a release, and nothing is sent to it, even from a release that already had it. Core administrators add, rename and retire lists.</p>
 <p>Choose a list&#39;s name to open it. Each member shows their <strong>Email</strong>, their <strong>Status</strong> (<strong>Active</strong> or <strong>Disabled</strong>), their <strong>Source</strong> (<strong>Media Hub</strong>, <strong>Added by hand</strong> or <strong>Subscriber</strong>) and any problem under <strong>Needs attention</strong>.</p>
@@ -3076,7 +3471,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Under <strong>Add an address by hand</strong>, enter the <strong>Email address</strong>.</li>
 <li>Choose <strong>Add to list</strong>. You see &quot;Added to the list.&quot;</li>
 </ol>
-<p>If the address is already on the list, nothing changes and you see &quot;Already on this list.&quot; instead. If they&#39;re on it but <strong>Disabled</strong>, you see &quot;Already on this list, but Disabled, so they get nothing. Open their record to activate them.&quot; Adding them again doesn&#39;t activate them.</p>
+<p>If the address is already on the list, you see &quot;[their address] was already on this list.&quot; instead. If they were on it but <strong>Disabled</strong>, adding them again makes them <strong>Active</strong> for media email, as for any Disabled address (see below), and you see &quot;[their address] was on this list but Disabled; they\u2019re Active again, for media email.&quot; If you added them from Media Hub and their record followed a different contact or email, it now follows the one you chose, and the message adds &quot;Their record now follows the Media Hub contact and email you chose.&quot;</p>
 <h2>What adding does</h2>
 <p>Nobody is emailed. The reporter gets the next release sent to this list. What else happens depends on the address:</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -3407,7 +3802,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Subscribers editors add subscribers, change their lists, timing and address, and deactivate or delete them. They also add and remove media list members. Their manual is the Subscribers editor manual.</li>
 <li>Subscribers administrators decide which lists are offered, and pause and resume email on <strong>Operations</strong>. Their manual is the Subscribers administrator manual.</li>
 </ul>
-<p>If you open <strong>Add a subscriber</strong> or <strong>Operations</strong> by its address, you see &quot;You don&#39;t have permission to add subscribers.&quot; or &quot;You don&#39;t have permission to use Operations.&quot;</p>
+<p>If you open <strong>Add a subscriber</strong> or <strong>Operations</strong> by its address, you see &quot;You don\u2019t have permission to add subscribers.&quot; or &quot;You don\u2019t have permission to use Operations.&quot;</p>
 <h2>What you see in the side menu</h2>
 <p>Under <strong>Work</strong> you see <strong>Subscribers</strong>. Its tabs are <strong>Find subscribers</strong>, <strong>Lists and categories</strong>, <strong>Media lists</strong> and <strong>Reports</strong>.</p>
 <p>You may also see <strong>Releases</strong> or <strong>Calendar</strong> if you have a role there. Those have their own manuals.</p>
@@ -3669,7 +4064,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <h2>What you share with other Calendar users</h2>
-<p>Everyone with Calendar access uses the list, filters, <strong>My Queries</strong>, <strong>Updates</strong>, <strong>Excel export</strong> and the <strong>Look Ahead</strong>, <strong>30/60/90</strong> and <strong>Planning</strong> reports. Editors and above create, change and clone their ministries&#39; activities. HQ staff at Editor and above also have <strong>Clear LA Status</strong>, and HQ staff at Advanced and above also have <strong>Corporate Queries</strong>, the <strong>Look Ahead filter</strong> and <strong>Review</strong>.</p>
+<p>Everyone with Calendar access uses the list, filters, <strong>My Queries</strong>, <strong>Updates</strong>, <strong>Excel export</strong> and the <strong>Look Ahead</strong>, <strong>30/60/90</strong> and <strong>Planning</strong> reports. Editors and above create, change and clone their ministries&#39; activities. HQ staff at Editor and above also have <strong>Clear LA Status</strong>, and HQ staff at Advanced and above also have <strong>Corporate Queries</strong>, the <strong>Confidential filter</strong> and <strong>Review</strong>.</p>
 <p>The <a href="/hub/help/manuals/calendar-advanced">Calendar advanced user manual</a>, the <a href="/hub/help/manuals/calendar-editor">Calendar editor manual</a> and the <a href="/hub/help/manuals/calendar-readonly">Calendar read-only manual</a> cover that work.</p>
 <h2>Where your changes show up</h2>
 <ul>
@@ -3680,7 +4075,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>What you see in the side menu</h2>
 <p>Under <strong>Work</strong> you see <strong>Calendar</strong>. Under <strong>Administration</strong> you see <strong>Calendar access</strong>.</p>
 <p>The Calendar&#39;s tabs are <strong>Calendar</strong>, <strong>Updates</strong>, <strong>Lookups</strong>, <strong>Users</strong> and <strong>Transfer</strong>. System administrators also see <strong>Undelivered events</strong>.</p>
-`,changed:"2026-10-30"},yt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-31"},bt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p><strong>Calendar access</strong>, under <strong>Administration</strong> in the side menu, gives a person a Calendar role and the ministries they work for. Each person has one role or <strong>No Calendar access</strong>.</p>
 <p>The table shows everyone with a Hub account: <strong>Name</strong>, <strong>Email</strong>, <strong>Calendar role</strong> and <strong>Ministries</strong>. Inactive people are hidden until you tick <strong>Show inactive users, including those with no email</strong>.</p>
 <h2>What you can give</h2>
@@ -3730,15 +4125,15 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Ask another administrator or a Core administrator.</td>
 </tr>
 <tr>
-<td>&quot;Only a System Administrator or a Core admin can change this user&#39;s access.&quot;</td>
+<td>&quot;Only a System Administrator or a Core administrator can change this user&#39;s access.&quot;</td>
 <td>The person is a system administrator and you are an Administrator.</td>
 </tr>
 <tr>
-<td>&quot;Only an HQ Administrator, a System Administrator or a Core admin can change this user&#39;s access.&quot;</td>
+<td>&quot;Only an HQ Administrator, a System Administrator or a Core administrator can change this user&#39;s access.&quot;</td>
 <td>The person belongs to an HQ organization and you don&#39;t.</td>
 </tr>
 <tr>
-<td>&quot;Only a Core admin can give Calendar access to an inactive user who has none.&quot;</td>
+<td>&quot;Only a Core administrator can give Calendar access to an inactive user who has none.&quot;</td>
 <td>The person&#39;s Hub account is inactive and has no Calendar role. Ask a Core administrator.</td>
 </tr>
 </tbody></table></div>
@@ -3756,11 +4151,11 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Tick a ministry, or choose <strong>No Calendar access</strong>.</td>
 </tr>
 <tr>
-<td>&quot;unknown or inactive ministry: health&quot;</td>
-<td>The named ministry (shown by its short web name) was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
+<td>&quot;Health is no longer active or doesn&#39;t exist. Untick it, then save again.&quot;</td>
+<td>The named ministry was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},bt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-30"},yt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p><strong>Calendar</strong> &gt; <strong>Users</strong> lists everyone with Calendar access, one row for each of their ministries: <strong>Name</strong>, <strong>Ministry</strong>, <strong>Comm contact</strong>, <strong>Calendar role</strong> and <strong>Active</strong>.</p>
 <ul>
 <li>Type a name or a ministry abbreviation in <strong>Find by name or ministry</strong> to narrow the list.</li>
@@ -3785,7 +4180,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </ol>
 <p>Choose <strong>Not a comm contact</strong> to stop offering them. Activities that already have them as comm contact keep them, but can&#39;t be cloned until they have an active comm contact.</p>
 <p>&quot;Give this user a ministry under Calendar access (Edit Calendar access) first.&quot; means they have no ministry yet. Choose <strong>Edit Calendar access</strong> above and give them one.</p>
-<p>Just after you give someone a ministry, the page says &quot;Setting up their ministries in the Calendar\u2026 The rank appears here in a moment.&quot; Stay on the page: the rank box for the new ministry appears by itself, usually within a minute. If it hasn&#39;t after about a minute and a half, the page says &quot;The Calendar hasn&#39;t picked up their new ministries yet. Reload the page in a minute.&quot;</p>
+<p>Just after you give someone a ministry, or take one away, the page says &quot;Updating their ministries in the Calendar\u2026 This page catches up by itself in a moment.&quot; Stay on the page: the rank boxes follow by themselves, usually within a minute. If they haven&#39;t after about a minute and a half, the page says &quot;The Calendar hasn&#39;t picked up their ministry changes yet. Reload the page in a minute.&quot;</p>
 <h2>Deactivate someone</h2>
 <p>Deactivating closes the person&#39;s Hub account. They can&#39;t sign in again until reactivated, and the Hub signs them out within 10 minutes.</p>
 <ol>
@@ -3933,7 +4328,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Some activities moved and the rest didn&#39;t. Choose <strong>Preview</strong> again to see what is left, then transfer again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},vt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-31"},wt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p><strong>Calendar</strong> &gt; <strong>Lookups</strong> holds the choices offered on activities, such as categories, cities and HQ tags. Choose a lookup to see its rows. Rows are never deleted: you stop offering a row by making it inactive.</p>
 <h2>Who can change which lookup</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -4013,11 +4408,31 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The name is empty.</td>
 </tr>
 <tr>
+<td>&quot;at most 50 characters&quot;</td>
+<td>The name is too long. The limit depends on the lookup, from 50 to 255 characters.</td>
+</tr>
+<tr>
+<td>&quot;Phone: at most 50 characters&quot;</td>
+<td>Shorten the phone number.</td>
+</tr>
+<tr>
+<td>&quot;Job title: at most 150 characters&quot;</td>
+<td>Shorten the job title.</td>
+</tr>
+<tr>
+<td>&quot;Short name: at most 40 characters&quot;</td>
+<td>Shorten the short name.</td>
+</tr>
+<tr>
+<td>&quot;Description: at most 84 characters&quot;</td>
+<td>Shorten the description.</td>
+</tr>
+<tr>
 <td>&quot;the list changed since you loaded it: reload and try again&quot;</td>
 <td>Someone else added a row while you were moving one. Reload the page.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},wt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-30"},vt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p>Only administrators see <strong>Delete</strong> on an activity. You can delete an activity your ministry leads. HQ Administrators can delete any activity. A ministry that is only shared on an activity can&#39;t delete it.</p>
 <h2>Delete an activity</h2>
 <ol>
@@ -4160,13 +4575,13 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </ol>
 <p>If it fails again, it comes straight back to the table, without another 24 hours of tries. Reload the page after a minute to check. If it is back, Releases is still refusing it: have that fixed before you retry again.</p>
 <p>Retrying an old change is safe. If a newer change to the same activity has already reached Releases, the newer one stays.</p>
-`,changed:"2026-10-30"},kt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+`,changed:"2026-10-30"},Tt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
 <p>You plan the Corporate Calendar: the government-wide schedule of announcements and events. You add and change activities, follow what changed on <strong>Updates</strong>, and make reports.</p>
 <h2>Ministry or HQ</h2>
 <p>Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.</p>
 <ul>
 <li><strong>In a ministry:</strong> you see your ministries&#39; activities and the activities shared with them. You add and change your ministries&#39; activities. You can do exactly what a Calendar editor can.</li>
-<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, including those marked <strong>Not for Look Ahead</strong>. You add and change any ministry&#39;s activities, and the daily change freeze doesn&#39;t stop you. You also review activities and run corporate queries.</li>
+<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, including those marked <strong>Confidential (not for Look Ahead)</strong>. You add and change any ministry&#39;s activities, and the daily change freeze doesn&#39;t stop you. You also review activities and run corporate queries.</li>
 </ul>
 <h2>What you can do that editors and read-only users can&#39;t</h2>
 <p>Calendar read-only users look at activities, <strong>Updates</strong> and reports, but can&#39;t add or change anything. Calendar editors add and change activities as you do.</p>
@@ -4181,7 +4596,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </thead>
 <tbody><tr>
 <td>The list, <strong>Updates</strong>, reports and activities</td>
-<td>See other ministries&#39; activities marked <strong>Not for Look Ahead</strong>.</td>
+<td>See other ministries&#39; activities marked <strong>Confidential (not for Look Ahead)</strong>.</td>
 <td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-list">The activity list</a></td>
 </tr>
 <tr>
@@ -4190,8 +4605,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a></td>
 </tr>
 <tr>
-<td><strong>Look Ahead filter</strong>, above the list</td>
-<td>Show only the activities for the Look Ahead, or only those not for it.</td>
+<td><strong>Confidential filter</strong>, above the list</td>
+<td>Show only the confidential activities, or only those that aren&#39;t.</td>
 <td><a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a></td>
 </tr>
 <tr>
@@ -4256,7 +4671,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>Its lead ministry, and every ministry ticked in <strong>Shared With</strong>, see it.</li>
 <li>HQ organizations see every ministry&#39;s activities.</li>
-<li>An activity marked <strong>Not for Look Ahead</strong> is seen only by its lead and shared ministries, and by HQ advanced users and HQ Administrators. HQ editors don&#39;t see other ministries&#39; ones.</li>
+<li>An activity marked <strong>Confidential (not for Look Ahead)</strong> is seen only by its lead and shared ministries, and by HQ advanced users and HQ Administrators. HQ editors don&#39;t see other ministries&#39; ones.</li>
 <li>Only the lead ministry and HQ can change an activity. A ministry it is only shared with can open it but not change it.</li>
 <li>A deleted activity leaves the Calendar for everyone except HQ Administrators.</li>
 </ul>
@@ -4290,7 +4705,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tbody></table></div>
 <h2>Signing in</h2>
 <p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
-`,changed:"2026-10-30"},Tt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+`,changed:"2026-10-31"},kt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
 <p><strong>Calendar</strong> lists the activities you can see, from today on, earliest first. The first 30 show. More load as you scroll down, or when you choose <strong>Show more</strong> (the button names how many).</p>
 <p>Two kinds of activity are left out until you ask for them:</p>
 <ul>
@@ -4481,7 +4896,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Change what differs, and choose <strong>Save</strong>. You see, for example, &quot;Cloned HLTH-21 as HLTH-22.&quot; The new activity stays open, so you can add files.</li>
 </ol>
 <p><strong>Cancel</strong>, or leaving the page another way, creates nothing.</p>
-<p>The copy starts as <strong>New</strong>, and its <strong>View changes</strong> says &quot;created it as a clone&quot;, naming the activity it was cloned from. It copies the activity&#39;s fields except these:</p>
+<p>The copy starts as <strong>New</strong>, and its <strong>View changes</strong> says &quot;created it as a clone&quot;, naming the activity it was cloned from. Like any new activity, the copy must have every required field filled in before it saves; an older activity may be missing some. It copies the activity&#39;s fields except these:</p>
 <ul>
 <li>the release date and time are emptied;</li>
 <li><strong>Internal notes</strong> is emptied;</li>
@@ -4503,7 +4918,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>To remove a file, choose <strong>Remove</strong> beside it, then <strong>Remove</strong> again in the &quot;The file is deleted from this activity.&quot; box.</p>
 <p>Adding or removing a file doesn&#39;t touch your unsaved changes to the fields. Like saving, it isn&#39;t possible while someone else is editing the activity, or during the daily change freeze unless you are in an HQ organization. A file opens only for people who can see its activity.</p>
 <h2>View changes</h2>
-<p><strong>View changes</strong> lists every change to the activity, newest first. Each entry says when, who and what they did, such as &quot;changed it&quot;, &quot;created it as a clone&quot;, &quot;reviewed it&quot;, &quot;transferred it&quot; or &quot;cleared its LA status&quot;. A table shows each field before and after. Changes brought over from the old Calendar are marked &quot;from legacy log&quot;.</p>
+<p><strong>View changes</strong> lists every change to the activity, newest first. Each entry says when, who and what they did, such as &quot;changed it&quot;, &quot;created it as a clone&quot; (the copy may have been changed before it was saved), &quot;reviewed it&quot;, &quot;transferred it&quot; or &quot;cleared its LA status&quot;. A table shows each field before and after. Changes brought over from the old Calendar are marked &quot;from legacy log&quot;.</p>
 <p>Choose <strong>Back to the activity</strong> to return.</p>
 <h2>Delete an activity</h2>
 <p>You can&#39;t delete activities, so <strong>Delete</strong> isn&#39;t offered. Ask a Calendar administrator of the lead ministry, or an HQ Administrator.</p>
@@ -4961,7 +5376,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.</p>
 <ul>
 <li><strong>In a ministry:</strong> you see your ministries&#39; activities and the activities shared with them. You add and change your ministries&#39; activities.</li>
-<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, except other ministries&#39; ones marked <strong>Not for Look Ahead</strong>. You add and change any ministry&#39;s activities you can see. As an HQ editor, the daily change freeze doesn&#39;t stop you. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-hq">If you are an HQ editor</a>.</li>
+<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, except other ministries&#39; ones marked <strong>Confidential (not for Look Ahead)</strong>. You add and change any ministry&#39;s activities you can see. As an HQ editor, the daily change freeze doesn&#39;t stop you. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-hq">If you are an HQ editor</a>.</li>
 </ul>
 <h2>What you can do that read-only users can&#39;t</h2>
 <p>Calendar read-only users see the list, <strong>Updates</strong>, activities and reports, but can&#39;t change anything. These are yours:</p>
@@ -5003,7 +5418,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>change the choices offered on activities, such as categories, cities and HQ tags;</li>
 <li>move activities from one comm contact to another.</li>
 </ul>
-<p>Reviewing activities, corporate queries and the <strong>Look Ahead filter</strong> are for HQ advanced users. Their manual is the Calendar advanced user manual. Calendar administrators have the Calendar administrator manual.</p>
+<p>Reviewing activities, corporate queries and the <strong>Confidential filter</strong> are for HQ advanced users. Their manual is the Calendar advanced user manual. Calendar administrators have the Calendar administrator manual.</p>
 <h2>Your help pages</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
 <thead>
@@ -5049,7 +5464,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>Its lead ministry, and every ministry ticked in <strong>Shared With</strong>, see it.</li>
 <li>HQ organizations see every ministry&#39;s activities.</li>
-<li>An activity marked <strong>Not for Look Ahead</strong> is seen only by its lead and shared ministries, and by HQ advanced users and HQ administrators. HQ editors don&#39;t see other ministries&#39; ones.</li>
+<li>An activity marked <strong>Confidential (not for Look Ahead)</strong> is seen only by its lead and shared ministries, and by HQ advanced users and HQ administrators. HQ editors don&#39;t see other ministries&#39; ones.</li>
 <li>Only the lead ministry and HQ can change an activity. A ministry it is only shared with can open it but not change it.</li>
 <li>A deleted activity leaves the Calendar for everyone except HQ administrators.</li>
 </ul>
@@ -5083,7 +5498,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tbody></table></div>
 <h2>Signing in</h2>
 <p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
-`,changed:"2026-10-30"},Dt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},Dt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p><strong>Calendar</strong> lists the activities you can see, from today on, earliest first. The first 30 show. More load as you scroll down, or when you choose <strong>Show more</strong> (the button names how many).</p>
 <p>Two kinds of activity are left out until you ask for them:</p>
 <ul>
@@ -5201,7 +5616,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Your column or display choice wasn&#39;t kept. Try again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},Et={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},It={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p><strong>Calendar</strong> &gt; <strong>Updates</strong> lists recent changes to the activities you can see, newest first. It opens on <strong>Today&#39;s updates</strong>. <strong>Latest 5 updates</strong> shows the five newest.</p>
 <p>Each line says when, who, and what they did: &quot;added activity&quot;, &quot;changed activity&quot;, &quot;reviewed activity&quot; or &quot;added new clone&quot;. Then come the activity&#39;s number, its title and its dates as they are now. Point at the title to see the summary.</p>
 <p>Choose the activity&#39;s number to open it. <strong>Save</strong> or <strong>Cancel</strong> there brings you back to the same updates.</p>
@@ -5242,7 +5657,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Check the number.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},It={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-30"},Et={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p>You add activities for your ministries, and change the activities your ministries lead. As an HQ editor you can add and change any ministry&#39;s activities you can see. What each field is for is on <a href="/hub/help/manuals/calendar-editor/calendar-editor-fields">Activity fields</a>.</p>
 <h2>Add an activity</h2>
 <ol>
@@ -5281,7 +5696,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Change what differs, and choose <strong>Save</strong>. You see, for example, &quot;Cloned HLTH-21 as HLTH-22.&quot; The new activity stays open, so you can add files.</li>
 </ol>
 <p><strong>Cancel</strong>, or leaving the page another way, creates nothing.</p>
-<p>The copy starts as <strong>New</strong>, and its <strong>View changes</strong> says &quot;created it as a clone&quot;, naming the activity it was cloned from. It copies the activity&#39;s fields except these:</p>
+<p>The copy starts as <strong>New</strong>, and its <strong>View changes</strong> says &quot;created it as a clone&quot;, naming the activity it was cloned from. Like any new activity, the copy must have every required field filled in before it saves; an older activity may be missing some. It copies the activity&#39;s fields except these:</p>
 <ul>
 <li>the release date and time are emptied;</li>
 <li><strong>Internal notes</strong> is emptied;</li>
@@ -5302,7 +5717,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>To remove a file, choose <strong>Remove</strong> beside it, then <strong>Remove</strong> again in the &quot;The file is deleted from this activity.&quot; box.</p>
 <p>Adding or removing a file doesn&#39;t touch your unsaved changes to the fields. Like saving, it isn&#39;t possible while someone else is editing the activity, or during the daily change freeze unless you are an HQ editor. A file opens only for people who can see its activity.</p>
 <h2>View changes</h2>
-<p><strong>View changes</strong> lists every change to the activity, newest first. Each entry says when, who and what they did, such as &quot;created it&quot;, &quot;changed it&quot;, &quot;created it as a clone&quot;, &quot;reviewed it&quot;, &quot;transferred it&quot; or &quot;cleared its LA status&quot;. A table shows each field before and after. Changes brought over from the old Calendar are marked &quot;from legacy log&quot;.</p>
+<p><strong>View changes</strong> lists every change to the activity, newest first. Each entry says when, who and what they did, such as &quot;created it&quot;, &quot;changed it&quot;, &quot;created it as a clone&quot; (the copy may have been changed before it was saved), &quot;reviewed it&quot;, &quot;transferred it&quot; or &quot;cleared its LA status&quot;. A table shows each field before and after. Changes brought over from the old Calendar are marked &quot;from legacy log&quot;.</p>
 <p>Choose <strong>Back to the activity</strong> to return.</p>
 <h2>Delete an activity</h2>
 <p>You can&#39;t delete activities, so <strong>Delete</strong> isn&#39;t offered. Ask a Calendar administrator of the lead ministry, or an HQ administrator.</p>
@@ -5357,7 +5772,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Something went wrong on the way. Choose <strong>Save</strong> again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},Lt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},Ft={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p>An activity&#39;s fields are in sections, in this order: <strong>Overview</strong>, <strong>Ministry</strong>, <strong>Planning</strong>, <strong>Schedule</strong>, <strong>Release</strong>, <strong>Event</strong> and, when turned on, <strong>Records</strong>. HQ editors also see <strong>Look Ahead</strong>, after <strong>Event</strong>. A &quot;?&quot; beside a field explains it.</p>
 <h2>What you must fill in</h2>
 <p>Fields marked &quot;(required)&quot; must be filled in before you can save:</p>
@@ -5587,7 +6002,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>A choice that has been retired shows &quot;(no longer in use)&quot; when an activity already has it. The activity keeps it. You can&#39;t choose it for another activity.</p>
 <h2>Long text from the old Calendar</h2>
 <p>Some activities brought over from the old Calendar have longer text than the limits allow. They still save. The limits apply only to text you change.</p>
-`,changed:"2026-10-31"},Ot={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},Lt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p>Two things can open an activity read-only even though you may change it: someone else editing it, and the daily change freeze.</p>
 <h2>When someone else is editing</h2>
 <p>Only one person edits an activity at a time. The first person to change a field holds the edit lock. Anyone else who opens the activity sees, for example, &quot;Pat Example is editing this activity (since 2:15 PM). It opens for editing when they save or cancel, or after 15 minutes without input.&quot;</p>
@@ -5608,7 +6023,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>These still work during the freeze: the list, filters, <strong>My Queries</strong>, the star, <strong>Updates</strong>, <strong>View changes</strong>, the Excel export and the reports.</p>
 <p>For an urgent change during the freeze, contact the Corp Cal Manager at GCPE HQ.</p>
 <p>If you are an HQ editor, the freeze doesn&#39;t apply to you. You see the times on the list, but you can keep working.</p>
-`,changed:"2026-10-30"},Ft={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor) who belong to an HQ organization, such as GCPE Headquarters.</p>
+`,changed:"2026-10-30"},Ot={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor) who belong to an HQ organization, such as GCPE Headquarters.</p>
 <p>If none of your ministries is an HQ organization, nothing on this page applies to you.</p>
 <h2>What HQ editors can do that ministry editors can&#39;t</h2>
 <ul>
@@ -5792,7 +6207,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you see.</p>
 <ul>
 <li><strong>In a ministry:</strong> you see the activities your ministries lead, and the ones shared with them.</li>
-<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, except other ministries&#39; ones marked <strong>Not for Look Ahead</strong>.</li>
+<li><strong>In an HQ organization:</strong> you see every ministry&#39;s activities, except other ministries&#39; ones marked <strong>Confidential (not for Look Ahead)</strong>.</li>
 </ul>
 <p>Deleted activities leave the Calendar for you.</p>
 <h2>What you see in the side menu</h2>
@@ -5807,7 +6222,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>On the activity list, \u2318K on a Mac or Ctrl+K on Windows opens <strong>Filters</strong> and goes to <strong>Search for</strong>.</p>
 <h2>Signing in</h2>
 <p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
-`,changed:"2026-10-30"},Qt={html:`<p><strong>Who this is for:</strong> Calendar read-only users (Calendar.ReadOnly).</p>
+`,changed:"2026-10-31"},Qt={html:`<p><strong>Who this is for:</strong> Calendar read-only users (Calendar.ReadOnly).</p>
 <p><strong>Calendar</strong> lists the activities you can see, from today on, earliest first. The first 30 show. More load as you scroll down, or when you choose <strong>Show more</strong> (the button names how many).</p>
 <p>Two kinds of activity are left out until you ask for them:</p>
 <ul>
@@ -6130,4 +6545,4 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Take down or change any election notice on <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Site banner</strong>, and publish. See <a href="/hub/help/manuals/nrms-site-editor/site-banner">Site banner</a>.</li>
 <li>Update the ministers&#39; contact records in Media Hub. The Hub does not change them.</li>
 </ol>
-`,changed:"2026-10-30"},Kt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":u,"site-editor-overview":c,carousel:p,"emergency-pins":m,"live-feed":y,"resource-links":b,"website-files":f,"featured-and-website-log":v,"site-settings":w,"site-banner":q,"theme-colours":C,"footer-and-navigation":k,"social-links":T,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":D,"editor-approve-and-publish":E,"editor-what-happens-next":I,"editor-correct-unpublish-delete":L,"editor-find-a-release":O,"editor-featured-and-log":F,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":V,"who-gets-which-email":K,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ut,"nod-viewer-lists-and-categories":ct,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":yt,"calendar-users":bt,"calendar-transfer":ft,"calendar-lookups":vt,"calendar-delete-activity":wt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":kt,"calendar-advanced-list":Tt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Dt,"calendar-editor-updates":Et,"calendar-editor-activity":It,"calendar-editor-fields":Lt,"calendar-editor-lock-and-freeze":Ot,"calendar-editor-hq":Ft,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Vt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",yt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",Tt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",kt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",wt as"calendar-delete-activity",It as"calendar-editor-activity",Lt as"calendar-editor-fields",Ft as"calendar-editor-hq",Dt as"calendar-editor-list",Ot as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",Et as"calendar-editor-updates",qt as"calendar-hq-review",vt as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",ft as"calendar-transfer",Ct as"calendar-undelivered-events",bt as"calendar-users",p as carousel,n as"core-admin-overview",Kt as default,ot as"editor-add-a-subscriber",E as"editor-approve-and-publish",dt as"editor-bounces",L as"editor-correct-unpublish-delete",F as"editor-featured-and-log",D as"editor-files-and-media",O as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",I as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",v as"featured-and-website-log",j as"find-and-change-subscribers",k as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",y as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Vt as"new-government",V as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ct as"nod-viewer-lists-and-categories",ut as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",b as"resource-links",d as"sectors-themes-and-tags",q as"site-banner",W as"site-editor-organizations",c as"site-editor-overview",x as"site-identity",w as"site-settings",T as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",f as"website-files",u as"website-project-blue-bridge",K as"who-gets-which-email"};
+`,changed:"2026-10-30"},Kt=null,jt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":u,"site-editor-overview":c,carousel:p,"emergency-pins":m,"live-feed":b,"resource-links":y,"website-files":f,"featured-and-website-log":w,"site-settings":v,"site-banner":q,"theme-colours":C,"footer-and-navigation":T,"social-links":k,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":D,"editor-approve-and-publish":I,"editor-what-happens-next":E,"editor-correct-unpublish-delete":F,"editor-find-a-release":L,"editor-featured-and-log":O,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":V,"who-gets-which-email":K,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ut,"nod-viewer-lists-and-categories":ct,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":bt,"calendar-users":yt,"calendar-transfer":ft,"calendar-lookups":wt,"calendar-delete-activity":vt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":Tt,"calendar-advanced-list":kt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Dt,"calendar-editor-updates":It,"calendar-editor-activity":Et,"calendar-editor-fields":Ft,"calendar-editor-lock-and-freeze":Lt,"calendar-editor-hq":Ot,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Vt,"signing-in-and-unsaved-changes":Kt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",bt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",kt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",Tt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",vt as"calendar-delete-activity",Et as"calendar-editor-activity",Ft as"calendar-editor-fields",Ot as"calendar-editor-hq",Dt as"calendar-editor-list",Lt as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",It as"calendar-editor-updates",qt as"calendar-hq-review",wt as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",ft as"calendar-transfer",Ct as"calendar-undelivered-events",yt as"calendar-users",p as carousel,n as"core-admin-overview",jt as default,ot as"editor-add-a-subscriber",I as"editor-approve-and-publish",dt as"editor-bounces",F as"editor-correct-unpublish-delete",O as"editor-featured-and-log",D as"editor-files-and-media",L as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",E as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",w as"featured-and-website-log",j as"find-and-change-subscribers",T as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",b as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Vt as"new-government",V as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ct as"nod-viewer-lists-and-categories",ut as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",y as"resource-links",d as"sectors-themes-and-tags",Kt as"signing-in-and-unsaved-changes",q as"site-banner",W as"site-editor-organizations",c as"site-editor-overview",x as"site-identity",v as"site-settings",k as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",f as"website-files",u as"website-project-blue-bridge",K as"who-gets-which-email"};
