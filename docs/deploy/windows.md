@@ -547,9 +547,29 @@ run on Windows.
 
 **Cutover only, never on Dev or Test while legacy is live:** turning legacy's publisher off and
 handing scheduling to NRMS (`replay-to-news-api`, `release-holds`) is in siteground.md, "Cutover
-order". Run the replay early on cutover day, and wait until NRMS pending deliveries are 0 before
-`release-holds` (the health check's `outbox.nrms` field, §7.7):
-`(curl.exe -k -s https://localhost/stack/health | ConvertFrom-Json).checks.'outbox.nrms'.pending`.
+order", which says what each step does and why. Run the replay early on cutover day, and wait
+until NRMS pending deliveries are 0 before `release-holds` (the health check's `outbox.nrms`
+field, §7.7). Both tools are in the package; on the app server, after turning legacy's publisher
+off:
+
+```powershell
+$cfg = Get-Content C:\gcpe\config\gcpe.env
+$get = { param($name) ((($cfg | Where-Object { $_ -like "$name=*" }) -split '=', 2)[1]).Trim([char]39, [char]34) }
+$env:DATABASE_URL = & $get 'NRMS_DATABASE_URL'
+# The origin the stack's publisher puts in front of /files/... links (siteground.md, step 2).
+$env:PUBLIC_FILES_BASE = ([uri](& $get 'SITE_PUBLIC_SITE_URL')).GetLeftPart('Authority')
+# News API only, release.updated only: the running stack delivers what the tool queues.
+$env:EVENT_SUBSCRIBERS = '[{"name":"news-api","url":"https://replay-cli.example.test/unused","secret":"unused-by-cli-000000000000000000000000","types":["release.updated"]}]'
+node.exe C:\gcpe\current\apps\nrms\src\cli\replay-to-news-api.js              # dry run: what it would send
+node.exe C:\gcpe\current\apps\nrms\src\cli\replay-to-news-api.js --confirm
+# Repeat until it says 0:
+(curl.exe -k -s https://localhost/stack/health | ConvertFrom-Json).checks.'outbox.nrms'.pending
+node.exe C:\gcpe\current\apps\nrms\src\cli\release-holds.js                    # dry run: what is on hold
+node.exe C:\gcpe\current\apps\nrms\src\cli\release-holds.js --confirm
+Remove-Item Env:DATABASE_URL, Env:PUBLIC_FILES_BASE, Env:EVENT_SUBSCRIBERS
+```
+
+If `gcpe.env` sets `NRMS_PUBLIC_FILES_BASE`, use that value for `PUBLIC_FILES_BASE` instead.
 
 **Check it**
 
@@ -1610,7 +1630,10 @@ Point the organisation's uptime monitor at the app server's health check, from i
 (the DMZ proxy answers 404 for it, §8.1). The app server's 443 accepts only the ranges in the rule
 **GCPE web: allowed client ranges only** (D2), so add the monitor's address to those ranges
 (re-run `Install-Gcpe.ps1` with it in `-AllowedClientRanges`), or a monitor outside them times out
-and reads as "down". Or use the scheduled task below, which runs on the server itself.
+and reads as "down". `-AllowedClientRanges` replaces the whole list rather than adding to it, so
+pass every range again: the DMZ proxy's address, the staff ranges and the monitor. Leave out the
+proxy and the public site stops answering. The installer prints the list it set; check it. Or use
+the scheduled task below, which runs on the server itself.
 
 ```
 https://<internal host>/stack/health
@@ -1659,12 +1682,19 @@ answer that gets through.
 $h = curl.exe -s --max-time 20 http://127.0.0.1:3000/stack/health | Out-String
 $status = try { ($h | ConvertFrom-Json).status } catch { 'no answer' }
 if ($status -ne 'ok') {
-    Send-MailMessage -SmtpServer '<mail relay>' -From 'gcpe-stack@<domain>' -To '<team address>' `
+    Send-MailMessage -SmtpServer '<mail relay>' -Port 25 -From 'gcpe-stack@<domain>' -To '<team address>' `
         -Subject "GCPE health: $status" -Body $h
 }
 ```
 
-and register it every 15 minutes, as SYSTEM:
+Use the relay and port the stack sends mail with: `DIST_SMTP_HOST` and `DIST_SMTP_PORT` in
+`gcpe.env`, set by `Install-Gcpe.ps1 -SmtpHost` and `-SmtpPort`. Add `-UseSsl` if that relay
+requires STARTTLS. `Send-MailMessage` can't send to a relay that needs TLS from the first byte
+(`DIST_SMTP_SECURE=true`, usually port 465): use the relay's STARTTLS port (usually 587) with
+`-UseSsl`. It also can't sign in (`DIST_SMTP_USER`) without a password stored on the server for
+SYSTEM to read. For such a relay, use the organisation's monitoring service instead.
+
+Register it every 15 minutes, as SYSTEM:
 
 ```powershell
 $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\gcpe\config\Watch-GcpeHealth.ps1'

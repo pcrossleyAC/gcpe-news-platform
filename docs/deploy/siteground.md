@@ -1299,13 +1299,18 @@ correct. Start early on cutover day, well before the switch-over time: step 3 ca
 2. After step 1, `npm run nrms:replay-to-news-api -- --confirm` — re-sends every
    already-published, live release to the News API as `release.updated` with `notify: false`, so
    the public site and the News API's own data agree with NRMS's copy before NRMS's publisher
-   starts touching anything. Run it from a full checkout with the app's `DATABASE_URL` and an
-   `EVENT_SUBSCRIBERS` naming `news-api` only, with `types: ["release.updated"]`. As with the
-   other replay commands, only `name` and `types` matter; the running stack delivers the events
-   itself:
+   starts touching anything. Run it from a full checkout with the app's `DATABASE_URL`, a
+   `PUBLIC_FILES_BASE` and an `EVENT_SUBSCRIBERS` naming `news-api` only, with
+   `types: ["release.updated"]`. As with the other replay commands, only `name` and `types`
+   matter; the running stack delivers the events itself. `PUBLIC_FILES_BASE` must be the origin
+   the stack's own publisher uses: `NRMS_PUBLIC_FILES_BASE` if Site Tools sets it, otherwise the
+   origin of `SITE_PUBLIC_SITE_URL` (on boxs.ca, `https://boxs.ca`). Left out, every replayed
+   release's file and image links become bare `/files/…` paths, unlike the ones the publisher
+   sent:
 
    ```sh
    DATABASE_URL=... \
+   PUBLIC_FILES_BASE=https://<public site> \
    EVENT_SUBSCRIBERS='[{"name":"news-api","url":"https://replay-cli.example.test/unused","secret":"unused-by-cli-000000000000000000000000","types":["release.updated"]}]' \
      npm run nrms:replay-to-news-api -- --confirm
    ```
