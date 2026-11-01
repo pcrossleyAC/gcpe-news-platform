@@ -276,10 +276,8 @@ function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "
   if (withCalendar) checks.push({ name: "calendar", path: "/calendar/health/ready" });
   let cached: { expiresAt: number; status: number; body: { status: string; apps: Record<string, boolean>; checks: Record<string, Check> } } | undefined;
   const r = Router();
-  r.get("/health", async (_req, res) => {
-    if (cached && cached.expiresAt > Date.now()) {
-      return void res.status(cached.status).json({ ...cached.body, newsApiSearch, startedAt, pid: process.pid });
-    }
+  type Computed = { status: number; body: { status: string; apps: Record<string, boolean>; checks: Record<string, Check> } };
+  const compute = async (): Promise<Computed> => {
     const apps: Record<string, boolean> = {};
     const [, opsChecks] = await Promise.all([
       Promise.all(
@@ -298,10 +296,25 @@ function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "
     // up but a background check red is "degraded", still 200 so a load balancer or the deploy's
     // own health wait doesn't take the site out over a backlog.
     const ok = Object.values(apps).every(Boolean);
-    const status = ok ? 200 : 503;
-    const body = { status: !ok ? "unavailable" : Object.values(opsChecks).every((c) => c.ok) ? "ok" : "degraded", apps, checks: opsChecks };
-    cached = { expiresAt: Date.now() + HEALTH_CACHE_TTL_MS, status, body };
-    res.status(status).json({ ...body, newsApiSearch, startedAt, pid: process.pid });
+    return { status: ok ? 200 : 503, body: { status: !ok ? "unavailable" : Object.values(opsChecks).every((c) => c.ok) ? "ok" : "degraded", apps, checks: opsChecks } };
+  };
+  // Fix round 1, N3: one recomputation at a time, shared by every caller that misses the cache
+  // while it runs (the endpoint is public on SiteGround).
+  let inflight: Promise<Computed> | undefined;
+  r.get("/health", async (_req, res) => {
+    if (!(cached && cached.expiresAt > Date.now())) {
+      inflight ??= compute()
+        .then((c) => {
+          cached = { expiresAt: Date.now() + HEALTH_CACHE_TTL_MS, ...c };
+          return c;
+        })
+        .finally(() => {
+          inflight = undefined;
+        });
+      const c = await inflight;
+      return void res.status(c.status).json({ ...c.body, newsApiSearch, startedAt, pid: process.pid });
+    }
+    res.status(cached.status).json({ ...cached.body, newsApiSearch, startedAt, pid: process.pid });
   });
   return r;
 }
@@ -626,7 +639,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   };
   app.use("/stack", healthRouter(new Date(startedAt).toISOString(), calendar !== null, newsApi.searchMode, opsSources));
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
-  app.use("/stack", undeliveredRouter(errorsAuth.bearer, outboxes));
+  app.use("/stack", undeliveredRouter(errorsAuth.bearer, outboxes, core.outboxDismissals));
   app.use(
     "/stack",
     tickRouter(

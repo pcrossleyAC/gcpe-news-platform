@@ -128,13 +128,16 @@ describe("accessibility — Users, Media list names and error log", () => {
   });
 
   it("UndeliveredUpdatesScreen", async () => {
-    const item = { eventId: "11111111-1111-4111-8111-111111111111", subscriber: "nod", type: "release.published", aggregateId: "release:1", about: "A headline", attempts: 9, lastError: "HTTP 503", createdAt: "2026-10-05T10:00:00.000Z" };
+    const item = { eventId: "11111111-1111-4111-8111-111111111111", subscriber: "nod", type: "release.published", aggregateId: "release:1", about: "A headline", attempts: 9, lastError: "HTTP 503", createdAt: "2026-10-05T10:00:00.000Z", replaced: false };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-        if (url === "/stack/undelivered") return jsonResponse(200, { apps: [{ app: "nrms", items: [item, { ...item, eventId: "22222222-2222-4222-8222-222222222222" }], total: 2, truncated: false }] });
+        if (url === "/stack/undelivered") return jsonResponse(200, {
+            apps: [{ app: "nrms", items: [item, { ...item, eventId: "22222222-2222-4222-8222-222222222222" }, { ...item, eventId: "33333333-3333-4333-8333-333333333333", replaced: true }], total: 3, replaced: 1, truncated: false }],
+            dismissed: [{ app: "core", eventId: "44444444-4444-4444-8444-444444444444", subscriber: "nrms", type: "org.upserted", about: "finance", lastError: null, createdAt: "2026-10-04T10:00:00.000Z", replaced: false, dismissedAt: "2026-10-05T11:00:00.000Z", dismissedBy: "Sam" }],
+          });
         return jsonResponse(200, {});
       }),
     );

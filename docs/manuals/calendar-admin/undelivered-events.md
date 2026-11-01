@@ -39,4 +39,4 @@ Before you retry, check that Releases is working, or ask your operations team.
 
 If it fails again, it comes straight back to the table, without another 24 hours of tries. Reload the page after a minute to check. If it is back, Releases is still refusing it: have that fixed before you retry again.
 
-Retrying an old change is safe. If a newer change to the same activity has already reached Releases, the newer one stays.
+Retrying an old change is safe. If a newer change to the same activity has already reached Releases, the newer one stays. If a newer change to the same activity is also waiting here, **Retry** on the older one says "A newer update replaced this one, so it isn't sent again.": retry the newest one instead.

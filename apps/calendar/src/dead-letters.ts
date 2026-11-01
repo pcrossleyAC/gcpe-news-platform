@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
-import { listUndelivered, retryUndelivered } from "@gcpe/events";
+import { listUndelivered, retryUndelivered, type RetryOutcome } from "@gcpe/events";
 import { activities, orgs } from "./db/schema";
 import { wallClock } from "./time";
 import { visibleSql, type Viewer } from "./visibility";
@@ -66,6 +66,10 @@ export async function listDeadLetters(db: Db, timeZone: string, viewer: Viewer, 
 
 /**
  * Puts one dead delivery back in the queue: the next dispatch tries it once more. The event is
- * already past the dispatcher's 24 hours, so a failure makes it dead again straight away.
+ * already past the dispatcher's 24 hours, so a failure makes it dead again straight away. Refused
+ * ("replaced") when a newer change to the same activity for the same app exists.
  */
-export const retryDeadLetter = (db: Db, eventId: string, subscriber: string): Promise<boolean> => retryUndelivered(db, eventId, subscriber);
+export const retryDeadLetter = (db: Db, eventId: string, subscriber: string): Promise<RetryOutcome> => retryUndelivered(db, eventId, subscriber);
+
+/** Why a replaced delivery is refused (suite review fix round 1, I1). */
+export const REPLACED_MESSAGE = "A newer update replaced this one, so it isn't sent again.";

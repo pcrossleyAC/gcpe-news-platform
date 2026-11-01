@@ -5,7 +5,8 @@ import { authFromEnv } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
-import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin } from "@gcpe/events";
+import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin, type UndeliveredUpdate } from "@gcpe/events";
+import { recentDismissals, recordDismissals, type Dismissal } from "./services/outbox-dismissals";
 import type { SessionGate } from "@gcpe/auth";
 import { createApp } from "./app";
 import { sessionCheckDb, sessionGate as coreSessionGate } from "./services/sessions";
@@ -36,6 +37,11 @@ export interface AppHandle {
   /** This app's outbox: its undelivered updates and backlog, for the stack's Undelivered updates
    * screen and `/stack/health` (suite review O1/O2). */
   outbox: OutboxAdmin;
+  /** Who dismissed which undelivered update of any app's outbox (services/outbox-dismissals.ts). */
+  outboxDismissals: {
+    record(app: string, updates: UndeliveredUpdate[], actor: { id: string; name: string }): Promise<void>;
+    recent(limit: number): Promise<Dismissal[]>;
+  };
   /** Core's session gate: the stack installs it for every app in its process (setSessionGate),
    * so a deactivation or sign-out is refused on the very next request anywhere. */
   sessionGate: SessionGate;
@@ -110,6 +116,10 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     port: parsed.PORT,
     sessionGate,
     outbox: outboxAdmin(db),
+    outboxDismissals: {
+      record: (app, updates, actor) => recordDismissals(db, app, updates, actor),
+      recent: (limit) => recentDismissals(db, limit),
+    },
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
       // Phase 4a: lets the stack ask Core to re-emit every org/term as an upserted event — the

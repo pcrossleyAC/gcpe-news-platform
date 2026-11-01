@@ -70,11 +70,20 @@ export async function runOpsChecks(s: OpsSources): Promise<Record<string, Check>
 
   const checks: Record<string, Check> = {};
   for (const { name, health: h } of outboxes) {
+    // Fix round 1, N5: every field named, never spread — this answer is public on SiteGround.
+    // Replaced and dismissed undelivered updates never turn it red (fix round 1, I1/M1).
     checks[`outbox.${name}`] = h
-      ? { ok: (h.oldestPendingMinutes ?? 0) <= L.outboxOldestPendingMinutes && h.recentUndelivered === 0, ...h }
+      ? {
+          ok: (h.oldestPendingMinutes ?? 0) <= L.outboxOldestPendingMinutes && h.recentUndelivered === 0,
+          pending: h.pending,
+          oldestPendingMinutes: h.oldestPendingMinutes,
+          undelivered: h.undelivered,
+          replaced: h.replaced,
+          recentUndelivered: h.recentUndelivered,
+        }
       : UNREADABLE;
   }
-  checks["releases.overdue"] = overdue ? { ok: overdue.count === 0, ...overdue } : UNREADABLE;
+  checks["releases.overdue"] = overdue ? { ok: overdue.count === 0, count: overdue.count, oldestMinutes: overdue.oldestMinutes } : UNREADABLE;
   if (nod) {
     checks["nod.digest"] = { ok: fresh(nod.digestMinutesAgo, L.digestMaxMinutes, uptime), minutesSinceLastRun: nod.digestMinutesAgo };
     if (nod.emergencyFeed.on) {
@@ -90,6 +99,6 @@ export async function runOpsChecks(s: OpsSources): Promise<Record<string, Check>
     checks["nod.digest"] = UNREADABLE;
     checks["nod.send-loop"] = UNREADABLE;
   }
-  checks["site.rebuild-queue"] = queue ? { ok: (queue.oldestMinutes ?? 0) <= L.rebuildQueueOldestMaxMinutes, ...queue } : UNREADABLE;
+  checks["site.rebuild-queue"] = queue ? { ok: (queue.oldestMinutes ?? 0) <= L.rebuildQueueOldestMaxMinutes, pages: queue.pages, oldestMinutes: queue.oldestMinutes } : UNREADABLE;
   return checks;
 }

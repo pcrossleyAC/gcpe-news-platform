@@ -4,7 +4,7 @@ import type { NodHealth } from "../../nod/src/health";
 import { HEALTH_LIMITS, runOpsChecks, type OpsSources } from "./ops-checks";
 
 const quietOutbox = (h: Partial<OutboxHealth> = {}): Pick<OutboxAdmin, "health"> => ({
-  health: async () => ({ pending: 0, oldestPendingMinutes: null, undelivered: 0, recentUndelivered: 0, ...h }),
+  health: async () => ({ pending: 0, oldestPendingMinutes: null, undelivered: 0, replaced: 0, recentUndelivered: 0, ...h }),
 });
 
 const quietNod: NodHealth = {
@@ -34,7 +34,7 @@ describe("runOpsChecks", () => {
     const checks = await runOpsChecks(sources());
     expect(Object.keys(checks)).toEqual(["outbox.nrms", "outbox.core", "releases.overdue", "nod.digest", "nod.emergency-feed", "nod.media-sync", "nod.send-loop", "site.rebuild-queue"]);
     expect(Object.values(checks).every((c) => c.ok)).toBe(true);
-    expect(checks["outbox.nrms"]).toEqual({ ok: true, pending: 0, oldestPendingMinutes: null, undelivered: 0, recentUndelivered: 0 });
+    expect(checks["outbox.nrms"]).toEqual({ ok: true, pending: 0, oldestPendingMinutes: null, undelivered: 0, replaced: 0, recentUndelivered: 0 });
   });
 
   it("turns an outbox red for a long wait or a recent undelivered update, not for an old one", async () => {
@@ -111,6 +111,21 @@ describe("runOpsChecks", () => {
     expect(long["site.rebuild-queue"]).toEqual({ ok: true, pages: 20_000, oldestMinutes: 30 });
     const stuck = await runOpsChecks(sources({ rebuildQueue: async () => ({ pages: 3, oldestMinutes: HEALTH_LIMITS.rebuildQueueOldestMaxMinutes + 1 }) }));
     expect(stuck["site.rebuild-queue"]!.ok).toBe(false);
+  });
+
+  // Suite review fix round 1, N5: /stack/health is public on SiteGround, so each check names its
+  // fields: a field a source adds later never reaches the internet by accident.
+  it("passes on only the fields it names, never anything else a source returns", async () => {
+    const leaky = { title: "Embargoed headline", key: "2026PREM0001" };
+    const checks = await runOpsChecks(
+      sources({
+        outboxes: [{ name: "nrms", outbox: { health: async () => ({ pending: 1, oldestPendingMinutes: 2, undelivered: 0, replaced: 0, recentUndelivered: 0, ...leaky }) } }],
+        overdueScheduled: async () => ({ count: 1, oldestMinutes: 12, ...leaky }),
+        rebuildQueue: async () => ({ pages: 3, oldestMinutes: 4, ...leaky }),
+      }),
+    );
+    expect(JSON.stringify(checks)).not.toMatch(/Embargoed|2026PREM/);
+    for (const c of Object.values(checks)) for (const v of Object.values(c)) expect(v === null || ["number", "boolean"].includes(typeof v) || v === "couldn't check").toBe(true);
   });
 
   it("a check that can't be read is red and says so, and the others still run", async () => {

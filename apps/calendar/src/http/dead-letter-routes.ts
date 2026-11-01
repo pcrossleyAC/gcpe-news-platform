@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z, ZodError } from "zod";
 import { safeString } from "@gcpe/calendar-contract";
 import { requireLevel } from "../actor";
-import { listDeadLetters, retryDeadLetter } from "../dead-letters";
+import { listDeadLetters, REPLACED_MESSAGE, retryDeadLetter } from "../dead-letters";
 import type { ApiDeps } from "./routes";
 
 const retrySchema = z.object({ eventId: z.string().uuid(), subscriber: safeString().min(1).max(100) }).strict();
@@ -21,7 +21,9 @@ export function deadLetterRoutes(deps: ApiDeps): Router {
   r.post("/dead-letters/retry", async (req, res, next) => {
     try {
       const b = retrySchema.parse(req.body);
-      if (!(await retryDeadLetter(deps.db, b.eventId, b.subscriber))) return void res.status(404).json({ error: "not found" });
+      const outcome = await retryDeadLetter(deps.db, b.eventId, b.subscriber);
+      if (outcome === "not-found") return void res.status(404).json({ error: "not found" });
+      if (outcome === "replaced") return void res.status(409).json({ error: REPLACED_MESSAGE });
       res.status(204).end();
     } catch (e) {
       if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });

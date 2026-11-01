@@ -332,6 +332,27 @@ describe("apps/stack", () => {
     }
   });
 
+  // Suite review fix round 1, N3: when the cache has run out, callers arriving together share one
+  // recomputation instead of each re-running every app's readiness and every check.
+  it("GET /stack/health computes once for callers that arrive together after the cache runs out", { timeout: 20_000 }, async () => {
+    await fetch(`${instance.stackUrl}/stack/health`);
+    await new Promise((r) => setTimeout(r, 5_200)); // past the 5 s cache
+    const originalFetch = globalThis.fetch;
+    let readiness = 0;
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      if (String(args[0]).endsWith("/health/ready")) readiness++;
+      return originalFetch(...args);
+    }) as typeof fetch;
+    try {
+      const all = await Promise.all(Array.from({ length: 5 }, () => fetch(`${instance.stackUrl}/stack/health`)));
+      expect(all.map((r) => r.status)).toEqual([200, 200, 200, 200, 200]);
+      // One round: one readiness fetch per mounted app (seven here, the Calendar included).
+      expect(readiness).toBe(7);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   // Deviation from the brief's literal "/nrms/events ... (receiver mounted)": nrms/src/app.ts
   // has no event receiver at all (nrms only *publishes* release.published; it never
   // receives anything) — verified by reading the code, per implementer-rules.md's "trust the
@@ -1039,10 +1060,10 @@ describe("apps/stack", () => {
   describe("/stack/undelivered", () => {
     const admin = () => ({ authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json", "x-gcpe-request": "1" });
     /** An event NoD gave up on 25 hours ago, written straight into NRMS's outbox. */
-    async function deadInNrms(headline: string): Promise<string> {
+    async function deadInNrms(headline: string, aggregateId?: string, sequence = 1): Promise<string> {
       const id = randomUUID();
       const envelope = { id, type: "release.published", data: { key: `2026TEST-${id.slice(0, 6)}`, documents: [{ headline }], summary: "never shown" } };
-      await instance.dbs.nrms.pool.query("INSERT INTO outbox_events (id, type, aggregate_id, sequence, envelope, created_at) VALUES ($1, 'release.published', $2, 1, $3, now() - interval '25 hours')", [id, `release:${id}`, envelope]);
+      await instance.dbs.nrms.pool.query("INSERT INTO outbox_events (id, type, aggregate_id, sequence, envelope, created_at) VALUES ($1, 'release.published', $2, $4, $3, now() - interval '25 hours')", [id, aggregateId ?? `release:${id}`, envelope, sequence]);
       await instance.dbs.nrms.pool.query("INSERT INTO outbox_deliveries (event_id, subscriber, status, attempts, last_error) VALUES ($1, 'nod', 'dead', 9, 'HTTP 503')", [id]);
       return id;
     }
@@ -1076,7 +1097,44 @@ describe("apps/stack", () => {
       expect(row.status).toBe("pending");
 
       const all = await fetch(`${instance.stackUrl}/stack/undelivered/retry-all`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms" }) });
-      expect(await all.json()).toEqual({ retried: 1 });
+      expect(await all.json()).toEqual({ retried: 1, replaced: 0 });
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 1, I1: never resend an update a newer one for the same record replaced.
+    it("refuses to retry a replaced update, with a plain reason, and lists it as replaced", async () => {
+      const aggregate = `release:${randomUUID()}`;
+      const older = await deadInNrms("Replaced probe", aggregate, 1);
+      await deadInNrms("Replaced probe newer", aggregate, 2);
+      const res = await fetch(`${instance.stackUrl}/stack/undelivered/retry`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms", eventId: older, subscriber: "nod" }) });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "A newer update replaced this one, so it isn't sent again." });
+      const body = (await (await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() })).json()) as { apps: { app: string; items: { eventId: string; replaced: boolean }[]; replaced: number }[] };
+      expect(body.apps[0]!.items.find((i) => i.eventId === older)!.replaced).toBe(true);
+      expect(body.apps[0]!.replaced).toBe(1);
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 1, M1: dismissing one, or all, records who did it.
+    it("dismisses one, then all, recording who and when", async () => {
+      const one = await deadInNrms("Dismiss probe one");
+      await deadInNrms("Dismiss probe two");
+      const dismiss = (b: unknown) => fetch(`${instance.stackUrl}/stack/undelivered/dismiss`, { method: "POST", headers: admin(), body: JSON.stringify(b) });
+      expect((await dismiss({ app: "nrms", eventId: one, subscriber: "nod" })).status).toBe(204);
+      expect((await dismiss({ app: "nrms", eventId: one, subscriber: "nod" })).status).toBe(404);
+      const all = await fetch(`${instance.stackUrl}/stack/undelivered/dismiss-all`, { method: "POST", headers: admin(), body: "{}" });
+      expect(await all.json()).toEqual({ dismissed: 1 });
+      const body = (await (await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() })).json()) as {
+        apps: { total: number }[];
+        dismissed: { app: string; eventId: string; about: string | null; dismissedBy: string; dismissedAt: string }[];
+      };
+      expect(body.apps.every((a) => a.total === 0)).toBe(true);
+      const mine = body.dismissed.find((d) => d.eventId === one)!;
+      expect(mine).toMatchObject({ app: "nrms", about: "Dismiss probe one" });
+      expect(mine.dismissedBy).toBeTruthy();
+      expect(body.dismissed.filter((d) => d.about?.startsWith("Dismiss probe"))).toHaveLength(2);
+      const [row] = (await instance.dbs.nrms.pool.query("SELECT status FROM outbox_deliveries WHERE event_id = $1", [one])).rows;
+      expect(row.status).toBe("dismissed");
       await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
     });
   });
@@ -1097,7 +1155,7 @@ describe("apps/stack", () => {
       }
     }
 
-    it("is degraded, still 200, while an update from the last week is undelivered, and ok again once it's gone", { timeout: 30_000 }, async () => {
+    it("is degraded, still 200, while an update from the last week is undelivered, and ok again once it's dismissed", { timeout: 30_000 }, async () => {
       const id = randomUUID();
       await instance.dbs.core.pool.query("INSERT INTO outbox_events (id, type, aggregate_id, sequence, envelope, created_at) VALUES ($1, 'org.deactivated', 'org:health-probe', 1, $2, now() - interval '2 days')", [id, { id, data: { key: "health-probe" } }]);
       await instance.dbs.core.pool.query("INSERT INTO outbox_deliveries (event_id, subscriber, status, attempts, last_error) VALUES ($1, 'nrms', 'dead', 9, 'HTTP 500')", [id]);
@@ -1106,11 +1164,19 @@ describe("apps/stack", () => {
         expect(red.code).toBe(200);
         expect(red.body.status).toBe("degraded");
         expect(red.body.checks["outbox.core"]).toMatchObject({ ok: false, undelivered: 1, recentUndelivered: 1 });
+        // Fix round 1, M1: dismissing it is what clears the alarm.
+        const res = await fetch(`${instance.stackUrl}/stack/undelivered/dismiss`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ app: "core", eventId: id, subscriber: "nrms" }),
+        });
+        expect(res.status).toBe(204);
+        const green = await until((h) => h.body.status === "ok");
+        expect(green.body.status).toBe("ok");
+        expect(green.body.checks["outbox.core"]).toMatchObject({ ok: true, undelivered: 0 });
       } finally {
         await instance.dbs.core.pool.query("DELETE FROM outbox_events WHERE id = $1", [id]);
       }
-      const green = await until((h) => h.body.status === "ok");
-      expect(green.body.status).toBe("ok");
     });
 
     it("knows when NoD's send loop last ran once a tick has run it", { timeout: 30_000 }, async () => {

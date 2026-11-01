@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { InlineAlert } from "@bcgov/design-system-react-components";
+import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { formatWhen } from "../../../format/dates";
 import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { useSession } from "../../../session/SessionContext";
+import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { Button } from "../../../shared/BusyButton";
 import { TableScroll } from "../../../shared/TableScroll";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -19,14 +20,30 @@ interface Update {
   attempts: number;
   lastError: string | null;
   createdAt: string;
+  /** A newer update for the same record, to the same app, replaced it: it is never resent. */
+  replaced: boolean;
 }
 
-/** apps/stack/src/undelivered.ts's GET /stack/undelivered. */
+/** apps/stack/src/undelivered.ts's GET /stack/undelivered, one entry per app. */
 interface AppList {
   app: string;
   items: Update[];
   total: number;
+  /** How many of `total` are replaced. */
+  replaced: number;
   truncated: boolean;
+}
+
+/** apps/core/src/services/outbox-dismissals.ts's Dismissal. */
+interface Dismissal {
+  app: string;
+  eventId: string;
+  subscriber: string;
+  type: string;
+  about: string | null;
+  createdAt: string;
+  dismissedAt: string;
+  dismissedBy: string;
 }
 
 type Row = Update & { app: string };
@@ -72,7 +89,7 @@ const EVENT_LABELS: Record<string, string> = {
   "activity.updated": "Activity changed",
   "activity.deleted": "Activity deleted",
 };
-const updateLabel = (u: Update) => {
+const updateLabel = (u: { type: string; about: string | null }) => {
   const what = EVENT_LABELS[u.type] ?? u.type;
   return u.about ? `${what}: ${u.about}` : what;
 };
@@ -84,10 +101,19 @@ const keyOf = (r: { app: string; eventId: string; subscriber: string }) => `${r.
 
 const RETRY_NOTE = "Queued for delivery again. If it comes back here after the next minute, the receiving app is still refusing it: have that fixed before retrying again.";
 
+type Confirming = { kind: "retry-all"; app: string; resend: number; replaced: number } | { kind: "dismiss-all"; count: number };
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 /**
  * `/hub/undelivered-updates` (suite review O1.3, owner 2026-10-31): every app's updates another app
- * didn't accept within 24 hours, with Retry. Core.Admin only. The Calendar's own Undelivered events
- * tab, for its system administrators, stays as it is.
+ * didn't accept within 24 hours, with Retry and Dismiss. Core.Admin only. The Calendar's own
+ * Undelivered events tab, for its system administrators, stays as it is.
+ *
+ * Fix round 1 (controller rulings 2026-11-01): an update a newer one for the same record replaced is
+ * shown as replaced and never resent (I1); Retry all and Dismiss all ask first (I1, M1); Dismiss
+ * marks one handled without sending it, and recent dismissals are listed with who did it (M1). The
+ * status line is always mounted, and takes focus once a row it reports on has gone (N2).
  */
 export function UndeliveredUpdatesScreen(): React.JSX.Element {
   const session = useSession();
@@ -95,20 +121,24 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
   useDocumentTitle("Undelivered updates");
   const isAdmin = session.has("Core.Admin");
   const [apps, setApps] = useState<AppList[] | null>(null);
+  const [dismissed, setDismissed] = useState<Dismissal[]>([]);
   const [loadError, setLoadError] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
   const [messages, setMessages] = useState<string[]>([]);
-  /** Rows (keyOf) and apps ("all:<app>") whose retry is in flight. */
+  const [confirming, setConfirming] = useState<Confirming | null>(null);
+  /** Rows (keyOf), apps ("all:<app>") and "dismiss-all" whose action is in flight. */
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const latest = useRef(0);
+  const statusRef = useRef<HTMLParagraphElement>(null);
 
   const reload = useCallback((after?: (apps: AppList[]) => void) => {
     const call = ++latest.current;
-    apiFetch<{ apps: AppList[] }>("/stack/undelivered").then(
+    apiFetch<{ apps: AppList[]; dismissed?: Dismissal[] }>("/stack/undelivered").then(
       (r) => {
         if (call !== latest.current) return;
         setLoadError(false);
         setApps(r.apps);
+        setDismissed(r.dismissed ?? []);
         after?.(r.apps);
       },
       () => call === latest.current && setLoadError(true),
@@ -120,14 +150,22 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
     if (isAdmin) reload();
   }, [isAdmin, reload]);
 
+  /** Says what happened and moves focus to it: the button pressed may have gone with its row. */
+  const report = (text: string) => {
+    setStatus(text);
+    requestAnimationFrame(() => statusRef.current?.focus());
+  };
+
   const withBusy = async (key: string, work: () => Promise<void>) => {
     setMessages([]);
-    setStatus(null);
+    setStatus("");
     setBusy((s) => new Set(s).add(key));
     try {
       await work();
     } catch (caught) {
-      setMessages(messagesOf(caught));
+      const shown = messagesOf(caught);
+      afterDialogsClose(() => setMessages(shown));
+      reload();
     } finally {
       setBusy((s) => {
         const next = new Set(s);
@@ -140,14 +178,28 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
   const retry = (r: Row) =>
     withBusy(keyOf(r), async () => {
       await apiFetch("/stack/undelivered/retry", { method: "POST", body: { app: r.app, eventId: r.eventId, subscriber: r.subscriber } });
-      reload((now) => setStatus(now.some((a) => a.app === r.app && a.items.some((x) => keyOf({ ...x, app: a.app }) === keyOf(r))) ? RETRY_NOTE : "Queued for delivery again."));
+      reload((now) => report(now.some((a) => a.app === r.app && a.items.some((x) => keyOf({ ...x, app: a.app }) === keyOf(r))) ? RETRY_NOTE : "Queued for delivery again."));
+    });
+
+  const dismiss = (r: Row) =>
+    withBusy(`dismiss:${keyOf(r)}`, async () => {
+      await apiFetch("/stack/undelivered/dismiss", { method: "POST", body: { app: r.app, eventId: r.eventId, subscriber: r.subscriber } });
+      reload(() => report("Dismissed: it won't be sent."));
     });
 
   const retryAll = (app: string) =>
     withBusy(`all:${app}`, async () => {
-      const { retried } = await apiFetch<{ retried: number }>("/stack/undelivered/retry-all", { method: "POST", body: { app } });
-      reload(() => setStatus(`${retried} ${retried === 1 ? "update" : "updates"} queued for delivery again. Any that come back here after the next minute are still being refused.`));
-    });
+      const { retried } = await apiFetch<{ retried: number; replaced: number }>("/stack/undelivered/retry-all", { method: "POST", body: { app } });
+      setConfirming(null);
+      reload(() => afterDialogsClose(() => report(`${plural(retried, "update", "updates")} queued for delivery again. Any that come back here after the next minute are still being refused.`)));
+    }).finally(() => setConfirming(null));
+
+  const dismissAll = () =>
+    withBusy("dismiss-all", async () => {
+      const { dismissed: n } = await apiFetch<{ dismissed: number }>("/stack/undelivered/dismiss-all", { method: "POST", body: {} });
+      setConfirming(null);
+      reload(() => afterDialogsClose(() => report(`${plural(n, "update", "updates")} dismissed: ${n === 1 ? "it won't" : "they won't"} be sent.`)));
+    }).finally(() => setConfirming(null));
 
   if (!isAdmin) {
     return (
@@ -160,19 +212,25 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
 
   const rows: Row[] = (apps ?? []).flatMap((a) => a.items.map((u) => ({ ...u, app: a.app }))).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
   const now = new Date();
+  const allTotal = (apps ?? []).reduce((n, a) => n + a.total, 0);
+  const retryable = (apps ?? []).filter((a) => a.total > 1 && a.total - a.replaced > 0);
+  const pending = confirming?.kind === "retry-all" ? busy.has(`all:${confirming.app}`) : busy.has("dismiss-all");
 
   return (
     <div>
       <h1>Undelivered updates</h1>
       <p>
         Updates one part of the system sent to another that weren&rsquo;t accepted within 24 hours, such as a published release that never reached subscribers. Retry sends one again within the next
-        minute. No update here shows its full text.
+        minute: a Release published update then emails its subscribers. Dismiss marks one as handled without sending it. No update here shows its full text.
       </p>
       <Button variant="secondary" onPress={() => reload()}>
         Refresh
       </Button>
       {loadError && <InlineAlert variant="danger" role="alert" description="Couldn't load undelivered updates." />}
-      {status && <p role="status">{status}</p>}
+      {/* Always mounted, so what it says is announced (fix round 1, N2). */}
+      <p role="status" ref={statusRef} tabIndex={-1}>
+        {status}
+      </p>
       {messages.map((m) => (
         <p role="alert" key={m}>
           {m}
@@ -191,17 +249,18 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
                 {appLabel(a.app)} has {a.total} undelivered updates: only the 200 most recent are listed.
               </p>
             ))}
-          {apps.some((a) => a.items.length > 1) && (
-            <div className="gcpe-button-row">
-              {apps
-                .filter((a) => a.items.length > 1)
-                .map((a) => (
-                  <Button key={`all:${a.app}`} variant="secondary" onPress={() => void retryAll(a.app)} isPending={busy.has(`all:${a.app}`)} pendingLabel="Retrying…">
-                    {`Retry all ${a.total} from ${appLabel(a.app)}`}
-                  </Button>
-                ))}
-            </div>
-          )}
+          <div className="gcpe-button-row">
+            {retryable.map((a) => (
+              <Button key={`all:${a.app}`} variant="secondary" onPress={() => setConfirming({ kind: "retry-all", app: a.app, resend: a.total - a.replaced, replaced: a.replaced })}>
+                {`Retry all ${a.total - a.replaced} from ${appLabel(a.app)}`}
+              </Button>
+            ))}
+            {allTotal > 1 && (
+              <Button variant="secondary" onPress={() => setConfirming({ kind: "dismiss-all", count: allTotal })}>
+                {`Dismiss all ${allTotal}`}
+              </Button>
+            )}
+          </div>
           <TableScroll label="Undelivered updates">
             <table className="gcpe-table">
               <caption>Undelivered updates, newest first</caption>
@@ -218,25 +277,60 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={keyOf(r)}>
-                    <td>{formatWhen(r.createdAt, now, timeZone)}</td>
-                    <td>{appLabel(r.app)}</td>
-                    <td>{updateLabel(r)}</td>
-                    <td>{appLabel(r.subscriber)}</td>
-                    <td>{shortError(r.lastError)}</td>
-                    <td>
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onPress={() => void retry(r)}
-                        isPending={busy.has(keyOf(r))}
-                        pendingLabel="Retrying…"
-                        aria-label={`Retry ${updateLabel(r)} to ${appLabel(r.subscriber)}, sent ${formatWhen(r.createdAt, now, timeZone)}`}
-                      >
-                        Retry
-                      </Button>
-                    </td>
+                {rows.map((r) => {
+                  const what = `${updateLabel(r)} to ${appLabel(r.subscriber)}, sent ${formatWhen(r.createdAt, now, timeZone)}`;
+                  return (
+                    <tr key={keyOf(r)}>
+                      <td>{formatWhen(r.createdAt, now, timeZone)}</td>
+                      <td>{appLabel(r.app)}</td>
+                      <td>{updateLabel(r)}</td>
+                      <td>{appLabel(r.subscriber)}</td>
+                      <td>{shortError(r.lastError)}</td>
+                      <td>
+                        <div className="gcpe-button-row">
+                          {r.replaced ? (
+                            <span>Replaced by a newer update: not sent again</span>
+                          ) : (
+                            <Button variant="secondary" size="small" onPress={() => void retry(r)} isPending={busy.has(keyOf(r))} pendingLabel="Retrying…" aria-label={`Retry ${what}`}>
+                              Retry
+                            </Button>
+                          )}
+                          <Button variant="tertiary" size="small" onPress={() => void dismiss(r)} isPending={busy.has(`dismiss:${keyOf(r)}`)} pendingLabel="Dismissing…" aria-label={`Dismiss ${what}`}>
+                            Dismiss
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableScroll>
+        </>
+      )}
+      {dismissed.length > 0 && (
+        <>
+          <h2>Dismissed</h2>
+          <TableScroll label="Dismissed updates">
+            <table className="gcpe-table">
+              <caption>Dismissed updates, most recent first</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Dismissed</th>
+                  <th scope="col">By</th>
+                  <th scope="col">From</th>
+                  <th scope="col">Update</th>
+                  <th scope="col">Not accepted by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dismissed.map((d) => (
+                  <tr key={keyOf(d)}>
+                    <td>{formatWhen(d.dismissedAt, now, timeZone)}</td>
+                    <td>{d.dismissedBy}</td>
+                    <td>{appLabel(d.app)}</td>
+                    <td>{updateLabel(d)}</td>
+                    <td>{appLabel(d.subscriber)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -244,6 +338,46 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
           </TableScroll>
         </>
       )}
+      <Modal isOpen={confirming !== null} onOpenChange={(open) => { if (!open && !pending) setConfirming(null); }} isDismissable>
+        {confirming?.kind === "retry-all" ? (
+          <AlertDialog
+            role="alertdialog"
+            title={`Resend ${plural(confirming.resend, "update", "updates")} from ${appLabel(confirming.app)}?`}
+            buttons={
+              <>
+                <Button variant="secondary" isPending={pending} onPress={() => setConfirming(null)}>
+                  Cancel
+                </Button>
+                <Button isPending={pending} pendingLabel="Resending…" onPress={() => void retryAll(confirming.app)}>
+                  Resend
+                </Button>
+              </>
+            }
+          >
+            <p>They&rsquo;re sent again within the next minute, oldest first. Check that the app that refused them is working first.</p>
+            {confirming.replaced > 0 && <p>{`${plural(confirming.replaced, "replaced by a newer update isn't", "replaced by a newer update aren't")} sent.`}</p>}
+            {confirming.app === "nrms" && <p>A Release published update emails its subscribers when it&rsquo;s sent.</p>}
+          </AlertDialog>
+        ) : confirming?.kind === "dismiss-all" ? (
+          <AlertDialog
+            role="alertdialog"
+            variant="warning"
+            title={`Dismiss all ${confirming.count} undelivered updates?`}
+            buttons={
+              <>
+                <Button variant="secondary" isPending={pending} onPress={() => setConfirming(null)}>
+                  Cancel
+                </Button>
+                <Button danger isPending={pending} pendingLabel="Dismissing…" onPress={() => void dismissAll()}>
+                  Dismiss all
+                </Button>
+              </>
+            }
+          >
+            <p>None of them will be sent. Dismiss them only once you&rsquo;re sure they don&rsquo;t need to be, for example because the change was made again by hand.</p>
+          </AlertDialog>
+        ) : null}
+      </Modal>
     </div>
   );
 }
