@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { publicFileUrl, usePublicFiles } from "../../shared/publicAddress";
 import { canManageWebsite } from "./access";
 import type { ListFilesResult, SiteFileView } from "./types";
 
@@ -44,6 +45,12 @@ export function FilesScreen(): React.JSX.Element {
   const [upload, setUpload] = useState<UploadState>(INITIAL_UPLOAD);
   const [removeTarget, setRemoveTarget] = useState<SiteFileView | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  // W1: addresses to copy are on the public site's base, never the Hub's own (internal) host.
+  // Fix round 1 (I3): nothing is shown or copied as "the public address" until it is known.
+  const publicFiles = usePublicFiles();
+  const addressKnown = publicFiles.status === "ready";
+  const addressOf = (f: SiteFileView) => publicFileUrl(f.url, publicFiles.origin);
+  const [copyResult, setCopyResult] = useState("");
 
   const reload = useCallback((query: string) => {
     apiFetch<ListFilesResult>(`/nrms/api/site/files?q=${encodeURIComponent(query)}`).then(setResult, () => setLoadError("Couldn't load files."));
@@ -105,6 +112,16 @@ export function FilesScreen(): React.JSX.Element {
     }
   };
 
+  const copyAddress = async (f: SiteFileView) => {
+    try {
+      if (!addressKnown) return;
+      await navigator.clipboard.writeText(addressOf(f));
+      setCopyResult(`Copied the public address of ${f.name}.`);
+    } catch {
+      setCopyResult(`Couldn\u2019t copy. Select the address of ${f.name} and copy it.`);
+    }
+  };
+
   if (loadError) {
     return (
       <div className="gcpe-files">
@@ -126,11 +143,29 @@ export function FilesScreen(): React.JSX.Element {
 
       {upload.error && <InlineAlert variant="danger" role="alert" description={upload.error} />}
       {removeError && <InlineAlert variant="danger" role="alert" description={removeError} />}
+      <p className="gcpe-hint">Each file&rsquo;s public address is shown under its name. Use Copy public address when you paste a file into a slide, a pin, a link or a minister&rsquo;s photo.</p>
+      {!addressKnown && (
+        <p id="files-address-pending" className="gcpe-hint">
+          {publicFiles.status === "loading" ? "Working out the public address\u2026" : "Couldn\u2019t work out the public address. Reload the page."}
+        </p>
+      )}
+      {/* Mounted from the start, empty, so a screen reader hears the first result too. */}
+      <p role="status" className="gcpe-hint">
+        {copyResult}
+      </p>
 
       <ul>
         {result.files.map((f) => (
           <li key={f.id}>
-            <a href={f.url}>{f.name}</a>
+            <span className="gcpe-files__file">
+              <a href={addressKnown ? addressOf(f) : f.url}>{f.name}</a>
+              {addressKnown && <span className="gcpe-files__address">{addressOf(f)}</span>}
+            </span>
+            <Button variant="secondary" onPress={() => void copyAddress(f)} isDisabled={!addressKnown} aria-describedby={addressKnown ? undefined : "files-address-pending"}>
+              <span>
+                Copy public address <span className="gcpe-visually-hidden">of {f.name}</span>
+              </span>
+            </Button>
             {canEdit && (
               <DialogTrigger isOpen={removeTarget?.id === f.id} onOpenChange={(open) => setRemoveTarget(open ? f : null)}>
                 <Button variant="secondary" danger isPending={upload.busy}>

@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import { ThemeScreen } from "./ThemeScreen";
 import type { SettingsState } from "./api";
 
@@ -107,7 +108,7 @@ describe("ThemeScreen", () => {
     const field = await screen.findByLabelText("Header and buttons");
     await user.clear(field);
     await user.type(field, "#1a5a96");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
     expect(post.body).toMatchObject({ baseRevision: 4, section: "theme", value: { colors: { ...DOC.theme.colors, primary: "#1A5A96" } } });
@@ -134,7 +135,7 @@ describe("ThemeScreen", () => {
     renderScreen();
     const user = userEvent.setup();
     await screen.findByLabelText("Information banner");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     const field = await screen.findByLabelText("Information banner");
     await waitFor(() => expect(field).toHaveAccessibleDescription(new RegExp(message.slice(0, 30))));
     expect(field).toBeInvalid();
@@ -165,7 +166,7 @@ describe("ThemeScreen", () => {
     expect(field).toHaveAccessibleDescription(/Too faint/);
     await user.clear(field);
     await user.type(field, "#112233");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.method !== "GET" && JSON.stringify(c.body).includes('"sectionBar":"#112233"'))).toBe(true));
   });
 

@@ -7,12 +7,17 @@ import { formatWhen } from "../../format/dates";
 import { useAnnouncer } from "../../shared/Announcer";
 import { Button } from "../../shared/BusyButton";
 import { useShortcut } from "../../shared/shortcuts";
+import { afterDialogsClose } from "../../shared/afterDialogsClose";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { HiddenPrefixLabel } from "../../shared/ShortLabel";
+import { HostWarning } from "../../shared/HostWarning";
+import { staffHostWarning, usePublicFilesOrigin } from "../../shared/publicAddress";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
 import { canManageWebsite } from "./access";
+import { SaveResult, clockTime } from "./SaveResult";
+import { formatPublishedAt } from "./settings/format";
 import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressErrors } from "./slideChecks";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
@@ -48,7 +53,10 @@ interface SlideEditorProps {
   /** Only the "next" carousel's go-live time can usefully be changed here. */
   allowGoLiveEdit: boolean;
   timeZone: string;
-  onSaved(): void;
+  /** Reloads the carousels: after a save `result` is what to show (W8); a plain reload passes none. */
+  onSaved(result?: string): void;
+  /** W3: on the live card, the scheduled next carousel (a copy of these slides made earlier), if any. */
+  next?: CarouselView | null;
 }
 
 /** One carousel's slide list — shared by the live and next cards (past carousels use a
@@ -56,8 +64,9 @@ interface SlideEditorProps {
  * end up building the same full `slides` array (constraints.md: every drag needs a keyboard
  * alternative), and a single Save sends the whole list plus (optionally) a new go-live time in
  * one `PUT .../carousels/:id`. */
-function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: SlideEditorProps): React.JSX.Element {
-  const section = useVersionedSave<CarouselView>();
+function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved, next: scheduled = null }: SlideEditorProps): React.JSX.Element {
+  const section = useVersionedSave<CarouselView>({ quiet: true });
+  const at = () => clockTime(new Date(), timeZone);
   const [slides, setSlides] = useState<SlideForm[]>(() => toForm(carousel.slides));
   const [goLive, setGoLive] = useState<ScheduleValue | null>(null);
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
@@ -74,6 +83,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   const { announce } = useAnnouncer();
   const moveFocus = useMoveFocusRestore<HTMLDivElement>();
   const nextClientKey = useRef(0);
+  const publicOrigin = usePublicFilesOrigin();
 
   // I4: local reorders (unlike Documents, moving a slide isn't saved until "Save carousel" or, on the live card, "Publish carousel changes")
   // re-render synchronously, so restoring focus right after the triggering state update (in an
@@ -121,7 +131,13 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       .then((next) => {
         // Closed either way: a failure's message shows on the card, which the dialog would cover.
         setPublishOpen(false);
-        if (next) onSaved();
+        if (!next) return;
+        if (isLive) {
+          // Shown once the confirmation has closed, so it is announced.
+          afterDialogsClose(() => onSaved(`Published at ${at()}. Live now: the public home page shows the changes within a few minutes.`));
+        } else {
+          onSaved(`Saved at ${at()}. Not live yet: this carousel goes live on ${next.goLiveAt ? formatPublishedAt(next.goLiveAt, timeZone) : "its go-live time"}.`);
+        }
       });
   };
 
@@ -150,7 +166,8 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
     if (!stagesImage(slide)) {
       try {
         await apiFetch(`/nrms/api/site/slides/${slide.id}/image`, { method: "PUT", raw: file });
-        onSaved();
+        // W7: the reload brings the image's new address, so the new picture shows at once.
+        onSaved(`Slide ${slideNumber} image saved at ${at()}. Not live yet.`);
       } catch (caught) {
         setImageError(imageUploadMessage(caught));
       }
@@ -173,7 +190,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
 
   return (
     <div className="gcpe-carousel__slides" ref={moveFocus.containerRef}>
-      {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={onSaved}>Reload</Button>} />}
+      {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={() => onSaved()}>Reload</Button>} />}
       {section.problems && (
         <ul role="alert" className="gcpe-release-editor__problems">
           {section.problems.map((p) => (
@@ -204,6 +221,8 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
         // label drops the "Slide N" the card heading already shows; the accessible name keeps it.
         const label = (text: string) => (<HiddenPrefixLabel prefix={prefix} text={text} />) as unknown as string;
         const imageUrl = carousel.slides.find((s) => s.id === slide.id)?.imageUrl;
+        const actionWarning = staffHostWarning(slide.actionUrl, publicOrigin);
+        const actionWarningId = `slide-${carousel.id}-${slide.clientKey}-action-host`;
         return (
           <div key={slide.clientKey} className="gcpe-carousel__slide" {...dragReorder.dropZoneProps(index)}>
             <div className="gcpe-carousel__slide-head">
@@ -254,7 +273,8 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
             <div className="gcpe-carousel__slide-fields">
               <TextField label={label("headline")} value={slide.headline} onChange={(v) => update(index, { headline: v })} isDisabled={!canEdit} />
               <TextField label={label("summary")} value={slide.summary} onChange={(v) => update(index, { summary: v })} isDisabled={!canEdit} />
-              <TextField label={label("action URL")} value={slide.actionUrl} onChange={(v) => update(index, { actionUrl: v })} isDisabled={!canEdit} isInvalid={addressErrors[slide.clientKey]?.actionUrl !== undefined} errorMessage={addressErrors[slide.clientKey]?.actionUrl} />
+              <TextField label={label("action URL")} value={slide.actionUrl} onChange={(v) => update(index, { actionUrl: v })} isDisabled={!canEdit} isInvalid={addressErrors[slide.clientKey]?.actionUrl !== undefined} errorMessage={addressErrors[slide.clientKey]?.actionUrl} aria-describedby={actionWarning ? actionWarningId : undefined} />
+              <HostWarning id={actionWarningId} text={actionWarning} />
               <TextField label={label("action label")} description="The link text. Leave empty for the default set in Navigation and labels." value={slide.actionLabel} onChange={(v) => update(index, { actionLabel: v })} isDisabled={!canEdit} />
               <TextField label={label("Facebook post URL")} value={slide.facebookPostUrl} onChange={(v) => update(index, { facebookPostUrl: v })} isDisabled={!canEdit} isInvalid={addressErrors[slide.clientKey]?.facebookPostUrl !== undefined} errorMessage={addressErrors[slide.clientKey]?.facebookPostUrl} />
               <div className="gcpe-field">
@@ -332,12 +352,38 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
               }
             >
               <p>This is the live carousel, so the public home page shows your changes within a few minutes.</p>
+              {/* W3 (owner decision 2026-10-31, "warn"): the next carousel is an earlier copy of these slides. */}
+              {scheduled && (
+                <p>{`The next carousel was copied from these slides on ${formatPublishedAt(scheduled.createdAt, timeZone)}, so it won\u2019t include these changes. When it goes live on ${scheduled.goLiveAt ? formatPublishedAt(scheduled.goLiveAt, timeZone) : "its go-live time"}, it replaces them. Make the same changes on the next carousel too.`}</p>
+              )}
             </AlertDialog>
           </Modal>
         </DialogTrigger>
       )}
       </div>
     </div>
+  );
+}
+
+/**
+ * W3 (owner decision 2026-10-31, "warn"): a next carousel is a copy of the live slides made when it
+ * was created, and going live replaces the live carousel with it. Say when it was copied, and warn
+ * when the live carousel has changed since, because those changes will be undone at go-live.
+ */
+function NextCopyNote({ live, next, timeZone }: { live: CarouselView | null; next: CarouselView; timeZone: string }): React.JSX.Element {
+  const made = formatPublishedAt(next.createdAt, timeZone);
+  const goesLive = next.goLiveAt ? ` It goes live on ${formatPublishedAt(next.goLiveAt, timeZone)}.` : "";
+  const changedSince = live !== null && Date.parse(live.updatedAt) > Date.parse(next.createdAt);
+  return (
+    <>
+      <p className="gcpe-hint">{live ? `Copied from the live carousel on ${made}.${goesLive}` : `Made on ${made}.${goesLive}`}</p>
+      {changedSince && (
+        <InlineAlert
+          variant="warning"
+          description={`The live carousel was changed on ${formatPublishedAt(live.updatedAt, timeZone)}, after this copy was made. Those changes aren\u2019t in this carousel: make them here too, or they\u2019ll be undone when it goes live.`}
+        />
+      )}
+    </>
   );
 }
 
@@ -368,9 +414,13 @@ export function CarouselScreen(): React.JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [makeLiveOpen, setMakeLiveOpen] = useState(false);
-  const createNext = useVersionedSave<CarouselView>();
-  const makeLive = useVersionedSave<{ switched: boolean }>();
-  const deleteNext = useVersionedSave<void>();
+  const createNext = useVersionedSave<CarouselView>({ quiet: true });
+  const makeLive = useVersionedSave<{ switched: boolean }>({ quiet: true });
+  const deleteNext = useVersionedSave<void>({ quiet: true });
+  // W8: the last save's result on each card, kept here (the cards remount with each version).
+  const [liveResult, setLiveResult] = useState("");
+  const [nextResult, setNextResult] = useState("");
+  const at = () => clockTime(new Date(), timeZone);
   const [goLive, setGoLive] = useState<ScheduleValue | null>(null);
 
   const reload = useCallback(() => {
@@ -398,6 +448,7 @@ export function CarouselScreen(): React.JSX.Element {
     void createNext.run(() => apiFetch<CarouselView>("/nrms/api/site/carousels/next", { method: "POST", body: { goLiveAtLocal: goLive.local } })).then((created) => {
       if (created) {
         setGoLive(null);
+        setNextResult(`Next carousel created at ${at()}. Not live yet: it goes live on ${created.goLiveAt ? formatPublishedAt(created.goLiveAt, timeZone) : "its go-live time"}.`);
         reload();
       }
     });
@@ -407,6 +458,10 @@ export function CarouselScreen(): React.JSX.Element {
     void makeLive.run(() => apiFetch("/nrms/api/site/carousels/next/make-live", { method: "POST" })).then((result) => {
       if (result) {
         setMakeLiveOpen(false);
+        afterDialogsClose(() => {
+          setNextResult("");
+          setLiveResult(`The next carousel went live at ${at()}. Live now: the public home page shows it within a few minutes.`);
+        });
         reload();
       }
     });
@@ -419,6 +474,7 @@ export function CarouselScreen(): React.JSX.Element {
     void deleteNext.run(() => apiFetch<void>(`/nrms/api/site/carousels/next?version=${data.next!.version}`, { method: "DELETE" })).then((result) => {
       if (result !== null) {
         setDeleteOpen(false);
+        afterDialogsClose(() => setNextResult(`Next carousel deleted at ${at()}.`));
         reload();
       }
     });
@@ -441,17 +497,40 @@ export function CarouselScreen(): React.JSX.Element {
       <section aria-label="Live carousel">
         <h2>Live</h2>
         {data.live ? (
-          <SlideEditor key={`${data.live.id}:${data.live.version}`} carousel={data.live} canEdit={canEdit} allowGoLiveEdit={false} timeZone={timeZone} onSaved={reload} />
+          <SlideEditor
+            key={`${data.live.id}:${data.live.version}`}
+            carousel={data.live}
+            canEdit={canEdit}
+            allowGoLiveEdit={false}
+            timeZone={timeZone}
+            next={data.next}
+            onSaved={(result) => {
+              if (result) setLiveResult(result);
+              reload();
+            }}
+          />
         ) : (
           <p>No carousel is live.</p>
         )}
+        <SaveResult text={liveResult} />
       </section>
 
       <section aria-label="Next carousel">
         <h2>Next</h2>
         {data.next ? (
           <>
-            <SlideEditor key={`${data.next.id}:${data.next.version}`} carousel={data.next} canEdit={canEdit} allowGoLiveEdit={canEdit} timeZone={timeZone} onSaved={reload} />
+            <NextCopyNote live={data.live} next={data.next} timeZone={timeZone} />
+            <SlideEditor
+              key={`${data.next.id}:${data.next.version}`}
+              carousel={data.next}
+              canEdit={canEdit}
+              allowGoLiveEdit={canEdit}
+              timeZone={timeZone}
+              onSaved={(result) => {
+                if (result) setNextResult(result);
+                reload();
+              }}
+            />
             {canEdit && (
               <>
                 {makeLive.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
@@ -524,6 +603,7 @@ export function CarouselScreen(): React.JSX.Element {
             )}
           </>
         )}
+        <SaveResult text={nextResult} />
       </section>
 
       <section aria-label="Past carousels">

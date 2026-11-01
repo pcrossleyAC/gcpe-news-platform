@@ -5,6 +5,8 @@ import { moveItemBy } from "../screens/website/reorder";
 import { useAnnouncer } from "./Announcer";
 import { Button } from "./BusyButton";
 import { useMoveFocusRestore } from "./useMoveFocusRestore";
+import { HostWarning } from "./HostWarning";
+import { staffHostWarning, usePublicFilesOrigin } from "./publicAddress";
 
 /** A row the editor left completely blank — dropped before sending, as news.gov does. */
 const isBlank = (link: LinkSetting) => [link.text, link.url, link.summary ?? ""].every((v) => v.trim() === "");
@@ -47,10 +49,13 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
   const { announce } = useAnnouncer();
   const descriptionId = useId();
   const limitId = useId();
+  const warningId = useId();
   const atLimit = maxLinks !== undefined && links.length >= maxLinks;
   const moveFocus = useMoveFocusRestore<HTMLFieldSetElement>();
   const addRef = useRef<HTMLSpanElement>(null);
   const pendingFocus = useRef<string | "add" | null>(null);
+  // W1: an address pasted from the Hub's own (internal) host works for staff but not the public.
+  const publicOrigin = usePublicFilesOrigin();
 
   // Each row's stable key (React identity and focus targets), parallel to `links` and permuted
   // with it by every action below; a list replaced from outside (a reload) just keeps its keys.
@@ -127,11 +132,20 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
       {links.map((link, index) => {
         const key = keys.current[index]!;
         const others = [...(rowErrors.get(index) ?? [])].filter(([name]) => !shown.includes(name as Shown));
+        const hostWarning = staffHostWarning(link.url, publicOrigin);
         return (
           <fieldset key={key} data-row-key={key} className="gcpe-link-list__row">
             <legend>{`Link ${index + 1}`}</legend>
             <TextField label="Link text" value={link.text} onChange={(v) => update(index, { text: v })} isDisabled={isDisabled} {...fieldError(index, "text")} />
-            <TextField label="Web address" value={link.url} onChange={(v) => update(index, { url: v })} isDisabled={isDisabled} {...fieldError(index, "url")} />
+            <TextField
+              label="Web address"
+              value={link.url}
+              onChange={(v) => update(index, { url: v })}
+              isDisabled={isDisabled}
+              aria-describedby={hostWarning ? `${warningId}-${key}` : undefined}
+              {...fieldError(index, "url")}
+            />
+            <HostWarning id={`${warningId}-${key}`} text={hostWarning} />
             {withSummary && (
               <TextField label="Description (optional)" value={link.summary ?? ""} onChange={(v) => updateSummary(index, v)} isDisabled={isDisabled} {...fieldError(index, "summary")} />
             )}

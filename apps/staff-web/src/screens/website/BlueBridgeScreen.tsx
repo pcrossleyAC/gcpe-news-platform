@@ -6,7 +6,10 @@ import { useSession } from "../../session/SessionContext";
 import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { HelpToggle } from "../../shared/HelpToggle";
+import { useTenantTimeZone } from "../../format/tenantTimeZone";
+import { afterDialogsClose } from "../../shared/afterDialogsClose";
 import { canManageWebsite } from "./access";
+import { SaveResult, clockTime } from "./SaveResult";
 import { useIsTestSite } from "./useIsTestSite";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { BlueBridgeView } from "./types";
@@ -27,7 +30,10 @@ export function BlueBridgeScreen(): React.JSX.Element {
   const canManage = canManageWebsite(session);
   const isAdmin = session.has("Core.Admin");
   const isTestSite = useIsTestSite();
-  const section = useVersionedSave<BlueBridgeView>();
+  const section = useVersionedSave<BlueBridgeView>({ quiet: true });
+  const timeZone = useTenantTimeZone();
+  // W8: what the last change did, on screen.
+  const [result, setResult] = useState("");
   const [state, setState] = useState<BlueBridgeView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -72,6 +78,9 @@ export function BlueBridgeScreen(): React.JSX.Element {
         if (next) {
           setState(next);
           setDialogOpen(false);
+          const at = clockTime(new Date(), timeZone);
+          // Shown once the confirmation has closed, so it is announced.
+          afterDialogsClose(() => setResult(`Turned ${next.on ? "on" : "off"} at ${at}. Live now: the public site shows it within a few minutes.`));
         }
       });
   };
@@ -137,6 +146,7 @@ export function BlueBridgeScreen(): React.JSX.Element {
               </Checkbox>
             </AlertDialog>
           </Modal>
+          <SaveResult text={result} />
         </>
       )}
       <p>

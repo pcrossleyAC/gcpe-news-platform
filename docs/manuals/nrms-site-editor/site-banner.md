@@ -19,14 +19,14 @@ The banner is a notice across the top of every public page, such as planned main
 4. To show it later, enter **Show from**. To take it down by itself, enter **Hide after**. Both are BC time. Leave **Show from** blank to show it at once, and **Hide after** blank to keep it up until you turn it off.
 5. Tick **Visitors can close the banner** to give it a close button (×).
 6. Check the **Preview**. It shows roughly how the banner looks.
-7. Choose **Publish**.
+7. Choose **Publish**, then confirm in the box that asks "Publish your changes?". If your draft also has changes on other settings screens, choose **Publish only Site banner** to put just the banner live straight away. See [How site settings are published](manual:site-settings).
 
 The banner switches on and off by itself at the **Show from** and **Hide after** times. You don't need to publish again at those times.
 
 ## Take the banner down
 
 1. Under **Banner type**, choose **Off**. The preview says "The banner is off, so visitors don't see it." The message and links are kept for next time.
-2. Choose **Publish**.
+2. Choose **Publish**, then confirm. If your draft also has changes on other settings screens, **Publish only Site banner** takes the banner down without publishing them.
 
 ## What visitors see
 

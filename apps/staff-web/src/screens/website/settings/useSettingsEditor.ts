@@ -19,6 +19,9 @@ export const DRAFT_SAVED = "Draft saved. It isn't live until you publish.";
 export const DRAFT_SAVED_WITH_PROBLEMS = "Draft saved, but it has problems to fix before it can be published.";
 export const DRAFT_DISCARDED = "Draft discarded. Showing what is live.";
 export const publishedStatus = (revision: number) => `Published revision ${revision}. Visitors see it within a few minutes.`;
+/** W4: after "Publish only <screen>". */
+export const publishedOnlyStatus = (revision: number, section: SectionKey, rest: readonly SectionKey[]) =>
+  `Published revision ${revision}, with only your ${settingsScreenFor(section).label} changes. Visitors see it within a few minutes.${rest.length > 0 ? ` Your draft still has changes on ${sectionList(rest)}.` : ""}`;
 
 const LIST = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
 /** The sections by their screens' names, as on screen: "Site banner", "Site banner and Theme colours", "Site banner, Theme colours, and Footer links". */
@@ -48,8 +51,9 @@ export interface SettingsEditor<F> {
   value: F | null;
   setValue(next: F | ((prev: F) => F)): void;
   saveDraft(): Promise<void>;
-  /** Resolves true when published (the caller then clears its note). */
-  publish(note: string): Promise<boolean>;
+  /** Resolves true when published (the caller then clears its note). With `onlySection` (W4), only
+   * this screen's section goes live and the rest of the draft is kept. */
+  publish(note: string, onlySection?: boolean, announceLater?: (announceNow: () => void) => void): Promise<boolean>;
   discard(): Promise<void>;
   rebase(): Promise<void>;
   status: string | null;
@@ -122,10 +126,15 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
     if (focusStatus > 0) statusRef.current?.focus();
   }, [focusStatus]);
 
+  // `announceLater` (M1): Publish starts as its confirmation closes, so its result is shown at once
+  // but announced once the dialog has gone (a closing dialog hides the rest of the page).
+  const announceLater = useRef<((announceNow: () => void) => void) | null>(null);
   const say = useCallback(
     (message: string, moveFocus = false) => {
       setStatus(message);
-      announce(message);
+      const later = announceLater.current;
+      if (later) later(() => announce(message));
+      else announce(message);
       if (moveFocus) setFocusStatus((n) => n + 1);
     },
     [announce],
@@ -159,15 +168,16 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
     });
   };
 
-  const publish = async (note: string) => {
+  const publish = async (note: string, onlySection = false, later?: (announceNow: () => void) => void) => {
     if (!state || value === null) return false;
+    announceLater.current = later ?? null;
     const done = await run("publish", async () => {
       const trimmed = note.trim();
       try {
-        const result = await publishSettings({ baseRevision: state.baseRevision, section, value: request(), ...(trimmed ? { note: trimmed } : {}) });
+        const result = await publishSettings({ baseRevision: state.baseRevision, section, value: request(), ...(trimmed ? { note: trimmed } : {}), ...(onlySection ? { onlySection: true } : {}) });
         show(result.state);
         setConflict(null);
-        say(publishedStatus(result.revision));
+        say(onlySection ? publishedOnlyStatus(result.revision, section, result.state.draftSections) : publishedStatus(result.revision));
         return true;
       } catch (caught) {
         if (!(caught instanceof ApiError)) throw caught;
@@ -188,6 +198,7 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
         throw caught;
       }
     });
+    announceLater.current = null;
     return done === true;
   };
 
@@ -203,12 +214,13 @@ export function useSettingsEditor<K extends SectionKey, F = SiteSettings[K]>(sec
   const rebase = async () => {
     if (value === null) return;
     await run("rebase", async () => {
-      const { setAside, ...next } = await rebaseSettings({ section, value: request() });
+      const { alsoChangedByThem, ...next } = await rebaseSettings({ section, value: request() });
       show(next);
       setConflict(null);
       const revision = next.live?.revision ?? next.baseRevision;
-      const setAsideText = setAside.length > 0 ? ` Unpublished changes to ${sectionList(setAside)} were set aside.` : "";
-      say(`Your ${settingsScreenFor(section).label.toLowerCase()} changes now build on revision ${revision}. Check them, then publish.${setAsideText}`, true);
+      // Fix round 1: nothing of yours is set aside; changes they also made elsewhere are named.
+      const alsoText = alsoChangedByThem.length > 0 ? ` Your draft still has your changes on ${sectionList(alsoChangedByThem)}, which they changed too: check them before you publish them.` : "";
+      say(`Your ${settingsScreenFor(section).label.toLowerCase()} changes now build on revision ${revision}. Check them, then publish.${alsoText}`, true);
     });
   };
 

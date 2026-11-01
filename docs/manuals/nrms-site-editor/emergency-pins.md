@@ -18,19 +18,21 @@ Each notice has the same fields as a carousel slide: headline, summary, action U
 1. Fill in the notice's fields, such as **Primary headline** and **Primary summary**.
 2. Choose **Save primary pin** (or **Save secondary pin**).
 
-If the notice is already pinned, the change goes to the public site when you save.
+If the notice is already pinned, the change goes to the public site when you save. Under the notice you see "Saved at 2:30 PM. Live now: the home page shows it within a few minutes." (with the time). An unpinned notice says "Saved at 2:30 PM. Not on the home page: this notice isn't pinned."
+
+To link to a file from **Files**, paste the address from its **Copy public address** button into the action URL. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead."
 
 ## Pin or unpin a notice
 
 Save the notice first. If you have typed changes you haven't saved, the switch does nothing and shows "Save your changes first." Your typing stays.
 
-1. Choose the switch beside **Primary is not pinned**, below **Save primary pin**. It saves at once, with no question, and changes only the pin; it now reads **Primary is pinned**.
-2. To take the notice down, choose the switch again.
+1. Choose the switch beside **Primary is not pinned**, below **Save primary pin**. It saves at once, with no question, and changes only the pin; it now reads **Primary is pinned**, and you see "Pinned at 2:30 PM. Live now: the home page shows this notice within a few minutes."
+2. To take the notice down, choose the switch again. You see "Unpinned at 2:30 PM. The home page stops showing this notice within a few minutes."
 
 ## Add or change the image
 
 1. Choose **Primary image (JPEG or PNG, up to 2 MB)** and pick the file.
-2. The image appears above the button. It saves at once. On a pinned notice, the public site changes too.
+2. It saves at once, and the new image shows above the button straight away. You see "Image saved at 2:30 PM." On a pinned notice the public site changes too, and the message adds "Live now: the home page shows it within a few minutes."
 
 ## What happens next
 

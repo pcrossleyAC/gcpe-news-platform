@@ -29,7 +29,7 @@ Turn it on only with approval from the Intergovernmental Relations Secretariat (
 4. Tick **IGRS has approved this change**.
 5. Choose **Confirm turn on** (or **Confirm turn off**). Until steps 3 and 4 are done, the button stays greyed out.
 
-The page then shows "Project Blue Bridge is currently ON."
+The page then shows "Project Blue Bridge is currently ON." and, below the switch, "Turned on at 2:30 PM. Live now: the public site shows it within a few minutes." (with the time).
 
 The banner's wording is on **Site settings** > **Site identity**, which site editors change.
 

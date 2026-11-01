@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
+import { publishAndConfirm } from "./publishTestHelpers";
 import { MinistryPagesScreen } from "./MinistryPagesScreen";
 import type { SettingsState } from "./api";
 
@@ -83,7 +84,7 @@ describe("MinistryPagesScreen", () => {
     const field = await screen.findByLabelText("Ministry photos heading");
     await user.clear(field);
     await user.type(field, "Photos");
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/publish"))).toBe(true));
     expect(calls.find((c) => c.url.endsWith("/publish"))!.body).toEqual({ baseRevision: 4, section: "ministryPages", value: { ...DOC.ministryPages, ministryPhotos: "Photos" } });
   });
@@ -109,7 +110,7 @@ describe("MinistryPagesScreen", () => {
     const user = userEvent.setup();
     const field = await screen.findByLabelText("Ministry videos heading");
     await user.clear(field);
-    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await publishAndConfirm(user, screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(screen.getByLabelText("Ministry videos heading")).toHaveAccessibleDescription("Enter a heading."));
     expect(screen.getByLabelText("Ministry videos heading")).toBeInvalid();
   });
