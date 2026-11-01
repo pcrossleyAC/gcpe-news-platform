@@ -22,7 +22,7 @@ Lists are ministries, sectors, themes and tags. **All news** covers every releas
 
 - **Emergency alerts** from Emergency Info BC go at once to everyone active on the **Emergency Info BC Alerts** list, whatever timing they chose.
 - **Media lists**: release editors choose media lists for a release, and each member gets the full-text media version. A reporter who is also an **As it happens** subscriber for that release gets one email, not two.
-- A correction to a release emails nobody again unless the release editor chooses to. Then only the people who already got it get the corrected release, with "Corrected:" before the subject, one copy each.
+- A correction to a release emails nobody again unless the release editor chooses to. Then only the people who already got it get the corrected release, with "Corrected:" before the subject, one copy each. A subscriber who got it only in a daily digest gets a daily digest with just the corrected release in it, straight away.
 - A Subscribers administrator can pause sending. While it is paused, email waits and goes out when they resume.
 
 Nothing staff do on the **Subscribers** screens emails the subscriber.

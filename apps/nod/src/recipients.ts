@@ -50,7 +50,11 @@ export function correctionMediaRecipient(itemKey: string, mediaListKeys: SQL): S
 
 /** A corrected copy for subscribers: someone who got the release As it happens or in a daily
  * digest and is still an active subscriber whose subscriptions match it. Nobody new. Someone who
- * is also a {@link correctionMediaRecipient} gets only the media copy when both are sent. */
-export function correctionSubscriberRecipient(itemKey: string, itemListKeys: SQL): SQL {
-  return sql`(${matchesPublicly(itemListKeys)} AND ${alreadyGot(itemKey, ["as_it_happens", "digest"])})`;
+ * is also a {@link correctionMediaRecipient} gets only the media copy when both are sent.
+ *
+ * `via` narrows it to how they got it (N2, owner 2026-10-31): the As-It-Happens copy goes to
+ * those who got it As it happens, the one-item digest copy to those who got it in a digest. The
+ * default, either way, is the whole subscriber tick (its count). */
+export function correctionSubscriberRecipient(itemKey: string, itemListKeys: SQL, via: ("as_it_happens" | "digest")[] = ["as_it_happens", "digest"]): SQL {
+  return sql`(${matchesPublicly(itemListKeys)} AND ${alreadyGot(itemKey, via)})`;
 }

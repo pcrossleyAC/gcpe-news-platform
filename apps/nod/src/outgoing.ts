@@ -16,7 +16,7 @@ export const FAILED_DAYS = 30;
 /** At most this many failed rows, newest first. */
 export const FAILED_LIMIT = 50;
 
-export type OutgoingKind = "as_it_happens" | "emergency" | "media" | "digest" | "correction" | "correction_media";
+export type OutgoingKind = "as_it_happens" | "emergency" | "media" | "digest" | "correction" | "correction_digest" | "correction_media";
 
 /** One release's email of one kind, or one daily digest run (its jobs together). */
 export interface OutgoingGroup {
@@ -151,6 +151,7 @@ const KIND_WORDS: Record<OutgoingKind, string> = {
   media: "Media list",
   digest: "Daily digest",
   correction: "Corrected copy to subscribers",
+  correction_digest: "Corrected daily digest to subscribers",
   correction_media: "Corrected copy to media lists",
 };
 

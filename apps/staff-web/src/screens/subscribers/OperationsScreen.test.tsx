@@ -188,6 +188,23 @@ describe("OperationsScreen", () => {
     expect(within(await screen.findByRole("alertdialog")).getByRole("listitem")).toHaveTextContent("Budget 2027 (Corrected copy to media lists): 12 emails");
   });
 
+  // N2: a digest reader's corrected copy is a one-item daily digest, named as such.
+  it("N2: a held corrected daily digest is named as one", async () => {
+    const corrected: OperationsStatus = {
+      ...HELD,
+      outgoing: {
+        ...HELD.outgoing,
+        held: { ...HELD.outgoing.held, groups: [group({ jobIds: [J5], kind: "correction_digest", title: "Budget 2027", itemKey: "r1", emails: 4 })] },
+      },
+    };
+    stub(["NoD.Admin"], corrected);
+    renderIt();
+    const user = userEvent.setup();
+    const out = await screen.findByRole("region", { name: "Outgoing news email" });
+    await user.click(within(out).getByRole("button", { name: "Cancel held email: Budget 2027 (Corrected daily digest to subscribers)" }));
+    expect(within(await screen.findByRole("alertdialog")).getByRole("listitem")).toHaveTextContent("Budget 2027 (Corrected daily digest to subscribers): 4 emails");
+  });
+
   it("N3: a failed send is shown with what went wrong, and what to do", async () => {
     stub(["NoD.Admin"], HELD);
     renderIt();

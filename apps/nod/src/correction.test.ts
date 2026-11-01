@@ -150,7 +150,8 @@ describe("corrected copies", () => {
       const seq = i + 1;
       const made = await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request({ seq, ...ticks }), RENDER));
       const copies = await corrected(seq);
-      const subs = copies.correction ?? [];
+      // N2: As-It-Happens readers get the As-It-Happens copy, digest-only readers a one-item digest.
+      const subs = [...(copies.correction ?? []), ...(copies.correction_digest ?? [])];
       const media = copies.correction_media ?? [];
       // One copy per person: the media copy wins for someone in both.
       expect(new Set([...subs, ...media]).size).toBe(subs.length + media.length);
@@ -158,8 +159,11 @@ describe("corrected copies", () => {
       expect(subs.length).toBe(ticks.subscribers ? audience.subscribers - (ticks.mediaLists ? audience.both : 0) : 0);
       expect(made).toEqual({ subscribers: subs.length, mediaContacts: media.length });
     }
+    // N2: "both" got it As it happens and in the digest, so gets one copy, the As-It-Happens one;
+    // "digestonly" got it only in the digest; "mediadigest" got the media email, which wins.
     expect(await corrected(3)).toEqual({
-      correction: ["aih@x.test", "both@x.test", "digestonly@x.test"],
+      correction: ["aih@x.test", "both@x.test"],
+      correction_digest: ["digestonly@x.test"],
       correction_media: ["mediadigest@x.test", "mediaonly@x.test", "pubmedia@x.test"],
     });
   });
@@ -171,7 +175,12 @@ describe("corrected copies", () => {
     await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request(), RENDER));
     await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     const subjects = sent.map((m) => m.subject).sort();
-    expect(subjects).toEqual(["Corrected: BC Gov News - Corrected headline", "Corrected: BC Gov News - Corrected headline"]);
+    expect(subjects).toEqual(["Corrected: BC Gov News - Corrected headline", "Corrected: BC Gov News - Corrected headline", "Corrected: BCNews - Daily Digest"]);
+    // N2: the digest-only reader gets the corrected release as a one-item daily digest.
+    const digest = sent.find((m) => m.subject === "Corrected: BCNews - Daily Digest")!;
+    expect(digest.emails).toEqual(["digestonly@x.test"]);
+    expect(digest.html).toContain("Corrected headline");
+    expect(sent.find((m) => m.emails.includes("both@x.test"))!.subject).toBe("Corrected: BC Gov News - Corrected headline");
     const media = sent.find((m) => m.emails.includes("mediaonly@x.test"))!;
     expect(media.html).toContain("The corrected media text.");
     expect(media.html).not.toContain("The original media text.");
@@ -184,6 +193,8 @@ describe("corrected copies", () => {
     await tdb.db.transaction((tx) => createCorrectionSends(tx, release.key, request({ seq: 2 }), RENDER));
     const keys = (await tdb.db.select({ k: sendJobs.jobKey }).from(sendJobs).where(eq(sendJobs.kind, "correction"))).map((r) => r.k).sort();
     expect(keys).toEqual([`correction:1:as_it_happens:${release.key}`, `correction:2:as_it_happens:${release.key}`]);
+    const digestKeys = (await tdb.db.select({ k: sendJobs.jobKey, p: sendJobs.priority }).from(sendJobs).where(eq(sendJobs.kind, "correction_digest"))).map((r) => [r.k, r.p]).sort();
+    expect(digestKeys).toEqual([[`correction:1:digest:${release.key}`, "digest"], [`correction:2:digest:${release.key}`, "digest"]]);
   });
 
   it("an advisory's corrected copy keeps its bare-title media subject", async () => {
@@ -209,11 +220,12 @@ describe("corrected copies", () => {
     expect((await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER })).paused).toBe(true);
     const held = (await getOutgoing(tdb.db)).held.groups;
     expect(held.map((g) => [g.kind, g.emails]).sort()).toEqual([
-      ["correction", 3],
+      ["correction", 2],
+      ["correction_digest", 1],
       ["correction_media", 3],
     ]);
     const r = await cancelHeldEmail(tdb.db, held.flatMap((g) => g.jobIds), "Avery Admin");
-    expect(r).toEqual({ cancelledJobs: 2, cancelledEmails: 6 });
+    expect(r).toEqual({ cancelledJobs: 3, cancelledEmails: 6 });
     await tdb.db.update(nodSettings).set({ paused: false }).where(eq(nodSettings.id, 1));
     await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(sent).toEqual([]);
@@ -302,6 +314,10 @@ describe("corrected copies", () => {
       });
       const [copy] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.jobKey, `correction:1:as_it_happens:${release.key}`));
       expect(copy!.subject).toBe("Corrected: BC Gov News - Second fix");
+      // N2: so does the one-item digest copy, still a digest.
+      const [digestCopy] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.jobKey, `correction:1:digest:${release.key}`));
+      expect(digestCopy!.subject).toBe("Corrected: BCNews - Daily Digest");
+      expect(digestCopy!.html).toContain("Second fix");
     });
   });
 });
