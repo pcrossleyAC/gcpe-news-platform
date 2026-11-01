@@ -562,6 +562,68 @@ describe("website/site-settings", () => {
     });
   });
 
+  describe("R2-M1 (suite fix W2): the editor's first draft, started from two tabs at once", () => {
+    /** Tab 1 has written Jane's first draft (her footer) and not committed yet; `run` is tab 2. */
+    const whileTabOneWrites = async <T>(run: () => Promise<T>): Promise<T> => {
+      const tabOne = await tdb.pool.connect();
+      try {
+        await tabOne.query("BEGIN");
+        const doc = { ...structuredClone(defaults), footer: { ...defaults.footer, copyrightHolder: "Tab one" } };
+        await tabOne.query("INSERT INTO site_settings_drafts (editor_id, document, base_revision) VALUES ($1, $2, 1)", [jane.id, JSON.stringify(doc)]);
+        const tabTwo = run();
+        await new Promise((r) => setTimeout(r, 300));
+        await tabOne.query("COMMIT");
+        return await tabTwo;
+      } finally {
+        tabOne.release();
+      }
+    };
+
+    it("Save draft from the second tab adds its screen to the first tab's draft instead of replacing it", async () => {
+      await publishBanner(editor, "Live");
+      await whileTabOneWrites(() => saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "banner", value: banner("Tab two") }));
+      const state = await getSettingsState(tdb.db, jane, defaults);
+      expect(state.document.footer.copyrightHolder).toBe("Tab one");
+      expect(state.document.banner.message).toBe("Tab two");
+      expect(state.draftSections).toEqual(["banner", "footer"]);
+    });
+
+    it("Publish from the second tab publishes the first tab's change too, as with a later save (N2)", async () => {
+      await publishBanner(editor, "Live");
+      const result = await whileTabOneWrites(() => publishSettings(tdb.db, jane, defaults, subs, { baseRevision: 1, section: "banner", value: banner("Tab two") }));
+      expect(result).toMatchObject({ result: "published", revision: 2 });
+      const live = (await getRevision(tdb.db, 2, defaults))!.document;
+      expect(live.footer.copyrightHolder).toBe("Tab one");
+      expect(live.banner.message).toBe("Tab two");
+    });
+
+    it("Keep mine from the second tab keeps the first tab's change", async () => {
+      await publishBanner(editor, "Live");
+      const state = await whileTabOneWrites(() => rebaseDraft(tdb.db, jane, defaults, { section: "banner", value: banner("Tab two") }));
+      expect(state.document.footer.copyrightHolder).toBe("Tab one");
+      expect(state.document.banner.message).toBe("Tab two");
+    });
+
+    it("two real first saves at the same instant keep both screens, every time", async () => {
+      await publishBanner(editor, "Live");
+      for (let round = 0; round < 15; round++) {
+        await discardDraft(tdb.db, jane);
+        await Promise.all([
+          saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "banner", value: banner(`Banner ${round}`) }),
+          saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "footer", value: { ...defaults.footer, copyrightHolder: `Footer ${round}` } }),
+        ]);
+        const state = await getSettingsState(tdb.db, jane, defaults);
+        expect([state.document.banner.message, state.document.footer.copyrightHolder]).toEqual([`Banner ${round}`, `Footer ${round}`]);
+      }
+    });
+
+    it("a refused save (wrong shape) leaves no draft behind", async () => {
+      await publishBanner(editor, "Live");
+      await expect(saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "banner", value: { nope: true } })).rejects.toThrow();
+      expect((await getSettingsState(tdb.db, jane, defaults)).draft).toBeNull();
+    });
+  });
+
   it("discard removes only my draft", async () => {
     await saveDraft(tdb.db, jane, defaults, { baseRevision: null, section: "banner", value: banner("Jane") });
     await saveDraft(tdb.db, sam, defaults, { baseRevision: null, section: "banner", value: banner("Sam") });

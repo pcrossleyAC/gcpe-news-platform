@@ -118,6 +118,23 @@ function overlay(doc: StoredSiteSettings, input: SectionInput): StoredSiteSettin
   return cleanSettingsRichHtml({ ...doc, [input.section]: value });
 }
 
+/**
+ * R2-M1 (suite fix W2): the editor's draft row, locked for this transaction, created first when
+ * there is none. `FOR UPDATE` alone locks nothing while the editor has no draft yet, so two tabs
+ * starting the first draft at once both read "no draft" and the second write replaced the
+ * first's screen. Inserting the row first (live, or the defaults: what a new draft starts from)
+ * makes the second tab wait at that insert until the first commits, then read and build on what
+ * it saved. Null only if another transaction deleted the row between the two statements; the
+ * caller then starts from live, as with no draft.
+ */
+async function lockDraft(tx: Tx, actor: Actor, live: { info: LiveInfo; document: StoredSiteSettings } | null, defaults: SiteSettings) {
+  await tx
+    .insert(siteSettingsDrafts)
+    .values({ editorId: actor.id, document: live?.document ?? defaults, baseRevision: live?.info.revision ?? null })
+    .onConflictDoNothing({ target: siteSettingsDrafts.editorId });
+  return readDraft(tx, actor, true);
+}
+
 async function upsertDraft(db: DbOrTx, actor: Actor, document: StoredSiteSettings, baseRevision: number | null): Promise<void> {
   await db
     .insert(siteSettingsDrafts)
@@ -158,7 +175,7 @@ export async function saveDraft(
   await db.transaction(async (tx) => {
     // Sequential: one transaction client runs one query at a time.
     const live = await readLive(tx);
-    const draft = await readDraft(tx, actor, true);
+    const draft = await lockDraft(tx, actor, live, defaults);
     await upsertDraft(tx, actor, overlay(draft?.document ?? live?.document ?? defaults, input), input.baseRevision);
   });
   return getSettingsState(db, actor, defaults);
@@ -259,13 +276,13 @@ export async function publishSettings(
 ): Promise<PublishResult> {
   const note = input.note?.trim() || null;
   // M2/N2: the draft is saved in the publish's own transaction, under its lock, and its row is
-  // read FOR UPDATE: a save from another tab (which doesn't take the publish lock) waits for this
-  // transaction, or this one waits for it and then reads what it saved. A refusal still commits
-  // the saved draft.
+  // locked ({@link lockDraft}, which also covers a first draft, R2-M1): a save from another tab
+  // (which doesn't take the publish lock) waits for this transaction, or this one waits for it and
+  // then reads what it saved. A refusal still commits the saved draft.
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${SITE_SETTINGS_PUBLISH_LOCK[0]}, ${SITE_SETTINGS_PUBLISH_LOCK[1]})`);
     const live = await readLive(tx);
-    const draft = await readDraft(tx, actor, true);
+    const draft = await lockDraft(tx, actor, live, defaults);
     const saved = overlay(draft?.document ?? live?.document ?? defaults, input);
     await upsertDraft(tx, actor, saved, input.baseRevision);
     return publishDocument(tx, actor, defaults, subs, fillMissingFields(saved, defaults), input.baseRevision, note, input.onlySection ? input.section : undefined);
@@ -288,7 +305,7 @@ export async function rebaseDraft(db: Db, actor: Actor, defaults: SiteSettings, 
   const alsoChangedByThem = await db.transaction(async (tx) => {
     // Sequential: one transaction client runs one query at a time.
     const live = await readLive(tx);
-    const draft = await readDraft(tx, actor, true);
+    const draft = await lockDraft(tx, actor, live, defaults);
     const liveDocument = fillMissingFields(live?.document ?? defaults, defaults);
     if (!draft) {
       await upsertDraft(tx, actor, overlay(liveDocument, input), live?.info.revision ?? null);
