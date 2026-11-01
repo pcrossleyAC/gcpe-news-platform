@@ -36,6 +36,10 @@ The wording around the webcast, such as the button's label and the text shown wh
 - The button shows or goes within a few minutes.
 - **Website log** lists "Turned the Live Feed on", "Turned the Live Feed off" or "Changed the Live Feed URLs", with your name.
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

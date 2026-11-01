@@ -779,12 +779,16 @@ describe("the activity editor (spec addendum §8.2)", () => {
   describe("signed out mid-edit", () => {
     const signedOutOnSave = (url: string, init?: RequestInit) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(401, { error: "Sign in again" }) : undefined);
     const drafts = () => Object.keys(sessionStorage).filter((k) => k.startsWith("gcpe-calendar-draft:"));
-    /** Types a change, then the session expires on Save: the user is sent to sign in. */
+    /** Types a change, then the session expires on Save: the Hub explains (suite review H1) and
+     * the user chooses Sign in again. */
     async function loseTheSession() {
       stubActivity([], { other: signedOutOnSave });
       const { router } = renderActivity("/calendar/activities/20001?return=%2Fcalendar");
       await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
       await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      const ended = await screen.findByRole("alertdialog", { name: "Your session has ended" });
+      expect(ended).toHaveTextContent("Your unsaved changes are kept on this computer and come back after you sign in again.");
+      await userEvent.click(within(ended).getByRole("button", { name: "Sign in again" }));
       await waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"));
       cleanup();
       vi.unstubAllGlobals();
@@ -866,6 +870,20 @@ describe("the activity editor (spec addendum §8.2)", () => {
       expect(drafts()).toHaveLength(0);
     });
 
+    // Fix round 1 (I1): staying on the activity after the session ended, Save says why in plain words.
+    it("after Stay on this page, Save says the session has ended, and the dialog comes back", async () => {
+      stubActivity([], { other: signedOutOnSave });
+      renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+      await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Your session has ended" })).getByRole("button", { name: "Stay on this page" }));
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("alertdialog", { name: "Your session has ended" })).toBeInTheDocument();
+      expect(screen.getByText("Your session has ended. Sign in again to save — your changes are still here.")).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Venue", hidden: true })).toHaveValue("Sample hall");
+    });
+
     it("a 401 on the session check-in keeps the changes before signing out", async () => {
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
       vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -877,6 +895,12 @@ describe("the activity editor (spec addendum §8.2)", () => {
         await user.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
         expired = true;
         await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+        // Kept at once, while the screen stays with the changes on it (suite review H1).
+        await screen.findByRole("alertdialog", { name: "Your session has ended" });
+        expect(drafts()).toHaveLength(1);
+        // (Behind the dialog, so hidden from the accessibility tree while it's open.)
+        expect(screen.getByRole("textbox", { name: "Venue", hidden: true })).toHaveValue("Sample hall");
+        await user.click(screen.getByRole("button", { name: "Sign in again" }));
         await waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"));
         expect(drafts()).toHaveLength(1);
       } finally {

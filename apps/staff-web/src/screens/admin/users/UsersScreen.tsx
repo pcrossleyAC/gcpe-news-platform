@@ -14,6 +14,7 @@ import { STAFF_ROLES } from "./roles";
 import { TableScroll } from "../../../shared/TableScroll";
 import { Link } from "react-router";
 import { calendarRoleLabel } from "../calendar-access/calendar-roles";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import type { CalendarAccessUser, OrgOption } from "../calendar-access/CalendarAccessScreen";
 
 /** Each user's Calendar role and ministries, as Calendar access keeps them: "Editor (HLTH)". */
@@ -56,7 +57,7 @@ function RoleCheckboxes({ selected, onChange, idPrefix, disabled }: { selected: 
   );
 }
 
-function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void; id: string }): React.JSX.Element {
+function UserEditor({ user, onChanged, id, reportDirty }: { user: UserView; onChanged(): void; id: string; reportDirty?: ReportDirty }): React.JSX.Element {
   // Seeded from the server's copy: after a save (or any other change) reloads the list, an
   // untouched field follows the new value instead of keeping the old one.
   const { value: displayName, setValue: setDisplayName } = useSeededValue(user.displayName);
@@ -165,6 +166,8 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
   // are saved; the actions that take effect on their own sit apart under Account.
   const nameUnsaved = displayName !== user.displayName;
   const rolesUnsaved = [...roles].sort().join() !== [...user.roles].sort().join();
+  // Suite review H2: a name, roles or password typed but not saved asks before leaving Users.
+  useReportDirty(reportDirty, user.id, nameUnsaved || rolesUnsaved || password !== "");
 
   return (
     <div className="gcpe-users__editor" id={id}>
@@ -254,7 +257,7 @@ function UserEditor({ user, onChanged, id }: { user: UserView; onChanged(): void
         {user.email === null ? (
           <>
             <p>Inactive until linked to an email.</p>
-            <LinkForm user={user} onChanged={onChanged} />
+            <LinkForm user={user} onChanged={onChanged} reportDirty={reportDirty} />
           </>
         ) : (
           <div className="gcpe-inline-control">
@@ -340,7 +343,7 @@ const roleBadge = (role: string) => {
  * Every user as one table row (name, email, sign-in, roles, active), filtered as you type; Edit
  * opens that user's editor in a row underneath, with every field and save it always had.
  */
-function UsersTable({ users, calendar, onChanged }: { users: UserView[]; calendar: CalendarLines; onChanged(): void }): React.JSX.Element {
+function UsersTable({ users, calendar, onChanged, reportDirty }: { users: UserView[]; calendar: CalendarLines; onChanged(): void; reportDirty: ReportDirty }): React.JSX.Element {
   const [query, setQuery] = useState("");
   useSearchShortcut("users-filter");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
@@ -440,7 +443,7 @@ function UsersTable({ users, calendar, onChanged }: { users: UserView[]; calenda
                   {mounted.has(u.id) && (
                     <tr className="gcpe-users__editor-row" hidden={!isOpen}>
                       <td colSpan={6}>
-                        <UserEditor id={editorId} user={u} onChanged={onChanged} />
+                        <UserEditor id={editorId} user={u} onChanged={onChanged} reportDirty={reportDirty} />
                       </td>
                     </tr>
                   )}
@@ -455,8 +458,9 @@ function UsersTable({ users, calendar, onChanged }: { users: UserView[]; calenda
 }
 
 /** Legacy Calendar users imported with no email (spec addendum §4) can't sign in until linked. */
-function LinkForm({ user, onChanged }: { user: UserView; onChanged(): void }): React.JSX.Element {
+function LinkForm({ user, onChanged, reportDirty }: { user: UserView; onChanged(): void; reportDirty?: ReportDirty }): React.JSX.Element {
   const [email, setEmail] = useState("");
+  useReportDirty(reportDirty, `link-${user.id}`, email.trim() !== "");
   const [messages, setMessages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -508,6 +512,9 @@ export function UsersScreen(): React.JSX.Element {
   const [password, setPassword] = useState("");
   const [createMessages, setCreateMessages] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  // Suite review H2: unsaved edits in any open user, or in Add a user, ask before leaving.
+  const edits = useDirtyParts();
+  const adding = email.trim() !== "" || displayName.trim() !== "" || roles.length > 0 || password !== "";
 
   const isAdmin = session.has("Core.Admin");
 
@@ -562,11 +569,12 @@ export function UsersScreen(): React.JSX.Element {
   return (
     <div className="gcpe-users">
       <h1>Users</h1>
+      <LeavePageGuard dirty={edits.anyDirty || adding} />
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
 
       <h2>All users</h2>
       {users === null && !loadError && <p>Loading…</p>}
-      {users && <UsersTable users={users} calendar={calendar} onChanged={reload} />}
+      {users && <UsersTable users={users} calendar={calendar} onChanged={reload} reportDirty={edits.report} />}
 
       <section className="gcpe-card" aria-labelledby="add-user-heading">
       <h2 id="add-user-heading">Add a user</h2>

@@ -11,6 +11,8 @@ const SIGN_IN_FAILED = "Sign-in failed. Check your user name and password.";
 const RATE_LIMITED = "Too many attempts, wait a minute";
 const NOT_SET_UP = "Your account hasn't been set up. Contact an administrator.";
 const METHODS_UNAVAILABLE = "Microsoft sign-in is unavailable right now.";
+/** Suite review H1: why someone who was working is back here. */
+export const SESSION_ENDED = "Your session ended. Sign in to carry on where you left off.";
 
 /** Core's `?error=` codes from Microsoft sign-in (GET /core/auth/entra/callback). */
 export const ENTRA_ERRORS: Record<string, string> = {
@@ -30,7 +32,7 @@ interface SignInMethods {
 const DEFAULT_METHODS: SignInMethods = { entra: false, local: true };
 
 export function SignIn(): React.JSX.Element {
-  const { user, signIn } = useSession();
+  const { user, ended, signIn } = useSession();
   useDocumentTitle("Sign in");
   const [params] = useSearchParams();
   const [username, setUsername] = useState("");
@@ -52,7 +54,8 @@ export function SignIn(): React.JSX.Element {
   }, []);
 
   const returnTo = safeReturnTo(params.get("return"));
-  if (user) return <Navigate to={returnTo} replace />;
+  // A session that has ended still knows who it was (H1), but they need to sign in again.
+  if (user && !ended) return <Navigate to={returnTo} replace />;
 
   // Looked up with Object.hasOwn, never a plain `[]` index: ENTRA_ERRORS is a plain object
   // literal, so `?error=__proto__` would otherwise return Object.prototype (which React
@@ -81,6 +84,7 @@ export function SignIn(): React.JSX.Element {
     <main className="gcpe-sign-in">
       <Header title="GCPE News — Staff" />
       <h1>Sign in</h1>
+      {ended && <InlineAlert variant="info" title="You were signed out" description={SESSION_ENDED} />}
       {(error ?? entraError) && <InlineAlert variant="danger" role="alert" description={(error ?? entraError)!} />}
       {methodsUnavailable && !methods.entra && <InlineAlert variant="info" description={METHODS_UNAVAILABLE} />}
       {methods.entra && (

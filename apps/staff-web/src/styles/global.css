@@ -3815,3 +3815,15 @@ html:has(.gcpe-activity form > .gcpe-actions) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Suite review H3/H4: the Hub's own "Something went wrong" and "Page not found" pages. */
+.gcpe-hub-message {
+  max-width: 40rem;
+}
+.gcpe-hub-message__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}

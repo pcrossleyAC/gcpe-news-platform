@@ -116,6 +116,10 @@ Only the ticked rows on the page you are looking at are changed. A message such 
 | no longer exist | The record was removed. |
 | couldn't change – try again | Something went wrong for that row. Try it again. |
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

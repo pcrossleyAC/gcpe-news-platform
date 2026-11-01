@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../../../shared/Button";
 import { formatLongDate, type GovernmentTermView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
+import { useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { messagesOf } from "../messages";
 
 /** The day before an ISO date (`YYYY-MM-DD`), computed on the calendar so no time zone can shift it. */
@@ -15,6 +16,8 @@ export interface StartTermFormProps {
   scheduledStart?: string | null;
   onStarted: (term: GovernmentTermView) => void;
   onCancel: () => void;
+  /** Suite review H2: tells the screen's leave-page guard whether a date or name is filled in. */
+  reportDirty?: ReportDirty;
 }
 
 /**
@@ -23,13 +26,14 @@ export interface StartTermFormProps {
  * server's refusals (a date that isn't after the latest term, a date already taken) are shown
  * on the confirm step in its own words.
  */
-export function StartTermForm({ scheduledStart = null, onStarted, onCancel }: StartTermFormProps): React.JSX.Element {
+export function StartTermForm({ scheduledStart = null, onStarted, onCancel, reportDirty }: StartTermFormProps): React.JSX.Element {
   const uid = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
   const continueRef = useRef<HTMLButtonElement>(null);
   const [startDate, setStartDate] = useState("");
   const [label, setLabel] = useState("");
+  useReportDirty(reportDirty, "start", startDate !== "" || label.trim() !== "");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);

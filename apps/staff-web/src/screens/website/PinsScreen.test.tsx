@@ -8,6 +8,7 @@ import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { PinsScreen } from "./PinsScreen";
 import type { PinView } from "./types";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
 
 function withAuth(children: React.ReactNode) {
   return (
@@ -335,3 +336,48 @@ describe("PinsScreen", () => {
     });
   });
 });
+
+// Suite review W9/H2: an emergency pin's unsaved edits ask before leaving; once saved, they don't.
+describe("PinsScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  function stubPins() {
+    let pins = [PRIMARY, SECONDARY];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/pins") return jsonResponse(200, pins);
+        if (url === "/nrms/api/site/pins/primary" && init?.method === "PUT") {
+          const body = JSON.parse(init.body as string);
+          pins = pins.map((p) => (p.slot === "primary" ? { ...p, version: p.version + 1, slide: { ...p.slide, headline: body.headline } } : p));
+          return jsonResponse(200, pins[0]);
+        }
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+  }
+
+  it("asks after an edit to either notice", async () => {
+    stubPins();
+    const router = renderGuarded(<PinsScreen />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Secondary action label"), "Get help");
+    await expectLeaveAsks(router, user);
+  });
+
+  it("doesn't ask once the edit is saved", async () => {
+    stubPins();
+    const router = renderGuarded(<PinsScreen />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Primary headline"), "!");
+    await user.click(screen.getByRole("button", { name: "Save primary pin" }));
+    await screen.findByDisplayValue("H!");
+    await waitFor(() => expect(screen.getByText(/^Saved at/)).toBeInTheDocument());
+    await expectLeaveFree(router);
+  });
+});
+

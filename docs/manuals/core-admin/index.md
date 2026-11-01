@@ -5,7 +5,7 @@ manual: core-admin
 order: 1
 routes: []
 screens: []
-topics: [new-government]
+topics: [new-government, signing-in-and-unsaved-changes]
 ---
 **Who this is for:** Core administrators (Core.Admin).
 
@@ -31,3 +31,7 @@ When a new government takes office, you use **Government terms** and **Cabinet c
 ## What you see in the side menu
 
 A Core administrator sees every screen under **Administration**. Under **Work** you see **Website** and nothing else, unless your account also holds other roles. To work on releases, subscribers or the Calendar, give your own account the role you need on **Users** or **Calendar access**.
+
+## Signing in and unsaved changes
+
+The Hub keeps you signed in while its tab is open. [Staying signed in, and unsaved changes](topic:signing-in-and-unsaved-changes) says what happens when your session ends, and how the Hub asks before you lose changes you haven't saved.

@@ -7,6 +7,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { GovernmentTermsScreen } from "./GovernmentTermsScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 
 const term = (over: Partial<GovernmentTermView>): GovernmentTermView => ({
   id: "11111111-1111-4111-8111-111111111111",
@@ -327,3 +328,28 @@ describe("GovernmentTermsScreen", () => {
     expect(group.textContent).not.toMatch(/term before it/);
   });
 });
+
+// Suite review H2: a start date typed but not saved asks before leaving; an untouched form doesn't.
+describe("GovernmentTermsScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("an empty Start new government term form leaves freely; a date typed asks first", async () => {
+    stub(["Core.Admin"], [], [PAST, CURRENT]);
+    let router = renderGuarded(<GovernmentTermsScreen />);
+    let user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Start new government term" }));
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["Core.Admin"], [], [PAST, CURRENT]);
+    router = renderGuarded(<GovernmentTermsScreen />);
+    user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Start new government term" }));
+    await user.type(screen.getByLabelText(/Start date/), "2028-11-20");
+    await expectLeaveAsks(router, user);
+  });
+});
+

@@ -6,6 +6,7 @@ import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { MediaListScreen } from "./MediaListScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
 import type { MediaMember } from "./types";
 
 const ID1 = "11111111-1111-1111-1111-111111111111";
@@ -315,3 +316,27 @@ describe("MediaListScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("There's no media list with that key.");
   });
 });
+
+// Suite review H2: an address typed to add but not added asks before leaving.
+describe("MediaListScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const at = { path: "/subscribers/media-lists/:key", at: "/subscribers/media-lists/budget" };
+
+  it("leaves freely untouched, and asks once an address is typed", async () => {
+    stub(["NoD.Editor"]);
+    let router = renderGuarded(<MediaListScreen />, at);
+    await screen.findByRole("textbox", { name: "Email address" });
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["NoD.Editor"]);
+    router = renderGuarded(<MediaListScreen />, at);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Email address" }), "new@example.test");
+    await expectLeaveAsks(router, user);
+  });
+});
+

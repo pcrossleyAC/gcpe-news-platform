@@ -102,6 +102,10 @@ A **Pending** subscriber's record has only **Delete**.
 
 Only the ticked rows on the page you are looking at are changed. A message such as "1 changed. 1 skipped: already in that state." tells you the result. Rows are skipped when they are already in that state, or when their status doesn't allow it, such as activating someone who unsubscribed.
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

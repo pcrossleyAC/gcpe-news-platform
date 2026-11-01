@@ -8,6 +8,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import { publishAndConfirm } from "./publishTestHelpers";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 import type { SettingsState } from "./api";
 
 const BASE: SiteSettings = defaultSiteSettings({
@@ -177,3 +178,28 @@ describe("FooterScreen", () => {
     expect(screen.queryByRole("button", { name: "+ Add a link" })).toBeNull();
   });
 });
+
+// Suite review W9/H2 (owner 2026-10-31): the settings screens ask before leaving with changes not
+// yet saved as a draft. One test covers all of them: the guard is in the PublishBar every
+// settings screen shows, driven by the settings editor's own `dirty`.
+describe("FooterScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("asks first after an edit, and not before one", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC));
+    let router = renderGuarded(<FooterScreen />);
+    await screen.findByLabelText("Land acknowledgement");
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["NRMS.SiteEditor"], stateOf(DOC));
+    router = renderGuarded(<FooterScreen />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Land acknowledgement"), " Changed.");
+    await expectLeaveAsks(router, user);
+  });
+});
+

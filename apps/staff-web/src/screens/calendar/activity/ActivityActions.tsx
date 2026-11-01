@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import type { ActivityView, FieldError } from "@gcpe/calendar-contract";
-import { ApiError } from "../../../api/client";
+import { ApiError, SESSION_ENDED_MESSAGE } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { WatchStar, type WatchState } from "../list/WatchStar";
 import { activityApi } from "./api";
@@ -15,8 +15,8 @@ export type ReloadResult = "reloaded" | "kept" | "failed";
 /** The server's own reason: a 422 names its fields, a 404 means the activity has gone. */
 function refusal(e: unknown): string | null {
   if (!(e instanceof ApiError)) return "Couldn't reach the server. Try again.";
-  // apiFetch is already sending the user to sign in.
-  if (e.status === 401) return null;
+  // The session ended: the page stays (suite review H1) and says so here too.
+  if (e.status === 401) return SESSION_ENDED_MESSAGE;
   if (e.status === 404) return "This activity is no longer available.";
   const named = e.status === 422 ? ((e.body as { errors?: FieldError[] } | undefined)?.errors ?? []) : [];
   return named.length ? named.map((f) => f.message).join(" ") : e.message;

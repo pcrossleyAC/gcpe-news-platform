@@ -1,5 +1,5 @@
 import { REPORT_FILE_NAMES, type CalendarRangeView, type ListFilter, type ListOptions, type ListPage, type ListPreferences, type ListQuery, type ReportJobView, type ReportKind, type SavedFilterView } from "@gcpe/calendar-contract";
-import { ApiError, apiFetch, reportUnauthorized } from "../../../api/client";
+import { ApiError, apiFetch, reportUnauthorized, SESSION_ENDED_MESSAGE } from "../../../api/client";
 import type { CalendarConfigView, ClearLaStatusResult, ReviewSelectedResult } from "./types";
 
 const q = (query: ListQuery) => encodeURIComponent(JSON.stringify(query));
@@ -32,7 +32,10 @@ export async function downloadFile(url: string, fileName: string, fallback: stri
   const res = await fetch(url, { credentials: "same-origin" });
   if (!res.ok) {
     // A session that ended sends the user to sign in and back, as apiFetch does.
-    if (res.status === 401) reportUnauthorized();
+    if (res.status === 401) {
+      reportUnauthorized();
+      throw new Error(SESSION_ENDED_MESSAGE);
+    }
     let message = fallback;
     try {
       const body = (await res.json()) as { error?: unknown };

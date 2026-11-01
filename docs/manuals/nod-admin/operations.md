@@ -124,6 +124,10 @@ This section shows on test sites only, where every email is redirected and real 
 1. Choose a bounce message file under **Bounce message (.eml)**, or paste it in **Or paste the message**.
 2. Choose **Upload bounce**. You see "Uploaded. Bounce processing picks it up within 15 minutes."
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

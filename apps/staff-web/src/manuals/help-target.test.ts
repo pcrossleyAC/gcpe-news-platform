@@ -172,3 +172,12 @@ describe("Help on the Calendar screens, with the compiled manuals", () => {
     expect(helpTargetFor(path, as("Calendar.SysAdmin"))).toBe(`/help/manuals/calendar-admin/${page}`);
   });
 });
+
+// Suite review H4: Page not found is a screen of its own now. An address no screen answers
+// isn't any manual page's, so its Help is the whole Help page (or the area's How do I…).
+describe("Help on Page not found, with the compiled manuals", () => {
+  it("opens the Help page, or the area's How do I", () => {
+    expect(helpTargetFor("/no-such-screen", as("Core.Admin"))).toBe("/help");
+    expect(helpTargetFor("/subscribers/no/such/screen", as("NoD.Editor"))).toBe("/help/manuals/nod-editor/editor-find-and-change-subscribers");
+  });
+});

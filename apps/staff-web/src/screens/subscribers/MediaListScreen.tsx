@@ -13,6 +13,7 @@ import { canEditSubscribers } from "./access";
 import { attentionLabel, mediaErrorText, memberSourceLabel, STATUS_LABELS } from "./labels";
 import { MediaHubSearch } from "./MediaHubSearch";
 import { ResolveDialog } from "./ResolveDialog";
+import { LeavePageGuard } from "../../shared/LeaveGuard";
 import type { AddMemberBody, AddMemberResult, MediaListSummary, MediaMember, MediaOptOutPage } from "./types";
 
 /** Only active members are sent a media list's email (N4): say how many, and how many don't. */
@@ -140,6 +141,8 @@ export function MediaListScreen(): React.JSX.Element {
   return (
     <div className="gcpe-subscribers__media-list">
       <h1>Media list</h1>
+      {/* Suite review H2: an address typed to add but not added asks before leaving. */}
+      <LeavePageGuard dirty={email.trim() !== ""} />
       <p>
         <Link to="/subscribers/media-lists">All media lists</Link>
       </p>

@@ -5,7 +5,7 @@ manual: nrms-site-editor
 order: 1
 routes: []
 screens: []
-topics: []
+topics: [signing-in-and-unsaved-changes]
 ---
 **Who this is for:** Site editors (NRMS.SiteEditor).
 
@@ -32,3 +32,7 @@ Release editors and release viewers can open **Website**, but they see only **Wh
 Under **Work** you see **Releases**, **Search** and **Website**. Under **Administration** you see **Organizations**.
 
 On **Releases** and **Search** you can read releases but not change them. Choosing a release's Top or Feature spot is done on the release itself, by release editors. To write or publish releases, ask a Core administrator for the release editor role as well. The [Releases editor manual](manual:nrms-editor) and the [Releases viewer manual](manual:nrms-viewer) cover release work.
+
+## Signing in and unsaved changes
+
+The Hub keeps you signed in while its tab is open. [Staying signed in, and unsaved changes](topic:signing-in-and-unsaved-changes) says what happens when your session ends, and how the Hub asks before you lose changes you haven't saved.

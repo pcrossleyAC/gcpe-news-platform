@@ -14,10 +14,23 @@ interface SessionState {
   user: SessionUser | null;
   /** Still loading the initial GET /core/auth/session on first mount. */
   loading: boolean;
+  /** The server stopped accepting this person's session (a 401) after they had signed in. */
+  ended: boolean;
+  /** How many 401s there have been since: each new one brings the explanation back. */
+  endedCount: number;
 }
 
 export interface SessionValue {
+  /** Who is signed in. Stays set after the session has {@link ended}, so the screen on show (which
+   * may hold unsaved changes) keeps working as it was until they sign in again or leave it. */
   user: SessionUser | null;
+  /** Suite review H1: the session ended (it ran out while the computer was asleep or offline, they
+   * signed out in another tab, an administrator changed their account) and nothing can be saved
+   * until they sign in again. RequireAuth and the shell explain it. A later check-in that finds
+   * the session good again (signed in in another tab) clears it. */
+  ended: boolean;
+  /** Goes up with every 401 after sign-in (fix round 1, I1), so RequireAuth explains again each time. */
+  endedCount: number;
   roles: string[];
   loading: boolean;
   has(role: string): boolean;
@@ -27,8 +40,11 @@ export interface SessionValue {
 
 const SessionContext = createContext<SessionValue | null>(null);
 
-/** Renewal happens server-side (GET /core/auth/session re-issues the cookie near expiry); this
- * is just how often the staff app checks in while the tab is visible (task-1-brief.md). */
+/** Renewal happens server-side (GET /core/auth/session re-issues the cookie in the last 15 of its
+ * 60 minutes); this is how often the staff app checks in. Suite review H1 (owner 2026-10-31): it
+ * checks in whether or not the tab is visible, so a Hub tab left open behind Outlook stays signed
+ * in. Browsers slow a hidden tab's timers to about once a minute at most, which is well inside
+ * this. The server sets no limit on how long a session can be kept renewed. */
 const RENEW_INTERVAL_MS = 10 * 60_000;
 
 interface LoginResponse {
@@ -37,14 +53,14 @@ interface LoginResponse {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const [state, setState] = useState<SessionState>({ user: null, loading: true });
+  const [state, setState] = useState<SessionState>({ user: null, loading: true, ended: false, endedCount: 0 });
 
   const loadSession = useCallback(async () => {
     try {
       const { user } = await apiFetch<LoginResponse>("/core/auth/session");
-      setState((s) => ({ ...s, user, loading: false }));
+      setState((s) => ({ ...s, user, loading: false, ended: false }));
     } catch {
-      setState((s) => ({ ...s, user: null, loading: false }));
+      setState((s) => ({ ...s, user: null, loading: false, ended: false }));
     }
   }, []);
 
@@ -53,7 +69,9 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
    * failure or a 5xx changes nothing: the next check-in tries again. */
   const checkIn = useCallback(() => {
     apiFetch<LoginResponse>("/core/auth/session").then(
-      ({ user }) => setState((s) => ({ ...s, user, loading: false })),
+      // Fix round 1 (M2): someone else signing in in another tab doesn't take over a screen kept
+      // from an ended session with the first person's typing on it: it stays ended.
+      ({ user }) => setState((s) => (s.ended && s.user && s.user.id !== user.id ? s : { ...s, user, loading: false, ended: false })),
       () => undefined,
     );
   }, []);
@@ -74,28 +92,31 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   }, [checkIn]);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      if (document.visibilityState === "visible") checkIn();
-    }, RENEW_INTERVAL_MS);
+    const id = setInterval(checkIn, RENEW_INTERVAL_MS);
     return () => clearInterval(id);
   }, [checkIn]);
 
-  // Any apiFetch 401, anywhere in the app, signs the user out here. Where they were — and
-  // getting back there after they sign in again — is RequireAuth's job alone, via the
-  // /hub/sign-in?return=<path> it redirects to (constraints.md Review Focus 1): this context
-  // doesn't duplicate that as its own state.
-  useEffect(() => onUnauthorized(() => setState((s) => ({ ...s, user: null }))), []);
+  // Any apiFetch 401, anywhere in the app, ends the session here. Where they were — and getting
+  // back there after they sign in again — is RequireAuth's job alone, via the
+  // /hub/sign-in?return=<path> it redirects to (constraints.md Review Focus 1). The person isn't
+  // forgotten (H1): a screen with unsaved changes stays as it was while RequireAuth explains.
+  // Each refused save (not a background read, which would bring the dialog back every few
+  // seconds on a polling screen) counts, so RequireAuth explains again (fix round 1, I1).
+  useEffect(
+    () => onUnauthorized((_returnTo, { byUser }) => setState((s) => (s.user ? { ...s, ended: true, endedCount: s.endedCount + (byUser || !s.ended ? 1 : 0) } : s))),
+    [],
+  );
 
   const signIn = useCallback(async (username: string, password: string) => {
     const { user } = await apiFetch<LoginResponse>("/core/auth/login", { method: "POST", body: { username, password } });
-    setState((s) => ({ ...s, user, loading: false }));
+    setState((s) => ({ ...s, user, loading: false, ended: false }));
   }, []);
 
   const signOut = useCallback(async () => {
     try {
       await apiFetch("/core/auth/logout", { method: "POST" });
     } finally {
-      setState((s) => ({ ...s, user: null }));
+      setState((s) => ({ ...s, user: null, ended: false }));
       // An *explicit* sign-out wipes every unsaved document draft
       // (documents/unsavedDocumentStorage.ts) — unlike a 401 (handled by the onUnauthorized
       // listener below, which deliberately leaves drafts alone so the same user signing back in
@@ -109,6 +130,8 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   const value = useMemo<SessionValue>(
     () => ({
       user: state.user,
+      ended: state.ended,
+      endedCount: state.endedCount,
       roles: state.user?.roles ?? [],
       loading: state.loading,
       has: (role: string) => state.user?.roles.includes(role) ?? false,

@@ -12,6 +12,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { OrganizationsScreen } from "./OrganizationsScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 
 /** Unavailable to the user: natively disabled, or a BC button that is busy (aria-disabled, still focusable). */
 function expectUnavailable(el: HTMLElement): void {
@@ -954,3 +955,39 @@ describe("OrganizationsScreen", () => {
     expect(screen.getByRole("button", { name: "Edit Old Ministry" })).toBeEnabled();
   });
 });
+
+// Suite review H2 (owner 2026-10-31): Organizations asks before leaving with unsaved changes in
+// its edit or add form; an open form with nothing changed leaves freely.
+describe("OrganizationsScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const WHOLE = [{ ...ORGS[0], sortOrder: 1, parentKey: null }, ORGS[1]];
+
+  it("an open edit form with nothing changed leaves freely; a change asks first", async () => {
+    stub(["Core.Admin"], [], WHOLE);
+    let router = renderGuarded(<OrganizationsScreen />);
+    let user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit Health" }));
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["Core.Admin"], [], WHOLE);
+    router = renderGuarded(<OrganizationsScreen />);
+    user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit Health" }));
+    await user.click(screen.getByRole("checkbox", { name: "Active" }));
+    await expectLeaveAsks(router, user);
+  });
+
+  it("a ministry name typed in Add ministry asks first", async () => {
+    stub(["Core.Admin"], []);
+    const router = renderGuarded(<OrganizationsScreen />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Add ministry" }));
+    await user.type(screen.getByLabelText(/Ministry name/), "Citizens' Services");
+    await expectLeaveAsks(router, user);
+  });
+});
+

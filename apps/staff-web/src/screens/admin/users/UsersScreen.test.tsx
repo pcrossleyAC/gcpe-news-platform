@@ -8,6 +8,7 @@ import { RequireAuth } from "../../../session/RequireAuth";
 import { UsersScreen } from "./UsersScreen";
 import type { UserView } from "./UsersScreen";
 import { visibleText } from "../../../../test/visibleText";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 
 function withAuth(children: React.ReactNode) {
   return (
@@ -551,3 +552,41 @@ describe("UsersScreen", () => {
     expect(within(account).getByText("Each of these takes effect on its own.")).toBeInTheDocument();
   });
 });
+
+// Suite review H2 (owner 2026-10-31): Users asks before leaving with unsaved edits, including in a
+// closed editor (its edits are kept), and with a half-filled Add a user.
+describe("UsersScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const users = () =>
+    stubSession([], (url, init) => (url === "/core/api/users" && (init?.method ?? "GET") === "GET" ? jsonResponse(200, [SELF, OTHER]) : null));
+
+  it("an open editor with nothing changed leaves freely", async () => {
+    users();
+    const router = renderGuarded(<UsersScreen />);
+    await openEditor("other@x.invalid");
+    await expectLeaveFree(router);
+  });
+
+  it("a name changed in an editor, then closed, still asks first", async () => {
+    users();
+    const router = renderGuarded(<UsersScreen />);
+    const user = userEvent.setup();
+    await openEditor("other@x.invalid", user);
+    await user.type(screen.getByRole("textbox", { name: "other@x.invalid display name" }), " Person");
+    await user.click(screen.getByRole("button", { name: "Close other@x.invalid" }));
+    await expectLeaveAsks(router, user);
+  });
+
+  it("an email typed in Add a user asks first", async () => {
+    users();
+    const router = renderGuarded(<UsersScreen />);
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Add a user" });
+    await user.type(within(form).getByLabelText(/^Email/), "new@x.invalid");
+    await expectLeaveAsks(router, user);
+  });
+});
+

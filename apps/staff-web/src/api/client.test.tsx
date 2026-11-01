@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, onUnauthorized } from "./client";
+import { apiFetch, onUnauthorized, SESSION_ENDED_MESSAGE } from "./client";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -39,11 +39,19 @@ describe("apiFetch", () => {
     const seen: string[] = [];
     const off = onUnauthorized((returnTo) => seen.push(returnTo));
     try {
-      await expect(apiFetch("/nrms/api/releases/abc-123")).rejects.toMatchObject({ status: 401, message: "not signed in" });
+      await expect(apiFetch("/nrms/api/releases/abc-123")).rejects.toMatchObject({ status: 401, message: SESSION_ENDED_MESSAGE });
       expect(seen).toEqual(["/hub/releases/abc-123"]);
     } finally {
       off();
     }
+  });
+
+  // Suite review G fix round 1 (I1): a screen kept after its session ended shows a 401's message
+  // wherever it shows errors, so it is plain words, never the server's ("missing bearer token").
+  it("a 401's message is plain: the session has ended and the changes are still here", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(401, { error: "missing bearer token" })));
+    const err = await apiFetch("/nrms/api/releases/x", { method: "PUT", body: {} }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 401, message: "Your session has ended. Sign in again to save — your changes are still here." });
   });
 
   it("409 throws an ApiError with status 409 and the server's message", async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
@@ -7,6 +7,7 @@ import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
 import { ListPicker } from "./ListPicker";
+import { LeavePageGuard } from "../../shared/LeaveGuard";
 import type { ListOptions } from "./types";
 
 /** 400 `issues` (zod) are a different shape from a plain `message` — same split as
@@ -48,6 +49,9 @@ export function AddSubscriberScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<string[]>([]);
   const [existingId, setExistingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Suite review H2: anything filled in asks before leaving, until the subscriber is added.
+  const dirty = email.trim() !== "" || confirmEmail.trim() !== "" || allNews || listKeys.length > 0 || !asItHappens || digest;
+  const added = useRef(false);
 
   // Never fetched for anyone who can't add — the section nav already hides this screen's link;
   // this is the defense-in-depth check for a direct deep link (same pattern as UsersScreen).
@@ -98,6 +102,7 @@ export function AddSubscriberScreen(): React.JSX.Element {
         method: "POST",
         body: { email: normalisedEmail, lists: allNews ? "all" : listKeys, asItHappens, digest },
       });
+      added.current = true;
       navigate(`/subscribers/${id}`);
     } catch (caught) {
       const existing = existingSubscriberId(caught);
@@ -115,6 +120,7 @@ export function AddSubscriberScreen(): React.JSX.Element {
   return (
     <div className="gcpe-subscribers__add">
       <h1>Add a subscriber</h1>
+      <LeavePageGuard dirty={dirty} leaving={added} />
       <Form onSubmit={onSubmit} aria-label="Add a subscriber">
         {optionsError && <InlineAlert variant="danger" role="alert" description={optionsError} />}
         {messages.map((m) => (

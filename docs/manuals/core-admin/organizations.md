@@ -85,6 +85,10 @@ Reactivating stops its pages sending visitors to the successor. It does not move
 - Subscribers, staff, Calendar activities and drafts move in the background shortly after. If they haven't moved after a few minutes, tell the support team.
 - A deactivated ministry can't be added to anyone's Calendar access. People who already have it keep it.
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

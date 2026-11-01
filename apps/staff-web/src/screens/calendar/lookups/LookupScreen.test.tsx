@@ -6,6 +6,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { LookupScreen } from "./LookupScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 import { LookupsScreen } from "./LookupsScreen";
 
 const KEYWORDS = {
@@ -161,3 +162,27 @@ describe("Calendar lookup screens", () => {
     addFails = false;
   });
 });
+
+// Suite review H2: a lookup row being added, not yet added, asks before leaving.
+describe("LookupScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const at = { path: "/calendar/lookups/:name", at: "/calendar/lookups/keywords" };
+
+  it("leaves freely untouched, and asks once a name is typed in the add form", async () => {
+    stub([]);
+    let router = renderGuarded(<LookupScreen />, at);
+    await screen.findByRole("form", { name: "Add an HQ tag" });
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub([]);
+    router = renderGuarded(<LookupScreen />, at);
+    const user = userEvent.setup();
+    await user.type(within(await screen.findByRole("form", { name: "Add an HQ tag" })).getByLabelText("Name"), "New keyword");
+    await expectLeaveAsks(router, user);
+  });
+});
+

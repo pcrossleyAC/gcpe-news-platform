@@ -36,6 +36,10 @@ Each row has a **Key**, a **Name**, an **Order** and an **Active** box.
 - A retired list can't be put on a release. A release that already had it shows it ticked, greyed out and marked "(retired)"; nothing is sent to it.
 - Nobody is emailed.
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

@@ -5,7 +5,7 @@ manual: nod-admin
 order: 1
 routes: []
 screens: []
-topics: []
+topics: [signing-in-and-unsaved-changes]
 ---
 **Who this is for:** Subscribers administrators (NoD.Admin).
 
@@ -47,3 +47,7 @@ Subscriber records are personal information. Search for, download and keep addre
 Under **Work** you see **Subscribers**. Its tabs are **Find subscribers**, **Add a subscriber**, **Lists and categories**, **Media lists**, **Reports** and **Operations**.
 
 Media list names are set by Core administrators on their **Media list names** screen. Ask a Core administrator to add, rename or retire a media list.
+
+## Signing in and unsaved changes
+
+The Hub keeps you signed in while its tab is open. [Staying signed in, and unsaved changes](topic:signing-in-and-unsaved-changes) says what happens when your session ends, and how the Hub asks before you lose changes you haven't saved.

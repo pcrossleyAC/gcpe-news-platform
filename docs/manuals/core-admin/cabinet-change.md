@@ -60,6 +60,10 @@ Choose **Discard this cabinet change…**, then **Yes, discard it**. Nothing is 
 - Subscribers, staff, Calendar activities and draft releases move to their new ministries shortly after.
 - If a scheduled publish can't go through, the change goes back to a draft and the page shows "This change wasn't published" with the reason. Nothing is half done. Fix it, preview again, then publish or schedule it.
 
+## If you leave before adding a change
+
+Each change is kept as soon as you add it. If you have filled in **Rename or change a ministry**, **Add a new ministry** or **Hand over a ministry** and not yet added it, or chosen a time and not yet scheduled it, the Hub asks before you go to another screen: "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard what you filled in. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

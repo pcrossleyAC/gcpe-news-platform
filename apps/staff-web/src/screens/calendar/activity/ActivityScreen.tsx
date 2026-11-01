@@ -1,12 +1,13 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { checkActivity, inferLookAhead, type ActivityFields, type ActivityView, type ClonePrefill, type EditorOptions, type FieldError, type HqSection } from "@gcpe/calendar-contract";
 import { friendlySpan } from "../../../format/calendarDates";
-import { ApiError, onUnauthorized } from "../../../api/client";
+import { ApiError, onUnauthorized, SESSION_ENDED_MESSAGE } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { useShortcut } from "../../../shared/shortcuts";
+import { LeavePageDialog, useLeaveBlocker } from "../../../shared/LeaveGuard";
 import type { CalendarMe } from "../access";
 import { useCalendarContext } from "../CalendarSection";
 import { listApi } from "../list/api";
@@ -245,7 +246,7 @@ function ActivityEditor({ me, config, options, view: initial, clone, returnTo, n
       return null;
     }
   }, [initial]);
-  const lock = useEditLock({ activityId: initial?.id ?? null, initial: initial?.lock ?? null, enabled: canEdit && !initial?.isDeleted, resumed: restored !== null, reload });
+  const lock = useEditLock({ activityId: initial?.id ?? null, initial: initial?.lock ?? null, enabled: canEdit && !initial?.isDeleted, resumed: restored !== null, reload, sessionEnded: session.ended });
   const frozen = config.freeze.appliesToYou;
   const lockedOut = lock.state.kind === "other" || lock.state.kind === "elsewhere" || lock.state.kind === "gone";
   const readOnly = !canEdit || frozen || lockedOut || !!view?.isDeleted || deletedMeanwhile;
@@ -286,17 +287,9 @@ function ActivityEditor({ me, config, options, view: initial, clone, returnTo, n
     },
   };
 
-  // In-app navigation with unsaved changes asks first; closing or reloading the tab gets the browser's own prompt.
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      dirtyRef.current && !leaving.current && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
-  );
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  // In-app navigation with unsaved changes asks first; closing or reloading the tab gets the
+  // browser's own prompt (the Hub's shared rule, shared/LeaveGuard.tsx).
+  const blocker = useLeaveBlocker(dirty, { keepsDraft: true, leaving, isDirty: () => dirtyRef.current });
 
   // Back on the list, the row for this activity is brought into view and given focus.
   const backOnList = (to: string) => (to === returnTo && view ? { calendarActivityId: view.id } : {});
@@ -370,7 +363,7 @@ function ActivityEditor({ me, config, options, view: initial, clone, returnTo, n
   const reviewRefusal = (e: unknown): { text: string; conflict: boolean } | null => {
     const saved = `Saved ${minIdOf(view!)}, but it wasn't marked reviewed:`;
     if (!(e instanceof ApiError)) return { text: `${saved} couldn't reach the server. Choose Review to try again.`, conflict: false };
-    if (e.status === 401) return null;
+    if (e.status === 401) return { text: `${saved} ${SESSION_ENDED_MESSAGE}`, conflict: false };
     if (e.status === 409 && e.code === "version_conflict") return { text: `${saved} someone changed it in between. Reload to see their change, then choose Review.`, conflict: true };
     return { text: `${saved} ${e.message}`, conflict: false };
   };
@@ -608,30 +601,7 @@ function ActivityEditor({ me, config, options, view: initial, clone, returnTo, n
           onWatch={(watch) => setView((v) => (v ? { ...v, watch } : v))}
         />
       )}
-      <Modal isOpen={blocker.state === "blocked"} onOpenChange={(open) => { if (!open) blocker.reset?.(); }} isDismissable>
-        <AlertDialog
-          role="alertdialog"
-          aria-label="Unsaved changes"
-          variant="warning"
-          title="Unsaved changes"
-          buttons={
-            <>
-              <Button onPress={() => blocker.reset?.()}>Stay</Button>
-              <Button
-                danger
-                onPress={() => {
-                  forgetDraft();
-                  blocker.proceed?.();
-                }}
-              >
-                Leave
-              </Button>
-            </>
-          }
-        >
-          <p>You have unsaved changes to this activity. Leave anyway and discard them?</p>
-        </AlertDialog>
-      </Modal>
+      <LeavePageDialog blocker={blocker} message="You have unsaved changes to this activity. Leave anyway and discard them?" onLeave={forgetDraft} />
       <Modal isOpen={askReload !== null} onOpenChange={(open) => { if (!open) askReload?.(false); }} isDismissable>
         <AlertDialog
           role="alertdialog"

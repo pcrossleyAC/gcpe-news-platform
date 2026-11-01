@@ -6,6 +6,7 @@ import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { AddSubscriberScreen } from "./AddSubscriberScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
 
 const OPTIONS = { categories: [{ key: "ministries", name: "Ministries", lists: [{ listKey: "ministries:health", name: "Health" }] }] };
 
@@ -150,3 +151,40 @@ describe("AddSubscriberScreen", () => {
     expect(document.activeElement).toBe(confirm);
   });
 });
+
+// Suite review H2: a half-filled Add a subscriber asks before leaving; adding the subscriber goes
+// straight to their record.
+describe("AddSubscriberScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const at = { path: "/subscribers/new", extra: [{ path: "/subscribers/:id", element: <p>detail page</p> }] };
+
+  it("leaves freely when empty, and asks once an email is typed", async () => {
+    stub(["NoD.Editor"]);
+    let router = renderGuarded(<AddSubscriberScreen />, at);
+    await screen.findByLabelText(/^Email/);
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["NoD.Editor"]);
+    router = renderGuarded(<AddSubscriberScreen />, at);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/^Email/), "new@example.test");
+    await expectLeaveAsks(router, user);
+  });
+
+  it("adding the subscriber goes to their record without asking", async () => {
+    stub(["NoD.Editor"]);
+    renderGuarded(<AddSubscriberScreen />, at);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/^Email/), "new@example.test");
+    await user.type(screen.getByLabelText(/^Confirm email/), "new@example.test");
+    await user.click(await screen.findByRole("checkbox", { name: "Health" }));
+    await user.click(screen.getByRole("button", { name: "Add subscriber" }));
+    expect(await screen.findByText("detail page")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+

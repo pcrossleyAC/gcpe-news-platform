@@ -21,6 +21,10 @@ You have one private draft that covers all of these screens. Other site editors 
 
 The foot of each screen says where you are. "Draft saved · not yet live" means you have a draft; "No unpublished changes" means you don't. With a draft, "Your draft has changes on:" names each screen it changes, with a link to it. The next line shows the live revision, who published it and when. Above the buttons, "Publish and Discard draft apply to your whole draft, on every settings screen. Publish lets you publish only this screen instead."
 
+## If you leave before saving a draft
+
+If you have changed this screen and not chosen **Save draft**, the Hub asks before you go to another screen, including another settings tab such as **Site banner** or **Footer links**: "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard what you typed since your last **Save draft**. Your saved draft is kept either way. Closing or reloading the tab gets your browser's own question.
+
 ## Publish a change
 
 1. Make the change on the settings screen.

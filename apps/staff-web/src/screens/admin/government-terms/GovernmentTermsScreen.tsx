@@ -9,6 +9,7 @@ import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../messages";
 import { isCoreAdmin } from "../organizations/access";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { StartTermForm } from "./StartTermForm";
 
 const STATUS_WORDS: Record<GovernmentTermView["status"], string> = {
@@ -48,6 +49,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
   const [status, setStatus] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const forms = useDirtyParts();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const startButton = useRef<HTMLButtonElement>(null);
@@ -134,6 +136,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
   return (
     <div className="gcpe-government-terms">
       <h1>Government terms</h1>
+      <LeavePageGuard dirty={forms.anyDirty} />
       <p>
         The public archive groups releases by government term. Each term&rsquo;s dates are worked out from its start date:
         a term runs until the day before the next one starts.
@@ -175,6 +178,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
       {terms && starting && (
         <StartTermForm
           scheduledStart={terms.find((t) => t.status === "scheduled")?.startDate ?? null}
+          reportDirty={forms.report}
           onCancel={() => {
             focusNext.current = "start";
             setStarting(false);
@@ -196,6 +200,7 @@ export function GovernmentTermsScreen(): React.JSX.Element {
         <TermEditForm
           key={editing.id}
           term={editing}
+          reportDirty={forms.report}
           hasEarlier={editing.startDate !== null && (terms ?? []).some((t) => t.startDate !== null && t.startDate < editing.startDate!)}
           onCancel={() => {
             focusNext.current = { kind: "edit", id: editing.id };
@@ -328,18 +333,22 @@ function TermEditForm({
   hasEarlier,
   onSaved,
   onCancel,
+  reportDirty,
 }: {
   term: GovernmentTermView;
   /** Another dated term starts before this one (so moving this start also moves that term's end). */
   hasEarlier: boolean;
   onSaved: () => void;
   onCancel: () => void;
+  reportDirty?: ReportDirty;
 }): React.JSX.Element {
   const uid = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [label, setLabel] = useState(term.label ?? "");
   const [startDate, setStartDate] = useState(term.startDate ?? "");
   const [url, setUrl] = useState(term.legacyArchiveUrl ?? "");
+  // Suite review H2: changes not yet saved ask before leaving the screen.
+  useReportDirty(reportDirty, "edit", label !== (term.label ?? "") || startDate !== (term.startDate ?? "") || url !== (term.legacyArchiveUrl ?? ""));
   const confirmRef = useRef<HTMLDivElement>(null);
   const saveRef = useRef<HTMLButtonElement>(null);
   const [confirmingMove, setConfirmingMove] = useState(false);

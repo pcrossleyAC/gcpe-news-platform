@@ -96,7 +96,7 @@ You can't delete activities, so **Delete** isn't offered. Ask a Calendar adminis
 
 ## If your session runs out
 
-If you are signed out while you have unsaved changes, sign in again and open the same activity. It says "Your unsaved changes were restored." Signing out yourself discards them.
+If your session ends while you have unsaved changes, the activity stays on screen and a box says "Your session has ended". Choose **Sign in again**: once you have signed in, you are back on the same activity, and it says "Your unsaved changes were restored." If you sign in again in another tab instead, come back to this one and save as usual. Choosing **Sign out** yourself discards them; the Hub asks first.
 
 ## Can't do this?
 

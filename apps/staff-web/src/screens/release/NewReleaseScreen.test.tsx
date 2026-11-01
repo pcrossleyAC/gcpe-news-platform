@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import { SessionProvider } from "../../session/SessionContext";
 import { NewReleaseScreen } from "./NewReleaseScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
 
 const IMG_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -474,3 +475,56 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   });
 });
+
+// Suite review H2: a half-filled New release asks before leaving; Create release goes straight to the editor.
+describe("NewReleaseScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const at = { path: "/releases/new", extra: [{ path: "/releases/:id", element: <p>Editor page</p> }] };
+
+  it("leaves freely untouched, and asks once a headline is typed", async () => {
+    stubFetch();
+    let router = renderGuarded(<NewReleaseScreen />, at);
+    await screen.findByText("Legislature");
+    await expectLeaveFree(router);
+    cleanup();
+
+    stubFetch();
+    router = renderGuarded(<NewReleaseScreen />, at);
+    const user = userEvent.setup();
+    await screen.findByText("Legislature");
+    await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open this weekend");
+    await expectLeaveAsks(router, user);
+  });
+
+  it("a fill from a Forecast activity alone isn't the user's typing, so it leaves freely", async () => {
+    stubFetch({
+      lookups: {
+        "4102": {
+          id: 4102, state: "found", title: "Sample clinic opening", startAt: "2031-06-11T17:00:00.000Z", endAt: "2031-06-11T18:00:00.000Z",
+          ministryName: "Health", location: "Victoria", translations: [], notEligible: null,
+          prefill: { publishAt: null, location: "Victoria", ministries: ["health"], leadMinistryKey: "health", sectors: [], themes: [], tags: [] },
+        },
+      },
+    });
+    const router = renderGuarded(<NewReleaseScreen />, { ...at, at: "/releases/new?activity=4102" });
+    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    await expectLeaveFree(router);
+  });
+
+  it("creating the release goes to its editor without asking", async () => {
+    stubFetch({ onPost: () => jsonResponse(201, releaseView({ id: "99999999-9999-9999-9999-999999999999" })) });
+    renderGuarded(<NewReleaseScreen />, at);
+    await screen.findByText("Legislature");
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
+    await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open this weekend");
+    await user.click(screen.getByLabelText("Health"));
+    await user.click(screen.getByRole("button", { name: "Create release" }));
+    expect(await screen.findByText("Editor page")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+

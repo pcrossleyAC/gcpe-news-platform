@@ -5,7 +5,7 @@ manual: calendar-admin
 order: 1
 routes: []
 screens: []
-topics: []
+topics: [signing-in-and-unsaved-changes]
 ---
 **Who this is for:** Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).
 
@@ -50,3 +50,7 @@ The [Calendar advanced user manual](manual:calendar-advanced), the [Calendar edi
 Under **Work** you see **Calendar**. Under **Administration** you see **Calendar access**.
 
 The Calendar's tabs are **Calendar**, **Updates**, **Lookups**, **Users** and **Transfer**. System administrators also see **Undelivered events**.
+
+## Signing in and unsaved changes
+
+The Hub keeps you signed in while its tab is open. [Staying signed in, and unsaved changes](topic:signing-in-and-unsaved-changes) says what happens when your session ends, and how the Hub asks before you lose changes you haven't saved.

@@ -37,6 +37,10 @@ Titles are grouped by release type: Release, Story, Factsheet, Update and Adviso
 - Release editors see the change the next time they open **New release**.
 - A release keeps the title it was given. To change a published release's title, edit that release.
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

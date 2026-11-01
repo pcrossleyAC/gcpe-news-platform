@@ -5,7 +5,7 @@ manual: calendar-readonly
 order: 1
 routes: []
 screens: []
-topics: []
+topics: [signing-in-and-unsaved-changes]
 ---
 **Who this is for:** Calendar read-only users (Calendar.ReadOnly).
 
@@ -54,3 +54,5 @@ On the activity list, ⌘K on a Mac or Ctrl+K on Windows opens **Filters** and g
 ## Signing in
 
 Choose **Sign in with Microsoft** and use your government Microsoft account. You need a Hub account first: if you see "Your account hasn't been set up. Contact an administrator.", ask a Core administrator to add you. Signing out of the Hub doesn't sign you out of Microsoft.
+
+The Hub keeps you signed in while its tab is open. [Staying signed in, and unsaved changes](topic:signing-in-and-unsaved-changes) says what happens when your session ends, and how the Hub asks before you lose changes you haven't saved.

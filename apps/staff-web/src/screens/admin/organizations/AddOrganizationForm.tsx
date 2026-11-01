@@ -8,6 +8,7 @@ import {
   normalizeAbbreviation,
 } from "./abbreviation";
 import { orgKeyFromName } from "@gcpe/events/org-key";
+import { useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 
 export interface AddOrganizationFormProps {
@@ -15,6 +16,8 @@ export interface AddOrganizationFormProps {
   orgs?: OrgRecord[];
   onCreated: (key: string) => void;
   onCancel: () => void;
+  /** Suite review H2: tells the screen's leave-page guard whether anything is typed. */
+  reportDirty?: ReportDirty;
 }
 
 /**
@@ -27,6 +30,7 @@ export function AddOrganizationForm({
   orgs = [],
   onCreated,
   onCancel,
+  reportDirty,
 }: AddOrganizationFormProps): React.JSX.Element {
   const uid = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -35,6 +39,7 @@ export function AddOrganizationForm({
   const [abbreviationError, setAbbreviationError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
+  useReportDirty(reportDirty, "add", displayName.trim() !== "" || abbreviation.trim() !== "");
 
   useEffect(() => {
     headingRef.current?.focus();

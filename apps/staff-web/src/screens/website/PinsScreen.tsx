@@ -12,6 +12,7 @@ import { canManageWebsite } from "./access";
 import { SaveResult, clockTime } from "./SaveResult";
 import { IMAGE_TOO_BIG, MAX_IMAGE_BYTES, imageUploadMessage, slideAddressErrors } from "./slideChecks";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../shared/LeaveGuard";
 import type { Justify, PinSlot, PinView } from "./types";
 
 interface PinFormProps {
@@ -20,6 +21,8 @@ interface PinFormProps {
   /** Reloads the pins: after a save `result` is what to show (W8); a plain reload passes none. */
   onSaved(result?: string): void;
   timeZone: string;
+  /** Suite review W9: tells the screen's leave-page guard whether this notice has unsaved edits. */
+  reportDirty?: ReportDirty;
 }
 
 const SLOT_LABEL: Record<PinSlot, string> = { primary: "Primary", secondary: "Secondary" };
@@ -27,7 +30,7 @@ const SLOT_LABEL: Record<PinSlot, string> = { primary: "Primary", secondary: "Se
 /** W8: what a save did, said on screen. A pinned notice is on the public home page. */
 const LIVE_NOW = "Live now: the home page shows it within a few minutes.";
 
-function PinForm({ pin, canEdit, onSaved, timeZone }: PinFormProps): React.JSX.Element {
+function PinForm({ pin, canEdit, onSaved, timeZone, reportDirty }: PinFormProps): React.JSX.Element {
   const section = useVersionedSave<PinView>({ quiet: true });
   const at = () => clockTime(new Date(), timeZone);
   const [headline, setHeadline] = useState(pin.slide.headline);
@@ -67,6 +70,7 @@ function PinForm({ pin, canEdit, onSaved, timeZone }: PinFormProps): React.JSX.E
     actionLabel !== pin.slide.actionLabel ||
     facebookPostUrl !== pin.slide.facebookPostUrl ||
     justify !== pin.slide.justify;
+  useReportDirty(reportDirty, pin.slot, canEdit && hasUnsavedEdits);
 
   // The switch saves only the pin state, and the notice then reloads (its key changes with its version), which
   // would discard anything typed. So with unsaved edits it refuses rather than lose them.
@@ -187,6 +191,7 @@ export function PinsScreen(): React.JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const timeZone = useTenantTimeZone();
   const [results, setResults] = useState<Partial<Record<PinSlot, string>>>({});
+  const forms = useDirtyParts();
 
   const reload = useCallback(() => {
     apiFetch<PinView[]>("/nrms/api/site/pins").then(setPins, () => setLoadError("Couldn't load the emergency pins."));
@@ -210,6 +215,7 @@ export function PinsScreen(): React.JSX.Element {
   return (
     <div className="gcpe-pins">
       <h1>Emergency pins</h1>
+      <LeavePageGuard dirty={forms.anyDirty} />
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {pins === null && !loadError && <p>Loading…</p>}
       {pins?.map((pin) => (
@@ -220,6 +226,7 @@ export function PinsScreen(): React.JSX.Element {
             pin={pin}
             canEdit={canEdit}
             timeZone={timeZone}
+            reportDirty={forms.report}
             onSaved={(result) => {
               if (result) setResults((r) => ({ ...r, [pin.slot]: result }));
               reload();

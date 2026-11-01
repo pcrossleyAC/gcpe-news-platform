@@ -53,7 +53,12 @@ export function useEditLock(o: {
    * theirs is from before, not another tab's, and the first change takes it over. */
   resumed?: boolean;
   reload: () => Promise<ActivityView | null>;
+  /** The session has ended (suite review H1): no heartbeat is sent until it is back, since none
+   * can succeed and each would only be refused again (fix round 2, I3). */
+  sessionEnded?: boolean;
 }): EditLock {
+  const sessionEnded = useRef(!!o.sessionEnded);
+  sessionEnded.current = !!o.sessionEnded;
   const tabId = useMemo(() => crypto.randomUUID(), []);
   const adoptOwn = useRef(!!o.resumed && !!o.initial?.mine);
   const [state, setLockState] = useState<LockState>(() => (o.enabled && !adoptOwn.current ? lockStateOf(o.initial) : { kind: "none" }));
@@ -157,7 +162,7 @@ export function useEditLock(o: {
     const sentAt = Date.now();
     const controller = new AbortController();
     const giveUp = setTimeout(() => controller.abort(), HEARTBEAT_TIMEOUT_MS);
-    const p: Promise<void> = activityApi.lock(id!, tabId, false, controller.signal).then(
+    const p: Promise<void> = activityApi.lock(id!, tabId, false, controller.signal, true).then(
       () => {
         clearTimeout(giveUp);
         if (disposed.current) return;
@@ -194,7 +199,7 @@ export function useEditLock(o: {
     const s = current.current;
     if (s.kind === "other" || s.kind === "elsewhere" || s.kind === "gone") return false;
     if (s.kind !== "mine") return takeOnce(adoptOwn.current);
-    if (Date.now() - lastBeat.current >= HEARTBEAT_MS) sendHeartbeat();
+    if (!sessionEnded.current && Date.now() - lastBeat.current >= HEARTBEAT_MS) sendHeartbeat();
     return true;
   }, [active, takeOnce, sendHeartbeat]);
 

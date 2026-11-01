@@ -85,6 +85,10 @@ For anyone else you can't change, **Account** says why instead of showing the bu
 
 If the person's access changed a moment ago, the same message can appear after you choose the button instead.
 
+## If you leave before saving
+
+If you have changes you haven't saved and you go to another screen or choose your browser's **Back**, the Hub asks "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard the changes. Closing or reloading the tab gets your browser's own question.
+
 ## Can't do this?
 
 | Message | What it means |

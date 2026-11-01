@@ -6,6 +6,7 @@ import { apiFetch } from "../../../api/client";
 import { useAnnouncer } from "../../../shared/Announcer";
 import { messagesOf } from "../messages";
 import { abbreviationTakenMessage, normalizeAbbreviation } from "./abbreviation";
+import { useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import { deactivateWarning } from "./OrganizationEditForm";
 
 /** One service's count: still loading, loaded, or failed (shown as "count unavailable", never 0). */
@@ -198,6 +199,8 @@ export interface HandOverPanelProps {
   onCancel: () => void;
   /** Told when a save starts and ends, so the screen can hold its other row actions meanwhile. */
   onBusyChange?: (busy: boolean) => void;
+  /** Suite review H2: tells the screen's leave-page guard whether a successor has been chosen. */
+  reportDirty?: ReportDirty;
 }
 
 /**
@@ -208,7 +211,7 @@ export interface HandOverPanelProps {
  * ministry only) it is today's deactivation. The counts come from Core, NoD, the Calendar and
  * NRMS separately; one that fails says "count unavailable" and never blocks the hand-over.
  */
-export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: HandOverPanelProps): React.JSX.Element {
+export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange, reportDirty }: HandOverPanelProps): React.JSX.Element {
   const uid = useId();
   const id = (part: string) => `${uid}-${part}`;
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -220,6 +223,7 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
   // Ordered successors; "" is an unchosen picker. The first gets staff, Calendar, drafts and the
   // abbreviation; every one gets the subscribers.
   const [successors, setSuccessors] = useState<string[]>([""]);
+  useReportDirty(reportDirty, "hand-over", successors.some((s) => s !== ""));
   const [moves, setMoves] = useState<HandOverMoves>(ALL_MOVES);
   const [replaceAbbr, setReplaceAbbr] = useState(false);
   const [takeAbbr, setTakeAbbr] = useState(true);

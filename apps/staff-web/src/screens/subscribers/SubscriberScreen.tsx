@@ -13,6 +13,7 @@ import { canEditSubscribers } from "./access";
 import { backToFrom } from "./backToResults";
 import { ListPicker } from "./ListPicker";
 import { attentionLabel, STATUS_LABELS, timingLabel } from "./labels";
+import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../shared/LeaveGuard";
 import type { ListOptions, SubscriberDetail } from "./types";
 
 /** apps/nod/src/db/schema.ts's subscribers_source_check. */
@@ -81,11 +82,17 @@ const clearing = (mine: Exclude<Notice, null>) => (n: Notice) => (n === mine ? n
 
 /** Seeded once per subscriber (the caller keys it by id): a reload after Activate, Deactivate
  * or this form's own save keeps whatever the staff member has ticked but not yet saved. */
-function PreferencesForm({ detail, options, onSaved, notice, setNotice }: { detail: SubscriberDetail; options: ListOptions | null; onSaved(): void } & NoticeProps): React.JSX.Element {
+function PreferencesForm({ detail, options, onSaved, notice, setNotice, reportDirty }: { detail: SubscriberDetail; options: ListOptions | null; onSaved(): void; reportDirty?: ReportDirty } & NoticeProps): React.JSX.Element {
   const [allNews, setAllNews] = useState(detail.allNews);
   const [listKeys, setListKeys] = useState(detail.listKeys);
   const [asItHappens, setAsItHappens] = useState(detail.asItHappens);
   const [digest, setDigest] = useState(detail.digest);
+  // Suite review H2: preferences changed but not saved ask before leaving the record.
+  useReportDirty(
+    reportDirty,
+    "preferences",
+    allNews !== detail.allNews || asItHappens !== detail.asItHappens || digest !== detail.digest || [...listKeys].sort().join() !== [...detail.listKeys].sort().join(),
+  );
   const [messages, setMessages] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const saved = notice === "preferences";
@@ -240,10 +247,11 @@ interface OptOutPrompt {
   at: string;
 }
 
-function ChangeEmailSection({ detail, onChanged, notice, setNotice }: { detail: SubscriberDetail; onChanged(): void } & NoticeProps): React.JSX.Element {
+function ChangeEmailSection({ detail, onChanged, notice, setNotice, reportDirty }: { detail: SubscriberDetail; onChanged(): void; reportDirty?: ReportDirty } & NoticeProps): React.JSX.Element {
   const timeZone = useTenantTimeZone();
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
+  useReportDirty(reportDirty, "email", email.trim() !== "" || confirmEmail.trim() !== "");
   const [messages, setMessages] = useState<string[]>([]);
   const [takenId, setTakenId] = useState<string | null>(null);
   const [optOutPrompt, setOptOutPrompt] = useState<OptOutPrompt | null>(null);
@@ -474,6 +482,7 @@ export function SubscriberScreen(): React.JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [options, setOptions] = useState<ListOptions | null>(null);
   const [notice, setNoticeState] = useState<Notice>(null);
+  const forms = useDirtyParts();
   const setNotice = useCallback((update: (n: Notice) => Notice) => setNoticeState(update), []);
   // Another subscriber's record never inherits this one's success message.
   useEffect(() => setNoticeState(null), [id]);
@@ -534,6 +543,7 @@ export function SubscriberScreen(): React.JSX.Element {
   return (
     <div className="gcpe-subscriber">
       <h1>Subscriber</h1>
+      <LeavePageGuard dirty={forms.anyDirty} />
       {backTo && (
         <p>
           <Link to={backTo.path} state={backTo.state}>
@@ -579,7 +589,7 @@ export function SubscriberScreen(): React.JSX.Element {
         <Link to={`/subscribers/${detail.id}/history`}>History</Link>
       </p>
 
-      {showPreferences && (canEdit ? <PreferencesForm key={detail.id} detail={detail} options={options} onSaved={reload} notice={notice} setNotice={setNotice} /> : <PreferencesView detail={detail} options={options} />)}
+      {showPreferences && (canEdit ? <PreferencesForm key={detail.id} detail={detail} options={options} reportDirty={forms.report} onSaved={reload} notice={notice} setNotice={setNotice} /> : <PreferencesView detail={detail} options={options} />)}
 
       {canEdit && detail.status !== "deleted" && (
         <>
@@ -587,7 +597,7 @@ export function SubscriberScreen(): React.JSX.Element {
           {/* Changing a pending subscriber's address would leave a row that can never be
            * confirmed (the only way in is the verify link sent to the original address) — the
            * server refuses it (SubscriberStateError), and this hides the dead end up front. */}
-          {detail.status !== "pending" && <ChangeEmailSection detail={detail} onChanged={reload} notice={notice} setNotice={setNotice} />}
+          {detail.status !== "pending" && <ChangeEmailSection detail={detail} onChanged={reload} reportDirty={forms.report} notice={notice} setNotice={setNotice} />}
           <DeleteSection detail={detail} onDeleted={reload} setNotice={setNotice} />
         </>
       )}

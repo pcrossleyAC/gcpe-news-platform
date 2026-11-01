@@ -6,6 +6,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { MediaListNamesScreen } from "./MediaListNamesScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 import { visibleText } from "../../../../test/visibleText";
 
 const ROWS = [
@@ -140,3 +141,26 @@ describe("MediaListNamesScreen", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn't save. Try again.");
   });
 });
+
+// Suite review H2: a new list typed but not added asks before leaving; untouched, leaving just goes.
+describe("MediaListNamesScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves freely untouched, and asks once a key is typed", async () => {
+    stub(["Core.Admin"]);
+    let router = renderGuarded(<MediaListNamesScreen />);
+    await screen.findByRole("textbox", { name: "Key" });
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["Core.Admin"]);
+    router = renderGuarded(<MediaListNamesScreen />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Key" }), "002-budget");
+    await expectLeaveAsks(router, user);
+  });
+});
+

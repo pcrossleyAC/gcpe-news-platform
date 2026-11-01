@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
-import { AlertDialog, Button, Modal } from "@bcgov/design-system-react-components";
 import { statusText, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
@@ -23,6 +22,7 @@ import { SimilarReleasesPanel } from "./SimilarReleasesPanel";
 import { SideBar } from "./sidebar/SideBar";
 import { SaveQueueContext, useSaveQueueController } from "./saveQueue";
 import { clearReleaseDrafts } from "./documents/unsavedDocumentStorage";
+import { LeavePageDialog } from "../../shared/LeaveGuard";
 
 /**
  * `/hub/releases/:id` (task-3-brief.md): loads the view once, holds it in one piece of state
@@ -200,33 +200,17 @@ export function ReleaseEditorPage(): React.JSX.Element {
               {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
             </div>
 
-            {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
-             * focus, restores it on close, and closes on Escape (treated the same as "Stay": the
-             * blocker is simply left blocked, so the in-app navigation stays cancelled). */}
-            <Modal isOpen={guard.blocker.state === "blocked"} onOpenChange={(open) => { if (!open) guard.blocker.reset?.(); }} isDismissable>
-              <AlertDialog
-                variant="warning"
-                title="Unsaved changes"
-                buttons={
-                  <>
-                    <Button onPress={() => guard.blocker.reset?.()}>Stay</Button>
-                    <Button
-                      danger
-                      onPress={() => {
-                        // Suite review R3: discarded means discarded. A draft kept from a 401 and
-                        // restored here must not come back the next time the release is opened.
-                        if (session.user) clearReleaseDrafts(session.user.id, view.id);
-                        guard.blocker.proceed?.();
-                      }}
-                    >
-                      Leave
-                    </Button>
-                  </>
-                }
-              >
-                <p>You have unsaved changes on this page. Leave anyway and discard them?</p>
-              </AlertDialog>
-            </Modal>
+            {/* Fix round 1, finding 2: a real dialog — traps focus, restores it on close, and
+             * closes on Escape (treated the same as "Stay"). The Hub's shared one (H2). */}
+            <LeavePageDialog
+              blocker={guard.blocker}
+              plainDialog
+              onLeave={() => {
+                // Suite review R3: discarded means discarded. A draft kept from a 401 and
+                // restored here must not come back the next time the release is opened.
+                if (session.user) clearReleaseDrafts(session.user.id, view.id);
+              }}
+            />
 
             {/* One column below 80rem, in reading order: Actions, the release itself (Documents
              * first), then Publish settings and the release's facts. From 80rem, two columns: the

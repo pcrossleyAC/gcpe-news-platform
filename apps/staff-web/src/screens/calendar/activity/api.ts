@@ -15,8 +15,9 @@ export const activityApi = {
   clonePrefill: (id: number) => apiFetch<ClonePrefill>(`${a(id)}/clone`),
   remove: (id: number, version: number) => apiFetch<void>(a(id), { method: "DELETE", body: { version } }),
   review: (id: number, version: number) => apiFetch<ActivityView>(`${a(id)}/review`, { method: "POST", body: { version } }),
-  lock: (id: number, tabId: string, takeOver = false, signal?: AbortSignal) =>
-    apiFetch<{ holderName: string; since: string; mine: true; tabId: string }>(`${a(id)}/lock`, { method: "PUT", body: takeOver ? { tabId, takeOver } : { tabId }, signal }),
+  /** `background`: a heartbeat, not the user's own first change (fix round 2, I3). */
+  lock: (id: number, tabId: string, takeOver = false, signal?: AbortSignal, background = false) =>
+    apiFetch<{ holderName: string; since: string; mine: true; tabId: string }>(`${a(id)}/lock`, { method: "PUT", body: takeOver ? { tabId, takeOver } : { tabId }, signal, background }),
   /** keepalive lets the request finish as the page goes, and apiFetch adds the X-GCPE-Request header the server requires (C169), which navigator.sendBeacon can't. */
   release: (id: number, tabId: string) => apiFetch<void>(`${a(id)}/lock/release`, { method: "POST", body: { tabId }, keepalive: true }),
   // Never ?name=: a query string lands in every proxy's access logs, including a confidential

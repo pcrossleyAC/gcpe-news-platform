@@ -8,6 +8,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { CabinetChangeScreen } from "./CabinetChangeScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../../test/leaveGuard";
 
 const base = {
   isHq: false,
@@ -432,3 +433,28 @@ describe("CabinetChangeScreen", () => {
     expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   });
 });
+
+// Suite review H2: changes are saved as they're added; an add form filled in but not yet added asks before leaving.
+describe("CabinetChangeScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("an empty add form leaves freely; a typed name asks first", async () => {
+    stub([]);
+    let router = renderGuarded(<CabinetChangeScreen />);
+    let user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Add a new ministry" }));
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub([]);
+    router = renderGuarded(<CabinetChangeScreen />);
+    user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Add a new ministry" }));
+    await user.type(within(screen.getByRole("form", { name: "Add a new ministry" })).getByLabelText("Name"), "Jobs and Economy");
+    await expectLeaveAsks(router, user);
+  });
+});
+

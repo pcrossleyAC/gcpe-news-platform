@@ -7,6 +7,7 @@ import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { settingsScreenFor } from "../WebsiteScreen";
 import { useShortcut } from "../../../shared/shortcuts";
 import { formatPublishedAt } from "./format";
+import { LeavePageGuard } from "../../../shared/LeaveGuard";
 import { sectionList, sectionOfField, type SettingsEditor } from "./useSettingsEditor";
 
 interface PublishBarProps {
@@ -108,6 +109,8 @@ export function PublishBar({ editor, canEdit, timeZone }: PublishBarProps): Reac
 
   return (
     <div className="gcpe-settings-publish">
+      {/* Suite review W9: changes not yet saved as a draft ask before leaving this screen. */}
+      <LeavePageGuard dirty={editor.dirty} />
       <p>{state.draft ? "Draft saved · not yet live" : "No unpublished changes"}</p>
       {state.draft && <DraftScreens sections={state.draftSections} />}
       <p>

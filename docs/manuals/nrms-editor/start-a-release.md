@@ -57,3 +57,7 @@ Nothing is filled in for an activity that has ended, or whose category doesn't s
 | "Legacy activity 3, not migrated" | A release brought over from the old system names an activity that didn't come across. It keeps that number until you change it. |
 
 You can link or change the activity later in **Publish settings** on the release, as **Calendar activity ID**. Once a release is linked, the activity shows its status in the Calendar within a minute of each change.
+
+## If you leave before creating it
+
+If you have filled in anything and not chosen **Create release**, the Hub asks before you go to another screen: "You have unsaved changes on this page. Leave anyway and discard them?" Choose **Stay** to keep working, or **Leave** to discard it. What was filled in for you from a Calendar activity doesn't count. Closing or reloading the tab gets your browser's own question.

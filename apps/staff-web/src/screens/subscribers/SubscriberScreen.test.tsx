@@ -6,6 +6,7 @@ import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { SubscriberScreen } from "./SubscriberScreen";
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
 import type { SubscriberDetail } from "./types";
 
 const ID = "11111111-1111-1111-1111-111111111111";
@@ -437,3 +438,27 @@ describe("SubscriberScreen", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
   });
 });
+
+// Suite review H2: a subscriber's preferences changed but not saved ask before leaving.
+describe("SubscriberScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  const at = { path: "/subscribers/:id", at: `/subscribers/${ID}` };
+
+  it("leaves freely untouched, and asks once a list is ticked", async () => {
+    stub(["NoD.Editor"], () => detail());
+    let router = renderGuarded(<SubscriberScreen />, at);
+    await screen.findByRole("checkbox", { name: "Agriculture" });
+    await expectLeaveFree(router);
+    cleanup();
+
+    stub(["NoD.Editor"], () => detail());
+    router = renderGuarded(<SubscriberScreen />, at);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "Agriculture" }));
+    await expectLeaveAsks(router, user);
+  });
+});
+

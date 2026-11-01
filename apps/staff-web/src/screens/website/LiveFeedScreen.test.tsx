@@ -8,6 +8,8 @@ import { RequireAuth } from "../../session/RequireAuth";
 import { LiveFeedScreen } from "./LiveFeedScreen";
 import type { LiveFeedView } from "./types";
 
+import { expectLeaveAsks, expectLeaveFree, renderGuarded } from "../../../test/leaveGuard";
+
 function withAuth(children: React.ReactNode) {
   return (
     <SessionProvider>
@@ -134,3 +136,24 @@ describe("LiveFeedScreen", () => {
     expect(await screen.findByText(/^Saved at .+\. The Live Feed is off: the Live Webcast button goes from the public site within a few minutes\.$/)).toBeInTheDocument();
   });
 });
+
+// Suite review W9/H2: unsaved Live Feed settings ask before leaving.
+describe("LiveFeedScreen: leaving with unsaved changes", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves freely untouched, and asks after an edit", async () => {
+    stub(["NRMS.SiteEditor"], OFF, []);
+    let router = renderGuarded(<LiveFeedScreen />);
+    await screen.findByLabelText("M3U URL");
+    await expectLeaveFree(router);
+    cleanup();
+    router = renderGuarded(<LiveFeedScreen />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("M3U URL"), "https://example.invalid/feed.m3u8");
+    await expectLeaveAsks(router, user);
+  });
+});
+
