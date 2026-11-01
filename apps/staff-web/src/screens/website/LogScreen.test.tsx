@@ -67,4 +67,19 @@ describe("LogScreen", () => {
     expect(screen.getByRole("cell", { name: "Site settings" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Site settings" })).toHaveValue("settings");
   });
+
+  it("labels Government terms entries and offers them as a filter", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url.startsWith("/nrms/api/site/log")) return jsonResponse(200, [{ at: "2026-10-05T12:00:00.000Z", actorName: "Pat", area: "government-terms", text: "Added a government term starting November 20, 2028" }]);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(<LogScreen />);
+    await screen.findByText("Added a government term starting November 20, 2028");
+    expect(screen.getByRole("cell", { name: "Government terms" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Government terms" })).toHaveValue("government-terms");
+  });
 });

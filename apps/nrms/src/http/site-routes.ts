@@ -73,7 +73,7 @@ export const BLUE_BRIDGE_WARNING = "Do not click OK unless you have approval fro
 /** Slide/pin images' 2 MiB cap, defined beside the slide image store (website/slide-images.ts). */
 export { MAX_SITE_IMAGE_BYTES };
 const SLOT = /^(primary|secondary)$/;
-const AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features", "settings"];
+const AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features", "settings", "government-terms"];
 
 const dateish = z.string().refine((s) => !Number.isNaN(Date.parse(s)), "must be a valid date/time");
 /**

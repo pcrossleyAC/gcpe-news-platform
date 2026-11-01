@@ -16,6 +16,8 @@ const AREA_LABEL: Record<SiteLogArea, string> = {
   files: "Files",
   features: "Features",
   settings: "Site settings",
+  // Suite review O3: Core administrators' Government terms changes (NRMS keeps them in this log).
+  "government-terms": "Government terms",
 };
 
 /**

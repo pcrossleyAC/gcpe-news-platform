@@ -554,7 +554,8 @@ export const siteFileTombstones = pgTable("site_file_tombstones", {
   deletedBy: text("deleted_by").notNull(),
 });
 
-export type SiteLogArea = "carousel" | "pins" | "live-feed" | "blue-bridge" | "links" | "files" | "features" | "settings";
+/** `government-terms`: Core.Admin's Government terms screen (suite review O3, migration 0024), not part of the Website section but read with its log. */
+export type SiteLogArea = "carousel" | "pins" | "live-feed" | "blue-bridge" | "links" | "files" | "features" | "settings" | "government-terms";
 
 export const siteLog = pgTable(
   "site_log",
@@ -571,7 +572,7 @@ export const siteLog = pgTable(
   },
   (t) => [
     index("site_log_at_idx").on(t.at.desc()),
-    check("site_log_area_check", sql`${t.area} IN ('carousel','pins','live-feed','blue-bridge','links','files','features','settings')`),
+    check("site_log_area_check", sql`${t.area} IN ('carousel','pins','live-feed','blue-bridge','links','files','features','settings','government-terms')`),
   ],
 );
 
