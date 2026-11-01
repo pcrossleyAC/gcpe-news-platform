@@ -1,4 +1,7 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import express from "express";
+import { INTERNAL_ORIGIN as AUTH_INTERNAL_ORIGIN, isInternalRequest } from "@gcpe/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 
@@ -9,6 +12,7 @@ function demoApp() {
     res.status(201).json({ body: req.body, query: req.query, ip: req.ip, host: req.headers.host });
   });
   app.get("/empty", (_req, res) => void res.status(204).end());
+  app.get("/who", (req, res) => void res.json({ internal: isInternalRequest(req) }));
   app.get("/slow", (_req, res) => void setTimeout(() => res.send("late"), 200));
   return app;
 }
@@ -64,5 +68,22 @@ describe("installInternalFetch", () => {
     uninstall();
     uninstall = undefined;
     expect(globalThis.fetch).toBe(before);
+  });
+
+  it("marks its in-memory connections so the internal service token is accepted there and only there (2026-10-31, T2)", async () => {
+    const app = demoApp();
+    uninstall = installInternalFetch(() => app);
+    expect(INTERNAL_ORIGIN).toBe(AUTH_INTERNAL_ORIGIN);
+    expect(await (await fetch(`${INTERNAL_ORIGIN}/who`)).json()).toEqual({ internal: true });
+    // The same app over a real socket (what IIS, the DMZ proxy or anyone else reaches) is not marked.
+    const server = createServer(app).listen(0, "127.0.0.1");
+    await new Promise((r) => server.once("listening", r));
+    try {
+      const { port } = server.address() as AddressInfo;
+      expect(await (await fetch(`http://127.0.0.1:${port}/who`)).json()).toEqual({ internal: false });
+    } finally {
+      server.closeAllConnections();
+      await new Promise((r) => server.close(r));
+    }
   });
 });

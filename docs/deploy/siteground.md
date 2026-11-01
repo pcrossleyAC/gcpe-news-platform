@@ -577,7 +577,7 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
      — the newest row's actor is the editor's display name and its detail is `subscribers all any`
      (report and list key, never an address).
 
-Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
+Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET` (as is the key the apps sign their calls to each other with, since 2026-10-31: those calls no longer use `LOCAL_AUTH_SECRET`), so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
 
 The break-glass `admin` account signs in through the same endpoint. To create or reset the five test users (`editor@example.test`, `site-editor@example.test`, `viewer@example.test`, `nod-viewer@example.test`, `nod-editor@example.test`), run from your Mac:
 

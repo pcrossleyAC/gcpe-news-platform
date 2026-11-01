@@ -351,6 +351,12 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // check); without it, a cookie is refused (503), never accepted on its signature alone. Last,
   // so no setting can turn it off.
   if (view.SESSION_SECRET) view.SESSION_GATE_REQUIRED = "true";
+  // Owner decision 2026-10-31 (production configuration, T2): the apps' tokens for calling each
+  // other in-process get their own key, from the stack secret rather than the break-glass admin's
+  // LOCAL_AUTH_SECRET, so break-glass can be off in production. Last, so no setting replaces it;
+  // without STACK_EVENT_SECRET there is none and an app falls back to the break-glass key.
+  if (env.STACK_EVENT_SECRET) view.SERVICE_TOKEN_SECRET = serviceTokenSecretFrom(env.STACK_EVENT_SECRET);
+  else delete view.SERVICE_TOKEN_SECRET;
   return view;
 }
 
@@ -427,6 +433,12 @@ export function routeSecret(stackSecret: string, route: EventRoute): string {
  * SiteGround deployment needs no extra setting: HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-session"). */
 export function sessionSecretFrom(stackSecret: string): string {
   return createHmac("sha256", stackSecret).update("gcpe-session").digest("hex");
+}
+
+/** The key every app signs and checks its in-process service tokens with (@gcpe/auth's
+ * internal.ts): HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-service-token"). */
+export function serviceTokenSecretFrom(stackSecret: string): string {
+  return createHmac("sha256", stackSecret).update("gcpe-service-token").digest("hex");
 }
 
 /** EVENT_SUBSCRIBERS (senders) and EVENT_SECRETS (receivers) for every app, derived from one secret. */

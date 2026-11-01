@@ -97,7 +97,7 @@ finds its own `config/` and `migrations/` beside it.
 | --- | --- | --- | --- |
 | `TICK_TOKEN` | yes | yes | ≥ 32 characters. Guards `/stack/tick`; with `STACK_LOOPS=true` nothing needs to call it. |
 | `LOCAL_AUTH_SECRET` | yes | yes | ≥ 32 characters. Signs staff sessions. |
-| `STACK_EVENT_SECRET` | yes in practice | yes | ≥ 32 characters. The stack derives every internal event subscription, signing secret and NoD's link secret from it. |
+| `STACK_EVENT_SECRET` | yes in practice | yes | ≥ 32 characters. The stack derives every internal event subscription, signing secret and NoD's link secret from it, and the key the apps sign their calls to each other with (so those calls don't depend on the break-glass admin). Changing it signs everyone out and needs a restart of every replica at once. |
 | `CORE_DATABASE_URL`, `NRMS_DATABASE_URL`, `NEWSAPI_DATABASE_URL`, `SITE_DATABASE_URL`, `NOD_DATABASE_URL`, `DIST_DATABASE_URL` | yes | yes | One database per app, `postgres://…`. Never `self:/…`. |
 | `CALENDAR_DATABASE_URL` | no | yes | Unset: the Calendar is not mounted (`/calendar` answers 503); every other app runs. |
 | `SITE_NEWS_API_URL` | yes | | `self:/` |

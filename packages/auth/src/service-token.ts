@@ -1,4 +1,5 @@
 import { createClientCredentialsProvider } from "./client-credentials";
+import { INTERNAL_TOKEN_TTL_SECONDS, isInternalUrl, mintInternalToken } from "./internal";
 import { mintLocalToken, type LocalAuthConfig } from "./local";
 
 const LOCAL_TOKEN_TTL_SECONDS = 3600;
@@ -15,6 +16,11 @@ export interface ServiceTokenOptions {
   scope?: string;
   /** `authFromEnv(env).local` — non-null only when LOCAL_ADMIN_ENABLED=true. */
   local: LocalAuthConfig | null;
+  /** `authFromEnv(env).internal` — the stack's own app-to-app key (internal.ts). Used only when
+   * {@link targetUrl} is served in-process by the stack, so it is never sent anywhere else. */
+  internal?: { secret: string } | null;
+  /** The base URL this token is for, as the client will call it (self: URLs already resolved). */
+  targetUrl?: string;
   /** The local token's `sub` and `azp` claim. */
   subject: string;
   /** The local token's `roles` claim. */
@@ -32,13 +38,28 @@ export interface ServiceTokenOptions {
   mintToken?: typeof mintLocalToken;
 }
 
+/** A cached getToken over `mint`, re-minting once fewer than REFRESH_MARGIN_MS remain. */
+function cachedMint(ttlSeconds: number, now: () => number, mint: () => Promise<string>): () => Promise<string> {
+  let cached: { token: string; expiresAt: number } | undefined;
+  return async () => {
+    const at = now();
+    if (cached && cached.expiresAt - REFRESH_MARGIN_MS > at) return cached.token;
+    const token = await mint();
+    cached = { token, expiresAt: at + ttlSeconds * 1000 };
+    return token;
+  };
+}
+
 /**
- * Generalised form of NoD's own `distributionTokenProvider` (apps/nod/src/distribution-token.ts),
- * shared so any service that needs to authenticate its own calls to another internal service can
- * pick the same way: Entra client credentials win when fully configured; failing that, a local
- * admin secret (test/non-prod environments) mints a short-lived local token instead, carrying the
- * caller's own `subject`/`roles`; with neither available this throws immediately, so a
- * misconfigured deployment fails at startup rather than on the first call.
+ * How any app authenticates its own calls to another app, picked once at startup:
+ * 1. Entra client credentials, when all four settings are set (apps split across processes or
+ *    servers: production configuration T8, not built);
+ * 2. the stack's internal token (owner decision 2026-10-31, T2), when the target is served
+ *    in-process — the normal case in every deployment, break-glass on or off;
+ * 3. a local token signed with the break-glass admin's secret (an app run on its own in dev and
+ *    tests, with no stack around it);
+ * 4. otherwise it throws, so a misconfigured deployment fails at startup, not on the first call.
+ * Every branch but Entra carries the caller's own `subject` (also its azp) and `roles`.
  */
 export function serviceTokenProvider(opts: ServiceTokenOptions): () => Promise<string> {
   const entraFields = [opts.tokenUrl, opts.clientId, opts.clientSecret, opts.scope];
@@ -60,27 +81,21 @@ export function serviceTokenProvider(opts: ServiceTokenOptions): () => Promise<s
     );
   }
 
+  const now = opts.now ?? Date.now;
+  if (opts.internal && isInternalUrl(opts.targetUrl)) {
+    const secret = opts.internal.secret;
+    return cachedMint(INTERNAL_TOKEN_TTL_SECONDS, now, () => mintInternalToken({ secret, subject: opts.subject, roles: opts.roles, now: opts.now }));
+  }
+
   if (opts.local) {
     const local = opts.local;
     const mint = opts.mintToken ?? mintLocalToken;
-    let cached: { token: string; expiresAt: number } | undefined;
-    return async () => {
-      const now = (opts.now ?? Date.now)();
-      if (cached && cached.expiresAt - REFRESH_MARGIN_MS > now) return cached.token;
-      const token = await mint({
-        secret: local.secret,
-        subject: opts.subject,
-        azp: opts.subject,
-        roles: opts.roles,
-        ttlSeconds: LOCAL_TOKEN_TTL_SECONDS,
-        now: opts.now,
-      });
-      cached = { token, expiresAt: now + LOCAL_TOKEN_TTL_SECONDS * 1000 };
-      return token;
-    };
+    return cachedMint(LOCAL_TOKEN_TTL_SECONDS, now, () =>
+      mint({ secret: local.secret, subject: opts.subject, azp: opts.subject, roles: opts.roles, ttlSeconds: LOCAL_TOKEN_TTL_SECONDS, now: opts.now }),
+    );
   }
 
   throw new Error(
-    `service token: configure ${opts.envPrefix}_TOKEN_URL/CLIENT_ID/CLIENT_SECRET/SCOPE (Entra), or enable LOCAL_ADMIN_ENABLED (test environments)`,
+    `service token: configure ${opts.envPrefix}_TOKEN_URL/CLIENT_ID/CLIENT_SECRET/SCOPE (Entra)${opts.targetUrl && !isInternalUrl(opts.targetUrl) ? " for this outside service" : ", run it inside the stack (STACK_EVENT_SECRET)"}, or enable LOCAL_ADMIN_ENABLED (test environments)`,
   );
 }

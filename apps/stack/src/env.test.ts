@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { subscribersFor, type EventEnvelope, type SubscriberConfig } from "@gcpe/events";
@@ -19,6 +20,7 @@ import {
   resolveSelfSubscribers,
   resolveSelfUrls,
   routeSecret,
+  serviceTokenSecretFrom,
   sessionSecretFrom,
   stackEnvSchema,
   usesFakeEmergencyFeed,
@@ -769,5 +771,24 @@ describe("TRUST_PROXY_HOPS", () => {
   });
   it("is shared with every app's env view", () => {
     for (const prefix of APP_PREFIXES) expect(envFor({ TRUST_PROXY_HOPS: "2" }, prefix).TRUST_PROXY_HOPS, prefix).toBe("2");
+  });
+});
+
+describe("the stack's internal service-token key (2026-10-31, T2)", () => {
+  const STACK = "e".repeat(48);
+  it("every app gets the same SERVICE_TOKEN_SECRET, HMAC(STACK_EVENT_SECRET, gcpe-service-token), never a secret it already has", () => {
+    const expected = createHmac("sha256", STACK).update("gcpe-service-token").digest("hex");
+    expect(serviceTokenSecretFrom(STACK)).toBe(expected);
+    for (const p of APP_PREFIXES) {
+      const view = envFor({ STACK_EVENT_SECRET: STACK, LOCAL_AUTH_SECRET: "l".repeat(40) }, p);
+      expect(view.SERVICE_TOKEN_SECRET, p).toBe(expected);
+      expect(view.SERVICE_TOKEN_SECRET).not.toBe(view.SESSION_SECRET);
+      expect(view.SERVICE_TOKEN_SECRET).not.toBe(view.LOCAL_AUTH_SECRET);
+    }
+  });
+  it("no setting can replace it, and there is none without STACK_EVENT_SECRET", () => {
+    expect(envFor({ STACK_EVENT_SECRET: STACK, NRMS_SERVICE_TOKEN_SECRET: "x".repeat(40), SERVICE_TOKEN_SECRET: "y".repeat(40) }, "NRMS").SERVICE_TOKEN_SECRET).toBe(serviceTokenSecretFrom(STACK));
+    expect(envFor({}, "NRMS").SERVICE_TOKEN_SECRET).toBeUndefined();
+    expect(envFor({ NRMS_SERVICE_TOKEN_SECRET: "x".repeat(40) }, "NRMS").SERVICE_TOKEN_SECRET).toBeUndefined();
   });
 });

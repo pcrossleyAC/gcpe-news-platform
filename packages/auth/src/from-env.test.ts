@@ -132,3 +132,22 @@ describe("authFromEnv", () => {
     expect(() => authFromEnv({ ...base, SESSION_SECRET: "short" })).toThrow(/SESSION_SECRET must be at least 32 characters/);
   });
 });
+
+describe("authFromEnv: the stack's internal service token (2026-10-31, T2)", () => {
+  const entra = { ENTRA_TENANT_ID: "11111111-1111-4111-8111-111111111111", AUTH_AUDIENCE: "api://x" };
+  it("SERVICE_TOKEN_SECRET turns on the internal verifier and is handed back for callers, with local admin off", () => {
+    const a = authFromEnv({ ...entra, NODE_ENV: "production", SERVICE_TOKEN_SECRET: "i".repeat(64) });
+    expect(a.internal).toEqual({ secret: "i".repeat(64) });
+    expect(a.bearer.internal).toEqual({ secret: "i".repeat(64) });
+    expect(a.local).toBeNull();
+    expect(a.bearer.local).toBeUndefined();
+  });
+  it("is off without it", () => {
+    const a = authFromEnv(entra);
+    expect(a.internal).toBeNull();
+    expect(a.bearer.internal).toBeUndefined();
+  });
+  it("refuses a short one", () => {
+    expect(() => authFromEnv({ ...entra, SERVICE_TOKEN_SECRET: "short" })).toThrow(/SERVICE_TOKEN_SECRET must be at least 32 characters/);
+  });
+});

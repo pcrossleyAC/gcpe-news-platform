@@ -94,7 +94,7 @@ export function publicSiteEnvSchema(tenantConfig: TenantConfig | undefined) {
  * stack the tenant id is shared but this app has no audience, and authFromEnv would refuse it.
  */
 export function newsApiTokenOptions(
-  parsed: Pick<z.infer<ReturnType<typeof publicSiteEnvSchema>>, "NEWS_API_TOKEN_URL" | "NEWS_API_CLIENT_ID" | "NEWS_API_CLIENT_SECRET" | "NEWS_API_SCOPE">,
+  parsed: Pick<z.infer<ReturnType<typeof publicSiteEnvSchema>>, "NEWS_API_TOKEN_URL" | "NEWS_API_CLIENT_ID" | "NEWS_API_CLIENT_SECRET" | "NEWS_API_SCOPE"> & Partial<Pick<z.infer<ReturnType<typeof publicSiteEnvSchema>>, "NEWS_API_URL">>,
   env: NodeJS.ProcessEnv,
 ): ServiceTokenOptions {
   const local: LocalAuthConfig | null =
@@ -105,6 +105,9 @@ export function newsApiTokenOptions(
     clientSecret: parsed.NEWS_API_CLIENT_SECRET,
     scope: parsed.NEWS_API_SCOPE,
     local,
+    // Inside the stack, the internal token (2026-10-31, T2), so the site keeps rebuilding with break-glass off.
+    internal: env.SERVICE_TOKEN_SECRET ? { secret: env.SERVICE_TOKEN_SECRET } : null,
+    targetUrl: parsed.NEWS_API_URL,
     subject: "site-builder",
     roles: [NEWS_API_CHANGES_ROLE],
     envPrefix: "NEWS_API",

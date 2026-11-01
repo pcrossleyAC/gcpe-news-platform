@@ -132,12 +132,15 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
   const nodEntra = [parsed.NOD_TOKEN_URL, parsed.NOD_CLIENT_ID, parsed.NOD_CLIENT_SECRET, parsed.NOD_SCOPE];
-  // Entra when configured; otherwise, on test sites, a local token carrying the subscribe
-  // role (same fallback NRMS uses for its NoD calls).
+  // Entra when configured; otherwise, inside the stack, its internal token (2026-10-31, T2);
+  // otherwise, on test sites, a local token carrying the subscribe role.
+  const noNodEntra = nodEntra.every((v) => !v);
   const getToken = parsed.NOD_BASE_URL
     ? serviceTokenProvider({
         tokenUrl: parsed.NOD_TOKEN_URL, clientId: parsed.NOD_CLIENT_ID, clientSecret: parsed.NOD_CLIENT_SECRET, scope: parsed.NOD_SCOPE,
-        local: nodEntra.every((v) => !v) && env.LOCAL_ADMIN_ENABLED === "true" ? authFromEnv(env).local : null,
+        local: noNodEntra && env.LOCAL_ADMIN_ENABLED === "true" ? authFromEnv(env).local : null,
+        internal: noNodEntra && env.SERVICE_TOKEN_SECRET ? { secret: env.SERVICE_TOKEN_SECRET } : null,
+        targetUrl: parsed.NOD_BASE_URL,
         subject: "news-api",
         roles: [NOD_SUBSCRIBE_API_ROLE],
         envPrefix: "NOD",

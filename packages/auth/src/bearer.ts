@@ -1,5 +1,6 @@
 import type { Request, RequestHandler, Response } from "express";
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
+import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
+import { INTERNAL_AUDIENCE, INTERNAL_ISSUER, internalKey, isInternalRequest } from "./internal";
 import { assertSecretStrength, LOCAL_AUDIENCE, LOCAL_ISSUER, localKey } from "./local";
 import { clearedSessionCookie, CSRF_HEADER, readCookie, SESSION_COOKIE, verifySession, type SessionUser, type VerifiedSession } from "./session";
 
@@ -31,6 +32,9 @@ export interface BearerOptions {
   audience?: string;
   keys?: JWTVerifyGetKey;
   local?: { secret: string };
+  /** The stack's own app-to-app token (internal.ts), keyed from STACK_EVENT_SECRET: accepted only
+   * on the stack's in-memory connections. */
+  internal?: { secret: string };
   /** Accept Core's staff session cookie (spec addendum §2). */
   session?: {
     secret: string;
@@ -95,6 +99,8 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
   const entra = entraFieldsGiven === 3 ? { issuer: opts.issuer!, audience: opts.audience!, keys: opts.keys! } : null;
   if (opts.local) assertSecretStrength(opts.local.secret);
   const local = opts.local ? { key: localKey(opts.local.secret) } : null;
+  if (opts.internal) assertSecretStrength(opts.internal.secret);
+  const internal = opts.internal ? { key: internalKey(opts.internal.secret) } : null;
   if (opts.session) assertSecretStrength(opts.session.secret);
   const sessionSecret = opts.session?.secret;
   const refuseSession = (res: Response, error: string) => {
@@ -145,7 +151,20 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
       // which secret/keyset governs the check.
       const { alg } = decodeProtectedHeader(token);
       let payload: JWTPayload;
-      if (alg === "HS256" && local) {
+      // Both HS256 tokens name their issuer; the issuer picks which key must have signed it, and
+      // the verify below pins that same issuer, so a token can't pick a key it wasn't signed with.
+      const hsIssuer = alg === "HS256" ? decodeJwt(token).iss : undefined;
+      if (alg === "HS256" && hsIssuer === INTERNAL_ISSUER && internal) {
+        // Only on a connection the stack opened in memory (internal-fetch.ts), never over the network.
+        if (!isInternalRequest(req)) throw new Error("internal token on an outside connection");
+        ({ payload } = await jwtVerify(token, internal.key, {
+          issuer: INTERNAL_ISSUER,
+          audience: INTERNAL_AUDIENCE,
+          algorithms: ["HS256"],
+          requiredClaims: ["exp", "iat", "sub"],
+          maxTokenAge: "2h",
+        }));
+      } else if (alg === "HS256" && hsIssuer !== INTERNAL_ISSUER && local) {
         ({ payload } = await jwtVerify(token, local.key, {
           issuer: LOCAL_ISSUER,
           audience: LOCAL_AUDIENCE,

@@ -149,6 +149,8 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     clientSecret: parsed.DISTRIBUTION_CLIENT_SECRET,
     scope: parsed.DISTRIBUTION_SCOPE,
     local: auth.local,
+    internal: auth.internal,
+    targetUrl: parsed.DISTRIBUTION_URL,
   });
   const distribution = distributionClient({
     baseUrl: parsed.DISTRIBUTION_URL,
@@ -187,6 +189,9 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
           clientSecret: parsed.MEDIA_HUB_CLIENT_SECRET,
           scope: parsed.MEDIA_HUB_SCOPE,
           local: auth.local,
+          // Only for the stack's own fake Media Hub (in-process); a real one needs Entra.
+          internal: auth.internal,
+          targetUrl: parsed.MEDIA_HUB_URL,
           subject: "nod",
           roles: ["MediaHub.ContactsRead"],
           envPrefix: "NOD_MEDIA_HUB",

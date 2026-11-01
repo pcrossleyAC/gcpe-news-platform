@@ -20,6 +20,9 @@ const schema = z
     LOCAL_ADMIN_PASSWORD_HASH: z.string().optional(),
     LOCAL_AUTH_SECRET: z.string().optional(),
     SESSION_SECRET: z.string().optional(),
+    /** The stack's own app-to-app token key (internal.ts), derived by envFor from
+     * STACK_EVENT_SECRET. Independent of LOCAL_ADMIN_*, so break-glass can be off in production. */
+    SERVICE_TOKEN_SECRET: z.string().optional(),
     /** Set by the stack for every app: refuse a cookie (503) while Core's session check isn't installed. */
     SESSION_GATE_REQUIRED: boolString,
     SESSION_COOKIE_SECURE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
@@ -33,6 +36,8 @@ const schema = z
   .superRefine((e, ctx) => {
     if (e.SESSION_SECRET !== undefined && e.SESSION_SECRET.length < 32)
       ctx.addIssue({ code: "custom", message: "SESSION_SECRET must be at least 32 characters" });
+    if (e.SERVICE_TOKEN_SECRET !== undefined && e.SERVICE_TOKEN_SECRET.length < 32)
+      ctx.addIssue({ code: "custom", message: "SERVICE_TOKEN_SECRET must be at least 32 characters" });
     if (Boolean(e.ENTRA_TENANT_ID) !== Boolean(e.AUTH_AUDIENCE))
       ctx.addIssue({ code: "custom", message: "set both ENTRA_TENANT_ID and AUTH_AUDIENCE, or neither" });
     if (e.LOCAL_ADMIN_ENABLED) {
@@ -52,21 +57,31 @@ const schema = z
 
 export function authFromEnv(
   env: NodeJS.ProcessEnv,
-): { bearer: BearerOptions; loginRouter: Router | null; local: LocalAuthConfig | null; session: { secret: string; secure: boolean; maxSessionSeconds: number } | null } {
+): {
+  bearer: BearerOptions;
+  loginRouter: Router | null;
+  local: LocalAuthConfig | null;
+  /** The stack's internal service-token key, for this app's own calls to the others (serviceTokenProvider). */
+  internal: { secret: string } | null;
+  session: { secret: string; secure: boolean; maxSessionSeconds: number } | null;
+} {
   const parsed = schema.safeParse(env);
   if (!parsed.success) throw new Error(`auth configuration: ${parsed.error.issues.map((i) => i.message).join("; ")}`);
   const e = parsed.data;
   const local = e.LOCAL_ADMIN_ENABLED ? { username: e.LOCAL_ADMIN_USERNAME, passwordHash: e.LOCAL_ADMIN_PASSWORD_HASH!, secret: e.LOCAL_AUTH_SECRET! } : null;
   if (local) console.warn("[auth] LOCAL ADMIN LOGIN ENABLED — test environments only");
+  const internal = e.SERVICE_TOKEN_SECRET ? { secret: e.SERVICE_TOKEN_SECRET } : null;
   const session = e.SESSION_SECRET ? { secret: e.SESSION_SECRET, secure: e.SESSION_COOKIE_SECURE, maxSessionSeconds: Math.round(e.SESSION_MAX_HOURS * 3600) } : null;
   return {
     bearer: {
       ...(e.ENTRA_TENANT_ID ? { issuer: entraIssuer(e.ENTRA_TENANT_ID), audience: e.AUTH_AUDIENCE!, keys: entraJwks(e.ENTRA_TENANT_ID) } : {}),
       ...(local ? { local: { secret: local.secret } } : {}),
+      ...(internal ? { internal } : {}),
       ...(session ? { session: { ...session, gateRequired: e.SESSION_GATE_REQUIRED } } : {}),
     },
     loginRouter: local ? localLoginRouter(local) : null,
     local,
+    internal,
     session,
   };
 }
