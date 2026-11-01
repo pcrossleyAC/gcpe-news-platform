@@ -105,7 +105,7 @@ export const NOD_SUBSCRIBER = "nod";
  * it (NoD acts on each number once); any still pending, on its way; all given up on, not sent;
  * none to NoD, unknown.
  */
-async function lastCorrection(db: DbOrTx, sent: SentEmailAgain): Promise<LastCorrectionView> {
+export async function lastCorrection(db: DbOrTx, sent: SentEmailAgain): Promise<LastCorrectionView> {
   const ids = sent.eventIds ?? [];
   const { rows } = ids.length
     ? await db.execute<{ status: string }>(sql`SELECT status FROM outbox_deliveries WHERE subscriber = ${NOD_SUBSCRIBER} AND event_id = ANY(${sql.param(ids)}::uuid[])`)

@@ -1295,12 +1295,32 @@ written) and the lock-contention case above.
 correct:
 
 1. Turn legacy's own publisher off (nothing may publish from both systems at once).
-2. `npm run nrms:replay-to-news-api -- --confirm` — re-sends every already-published, live
-   release to the News API as `release.updated` with `notify: false`, so the public site and the
-   News API's own data agree with NRMS's copy before NRMS's publisher starts touching anything.
-   NoD only reacts to `release.published` from `nrms` (`apps/nod/src/app.ts:32`), so this never
-   emails a subscriber — pinned by a NoD test. Dry run (no `--confirm`) lists what it would send
-   and changes nothing.
+2. After step 1, `npm run nrms:replay-to-news-api -- --confirm` — re-sends every
+   already-published, live release to the News API as `release.updated` with `notify: false`, so
+   the public site and the News API's own data agree with NRMS's copy before NRMS's publisher
+   starts touching anything. Run it from a full checkout with the app's `DATABASE_URL` and an
+   `EVENT_SUBSCRIBERS` naming `news-api` only, with `types: ["release.updated"]`. As with the
+   other replay commands, only `name` and `types` matter; the running stack delivers the events
+   itself:
+
+   ```sh
+   DATABASE_URL=... \
+   EVENT_SUBSCRIBERS='[{"name":"news-api","url":"https://replay-cli.example.test/unused","secret":"unused-by-cli-000000000000000000000000","types":["release.updated"]}]' \
+     npm run nrms:replay-to-news-api -- --confirm
+   ```
+
+   Don't add `nod`. NoD ignores a `release.updated` for a release it doesn't have (it creates
+   no item and emails nobody), but it would overwrite its copy of every release it already has
+   with NRMS's and rebuild any of their email still waiting, and it would act on any "Email the
+   correction" request it hasn't confirmed getting. Cutover needs none of that. Run this way, the
+   replay emails nobody. (If `nod` is ever listed, a release whose request was already passed to
+   NoD carries it again under the same correction number, as every republish does; NoD acts on
+   each number once, so nobody gets a corrected copy twice, and both runs list any release whose
+   request NoD hasn't confirmed getting.) The confirmed run also lists releases skipped because
+   they were unpublished or changed while it ran (nothing is sent for those). Its events are
+   delivered oldest first, so a live publish made while they are still going out waits behind
+   them: let them finish going out before step 3. Dry run (no `--confirm`) lists what it would
+   send and changes nothing.
 3. `npm run nrms:release-holds -- --confirm` — clears `on_hold` on every imported scheduled
    release (they import held, per spec §8's safety rule 2, so NRMS's publisher never fires on
    stale/incomplete data mid-import) and lets NRMS's own publisher take over scheduling. Dry run
@@ -1768,7 +1788,7 @@ JSON error means it hasn't been raised.
      npm run nrms:replay-activity-links -- --confirm
    ```
 
-   (`nrms:replay-to-news-api`'s own `EVENT_SUBSCRIBERS` isn't needed for this step — it sends `release.updated`, not `activity.updated`/`release.status_changed` — but is set up the same way, with a subscriber naming `news-api` and `types: ["release.updated"]`.)
+   (`nrms:replay-to-news-api` isn't needed for this step — it sends `release.updated`, not `activity.updated`/`release.status_changed` — but its `EVENT_SUBSCRIBERS` is set up the same way, naming `news-api` only with `types: ["release.updated"]`: see "Cutover order", step 2.)
 3. **Seeded users:** run `scripts/siteground-seed-users.sh https://boxs.ca` again to add `planner@example.test` ("Test Release Planner", NRMS Editor with Calendar Read Only at GCPE Headquarters).
 
 **Hand checks on boxs.ca** (spec §16 acceptance 13 and 14; they need `gcpe_calendar`):

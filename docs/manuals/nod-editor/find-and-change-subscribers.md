@@ -103,9 +103,10 @@ What this does:
 1. Search for the subscribers.
 2. Tick the box beside each one. The box in the heading row ticks the whole page.
 3. Choose **Activate selected**, **Deactivate selected** or **Delete selected**. The button shows how many you ticked, such as **Delete selected (2)**.
-4. Read the question, then choose **Confirm activate**, **Confirm deactivate** or **Confirm delete**.
+4. Read the question. For **Delete selected**, also choose an answer under **Why are you deleting them?**, the same two choices as on a record. Your answer applies to every ticked person, so tick only people who share the same reason.
+5. Choose **Confirm activate**, **Confirm deactivate** or **Confirm delete**.
 
-**Delete selected** is always the **Something else** kind of delete. If a person asked to stop their email, delete them from their own record and choose **They asked us to stop sending them email**, so it's kept as their unsubscribe.
+**Delete selected** does to each person exactly what **Delete** does on their record, for the reason you chose. See **Delete someone** above. For example, choose **They asked us to stop sending them email** when several people wrote in to say stop, and each one is kept as an unsubscribe.
 
 Only the ticked rows on the page you are looking at are changed. A message such as "1 changed. 1 skipped: already in that state." gives the result. A skipped row isn't an error:
 
