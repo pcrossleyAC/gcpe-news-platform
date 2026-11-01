@@ -1042,10 +1042,12 @@ address only (and turns off any other rule opening 5432, such as one the EDB ins
 stops if one comes from Group Policy), and prints the `-PostgresAdminUrl` for P2.
 
 Then schedule its backup (databases only; it detects that) and set up WAL archiving
-([7.2](#72-prod-point-in-time-recovery-to-set-up-when-prods-database-server-arrives)):
+([7.2](#72-prod-point-in-time-recovery-to-set-up-when-prods-database-server-arrives)). No `gcpe_*`
+database exists yet (P2 creates them), and the first run would stop with "No gcpe_* databases on
+this server", so skip it now and run the task once after P2:
 
 ```powershell
-.\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>
+.\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share> -SkipFirstRun
 ```
 
 Recommended: exclude the data folder from Defender real-time scanning
@@ -1059,13 +1061,15 @@ Get-NetFirewallRule -DisplayName 'GCPE PostgreSQL from the app server' | Get-Net
 Get-NetFirewallRule -DisplayName '*postgres*' -PolicyStore ActiveStore | Select-Object DisplayName, Enabled, Action
 Select-String -Path C:\gcpe\pgdata\pg_hba.conf -Pattern 'GCPE app server'
 Select-String -Path C:\gcpe\pgdata\postgresql.conf -Pattern '^listen_addresses'
+Get-ScheduledTask -TaskName 'GCPE nightly backup'
 ```
 
 Expect `Running`; the app server's address; among the `*postgres*` rules, only **GCPE PostgreSQL
 from the app server** enabled; one `pg_hba` line for it; and `listen_addresses = '*'`
 (the EDB installer's default; assumed, not yet seen on a real server: if it says `localhost`,
 change it to `'*'` and `Restart-Service postgresql-x64-17`). From the app server:
-`Test-NetConnection <database server> -Port 5432` is `TcpTestSucceeded : True`.
+`Test-NetConnection <database server> -Port 5432` is `TcpTestSucceeded : True`. The backup task is
+registered (its first run comes after P2).
 
 ### P2. The app server
 
@@ -1090,10 +1094,18 @@ go-live. Prod never sends real mail by default: without `-MailRedirectTo` it ask
 empty answer stops the install, and only `-SendRealMail` sends to the real recipients from the
 first start. Then D3 (final import, at
 cutover, while break-glass is still on), D7 (Entra: the redirect URI on the internal host), D8,
-and the backup for the files (and, as D2 says, optionally turn off 8.3 short names):
+and the backup for the files (and, as D2 says, optionally turn off 8.3 short names), on the app server:
 
 ```powershell
 .\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>
+```
+
+Now that the databases exist, run the database server's backup once (**on the database server**)
+and check it finished (`LastTaskResult` 0):
+
+```powershell
+Start-ScheduledTask -TaskName 'GCPE nightly backup'
+Get-ScheduledTaskInfo -TaskName 'GCPE nightly backup' | Select-Object LastRunTime, LastTaskResult
 ```
 
 **Right after the install, point the Entra callback at the internal host.** Because the Entra
@@ -1146,8 +1158,13 @@ At go-live: `.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<
 **Then** in `C:\gcpe\config\gcpe.env` on the Prod app server:
 
 1. **Turn break-glass off:** cut these five lines and paste them into
-   `C:\gcpe\config\break-glass.env`, which the service never reads (keep that file readable by
-   Administrators only, as `gcpe.env` is: `icacls C:\gcpe\config\break-glass.env /inheritance:r /grant:r Administrators:F`):
+   `C:\gcpe\config\break-glass.env`, which the service never reads (Notepad: in the
+   Save As box set **Save as type** to **All files**, or it is saved as `break-glass.env.txt`.
+   Lock the file the way `Install-Gcpe.ps1` locks `gcpe.env`: no inheritance, full control for
+   Administrators and SYSTEM only, and no one else. SYSTEM must be there because the nightly
+   backup runs as SYSTEM and copies all of `C:\gcpe\config`; without it the backup fails on this
+   file. The service account is left out on purpose, since the service must never read it:
+   `icacls C:\gcpe\config\break-glass.env /inheritance:r /grant:r "Administrators:F" "SYSTEM:F"`):
    `LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION`, `LOCAL_ADMIN_USERNAME`,
    `LOCAL_ADMIN_PASSWORD_HASH`, `LOCAL_AUTH_SECRET`.
 2. **`SITE_ENVIRONMENT=production`**: if the file says `SITE_ENVIRONMENT=test` instead (an install
