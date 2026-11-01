@@ -252,6 +252,8 @@ test.describe("item 16: axe across every staff screen", () => {
     await expectNoSeriousA11yViolations(page, "/hub/users");
     await gotoAndWaitForH1(page, "/hub/error-log");
     await expectNoSeriousA11yViolations(page, "/hub/error-log");
+    await gotoAndWaitForH1(page, "/hub/undelivered-updates");
+    await expectNoSeriousA11yViolations(page, "/hub/undelivered-updates");
   });
 
   // The Calendar's staff-web screens. cal-admin covers the Administrator-visible screens;

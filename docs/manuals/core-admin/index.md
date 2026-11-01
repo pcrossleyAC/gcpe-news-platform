@@ -24,6 +24,7 @@ You run the screens under **Administration** in the side menu. This map lists ea
 | **Release page titles** | The page titles a new release can choose, such as News Release. | Release editors creating a release. | [Release page titles](manual:release-page-titles) |
 | **Media list names** | Which media lists exist and their names. | News On Demand staff who manage list members, and release editors choosing lists. | [Media list names](manual:media-list-names) |
 | **Error log** | Nothing: it shows the system's recent errors. | Nobody. | [Error log](manual:error-log) |
+| **Undelivered updates** | Sending again an update one part of the system couldn't deliver to another, such as a published release that never reached subscribers. | Whoever was waiting for that update: subscribers, the public site, release editors or the Calendar. | [Undelivered updates](manual:undelivered-updates) |
 | **Website** > **Project Blue Bridge** | The public site's mourning switch. The rest of **Website** is view-only for you. | Every visitor to the public site, and every Core administrator by email. | [Website and Project Blue Bridge](manual:website-project-blue-bridge) |
 
 When a new government takes office, you use **Government terms** and **Cabinet change** together. [When a new government takes office](topic:new-government) gives the order.

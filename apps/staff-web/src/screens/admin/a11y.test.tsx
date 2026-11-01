@@ -9,6 +9,7 @@ import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { UsersScreen } from "./users/UsersScreen";
 import { ErrorLogScreen } from "./errors/ErrorLogScreen";
+import { UndeliveredUpdatesScreen } from "./undelivered/UndeliveredUpdatesScreen";
 import { MediaListNamesScreen } from "./media-lists/MediaListNamesScreen";
 import { CalendarAccessScreen } from "./calendar-access/CalendarAccessScreen";
 import { OrganizationsScreen } from "./organizations/OrganizationsScreen";
@@ -116,12 +117,29 @@ describe("accessibility — Users, Media list names and error log", () => {
       vi.fn(async (url: string) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-        if (url === "/stack/errors?limit=200") return jsonResponse(200, { errors: [{ timestamp: "2026-10-05T10:00:00.000Z", message: "boom", pid: 1, startedAt: "2026-10-05T00:00:00.000Z" }] });
+        if (url === "/stack/errors?group=1&limit=200")
+          return jsonResponse(200, { groups: [{ message: "boom", count: 3, firstAt: "2026-10-05T09:00:00.000Z", lastAt: "2026-10-05T10:00:00.000Z", pid: 1, startedAt: "2026-10-05T00:00:00.000Z" }], entries: 3 });
         return jsonResponse(200, {});
       }),
     );
     const { container } = render(withAuth(<ErrorLogScreen />));
     await screen.findByText("boom");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("UndeliveredUpdatesScreen", async () => {
+    const item = { eventId: "11111111-1111-4111-8111-111111111111", subscriber: "nod", type: "release.published", aggregateId: "release:1", about: "A headline", attempts: 9, lastError: "HTTP 503", createdAt: "2026-10-05T10:00:00.000Z" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/stack/undelivered") return jsonResponse(200, { apps: [{ app: "nrms", items: [item, { ...item, eventId: "22222222-2222-4222-8222-222222222222" }], total: 2, truncated: false }] });
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<UndeliveredUpdatesScreen />));
+    await screen.findByRole("button", { name: "Retry all 2 from Releases" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 
