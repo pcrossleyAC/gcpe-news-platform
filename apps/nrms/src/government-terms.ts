@@ -5,6 +5,8 @@ import { enqueueEvent, type GovernmentTermsPayload, type SubscriberConfig } from
 import type { TenantGovernmentTerm } from "@gcpe/config";
 import { formatLongDate } from "@gcpe/nrms-contract";
 import { governmentTerms, governmentTermsPublished, newsReleases } from "./db/schema";
+import type { Actor } from "./releases/store";
+import { writeSiteLog } from "./website/events";
 
 /** Serialises rollovers and term writes (`pg_advisory_xact_lock`). */
 export const GOVERNMENT_TERMS_LOCK = [0x67637065, 8] as const;
@@ -130,6 +132,18 @@ export interface TermWriteOpts {
   timeZone: string;
   subscribers: SubscriberConfig[];
   now?: TestClock;
+  /** Who is making a Hub change: written to the Website log under Government terms (suite review O3). Seeding and the importer leave it out. */
+  actor?: Actor;
+}
+
+/** "the government term starting November 18, 2024 (Eby government)": how a log line names a term, as it was before the change. */
+function termName(row: { startDate: string | null; label: string | null; name: string }): string {
+  const named = row.label ? ` (${row.label})` : "";
+  return row.startDate ? `the government term starting ${formatLongDate(row.startDate)}${named}` : `the undated government term ${row.label ?? row.name}`;
+}
+
+async function logTerm(tx: Tx, opts: TermWriteOpts, text: string): Promise<void> {
+  if (opts.actor) await writeSiteLog(tx, opts.actor, "government-terms", text);
 }
 
 /** A refused term write (→ HTTP 409, `{ error: message }`). */
@@ -207,6 +221,7 @@ export async function createGovernmentTerm(tx: Tx, input: { startDate: string; l
   }
   await restamp(tx, input.startDate, opts.timeZone);
   await syncGovernmentTerms(tx, opts);
+  await logTerm(tx, opts, `Added a government term starting ${formatLongDate(input.startDate)}${input.label ? ` (${input.label})` : ""}`);
   return viewOf(tx, id, today);
 }
 
@@ -253,6 +268,13 @@ export async function updateGovernmentTerm(
   }
   if (typeof set.startDate === "string") await restamp(tx, row.startDate !== null && row.startDate < set.startDate ? row.startDate : set.startDate, opts.timeZone);
   await syncGovernmentTerms(tx, opts);
+  const before = termName(row);
+  if (typeof set.startDate === "string") await logTerm(tx, opts, `Moved the start of ${before} to ${formatLongDate(set.startDate)}`);
+  // Named by its start date as it is now, so a move and a rename in one save read in order.
+  const now = termName({ ...row, startDate: set.startDate ?? row.startDate, label: null });
+  if (set.label !== undefined && set.label !== row.label)
+    await logTerm(tx, opts, set.label === null ? `Removed the name ${row.label} from ${now}` : row.label === null ? `Named ${now} ${set.label}` : `Renamed ${now} from ${row.label} to ${set.label}`);
+  if (set.legacyArchiveUrl !== undefined && set.legacyArchiveUrl !== row.legacyArchiveUrl) await logTerm(tx, opts, `Changed the old archive address of ${before}`);
   return viewOf(tx, id, today);
 }
 
@@ -267,6 +289,7 @@ export async function deleteGovernmentTerm(tx: Tx, id: string, opts: TermWriteOp
   if (n > 0) throw new GovernmentTermConflictError("A term with releases can't be deleted.");
   await tx.delete(governmentTerms).where(eq(governmentTerms.id, id));
   await syncGovernmentTerms(tx, opts);
+  await logTerm(tx, opts, `Deleted ${termName(rows.find((r) => r.id === id)!)}`);
 }
 
 /**

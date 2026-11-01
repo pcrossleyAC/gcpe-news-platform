@@ -11,7 +11,7 @@ topics: []
 
 **Users** decides who can sign in to the Hub and what each person can do there. Only Core administrators see it.
 
-The table lists every staff account with its **Name**, **Email**, **Sign-in** (**Password** or **Microsoft**), **Roles** and **Status**. A person with Calendar access also shows a line such as "Calendar: Editor (HLTH)"; you change that on [Calendar access](manual:calendar-access).
+The table lists every staff account with its **Name**, **Email**, **Sign-in** (**Password** or **Microsoft**), **Roles**, **Status** and **Last signed in**. A person with Calendar access also shows a line such as "Calendar: Editor (HLTH)"; you change that on [Calendar access](manual:calendar-access).
 
 ## Find someone
 
@@ -55,6 +55,18 @@ Calendar roles are not on this screen. Give them on [Calendar access](manual:cal
    - To change what they can do, tick or untick roles and choose **Save roles**. Until you do, "Roles not saved yet." shows beside it. Saving replaces all their roles with the ticked ones.
    - Under **Account**, each action takes effect on its own: **Active**, **Unlink Microsoft sign-in**, and **Set password**. To set a new password, type it and choose **Set password**. You see "Password updated." This only appears for people who sign in with a password.
 3. Choose **Close** on their row when you are done. Anything you typed but did not save stays there until you leave the page.
+
+## See who changed someone's account
+
+1. Choose **Edit** on their row.
+2. At the bottom of their settings, open **History**. It lists each change to their account, newest first: when, who made it, and what they did, such as "Paul Smith gave Core Admin to Jo Lee".
+3. If there are more, choose **Show older changes**.
+
+History shows changes made on **Users** and **Calendar access**: adding the person, their name, roles, Calendar role and ministries, password, linking, unlinking Microsoft sign-in, and switching **Active** on or off. It also shows the person's own first Microsoft sign-in, which links their account, under their name. Changes made before the Hub started keeping this history aren't listed: you see "No changes recorded yet." The break-glass administrator shows as "Administrator (break-glass)". Every change on this screen, for everyone, is also on [Admin history](manual:admin-history).
+
+## Check for accounts nobody uses
+
+**Last signed in** shows when the person last signed in with a password or Microsoft, in BC time, or "Never" if they haven't signed in since the Hub started keeping this. Use it in an access review: someone who hasn't signed in for months may no longer need their roles. Deactivate them, or take roles away, as for anyone else.
 
 ## Deactivate or reactivate someone
 

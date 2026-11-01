@@ -5,6 +5,7 @@ import { CALENDAR_ROLES, checkCalendarGrant, type CalendarGrantRefusal } from "@
 import type { SubscriberConfig } from "@gcpe/events";
 import { organizations, roleGrants, userOrganizations, users } from "../db/schema";
 import { lockAggregate, userAggregateId } from "./aggregate";
+import { recordAudit } from "./audit";
 import { emitUserUpserted, getUser, linkUser, listUsers, updateUser, UserNotFoundError, type UserGuard, type UserView } from "./users";
 
 /**
@@ -69,7 +70,11 @@ export interface CalendarActor {
   id: string;
   /** The caller's verified roles (re-derived from the database for session callers). */
   roles: string[];
+  /** The caller's name, for Core's audit trail. Omitted (no entry) by the seed. */
+  name?: string;
 }
+
+const auditActor = (actor: CalendarActor) => (actor.name === undefined ? undefined : { id: actor.id, name: actor.name });
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
 
@@ -137,12 +142,12 @@ function calendarAdminGuard(actor: CalendarActor): UserGuard {
 
 /** Deactivates or reactivates a user from the Calendar's user screen, under calendarAdminGuard. */
 export async function setCalendarUserActive(db: Db, actor: CalendarActor, id: string, isActive: boolean, subscribers: SubscriberConfig[]): Promise<CalendarAccessView> {
-  return toView(await updateUser(db, id, { isActive }, subscribers, { guard: calendarAdminGuard(actor) }));
+  return toView(await updateUser(db, id, { isActive }, subscribers, { guard: calendarAdminGuard(actor), audit: auditActor(actor) }));
 }
 
 /** Sets the email of a user who has none, and activates them, under calendarAdminGuard. */
 export async function linkCalendarUser(db: Db, actor: CalendarActor, id: string, email: string, subscribers: SubscriberConfig[]): Promise<CalendarAccessView> {
-  return toView(await linkUser(db, id, email, subscribers, { guard: calendarAdminGuard(actor) }));
+  return toView(await linkUser(db, id, email, subscribers, { guard: calendarAdminGuard(actor), audit: auditActor(actor) }));
 }
 
 export async function listCalendarAccess(db: Db): Promise<CalendarAccessView[]> {
@@ -209,6 +214,18 @@ export async function setCalendarAccess(db: Db, actor: CalendarActor, requestedI
     if (next.length) await tx.insert(userOrganizations).values(next.map((o) => ({ userId: id, organizationId: o.id })));
     await tx.update(users).set({ updatedAt: new Date() }).where(eq(users.id, id));
     await emitUserUpserted(tx, id, subscribers);
+    const heldKeys = orgs.filter((o) => held.has(o.id)).map((o) => o.key);
+    const added = keys.filter((k) => !heldKeys.includes(k)).sort();
+    const removed = heldKeys.filter((k) => !keys.includes(k)).sort();
+    const roleChanged = current.calendarRole !== input.role;
+    if (roleChanged || added.length || removed.length)
+      await recordAudit(tx, auditActor(actor), {
+        action: "calendar.access",
+        targetType: "user",
+        targetId: id,
+        targetLabel: current.displayName,
+        details: { ...(roleChanged ? { role: { from: current.calendarRole, to: input.role } } : {}), added, removed },
+      });
     return id;
   });
   return toView((await getUser(db, targetId))!);

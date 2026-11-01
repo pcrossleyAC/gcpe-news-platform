@@ -23,6 +23,6 @@ Choose a headline to open the release. Release editors set Top and Feature on th
 
 **Website log** lists every change to the public site's content, newest first: **When**, **Who**, **Area** and **What**. It shows the latest 200 entries.
 
-To see one kind of change, choose it in **Filter by area**: **Carousel**, **Emergency pins**, **Live Feed**, **Project Blue Bridge**, **Resource links**, **Files**, **Features** or **Site settings**. Choose **(all)** to see everything again.
+To see one kind of change, choose it in **Filter by area**: **Carousel**, **Emergency pins**, **Live Feed**, **Project Blue Bridge**, **Resource links**, **Files**, **Features** or **Site settings**. Choose **(all)** to see everything again. Core administrators also see **Government terms**: changes to the dates of government terms, which decide where the public archive lists each release.
 
 Use it to check who changed something and when, for example "Published revision 4: Election notice" under **Site settings**.

@@ -249,4 +249,33 @@ describe("NRMS government-term admin API", () => {
     expect((await patch(id, { legacyArchiveUrl: null })).body.legacyArchiveUrl).toBeNull();
     expect((await post({ startDate: "2030-02-30" })).status).toBe(400);
   });
+  // Suite review O3, fix round 1 (I1): who changed a term, in the Website log under Government terms.
+  it("records who added, changed and deleted a term in the Website log, and nothing for a refused or empty change", async () => {
+    await tdb.pool.query("TRUNCATE site_log");
+    const created = await post({ startDate: "2028-11-20", label: "Next government" });
+    expect(created.status).toBe(201);
+    const id = created.body.id as string;
+    await patch(id, { startDate: "2028-11-21" }).expect(200);
+    await patch(id, { label: "The next one" }).expect(200);
+    await patch(id, { label: "The next one" }).expect(200); // no change: no line
+    await patch(id, { startDate: "2017-07-18" }).expect(409); // refused: no line
+    await patch(await idOf("2024-2028"), { legacyArchiveUrl: "https://archive.example/2024" }).expect(200);
+    await del(id).expect(204);
+    await del(await idOf("2017-2020")).expect(409);
+    const log = await request(app).get("/api/site/log?area=government-terms").set("cookie", admin);
+    expect(log.status).toBe(200);
+    expect(log.body.map((l: { actorName: string; area: string; text: string }) => [l.actorName, l.area, l.text])).toEqual([
+      ["Ada Admin", "government-terms", "Deleted the government term starting November 21, 2028 (The next one)"],
+      ["Ada Admin", "government-terms", "Changed the old archive address of the government term starting November 18, 2024 (Eby government)"],
+      ["Ada Admin", "government-terms", "Renamed the government term starting November 21, 2028 from Next government to The next one"],
+      ["Ada Admin", "government-terms", "Moved the start of the government term starting November 20, 2028 (Next government) to November 21, 2028"],
+      ["Ada Admin", "government-terms", "Added a government term starting November 20, 2028 (Next government)"],
+    ]);
+    // Owner: viewable by Core administrators. A site editor's Website log leaves these lines out.
+    const forEditor = await request(app).get("/api/site/log").set("cookie", editor);
+    expect(forEditor.status).toBe(200);
+    expect(forEditor.body.some((l: { area: string }) => l.area === "government-terms")).toBe(false);
+    expect((await request(app).get("/api/site/log?area=government-terms").set("cookie", editor)).body).toEqual([]);
+    expect((await request(app).get("/api/site/log").set("cookie", admin)).body.some((l: { area: string }) => l.area === "government-terms")).toBe(true);
+  });
 });

@@ -10,12 +10,15 @@ import { HiddenPrefixLabel, ShortLabel } from "../../../shared/ShortLabel";
 import { messagesOf } from "../messages";
 import { useSeededValue } from "../../../shared/useSeededValue";
 import { afterDialogsClose } from "../../../shared/afterDialogsClose";
-import { STAFF_ROLES } from "./roles";
+import { roleBadge, STAFF_ROLES } from "./roles";
 import { TableScroll } from "../../../shared/TableScroll";
 import { Link } from "react-router";
 import { calendarRoleLabel } from "../calendar-access/calendar-roles";
 import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
 import type { CalendarAccessUser, OrgOption } from "../calendar-access/CalendarAccessScreen";
+import { HistoryDisclosure } from "../history/HistoryDisclosure";
+import { formatWhen } from "../../../format/dates";
+import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 
 /** Each user's Calendar role and ministries, as Calendar access keeps them: "Editor (HLTH)". */
 type CalendarLines = ReadonlyMap<string, string>;
@@ -38,7 +41,12 @@ export interface UserView {
   isActive: boolean;
   signInMethod: "local" | "entra";
   roles: string[];
+  /** Suite review O3: the last password or Microsoft sign-in; null if never. */
+  lastSignInAt?: string | null;
 }
+
+/** A ministry's name from its key, for History's Calendar access entries. */
+type OrgNames = (key: string) => string | undefined;
 
 function RoleCheckboxes({ selected, onChange, idPrefix, disabled }: { selected: string[]; onChange(next: string[]): void; idPrefix: string; disabled: boolean }): React.JSX.Element {
   const toggle = (role: string) => onChange(selected.includes(role) ? selected.filter((r) => r !== role) : [...selected, role]);
@@ -57,7 +65,7 @@ function RoleCheckboxes({ selected, onChange, idPrefix, disabled }: { selected: 
   );
 }
 
-function UserEditor({ user, onChanged, id, reportDirty }: { user: UserView; onChanged(): void; id: string; reportDirty?: ReportDirty }): React.JSX.Element {
+function UserEditor({ user, onChanged, id, reportDirty, orgName }: { user: UserView; onChanged(): void; id: string; reportDirty?: ReportDirty; orgName?: OrgNames }): React.JSX.Element {
   // Seeded from the server's copy: after a save (or any other change) reloads the list, an
   // untouched field follows the new value instead of keeping the old one.
   const { value: displayName, setValue: setDisplayName } = useSeededValue(user.displayName);
@@ -327,23 +335,21 @@ function UserEditor({ user, onChanged, id, reportDirty }: { user: UserView; onCh
           </form>
         )}
       </section>
+
+      <HistoryDisclosure targetType="user" targetId={user.id} name={user.displayName} version={user} orgName={orgName} />
     </div>
   );
 }
 
 const signInLabel = (u: UserView) => (u.signInMethod === "local" ? "Password" : "Microsoft");
 
-/** The role's area and name, shortened for a badge ("NRMS.SiteEditor" → "NRMS Site editor"). */
-const roleBadge = (role: string) => {
-  const [area, name = ""] = role.split(".");
-  return `${area} ${name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/ (\w)/g, (_, c: string) => ` ${c.toLowerCase()}`)}`.trim();
-};
-
 /**
  * Every user as one table row (name, email, sign-in, roles, active), filtered as you type; Edit
  * opens that user's editor in a row underneath, with every field and save it always had.
  */
-function UsersTable({ users, calendar, onChanged, reportDirty }: { users: UserView[]; calendar: CalendarLines; onChanged(): void; reportDirty: ReportDirty }): React.JSX.Element {
+function UsersTable({ users, calendar, onChanged, reportDirty, orgName }: { users: UserView[]; calendar: CalendarLines; onChanged(): void; reportDirty: ReportDirty; orgName: OrgNames }): React.JSX.Element {
+  const timeZone = useTenantTimeZone();
+  const now = new Date();
   const [query, setQuery] = useState("");
   useSearchShortcut("users-filter");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
@@ -391,6 +397,7 @@ function UsersTable({ users, calendar, onChanged, reportDirty }: { users: UserVi
               <th scope="col">Sign-in</th>
               <th scope="col">Roles</th>
               <th scope="col">Status</th>
+              <th scope="col">Last signed in</th>
               <th scope="col">
                 <span className="gcpe-visually-hidden">Actions</span>
               </th>
@@ -399,7 +406,7 @@ function UsersTable({ users, calendar, onChanged, reportDirty }: { users: UserVi
           <tbody>
             {shownCount === 0 && (
               <tr>
-                <td colSpan={6}>No users match &ldquo;{query.trim()}&rdquo;.</td>
+                <td colSpan={7}>No users match &ldquo;{query.trim()}&rdquo;.</td>
               </tr>
             )}
             {users.map((u) => {
@@ -432,6 +439,7 @@ function UsersTable({ users, calendar, onChanged, reportDirty }: { users: UserVi
                       )}
                     </td>
                     <td>{u.isActive ? "Active" : <span className="gcpe-badge gcpe-badge--alert">Inactive</span>}</td>
+                    <td>{u.lastSignInAt ? formatWhen(u.lastSignInAt, now, timeZone) : <span className="gcpe-hint">Never</span>}</td>
                     <td>
                       <Button size="small" variant="secondary" aria-expanded={isOpen} aria-controls={isOpen ? editorId : undefined} onPress={() => toggle(u.id)}>
                         <span>
@@ -442,8 +450,8 @@ function UsersTable({ users, calendar, onChanged, reportDirty }: { users: UserVi
                   </tr>
                   {mounted.has(u.id) && (
                     <tr className="gcpe-users__editor-row" hidden={!isOpen}>
-                      <td colSpan={6}>
-                        <UserEditor id={editorId} user={u} onChanged={onChanged} reportDirty={reportDirty} />
+                      <td colSpan={7}>
+                        <UserEditor id={editorId} user={u} onChanged={onChanged} reportDirty={reportDirty} orgName={orgName} />
                       </td>
                     </tr>
                   )}
@@ -503,6 +511,7 @@ export function UsersScreen(): React.JSX.Element {
   useDocumentTitle("Users");
   const [users, setUsers] = useState<UserView[] | null>(null);
   const [calendar, setCalendar] = useState<CalendarLines>(() => new Map());
+  const [orgNames, setOrgNames] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
@@ -523,7 +532,10 @@ export function UsersScreen(): React.JSX.Element {
     // Read only, for the Roles column; if it can't load, the column just shows the staff roles.
     Promise.all([apiFetch<CalendarAccessUser[]>("/core/api/calendar-access"), apiFetch<OrgOption[]>("/core/api/organizations")])
       .then(([access, orgs]) => {
-        if (Array.isArray(access) && Array.isArray(orgs)) setCalendar(calendarLines(access, orgs));
+        if (Array.isArray(access) && Array.isArray(orgs)) {
+          setCalendar(calendarLines(access, orgs));
+          setOrgNames(new Map(orgs.map((o) => [o.key, o.displayName])));
+        }
       })
       .catch(() => undefined);
   }, []);
@@ -574,7 +586,7 @@ export function UsersScreen(): React.JSX.Element {
 
       <h2>All users</h2>
       {users === null && !loadError && <p>Loading…</p>}
-      {users && <UsersTable users={users} calendar={calendar} onChanged={reload} reportDirty={edits.report} />}
+      {users && <UsersTable users={users} calendar={calendar} onChanged={reload} reportDirty={edits.report} orgName={(k) => orgNames.get(k)} />}
 
       <section className="gcpe-card" aria-labelledby="add-user-heading">
       <h2 id="add-user-heading">Add a user</h2>

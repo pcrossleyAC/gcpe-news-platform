@@ -169,6 +169,13 @@
       "when": 1793479950427,
       "tag": "0023_release_email_again",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793516513039,
+      "tag": "0024_site_log_government_terms",
+      "breakpoints": true
     }
   ]
 }
