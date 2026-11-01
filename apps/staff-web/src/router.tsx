@@ -18,6 +18,7 @@ import { LinksScreen } from "./screens/website/LinksScreen";
 import { FilesScreen } from "./screens/website/FilesScreen";
 import { FeaturedScreen } from "./screens/website/FeaturedScreen";
 import { LogScreen } from "./screens/website/LogScreen";
+import { AddressCheckScreen } from "./screens/website/AddressCheckScreen";
 import { BannerScreen } from "./screens/website/settings/BannerScreen";
 import { MediaContactsScreen } from "./screens/website/settings/MediaContactsScreen";
 import { PageTextScreen } from "./screens/website/settings/PageTextScreen";
@@ -127,6 +128,7 @@ export const routes: RouteObject[] = [
               { path: "blue-bridge", element: <BlueBridgeScreen /> },
               { path: "links", element: <LinksScreen /> },
               { path: "files", element: <FilesScreen /> },
+              { path: "address-check", element: <AddressCheckScreen /> },
               { path: "featured", element: <FeaturedScreen /> },
               { path: "log", element: <LogScreen /> },
               { path: "settings", element: <SiteSettingsIndex /> },

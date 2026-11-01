@@ -20,6 +20,9 @@ data:
   SITE_NEWS_API_URL: "self:/"
   SITE_OUTPUT_DIR: "./site-output"
   SITE_PUBLIC_SITE_URL: "https://<public host>"
+  # Other names staff reach the Hub on (never the public host), for its "points at the Hub" warnings
+  # and Website > Hub address check. Optional; CORE_PUBLIC_BASE_URL's host is added on its own.
+  # NRMS_INTERNAL_HOSTS: "<staff host>"
   NOD_DISTRIBUTION_URL: "self:/distribution"
   NOD_PUBLIC_SITE_URL: "https://<public host>"
 

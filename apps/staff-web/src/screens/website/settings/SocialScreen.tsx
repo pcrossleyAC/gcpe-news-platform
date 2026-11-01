@@ -6,7 +6,7 @@ import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { useSession } from "../../../session/SessionContext";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
 import { HostWarning } from "../../../shared/HostWarning";
-import { staffHostWarning, usePublicFilesOrigin } from "../../../shared/publicAddress";
+import { useStaffHostWarning } from "../../../shared/publicAddress";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { canManageWebsite } from "../access";
 import { getSettingsDefaults } from "./api";
@@ -72,7 +72,7 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
   });
   const { value, state, fieldErrors } = editor;
   // W1 fix round 1 (I4): the policy link, like every other web address, warns about a Hub address.
-  const publicOrigin = usePublicFilesOrigin();
+  const staffHostWarning = useStaffHostWarning();
   // What an empty field means: the tenant default for this network (fillMissingFields supplies it
   // when the saved list has none), else the public site's 2. Shown in the hint.
   const [defaultAfter, setDefaultAfter] = useState(DEFAULT_COLLAPSE_AFTER);
@@ -128,7 +128,7 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
       return other ? { ...e, message: `${other.name}: ${e.message}` } : e;
     });
   const name = NETWORKS.find((n) => n.key === network)!.name;
-  const policyHostWarning = staffHostWarning(value.policyLink.url, publicOrigin);
+  const policyHostWarning = staffHostWarning(value.policyLink.url);
 
   return (
     <div className="gcpe-site-social">

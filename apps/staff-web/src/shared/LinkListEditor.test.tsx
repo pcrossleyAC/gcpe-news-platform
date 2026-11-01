@@ -65,6 +65,24 @@ describe("LinkListEditor", () => {
     }
   });
 
+  it("suite fix W2 (M3): an address on another of the Hub's internal names gets the same warning", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.gov.bc.ca", filesBase: "https://news.gov.bc.ca", internalHosts: ["gcpe-app01.internal.gov.bc.ca"] });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    try {
+      render(<Harness initial={[{ text: "Map", url: "https://gcpe-app01.internal.gov.bc.ca/files/map.pdf" }, { text: "Report", url: "https://news.gov.bc.ca/files/report.pdf" }]} />);
+      const [aliasRow, publicRow] = screen.getAllByRole("textbox", { name: "Web address" });
+      await waitFor(() => expect(aliasRow).toHaveAccessibleDescription(STAFF_HOST_WARNING));
+      expect(publicRow).not.toHaveAccessibleDescription(STAFF_HOST_WARNING);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("editing a row keeps its id and summary", async () => {
     render(<Harness initial={[B]} />);
     const user = userEvent.setup();

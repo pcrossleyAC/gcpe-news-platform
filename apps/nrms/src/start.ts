@@ -7,6 +7,7 @@ import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
+import { invalidHostEntries } from "@gcpe/site-settings";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { coreClient, distributionClient, newsApiSimilarClient, nodClient, type CoreClient, type DistributionClient } from "./clients";
 import { createApp } from "./app";
@@ -79,6 +80,17 @@ export const nrmsEnvSchema = z.object({
   // The public origin /files/<key> is served from, prefixed to file URLs in published records
   // (e.g. https://boxs.ca). "" keeps them root-relative; the stack derives it from the site URL.
   PUBLIC_FILES_BASE: z.union([z.literal(""), z.string().url()]).default("").transform((v) => v.replace(/\/+$/, "")),
+  // Suite fix W2 (M3): the other names staff reach the Hub on that the public can't open (an alias,
+  // the short server name), comma-separated: bare names or full addresses. The stack adds Core's
+  // sign-in host (CORE_PUBLIC_BASE_URL). The Hub warns about an address on any of them and lists
+  // the stored ones (Website → Hub address check); the public site's own host never counts.
+  INTERNAL_HOSTS: z
+    .string()
+    .default("")
+    .transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
+  // W2 fix round 1 (M4): this deployment's public site URL (the stack passes SITE_PUBLIC_SITE_URL);
+  // its host is never counted as internal.
+  PUBLIC_SITE_URL: z.string().url().optional(),
   // Phase 3c: Flickr (OAuth 1.0a). No FLICKR_API_KEY → no Flickr: asset status reports
   // "unavailable" and the publisher treats Flickr releases as it does an outage. The stack runs
   // its fake Flickr in that case and sets FLICKR_MODE=fake plus the fake's credentials and URLs.
@@ -105,6 +117,14 @@ export const nrmsEnvSchema = z.object({
     if (!env[name]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [name], message: `${name} is required when FLICKR_API_KEY is set` });
   }
 });
+
+/** W2 fix round 1 (N3): the startup log line naming INTERNAL_HOSTS entries that aren't a host name (and are ignored); null when there are none. */
+export function internalHostsWarning(entries: readonly string[]): string | null {
+  const bad = invalidHostEntries(entries);
+  return bad.length === 0
+    ? null
+    : `[nrms] NRMS_INTERNAL_HOSTS: ignoring ${bad.join(", ")} (not a host name: wildcards aren't supported, and an IPv6 address needs brackets, such as [fe80::1])`;
+}
 
 /** NRMS's Flickr client config, or null when FLICKR_API_KEY is unset (Flickr then reads as unavailable). */
 export function flickrConfigFromEnv(parsed: z.infer<typeof nrmsEnvSchema>): FlickrConfig | null {
@@ -286,6 +306,8 @@ export interface AppHandle {
  */
 export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const parsed = parseEnv(nrmsEnvSchema, env);
+  const hostsWarning = internalHostsWarning(parsed.INTERNAL_HOSTS);
+  if (hostsWarning) console.warn(hostsWarning);
   const auth = authFromEnv(env);
   // The tenant's time zone decides the BC year in approve-time Keys; fail fast if this
   // runtime's tzdata disagrees with the tenant's pinned self-check (as the News API does).
@@ -363,6 +385,8 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     liveFeedDefaults,
     siteSettingsDefaults,
     siteUrl: tenant.publicSiteBaseUrl,
+    internalHosts: parsed.INTERNAL_HOSTS,
+    publicSiteUrl: parsed.PUBLIC_SITE_URL,
     forecastCategoryPrefix: tenant.calendar?.forecastCategoryPrefix ?? null,
     isTestSite: isTestSite(env),
     blueBridgeNotify,

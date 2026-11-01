@@ -15,7 +15,7 @@ topics: []
 
 Under **Connect page**, all three boxes are optional:
 
-- **Policy link text** and **Policy link URL**: a link shown on the Connect page, such as a social media policy. Fill in both, or neither.
+- **Policy link text** and **Policy link URL**: a link shown on the Connect page, such as a social media policy. Fill in both, or neither. An address on the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." under **Policy link URL**, for the Hub's other known web addresses too.
 - **Introduction**: plain text shown above the networks, up to 300 characters.
 
 ## A network's accounts

@@ -20,7 +20,7 @@ Each notice has the same fields as a carousel slide: headline, summary, action U
 
 If the notice is already pinned, the change goes to the public site when you save. Under the notice you see "Saved at 2:30 PM. Live now: the home page shows it within a few minutes." (with the time). An unpinned notice says "Saved at 2:30 PM. Not on the home page: this notice isn't pinned."
 
-To link to a file from **Files**, paste the address from its **Copy public address** button into the action URL. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead."
+To link to a file from **Files**, paste the address from its **Copy public address** button into the action URL. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." It shows for the Hub's other known web addresses too, not just the one you are using.
 
 ## Pin or unpin a notice
 

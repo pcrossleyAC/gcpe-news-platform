@@ -40,4 +40,23 @@ describe("W1: public addresses for Website files", () => {
     expect(checkHubAddress("https://youtu.be/x", "https://news.gov.bc.ca", hub)).toEqual({ url: "https://youtu.be/x", warning: null });
     expect(checkHubAddress(`${INTERNAL}/files/a.pdf`, "", hub)).toEqual({ url: `${INTERNAL}/files/a.pdf`, warning: null });
   });
+
+  it("suite fix W2 (M3): also warns about the Hub's other internal names, whatever the port or case, but never the public site's own host", () => {
+    const hosts = ["gcpe-app01.internal.gov.bc.ca", "hub.gov.bc.ca", "news.gov.bc.ca"];
+    expect(staffHostWarning("https://HUB.gov.bc.ca:8443/files/a.pdf", "https://news.gov.bc.ca", hosts)).toBe(STAFF_HOST_WARNING);
+    expect(staffHostWarning(`${INTERNAL}/files/a.pdf`, "https://news.gov.bc.ca", hosts)).toBe(STAFF_HOST_WARNING);
+    expect(staffHostWarning("https://news.gov.bc.ca/files/a.pdf", "https://news.gov.bc.ca", hosts)).toBeNull();
+    expect(staffHostWarning("https://other.example/a.pdf", "https://news.gov.bc.ca", hosts)).toBeNull();
+    expect(checkHubAddress("https://hub.gov.bc.ca/files/a.pdf", "https://news.gov.bc.ca", hosts)).toEqual({ url: "https://news.gov.bc.ca/files/a.pdf", warning: null });
+    // The page's own host, as before, with a port.
+    expect(staffHostWarning("http://localhost:4600/files/a.pdf", "https://news.gov.bc.ca", "localhost:4600")).toBe(STAFF_HOST_WARNING);
+  });
+
+  it("fix round 1 (N1, N2): a trailing dot and a protocol-relative address on a Hub host warn too", () => {
+    const hosts = ["hub.gov.bc.ca"];
+    expect(staffHostWarning("https://hub.gov.bc.ca./files/a.pdf", "https://news.gov.bc.ca", hosts)).toBe(STAFF_HOST_WARNING);
+    expect(staffHostWarning("//hub.gov.bc.ca/files/a.pdf", "https://news.gov.bc.ca", hosts)).toBe(STAFF_HOST_WARNING);
+    expect(checkHubAddress("//hub.gov.bc.ca/files/a.pdf", "https://news.gov.bc.ca", hosts)).toEqual({ url: "https://news.gov.bc.ca/files/a.pdf", warning: null });
+    expect(staffHostWarning("https://news.gov.bc.ca./files/a.pdf", "https://news.gov.bc.ca", ["news.gov.bc.ca"])).toBeNull();
+  });
 });

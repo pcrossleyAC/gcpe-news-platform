@@ -93,6 +93,7 @@ describe("Help on the Website screens, with the compiled manuals", () => {
     ["/website/live-feed", "live-feed"],
     ["/website/links", "resource-links"],
     ["/website/files", "website-files"],
+    ["/website/address-check", "hub-address-check"],
     ["/website/settings", "site-settings"],
     ["/website/settings-history", "site-settings"],
     ["/website/banner", "site-banner"],

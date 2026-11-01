@@ -41,7 +41,7 @@ describe("WebsiteScreen", () => {
     renderWithRole("NRMS.SiteEditor");
     await screen.findByRole("link", { name: "Carousel" });
     const tabs = within(screen.getByRole("navigation", { name: "Website sections" })).getAllByRole("link").map((l) => l.textContent);
-    expect(tabs).toEqual(["Carousel", "Emergency pins", "Live Feed", "What's featured where", "Resource links", "Files", "Website log", "Site settings"]);
+    expect(tabs).toEqual(["Carousel", "Emergency pins", "Live Feed", "What's featured where", "Resource links", "Files", "Hub address check", "Website log", "Site settings"]);
     expect(screen.getByRole("link", { name: "Site settings" })).toHaveAttribute("href", "/website/settings");
     expect(screen.queryByRole("navigation", { name: "Site settings pages" })).toBeNull();
     expect(screen.getByText("index child")).toBeInTheDocument();

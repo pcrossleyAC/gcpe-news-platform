@@ -649,6 +649,11 @@ Entra sign-in is on when `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET` or `
 
 **Fake Microsoft sign-in (test sites only).** `FAKE_ENTRA_ENABLED=true` plus `CORE_PUBLIC_BASE_URL` mounts a fake at `/fake-entra` and points Core at it. Its picker offers two made-up identities, `entra-staff@example.test` and `entra-unknown@example.test`; create a Core user with the first email to try a successful sign-in. **Anyone who can reach the site can then sign in as that user without a password**, so enable it only while testing and give that user no more roles than the test needs. The stack refuses it in real production and alongside any real Entra setting; on a test site such as boxs.ca, turning it on doesn't touch `CORE_LOCAL_PASSWORDS_ALLOWED` or anyone's existing password.
 
+**The Hub's internal names (`NRMS_INTERNAL_HOSTS`).** Not needed on a single-host site such as
+boxs.ca: the Hub and the public site share the host, so no address on it is treated as "points at
+the Hub". On a deployment where staff reach the Hub under names the public can't open, see
+windows.md, D7 ("Other names for the app server").
+
 ## Flickr (Phase 3c)
 
 Fake mode is automatic whenever NRMS has no effective Flickr key (`FLICKR_API_KEY` /
