@@ -45,6 +45,9 @@ export interface VerifiedSession extends SessionUser {
   /** Core's id for this sign-in (`sid`), the same across renewals; the session gate looks it up.
    * Absent on a token from before the limit. */
   sid?: string;
+  /** A break-glass bearer token's own sign-in (local.ts), not a cookie: its `sid` is recorded only
+   * once it is signed out, so the gate treats a missing record as "not ended". */
+  fromToken?: true;
 }
 
 export interface MintSessionOptions {

@@ -10,6 +10,7 @@ import {
   SESSION_COOKIE,
   SESSION_RENEW_WINDOW_SECONDS,
   SessionLimitError,
+  verifyBreakGlassToken,
   verifyPassword,
   verifySession,
   type LocalAuthConfig,
@@ -19,7 +20,7 @@ import {
 } from "@gcpe/auth";
 import type { EntraClient } from "../entra/client";
 import { entraRoutes } from "../entra/routes";
-import { breakGlassUser, endSession, legacySid, sessionGate, startSession } from "../services/sessions";
+import { BREAK_GLASS_ID, breakGlassUser, endSession, legacySid, sessionGate, startSession } from "../services/sessions";
 import { passwordSignIn, sessionRolesOf } from "../services/users";
 import { newSessionCookie } from "./session-cookie";
 
@@ -119,6 +120,17 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
   // Ends this session on the server too (owner decision 2026-10-31), so a copy of the cookie
   // can't be used afterwards. Only this sign-in: the person's other computers stay signed in.
   // The browser's cookie is cleared first, so Sign out works even when Core can't record it (M5).
+  // A break-glass bearer token from /<app>/auth/local/token (review S M8) signs out the same way,
+  // with the token itself: it is refused in every app from its next request (no cookie involved,
+  // so no CSRF header needed). Held in memory too, so this works with Core's database down.
+  r.post("/auth/logout", async (req, res, next) => {
+    const header = req.header("authorization");
+    if (!header?.startsWith("Bearer ")) return next();
+    const t = deps.local ? await verifyBreakGlassToken(header.slice(7), deps.local.secret, { ...deps.local, maxSessionSeconds }).catch(() => null) : null;
+    if (!t) return void res.status(401).json({ error: "invalid token" });
+    await endSession(deps.db, t.sid, BREAK_GLASS_ID);
+    res.status(204).end();
+  });
   r.post("/auth/logout", requireCsrf, async (req, res) => {
     clear(res);
     const cookie = readCookie(req.header("cookie"), SESSION_COOKIE);

@@ -2,7 +2,17 @@ import type { Request, RequestHandler, Response } from "express";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { INTERNAL_AUDIENCE, INTERNAL_ISSUER, internalKey, isInternalRequest } from "./internal";
-import { assertSecretStrength, LOCAL_AUDIENCE, LOCAL_ISSUER, localKey } from "./local";
+import {
+  assertSecretStrength,
+  BREAK_GLASS_ID,
+  breakGlassFingerprint,
+  breakGlassSid,
+  breakGlassTokenSeconds,
+  LOCAL_AUDIENCE,
+  LOCAL_ISSUER,
+  localKey,
+  type BreakGlassCheck,
+} from "./local";
 import { clearedSessionCookie, CSRF_HEADER, readCookie, SESSION_COOKIE, verifySession, type SessionUser, type VerifiedSession } from "./session";
 
 export interface AuthContext {
@@ -32,7 +42,11 @@ export interface BearerOptions {
   issuer?: string;
   audience?: string;
   keys?: JWTVerifyGetKey;
-  local?: { secret: string };
+  /** HS256 tokens signed with LOCAL_AUTH_SECRET: the break-glass login's (`breakGlass`, checked
+   * against the current password, the session limit and Core's sign-out record) and an app's own
+   * service token when it runs on its own, outside the stack. Without `breakGlass`, break-glass
+   * tokens are refused. */
+  local?: { secret: string; breakGlass?: BreakGlassCheck };
   /** The stack's own app-to-app token (internal.ts), keyed from STACK_EVENT_SECRET: accepted only
    * on the stack's in-memory connections. */
   internal?: { secret: string };
@@ -61,6 +75,7 @@ export interface BearerOptions {
 export type SessionGate = (session: VerifiedSession) => Promise<SessionUser | null>;
 
 let installedGate: SessionGate | null = null;
+const installedGates: SessionGate[] = [];
 
 /** Whether the stack has installed Core's gate (stack startup checks it). */
 export function sessionGateInstalled(): boolean {
@@ -82,11 +97,21 @@ function logCheckUnavailable(e: unknown): void {
 
 /** The stack installs Core's gate here once Core has started, for every app in the process; null
  * removes it. An app running on its own, without Core in its process, has none: it checks the
- * cookie's signature and limits only. Returns a remover that leaves a gate installed since alone. */
+ * cookie's signature and limits only. Returns a remover that leaves a gate installed since alone, and otherwise restores the one before. */
 export function setSessionGate(gate: SessionGate | null): () => void {
+  if (gate === null) {
+    installedGates.length = 0;
+    installedGate = null;
+    return () => undefined;
+  }
+  installedGates.push(gate);
   installedGate = gate;
+  // Removing one puts back the gate installed before it (a second stack in the same process, as
+  // in the stack's own tests, shutting down mustn't leave the first without its check).
   return () => {
-    if (installedGate === gate) installedGate = null;
+    const i = installedGates.lastIndexOf(gate);
+    if (i >= 0) installedGates.splice(i, 1);
+    installedGate = installedGates.at(-1) ?? null;
   };
 }
 
@@ -100,6 +125,14 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
   const entra = entraFieldsGiven === 3 ? { issuer: opts.issuer!, audience: opts.audience!, keys: opts.keys! } : null;
   if (opts.local) assertSecretStrength(opts.local.secret);
   const local = opts.local ? { key: localKey(opts.local.secret) } : null;
+  const breakGlass = opts.local?.breakGlass
+    ? {
+        username: opts.local.breakGlass.username,
+        fingerprint: breakGlassFingerprint(opts.local.secret, opts.local.breakGlass.passwordHash),
+        maxAgeSeconds: breakGlassTokenSeconds(opts.local.breakGlass.maxSessionSeconds),
+        gateRequired: opts.local.breakGlass.gateRequired ?? false,
+      }
+    : null;
   if (opts.internal) assertSecretStrength(opts.internal.secret);
   const internal = opts.internal ? { key: internalKey(opts.internal.secret) } : null;
   if (opts.session) assertSecretStrength(opts.session.secret);
@@ -176,6 +209,31 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
           requiredClaims: ["exp", "iat", "sub"],
           maxTokenAge: "8h",
         }));
+        if (payload.bg === true) {
+          // Owner decision 2026-10-31 (review S M8): a break-glass token stands only while its
+          // password is current, within min(8 h, SESSION_MAX_HOURS), and not signed out.
+          if (!breakGlass) throw new Error("break-glass token without the break-glass settings");
+          const sid = breakGlassSid(payload, breakGlass);
+          const gate = opts.session?.gate ?? installedGate;
+          if (gate) {
+            let current: SessionUser | null;
+            try {
+              current = await gate({ id: BREAK_GLASS_ID, name: String(payload.sub), email: "", roles: [], expiresAt: payload.exp!, signedAt: payload.iat!, sid, fromToken: true });
+            } catch (e) {
+              logCheckUnavailable(e);
+              res.setHeader("retry-after", "5");
+              return void res.status(503).json({ error: CHECK_UNAVAILABLE });
+            }
+            if (!current) throw new Error("break-glass token signed out");
+          } else if (breakGlass.gateRequired || opts.session?.gateRequired) {
+            logCheckUnavailable(new Error("no session gate installed"));
+            res.setHeader("retry-after", "5");
+            return void res.status(503).json({ error: CHECK_UNAVAILABLE });
+          }
+        } else if (breakGlass && payload.sub === breakGlass.username) {
+          // A break-glass token from before the checks above (no `bg`): refused, not left to run its 8 h.
+          throw new Error("break-glass token without its checks");
+        }
       } else if (entra) {
         ({ payload } = await jwtVerify(token, entra.keys, { issuer: entra.issuer, audience: entra.audience, algorithms: ["RS256"] }));
       } else {

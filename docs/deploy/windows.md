@@ -699,7 +699,12 @@ set a new `SESSION_SECRET` (any random value of 32+ characters) in `gcpe.env` af
 matters, and restart. **Do not rotate `STACK_EVENT_SECRET` for this:** it also changes the key
 for the unsubscribe links already in subscribers' e-mail (they would stop working) and the apps'
 key for calling each other. The manual pages say 12
-hours: edit them if you change the value. Details: siteground.md, "Revoking access".
+hours: edit them if you change the value. A break-glass `admin` bearer token (from
+`/<app>/auth/local/token`, which `Import-GcpeLegacy.ps1` and the scripts use) lasts 8 hours, or
+`SESSION_MAX_HOURS` if shorter, and stops working when break-glass is turned off or its password
+is changed. A Hub **Sign out** doesn't end one; signing out with the token itself does (`curl.exe
+-k -s -X POST https://localhost/core/auth/logout -H "authorization: Bearer <access_token>"`, which
+answers `204`). Details: siteground.md, "Revoking access".
 
 Rolling back past this change (Core migration 0012) means deploying the previous release and
 leaving the `staff_sessions` table in place; never drop it by hand.

@@ -2,11 +2,11 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, type Db, type DbOrTx } from "@gcpe/db-kit";
-import { ADMIN_ROLES, DEFAULT_SESSION_MAX_SECONDS, type SessionGate, type SessionUser } from "@gcpe/auth";
+import { ADMIN_ROLES, BREAK_GLASS_ID, DEFAULT_SESSION_MAX_SECONDS, type SessionGate, type SessionUser } from "@gcpe/auth";
 import { roleGrants, staffSessions, users } from "../db/schema";
 
 /** Session id for the environment break-glass admin (LOCAL_ADMIN_*); it has no users row. */
-export const BREAK_GLASS_ID = "local:admin";
+export { BREAK_GLASS_ID };
 export const BREAK_GLASS_NAME = "Administrator (break-glass)";
 export const breakGlassUser = (): SessionUser => ({ id: BREAK_GLASS_ID, name: BREAK_GLASS_NAME, email: "", roles: [...ADMIN_ROLES] });
 
@@ -104,7 +104,8 @@ export function sessionGate(db: Db, opts: { localConfigured: boolean; secret: st
   return async (s) => {
     // A pre-limit token has no sid: its fixed one is looked up, and may have no row (not ended).
     const sid = s.sid ?? legacySid(opts.secret, s.id, s.signedAt);
-    const rowRequired = s.sid !== undefined;
+    // A break-glass bearer token's sid (review S M8) is recorded only when it is signed out.
+    const rowRequired = s.sid !== undefined && !s.fromToken;
     // Break-glass has no users row; it's only valid while LOCAL_ADMIN_* config exists. Memory first,
     // then the database; with the database down, break-glass alone is let through (I2).
     if (s.id === BREAK_GLASS_ID) {

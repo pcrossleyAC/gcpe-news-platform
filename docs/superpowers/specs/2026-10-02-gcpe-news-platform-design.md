@@ -355,6 +355,7 @@ Ported from the `nrms` prototype (NestJS/Prisma → Express/Drizzle per §3.4) a
 - Internet-facing: News API and static site only. All other apps internal.
 - Non-prod mail redirect on by default.
 - **Local admin (test environments only):** `LOCAL_ADMIN_ENABLED=true` enables one admin account (username + scrypt password hash) that signs in at `POST /auth/local/token` and receives an 8-hour HS256 token (issuer/audience `gcpe-local`) carrying all admin roles. It is off by default and must never be enabled in production; Entra remains the only production identity provider. `LOCAL_ADMIN_ENABLED=true` is refused when `NODE_ENV=production` unless `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`.
+  - *Amendment 2026-10-31 (owner approved, review S M8):* the token now lasts min(8 hours, `SESSION_MAX_HOURS`) and carries a `sid` and a one-way fingerprint of the current break-glass password. Every app refuses it once the password changes, once it is past that age, and once it is signed out (`POST /core/auth/logout` with the token; Core's session gate, the same check as staff cookies). Turning local admin off already removed the endpoint and the verifier. Tokens issued before this change are refused.
 
 ### 10.2 Testing
 
