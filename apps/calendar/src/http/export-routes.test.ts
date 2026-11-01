@@ -65,6 +65,8 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
     expect(cells.get("G5")).toBe("Sample significance\n\nStrategy: Sample strategy");
     expect(cells.get("F3")).toBe("Not for Look Ahead Sample details");
     expect(cells.get("A7")).toBe(CONFIDENTIALITY_NOTICE);
+    // The filter it used, in the list's words, on the row after legacy's footer, so the header, data and footer stay where legacy put them (suite review CAL-3).
+    expect(cells.get("A8")).toBe("Filter: Dates: 2046-03-01 to 2046-03-31");
   });
 
   it("an id search's heading names the activity, not the filter's dates, which the search ignored", async () => {
@@ -74,6 +76,7 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
     const { cells } = readXlsx(res.body as Buffer);
     expect(cells.get("F1")).toBe(`Activity ID Selected: ${found}`);
     expect(cells.get("A3")).toBe(String(found));
+    expect(cells.get("A5")).toBe(`Filter: Activity number: HLTH-${found} only`);
     const words = readXlsx((await exportAs("editor", { filter: { from: "2046-04-01", to: "2046-04-30", quickSearch: "Sample" } })).body as Buffer);
     expect(words.cells.get("F1")).toBe("Date Range Selected: Apr 01, 2046 to Apr 30, 2046");
   });
@@ -99,10 +102,10 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
       if (who === "editor") expect(sheet).not.toContain("Sample finance secret");
       else expect(sheet).toContain("Sample finance secret");
     }
-    // Searching for the Executive Summary they can't see finds nothing: column A holds only the banner, the header and the footer.
+    // Searching for the Executive Summary they can't see finds nothing: column A holds only the banner, the header, the footer and the filter line.
     const searched = readXlsx((await exportAs("editor", { filter: { from: "2047-02-01", to: "2047-02-28", quickSearch: marker } })).body as Buffer);
     expect([...searched.cells.entries()].filter(([ref]) => /^A\d+$/.test(ref)).map(([, v]) => v)).toEqual([
-      "Sample Province. Corporate Calendar DRAFT & CONFIDENTIAL", "ID", CONFIDENTIALITY_NOTICE,
+      "Sample Province. Corporate Calendar DRAFT & CONFIDENTIAL", "ID", CONFIDENTIALITY_NOTICE, `Filter: Dates: 2047-02-01 to 2047-02-28 · Search: “${marker}”`,
     ]);
   });
 

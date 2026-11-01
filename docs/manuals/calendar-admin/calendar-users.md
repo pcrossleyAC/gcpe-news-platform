@@ -39,7 +39,9 @@ A rank makes the person a comm contact for that ministry, so editors can choose 
 
 Choose **Not a comm contact** to stop offering them. Activities that already have them as comm contact keep them, but can't be cloned until they have an active comm contact.
 
-"Give this user a ministry under Calendar access (Edit Calendar access) first." means they have no ministry yet. Choose **Edit Calendar access** above and give them one, wait a minute, then reload the page.
+"Give this user a ministry under Calendar access (Edit Calendar access) first." means they have no ministry yet. Choose **Edit Calendar access** above and give them one.
+
+Just after you give someone a ministry, or take one away, the page says "Updating their ministries in the Calendar… This page catches up by itself in a moment." Stay on the page: the rank boxes follow by themselves, usually within a minute. If they haven't after about a minute and a half, the page says "The Calendar hasn't picked up their ministry changes yet. Reload the page in a minute."
 
 ## Deactivate someone
 
@@ -91,6 +93,6 @@ If the person's access changed a moment ago, the same message can appear after y
 | "use 12 digits and hyphens, like 250-555-0100" | Fix the mobile number, or leave it empty. |
 | "job title: at most 100 characters" | Shorten the job title. |
 | "description: at most 2000 characters" | Shorten the description. |
-| "Health isn't one of this user's ministries in the Calendar yet. Save their ministries first." | That ministry was only just given. Wait a minute, reload, and choose the rank again. |
+| "Health isn't one of this user's ministries in the Calendar yet. Save their ministries first." | That ministry was only just given, or taken away, in another window. Reload the page, and choose the rank again once its box appears. |
 | "A user with that email already exists." | When linking: another Hub account has that address. Ask a Core administrator. |
 | "This user isn't in the Calendar." | The address you opened isn't a Calendar user. Go back to **All Calendar users**. |

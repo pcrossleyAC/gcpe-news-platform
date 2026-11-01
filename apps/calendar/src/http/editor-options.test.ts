@@ -43,11 +43,11 @@ describe("GET /api/editor-options (spec addendum §8.2)", () => {
 
   it("lists every comm contact; one is inactive when the contact or its person is", async () => {
     const res = await get(w.as.editor.cookie);
-    expect(res.body.commContacts).toContainEqual({ id: w.contact.editorHealth, ministryKey: "health", name: "Robin Staff", rank: 4, isActive: true });
-    expect(res.body.commContacts).toContainEqual({ id: w.contact.retiredHealth, ministryKey: "health", name: "Sample Advanced", rank: 4, isActive: false });
+    expect(res.body.commContacts).toContainEqual({ id: w.contact.editorHealth, userId: w.as.editor.id, ministryKey: "health", name: "Robin Staff", rank: 4, isActive: true });
+    expect(res.body.commContacts).toContainEqual({ id: w.contact.retiredHealth, userId: w.as.advanced.id, ministryKey: "health", name: "Sample Advanced", rank: 4, isActive: false });
     await projectUser(app, { id: w.as.financeEditor.id, email: "financeEditor@example.test", displayName: "Kim Finance", isActive: false, calendarRole: "Calendar.Editor", organizationKeys: ["finance"] });
     const after = await get(w.as.editor.cookie);
-    expect(after.body.commContacts).toContainEqual({ id: w.contact.financeEditor, ministryKey: "finance", name: "Kim Finance", rank: 4, isActive: false });
+    expect(after.body.commContacts).toContainEqual({ id: w.contact.financeEditor, userId: w.as.financeEditor.id, ministryKey: "finance", name: "Kim Finance", rank: 4, isActive: false });
   });
 
   it("any Calendar role reads it; a user without one is refused", async () => {

@@ -314,6 +314,7 @@ Both now come from the one HQ flag (C124).
   - Status becomes `new`.
   - A keyword that does not exist yet is created rather than crashing (C146).
   - The history entry `cloned` names the source id.
+  - Amendment 2026-10-31 (owner approved, suite review CAL-1): the Hub's **Clone** no longer saves a copy at once. It opens the New activity form filled with exactly these values, read from `GET /activities/:id/clone`, which creates nothing. **Save** creates the activity through `POST /activities` with `clonedFrom: <source id>`: the same right to clone the source is checked, inactive values the source holds carry over, the lead ministry and comm contact are checked as new choices, someone who doesn't see the Look Ahead fieldset gets the clone's `**`, section and Long Term Outlook, and the history entry is `cloned`, naming the source. The copy is checked as any new activity is, so required fields the source lacks (an imported release-category activity's origin, distribution and comm materials, say) are asked for before it saves. The history's "cloned from" names the source even if the copy was changed before Save. **Cancel** or leaving creates nothing. `POST /activities/:id/clone` stays in the API for Hub tabs opened before this change; a test pins it to the same result as the form path.
 - **Delete:**
   - Sets `deleted_at` and the `active` needs-review flag (`ActivityManager.cs:77-92`).
   - Writes history.
@@ -323,6 +324,7 @@ Both now come from the one HQ flag (C124).
   - Writes history.
 - **Review selected:**
   - The list sends each row's version. Rows changed since the list loaded are skipped and reported back, as legacy skipped rows changed after the grid loaded (`ActivityHandler.ashx.cs:177-193`).
+  - Amendment 2026-10-31 (owner approved, suite review CAL-6): the Hub asks first, naming how many, as legacy did ("N activities selected. Are you sure…", `UCFlexiGrid.ascx:4-22`): "Review 12 activities?", with **Review** and **Cancel**. The list's button is a secondary one, so **New activity** stays the only primary action.
 - **Clear LA Status:**
   - Clears `hq_status` on every visible activity whose start is on or before today plus N days, including past ones, as legacy does (`ActivityHandler.ashx.cs:1258-1274`).
   - Writes one `la_status_cleared` history entry per changed activity.
@@ -521,6 +523,7 @@ One page with legacy's fieldsets and fields. **Amended 2026-10-30 (owner: "parit
   - content checked against the claimed type (`packages/storage` sniffing, as NRMS);
   - 25 MB per file (C153);
   - a file with the same name replaces the old one, as legacy (`Activity.aspx.cs:1436-1437`).
+    Amendment 2026-10-31 (owner approved, suite review CAL-5): the Hub asks first, "A file named X is already attached (added … by …). Replace it?", with **Replace** and **Cancel**; Cancel adds nothing from that pick, and a replacement is reported as "Replaced X." The server's rule is unchanged.
 - **Delete:** removing a file from the list.
 - **Download:** `GET /calendar/api/activities/:id/files/:fileId`, checked against `visible()`. A file of an activity the user can't see is a 404 (C138). It is served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`.
 - **History:** adding and removing files write history. They raise no needs-review flag, as legacy.

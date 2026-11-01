@@ -2,7 +2,7 @@ import { friendlyDateRange } from "@gcpe/calendar-contract";
 import type { ReportRow } from "./data";
 import { updatedNumeric } from "./dates";
 import type { Cell, ReportDoc, Run } from "./model";
-import { cityOf, cleanTitle, COLOURS, createdOrUpdated, linkify, minIdRuns } from "./text";
+import { cityOf, cleanTitle, COLOURS, createdOrUpdated, filterLine, linkify, minIdRuns } from "./text";
 import type { ListReportContext } from "./thirty-sixty-ninety";
 
 const byCulture = new Intl.Collator("en-CA", { sensitivity: "base" });
@@ -49,6 +49,7 @@ export function planningDoc(c: ListReportContext): ReportDoc {
     header: { left: [{ text: c.rules.reports.planningTitle, bold: true, size: 14, color: COLOURS.planning }], right: [{ text: c.rules.reportBanner.confidentiality, color: COLOURS.brown, size: 11 }] },
     footer: { left: [{ text: updatedNumeric(c.now, c.rules.timeZone), size: 9 }], pageNumbers: true },
     blocks: [
+      ...filterLine(c, 0),
       {
         kind: "table",
         widths: [183.6, "*", 240.4, 104],

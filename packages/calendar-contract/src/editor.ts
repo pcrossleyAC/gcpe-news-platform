@@ -37,6 +37,8 @@ export interface EditorMinistry {
 /** Inactive when the contact row or its person is: such a contact stays only on activities that already have it. */
 export interface EditorCommContact {
   id: number;
+  /** The person's user id: the New activity form picks the signed-in user when they are a contact of the lead ministry (Activity.aspx.cs:339-368). */
+  userId: string;
   ministryKey: string;
   name: string;
   rank: number | null;

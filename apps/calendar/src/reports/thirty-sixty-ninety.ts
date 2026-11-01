@@ -3,7 +3,7 @@ import { addDays, bcMidnight } from "../time";
 import { ReportTooLargeError, type ReportRow } from "./data";
 import { addMonths, monthHeading, monthStart, updatedLong } from "./dates";
 import type { Block, Cell, ReportDoc, Run } from "./model";
-import { COLOURS, createdOrUpdated, linkify, minIdRuns, titleDetailsRuns, type TextContext } from "./text";
+import { COLOURS, createdOrUpdated, filterLine, linkify, minIdRuns, titleDetailsRuns, type TextContext } from "./text";
 
 export interface ListReportContext extends TextContext {
   rows: ReportRow[];
@@ -47,7 +47,7 @@ function rowCells(row: ReportRow, c: ListReportContext): Cell[] {
 export function thirtySixtyNinetyDoc(c: ListReportContext): ReportDoc {
   const tz = c.rules.timeZone;
   let rest = c.rows;
-  const blocks: Block[] = [{ kind: "heading", runs: [{ text: "30 / 60 / 90 REPORT", bold: true }], size: 18, align: "center" }];
+  const blocks: Block[] = [{ kind: "heading", runs: [{ text: "30 / 60 / 90 REPORT", bold: true }], size: 18, align: "center" }, ...filterLine(c)];
   thirtySixtyNinetyMonths(c.q, c.today).forEach((month, i) => {
     const next = bcMidnight(addMonths(month, 1), tz);
     const n = rest.findIndex((r) => r.startAt !== null && new Date(r.startAt) >= next);

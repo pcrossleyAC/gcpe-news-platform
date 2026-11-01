@@ -14,7 +14,7 @@ You add activities for your ministries, and change the activities your ministrie
 ## Add an activity
 
 1. On **Calendar**, choose **New activity**.
-2. Fill in the fields. The times start at 8:00 AM to 6:00 PM. If you have only one ministry, it is already the **Lead Ministry**.
+2. Fill in the fields. The times start at 8:00 AM to 6:00 PM. If you have only one ministry, it is already the **Lead Ministry**. If you are a comm contact of the lead ministry, you are already its **Comm Contact**. Choosing another **Lead Ministry** picks you again where you are one of its comm contacts, until you choose a comm contact yourself. The **End** date follows the **Start** date until you set the end date yourself.
 3. Choose **Save**. You see, for example, "Created HLTH-21." The activity stays open, so you can add files.
 
 **New activity** is hidden during the daily change freeze, unless you are in an HQ organization.
@@ -37,7 +37,7 @@ A start or end date in the past is only a warning: "The start date is in the pas
 
 - A new activity is **New**. Saving a change to most fields makes it **Changed**, until HQ reviews it.
 - HQ sees which fields changed, marked "Changed: needs review".
-- The change reaches **Releases** within a minute. See [Releases and the Forecast](manual:calendar-advanced-releases).
+- The change reaches **Releases** within a minute. A release already linked to the activity doesn't change. If a linked release is still to go out and you change a date or time, a warning above **Save** says so, for example "A release is planned against HLTH-21 (Release 2026HLTH0001: Scheduled, Nov 4, 2026 10:00 AM). Changing the date or time here doesn't move the release. Tell the release editor." The same words follow "Saved HLTH-21." Tell the release editor. See [Releases and the Forecast](manual:calendar-advanced-releases).
 - Every change is kept in **View changes**.
 - Nobody is emailed.
 
@@ -49,13 +49,15 @@ An activity also opens read-only while someone else is editing it, or during the
 
 ## Clone an activity
 
-**Clone** makes a new activity from this one, for the same lead ministry and comm contact.
+**Clone** opens **New activity** filled in from this one, for the same lead ministry and comm contact. Nothing is created until you choose **Save**.
 
 1. Open the activity.
-2. Choose **Clone**. The new activity opens, and you see, for example, "Cloned HLTH-21 as HLTH-22."
-3. Check it, change what differs, and choose **Save**.
+2. Choose **Clone**. **New activity** opens with "This is an unsaved copy of HLTH-21. Nothing is created until you choose Save. Cancel leaves no copy behind."
+3. Change what differs, and choose **Save**. You see, for example, "Cloned HLTH-21 as HLTH-22." The new activity stays open, so you can add files.
 
-The clone starts as **New**. It copies the activity's fields except these:
+**Cancel**, or leaving the page another way, creates nothing.
+
+The copy starts as **New**, and its **View changes** says "created it as a clone", naming the activity it was cloned from. Like any new activity, the copy must have every required field filled in before it saves; an older activity may be missing some. It copies the activity's fields except these:
 
 - the release date and time are emptied;
 - **Internal notes** is emptied;
@@ -74,7 +76,9 @@ The **Records** section appears only when it is turned on for your Calendar. Whe
 2. Under **Records**, choose **Add files** and pick one or more files.
 3. Each file is added straight away, on its own. You see, for example, "Added 2 files."
 
-A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50. A file with the same name replaces the old one.
+A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50.
+
+A file with the same name as one already attached replaces it, but only after you agree. The Hub asks, for example, "A file named Briefing note.docx is already attached (added Oct 12, 2026 by Pat Smith). Replace it? The old file is deleted." Choose **Replace**, and you see "Replaced Briefing note.docx." Choose **Cancel**, and you see "Nothing was added.": none of the files you picked is added.
 
 To remove a file, choose **Remove** beside it, then **Remove** again in the "The file is deleted from this activity." box.
 
@@ -82,7 +86,7 @@ Adding or removing a file doesn't touch your unsaved changes to the fields. Like
 
 ## View changes
 
-**View changes** lists every change to the activity, newest first. Each entry says when, who and what they did, such as "changed it", "created it as a clone", "reviewed it", "transferred it" or "cleared its LA status". A table shows each field before and after. Changes brought over from the old Calendar are marked "from legacy log".
+**View changes** lists every change to the activity, newest first. Each entry says when, who and what they did, such as "changed it", "created it as a clone" (the copy may have been changed before it was saved), "reviewed it", "transferred it" or "cleared its LA status". A table shows each field before and after. Changes brought over from the old Calendar are marked "from legacy log".
 
 Choose **Back to the activity** to return.
 
@@ -106,4 +110,5 @@ If you are signed out while you have unsaved changes, sign in again and open the
 | "Choose a comm contact of the lead ministry" | The comm contact belongs to another ministry. Choose another. |
 | "That comm contact is no longer active" or "That person's account is inactive" | Choose another comm contact. An activity that already has them still saves, but can't be cloned. |
 | "That category is no longer in use" | Choose another category. |
+| "You can no longer copy the activity this was copied from. Start a new activity instead." | The activity you cloned was deleted, or moved out of your ministries, while the copy was open. Choose **Cancel**, then **New activity**. |
 | "Couldn't save. Your changes are still here; try again." | Something went wrong on the way. Choose **Save** again. |

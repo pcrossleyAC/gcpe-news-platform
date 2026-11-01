@@ -112,6 +112,16 @@ export function withCategory(f: ActivityFields, categoryId: number | null, o: Ed
   return releaseFieldsetHidden(name, rules) ? { ...f, categoryId, nrDate: null, nrTime: null } : { ...f, categoryId };
 }
 
+/**
+ * A new activity's Comm Contact is the signed-in user when they are an active contact of the lead
+ * ministry, as legacy preselected them (Activity.aspx.cs:339-368). A contact already chosen stays.
+ */
+export function withMyContact(f: ActivityFields, o: EditorOptions, userId: string): ActivityFields {
+  if (f.commContactId !== null || f.contactMinistryKey === null) return f;
+  const mine = o.commContacts.find((c) => c.isActive && c.ministryKey === f.contactMinistryKey && c.userId.toLowerCase() === userId.toLowerCase());
+  return mine ? { ...f, commContactId: mine.id } : f;
+}
+
 /** A new lead ministry drops a comm contact of another ministry. */
 export function withMinistry(f: ActivityFields, key: string | null, o: EditorOptions): ActivityFields {
   const contact = o.commContacts.find((c) => c.id === f.commContactId);

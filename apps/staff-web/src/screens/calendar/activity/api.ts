@@ -1,4 +1,4 @@
-import type { ActivityChangeView, ActivityFields, ActivityFileView, ActivityView, EditorOptions, UpdateActivityInput, WriteResponse } from "@gcpe/calendar-contract";
+import type { ActivityChangeView, ActivityFields, ClonePrefill, ActivityFileView, ActivityView, EditorOptions, UpdateActivityInput, WriteResponse } from "@gcpe/calendar-contract";
 import { apiFetch } from "../../../api/client";
 
 const a = (id: number) => `/calendar/api/activities/${id}`;
@@ -8,9 +8,11 @@ export const activityApi = {
   get: (id: number) => apiFetch<ActivityView>(a(id)),
   changes: (id: number) => apiFetch<ActivityChangeView[]>(`${a(id)}/changes`),
   options: () => apiFetch<EditorOptions>("/calendar/api/editor-options"),
-  create: (fields: ActivityFields) => apiFetch<WriteResponse>("/calendar/api/activities", { method: "POST", body: fields }),
+  /** `clonedFrom`: saved from the Clone form, so the new activity's history says which activity it copies. */
+  create: (fields: ActivityFields, clonedFrom?: number) => apiFetch<WriteResponse>("/calendar/api/activities", { method: "POST", body: clonedFrom === undefined ? fields : { ...fields, clonedFrom } }),
   update: (id: number, body: UpdateActivityInput) => apiFetch<WriteResponse>(a(id), { method: "PUT", body }),
-  clone: (id: number) => apiFetch<WriteResponse>(`${a(id)}/clone`, { method: "POST", body: {} }),
+  /** The Clone form's values; creates nothing. */
+  clonePrefill: (id: number) => apiFetch<ClonePrefill>(`${a(id)}/clone`),
   remove: (id: number, version: number) => apiFetch<void>(a(id), { method: "DELETE", body: { version } }),
   review: (id: number, version: number) => apiFetch<ActivityView>(`${a(id)}/review`, { method: "POST", body: { version } }),
   lock: (id: number, tabId: string, takeOver = false, signal?: AbortSignal) =>

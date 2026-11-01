@@ -2,26 +2,21 @@ import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSearchShortcut } from "../../../shared/shortcuts";
 import { Button } from "@bcgov/design-system-react-components";
-import { ACTIVITY_STATUSES, EMPTY_LIST_FILTER, LIST_DISPLAYS, type CorporateQuery, type CorporateStatus, type ListDisplay, type ListFilter, type ListOptions, type ListQuery, type LookAheadFilter } from "@gcpe/calendar-contract";
+import {
+  ACTIVITY_STATUSES, activeFilterParts, corporateSummary, DISPLAY_LABELS, EMPTY_LIST_FILTER, FILTER_VALUE_GONE, LIST_DISPLAYS, LOOK_AHEAD_LABELS,
+  type ListDisplay, type ListFilter, type ListOptions, type ListQuery,
+} from "@gcpe/calendar-contract";
 
-const DISPLAY_LABELS: Record<ListDisplay, string> = {
-  all: "Show All", my_ministries: "My Ministries' Activities Only", my_activities: "My Activities Only", my_watchlist: "My Watchlist Only",
-};
+// The summary's words are shared with the reports and the export, which state the filter they used (suite review CAL-3).
+export { activeFilterParts, corporateSummary, LOOK_AHEAD_LABELS };
 const STATUS_LABELS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
-/**
- * HqTools' Look Ahead filter. Legacy's "Look Ahead Only" and "Not for Look Ahead Only" mean not
- * confidential and confidential (form-order audit #7), so they are named for what they do.
- */
-export const LOOK_AHEAD_LABELS: Record<LookAheadFilter, string> = { all: "Show All", look_ahead_only: "Not confidential only", not_for_look_ahead_only: "Confidential only" };
-/** HqTools' Corporate Queries labels. */
-const CORPORATE_LABELS: Record<CorporateStatus, string> = { new: "New", changed: "Changed", reviewed: "Reviewed", deleted: "Deleted", la_new: "LA New", la_changed: "LA Changed" };
 const tri = (v: boolean | null) => (v === null ? "" : String(v));
 const fromTri = (s: string) => (s === "" ? null : s === "true");
 const num = (v: number | null) => (v === null ? "" : String(v));
 const fromNum = (s: string) => (s === "" ? null : Number(s));
 const choices = (xs: { id: number; name: string }[]) => xs.map((x) => ({ value: String(x.id), label: x.name }));
 /** A value the query still filters by after its lookup row went away: shown, selected, so it can be cleared. */
-const GONE = "(no longer available)";
+const GONE = FILTER_VALUE_GONE;
 
 function Choice({ id, label, value, onChange, options, any }: { id: string; label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; any: string }) {
   return (
@@ -38,50 +33,6 @@ function Choice({ id, label, value, onChange, options, any }: { id: string; labe
       </select>
     </div>
   );
-}
-
-/** A corporate query in words: "next 8 days, New and Changed", "all upcoming, Deleted". */
-export function corporateSummary(c: CorporateQuery): string {
-  const statuses = c.statuses.map((s) => CORPORATE_LABELS[s]);
-  const list = statuses.length > 1 ? `${statuses.slice(0, -1).join(", ")} and ${statuses.at(-1)}` : statuses[0];
-  return `${c.days === null ? "all upcoming" : `next ${c.days} ${c.days === 1 ? "day" : "days"}`}, ${list}`;
-}
-
-const nameOf = (xs: { id: number; name: string }[], id: number | null) => (id === null ? null : (xs.find((x) => x.id === id)?.name ?? GONE));
-
-/**
- * The filter the list is running, as short "Label: value" parts ("Lead Ministry: HLTH",
- * "Dates: 2026-11-01 to 2026-11-14"), for the closed Filters disclosure. Empty when nothing
- * narrows the list.
- */
-export function activeFilterParts(query: ListQuery, options: ListOptions): string[] {
-  // A corporate query replaces the filter and the display altogether (the server lists by it alone).
-  if (query.corporate) return [`Corporate query: ${corporateSummary(query.corporate)}`];
-  const f = query.filter;
-  const parts: string[] = [];
-  if (f.thisDayOnly && f.from) parts.push(`Date: ${f.from}`);
-  else if (f.from && f.to) parts.push(`Dates: ${f.from} to ${f.to}`);
-  else if (f.from) parts.push(`From ${f.from}`);
-  else if (f.to) parts.push(`To ${f.to}`);
-  if (f.quickSearch) parts.push(`Search: “${f.quickSearch}”`);
-  if (f.keywordIds.length) parts.push(`HQ Tags: ${f.keywordIds.map((id) => nameOf(options.keywords, id)).join(", ")}`);
-  if (f.isIssue !== null) parts.push(f.isIssue ? "Is an Issue" : "Not an Issue");
-  if (f.dateConfirmed !== null) parts.push(f.dateConfirmed ? "Date is Confirmed" : "Date is not Confirmed");
-  if (f.status) parts.push(`Status: ${STATUS_LABELS[f.status]}`);
-  if (f.categoryId !== null) parts.push(`Category: ${nameOf(options.categories, f.categoryId)}`);
-  if (f.ministryKey) {
-    const m = options.ministries.find((x) => x.key === f.ministryKey);
-    parts.push(`Lead Ministry: ${m ? (m.abbreviation ?? m.name) : GONE}`);
-  }
-  if (f.commContactUserId) parts.push(`Comm Contact: ${options.commContacts.find((c) => c.userId === f.commContactUserId)?.name ?? GONE}`);
-  if (f.representativeId !== null) parts.push(`Representative: ${nameOf(options.representatives, f.representativeId)}`);
-  if (f.initiativeId !== null) parts.push(`HQ Initiatives & Leads: ${nameOf(options.initiatives, f.initiativeId)}`);
-  if (f.premierRequestedId !== null) parts.push(`Premier Requested: ${nameOf(options.premierRequested, f.premierRequestedId)}`);
-  if (f.distributionId !== null) parts.push(`Distribution: ${nameOf(options.distributions, f.distributionId)}`);
-  if (query.display !== "all") parts.push(DISPLAY_LABELS[query.display]);
-  // The Confidential filter sits outside the panel and applies at once, but it narrows the list too (form-order audit #14).
-  if (query.lookAhead !== "all") parts.push(LOOK_AHEAD_LABELS[query.lookAhead]);
-  return parts;
 }
 
 /** The filter Apply filters would send: what the panel's fields hold, tidied as submit tidies them. */

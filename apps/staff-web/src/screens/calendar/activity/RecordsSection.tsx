@@ -9,7 +9,7 @@ import { formatInZone } from "../../../format/bcTime";
 const TOO_BIG = "A file can be at most 25 MB.";
 /** The server's own words for a full activity (apps/calendar/src/activities/files.ts). */
 const FULL = `An activity holds at most ${ATTACHMENT_MAX_FILES} files. Remove one first.`;
-/** A same-name upload replaces the old file. Lenient on purpose: the server has the last word on what counts as the same name. */
+/** A same-name upload replaces the old file, after the user agrees (suite review CAL-5). Lenient on purpose: the server has the last word on what counts as the same name. */
 const nameKey = (name: string) => name.toLowerCase();
 const size = (n: number) => (n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const day = (iso: string, timeZone: string) => formatInZone(iso, timeZone, { month: "short", day: "numeric", year: "numeric" });
@@ -49,6 +49,8 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
   const [problems, setProblems] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const [removing, setRemoving] = useState<ActivityFileView | null>(null);
+  /** A pick holding names already attached, waiting on Replace or Cancel. */
+  const [replacing, setReplacing] = useState<{ picked: File[]; old: ActivityFileView[] } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   /** Counts completed removes: each moves the keyboard to Add files once the input is enabled again. */
   const [removed, setRemoved] = useState(0);
@@ -66,10 +68,24 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
     return false;
   };
 
+  /** Asks first when a picked name is already attached: the old file is deleted on replace, for good. */
+  const pick = (picked: File[]) => {
+    if (picked.length === 0) return;
+    const old = files.filter((f) => picked.some((p) => nameKey(p.name) === nameKey(f.fileName)));
+    if (old.length) setReplacing({ picked, old });
+    else void add(picked);
+  };
+
+  const cancelReplace = () => {
+    setReplacing(null);
+    setStatus("Nothing was added.");
+  };
+
   const add = async (picked: File[]) => {
     if (picked.length === 0 || !(await begin())) return;
     const failed: string[] = [];
     let added = 0;
+    const replaced: string[] = [];
     // What the activity holds, kept current from each reply: a file past the limit is refused
     // before its bytes are sent, while a same-name replacement still goes.
     let names = new Set(files.map((f) => nameKey(f.fileName)));
@@ -85,11 +101,13 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
       }
       setStatus(picked.length > 1 ? `Adding ${file.name} (${i + 1} of ${picked.length})…` : `Adding ${file.name}…`);
       try {
+        const replacing = names.has(nameKey(file.name));
         const now = await activityApi.addFile(activityId, file);
         onFiles(now);
         names = new Set(now.map((f) => nameKey(f.fileName)));
         count = now.length;
-        added++;
+        if (replacing) replaced.push(file.name);
+        else added++;
       } catch (e) {
         if (forThePage(e, { fileGone: false })) {
           refused(e);
@@ -104,7 +122,7 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
     }
     setBusy(false);
     setProblems(failed);
-    setStatus(added ? `Added ${added} file${added === 1 ? "" : "s"}.` : "");
+    setStatus([added ? `Added ${added} file${added === 1 ? "" : "s"}.` : "", replaced.length ? `Replaced ${replaced.join(", ")}.` : ""].filter(Boolean).join(" "));
   };
 
   const remove = async (file: ActivityFileView) => {
@@ -166,11 +184,11 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
             onChange={(e) => {
               const picked = Array.from(e.target.files ?? []);
               e.target.value = "";
-              void add(picked);
+              pick(picked);
             }}
           />
           <span id="activity-files-hint" className="gcpe-hint">
-            PDF, PNG, JPEG or GIF images, Word, Excel, PowerPoint, Outlook messages, RTF, text or CSV, up to 25 MB each. A file with the same name replaces the old one.
+            PDF, PNG, JPEG or GIF images, Word, Excel, PowerPoint, Outlook messages, RTF, text or CSV, up to 25 MB each. A file with the same name replaces the old one, after you agree.
           </span>
         </div>
       )}
@@ -185,6 +203,10 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
           </ul>
         </div>
       )}
+      {/* Escape or a click outside is a Cancel, and says so. */}
+      <Modal isOpen={replacing !== null} onOpenChange={(open) => { if (!open) cancelReplace(); }} isDismissable>
+        {replacing && <ReplaceDialog {...replacing} timeZone={timeZone} onCancel={cancelReplace} onReplace={() => { setReplacing(null); void add(replacing.picked); }} />}
+      </Modal>
       <Modal isOpen={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null); }} isDismissable>
         <AlertDialog
           role="alertdialog"
@@ -206,5 +228,35 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
         </AlertDialog>
       </Modal>
     </fieldset>
+  );
+}
+
+/** "A file named X is already attached. Replace it?" (suite review CAL-5): naming the picked file, and who added the old one when. */
+function ReplaceDialog({ picked, old, timeZone, onCancel, onReplace }: { picked: File[]; old: ActivityFileView[]; timeZone: string; onCancel: () => void; onReplace: () => void }): React.JSX.Element {
+  const dupes = picked.filter((p) => old.some((f) => nameKey(f.fileName) === nameKey(p.name)));
+  const title = dupes.length === 1 ? `Replace ${dupes[0]!.name}?` : `Replace ${dupes.length} files?`;
+  const added = (f: ActivityFileView) => `added ${day(f.uploadedAt, timeZone)}${f.uploadedByName ? ` by ${f.uploadedByName}` : ""}`;
+  return (
+    <AlertDialog
+      role="alertdialog"
+      aria-label={title}
+      variant="warning"
+      title={title}
+      buttons={
+        <>
+          <Button variant="secondary" onPress={onCancel}>
+            Cancel
+          </Button>
+          <Button onPress={onReplace}>Replace</Button>
+        </>
+      }
+    >
+      <p>
+        {old.length === 1
+          ? `A file named ${old[0]!.fileName} is already attached (${added(old[0]!)}). Replace it? The old file is deleted.`
+          : `Files with these names are already attached: ${old.map((f) => `${f.fileName} (${added(f)})`).join(", ")}. Replace them? The old files are deleted.`}
+      </p>
+      {picked.length > dupes.length && <p>Cancel adds none of the files you picked.</p>}
+    </AlertDialog>
   );
 }

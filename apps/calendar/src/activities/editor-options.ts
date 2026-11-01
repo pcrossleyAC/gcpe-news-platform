@@ -12,7 +12,7 @@ export async function editorOptions(db: DbOrTx): Promise<EditorOptions> {
   const termRows = await db.select().from(terms).orderBy(asc(terms.sortOrder), asc(terms.displayName), asc(terms.key));
   const termsOf = (kind: TermKind): EditorTerm[] => termRows.filter((t) => t.kind === kind).map((t) => ({ key: t.key, name: t.displayName, isActive: t.isActive }));
   const contacts = await db
-    .select({ id: commContacts.id, ministryKey: commContacts.ministryKey, name: users.displayName, rank: commContacts.rank, contactActive: commContacts.isActive, userActive: users.isActive })
+    .select({ id: commContacts.id, userId: commContacts.userId, ministryKey: commContacts.ministryKey, name: users.displayName, rank: commContacts.rank, contactActive: commContacts.isActive, userActive: users.isActive })
     .from(commContacts)
     .leftJoin(users, eq(users.id, commContacts.userId))
     .orderBy(asc(commContacts.sortOrder), asc(users.displayName), asc(commContacts.id));
@@ -32,7 +32,7 @@ export async function editorOptions(db: DbOrTx): Promise<EditorOptions> {
       .select({ key: orgs.key, abbreviation: orgs.abbreviation, name: orgs.displayName, isActive: orgs.isActive })
       .from(orgs)
       .orderBy(asc(orgs.abbreviation), asc(orgs.key)),
-    commContacts: contacts.map((c) => ({ id: c.id, ministryKey: c.ministryKey, name: c.name ?? "Unknown", rank: c.rank, isActive: c.contactActive && c.userActive === true })),
+    commContacts: contacts.map((c) => ({ id: c.id, userId: c.userId, ministryKey: c.ministryKey, name: c.name ?? "Unknown", rank: c.rank, isActive: c.contactActive && c.userActive === true })),
     sectors: termsOf("sector"),
     themes: termsOf("theme"),
     tags: termsOf("tag"),

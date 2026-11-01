@@ -47,7 +47,7 @@ A category that is a release, such as **Approved Release**, also needs **Origin*
 
 | Field | What to enter |
 |---|---|
-| **Comm Contact** | The communications person responsible. Only the active comm contacts of the **Lead Ministry**, chosen above, are offered. |
+| **Comm Contact** | The communications person responsible. Only the active comm contacts of the **Lead Ministry**, chosen above, are offered. On a new activity it starts as you, when you are one of them. |
 | **Key activity** | Tick it for a key activity. |
 | **Strategy** | Up to 500 characters. |
 | **Comm Materials** | The products planned, such as a news release. |
@@ -60,7 +60,7 @@ A category that is a release, such as **Approved Release**, also needs **Origin*
 | **All Day** | Tick it for an all-day activity. It hides the times below it. |
 | **Dates Confirmed** | Tick it once the date is firm. Only confirmed activities are offered on the releases **Forecast**. |
 | **Start date**, **Start time** | Times go in 5-minute steps. |
-| **End date**, **End time** | The end can't be before the start. |
+| **End date**, **End time** | The end can't be before the start. On a new activity the end date follows the start date until you set it yourself. |
 | **Potential Dates** | A general timeline, like "late June". No numbers, TBC or TBD. Up to 50 characters. |
 | **Scheduling considerations** | Anything that affects the timing. Up to 500 characters. |
 
