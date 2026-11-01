@@ -1144,6 +1144,14 @@ body {
   font-size: 0.875rem;
   overflow-wrap: anywhere;
 }
+/* Suite fix W2: Website > Hub address check. A long saved address wraps rather than pushing the
+ * page past a 390 px screen. */
+.gcpe-address-check__group + .gcpe-address-check__group {
+  margin-top: 1.5rem;
+}
+.gcpe-address-check__address {
+  overflow-wrap: anywhere;
+}
 .gcpe-files li > a {
   display: inline-block;
   padding: 0.25rem 0;

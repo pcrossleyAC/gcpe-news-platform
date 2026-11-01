@@ -682,3 +682,42 @@ describe("NRMS site settings HTTP API", () => {
     expect((await request(bare).get(`${S}/history/1`).set("cookie", siteEditor)).status).toBe(503);
   });
 });
+
+describe("GET /site/internal-links: the Hub address check (suite fix W2)", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  const cookieFor = async (roles: string[]) =>
+    `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000c", name: "Pat Example", email: "pat@example.invalid", roles })).token}`;
+
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+    app = createApp({
+      db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver", filesBase: "https://news.example" },
+      subscribers: [], siteUrl: "https://news.example", internalHosts: ["hub.example", "news.example"],
+    });
+    await tdb.pool.query(
+      "INSERT INTO resource_links (sort_index, text, url) VALUES (0, 'Alias', 'https://hub.example/files/a.pdf'), (1, 'Page host', 'https://gcpe-app01.internal/files/b.pdf'), (2, 'Public', 'https://news.example/files/c.pdf')",
+    );
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("lists stored addresses on a configured internal host or the host the Hub was opened on, never the public site's", async () => {
+    const res = await request(app).get("/api/site/internal-links").set("host", "gcpe-app01.internal").set("cookie", await cookieFor(["NRMS.SiteEditor"]));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      links: [
+        { screen: "links", where: "Link 1 URL", address: "https://hub.example/files/a.pdf" },
+        { screen: "links", where: "Link 2 URL", address: "https://gcpe-app01.internal/files/b.pdf" },
+      ],
+    });
+  });
+
+  it("is for Website editors and Core administrators only", async () => {
+    expect((await request(app).get("/api/site/internal-links").set("cookie", await cookieFor(["Core.Admin"]))).status).toBe(200);
+    expect((await request(app).get("/api/site/internal-links").set("cookie", await cookieFor(["NRMS.Editor"]))).status).toBe(403);
+    expect((await request(app).get("/api/site/internal-links").set("cookie", await cookieFor(["NRMS.Viewer"]))).status).toBe(403);
+    expect((await request(app).get("/api/site/internal-links")).status).toBe(401);
+  });
+});

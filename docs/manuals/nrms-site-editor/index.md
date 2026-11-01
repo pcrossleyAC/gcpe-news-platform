@@ -22,6 +22,7 @@ Release editors and release viewers can open **Website**, but they see only **Wh
 | **Website** > **Live Feed** | The Live Webcast button and the stream it plays. | A few minutes after you save. | [Live Feed](manual:live-feed) |
 | **Website** > **Resource links** | The list of links on the home page. | A few minutes after you save. | [Resource links](manual:resource-links) |
 | **Website** > **Files** | Files the public can open at a fixed web address, such as PDFs and minister photos. | As soon as the upload finishes. | [Files](manual:website-files) |
+| **Website** > **Hub address check** | Nothing: it lists saved web addresses that point at the Hub, which visitors can't open, so you can fix them. | Not shown to visitors. | [Hub address check](manual:hub-address-check) |
 | **Website** > **Site settings** | The banner, footer, social links, colours, headings, page wording, menu and site description. | A few minutes after you publish. | [How site settings are published](manual:site-settings) |
 | **Organizations** | Each ministry's name, minister, biography, media contacts and page links. | Within a few minutes of saving. | [Organizations](manual:site-editor-organizations) |
 

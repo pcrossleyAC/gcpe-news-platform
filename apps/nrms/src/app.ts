@@ -98,6 +98,7 @@ export function createApp(deps: {
       maxSiteFileBytes: deps.maxSiteFileBytes,
       slideFiles,
       siteUrl: deps.siteUrl ?? "",
+      internalHosts,
       notify: deps.blueBridgeNotify ?? (async (subject) => void console.log(`[nrms] blue bridge: ${subject}`)),
     }),
     governmentTermRoutes({ db: deps.db, subscribers: deps.subscribers ?? [], timeZone: deps.workflow.timeZone, now: deps.clock }),
