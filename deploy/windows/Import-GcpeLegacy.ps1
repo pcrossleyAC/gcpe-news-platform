@@ -23,6 +23,10 @@
 
   Only SQL Server logins (user name and password) are supported, not Windows authentication.
 
+  The Nrms and Nod steps sign in as the break-glass admin, so on the real production site run the
+  import before go-live, while break-glass is still on (docs/deploy/windows.md, P4). With it off,
+  the script stops before importing anything and says so.
+
 .EXAMPLE
   .\Import-GcpeLegacy.ps1 -SqlServer legacy-sql.example.gov.bc.ca -SqlUser gcpe_reader -CalendarCutoff 2025-11-01
 
@@ -61,6 +65,13 @@ $base = "http://127.0.0.1:$($envValues['PORT'])"
 # The session cookie is Secure-only, so signed-in calls go through IIS's https (-k: Dev may be self-signed).
 $adminBase = 'https://localhost'
 $script:jar = $null
+# The Nrms and Nod steps sign in as the break-glass admin (owner decision 2026-10-31: the real
+# production site turns it off at go-live, docs/deploy/windows.md P4). Checked before anything is
+# imported, so a run never stops halfway at the sign-in.
+$needsBreakGlass = $Only -contains 'Nrms' -or $Only -contains 'Nod'
+if ($needsBreakGlass -and $envValues['LOCAL_ADMIN_ENABLED'] -ne 'true') {
+    throw "The Nrms and Nod steps sign in as the break-glass admin to make Core and NRMS republish, and the break-glass admin is off in $($paths.EnvFile). Run the import before go-live (docs/deploy/windows.md, P4), or turn break-glass on for the import and off again afterwards (P4, 'Break-glass in an emergency'). -Only Core, NewsApi or Calendar don't need it."
+}
 if ($Only -contains 'Calendar') {
     if ($CalendarCutoff -notmatch '^\d{4}-\d{2}-\d{2}$') { throw '-CalendarCutoff yyyy-MM-dd is required for the Calendar step (activities ending before it are left out).' }
     if (-not $envValues.Contains('CALENDAR_DATABASE_URL')) { throw "CALENDAR_DATABASE_URL isn't set in $($paths.EnvFile)." }
