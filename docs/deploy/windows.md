@@ -706,7 +706,8 @@ leaving the `staff_sessions` table in place; never drop it by hand.
 
 Core migration 0013 (applied at startup, nothing to configure) adds the Hub's Admin history
 (`core_audit`, kept forever) and each user's last sign-in time. Rolling back past it means
-deploying the previous release and leaving both in place; never drop them by hand.
+deploying the previous release and leaving both in place; never drop them by hand. NRMS migration
+0024 lets the Website log record Government terms changes; rolling back leaves it in place, harmlessly.
 
 ### D8. Connect the outside services
 

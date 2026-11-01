@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
+import { AnnouncerProvider } from "../../../shared/Announcer";
 import { AdminHistoryScreen } from "./AdminHistoryScreen";
 import type { AuditEntry } from "./describe";
 
@@ -22,9 +23,11 @@ const entry = (id: number, over: Partial<AuditEntry> = {}): AuditEntry => ({
 });
 
 let location = "";
+let navigate: ReturnType<typeof useNavigate> | null = null;
 function Where(): null {
   const l = useLocation();
   location = `${l.pathname}${l.search}`;
+  navigate = useNavigate();
   return null;
 }
 
@@ -32,11 +35,13 @@ function renderAt(path: string) {
   return render(
     <SessionProvider>
       <MemoryRouter initialEntries={[path]}>
-        <RequireAuth>
-          <Routes>
-            <Route path="/admin-history" element={<><AdminHistoryScreen /><Where /></>} />
-          </Routes>
-        </RequireAuth>
+        <AnnouncerProvider>
+          <RequireAuth>
+            <Routes>
+              <Route path="/admin-history" element={<><AdminHistoryScreen /><Where /></>} />
+            </Routes>
+          </RequireAuth>
+        </AnnouncerProvider>
       </MemoryRouter>
     </SessionProvider>,
   );
@@ -85,7 +90,9 @@ describe("AdminHistoryScreen", () => {
       ["Jan 15, 2026 9:00 AM", "Paul Smith", "Changed Jo Lee's Calendar access: gave them the Editor role; added Health"],
       ["Jan 15, 2026 9:00 AM", "Paul Smith", "Gave Core Admin to Jo Lee"],
     ]);
-    expect(screen.getByRole("status")).toHaveTextContent("2 changes");
+    expect(screen.getByText("2 changes")).toBeInTheDocument();
+    // Announced through the Hub's one live region.
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("2 changes"));
     expect(document.title).toContain("Admin history");
   });
 
@@ -121,7 +128,7 @@ describe("AdminHistoryScreen", () => {
     const calls = stub(["Core.Admin"], () => jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 50 }));
     const user = userEvent.setup();
     renderAt("/admin-history");
-    expect(await screen.findByRole("status")).toHaveTextContent("No changes recorded yet.");
+    expect(await screen.findByText("No changes recorded yet.")).toBeInTheDocument();
     await user.type(screen.getByLabelText("From"), "2026-02-01");
     await user.type(screen.getByLabelText("To"), "2026-01-01");
     const before = calls.length;
@@ -133,12 +140,48 @@ describe("AdminHistoryScreen", () => {
   it("says when nothing matches the filters, and when it can't load", async () => {
     stub(["Core.Admin"], () => jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 50 }));
     renderAt("/admin-history?who=nobody");
-    expect(await screen.findByRole("status")).toHaveTextContent("No changes match these filters.");
+    expect(await screen.findByText("No changes match these filters.")).toBeInTheDocument();
     cleanup();
     vi.unstubAllGlobals();
     stub(["Core.Admin"], () => jsonResponse(500, { error: "internal error" }));
     renderAt("/admin-history");
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load the admin history.");
+  });
+
+  it("keeps focus on Next and on Clear filters while the next result loads, and the fields follow Back", async () => {
+    let release: (() => void) | null = null;
+    stub(["Core.Admin"], (url) => {
+      const page = Number(new URL(url, "http://x").searchParams.get("page"));
+      return jsonResponse(200, { items: [entry(page)], total: 120, page, pageSize: 50 });
+    });
+    const realFetch = globalThis.fetch;
+    // Hold the second page's answer, so the press is checked while it loads.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes("page=2")) await new Promise<void>((r) => (release = r));
+        return realFetch(url, init);
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt("/admin-history?who=Paul");
+    expect(await screen.findByText("Showing 1–50 of 120")).toBeInTheDocument();
+    expect(screen.getByLabelText("Who")).toHaveValue("Paul");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("button", { name: "Next" })).toHaveFocus();
+    expect(screen.getByRole("table").closest("[aria-busy]")).toHaveAttribute("aria-busy", "true");
+    release!();
+    expect(await screen.findByText("Showing 51–100 of 120")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("120 changes, showing 51 to 100"));
+
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByRole("button", { name: "Clear filters" })).toHaveFocus();
+    await waitFor(() => expect(location).toBe("/admin-history"));
+    expect(screen.getByLabelText("Who")).toHaveValue("");
+
+    // Back to the filtered address: the Who field shows its filter again.
+    act(() => void navigate!(-1));
+    await waitFor(() => expect(screen.getByLabelText("Who")).toHaveValue("Paul"));
   });
 
   it("is for Core administrators only, and never asks Core otherwise", async () => {

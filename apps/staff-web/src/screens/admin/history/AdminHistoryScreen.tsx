@@ -7,6 +7,7 @@ import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { useSession } from "../../../session/SessionContext";
 import { TableScroll } from "../../../shared/TableScroll";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { useAnnouncer } from "../../../shared/Announcer";
 import { Pagination } from "../../releases/Pagination";
 import { describeEntry, type AuditPage } from "./describe";
 
@@ -33,6 +34,14 @@ interface Filters {
 
 const capitalised = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** The line above the table, which is also announced once a load finishes. */
+function countText(total: number, filtered: boolean, page: number, pageSize: number): string {
+  if (total === 0) return filtered ? "No changes match these filters." : "No changes recorded yet.";
+  const first = (page - 1) * pageSize + 1;
+  const range = total > pageSize ? `, showing ${first} to ${Math.min(page * pageSize, total)}` : "";
+  return `${total} ${total === 1 ? "change" : "changes"}${range}`;
+}
+
 /**
  * `/hub/admin-history` (suite review O3): every change made in Core's admin screens (Users, Calendar
  * access, Organizations, Sectors, themes and tags, Cabinet change), newest first, filtered by who
@@ -52,6 +61,13 @@ export function AdminHistoryScreen(): React.JSX.Element {
   const [result, setResult] = useState<{ search: string; page: AuditPage } | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [orgNames, setOrgNames] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const { announce } = useAnnouncer();
+  // Back and Forward change the address: the fields follow it, so Show never re-applies stale ones.
+  const addressFilters = `${applied.who}\n${applied.kind}\n${applied.from}\n${applied.to}`;
+  useEffect(() => {
+    const [who = "", kind = "", from = "", to = ""] = addressFilters.split("\n");
+    setForm({ who, kind, from, to });
+  }, [addressFilters]);
 
   const query = new URLSearchParams();
   if (applied.who.trim()) query.set("who", applied.who.trim());
@@ -61,6 +77,7 @@ export function AdminHistoryScreen(): React.JSX.Element {
   query.set("page", String(page));
   query.set("pageSize", String(ADMIN_HISTORY_PAGE_SIZE));
   const search = query.toString();
+  const filtered = Boolean(applied.who.trim() || applied.kind || applied.from || applied.to);
 
   // Never fetched for anyone who can't see this page (a direct link), as on Users and Error log.
   useEffect(() => {
@@ -68,13 +85,18 @@ export function AdminHistoryScreen(): React.JSX.Element {
     let active = true;
     setLoadError(false);
     apiFetch<AuditPage>(`/core/api/audit?${search}`).then(
-      (p) => active && setResult({ search, page: p }),
+      (p) => {
+        if (!active) return;
+        setResult({ search, page: p });
+        // Through the Hub's one live region: a status line mounted with its text already in it often isn't read.
+        announce(countText(p.total, filtered, p.page, p.pageSize));
+      },
       () => active && setLoadError(true),
     );
     return () => {
       active = false;
     };
-  }, [isAdmin, search]);
+  }, [isAdmin, search, filtered, announce]);
 
   // Ministry names for Calendar access entries; without them, the entries show the ministry's key.
   useEffect(() => {
@@ -117,10 +139,12 @@ export function AdminHistoryScreen(): React.JSX.Element {
     show(empty);
   };
 
-  const current = result?.search === search ? result.page : null;
+  // While the next page or filter loads, the last result stays on screen (marked busy), so the
+  // Next or Previous just pressed keeps focus instead of vanishing under "Loading…".
+  const current = result?.page ?? null;
+  const loading = result?.search !== search;
   const now = new Date();
   const when = (iso: string) => formatWhen(iso, now, timeZone, { withDate: true });
-  const filtered = Boolean(applied.who.trim() || applied.kind || applied.from || applied.to);
 
   return (
     <div className="gcpe-admin-history">
@@ -152,11 +176,10 @@ export function AdminHistoryScreen(): React.JSX.Element {
             <input id="history-to" type="date" value={form.to} onChange={(e) => set("to", e.target.value)} />
           </div>
           <Button type="submit">Show</Button>
-          {filtered && (
-            <Button variant="secondary" onPress={clear}>
-              Clear filters
-            </Button>
-          )}
+          {/* Always there, so pressing it never takes the focus away with it. */}
+          <Button variant="secondary" onPress={clear}>
+            Clear filters
+          </Button>
         </div>
         <p id="history-who-hint" className="gcpe-hint">
           Part of the name of the person who made the change.
@@ -167,8 +190,8 @@ export function AdminHistoryScreen(): React.JSX.Element {
       {loadError && <InlineAlert variant="danger" role="alert" description="Couldn't load the admin history." />}
       {!current && !loadError && <p>Loading…</p>}
       {current && (
-        <>
-          <p role="status">{current.total === 0 ? (filtered ? "No changes match these filters." : "No changes recorded yet.") : `${current.total} ${current.total === 1 ? "change" : "changes"}`}</p>
+        <div aria-busy={loading || undefined}>
+          <p>{countText(current.total, !loading && filtered, current.page, current.pageSize)}</p>
           {current.items.length > 0 && (
             <TableScroll label="Admin history">
               <table className="gcpe-table">
@@ -193,7 +216,7 @@ export function AdminHistoryScreen(): React.JSX.Element {
             </TableScroll>
           )}
           <Pagination page={current.page} pageSize={current.pageSize} total={current.total} onPageChange={(p) => show(applied, p)} />
-        </>
+        </div>
       )}
     </div>
   );

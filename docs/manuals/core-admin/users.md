@@ -62,7 +62,7 @@ Calendar roles are not on this screen. Give them on [Calendar access](manual:cal
 2. At the bottom of their settings, open **History**. It lists each change to their account, newest first: when, who made it, and what they did, such as "Paul Smith gave Core Admin to Jo Lee".
 3. If there are more, choose **Show older changes**.
 
-History shows changes made on **Users** and **Calendar access**: adding the person, their name, roles, Calendar role and ministries, password, linking, Microsoft sign-in, and switching **Active** on or off. Changes made before the Hub started keeping this history aren't listed: you see "No changes recorded yet." The break-glass administrator shows as "Administrator (break-glass)". Every change on this screen, for everyone, is also on [Admin history](manual:admin-history).
+History shows changes made on **Users** and **Calendar access**: adding the person, their name, roles, Calendar role and ministries, password, linking, unlinking Microsoft sign-in, and switching **Active** on or off. It also shows the person's own first Microsoft sign-in, which links their account, under their name. Changes made before the Hub started keeping this history aren't listed: you see "No changes recorded yet." The break-glass administrator shows as "Administrator (break-glass)". Every change on this screen, for everyone, is also on [Admin history](manual:admin-history).
 
 ## Check for accounts nobody uses
 

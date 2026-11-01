@@ -34,7 +34,8 @@ export type AuditTargetType = (typeof coreAudit.$inferSelect)["targetType"];
  * org.hq { isHq } · org.public { isPublic } · org.deactivated ·
  * org.handed-over { successors, moveStaff, moveSubscribers, moveCalendar, moveDrafts, takeAbbreviation, staffMoved } ·
  * term.created { kind } · term.edited { kind, name?, fields } · term.deactivated { kind } ·
- * cabinet.saved { operations } · cabinet.scheduled { at } · cabinet.cancelled · cabinet.published { operations }
+ * cabinet.saved { operations } · cabinet.scheduled { at } · cabinet.cancelled · cabinet.published { operations } ·
+ * core.republished { enqueued } · user.microsoft-linked (the person's own first Microsoft sign-in, under their own name)
  *
  * Any of them may carry `via: "cabinet-change"` when a published cabinet change made it.
  */
@@ -79,7 +80,7 @@ const day = z
 
 export const auditQuerySchema = z
   .object({
-    targetType: z.enum(["user", "organization", "term", "cabinet-change"]).optional(),
+    targetType: z.enum(["user", "organization", "term", "cabinet-change", "core"]).optional(),
     targetId: z.string().trim().min(1).max(300).optional(),
     /** Part of the name of the person who made the change, any case. */
     who: z.string().trim().max(100).optional(),

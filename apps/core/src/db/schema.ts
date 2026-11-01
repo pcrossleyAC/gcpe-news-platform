@@ -222,7 +222,7 @@ export const coreAudit = pgTable(
     actorName: text("actor_name").notNull(),
     /** What happened, such as "user.roles" or "org.renamed" (services/audit.ts lists them). */
     action: text("action").notNull(),
-    targetType: text("target_type").$type<"user" | "organization" | "term" | "cabinet-change">().notNull(),
+    targetType: text("target_type").$type<"user" | "organization" | "term" | "cabinet-change" | "core">().notNull(),
     /** The user id, organization key, "kind:key" of a term, or cabinet change id. */
     targetId: text("target_id").notNull(),
     /** The target's name as it was then, so the entry still reads well after a rename or deletion. */

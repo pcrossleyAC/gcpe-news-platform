@@ -132,9 +132,10 @@ export async function upsertTerm(
     if (!existing) await recordAudit(tx, opts.audit, termEntry(record.kind, record.key, record.displayName, "term.created"));
     else {
       const before = toTermRecord(existing);
-      const fields = (["sortOrder", "isActive", "social"] as const).filter((f) => JSON.stringify(before[f]) !== JSON.stringify(record[f]));
+      const fields = (["sortOrder", "social"] as const).filter((f) => JSON.stringify(before[f]) !== JSON.stringify(record[f]));
       const renamed = before.displayName !== record.displayName ? { name: { from: before.displayName, to: record.displayName } } : {};
-      await recordAudit(tx, opts.audit, termEntry(record.kind, record.key, record.displayName, "term.edited", { ...renamed, fields }));
+      const active = before.isActive !== record.isActive ? { active: { from: before.isActive, to: record.isActive } } : {};
+      await recordAudit(tx, opts.audit, termEntry(record.kind, record.key, record.displayName, "term.edited", { ...renamed, ...active, fields }));
     }
     return { record, changed: true };
   });

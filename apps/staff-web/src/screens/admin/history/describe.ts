@@ -8,7 +8,7 @@ export interface AuditEntry {
   actorId: string;
   actorName: string;
   action: string;
-  targetType: "user" | "organization" | "term" | "cabinet-change";
+  targetType: "user" | "organization" | "term" | "cabinet-change" | "core";
   targetId: string;
   targetLabel: string;
   details: Record<string, unknown>;
@@ -89,6 +89,8 @@ export function describeEntry(e: AuditEntry, orgName: (key: string) => string | 
       return `set a new password for ${who}`;
     case "user.linked":
       return `linked ${who} to ${text(d.email)} and activated them`;
+    case "user.microsoft-linked":
+      return "signed in with Microsoft for the first time, which linked their account";
     case "user.microsoft-unlinked":
       return `unlinked ${who} from Microsoft sign-in`;
     case "calendar.access": {
@@ -133,8 +135,12 @@ export function describeEntry(e: AuditEntry, orgName: (key: string) => string | 
       const kind = TERM_KINDS[String(d.kind)] ?? "entry";
       if (e.action === "term.created") return `added the ${kind} ${who}`;
       if (e.action === "term.deactivated") return `deactivated the ${kind} ${who}`;
+      const parts: string[] = [];
       const name = fromTo(d.name);
-      if (name) return `renamed the ${kind} ${text(name.from)} to ${text(name.to)}`;
+      const active = fromTo(d.active);
+      if (name) parts.push(`renamed the ${kind} ${text(name.from)} to ${text(name.to)}`);
+      if (active) parts.push(`${active.to ? "reactivated" : "deactivated"} the ${kind} ${who}`);
+      if (parts.length) return parts.join("; ");
       if (strings(d.fields).length === 1 && strings(d.fields)[0] === "sortOrder") return `changed the order of the ${kind} ${who}`;
       return `changed the ${kind} ${who}`;
     }
@@ -146,6 +152,8 @@ export function describeEntry(e: AuditEntry, orgName: (key: string) => string | 
       return "cancelled the cabinet change";
     case "cabinet.published":
       return `published the cabinet change${changes(d.operations)}`;
+    case "core.republished":
+      return `sent every ministry, user, sector, theme and tag to the other apps again${typeof d.enqueued === "number" ? ` (${d.enqueued} records)` : ""}`;
     default:
       return `changed ${who}`;
   }

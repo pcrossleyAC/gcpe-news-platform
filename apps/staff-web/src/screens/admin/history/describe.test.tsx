@@ -33,6 +33,8 @@ describe("describeEntry", () => {
     expect(say(entry("user.password-set"))).toBe("set a new password for Jo Lee");
     expect(say(entry("user.linked", { email: "jo@x" }))).toBe("linked Jo Lee to jo@x and activated them");
     expect(say(entry("user.microsoft-unlinked"))).toBe("unlinked Jo Lee from Microsoft sign-in");
+    expect(say(entry("user.microsoft-linked"))).toBe("signed in with Microsoft for the first time, which linked their account");
+    expect(say(entry("core.republished", { enqueued: 42 }, { targetType: "core" }))).toBe("sent every ministry, user, sector, theme and tag to the other apps again (42 records)");
   });
 
   it("Calendar access: role labels and ministry names", () => {
@@ -75,6 +77,10 @@ describe("describeEntry", () => {
     expect(say(entry("term.edited", { kind: "theme", fields: ["sortOrder"] }, sector))).toBe("changed the order of the theme Agriculture");
     expect(say(entry("term.edited", { kind: "service", fields: ["isActive"] }, sector))).toBe("changed the service Agriculture");
     expect(say(entry("term.deactivated", { kind: "sector" }, sector))).toBe("deactivated the sector Agriculture");
+    expect(say(entry("term.edited", { kind: "sector", active: { from: false, to: true }, fields: [] }, sector))).toBe("reactivated the sector Agriculture");
+    expect(say(entry("term.edited", { kind: "tag", name: { from: "Farm", to: "Agriculture" }, active: { from: true, to: false }, fields: [] }, sector))).toBe(
+      "renamed the tag Farm to Agriculture; deactivated the tag Agriculture",
+    );
     expect(say(entry("cabinet.saved", { operations: 2 }))).toBe("saved the cabinet change draft (2 changes)");
     expect(say(entry("cabinet.saved", { operations: 1 }))).toBe("saved the cabinet change draft (1 change)");
     expect(say(entry("cabinet.scheduled", { at: "2026-11-03T16:00:00Z" }))).toBe("scheduled the cabinet change");

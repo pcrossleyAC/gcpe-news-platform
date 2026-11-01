@@ -181,7 +181,10 @@ with a default and an index on the small `send_jobs`: its locks last millisecond
 lock timeout, so on a busy table it fails the migration (retry it) rather than stall NoD. NRMS
 `0023_release_email_again` adds three columns to `news_releases`. Core `0013_core_audit` adds the
 `core_audit` table (the Hub's Admin history, kept forever) and a nullable `last_sign_in_at` column on
-`users`; rolling back leaves both in place, unused (never drop them by hand).
+`users`; rolling back leaves both in place, unused (never drop them by hand). NRMS
+`0024_site_log_government_terms` widens `site_log`'s area check to allow `government-terms` (the
+Government terms screen's changes, in the Website log); the table is small, so the check's rescan is
+quick. Rolling back is safe: an older image never writes that area, and the wider check stays.
 
 ## PostgreSQL
 

@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { HistoryDisclosure } from "./HistoryDisclosure";
+import { AnnouncerProvider } from "../../../shared/Announcer";
 
 const entry = (id: number) => ({ id, at: "2026-01-15T17:00:00Z", actorId: "a", actorName: `Admin ${id}`, action: "user.password-set", targetType: "user", targetId: "jo", targetLabel: "Jo", details: {} });
 
@@ -27,7 +28,11 @@ describe("HistoryDisclosure", () => {
       }),
     );
     const user = userEvent.setup();
-    render(<HistoryDisclosure targetType="user" targetId="jo" name="Jo" />);
+    render(
+      <AnnouncerProvider>
+        <HistoryDisclosure targetType="user" targetId="jo" name="Jo" />
+      </AnnouncerProvider>,
+    );
     await user.click(screen.getByRole("button", { name: "History" }));
     const list = await screen.findByRole("list", { name: "Changes to Jo, newest first" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(20);
@@ -35,6 +40,9 @@ describe("HistoryDisclosure", () => {
     await waitFor(() => expect(within(screen.getByRole("list", { name: "Changes to Jo, newest first" })).getAllByRole("listitem")).toHaveLength(25));
     expect(screen.getByRole("list", { name: "Changes to Jo, newest first" }).lastElementChild).toHaveTextContent("Admin 1 set a new password for Jo");
     expect(screen.queryByRole("button", { name: "Show older changes" })).toBeNull();
+    // The button has gone, so focus moves to the first older change rather than the page.
+    await waitFor(() => expect(within(screen.getByRole("list", { name: "Changes to Jo, newest first" })).getAllByRole("listitem")[20]).toHaveFocus());
+    expect(screen.getByRole("status")).toHaveTextContent("5 older changes shown");
     expect(calls.filter((c) => c.startsWith("/core/api/audit")).map((c) => new URL(c, "http://x").searchParams.get("page"))).toEqual(["1", "1", "2"]);
   });
 });

@@ -25,7 +25,7 @@ import {
   upsertOrganization,
 } from "../services/organizations";
 import { listManualReviews, manualReviewInputSchema, recordManualReview } from "../services/manual-reviews";
-import { auditQuerySchema, listAudit } from "../services/audit";
+import { auditQuerySchema, listAudit, recordAudit } from "../services/audit";
 import { republishAll } from "../services/republish";
 import {
   DEFAULT_TIME_ZONE,
@@ -337,7 +337,12 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
   r.post(
     "/admin/republish",
     admin,
-    safe(async (_req, res) => void res.status(202).json({ enqueued: await republishAll(db, subscribers) })),
+    safe(async (req, res) => {
+      const enqueued = await republishAll(db, subscribers);
+      // Suite review O3 (N5): who re-sent everything. republishAll commits on its own, so this is a separate write after it.
+      await recordAudit(db, actorOf(req), { action: "core.republished", targetType: "core", targetId: "republish", targetLabel: "Core records", details: { enqueued } });
+      res.status(202).json({ enqueued });
+    }),
   );
 
   // Plan 3d task 4: NRMS's Project Blue Bridge notify — a narrow, read-only directory lookup,

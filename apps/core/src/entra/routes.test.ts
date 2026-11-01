@@ -10,7 +10,7 @@ import { createFakeOidc, type FakeOidc, type FakeOidcTokenOverrides } from "@gcp
 import { createCoreTestDb } from "../../test/helpers";
 import { eq } from "drizzle-orm";
 import { createApp } from "../app";
-import { users } from "../db/schema";
+import { coreAudit, users } from "../db/schema";
 import { createUser, createUserSchema, matchEntraUser, updateUser } from "../services/users";
 import { createEntraClient } from "./client";
 import type { EntraSignInConfig } from "./config";
@@ -103,8 +103,11 @@ describe("Entra sign-in routes", () => {
     const lastSignIn = async () => (await tdb.db.select({ at: users.lastSignInAt }).from(users).where(eq(users.id, staffId)))[0]!.at;
     expect(await lastSignIn()).toBeNull();
     const res = await signIn("staff");
-    // Suite review O3: a Microsoft sign-in is the Users screen's "Last signed in" too.
+    // Suite review O3: a Microsoft sign-in is the Users screen's "Last signed in" too, and the
+    // first one, which links the account, is in the person's History under their own name.
     expect(await lastSignIn()).toBeInstanceOf(Date);
+    const linked = await tdb.db.select().from(coreAudit).where(eq(coreAudit.targetId, staffId));
+    expect(linked.map((e) => [e.action, e.actorId, e.actorName])).toEqual([["user.microsoft-linked", staffId, "Staff Person"]]);
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("/hub/search?q=fire");
     expect(setCookies(res)).toContain("gcpe_entra=; Path=/core/auth/entra; HttpOnly; SameSite=Lax; Max-Age=0; Secure");

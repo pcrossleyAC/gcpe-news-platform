@@ -393,7 +393,7 @@ export async function matchEntraUser(db: Db, oid: string, email: string | null):
     outcome = await db.transaction(async (tx) => {
       await lockUser(tx, candidate.id);
       const [row] = await tx
-        .select({ id: users.id, email: users.email, isActive: users.isActive, entraOid: users.entraOid })
+        .select({ id: users.id, email: users.email, isActive: users.isActive, entraOid: users.entraOid, displayName: users.displayName })
         .from(users)
         .where(and(eq(users.id, candidate.id), sql`lower(${users.email}) = lower(${email})`))
         .for("update");
@@ -401,6 +401,8 @@ export async function matchEntraUser(db: Db, oid: string, email: string | null):
       if (row.entraOid !== null) return row.entraOid === oid ? "linked" : "conflict";
       if (!row.isActive) return "inactive";
       await tx.update(users).set({ entraOid: oid, signInMethod: "entra", updatedAt: new Date() }).where(eq(users.id, row.id));
+      // Not an admin change, but History would otherwise show an unlink with no link before it.
+      await recordAudit(tx, { id: row.id, name: row.displayName }, userEntry(row.id, row.displayName, "user.microsoft-linked"));
       return "linked";
     });
   } catch (e) {

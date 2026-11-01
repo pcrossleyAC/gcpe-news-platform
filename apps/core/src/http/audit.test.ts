@@ -151,8 +151,10 @@ describe("Core admin audit trail", () => {
     await as(adminCookie).post("/api/terms/sector", { kind: "sector", key: "farming", displayName: "Farming", sortOrder: 1, isActive: true, social: SOCIAL }).expect(201);
     await as(adminCookie).put("/api/terms/sector/farming", { kind: "sector", key: "farming", displayName: "Agriculture", sortOrder: 1, isActive: true, social: SOCIAL }).expect(200);
     await as(adminCookie).post("/api/terms/sector/farming/deactivate").expect(204);
+    await as(adminCookie).put("/api/terms/sector/farming", { kind: "sector", key: "farming", displayName: "Agriculture", sortOrder: 1, isActive: true, social: SOCIAL }).expect(200);
     const items = await historyOf("term", "sector:farming");
     expect(items.map((i) => [i.action, i.details])).toEqual([
+      ["term.edited", { kind: "sector", active: { from: false, to: true }, fields: [] }],
       ["term.deactivated", { kind: "sector" }],
       ["term.edited", { kind: "sector", name: { from: "Farming", to: "Agriculture" }, fields: [] }],
       ["term.created", { kind: "sector" }],
@@ -196,6 +198,13 @@ describe("Core admin audit trail", () => {
     expect(latest[1]!.details).toEqual({ at: at.toISOString() });
     const [renamed] = await historyOf("organization", "finance");
     expect(renamed).toMatchObject({ action: "org.edited", actorName: "Scheduled cabinet change", details: { name: { from: "Finance and Treasury", to: "Treasury" }, via: "cabinet-change" } });
+  });
+
+  it("records who re-sent every Core record to the other apps", async () => {
+    const res = await as(adminCookie).post("/api/admin/republish");
+    expect(res.status).toBe(202);
+    const [entry] = await historyOf("core", "republish");
+    expect(entry).toMatchObject({ action: "core.republished", actorName: "Paul Smith", details: { enqueued: res.body.enqueued } });
   });
 
   it("GET /api/audit is Core.Admin only, filters by who, what and BC dates, and pages", async () => {

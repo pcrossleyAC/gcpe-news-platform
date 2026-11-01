@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Accordion } from "@bcgov/design-system-react-components";
 import { Button } from "../../../shared/BusyButton";
+import { useAnnouncer } from "../../../shared/Announcer";
 import { apiFetch } from "../../../api/client";
 import { formatWhen } from "../../../format/dates";
 import { useTenantTimeZone } from "../../../format/tenantTimeZone";
@@ -34,6 +35,20 @@ export function HistoryDisclosure({ targetType, targetId, name, version, orgName
   const [pages, setPages] = useState(1);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { announce } = useAnnouncer();
+  const list = useRef<HTMLUListElement>(null);
+  // Set by Show older changes: how many entries were shown before, so focus can move to the first
+  // new one (the button goes away once everything is shown, and would take the focus with it).
+  const olderFrom = useRef<number | null>(null);
+
+  useEffect(() => {
+    const from = olderFrom.current;
+    if (from === null || items === null || items.length <= from) return;
+    olderFrom.current = null;
+    list.current?.querySelectorAll<HTMLLIElement>("li")[from]?.focus();
+    const added = items.length - from;
+    announce(`${added} older ${added === 1 ? "change" : "changes"} shown`);
+  }, [items, announce]);
 
   useEffect(() => {
     if (!open) return;
@@ -70,16 +85,20 @@ export function HistoryDisclosure({ targetType, targetId, name, version, orgName
           {items === null && !error && <p>Loading…</p>}
           {items !== null && items.length === 0 && <p>No changes recorded yet.</p>}
           {items !== null && items.length > 0 && (
-            <ul aria-label={`Changes to ${name}, newest first`}>
+            <ul ref={list} aria-label={`Changes to ${name}, newest first`}>
               {items.map((e) => (
-                <li key={e.id}>
+                <li key={e.id} tabIndex={-1}>
                   {when(e.at)} — {e.actorName} {describeEntry(e, orgName, when)}
                 </li>
               ))}
             </ul>
           )}
           {items !== null && items.length < total && (
-            <Button size="small" variant="secondary" isPending={loading} onPress={() => setPages((p) => p + 1)}>
+            <Button size="small" variant="secondary" isPending={loading} onPress={() => {
+                olderFrom.current = items.length;
+                setPages((p) => p + 1);
+              }}
+            >
               Show older changes
             </Button>
           )}
