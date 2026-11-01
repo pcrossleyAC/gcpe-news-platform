@@ -1579,20 +1579,24 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>To approve, a release needs at least one ministry, and a lead ministry when it has more than one. &quot;This ministry is no longer active. Change the lead ministry to its successor before approving.&quot; means the lead ministry was replaced; choose the new one in <strong>Categories</strong>.</p>
 <h2>Publish now</h2>
 <ol>
-<li>Choose <strong>Publish now</strong>. A box asks &quot;Publish this release now?&quot; and lists what will happen:<ul>
+<li><p>Choose <strong>Publish now</strong>. A box asks &quot;Publish this release now?&quot; and lists what will happen:</p>
+<ul>
 <li>where it is published, such as &quot;Publishes to news.gov.bc.ca now.&quot;;</li>
 <li>which media distribution lists it is sent to, or &quot;No media distribution lists.&quot;;</li>
-<li>which News On Demand subscribers are emailed, such as &quot;Emails News on Demand subscribers who follow any of: Health \u2014 and everyone subscribed to all news.&quot;, or &quot;News on Demand subscribers will not be emailed.&quot;</li>
+<li>which News On Demand subscribers are emailed, such as &quot;Emails News on Demand subscribers who follow any of: Health \u2014 and everyone subscribed to all news.&quot;, or &quot;News on Demand subscribers will not be emailed.&quot;;</li>
+<li>how many people that is, such as &quot;Emails about 40,000 News on Demand subscribers and about 312 media contacts now. About 1,200 daily digest subscribers get it in the next 5 PM digest.&quot; The first numbers are the people emailed as soon as it goes out; the digest number is the people who get it in that evening&#39;s daily digest, while it is still on the site. Someone on one of its media lists who also follows its categories gets only the media email, and is counted once, as a media contact. If a number can&#39;t be worked out just then, it says &quot;(count unavailable)&quot; or &quot;How many people it reaches isn&#39;t available right now.&quot; You can still publish. A number much bigger than you expect is a sign the wrong categories or lists are ticked.</li>
 </ul>
+<p>If the release has a planned publish date still ahead, the box starts with a warning such as &quot;This release is planned for Nov 3, 2026 10:00 AM. Publishing now puts it out early.&quot; If it is under embargo until then, choose <strong>Cancel</strong> and use <strong>Schedule</strong> instead.</p>
 </li>
-<li>Check the list. Choose <strong>Publish now</strong>.</li>
+<li><p>Check the list. Choose <strong>Publish now</strong>.</p>
+</li>
 </ol>
 <p>The status shows <strong>Publishing...</strong>, then <strong>Published</strong>, usually within a minute. The page updates by itself: &quot;This page updates on its own until the release is done \u2014 no need to reload.&quot;</p>
 <h2>Schedule</h2>
 <ol>
 <li>Choose <strong>Schedule</strong>. If the release has a planned publish date still ahead, the date and time are filled in from it, and the panel says &quot;Filled in from the planned publish date.&quot;</li>
 <li>Enter the <strong>Date</strong> and <strong>Time (BC time)</strong>. A time that has passed shows &quot;Choose a time in the future, or use Publish now.&quot;</li>
-<li>Choose <strong>Confirm schedule</strong>. A box asks, for example, &quot;Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?&quot; and lists who will be emailed, as for <strong>Publish now</strong>.</li>
+<li>Choose <strong>Confirm schedule</strong>. A box asks, for example, &quot;Schedule this release for Friday, November 20, 2026 at 10:00 AM Pacific time?&quot; and lists who will be emailed, and about how many people, as for <strong>Publish now</strong>.</li>
 <li>Choose <strong>Schedule</strong>.</li>
 </ol>
 <p>The release moves to <strong>Scheduled</strong>. At that time it publishes by itself and the emails go out. Until then nothing is public: not the page, not its files, not the emails.</p>
@@ -1603,12 +1607,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Set this in <strong>Publish settings</strong> before you publish.</p>
 <ul>
 <li><strong>Send to News On Demand subscribers</strong>: ticked for releases, unticked for stories and factsheets, and not available for advisories.</li>
-<li><strong>Media distribution lists</strong>: tick each list that should get the media email. With none ticked, no media email goes out. On a release brought over from the old system you may see &quot;As saved, these lists won&#39;t get the media email. Save Publish settings and they will.&quot; <strong>Publish settings</strong> then says <strong>Unsaved</strong>: choose <strong>Save changes</strong> and the ticked lists get it. If that release went out before and is now off the site, it says &quot;As saved, these lists won&#39;t get the media email when it&#39;s republished.&quot; instead, and nothing is marked unsaved: the old system may already have emailed those lists. A retired list a release already had shows &quot;(retired)&quot; and gets nothing; if only retired lists are ticked, the section says &quot;The ticked lists are retired and won&#39;t get the media email.&quot;</li>
+<li><strong>Media distribution lists</strong>: tick each list that should get the media email. With none ticked, no media email goes out. On a release brought over from the old system you may see &quot;As saved, these lists won&#39;t get the media email. Save Publish settings and they will.&quot; <strong>Publish settings</strong> then says <strong>Unsaved</strong>: choose <strong>Save changes</strong> and the ticked lists get it. If that release went out before and is now off the site, it says &quot;As saved, these lists won&#39;t get the media email when it&#39;s republished.&quot; instead, and nothing is marked unsaved: the old system may already have emailed those lists. A retired list a release already had shows &quot;(retired)&quot; and gets nothing; if only retired lists are ticked, the section says &quot;The ticked lists are retired and won&#39;t get the media email.&quot; Once a release or factsheet has gone out, its lists are greyed out with &quot;Media lists can&#39;t change after it has gone out.&quot;, even if it was unpublished since.</li>
 </ul>
 <p>See <a href="/hub/help/manuals/nrms-editor/editor-what-happens-next">Who is emailed, and when it goes public</a>.</p>
 <h2>Take back an approval or a schedule</h2>
 <ul>
-<li><strong>Cancel schedule</strong> stops a scheduled release from going out. It goes back to <strong>Drafts</strong> as approved, and its time stays as the planned date. It doesn&#39;t ask first.</li>
+<li><strong>Cancel schedule</strong> stops a scheduled release from going out. A box asks first, naming the time, for example &quot;Cancel the publish on Nov 3, 2026 10:00 AM?&quot;. When the time is less than 30 minutes away it also says how soon, such as &quot;It&#39;s due to go out in 10 minutes.&quot; Choose <strong>Cancel schedule</strong> to cancel it, or <strong>Keep schedule</strong> to leave it as it is. A cancelled release goes back to <strong>Drafts</strong> as approved, and its time stays as the planned date.</li>
 <li><strong>Return to draft</strong> makes an approved or scheduled release a draft again. A box asks &quot;Return this release to draft?&quot; and says it gives up its reference number and release number; it gets new ones when it is approved again. Choose <strong>Return to draft</strong>. This is only for a release that has never been published.</li>
 </ul>
 <h2>If publishing fails</h2>
@@ -1688,7 +1692,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>The public page shows the change within a couple of minutes.</li>
 <li>Nobody is emailed again. People already emailed keep the first version; the 5 pm digest carries the corrected one if you correct it before 5 pm.</li>
-<li>Media lists can&#39;t be changed on a release or factsheet once it has gone out.</li>
+<li>Media lists can&#39;t be changed on a release or factsheet once it has gone out: the boxes in <strong>Publish settings</strong> are greyed out, with &quot;Media lists can&#39;t change after it has gone out.&quot;</li>
 </ul>
 <h2>When you unpublish</h2>
 <ul>
@@ -1703,13 +1707,13 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>The <strong>Publish now</strong> box says so, with the date. Once that 5 pm has passed, it says &quot;That time has passed, so daily digest subscribers who didn&#39;t get it then won&#39;t.&quot;</p>
 <h2>Embargoes</h2>
 <p>There is no separate embargo setting. <strong>Schedule</strong> is the embargo: until the scheduled time, the public page, the files and the emails don&#39;t exist outside the Hub. Anyone with Hub access can read the release before then.</p>
-`,changed:"2026-10-30"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <h2>Correct a published release</h2>
 <ol>
-<li>Open the release and make the change.</li>
-<li>Choose <strong>Save changes</strong>.</li>
+<li>Open the release and make the change. The bar along the bottom says &quot;Saving republishes this release on the public site.&quot;</li>
+<li>Choose <strong>Save and republish</strong>.</li>
 </ol>
-<p>It republishes at once: no box asks first. The status shows <strong>Republishing...</strong>, then <strong>Published</strong>, usually within a minute. <strong>History</strong> shows &quot;Republished to \u2026&quot;; with <strong>Show all</strong> ticked it also shows &quot;Edited after publishing \u2014 will republish&quot;. The public page shows the change within a couple of minutes. Nobody is emailed again.</p>
+<p>It republishes at once: no box asks first. Pressing Enter in a one-line field or Ctrl+S (Command+S on a Mac) saves and republishes too, so finish the whole correction before you press either. The status shows <strong>Republishing...</strong>, then <strong>Published</strong>, usually within a minute. <strong>History</strong> shows &quot;Republished to \u2026&quot;; with <strong>Show all</strong> ticked it also shows &quot;Edited after publishing \u2014 will republish&quot;. The public page shows the change within a couple of minutes. Nobody is emailed again.</p>
 <p>Uploading or removing a file counts as a correction too. If a correction fails, the release shows &quot;This release failed&quot; and stays on the public site as it was. Fix the problem, save, then choose <strong>Publish now</strong>. <strong>Schedule</strong> isn&#39;t offered: a failed correction goes out at once.</p>
 <h2>Top and Feature spots</h2>
 <p>Each place on the public site has one Top and one Feature spot: the home page, and each ministry, sector and theme page. A release can take them only while it is published.</p>
@@ -1737,7 +1741,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>A draft that was never approved is deleted for good: &quot;This draft has never been approved \u2014 deleting it is permanent and can&#39;t be undone.&quot;</li>
 <li>A release with a reference number disappears from the folders and <strong>Search</strong>, but its record is kept: &quot;This release has a reference number (NEWS-00010) \u2014 deleting it hides it from the lists but keeps the record.&quot;</li>
 </ul>
-`,changed:"2026-10-31"},F={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},O={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <h2>Open a release you know</h2>
 <ol>
 <li>Type into <strong>Find a release</strong>, at the top of the side menu, one of:<ul>
@@ -1762,7 +1766,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Results include drafts, scheduled and published releases, newest first, 20 to a page. Deleted releases don&#39;t appear. If nothing matches, you see &quot;No releases match&quot; and your words; if a ministry or sector is chosen, choose <strong>Clear ministry and sector filters</strong> to try again without them.</p>
 <p>Search looks at headlines only. To find a release by other words, use <strong>Similar published releases</strong> on a release, or the public site&#39;s own search.</p>
 <p>A reference such as HLTH-123 also finds the releases linked to that Calendar activity. Anything that looks like this, such as COVID-19, is also searched for in headlines. The headlines are left out only when it names an activity you can see in the Calendar that has releases linked to it.</p>
-`,changed:"2026-10-30"},O={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-30"},F={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>On <strong>Website</strong> you see two tabs. Both only show information.</p>
 <h2>What&#39;s featured where</h2>
 <p>The table lists each place on the public site that has a Top or Feature release: <strong>Home</strong>, and each ministry, sector or theme page. <strong>Top</strong> and <strong>Feature</strong> show the release&#39;s headline. A dash means the spot is empty. If nothing is set anywhere, the tab says &quot;Nothing is currently Top or Feature anywhere.&quot;</p>
@@ -2126,10 +2130,34 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Alerts posted by Emergency Info BC are checked every 5 minutes. A new alert goes at once to everyone active on the <strong>Emergency Info BC Alerts</strong> list, whatever timing they chose. An alert edited later is not sent again.</p>
 <h2>Media lists</h2>
 <p>Release editors choose media lists for a release. Each member of those lists gets the full-text media version. A reporter who is also an <strong>As it happens</strong> subscriber for that release gets one email, the media version, not two.</p>
+<h2>When a subscriber unsubscribes</h2>
+<p>Every release, digest, alert and media list email ends with an <strong>Unsubscribe</strong> link. It opens the Unsubscribe page on the public site, which asks them to confirm with its <strong>Unsubscribe</strong> button. Opening the link alone changes nothing. Once they confirm, the page says &quot;You&#39;re unsubscribed.&quot; and their status becomes <strong>Unsubscribed or deleted</strong>. Some email programs also show their own unsubscribe button, which unsubscribes them at once.</p>
+<p>If something goes wrong, the page says so:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>What the page says</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;We couldn&#39;t unsubscribe you. You&#39;re still subscribed. Try again in a few minutes.&quot;</td>
+<td>Nothing changed. They can choose <strong>Unsubscribe</strong> again.</td>
+</tr>
+<tr>
+<td>&quot;This unsubscribe link isn&#39;t complete. It may have been cut off in your email.&quot;</td>
+<td>The link was cut short, which some email programs do to long links.</td>
+</tr>
+<tr>
+<td>&quot;This link has expired.&quot;</td>
+<td>They came from the manage page, and its link lasts only 24 hours.</td>
+</tr>
+</tbody></table></div>
+<p>Each of these also points them to the public <strong>Manage Subscription</strong> page, where they can ask for a new link by email and unsubscribe from there.</p>
 <h2>Emails about the subscription itself</h2>
 <p>People who sign up on the public site get an email asking them to confirm. They have no record here until they do. They also get an email when they ask to change their preferences or address. These emails still go out while sending is paused.</p>
 <p>Nothing you do on the <strong>Subscribers</strong> screens emails the subscriber. Adding, changing, deactivating and deleting are all silent. Tell the person yourself if they need to know.</p>
-`,changed:"2026-10-30"},j={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+`,changed:"2026-10-31"},j={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
 <p><strong>Find subscribers</strong> lists everyone who has signed up or been added, 50 to a page. From a subscriber&#39;s record you change their lists, their address and whether they get email.</p>
 <h2>Find someone</h2>
 <ol>
@@ -2517,7 +2545,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Read the numbers</h2>
 <ul>
 <li><strong>Handed off, not bounced</strong> counts emails handed to Distribution, the sending service, less bounces. It is not proof of delivery. An email still queued, or one Distribution failed to send, still counts.</li>
-<li><strong>Not sent</strong> means not yet handed off, including a send still going out.</li>
+<li><strong>Not sent</strong> means not yet handed off: a send still going out, held while News On Demand sending is paused, failed, or cancelled on <strong>Operations</strong>.</li>
 <li><strong>Items in window</strong> on <strong>Daily digest runs</strong> is worked out when you open the report. A release withdrawn since the run no longer counts, so an older run&#39;s number can go down.</li>
 <li><strong>Distribution sent and bounced</strong> won&#39;t match the other two reports. It counts by the day it sent, has its own <strong>Failed</strong> column, and counts every bounce. The other reports go by the day the release was published or the digest ran, and count only bounces matched to a news email.</li>
 <li><strong>Recent unsubscribes</strong> doesn&#39;t list people disabled by bounces. Find them on <strong>Find subscribers</strong> with the <strong>Disabled</strong> status. It does include people who unsubscribed in the old News On Demand, at the dates they left.</li>
@@ -2551,7 +2579,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Only <strong>Distribution sent and bounced</strong> is affected. The other reports still work.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},$={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
+`,changed:"2026-10-31"},$={html:`<p><strong>Who this is for:</strong> Subscribers administrators (NoD.Admin).</p>
 <p><strong>Operations</strong> stops and starts outgoing email, shows news email that is held or failed, sets who gets the daily bounce summary, and controls the retention purge. Only Subscribers administrators see it.</p>
 <h2>Pause News On Demand sending</h2>
 <p>Pause this to hold news email, for example during an election period or while a problem is fixed.</p>
@@ -2562,8 +2590,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>While paused, no as-it-happens, digest, emergency alert or media list email leaves News On Demand. Confirmation emails to people signing up still go out.</p>
 <p>To resume:</p>
 <ol>
-<li>Choose <strong>Resume News On Demand sending</strong>. The Hub asks &quot;Resume News On Demand sending?&quot; and says how much goes out straight away, for example &quot;1,205 held emails for 3 releases start going out straight away. The oldest has waited 12 days, since \u2026&quot;. When nothing is held, it says &quot;Nothing is held, so nothing goes out straight away.&quot;</li>
-<li>Choose <strong>Confirm resume</strong>. To cancel some held email first, choose <strong>Cancel</strong> instead and use <strong>Outgoing news email</strong>, below.</li>
+<li>Choose <strong>Resume News On Demand sending</strong>. The Hub asks &quot;Resume News On Demand sending?&quot; and says how much goes out straight away, counted as you open the question, for example &quot;1,205 held emails for 3 releases start going out straight away. The oldest has waited 12 days, since \u2026&quot;. When nothing is held, it says &quot;Nothing is held, so nothing goes out straight away.&quot;</li>
+<li>Choose <strong>Confirm resume</strong>. You see how much was actually released, for example &quot;News On Demand sending resumed. 1,205 held emails for 3 releases are going out now.&quot; To cancel some held email first, choose <strong>Cancel</strong> instead and use <strong>Outgoing news email</strong>, below.</li>
 </ol>
 <h2>Pause Distribution</h2>
 <p>Distribution is the service that sends email for every app. Pause it only when email from all of them must stop.</p>
@@ -2830,11 +2858,35 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Alerts posted by Emergency Info BC are checked every 5 minutes. A new alert goes at once to everyone active on the <strong>Emergency Info BC Alerts</strong> list, whatever timing they chose. An alert edited later is not sent again.</p>
 <h2>Media lists</h2>
 <p>Release editors choose media lists for a release. Each member of those lists gets the full-text media version. A reporter who is also an <strong>As it happens</strong> subscriber for that release gets one email, the media version, not two.</p>
+<h2>When a subscriber unsubscribes</h2>
+<p>Every release, digest, alert and media list email ends with an <strong>Unsubscribe</strong> link. It opens the Unsubscribe page on the public site, which asks them to confirm with its <strong>Unsubscribe</strong> button. Opening the link alone changes nothing. Once they confirm, the page says &quot;You&#39;re unsubscribed.&quot; and their status becomes <strong>Unsubscribed or deleted</strong>. Some email programs also show their own unsubscribe button, which unsubscribes them at once.</p>
+<p>If something goes wrong, the page says so:</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>What the page says</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;We couldn&#39;t unsubscribe you. You&#39;re still subscribed. Try again in a few minutes.&quot;</td>
+<td>Nothing changed. They can choose <strong>Unsubscribe</strong> again.</td>
+</tr>
+<tr>
+<td>&quot;This unsubscribe link isn&#39;t complete. It may have been cut off in your email.&quot;</td>
+<td>The link was cut short, which some email programs do to long links.</td>
+</tr>
+<tr>
+<td>&quot;This link has expired.&quot;</td>
+<td>They came from the manage page, and its link lasts only 24 hours.</td>
+</tr>
+</tbody></table></div>
+<p>Each of these also points them to the public <strong>Manage Subscription</strong> page, where they can ask for a new link by email and unsubscribe from there.</p>
 <h2>Emails about the subscription itself</h2>
 <p>People who sign up on the public site get an email asking them to confirm. They have no record here until they do, so the <strong>Pending</strong> choice under <strong>Status</strong> on <strong>Find subscribers</strong> finds no one. They also get an email when they ask to change their preferences or address.</p>
 <p>Nothing you do on the <strong>Subscribers</strong> screens emails the subscriber. Adding, changing, deactivating, deleting and media list changes are all silent. Tell the person yourself if they need to know.</p>
 <p>A Subscribers administrator can pause News On Demand sending. While it is paused, release, digest, alert and media list email waits, and goes out when they resume. Confirmation emails to people signing up still go out.</p>
-`,changed:"2026-10-30"},st={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+`,changed:"2026-10-31"},st={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
 <p><strong>Find subscribers</strong> lists everyone who has signed up or been added, 50 to a page, in address order. From a subscriber&#39;s record you change their lists, their address and whether they get email.</p>
 <h2>Find someone</h2>
 <ol>
@@ -3223,7 +3275,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Read the numbers</h2>
 <ul>
 <li><strong>Handed off, not bounced</strong> counts emails handed to Distribution, the sending service, less bounces. It is not proof of delivery. An email still queued, or one Distribution failed to send, still counts.</li>
-<li><strong>Not sent</strong> means not yet handed off, including a send still going out.</li>
+<li><strong>Not sent</strong> means not yet handed off: a send still going out, held while News On Demand sending is paused, failed, or cancelled by a Subscribers administrator.</li>
 <li><strong>Items in window</strong> on <strong>Daily digest runs</strong> is worked out when you open the report. A release withdrawn since the run no longer counts, so an older run&#39;s number can go down.</li>
 <li><strong>Distribution sent and bounced</strong> won&#39;t match the other two reports. It counts by the day it sent, has its own <strong>Failed</strong> column, and counts every bounce. The other reports go by the day the release was published or the digest ran, and count only bounces matched to a news email.</li>
 </ul>
@@ -3266,7 +3318,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Reload the page.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},it={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
+`,changed:"2026-10-31"},it={html:`<p><strong>Who this is for:</strong> Subscribers editors (NoD.Editor).</p>
 <p><strong>Lists and categories</strong> shows every list people can subscribe to, how many active subscribers each one has, and whether it is offered. You can look but not change it: Subscribers administrators decide what is offered and in what order.</p>
 <p>At the top, <strong>All news</strong> shows how many active subscribers chose all news. Under each category, such as <strong>Ministries</strong> or <strong>Tags</strong>, each list shows <strong>Active subscribers</strong> and <strong>Offered</strong>:</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -3364,7 +3416,41 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p><strong>Help</strong>, at the top of every screen, opens the page of this manual for the screen you are on. The Help page also lists the keyboard shortcuts. Shortcuts that save, such as \u2318S or Ctrl+S, do nothing for you on the <strong>Subscribers</strong> screens.</p>
 <h2>Signing in</h2>
 <p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
-`,changed:"2026-10-30"},lt=null,gt=null,ut={html:`<p><strong>Who this is for:</strong> Subscribers viewers (NoD.Viewer).</p>
+`,changed:"2026-10-30"},lt={html:`<p><strong>Who this is for:</strong> Subscribers viewers (NoD.Viewer).</p>
+<p>Only <strong>Active</strong> subscribers get news email. <strong>Disabled</strong> and <strong>Unsubscribed or deleted</strong> subscribers get none.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Timing</th>
+<th>What they get</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>As it happens</strong></td>
+<td>One email for each matching release, soon after it is published.</td>
+</tr>
+<tr>
+<td><strong>Daily digest</strong></td>
+<td>One email at 5:00 pm BC time listing the matching releases since the last digest. Media advisories are left out. No matching releases means no digest.</td>
+</tr>
+<tr>
+<td><strong>As it happens and daily digest</strong></td>
+<td>Both.</td>
+</tr>
+<tr>
+<td><strong>None (media lists only)</strong></td>
+<td>No news release email. This person is here only for media lists.</td>
+</tr>
+</tbody></table></div>
+<p>Lists are ministries, sectors, themes and tags. <strong>All news</strong> covers every release that names a ministry.</p>
+<ul>
+<li><strong>Emergency alerts</strong> from Emergency Info BC go at once to everyone active on the <strong>Emergency Info BC Alerts</strong> list, whatever timing they chose.</li>
+<li><strong>Media lists</strong>: release editors choose media lists for a release, and each member gets the full-text media version. A reporter who is also an <strong>As it happens</strong> subscriber for that release gets one email, not two.</li>
+<li>A correction to a release never emails anyone again.</li>
+<li>A Subscribers administrator can pause sending. While it is paused, email waits and goes out when they resume.</li>
+</ul>
+<p>Nothing staff do on the <strong>Subscribers</strong> screens emails the subscriber.</p>
+`,changed:"2026-10-30"},gt=null,ut={html:`<p><strong>Who this is for:</strong> Subscribers viewers (NoD.Viewer).</p>
 <p><strong>Media lists</strong> holds the reporters on each media list. Release editors pick these lists on a release, and every member gets the full-text media version.</p>
 <p>The table shows each list&#39;s <strong>Members</strong>, how many <strong>Need attention</strong>, and its <strong>Status</strong>. <strong>Members</strong> counts only the members who get the list&#39;s email. Disabled members get nothing, so they aren&#39;t counted; the cell then adds, for example, &quot;(and 2 Disabled, who get nothing)&quot;. A <strong>Retired</strong> list can&#39;t be put on a release, and nothing is sent to it.</p>
 <h2>See who is on a list</h2>
@@ -3475,7 +3561,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Read the numbers</h2>
 <ul>
 <li><strong>Handed off, not bounced</strong> counts emails handed to Distribution, the sending service, less bounces. It is not proof of delivery. An email still queued, or one Distribution failed to send, still counts.</li>
-<li><strong>Not sent</strong> means not yet handed off, including a send still going out.</li>
+<li><strong>Not sent</strong> means not yet handed off: a send still going out, held while News On Demand sending is paused, failed, or cancelled by a Subscribers administrator.</li>
 <li>Daily digest emails are counted in <strong>Daily digest runs</strong>, once for each subscriber, not in <strong>Sends per release</strong>.</li>
 <li><strong>Items in window</strong> on <strong>Daily digest runs</strong> is worked out when you open the report. A release withdrawn since the run no longer counts, so an older run&#39;s number can go down.</li>
 <li><strong>Distribution sent and bounced</strong> won&#39;t match the other two reports. It counts by the day it sent, has its own <strong>Failed</strong> column, and counts every bounce. The other reports go by the day the release was published or the digest ran, and count only bounces matched to a news email.</li>
@@ -3519,7 +3605,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Reload the page.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},mt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-31"},mt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p>You run the Corporate Calendar: who can use it, the choices offered on activities, and which comm contact looks after each activity. If you belong to an HQ organization, you also review what the ministries enter.</p>
 <h2>Which administrator you are</h2>
 <p>Your role, and whether one of your ministries is an HQ organization such as GCPE Headquarters, decide what you can do.</p>
@@ -5501,7 +5587,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>A choice that has been retired shows &quot;(no longer in use)&quot; when an activity already has it. The activity keeps it. You can&#39;t choose it for another activity.</p>
 <h2>Long text from the old Calendar</h2>
 <p>Some activities brought over from the old Calendar have longer text than the limits allow. They still save. The limits apply only to text you change.</p>
-`,changed:"2026-10-31"},Ft={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},Ot={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p>Two things can open an activity read-only even though you may change it: someone else editing it, and the daily change freeze.</p>
 <h2>When someone else is editing</h2>
 <p>Only one person edits an activity at a time. The first person to change a field holds the edit lock. Anyone else who opens the activity sees, for example, &quot;Pat Example is editing this activity (since 2:15 PM). It opens for editing when they save or cancel, or after 15 minutes without input.&quot;</p>
@@ -5522,7 +5608,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>These still work during the freeze: the list, filters, <strong>My Queries</strong>, the star, <strong>Updates</strong>, <strong>View changes</strong>, the Excel export and the reports.</p>
 <p>For an urgent change during the freeze, contact the Corp Cal Manager at GCPE HQ.</p>
 <p>If you are an HQ editor, the freeze doesn&#39;t apply to you. You see the times on the list, but you can keep working.</p>
-`,changed:"2026-10-30"},Ot={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor) who belong to an HQ organization, such as GCPE Headquarters.</p>
+`,changed:"2026-10-30"},Ft={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor) who belong to an HQ organization, such as GCPE Headquarters.</p>
 <p>If none of your ministries is an HQ organization, nothing on this page applies to you.</p>
 <h2>What HQ editors can do that ministry editors can&#39;t</h2>
 <ul>
@@ -6044,4 +6130,4 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Take down or change any election notice on <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Site banner</strong>, and publish. See <a href="/hub/help/manuals/nrms-site-editor/site-banner">Site banner</a>.</li>
 <li>Update the ministers&#39; contact records in Media Hub. The Hub does not change them.</li>
 </ol>
-`,changed:"2026-10-30"},Kt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":u,"site-editor-overview":c,carousel:p,"emergency-pins":m,"live-feed":y,"resource-links":b,"website-files":f,"featured-and-website-log":v,"site-settings":w,"site-banner":q,"theme-colours":C,"footer-and-navigation":k,"social-links":T,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":D,"editor-approve-and-publish":E,"editor-what-happens-next":I,"editor-correct-unpublish-delete":L,"editor-find-a-release":F,"editor-featured-and-log":O,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":V,"who-gets-which-email":K,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ut,"nod-viewer-lists-and-categories":ct,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":yt,"calendar-users":bt,"calendar-transfer":ft,"calendar-lookups":vt,"calendar-delete-activity":wt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":kt,"calendar-advanced-list":Tt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Dt,"calendar-editor-updates":Et,"calendar-editor-activity":It,"calendar-editor-fields":Lt,"calendar-editor-lock-and-freeze":Ft,"calendar-editor-hq":Ot,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Vt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",yt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",Tt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",kt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",wt as"calendar-delete-activity",It as"calendar-editor-activity",Lt as"calendar-editor-fields",Ot as"calendar-editor-hq",Dt as"calendar-editor-list",Ft as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",Et as"calendar-editor-updates",qt as"calendar-hq-review",vt as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",ft as"calendar-transfer",Ct as"calendar-undelivered-events",bt as"calendar-users",p as carousel,n as"core-admin-overview",Kt as default,ot as"editor-add-a-subscriber",E as"editor-approve-and-publish",dt as"editor-bounces",L as"editor-correct-unpublish-delete",O as"editor-featured-and-log",D as"editor-files-and-media",F as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",I as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",v as"featured-and-website-log",j as"find-and-change-subscribers",k as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",y as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Vt as"new-government",V as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ct as"nod-viewer-lists-and-categories",ut as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",b as"resource-links",d as"sectors-themes-and-tags",q as"site-banner",W as"site-editor-organizations",c as"site-editor-overview",x as"site-identity",w as"site-settings",T as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",f as"website-files",u as"website-project-blue-bridge",K as"who-gets-which-email"};
+`,changed:"2026-10-30"},Kt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":u,"site-editor-overview":c,carousel:p,"emergency-pins":m,"live-feed":y,"resource-links":b,"website-files":f,"featured-and-website-log":v,"site-settings":w,"site-banner":q,"theme-colours":C,"footer-and-navigation":k,"social-links":T,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":D,"editor-approve-and-publish":E,"editor-what-happens-next":I,"editor-correct-unpublish-delete":L,"editor-find-a-release":O,"editor-featured-and-log":F,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":V,"who-gets-which-email":K,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ut,"nod-viewer-lists-and-categories":ct,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":yt,"calendar-users":bt,"calendar-transfer":ft,"calendar-lookups":vt,"calendar-delete-activity":wt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":kt,"calendar-advanced-list":Tt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Dt,"calendar-editor-updates":Et,"calendar-editor-activity":It,"calendar-editor-fields":Lt,"calendar-editor-lock-and-freeze":Ot,"calendar-editor-hq":Ft,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Vt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",yt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",Tt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",kt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",wt as"calendar-delete-activity",It as"calendar-editor-activity",Lt as"calendar-editor-fields",Ft as"calendar-editor-hq",Dt as"calendar-editor-list",Ot as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",Et as"calendar-editor-updates",qt as"calendar-hq-review",vt as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",ft as"calendar-transfer",Ct as"calendar-undelivered-events",bt as"calendar-users",p as carousel,n as"core-admin-overview",Kt as default,ot as"editor-add-a-subscriber",E as"editor-approve-and-publish",dt as"editor-bounces",L as"editor-correct-unpublish-delete",F as"editor-featured-and-log",D as"editor-files-and-media",O as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",I as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",v as"featured-and-website-log",j as"find-and-change-subscribers",k as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",y as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Vt as"new-government",V as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ct as"nod-viewer-lists-and-categories",ut as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",b as"resource-links",d as"sectors-themes-and-tags",q as"site-banner",W as"site-editor-organizations",c as"site-editor-overview",x as"site-identity",w as"site-settings",T as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",f as"website-files",u as"website-project-blue-bridge",K as"who-gets-which-email"};
