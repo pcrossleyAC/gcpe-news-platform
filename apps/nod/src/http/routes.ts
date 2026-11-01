@@ -1,4 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import { getOutgoing } from "../outgoing";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
@@ -157,8 +158,12 @@ export function apiRoutes(
     "/settings/resume",
     requireRole("NoD.Admin"),
     run(async (req, res) => {
-      const { changed } = await setPaused({ db, ...settings }, false, actorOf(req).name);
-      res.json({ paused: false, changed });
+      // The held count as it unpauses (review M4), so the screen says the true number.
+      const { changed, released } = await setPaused({ db, ...settings }, false, actorOf(req).name, async (tx) => {
+        const { emails, releases } = (await getOutgoing(tx)).held;
+        return { emails, releases };
+      });
+      res.json({ paused: false, changed, released });
     }),
   );
 

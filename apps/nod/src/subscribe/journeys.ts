@@ -253,11 +253,12 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
  * (global constraints, "Unsubscribe means everything") -- shared by one-click, token-link and
  * every email kind, since they all route through here, and by the importer for an unsubscribe
  * legacy recorded (`unsubscribedAt`, its own date). `s` must have been read FOR UPDATE under its
- * address lock (`withLockedSubscriber`). Already ended is a no-op. */
-export async function endLockedSubscriber(tx: DbOrTx, s: Pick<SubscriberRow, "id" | "status">, actor = SELF, unsubscribedAt?: Date) {
+ * address lock (`withLockedSubscriber`). Already ended is a no-op. `detail` marks a staff delete
+ * made because the person asked staff to stop ("asked staff", staff-subscribers/actions.ts). */
+export async function endLockedSubscriber(tx: DbOrTx, s: Pick<SubscriberRow, "id" | "status">, actor = SELF, unsubscribedAt?: Date, detail = "") {
   if (s.status === "deleted") return;
   await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, s.id));
-  await writeHistory(tx, s.id, actor, "unsubscribed", "", unsubscribedAt);
+  await writeHistory(tx, s.id, actor, "unsubscribed", detail, unsubscribedAt);
   await optOutMediaMemberships(tx, s.id, actor);
 }
 

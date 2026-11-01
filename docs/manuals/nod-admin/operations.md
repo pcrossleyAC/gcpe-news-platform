@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Subscribers administrators (NoD.Admin).
 
-**Operations** stops and starts outgoing email, sets who gets the daily bounce summary, and controls the retention purge. Only Subscribers administrators see it.
+**Operations** stops and starts outgoing email, shows news email that is held or failed, sets who gets the daily bounce summary, and controls the retention purge. Only Subscribers administrators see it.
 
 ## Pause News On Demand sending
 
@@ -20,7 +20,10 @@ Pause this to hold news email, for example during an election period or while a 
 
 While paused, no as-it-happens, digest, emergency alert or media list email leaves News On Demand. Confirmation emails to people signing up still go out.
 
-To resume, choose **Resume News On Demand sending**, then **Confirm resume**. The Hub warns that held emails start going out straight away.
+To resume:
+
+1. Choose **Resume News On Demand sending**. The Hub asks "Resume News On Demand sending?" and says how much goes out straight away, counted as you open the question, for example "1,205 held emails for 3 releases start going out straight away. The oldest has waited 12 days, since …". When nothing is held, it says "Nothing is held, so nothing goes out straight away."
+2. Choose **Confirm resume**. You see how much was actually released, for example "News On Demand sending resumed. 1,205 held emails for 3 releases are going out now." To cancel some held email first, choose **Cancel** instead and use **Outgoing news email**, below.
 
 ## Pause Distribution
 
@@ -33,9 +36,29 @@ System notices still go out while paused. These include sign-up confirmations, m
 
 To resume, choose **Resume Distribution**, then **Confirm resume**. The Hub warns that queued email starts going out straight away.
 
-## Before you resume after a long pause
+## Outgoing news email
 
-Everything held goes out when you resume, however old it is. After a long pause, decide first whether old releases should still be sent. An email held more than 24 hours that then fails to send is not tried again.
+This section shows news email that hasn't gone out yet, and news email that failed.
+
+While News On Demand sending is paused, it says how much is held, for example "Held while paused: 1,205 emails for 3 releases. The oldest has waited 12 days, since …". The **Held news email** table has one row per release and type: **As it happens**, **Media list**, **Emergency alert**, or **Daily digest** (one row per daily digest, with how many releases it carries). **Emails** counts the active subscribers it would still go to, leaving out anyone an earlier try already reached. **Note** shows when an email has already been tried and what went wrong.
+
+While sending is running, the section normally says "Nothing is waiting to go out." Anything listed is waiting to be tried again.
+
+### Before you resume after a long pause
+
+Everything held goes out when you resume, however old it is. After a long pause, decide first whether old releases should still be sent, and cancel the ones that shouldn't:
+
+1. Choose **Cancel** on a release's row, or **Cancel all held email**.
+2. The Hub asks "Cancel held email?", says how many emails for how many releases won't be sent, and lists each one. If emergency alerts are among them, it adds, for example, "This includes 1 emergency alert."
+3. Choose **Cancel held email**. You see, for example, "Cancelled 1,200 held emails." If some had already started going out just before the pause, the message adds "Some had already started going out, so they weren’t cancelled." To keep them, choose **Keep it**.
+
+Each cancel is recorded with your name and the releases and daily digests it cancelled.
+
+Cancelled email is never sent, and this can't be undone. If an editor later unpublishes the release and publishes it again, it is emailed again as a new release. On **Sends per release**, cancelled as-it-happens and media list emails count as **Not sent**; a cancelled daily digest is left out of **Daily digest runs**. You can cancel only while News On Demand sending is paused. If someone resumed it meanwhile, you see "News On Demand sending isn’t paused, so nothing was cancelled. Pause it first."
+
+### Failed in the last 30 days
+
+News email that Distribution refused, or that kept failing for 24 hours, is listed under **Failed in the last 30 days** with how many emails weren't sent and what went wrong. An email held more than 24 hours that then fails to send is not tried again. Failed email isn't sent again by itself: ask technical support to look at the error. When nothing failed, you see "No news email failed in the last 30 days."
 
 ## Who is told
 

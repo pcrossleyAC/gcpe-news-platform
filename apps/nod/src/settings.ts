@@ -21,7 +21,8 @@ export type OperationsAction =
   | "report-exported"
   | "purge-enabled"
   | "purge-disabled"
-  | "purge-ran";
+  | "purge-ran"
+  | "held-email-cancelled";
 
 export async function getSettings(db: Db): Promise<{ paused: boolean; lastDigestCutoff: string | null }> {
   const [row] = await db.select({ paused: nodSettings.paused, lastDigestCutoff: nodSettings.lastDigestCutoff }).from(nodSettings).where(eq(nodSettings.id, 1));
@@ -150,8 +151,15 @@ export interface SetPausedDeps extends OpsEmailDeps {
  * email send happens after that transaction commits -- a send failure must never roll back (or
  * even call into question) the setting change that already took effect.
  */
-export async function setPaused(deps: SetPausedDeps, paused: boolean, actor: string): Promise<{ changed: boolean }> {
+export async function setPaused<R>(
+  deps: SetPausedDeps,
+  paused: boolean,
+  actor: string,
+  /** Review M4: counts, inside the resume's own transaction, what the resume releases. */
+  countReleased?: (tx: DbOrTx) => Promise<R>,
+): Promise<{ changed: boolean; released: R | null }> {
   const action: OperationsAction = paused ? "paused" : "resumed";
+  let released: R | null = null;
 
   const logged = await deps.db.transaction(async (tx) => {
     const [row] = await tx
@@ -160,12 +168,22 @@ export async function setPaused(deps: SetPausedDeps, paused: boolean, actor: str
       .where(and(eq(nodSettings.id, 1), ne(nodSettings.paused, paused)))
       .returning({ id: nodSettings.id });
     if (!row) return null; // already in the requested state -- no log, no email
+    // In a savepoint, and never fatal: resuming matters more than the number (a failed query
+    // would otherwise abort this transaction and with it the resume).
+    if (countReleased) {
+      try {
+        released = await tx.transaction((sp) => countReleased(sp));
+      } catch (e) {
+        console.error("[nod] resume: couldn't count the held email it released", safeErrorLabel(e));
+        released = null;
+      }
+    }
     return writeOpsLog(tx, actor, action);
   });
-  if (!logged) return { changed: false };
+  if (!logged) return { changed: false, released: null };
 
   await emailOpsChange(deps, logged, actor, action, paused ? "paused" : "resumed", "BC Gov News On Demand sending");
-  return { changed: true };
+  return { changed: true, released };
 }
 
 export interface SetDistributionPausedDeps extends OpsEmailDeps {

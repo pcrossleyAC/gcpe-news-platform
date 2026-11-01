@@ -11,9 +11,11 @@ topics: []
 
 **Media lists** holds the reporters on each media list. Release editors pick these lists on a release, and every member gets the full-text media version.
 
-The table shows each list's **Members**, how many **Need attention**, and its **Status**. A **Retired** list can no longer be put on a release. Core administrators add, rename and retire lists on **Media list names**.
+The table shows each list's **Members**, how many **Need attention**, and its **Status**. **Members** counts only the members who get the list's email. Disabled members get nothing, so they aren't counted; the cell then adds, for example, "(and 2 Disabled, who get nothing)". A **Retired** list can no longer be put on a release. Core administrators add, rename and retire lists on **Media list names**.
 
-Choose a list's name to open it.
+Choose a list's name to open it. Each member shows their **Email**, their **Status** (**Active** or **Disabled**), their **Source** and any problem under **Needs attention**.
+
+Above the members, a line says how many get this list's email, for example "12 members get this list’s email. 2 more are Disabled and get nothing until someone activates them on their record." A Disabled member's **Status** says "Disabled: gets nothing". Disabled members stay on the list but are sent nothing. To start sending to them again, open their record and choose **Activate**.
 
 ## Add a reporter from Media Hub
 
@@ -30,6 +32,8 @@ Use this for people who aren't in Media Hub.
 2. Under **Add an address by hand**, enter the **Email address**.
 3. Choose **Add to list**. You see "Added to the list."
 
+If the address is already on the list, you see "[their address] was already on this list." instead. If they were on it but **Disabled**, adding them again makes them **Active** for media email, as for any Disabled address (see below), and you see "[their address] was on this list but Disabled; they’re Active again, for media email." If you added them from Media Hub and their record followed a different contact or email, it now follows the one you chose, and the message adds "Their record now follows the Media Hub contact and email you chose."
+
 ## What adding does
 
 - The reporter is not emailed. They get the next release sent to this list.
@@ -39,7 +43,7 @@ Use this for people who aren't in Media Hub.
 - For a **Disabled** person, their bounce count starts again, and **History** shows "Added to a media list while Disabled. News release email stays off", with what was switched off under **Detail**.
 - When the address was **Disabled**, you see "Added to the list. Their news release email stays off; open their record to turn it on." instead of "Added to the list."
 - If a **Disabled** person also wants news release email again, choose **open their record** in that message. Tick **As it happens** or **Daily digest** and their lists, then choose **Save preferences**.
-- When you add someone, the Hub may ask "This person unsubscribed" and explain "Our records show they left [when]: they unsubscribed, or left it in the old system. Add them only if they've asked to receive media releases again." It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose **Add anyway**. Adding them back clears the question for this list, unless they unsubscribe again.
+- When you add someone, the Hub may ask "This person unsubscribed" and explain "Our records show they left [when]: they unsubscribed, asked staff to stop their email, or left it in the old system. Add them only if they've asked to receive media releases again." It asks only when its records show this address may have unsubscribed since it was last added to this list: from this list, from all News On Demand email, or in the old News On Demand system. Check with them, or with whoever asked you to add them, before you choose **Add anyway**. Adding them back clears the question for this list, unless they unsubscribe again.
 
 ## Remove a reporter
 
@@ -75,7 +79,7 @@ To fix a Media Hub problem:
 
 ## Left this list
 
-This section lists people who left this list, with when they left and whether they are **Back on the list**. The screen explains "They unsubscribed, or left it in the old system." Someone you removed in the Hub isn't listed. The most recent 200 are shown.
+This section lists people who left this list, with when they left and whether they are **Back on the list**. The screen explains "They unsubscribed, asked staff to stop their email, or left it in the old system." Someone you removed from the list, or deleted for another reason, isn't listed. The most recent 200 are shown.
 
 ## Media Hub sync
 

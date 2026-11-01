@@ -10,13 +10,22 @@ import { Button } from "../../shared/BusyButton";
 import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
-import { attentionLabel, mediaErrorText, memberSourceLabel } from "./labels";
+import { attentionLabel, mediaErrorText, memberSourceLabel, STATUS_LABELS } from "./labels";
 import { MediaHubSearch } from "./MediaHubSearch";
 import { ResolveDialog } from "./ResolveDialog";
 import type { AddMemberBody, AddMemberResult, MediaListSummary, MediaMember, MediaOptOutPage } from "./types";
 
+/** Only active members are sent a media list's email (N4): say how many, and how many don't. */
+function receivingSummary(members: MediaMember[]): string {
+  const getting = members.filter((m) => m.status === "active").length;
+  const disabled = members.filter((m) => m.status === "disabled").length;
+  const head = `${getting.toLocaleString("en-CA")} ${getting === 1 ? "member gets" : "members get"} this list’s email.`;
+  if (disabled === 0) return head;
+  return `${head} ${disabled.toLocaleString("en-CA")} more ${disabled === 1 ? "is" : "are"} Disabled and ${disabled === 1 ? "gets" : "get"} nothing until someone activates them on their record.`;
+}
+
 /**
- * `/hub/subscribers/media-lists/:key`: one media list's members, who left it (unsubscribed, or left it in legacy),
+ * `/hub/subscribers/media-lists/:key`: one media list's members, who left it (unsubscribed, asked staff to stop, or left it in legacy),
  * and, for Editors, add (by hand or from Media Hub), remove and resolve. The h1 and title are
  * the static "Media list"; the list name is shown below it (no async titles). Re-adding someone
  * whose records show they may have unsubscribed since they were last added may ask first, and
@@ -70,14 +79,21 @@ export function MediaListScreen(): React.JSX.Element {
       const added = await apiFetch<AddMemberResult>(`${base}/members`, { method: "POST", body });
       setOptOutPrompt(null);
       setEmail("");
-      // A Disabled address comes onto the list for media email only (owner decision 2026-10-30).
+      // Say what the add did (N12, owner 2026-10-31: wording only). A Disabled address comes
+      // onto the list for media email only (owner decision 2026-10-30).
+      const first = !added?.alreadyMember
+        ? "Added to the list."
+        : added.reactivated
+          ? `${added.email} was on this list but Disabled; they’re Active again, for media email.`
+          : `${added.email} was already on this list.`;
+      const relink = added?.relinked ? " Their record now follows the Media Hub contact and email you chose." : "";
       setMessage(
         added?.newsEmailOff ? (
           <>
-            Added to the list. Their news release email stays off; <Link to={`/subscribers/${added.subscriberId}`}>open their record</Link> to turn it on.
+            {`${first}${relink}`} Their news release email stays off; <Link to={`/subscribers/${added.subscriberId}`}>open their record</Link> to turn it on.
           </>
         ) : (
-          "Added to the list."
+          `${first}${relink}`
         ),
       );
       reload();
@@ -139,6 +155,7 @@ export function MediaListScreen(): React.JSX.Element {
       {actionError && !optOutPrompt && !removing && <InlineAlert variant="danger" role="alert" description={actionError} />}
 
       {!members && !loadError && <p>Loading…</p>}
+      {members && members.length > 0 && <p>{receivingSummary(members)}</p>}
       {members && members.length === 0 && <p>No members yet.</p>}
       {members && members.length > 0 && (
         <TableScroll label="Members">
@@ -146,6 +163,7 @@ export function MediaListScreen(): React.JSX.Element {
             <thead>
               <tr>
                 <th scope="col">Email</th>
+                <th scope="col">Status</th>
                 <th scope="col">Source</th>
                 <th scope="col">Needs attention</th>
                 {canEdit && <th scope="col">Actions</th>}
@@ -157,6 +175,7 @@ export function MediaListScreen(): React.JSX.Element {
                   <td>
                     <Link to={`/subscribers/${m.subscriberId}`}>{m.email}</Link>
                   </td>
+                  <td>{m.status === "active" ? STATUS_LABELS.active : m.status === "disabled" ? "Disabled: gets nothing" : STATUS_LABELS[m.status]}</td>
                   <td>{memberSourceLabel(m.source)}</td>
                   <td>{m.needsAttention ? attentionLabel(m.needsAttention) : ""}</td>
                   {canEdit && (
@@ -204,7 +223,7 @@ export function MediaListScreen(): React.JSX.Element {
 
       <section aria-labelledby="opted-out-heading">
         <h2 id="opted-out-heading">Left this list</h2>
-        <p>They unsubscribed, or left it in the old system.</p>
+        <p>They unsubscribed, asked staff to stop their email, or left it in the old system.</p>
         {optOuts && optOuts.items.length === 0 && <p>Nobody has.</p>}
         {optOuts && optOuts.items.length > 0 && (
           <TableScroll label="Left this list">
@@ -250,7 +269,7 @@ export function MediaListScreen(): React.JSX.Element {
               </>
             }
           >
-            <p>{`Our records show they left ${optOutPrompt.at ? formatWhen(optOutPrompt.at, new Date(), timeZone) : "earlier"}: they unsubscribed, or left it in the old system. Add them only if they've asked to receive media releases again.`}</p>
+            <p>{`Our records show they left ${optOutPrompt.at ? formatWhen(optOutPrompt.at, new Date(), timeZone) : "earlier"}: they unsubscribed, asked staff to stop their email, or left it in the old system. Add them only if they've asked to receive media releases again.`}</p>
             {actionError && <InlineAlert variant="danger" role="alert" description={actionError} />}
           </AlertDialog>
         </Modal>

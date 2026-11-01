@@ -47,6 +47,7 @@ describe("operations", () => {
       purge: expect.objectContaining({ enabled: false }),
       emergencyFeed: { url: null, checkedAt: null, result: null },
       opsEmailSet: false,
+      outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
     });
     expect(JSON.stringify(spy.mock.calls)).not.toContain("@");
     spy.mockRestore();
