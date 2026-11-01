@@ -325,6 +325,7 @@ password manager. Every parameter:
 
 | Parameter | Meaning |
 |---|---|
+| `-Environment` | `Test` (default): a test site (`SITE_ENVIRONMENT=test`, every message redirected). `Prod`: the real production site (P2). First install only. |
 | `-HostName` (required) | The name the site is configured for (`SITE_PUBLIC_SITE_URL`, mail links) and the self-signed certificate's name. Dev: its internal host. Test/Prod: the **public** host. |
 | `-Root` | Install folder, default `C:\gcpe`. |
 | `-Port` | The stack's local port, default 3000 (blocked from other machines). |
@@ -333,9 +334,10 @@ password manager. Every parameter:
 | `-PostgresDataDir` | PostgreSQL's data folder when installed here, default `C:\gcpe\pgdata`. |
 | `-SmtpHost`, `-SmtpPort` (25), `-SmtpSecure`, `-SmtpUser`, `-SmtpPassword` | The relay. Asked for if `-SmtpHost` is missing. With `-SmtpUser` and no `-SmtpPassword`, the password is asked for. |
 | `-MailFrom` | From address. |
-| `-MailRedirectTo` | Every outgoing message goes to these inboxes instead (required: this package writes a test-site configuration). |
+| `-MailRedirectTo` | Every outgoing message goes to these inboxes instead. Required for `-Environment Test`. With `Prod`, optional: given, mail is redirected until go-live (P4); empty, mail goes to its real recipients from the first start. |
 | `-AdminUsername` (`admin`), `-AdminPassword` | The break-glass login; asked for if missing. |
-| `-EntraTenantId`, `-EntraClientId`, `-EntraClientSecret`, `-EntraAudience` | Staff sign-in, all four together (or later, D7). `-EntraAudience` is `api://<client id>`. |
+| `-EntraTenantId`, `-EntraClientId`, `-EntraClientSecret`, `-EntraAudience` | Staff sign-in, all four together (or later, D7; required with `-Environment Prod`, which asks for the secret). `-EntraAudience` is `api://<client id>`. |
+| `-EmergencyFeedUrl`, `-EmergencyFeedOff` | `-Environment Prod` only, one of the two: the emergency alerts feed (D8's address), or emergency alerts switched off on purpose. |
 | `-GoogleVerificationFile`, `-GoogleSiteVerification` | Google Search Console tokens (Prod go-live). |
 | `-ProxyHops` | Reverse proxies in front of this server: 1 (Dev), 2 behind the DMZ proxy (Test, Prod). Sets `TRUST_PROXY_HOPS`. A re-run changes it only when passed. |
 | `-AllowedClientRanges` | IPv4 CIDR ranges that may reach IIS on 443 and 80 (Windows Firewall); everything else is refused. A re-run keeps them unless you pass new ones. |
@@ -1028,16 +1030,23 @@ change it to `'*'` and `Restart-Service postgresql-x64-17`). From the app server
 ### P2. The app server
 
 ```powershell
-.\Install-Gcpe.ps1 -HostName <public host> -CertificateThumbprint <thumbprint> `
+.\Install-Gcpe.ps1 -Environment Prod -HostName <public host> -CertificateThumbprint <thumbprint> `
     -PostgresAdminUrl postgres://postgres@<database server>:5432/postgres `
     -ProxyHops 2 -AllowedClientRanges <DMZ proxy #2 IP>/32, <staff ranges> `
-    -SmtpHost <relay> -MailFrom <…> -MailRedirectTo <test inbox>
+    -SmtpHost <relay> -MailFrom <…> -MailRedirectTo <inbox until go-live> `
+    -EntraTenantId <tenant> -EntraClientId <client id> -EntraAudience api://<client id> `
+    -EmergencyFeedUrl 'https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true'
 ```
 
 It asks for the superuser password (copy it from `postgres-superuser.txt` on the database server)
-and does not install PostgreSQL here. `-MailRedirectTo` is still required: the package writes a
-test-site configuration, switched to real mail at go-live (P4). Then D3 (final import, at cutover),
-D7 (Entra, internal host), D8, and the backup for the files:
+and the Entra client secret, and does not install PostgreSQL here. `-Environment Prod` writes the
+real production site from the first start ([Real production](#real-production-what-the-stack-refuses)):
+no `SITE_ENVIRONMENT=test`, so the stack makes its production checks and uses no fakes. The site is
+not public yet: DMZ proxy #2 lets only the staff ranges in until go-live (P3). The break-glass admin
+is written on, for setting up; P4 turns it off. `-MailRedirectTo` keeps mail redirected until
+go-live; leave it out only if real mail may go from the first start. Then D3 (final import, at
+cutover, while break-glass is still on), D7 (Entra: the redirect URI on the internal host), D8,
+and the backup for the files:
 
 ```powershell
 .\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>

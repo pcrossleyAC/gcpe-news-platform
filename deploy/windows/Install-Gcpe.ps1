@@ -9,7 +9,10 @@
      pgvector. Installers come from .\prereqs\ (Get-GcpePrereqs.ps1 fills it on a machine with
      internet access) or are downloaded, and each is checked against its pinned SHA-256.
   2. On first install, writes <Root>\config\gcpe.env (every setting and generated secret; readable
-     only by Administrators and the service). Later runs keep it.
+     only by Administrators and the service). Later runs keep it. -Environment Test (the default)
+     writes a test site; -Environment Prod writes the real production site (docs/deploy/windows.md,
+     section 5): Entra required, the emergency feed or -EmergencyFeedOff, and real mail unless
+     -MailRedirectTo is given until go-live.
   3. Creates the PostgreSQL login and the seven databases, and enables pgvector.
   4. Installs the gcpe-stack Windows service (WinSW running node.exe as NT SERVICE\gcpe-stack).
   5. Creates the IIS site "GCPE": https on 443 (and http on 80 redirecting to it), forwarding
@@ -27,6 +30,15 @@
       -MailFrom noreply-dev@gov.bc.ca -MailRedirectTo you@gov.bc.ca
 
 .EXAMPLE
+  # Prod's app server: the real production site, behind DMZ proxy #2, mail redirected until go-live:
+  .\Install-Gcpe.ps1 -Environment Prod -HostName news.gov.bc.ca -CertificateThumbprint <thumbprint> `
+      -PostgresAdminUrl postgres://postgres@<database server>:5432/postgres -ProxyHops 2 `
+      -AllowedClientRanges <DMZ proxy #2 IP>/32, <staff ranges> -SmtpHost apps.smtp.gov.bc.ca `
+      -MailFrom noreply@gov.bc.ca -MailRedirectTo you@gov.bc.ca `
+      -EntraTenantId <tenant> -EntraClientId <client> -EntraAudience api://<client> `
+      -EmergencyFeedUrl 'https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true'
+
+.EXAMPLE
   # Test's app server, behind the DMZ proxy 10.40.1.10, reachable from it and two staff ranges only:
   .\Install-Gcpe.ps1 -HostName news-test.example.gov.bc.ca -CertificateThumbprint <thumbprint> `
       -ProxyHops 2 -AllowedClientRanges 10.40.1.10/32, 142.22.0.0/16, 142.34.0.0/16 `
@@ -35,6 +47,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$HostName,
+    # Test (default): a test site (SITE_ENVIRONMENT=test, all mail redirected). Prod: the real
+    # production site. Used only on first install, when gcpe.env is written.
+    [ValidateSet('Test', 'Prod')][string]$Environment = 'Test',
     [string]$Root = 'C:\gcpe',
     [int]$Port = 3000,
     # The thumbprint of a certificate already in Cert:\LocalMachine\My. Omit for a self-signed one (Dev only).
@@ -57,6 +72,10 @@ param(
     [string]$EntraClientId,
     [Security.SecureString]$EntraClientSecret,
     [string]$EntraAudience,
+    # Prod: the emergency alerts feed (NOD_EMERGENCY_FEED_URL), or -EmergencyFeedOff to switch
+    # emergency alerts off on purpose. Prod refuses to start with neither.
+    [string]$EmergencyFeedUrl,
+    [switch]$EmergencyFeedOff,
     # Google Search Console verification (optional; formats are checked by windows-env.js).
     [string]$GoogleVerificationFile,
     [string]$GoogleSiteVerification,
@@ -81,6 +100,11 @@ Import-Module (Join-Path $PSScriptRoot 'lib\Gcpe.psm1') -Force
 
 Assert-GcpeAdministrator
 if ($AllowedClientRanges -and $AllowAllClients) { throw 'Pass -AllowedClientRanges or -AllowAllClients, not both.' }
+if ($Environment -eq 'Prod' -and -not (Test-Path -LiteralPath (Join-Path $Root 'config\gcpe.env'))) {
+    # Checked before anything is installed (windows-env.js checks the same again).
+    if (-not ($EntraTenantId -and $EntraClientId -and $EntraAudience)) { throw 'Prod needs Microsoft sign-in for staff: pass -EntraTenantId, -EntraClientId and -EntraAudience (the client secret is asked for).' }
+    if ([bool]$EmergencyFeedUrl -eq [bool]$EmergencyFeedOff) { throw 'Prod needs -EmergencyFeedUrl <the emergency alerts feed>, or -EmergencyFeedOff to switch emergency alerts off on purpose (not both).' }
+}
 # Checked before anything is installed: a typo must never become a wider (or empty) allow-list.
 $clientRanges = @()
 foreach ($r in @($AllowedClientRanges)) { if ($r) { ConvertFrom-GcpeCidr -Cidr $r.Trim() | Out-Null; $clientRanges += $r.Trim() } }
@@ -105,7 +129,7 @@ if (Test-Path -LiteralPath $paths.EnvFile) {
     if (-not $PostgresAdminUrl -and @('localhost', '127.0.0.1', '::1') -notcontains $dbHost) {
         throw "This server's databases are on $dbHost (gcpe.env). Re-run with -PostgresAdminUrl postgres://postgres@$($dbHost):5432/postgres, or PostgreSQL would be installed here instead."
     }
-    $ignored = @('SmtpHost', 'SmtpPort', 'SmtpSecure', 'SmtpUser', 'SmtpPassword', 'MailFrom', 'MailRedirectTo', 'AdminUsername', 'AdminPassword', 'EntraTenantId', 'EntraClientId', 'EntraClientSecret', 'EntraAudience', 'Port') | Where-Object { $PSBoundParameters.ContainsKey($_) }
+    $ignored = @('Environment', 'SmtpHost', 'SmtpPort', 'SmtpSecure', 'SmtpUser', 'SmtpPassword', 'MailFrom', 'MailRedirectTo', 'AdminUsername', 'AdminPassword', 'EntraTenantId', 'EntraClientId', 'EntraClientSecret', 'EntraAudience', 'EmergencyFeedUrl', 'EmergencyFeedOff', 'Port') | Where-Object { $PSBoundParameters.ContainsKey($_) }
     $configuredHost = ([Uri]$existingEnv['SITE_PUBLIC_SITE_URL']).Host
 }
 
@@ -211,7 +235,11 @@ if ($existingEnv) {
 } else {
     if (-not $SmtpHost) { $SmtpHost = Read-Host 'SMTP relay host (e.g. apps.smtp.gov.bc.ca)' }
     if (-not $MailFrom) { $MailFrom = Read-Host 'From address for outgoing mail' }
-    if (-not $MailRedirectTo) { $MailRedirectTo = @((Read-Host 'Send ALL outgoing mail to (comma-separated test inboxes)').Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+    if (-not $MailRedirectTo) {
+        $question = if ($Environment -eq 'Prod') { 'Until go-live, send ALL outgoing mail to (comma-separated inboxes; leave empty to send to the real recipients)' } else { 'Send ALL outgoing mail to (comma-separated test inboxes)' }
+        $MailRedirectTo = @((Read-Host $question).Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    }
+    if ($Environment -eq 'Prod' -and $EntraTenantId -and -not $EntraClientSecret) { $EntraClientSecret = Read-Host 'Entra client secret for staff sign-in' -AsSecureString }
     if (-not $AdminPassword) { $AdminPassword = Read-Host "Password for the break-glass admin '$AdminUsername' (12+ characters)" -AsSecureString }
     $admin = [Uri]$adminUrl
     $db = @{ user = 'gcpe_app'; password = New-GcpeSecret -Bytes 24; prefix = 'gcpe' }
@@ -225,7 +253,11 @@ if ($existingEnv) {
         adminUsername = $AdminUsername; adminPassword = ConvertFrom-GcpeSecureString $AdminPassword
         db = @{ host = $admin.Host; port = $(if ($admin.Port -gt 0) { $admin.Port } else { 5432 }); user = $db.user; password = $db.password; prefix = $db.prefix }
         smtp = $smtp; mailFrom = $MailFrom; mailRedirectTo = @($MailRedirectTo)
+        environment = $Environment.ToLowerInvariant()
     }
+    if ($EmergencyFeedUrl) { $settings.emergencyFeedUrl = $EmergencyFeedUrl }
+    if ($EmergencyFeedOff) { $settings.emergencyFeedOff = $true }
+    if ($Environment -eq 'Prod' -and @($MailRedirectTo).Count -eq 0) { Write-GcpeNote 'no -MailRedirectTo: mail goes to its real recipients from the first start.' }
     if ($GoogleVerificationFile) { $settings.googleVerificationFile = $GoogleVerificationFile }
     if ($GoogleSiteVerification) { $settings.googleSiteVerification = $GoogleSiteVerification }
     if ($EntraTenantId) {
