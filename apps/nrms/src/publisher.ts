@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { sqlInterval, sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
+import { sqlInterval, sqlNow, type Db, type DbOrTx, type TestClock, type Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type EmailAgain, type SubscriberConfig } from "@gcpe/events";
 import { publishProblems, type ReleaseView } from "@gcpe/nrms-contract";
 import { governmentTerms, newsReleases, releasePublications, type SentEmailAgain } from "./db/schema";
@@ -260,7 +260,7 @@ export function startPublisher(opts: PublisherOptions & { intervalMs?: number })
  * still scheduled (or stuck publishing), leaving out ones on hold. `/stack/health` reports them,
  * since the publisher otherwise fails silently from the operator's point of view.
  */
-export async function overdueScheduled(db: Db, opts: { graceMs: number; now?: TestClock }): Promise<{ count: number; oldestMinutes: number | null }> {
+export async function overdueScheduled(db: DbOrTx, opts: { graceMs: number; now?: TestClock }): Promise<{ count: number; oldestMinutes: number | null }> {
   const now = sqlNow(opts.now);
   const { rows } = await db.execute<{ n: number; oldest: number | null }>(sql`
     SELECT count(*)::int AS n, floor(extract(epoch from (${now} - min(publish_at))) / 60)::int AS oldest

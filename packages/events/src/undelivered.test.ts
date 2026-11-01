@@ -5,7 +5,7 @@ import { dispatchOnce } from "./dispatcher";
 import { enqueueEvent } from "./publisher";
 import type { SubscriberConfig } from "./subscribers";
 import { sampleRelease } from "./testing";
-import { dismissAllUndelivered, dismissUndelivered, listDismissed, listUndelivered, outboxHealth, retryAllUndelivered, retryUndelivered } from "./undelivered";
+import { dismissUndelivered, findUndelivered, listDismissed, listUndelivered, outboxHealth, retryAllUndelivered, retryUndelivered } from "./undelivered";
 
 const migrationsFolder = fileURLToPath(new URL("../test/migrations", import.meta.url));
 const HOUR = 3_600_000;
@@ -41,7 +41,7 @@ describe("undelivered updates", () => {
   }
 
   it("lists nothing when every update was delivered", async () => {
-    expect(await listUndelivered(tdb.db)).toEqual({ items: [], total: 0, replaced: 0, truncated: false });
+    expect(await listUndelivered(tdb.db)).toEqual({ items: [], total: 0, replaced: 0, overtaken: 0, truncated: false });
   });
 
   it("lists each undelivered update with what it was about, never its payload", async () => {
@@ -82,8 +82,8 @@ describe("undelivered updates", () => {
 
   it("retries all of them at once", async () => {
     for (let i = 0; i < 2; i++) await deadEvent({ type: "org.deactivated", source: "core", aggregateId: `org:a${i}`, data: { key: `a${i}` } });
-    expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 2, replaced: 0 });
-    expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 0, replaced: 0 });
+    expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 2, replaced: 0, overtaken: 0 });
+    expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 0, replaced: 0, overtaken: 0 });
   });
 
   // Suite review I1 (controller ruling 2026-11-01): a published-then-unpublished release, both
@@ -112,7 +112,7 @@ describe("undelivered updates", () => {
 
     it("is skipped by Retry all, which resends only the newest", async () => {
       const { published, unpublished } = await publishedThenUnpublished();
-      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 1, replaced: 1 });
+      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 1, replaced: 1, overtaken: 0 });
       expect(await statusOf(published.id)).toBe("dead");
       expect(await statusOf(unpublished.id)).toBe("pending");
     });
@@ -132,26 +132,55 @@ describe("undelivered updates", () => {
     });
   });
 
+  // Fix round 2, M4: a newer update that can't stand in for the older one doesn't replace it.
+  describe("a newer update that can't stand in for it", () => {
+    const statusOf = async (id: string) => (await tdb.pool.query("SELECT status FROM outbox_deliveries WHERE event_id = $1", [id])).rows[0]?.status;
+    async function publishedThenUpdated(updatedStatus: "delivered" | "dead") {
+      const published = await deadEvent({ type: "release.published", source: "nrms", aggregateId: "release:7", data: sampleRelease });
+      const updated = await enqueueEvent(tdb.db, { type: "release.updated", source: "nrms", aggregateId: "release:7", data: { ...sampleRelease, notify: false } }, subs);
+      await tdb.pool.query("UPDATE outbox_deliveries SET status = $2 WHERE event_id = $1", [updated.id, updatedStatus]);
+      return { published, updated };
+    }
+
+    it("published undelivered, correction delivered: not replaced, overtaken, still alerting, and Retry is refused", async () => {
+      const { published } = await publishedThenUpdated("delivered");
+      const item = (await listUndelivered(tdb.db)).items.find((i) => i.eventId === published.id)!;
+      expect(item).toMatchObject({ replaced: false, overtaken: true });
+      expect(await outboxHealth(tdb.db, { recentMs: 7 * 24 * HOUR })).toMatchObject({ undelivered: 1, replaced: 0, recentUndelivered: 1 });
+      expect(await retryUndelivered(tdb.db, published.id, "nod")).toBe("overtaken");
+      expect(await retryAllUndelivered(tdb.db)).toEqual({ retried: 0, replaced: 0, overtaken: 1 });
+      expect(await statusOf(published.id)).toBe("dead");
+    });
+
+    it("published and correction both undelivered: neither replaced nor overtaken, so the publish can be retried", async () => {
+      const { published } = await publishedThenUpdated("dead");
+      expect((await listUndelivered(tdb.db)).items.find((i) => i.eventId === published.id)).toMatchObject({ replaced: false, overtaken: false });
+      expect(await retryUndelivered(tdb.db, published.id, "nod")).toBe("queued");
+    });
+  });
+
   // Suite review M1: an update an administrator decided not to send.
   describe("dismissing", () => {
     it("takes one off the list and out of health, onto the dismissed list, and it can't be retried", async () => {
       const env = await deadEvent({ type: "org.deactivated", source: "core", aggregateId: "org:x1", data: { key: "x1" } });
-      const dismissed = await dismissUndelivered(tdb.db, env.id, "nod");
-      expect(dismissed).toMatchObject({ eventId: env.id, subscriber: "nod", type: "org.deactivated", about: "x1" });
-      expect(await dismissUndelivered(tdb.db, env.id, "nod")).toBeNull();
+      const found = await findUndelivered(tdb.db, env.id, "nod");
+      expect(found).toMatchObject({ eventId: env.id, subscriber: "nod", type: "org.deactivated", about: "x1" });
+      expect(await dismissUndelivered(tdb.db, [found!])).toMatchObject([{ eventId: env.id }]);
+      expect(await dismissUndelivered(tdb.db, [found!])).toEqual([]);
+      expect(await findUndelivered(tdb.db, env.id, "nod")).toBeNull();
       expect((await listUndelivered(tdb.db)).items).toEqual([]);
       expect((await listDismissed(tdb.db)).items.map((i) => i.eventId)).toEqual([env.id]);
       expect(await retryUndelivered(tdb.db, env.id, "nod")).toBe("not-found");
       expect(await outboxHealth(tdb.db, { recentMs: 7 * 24 * HOUR })).toMatchObject({ undelivered: 0, recentUndelivered: 0 });
     });
 
-    it("dismisses all of them, replaced ones included, and says which", async () => {
-      await deadEvent({ type: "org.deactivated", source: "core", aggregateId: "org:x2", data: { key: "x2" } });
-      await deadEvent({ type: "org.deactivated", source: "core", aggregateId: "org:x2", data: { key: "x2" } });
-      const all = await dismissAllUndelivered(tdb.db);
-      expect(all).toHaveLength(2);
-      expect(await dismissAllUndelivered(tdb.db)).toEqual([]);
-      expect((await listUndelivered(tdb.db)).total).toBe(0);
+    it("dismisses several at once, replaced ones included, and only those named", async () => {
+      const a = await deadEvent({ type: "org.deactivated", source: "core", aggregateId: "org:x2", data: { key: "x2" } });
+      const b = await deadEvent({ type: "org.deactivated", source: "core", aggregateId: "org:x2", data: { key: "x2" } });
+      const c = await deadEvent({ type: "org.deactivated", source: "core", aggregateId: "org:x3", data: { key: "x3" } });
+      const done = await dismissUndelivered(tdb.db, [a, b].map((e) => ({ eventId: e.id, subscriber: "nod" })));
+      expect(done.map((d) => d.eventId).sort()).toEqual([a.id, b.id].sort());
+      expect((await listUndelivered(tdb.db)).items.map((i) => i.eventId)).toEqual([c.id]);
     });
   });
 
@@ -167,5 +196,14 @@ describe("undelivered updates", () => {
     // Eight days on, the undelivered one is no longer recent, but still counted.
     const old = await outboxHealth(tdb.db, { recentMs: 7 * 24 * HOUR, now: () => new Date(now.getTime() + 8 * 24 * HOUR) });
     expect(old).toMatchObject({ undelivered: 1, recentUndelivered: 0 });
+  });
+
+  // Fix round 2, I2: the replaced check reads newer events through the index, not a table scan.
+  it("finds newer events for a record through the (aggregate_id, sequence) index", async () => {
+    await tdb.pool.query("INSERT INTO outbox_events (id, type, aggregate_id, sequence, envelope) SELECT gen_random_uuid(), 'org.deactivated', 'org:bulk' || g, 1, '{}'::jsonb FROM generate_series(1, 20000) g");
+    await deadEvent({ type: "org.deactivated", source: "core", aggregateId: "org:probe", data: { key: "probe" } });
+    await tdb.pool.query("ANALYZE outbox_events");
+    const plan = (await tdb.pool.query("EXPLAIN SELECT * FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id WHERE d.status = 'dead' AND EXISTS (SELECT 1 FROM outbox_deliveries d2 JOIN outbox_events e2 ON e2.id = d2.event_id WHERE d2.subscriber = d.subscriber AND e2.aggregate_id = e.aggregate_id AND e2.sequence > e.sequence)")).rows.map((r) => r["QUERY PLAN"]).join("\n");
+    expect(plan).toContain("outbox_events_aggregate_seq_idx");
   });
 });

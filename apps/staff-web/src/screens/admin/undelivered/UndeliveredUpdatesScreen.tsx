@@ -22,6 +22,8 @@ interface Update {
   createdAt: string;
   /** A newer update for the same record, to the same app, replaced it: it is never resent. */
   replaced: boolean;
+  /** A newer update for the same record already reached that app, which would ignore this one (fix round 2, M4). */
+  overtaken: boolean;
 }
 
 /** apps/stack/src/undelivered.ts's GET /stack/undelivered, one entry per app. */
@@ -29,8 +31,9 @@ interface AppList {
   app: string;
   items: Update[];
   total: number;
-  /** How many of `total` are replaced. */
+  /** How many of `total` are replaced, and overtaken. */
   replaced: number;
+  overtaken: number;
   truncated: boolean;
 }
 
@@ -101,7 +104,13 @@ const keyOf = (r: { app: string; eventId: string; subscriber: string }) => `${r.
 
 const RETRY_NOTE = "Queued for delivery again. If it comes back here after the next minute, the receiving app is still refusing it: have that fixed before retrying again.";
 
-type Confirming = { kind: "retry-all"; app: string; resend: number; replaced: number } | { kind: "dismiss-all"; count: number };
+type Confirming = { kind: "retry-all"; app: string; resend: number; replaced: number; overtaken: number } | { kind: "dismiss-all"; count: number };
+
+/** What to say on an overtaken row: resending is pointless, so how to get the change through instead. */
+const overtakenNote = (u: { type: string }) =>
+  u.type.startsWith("release.")
+    ? "A later change got there first, so it can't be sent again. To send it, publish the release again from Releases."
+    : "A later change got there first, so it can't be sent again. To send it, make the change again where it was made.";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -213,7 +222,8 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
   const rows: Row[] = (apps ?? []).flatMap((a) => a.items.map((u) => ({ ...u, app: a.app }))).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
   const now = new Date();
   const allTotal = (apps ?? []).reduce((n, a) => n + a.total, 0);
-  const retryable = (apps ?? []).filter((a) => a.total > 1 && a.total - a.replaced > 0);
+  const resendable = (a: AppList) => a.total - a.replaced - a.overtaken;
+  const retryable = (apps ?? []).filter((a) => a.total > 1 && resendable(a) > 0);
   const pending = confirming?.kind === "retry-all" ? busy.has(`all:${confirming.app}`) : busy.has("dismiss-all");
 
   return (
@@ -251,8 +261,8 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
             ))}
           <div className="gcpe-button-row">
             {retryable.map((a) => (
-              <Button key={`all:${a.app}`} variant="secondary" onPress={() => setConfirming({ kind: "retry-all", app: a.app, resend: a.total - a.replaced, replaced: a.replaced })}>
-                {`Retry all ${a.total - a.replaced} from ${appLabel(a.app)}`}
+              <Button key={`all:${a.app}`} variant="secondary" onPress={() => setConfirming({ kind: "retry-all", app: a.app, resend: resendable(a), replaced: a.replaced, overtaken: a.overtaken })}>
+                {`Retry all ${resendable(a)} from ${appLabel(a.app)}`}
               </Button>
             ))}
             {allTotal > 1 && (
@@ -290,6 +300,8 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
                         <div className="gcpe-button-row">
                           {r.replaced ? (
                             <span>Replaced by a newer update: not sent again</span>
+                          ) : r.overtaken ? (
+                            <span>{overtakenNote(r)}</span>
                           ) : (
                             <Button variant="secondary" size="small" onPress={() => void retry(r)} isPending={busy.has(keyOf(r))} pendingLabel="Retrying…" aria-label={`Retry ${what}`}>
                               Retry
@@ -356,6 +368,7 @@ export function UndeliveredUpdatesScreen(): React.JSX.Element {
           >
             <p>They&rsquo;re sent again within the next minute, oldest first. Check that the app that refused them is working first.</p>
             {confirming.replaced > 0 && <p>{`${plural(confirming.replaced, "replaced by a newer update isn't", "replaced by a newer update aren't")} sent.`}</p>}
+            {confirming.overtaken > 0 && <p>{`${confirming.overtaken} can't be sent again because a later change got there first.`}</p>}
             {confirming.app === "nrms" && <p>A Release published update emails its subscribers when it&rsquo;s sent.</p>}
           </AlertDialog>
         ) : confirming?.kind === "dismiss-all" ? (

@@ -3,7 +3,7 @@ import express from "express";
 import { serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, isTestSite, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
-import { createDb, runMigrations } from "@gcpe/db-kit";
+import { createDb, runMigrations, withStatementTimeout } from "@gcpe/db-kit";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { createApp } from "./app";
 import { createSiteBuilder } from "./builder";
@@ -28,7 +28,7 @@ export interface AppHandle {
    * `site.sync` tick step runs (apps/stack/src/stack.ts). */
   workers: Record<string, () => Promise<unknown>>;
   /** The rebuild queue's length and oldest wait, for `/stack/health` (suite review O2.1). */
-  rebuildQueue(): Promise<{ pages: number; oldestMinutes: number | null }>;
+  rebuildQueue(timeoutMs: number): Promise<{ pages: number; oldestMinutes: number | null }>;
   /** Starts the standalone `site.sync` loop (main.ts), every SYNC_INTERVAL_MS. A no-op in the
    * stack, which ticks `workers.sync` itself instead. */
   startLoops(): void;
@@ -121,7 +121,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
     app,
     port: parsed.PORT,
     workers: { sync: () => syncSite(syncDeps) },
-    rebuildQueue: () => queueHealth(db),
+    rebuildQueue: (timeoutMs) => withStatementTimeout(db, timeoutMs, (tx) => queueHealth(tx)),
     startLoops() {
       stop = every(parsed.SYNC_INTERVAL_MS, "site.sync", () => syncSite(syncDeps));
     },

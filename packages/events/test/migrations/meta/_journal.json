@@ -8,6 +8,13 @@
       "when": 1791008439953,
       "tag": "0000_events_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793517933376,
+      "tag": "0001_outbox_events_aggregate_seq",
+      "breakpoints": true
     }
   ]
 }

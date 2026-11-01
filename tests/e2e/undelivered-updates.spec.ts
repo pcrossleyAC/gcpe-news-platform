@@ -12,6 +12,7 @@ const TAG = randomUUID().slice(0, 8);
 const HEADLINE = `Undelivered e2e probe ${TAG}`;
 const WITHDRAWN = `Withdrawn e2e probe ${TAG}`;
 const OTHER = `Other e2e probe ${TAG}`;
+const CORRECTED = `Corrected e2e probe ${TAG}`;
 
 async function deadInNrms(type: string, aggregateId: string, sequence: number, headline: string, hoursAgo: number): Promise<string> {
   const id = randomUUID();
@@ -42,6 +43,11 @@ test.describe("Undelivered updates", () => {
     published = await deadInNrms("release.published", withdrawn, 1, WITHDRAWN, 27);
     unpublished = await deadInNrms("release.unpublished", withdrawn, 2, WITHDRAWN, 26);
     other = await deadInNrms("release.published", `release:${randomUUID()}`, 1, OTHER, 28);
+    // Fix round 2, M4: a publish NoD never got, whose correction reached it first.
+    const corrected = `release:${randomUUID()}`;
+    await deadInNrms("release.published", corrected, 1, CORRECTED, 30);
+    const correction = await deadInNrms("release.updated", corrected, 2, CORRECTED, 29);
+    await nrmsDb().execute(sql`UPDATE outbox_deliveries SET status = 'delivered' WHERE event_id = ${correction}`);
   });
 
   test.afterAll(async () => {
@@ -60,6 +66,9 @@ test.describe("Undelivered updates", () => {
       const replaced = page.getByRole("row").filter({ hasText: `Release published: ${WITHDRAWN}` });
       await expect(replaced).toContainText("Replaced by a newer update: not sent again");
       await expect(replaced.getByRole("button", { name: /^Retry/ })).toHaveCount(0);
+      const overtaken = page.getByRole("row").filter({ hasText: `Release published: ${CORRECTED}` });
+      await expect(overtaken).toContainText("To send it, publish the release again from Releases.");
+      await expect(overtaken.getByRole("button", { name: /^Retry/ })).toHaveCount(0);
       await expectNoSeriousA11yViolations(page, `/hub/undelivered-updates at ${width}`);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     });

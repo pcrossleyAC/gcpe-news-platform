@@ -1097,7 +1097,7 @@ describe("apps/stack", () => {
       expect(row.status).toBe("pending");
 
       const all = await fetch(`${instance.stackUrl}/stack/undelivered/retry-all`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms" }) });
-      expect(await all.json()).toEqual({ retried: 1, replaced: 0 });
+      expect(await all.json()).toEqual({ retried: 1, replaced: 0, overtaken: 0 });
       await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
     });
 
@@ -1112,6 +1112,39 @@ describe("apps/stack", () => {
       const body = (await (await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() })).json()) as { apps: { app: string; items: { eventId: string; replaced: boolean }[]; replaced: number }[] };
       expect(body.apps[0]!.items.find((i) => i.eventId === older)!.replaced).toBe(true);
       expect(body.apps[0]!.replaced).toBe(1);
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 2, M4: a correction that reached NoD first doesn't make a lost publish "replaced".
+    it("refuses a retry the receiver would ignore, saying why, and keeps it listed as overtaken", async () => {
+      const aggregate = `release:${randomUUID()}`;
+      const published = await deadInNrms("Overtaken probe", aggregate, 1);
+      const later = await deadInNrms("Overtaken probe", aggregate, 2);
+      await instance.dbs.nrms.pool.query("UPDATE outbox_events SET type = 'release.updated' WHERE id = $1", [later]);
+      await instance.dbs.nrms.pool.query("UPDATE outbox_deliveries SET status = 'delivered' WHERE event_id = $1", [later]);
+      const res = await fetch(`${instance.stackUrl}/stack/undelivered/retry`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms", eventId: published, subscriber: "nod" }) });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "A later change to the same record already arrived, so this can't be sent again." });
+      const body = (await (await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() })).json()) as { apps: { items: { eventId: string; replaced: boolean; overtaken: boolean }[]; overtaken: number }[] };
+      expect(body.apps[0]!.items.find((i) => i.eventId === published)).toMatchObject({ replaced: false, overtaken: true });
+      expect(body.apps[0]!.overtaken).toBe(1);
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 2, N6: who and when are recorded first; if that fails, nothing is dismissed.
+    it("leaves the update undelivered when its dismissal can't be recorded", async () => {
+      const one = await deadInNrms("Unrecorded dismiss probe");
+      await instance.dbs.core.pool.query("ALTER TABLE outbox_dismissals RENAME TO outbox_dismissals_away");
+      try {
+        const res = await fetch(`${instance.stackUrl}/stack/undelivered/dismiss`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms", eventId: one, subscriber: "nod" }) });
+        expect(res.status).toBe(500);
+        const all = await fetch(`${instance.stackUrl}/stack/undelivered/dismiss-all`, { method: "POST", headers: admin(), body: "{}" });
+        expect(all.status).toBe(500);
+      } finally {
+        await instance.dbs.core.pool.query("ALTER TABLE outbox_dismissals_away RENAME TO outbox_dismissals");
+      }
+      const [row] = (await instance.dbs.nrms.pool.query("SELECT status FROM outbox_deliveries WHERE event_id = $1", [one])).rows;
+      expect(row.status).toBe("dead");
       await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
     });
 

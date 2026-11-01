@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
-import { sqlInterval, sqlNow, type Db, type TestClock } from "@gcpe/db-kit";
+import { canReplaceSql } from "./replacement";
+import { sqlInterval, sqlNow, withStatementTimeout, type Db, type DbOrTx, type TestClock } from "@gcpe/db-kit";
 
 /**
  * Suite review O1 (owner 2026-10-31): the deliveries the dispatcher gave up on after 24 hours of
@@ -34,8 +35,11 @@ export interface UndeliveredUpdate {
   lastError: string | null;
   /** When the event was queued (ISO). */
   createdAt: string;
-  /** A newer update for the same record, to the same app, exists: this one is never resent. */
+  /** A newer update for the same record, to the same app, stands in for it: this one is never resent. */
   replaced: boolean;
+  /** Not replaced, but a newer update for the same record already reached that app, so resending
+   * this one would be ignored: make the change again at its source instead. Still alerting. */
+  overtaken: boolean;
 }
 
 export interface UndeliveredList {
@@ -44,16 +48,33 @@ export interface UndeliveredList {
   total: number;
   /** How many of `total` are replaced (never resent). */
   replaced: number;
+  /** How many of `total` are overtaken (resending would be ignored). */
+  overtaken: number;
   truncated: boolean;
 }
 
 /** How many undelivered updates a list returns, newest first. */
 export const UNDELIVERED_LIMIT = 200;
 
-/** `d` (outbox_deliveries) / `e` (outbox_events) has a newer event for its record to its subscriber. */
+/**
+ * `d` (outbox_deliveries) / `e` (outbox_events) has a newer event for its record, to its subscriber,
+ * in any state, that can stand in for it (replacement.ts; fix round 2, M4). Uses
+ * outbox_events_aggregate_seq_idx (fix round 2, I2).
+ */
 const REPLACED = sql`EXISTS (
   SELECT 1 FROM outbox_deliveries d2 JOIN outbox_events e2 ON e2.id = d2.event_id
-   WHERE d2.subscriber = d.subscriber AND e2.aggregate_id = e.aggregate_id AND e2.sequence > e.sequence)`;
+   WHERE d2.subscriber = d.subscriber AND e2.aggregate_id = e.aggregate_id AND e2.sequence > e.sequence
+     AND ${canReplaceSql(sql`e.type`, sql`e2.type`)})`;
+
+/**
+ * Not replaced, but a newer event for its record already reached its subscriber: the receiver would
+ * drop this one as stale, so resending it does nothing (fix round 2, M4). It stays counted and
+ * alerting; the remedy is to make the change again at its source (for a release, publish it again).
+ */
+const OVERTAKEN = sql`(NOT ${REPLACED} AND EXISTS (
+  SELECT 1 FROM outbox_deliveries d3 JOIN outbox_events e3 ON e3.id = d3.event_id
+   WHERE d3.subscriber = d.subscriber AND e3.aggregate_id = e.aggregate_id AND e3.sequence > e.sequence
+     AND d3.status = 'delivered'))`;
 
 /** Only the few fields "about" needs are read out of the envelope, never the whole of it. */
 const FIELDS = sql`d.event_id, d.subscriber, d.attempts, d.last_error, e.type, e.aggregate_id, e.created_at,
@@ -61,7 +82,8 @@ const FIELDS = sql`d.event_id, d.subscriber, d.attempts, d.last_error, e.type, e
   e.envelope -> 'data' -> 'documents' -> 0 ->> 'headline' AS headline,
   e.envelope -> 'data' ->> 'displayName' AS display_name,
   e.envelope -> 'data' ->> 'id' AS activity_id,
-  ${REPLACED} AS replaced`;
+  ${REPLACED} AS replaced,
+  ${OVERTAKEN} AS overtaken`;
 
 type Row = {
   event_id: string;
@@ -76,6 +98,7 @@ type Row = {
   display_name: string | null;
   activity_id: string | null;
   replaced: boolean;
+  overtaken: boolean;
 };
 
 function aboutOf(r: Row): string | null {
@@ -97,6 +120,7 @@ function toUpdate(r: Row): UndeliveredUpdate {
     // A raw execute returns timestamptz as Postgres's text.
     createdAt: new Date(r.created_at).toISOString(),
     replaced: r.replaced === true,
+    overtaken: r.overtaken === true,
   };
 }
 
@@ -106,14 +130,15 @@ async function listByStatus(db: Db, status: "dead" | "dismissed", limit: number)
      WHERE d.status = ${status}
      ORDER BY e.created_at DESC, d.event_id, d.subscriber
      LIMIT ${limit + 1}`);
-  const { rows: counts } = await db.execute<{ total: number; replaced: number }>(sql`
-    SELECT count(*)::int AS total, count(*) FILTER (WHERE ${REPLACED})::int AS replaced
+  const { rows: counts } = await db.execute<{ total: number; replaced: number; overtaken: number }>(sql`
+    SELECT count(*)::int AS total, count(*) FILTER (WHERE ${REPLACED})::int AS replaced, count(*) FILTER (WHERE ${OVERTAKEN})::int AS overtaken
       FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id
      WHERE d.status = ${status}`);
   return {
     items: rows.slice(0, limit).map(toUpdate),
     total: Number(counts[0]?.total ?? 0),
     replaced: Number(counts[0]?.replaced ?? 0),
+    overtaken: Number(counts[0]?.overtaken ?? 0),
     truncated: rows.length > limit,
   };
 }
@@ -125,31 +150,41 @@ export const listDismissed = (db: Db, limit = UNDELIVERED_LIMIT): Promise<Undeli
 
 const requeue = sql`status = 'pending', attempts = 0, next_attempt_at = now(), locked_until = NULL, last_error = NULL`;
 
-export type RetryOutcome = "queued" | "replaced" | "not-found";
+export type RetryOutcome = "queued" | "replaced" | "overtaken" | "not-found";
+
+/** Resending it would help: nothing replaced or overtook it. */
+const RESENDABLE = sql`NOT ${REPLACED} AND NOT EXISTS (
+  SELECT 1 FROM outbox_deliveries d3 JOIN outbox_events e3 ON e3.id = d3.event_id
+   WHERE d3.subscriber = d.subscriber AND e3.aggregate_id = e.aggregate_id AND e3.sequence > e.sequence
+     AND d3.status = 'delivered')`;
 
 /**
  * Puts one undelivered update back in the queue: the next dispatch tries it once more. The event
  * is already past the dispatcher's 24 hours, so a failure makes it undelivered again straight away.
- * "replaced" (left as it is) when a newer update for the same record to the same app exists;
- * "not-found" when there is no such undelivered update (already retried, delivered or dismissed).
+ * "replaced" or "overtaken" (left as it is) when a newer update for the same record to the same app
+ * stands in for it, or already arrived; "not-found" when there is no such undelivered update
+ * (already retried, delivered or dismissed).
  */
 export async function retryUndelivered(db: Db, eventId: string, subscriber: string): Promise<RetryOutcome> {
   const one = sql`d.event_id = ${eventId} AND d.subscriber = ${subscriber} AND d.status = 'dead'`;
-  const r = await db.execute(sql`UPDATE outbox_deliveries d SET ${requeue} FROM outbox_events e WHERE e.id = d.event_id AND ${one} AND NOT ${REPLACED}`);
+  const r = await db.execute(sql`UPDATE outbox_deliveries d SET ${requeue} FROM outbox_events e WHERE e.id = d.event_id AND ${one} AND ${RESENDABLE}`);
   if ((r.rowCount ?? 0) > 0) return "queued";
-  const { rows } = await db.execute(sql`SELECT 1 FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id WHERE ${one}`);
-  return rows.length > 0 ? "replaced" : "not-found";
+  const { rows } = await db.execute<{ replaced: boolean }>(sql`SELECT ${REPLACED} AS replaced FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id WHERE ${one}`);
+  if (rows.length === 0) return "not-found";
+  return rows[0]!.replaced ? "replaced" : "overtaken";
 }
 
 /**
- * Puts every undelivered update in this outbox that nothing replaced back in the queue, all due at
- * the same instant, so the dispatcher sends them oldest first (its claim orders by queue time and
- * sequence). Replaced ones are left undelivered and counted.
+ * Puts every undelivered update in this outbox that nothing replaced or overtook back in the queue,
+ * all due at the same instant, so the dispatcher sends them oldest first (its claim orders by queue
+ * time and sequence). The others are left undelivered and counted.
  */
-export async function retryAllUndelivered(db: Db): Promise<{ retried: number; replaced: number }> {
-  const r = await db.execute(sql`UPDATE outbox_deliveries d SET ${requeue} FROM outbox_events e WHERE e.id = d.event_id AND d.status = 'dead' AND NOT ${REPLACED}`);
-  const { rows } = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM outbox_deliveries WHERE status = 'dead'`);
-  return { retried: r.rowCount ?? 0, replaced: Number(rows[0]?.n ?? 0) };
+export async function retryAllUndelivered(db: Db): Promise<{ retried: number; replaced: number; overtaken: number }> {
+  const r = await db.execute(sql`UPDATE outbox_deliveries d SET ${requeue} FROM outbox_events e WHERE e.id = d.event_id AND d.status = 'dead' AND ${RESENDABLE}`);
+  const { rows } = await db.execute<{ replaced: number; overtaken: number }>(sql`
+    SELECT count(*) FILTER (WHERE ${REPLACED})::int AS replaced, count(*) FILTER (WHERE ${OVERTAKEN})::int AS overtaken
+      FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id WHERE d.status = 'dead'`);
+  return { retried: r.rowCount ?? 0, replaced: Number(rows[0]?.replaced ?? 0), overtaken: Number(rows[0]?.overtaken ?? 0) };
 }
 
 async function dismissWhere(db: Db, where: SQL): Promise<UndeliveredUpdate[]> {
@@ -167,13 +202,23 @@ async function dismissWhere(db: Db, where: SQL): Promise<UndeliveredUpdate[]> {
   return rows.map(toUpdate);
 }
 
-/** Marks one undelivered update as handled without sending it; null when there is no such undelivered update. */
-export async function dismissUndelivered(db: Db, eventId: string, subscriber: string): Promise<UndeliveredUpdate | null> {
-  return (await dismissWhere(db, sql`d.event_id = ${eventId} AND d.subscriber = ${subscriber}`))[0] ?? null;
+/** One undelivered update, as the list shows it; null when it isn't undelivered (any more). */
+export async function findUndelivered(db: Db, eventId: string, subscriber: string): Promise<UndeliveredUpdate | null> {
+  const { rows } = await db.execute<Row>(sql`
+    SELECT ${FIELDS} FROM outbox_deliveries d JOIN outbox_events e ON e.id = d.event_id
+     WHERE d.event_id = ${eventId} AND d.subscriber = ${subscriber} AND d.status = 'dead'`);
+  return rows[0] ? toUpdate(rows[0]) : null;
 }
 
-/** Marks every undelivered update in this outbox, replaced ones included, as handled; the ones it marked. */
-export const dismissAllUndelivered = (db: Db): Promise<UndeliveredUpdate[]> => dismissWhere(db, sql`true`);
+/**
+ * Marks these undelivered updates as handled without sending them; the ones it marked (any already
+ * retried, delivered or dismissed are left alone). The caller records who did it first (fix round 2, N6).
+ */
+export async function dismissUndelivered(db: Db, keys: { eventId: string; subscriber: string }[]): Promise<UndeliveredUpdate[]> {
+  if (keys.length === 0) return [];
+  const pairs = sql.join(keys.map((k) => sql`(${k.eventId}::uuid, ${k.subscriber}::text)`), sql`, `);
+  return dismissWhere(db, sql`(d.event_id, d.subscriber) IN (${pairs})`);
+}
 
 export interface OutboxHealth {
   /** Deliveries still waiting to go (including ones being retried). */
@@ -189,7 +234,7 @@ export interface OutboxHealth {
 }
 
 /** The outbox's backlog for `/stack/health` (suite review O2.1), by the database's clock. */
-export async function outboxHealth(db: Db, opts: { recentMs: number; now?: TestClock }): Promise<OutboxHealth> {
+export async function outboxHealth(db: DbOrTx, opts: { recentMs: number; now?: TestClock }): Promise<OutboxHealth> {
   const now = sqlNow(opts.now);
   const { rows } = await db.execute<{ pending: number; oldest_minutes: number | null; undelivered: number; replaced: number; recent_undelivered: number }>(sql`
     SELECT count(*) FILTER (WHERE d.status = 'pending')::int AS pending,
@@ -215,10 +260,11 @@ export interface OutboxAdmin {
   list(limit?: number): Promise<UndeliveredList>;
   listDismissed(limit?: number): Promise<UndeliveredList>;
   retry(eventId: string, subscriber: string): Promise<RetryOutcome>;
-  retryAll(): Promise<{ retried: number; replaced: number }>;
-  dismiss(eventId: string, subscriber: string): Promise<UndeliveredUpdate | null>;
-  dismissAll(): Promise<UndeliveredUpdate[]>;
-  health(opts: { recentMs: number }): Promise<OutboxHealth>;
+  retryAll(): Promise<{ retried: number; replaced: number; overtaken: number }>;
+  find(eventId: string, subscriber: string): Promise<UndeliveredUpdate | null>;
+  dismiss(keys: { eventId: string; subscriber: string }[]): Promise<UndeliveredUpdate[]>;
+  /** With `timeoutMs`, its queries run under that statement timeout (fix round 2, I2). */
+  health(opts: { recentMs: number; timeoutMs?: number }): Promise<OutboxHealth>;
 }
 
 export function outboxAdmin(db: Db): OutboxAdmin {
@@ -227,8 +273,8 @@ export function outboxAdmin(db: Db): OutboxAdmin {
     listDismissed: (limit) => listDismissed(db, limit),
     retry: (eventId, subscriber) => retryUndelivered(db, eventId, subscriber),
     retryAll: () => retryAllUndelivered(db),
-    dismiss: (eventId, subscriber) => dismissUndelivered(db, eventId, subscriber),
-    dismissAll: () => dismissAllUndelivered(db),
-    health: (opts) => outboxHealth(db, opts),
+    find: (eventId, subscriber) => findUndelivered(db, eventId, subscriber),
+    dismiss: (keys) => dismissUndelivered(db, keys),
+    health: (opts) => (opts.timeoutMs === undefined ? outboxHealth(db, opts) : withStatementTimeout(db, opts.timeoutMs, (tx) => outboxHealth(tx, opts))),
   };
 }

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import type { DbOrTx } from "@gcpe/db-kit";
 
 /**
  * Suite review O2.1 (owner 2026-10-31): what NoD tells `/stack/health` about its background
@@ -30,7 +30,7 @@ export interface NodHealthOptions {
 
 const minutes = (v: unknown): number | null => (v === null || v === undefined ? null : Math.max(0, Number(v)));
 
-export async function nodHealth(db: Db, opts: NodHealthOptions): Promise<NodHealth> {
+export async function nodHealth(db: DbOrTx, opts: NodHealthOptions): Promise<NodHealth> {
   const { rows } = await db.execute<{ digest: number | null; feed_checked: number | null; feed_ok: boolean | null; media_ok: number | null; media_failed: boolean | null }>(sql`
     SELECT floor(extract(epoch from (now() - (SELECT max(ran_at) FROM digest_runs))) / 60)::int AS digest,
            floor(extract(epoch from (now() - s.emergency_feed_checked_at)) / 60)::int AS feed_checked,

@@ -4,7 +4,7 @@ import express from "express";
 import { authFromEnv, NEWS_API_SIMILAR_ROLE, serviceTokenProvider, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
-import { createDb, runMigrations } from "@gcpe/db-kit";
+import { createDb, runMigrations, withStatementTimeout } from "@gcpe/db-kit";
 import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
@@ -263,7 +263,7 @@ export interface AppHandle {
   outbox: OutboxAdmin;
   /** Releases past their publish time (by more than `graceMs`) and still not published, leaving
    * out ones on hold — `/stack/health`'s "releases.overdue" check (suite review O2.1). */
-  overdueScheduled(graceMs: number): Promise<{ count: number; oldestMinutes: number | null }>;
+  overdueScheduled(graceMs: number, timeoutMs: number): Promise<{ count: number; oldestMinutes: number | null }>;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
   /** Q17: whether the stack's public `/files/<storageKey>` may serve this release file right now
@@ -404,7 +404,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     app,
     port: parsed.PORT,
     outbox: outboxAdmin(db),
-    overdueScheduled: (graceMs) => overdueScheduled(db, { graceMs }),
+    overdueScheduled: (graceMs, timeoutMs) => withStatementTimeout(db, timeoutMs, (tx) => overdueScheduled(tx, { graceMs })),
     workers: {
       flickr: () => processFlickrJobs(flickrJobsOpts),
       site: () => switchCarousels(db, subscribers, slideFiles),

@@ -296,7 +296,7 @@ function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "
     // up but a background check red is "degraded", still 200 so a load balancer or the deploy's
     // own health wait doesn't take the site out over a backlog.
     const ok = Object.values(apps).every(Boolean);
-    return { status: ok ? 200 : 503, body: { status: !ok ? "unavailable" : Object.values(opsChecks).every((c) => c.ok) ? "ok" : "degraded", apps, checks: opsChecks } };
+    return { status: ok ? 200 : 503, body: { status: !ok ? "unavailable" : Object.values(opsChecks).some((c) => c.ok === false) ? "degraded" : "ok", apps, checks: opsChecks } };
   };
   // Fix round 1, N3: one recomputation at a time, shared by every caller that misses the cache
   // while it runs (the endpoint is public on SiteGround).
@@ -632,9 +632,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   ];
   const opsSources: OpsSources = {
     outboxes,
-    overdueScheduled: (graceMs) => nrms.overdueScheduled(graceMs),
-    nod: () => nod.health(),
-    rebuildQueue: () => siteBuilder.rebuildQueue(),
+    overdueScheduled: (graceMs, timeoutMs) => nrms.overdueScheduled(graceMs, timeoutMs),
+    nod: (timeoutMs) => nod.health(timeoutMs),
+    rebuildQueue: (timeoutMs) => siteBuilder.rebuildQueue(timeoutMs),
     uptimeMinutes: () => (Date.now() - startedAt) / 60_000,
   };
   app.use("/stack", healthRouter(new Date(startedAt).toISOString(), calendar !== null, newsApi.searchMode, opsSources));

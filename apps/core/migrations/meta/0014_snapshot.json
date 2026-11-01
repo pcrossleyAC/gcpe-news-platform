@@ -1,5 +1,5 @@
 {
-  "id": "7a76c1bc-ac78-40a4-ba2b-87fe1cf35a57",
+  "id": "64b9969e-a627-422d-b8f2-a8b82e8ef3c5",
   "prevId": "0cc1f46d-7f4a-4d97-a303-8f8ea99ac1e1",
   "version": "7",
   "dialect": "postgresql",
@@ -1191,7 +1191,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "outbox_events_aggregate_seq_idx": {
+          "name": "outbox_events_aggregate_seq_idx",
+          "columns": [
+            {
+              "expression": "aggregate_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

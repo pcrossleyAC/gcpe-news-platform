@@ -3,7 +3,7 @@ import { z } from "zod";
 import express from "express";
 import { authFromEnv, isValidPasswordHash, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
-import { createDb, runMigrations } from "@gcpe/db-kit";
+import { createDb, runMigrations, withStatementTimeout } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
 import { createItemSending } from "./as-it-happens";
@@ -119,7 +119,7 @@ export interface AppHandle {
    * itself uses. */
   workers: Record<string, () => Promise<unknown>>;
   /** What `/stack/health` reports about NoD's background work (health.ts; suite review O2.1). */
-  health(): Promise<NodHealth>;
+  health(timeoutMs: number): Promise<NodHealth>;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
   /** Closers that must run *before* the http server closes. NoD has none — always empty —
@@ -278,7 +278,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   return {
     app,
     port: parsed.PORT,
-    health: () => nodHealth(db, { emergencyFeedOn: emergencyFeed.url !== null, mediaSyncOn: mediaHub !== null, sendLastOkAt: () => sendLastOkAt }),
+    health: (timeoutMs) => withStatementTimeout(db, timeoutMs, (tx) => nodHealth(tx, { emergencyFeedOn: emergencyFeed.url !== null, mediaSyncOn: mediaHub !== null, sendLastOkAt: () => sendLastOkAt })),
     workers: {
       send: async () => {
         const result = await sendDueJobs(sendJobsOptions);

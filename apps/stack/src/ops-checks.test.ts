@@ -140,4 +140,27 @@ describe("runOpsChecks", () => {
     expect(checks["releases.overdue"]!.ok).toBe(true);
     expect(JSON.stringify(checks)).not.toContain("hunter2");
   });
+
+  // Fix round 2, I2: a check that runs past its time limit is unknown, not red, and never holds up the answer.
+  it("a check the database cancelled for taking too long reports unknown, not red", async () => {
+    const timedOut = Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    const checks = await runOpsChecks(sources({ overdueScheduled: async () => Promise.reject(timedOut) }));
+    expect(checks["releases.overdue"]).toEqual({ ok: null, error: "timed out" });
+  });
+
+  it("gives up waiting on a check that never answers, and asks each source for the time limit", async () => {
+    const asked: number[] = [];
+    const started = Date.now();
+    const checks = await runOpsChecks(
+      sources({
+        rebuildQueue: (timeoutMs) => ((asked.push(timeoutMs), new Promise(() => {})) as Promise<never>),
+        overdueScheduled: async (_g, timeoutMs) => (asked.push(timeoutMs), { count: 0, oldestMinutes: null }),
+      }),
+      { ...HEALTH_LIMITS, checkTimeoutMs: 50 },
+    );
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(checks["site.rebuild-queue"]).toEqual({ ok: null, error: "timed out" });
+    expect(asked).toEqual([50, 50]);
+    expect(HEALTH_LIMITS.checkTimeoutMs).toBe(2_000);
+  });
 });

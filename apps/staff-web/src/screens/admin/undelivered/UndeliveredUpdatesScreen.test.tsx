@@ -17,14 +17,16 @@ const RELEASE = {
   lastError: "HTTP 503",
   createdAt: "2026-10-30T17:00:00.000Z",
   replaced: false,
+  overtaken: false,
 };
 const RELEASE_2 = { ...RELEASE, eventId: "22222222-2222-4222-8222-222222222222", about: "Second release", createdAt: "2026-10-30T16:00:00.000Z" };
 const ORG = { ...RELEASE, eventId: "33333333-3333-4333-8333-333333333333", subscriber: "calendar", type: "org.deactivated", aggregateId: "org:health", about: "health", lastError: `fetch failed: ${"x".repeat(300)}`, createdAt: "2026-10-30T18:00:00.000Z" };
 const REPLACED = { ...RELEASE, eventId: "44444444-4444-4444-8444-444444444444", about: "Withdrawn release", createdAt: "2026-10-30T15:00:00.000Z", replaced: true };
+const OVERTAKEN = { ...RELEASE, eventId: "66666666-6666-4666-8666-666666666666", about: "Corrected first", createdAt: "2026-10-30T14:00:00.000Z", overtaken: true };
 
 type Item = typeof RELEASE;
-type AppList = { app: string; items: Item[]; total: number; replaced: number; truncated: boolean };
-const list = (app: string, items: Item[]): AppList => ({ app, items, total: items.length, replaced: items.filter((i) => i.replaced).length, truncated: false });
+type AppList = { app: string; items: Item[]; total: number; replaced: number; overtaken: number; truncated: boolean };
+const list = (app: string, items: Item[]): AppList => ({ app, items, total: items.length, replaced: items.filter((i) => i.replaced).length, overtaken: items.filter((i) => i.overtaken).length, truncated: false });
 const lists = (nrms: Item[], core: Item[] = []): AppList[] => [list("nrms", nrms), list("core", core), list("distribution", [])];
 
 const DISMISSAL = { app: "core", eventId: "55555555-5555-4555-8555-555555555555", subscriber: "nrms", type: "org.upserted", about: "finance", lastError: "HTTP 400", createdAt: "2026-10-29T10:00:00.000Z", replaced: false, dismissedAt: "2026-10-31T09:00:00.000Z", dismissedBy: "Sam Admin" };
@@ -133,6 +135,18 @@ describe("UndeliveredUpdatesScreen", () => {
     expect(within(row).getByRole("button", { name: /^Dismiss Release published: Withdrawn release/ })).toBeInTheDocument();
   });
 
+  // Fix round 2, M4.
+  it("shows an overtaken release with the way to send it, no Retry, and leaves it out of Retry all", async () => {
+    stub({ before: lists([RELEASE, RELEASE_2, OVERTAKEN]) });
+    renderScreen();
+    const row = (await screen.findByText("Release published: Corrected first")).closest("tr")!;
+    expect(row).toHaveTextContent("A later change got there first, so it can't be sent again. To send it, publish the release again from Releases.");
+    expect(within(row).queryByRole("button", { name: /^Retry/ })).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Retry all 2 from Releases" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("1 can't be sent again because a later change got there first.");
+  });
+
   it("shows the server's reason when a retry is refused because a newer update replaced it", async () => {
     stub({ before: lists([RELEASE]), replies: { "/stack/undelivered/retry": { status: 409, body: { error: "A newer update replaced this one, so it isn't sent again." } } } });
     renderScreen();
@@ -196,7 +210,7 @@ describe("UndeliveredUpdatesScreen", () => {
   });
 
   it("says when an app's list is cut short", async () => {
-    stub({ before: [{ app: "nrms", items: [RELEASE], total: 350, replaced: 0, truncated: true }] });
+    stub({ before: [{ app: "nrms", items: [RELEASE], total: 350, replaced: 0, overtaken: 0, truncated: true }] });
     renderScreen();
     expect(await screen.findByText("Releases has 350 undelivered updates: only the 200 most recent are listed.")).toBeInTheDocument();
   });

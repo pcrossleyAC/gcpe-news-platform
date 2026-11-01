@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS "outbox_events_aggregate_seq_idx" ON "outbox_events" USING btree ("aggregate_id","sequence");

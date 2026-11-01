@@ -13,4 +13,5 @@ CREATE TABLE "outbox_dismissals" (
 	CONSTRAINT "outbox_dismissals_app_event_id_subscriber_pk" PRIMARY KEY("app","event_id","subscriber")
 );
 --> statement-breakpoint
-CREATE INDEX "outbox_dismissals_dismissed_at_idx" ON "outbox_dismissals" USING btree ("dismissed_at");
+CREATE INDEX "outbox_dismissals_dismissed_at_idx" ON "outbox_dismissals" USING btree ("dismissed_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "outbox_events_aggregate_seq_idx" ON "outbox_events" USING btree ("aggregate_id","sequence");

@@ -13,8 +13,14 @@ export interface DismissalRecords {
 /** Why a replaced update is refused (fix round 1, I1); the Calendar's route says the same. */
 export const REPLACED_MESSAGE = "A newer update replaced this one, so it isn't sent again.";
 
+/** Why an overtaken update is refused (fix round 2, M4): the receiving app would ignore it. */
+export const OVERTAKEN_MESSAGE = "A later change to the same record already arrived, so this can't be sent again.";
+
 /** How many recent dismissals the screen lists. */
 export const RECENT_DISMISSALS = 50;
+
+/** Dismiss all works through each outbox this many at a time. */
+const DISMISS_BATCH = 500;
 
 /**
  * Suite review O1.3 (owner 2026-10-31): the Hub's Undelivered updates screen, Core.Admin only —
@@ -27,7 +33,10 @@ export const RECENT_DISMISSALS = 50;
  *   the same record replaced it (never resent: fix round 1, I1); 404 when it is no longer undelivered;
  * - `POST /stack/undelivered/retry-all` `{ app }`: `{ retried, replaced }` — the replaced ones skipped;
  * - `POST /stack/undelivered/dismiss` `{ app, eventId, subscriber }`: 204, or 404 (fix round 1, M1);
- * - `POST /stack/undelivered/dismiss-all` `{}`: `{ dismissed }`, every app's undelivered updates.
+ * - `POST /stack/undelivered/dismiss-all` `{}`: `{ dismissed }`, every app's undelivered updates,
+ *   listed or not.
+ * - 409 for an overtaken update too: a newer one for the same record already reached that app, which
+ *   would ignore this one (fix round 2, M4).
  */
 export function undeliveredRouter(auth: Parameters<typeof requireBearer>[0], outboxes: { name: string; outbox: OutboxAdmin }[], dismissals: DismissalRecords): Router {
   const byName = new Map(outboxes.map((o) => [o.name, o.outbox]));
@@ -55,6 +64,7 @@ export function undeliveredRouter(auth: Parameters<typeof requireBearer>[0], out
     try {
       const outcome = await byName.get(b.data.app)!.retry(b.data.eventId, b.data.subscriber);
       if (outcome === "replaced") return void res.status(409).json({ error: REPLACED_MESSAGE });
+      if (outcome === "overtaken") return void res.status(409).json({ error: OVERTAKEN_MESSAGE });
       if (outcome === "not-found") return void res.status(404).json({ error: "not found" });
       res.status(204).end();
     } catch (e) {
@@ -70,13 +80,18 @@ export function undeliveredRouter(auth: Parameters<typeof requireBearer>[0], out
       next(e);
     }
   });
+  // Fix round 2, N6: who and when are recorded in Core first, then the update is dismissed. A record
+  // without a dismissal (the second write failed) is harmless and a repeat changes nothing; a
+  // dismissal without a record can't happen.
   r.post("/undelivered/dismiss", async (req, res, next) => {
     const b = oneSchema.safeParse(req.body);
     if (!b.success) return void res.status(400).json({ error: "invalid request" });
     try {
-      const done = await byName.get(b.data.app)!.dismiss(b.data.eventId, b.data.subscriber);
-      if (!done) return void res.status(404).json({ error: "not found" });
-      await dismissals.record(b.data.app, [done], actorOf(req));
+      const outbox = byName.get(b.data.app)!;
+      const found = await outbox.find(b.data.eventId, b.data.subscriber);
+      if (!found) return void res.status(404).json({ error: "not found" });
+      await dismissals.record(b.data.app, [found], actorOf(req));
+      if ((await outbox.dismiss([found])).length === 0) return void res.status(404).json({ error: "not found" });
       res.status(204).end();
     } catch (e) {
       next(e);
@@ -89,9 +104,15 @@ export function undeliveredRouter(auth: Parameters<typeof requireBearer>[0], out
       const actor = actorOf(req);
       let dismissed = 0;
       for (const o of outboxes) {
-        const done = await o.outbox.dismissAll();
-        await dismissals.record(o.name, done, actor);
-        dismissed += done.length;
+        // In batches, every undelivered update (listed or not), each recorded before it is dismissed.
+        for (;;) {
+          const batch = (await o.outbox.list(DISMISS_BATCH)).items;
+          if (batch.length === 0) break;
+          await dismissals.record(o.name, batch, actor);
+          const done = await o.outbox.dismiss(batch);
+          dismissed += done.length;
+          if (done.length === 0) break; // all retried or delivered meanwhile; the list will move on
+        }
       }
       res.json({ dismissed });
     } catch (e) {

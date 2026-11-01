@@ -85,6 +85,13 @@
       "when": 1791388334434,
       "tag": "0011_bounce_summary_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793517932164,
+      "tag": "0012_outbox_events_aggregate_seq",
+      "breakpoints": true
     }
   ]
 }

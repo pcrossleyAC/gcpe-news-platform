@@ -15,6 +15,7 @@ const update = (over: Partial<UndeliveredUpdate> = {}): UndeliveredUpdate => ({
   lastError: "HTTP 503",
   createdAt: "2026-10-30T17:00:00.000Z",
   replaced: false,
+  overtaken: false,
   ...over,
 });
 

@@ -1,3 +1,4 @@
+import { isStatementTimeout } from "@gcpe/db-kit";
 import type { OutboxAdmin } from "@gcpe/events";
 import type { NodHealth } from "../../nod/src/health";
 
@@ -30,61 +31,80 @@ export const HEALTH_LIMITS = {
    * docs/parity/url-cutover-runbook.md), so length alone isn't a problem: a page waiting longer
    * than that means the builder isn't keeping up. */
   rebuildQueueOldestMaxMinutes: 12 * 60,
-} as const;
+  /** Fix round 2, I2: each check's queries are cancelled after this long, and the answer stops
+   * waiting for it a moment later, so /stack/health stays well inside the 10 s a deploy's health
+   * wait allows. A check past it reports "timed out" with `ok: null` (unknown), not red. */
+  checkTimeoutMs: 2_000,
+};
 
-export type Check = { ok: boolean } & Record<string, number | boolean | string | null>;
+export type HealthLimits = typeof HEALTH_LIMITS;
 
+/** `ok: null` is unknown (timed out): it neither turns the answer degraded nor passes as green. */
+export type Check = { ok: boolean | null } & Record<string, number | boolean | string | null>;
+
+/** Each source gets the time limit its queries must run under (`withStatementTimeout`). */
 export interface OpsSources {
   outboxes: { name: string; outbox: Pick<OutboxAdmin, "health"> }[];
-  overdueScheduled(graceMs: number): Promise<{ count: number; oldestMinutes: number | null }>;
-  nod(): Promise<NodHealth>;
-  rebuildQueue(): Promise<{ pages: number; oldestMinutes: number | null }>;
+  overdueScheduled(graceMs: number, timeoutMs: number): Promise<{ count: number; oldestMinutes: number | null }>;
+  nod(timeoutMs: number): Promise<NodHealth>;
+  rebuildQueue(timeoutMs: number): Promise<{ pages: number; oldestMinutes: number | null }>;
   /** Minutes since this process started: "never ran yet" is only red once it has been up longer than the limit. */
   uptimeMinutes(): number;
 }
 
 /** Never the error itself: it can carry a connection string or a query's values. */
 const UNREADABLE: Check = { ok: false, error: "couldn't check" };
+/** Fix round 2, I2: took longer than HEALTH_LIMITS.checkTimeoutMs; unknown, not red. */
+const TIMED_OUT: Check = { ok: null, error: "timed out" };
+const failed = (v: unknown): v is Check => v === UNREADABLE || v === TIMED_OUT;
 
-async function readOr<T>(read: () => Promise<T>): Promise<T | null> {
+/** The source's answer; or TIMED_OUT when the database cancelled it, or it didn't answer in time; or UNREADABLE. */
+async function readOr<T>(read: () => Promise<T>, timeoutMs: number): Promise<T | Check> {
+  let timer: NodeJS.Timeout | undefined;
+  // A moment past the database's own limit, for a source stuck before its query (a busy pool).
+  const late = new Promise<Check>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs + 500);
+  });
   try {
-    return await read();
-  } catch {
-    return null;
+    return await Promise.race([read(), late]);
+  } catch (e) {
+    return isStatementTimeout(e) ? TIMED_OUT : UNREADABLE;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 /** Within `max` minutes; a thing that never ran is late only once the process has been up longer than `max`. */
 const fresh = (minutesAgo: number | null, max: number, uptime: number) => (minutesAgo === null ? uptime <= max : minutesAgo <= max);
 
-export async function runOpsChecks(s: OpsSources): Promise<Record<string, Check>> {
-  const L = HEALTH_LIMITS;
+export async function runOpsChecks(s: OpsSources, L: HealthLimits = HEALTH_LIMITS): Promise<Record<string, Check>> {
   const uptime = s.uptimeMinutes();
   const recentMs = L.undeliveredRecentDays * 24 * 3_600_000;
+  const t = L.checkTimeoutMs;
   const [outboxes, overdue, nod, queue] = await Promise.all([
-    Promise.all(s.outboxes.map(async (o) => ({ name: o.name, health: await readOr(() => o.outbox.health({ recentMs })) }))),
-    readOr(() => s.overdueScheduled(L.overdueGraceMinutes * 60_000)),
-    readOr(() => s.nod()),
-    readOr(() => s.rebuildQueue()),
+    Promise.all(s.outboxes.map(async (o) => ({ name: o.name, health: await readOr(() => o.outbox.health({ recentMs, timeoutMs: t }), t) }))),
+    readOr(() => s.overdueScheduled(L.overdueGraceMinutes * 60_000, t), t),
+    readOr(() => s.nod(t), t),
+    readOr(() => s.rebuildQueue(t), t),
   ]);
 
   const checks: Record<string, Check> = {};
   for (const { name, health: h } of outboxes) {
     // Fix round 1, N5: every field named, never spread — this answer is public on SiteGround.
     // Replaced and dismissed undelivered updates never turn it red (fix round 1, I1/M1).
-    checks[`outbox.${name}`] = h
-      ? {
+    checks[`outbox.${name}`] = failed(h)
+      ? h
+      : {
           ok: (h.oldestPendingMinutes ?? 0) <= L.outboxOldestPendingMinutes && h.recentUndelivered === 0,
           pending: h.pending,
           oldestPendingMinutes: h.oldestPendingMinutes,
           undelivered: h.undelivered,
           replaced: h.replaced,
           recentUndelivered: h.recentUndelivered,
-        }
-      : UNREADABLE;
+        };
   }
-  checks["releases.overdue"] = overdue ? { ok: overdue.count === 0, count: overdue.count, oldestMinutes: overdue.oldestMinutes } : UNREADABLE;
-  if (nod) {
+  checks["releases.overdue"] = failed(overdue) ? overdue : { ok: overdue.count === 0, count: overdue.count, oldestMinutes: overdue.oldestMinutes };
+  if (!failed(nod)) {
     checks["nod.digest"] = { ok: fresh(nod.digestMinutesAgo, L.digestMaxMinutes, uptime), minutesSinceLastRun: nod.digestMinutesAgo };
     if (nod.emergencyFeed.on) {
       const f = nod.emergencyFeed;
@@ -96,9 +116,9 @@ export async function runOpsChecks(s: OpsSources): Promise<Record<string, Check>
     }
     checks["nod.send-loop"] = { ok: fresh(nod.sendLoopMinutesAgo, L.sendLoopMaxMinutes, uptime), minutesSinceLastRun: nod.sendLoopMinutesAgo };
   } else {
-    checks["nod.digest"] = UNREADABLE;
-    checks["nod.send-loop"] = UNREADABLE;
+    checks["nod.digest"] = nod;
+    checks["nod.send-loop"] = nod;
   }
-  checks["site.rebuild-queue"] = queue ? { ok: (queue.oldestMinutes ?? 0) <= L.rebuildQueueOldestMaxMinutes, pages: queue.pages, oldestMinutes: queue.oldestMinutes } : UNREADABLE;
+  checks["site.rebuild-queue"] = failed(queue) ? queue : { ok: (queue.oldestMinutes ?? 0) <= L.rebuildQueueOldestMaxMinutes, pages: queue.pages, oldestMinutes: queue.oldestMinutes };
   return checks;
 }
