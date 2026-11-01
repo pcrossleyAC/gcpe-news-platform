@@ -20,6 +20,7 @@ import { LinksScreen } from "./LinksScreen";
 import { FilesScreen } from "./FilesScreen";
 import { FeaturedScreen } from "./FeaturedScreen";
 import { LogScreen } from "./LogScreen";
+import { AddressCheckScreen } from "./AddressCheckScreen";
 import { BannerScreen } from "./settings/BannerScreen";
 import { FooterScreen } from "./settings/FooterScreen";
 import { SocialScreen } from "./settings/SocialScreen";
@@ -185,6 +186,20 @@ describe("accessibility — Website section screens", () => {
     const { container } = render(withAuth(<LogScreen />));
     await screen.findByRole("heading", { name: "Website log", level: 1 });
     await screen.findByText("No log entries yet.");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("AddressCheckScreen, with addresses listed under two screens", async () => {
+    stub(["NRMS.SiteEditor"], {
+      "/nrms/api/site/internal-links": {
+        links: [
+          { screen: "carousel", where: "Live carousel, slide 1: action URL", address: "https://gcpe-app01.internal/files/a-very-long-file-name-that-has-to-wrap-on-a-phone.pdf" },
+          { screen: "settings", section: "footer", where: "Link “Contact us”", address: "https://gcpe-app01.internal/contact" },
+        ],
+      },
+    });
+    const { container } = render(withAuth(<AddressCheckScreen />));
+    await screen.findByRole("link", { name: "Open Footer links" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 

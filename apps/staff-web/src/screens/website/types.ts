@@ -1,3 +1,5 @@
+import type { SectionKey } from "@gcpe/site-settings";
+
 /**
  * Response shapes for `/nrms/api/site/...` (apps/nrms/src/http/site-routes.ts, codemap.md §2).
  * `@gcpe/nrms-contract` is zod-only and carries no Website types (codemap.md §3) — these are
@@ -107,4 +109,16 @@ export interface SiteLogEntry {
   actorName: string;
   area: SiteLogArea;
   text: string;
+}
+
+/** Suite fix W2: one saved address on a Hub host (apps/nrms/src/website/internal-links.ts's InternalLink). */
+export interface InternalLink {
+  screen: "carousel" | "pins" | "live-feed" | "links" | "settings";
+  /** For "settings": the settings screen's section. */
+  section?: SectionKey;
+  /** Where on that screen ("" when the screen is enough, and for settings, which carry `path`). */
+  where: string;
+  /** Settings only: the field's place in its section, named by settingsFieldLocation. */
+  path?: (string | number)[];
+  address: string;
 }

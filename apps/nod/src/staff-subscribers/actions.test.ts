@@ -194,6 +194,27 @@ describe("staff subscriber actions", () => {
     ]);
   });
 
+  it("N2: bulk delete because they asked us to stop ends each one as the single delete does; without it, each is a plain delete", async () => {
+    const { subscriberId: a } = await addMediaMember(tdb.db, "budget", { email: "bulk-stop-a@example.test", source: "manual-media" }, ACTOR);
+    const b = await add("bulk-stop-b@example.test");
+    const gone = await add("bulk-stop-gone@example.test", { status: "deleted" });
+    const r = await bulkAction(tdb.db, [a, b.id, gone.id], "delete", ACTOR, { askedToStop: true });
+    expect(r).toEqual({ changed: 2, skipped: [{ id: gone.id, reason: "unchanged" }] });
+    const history = async (id: string) =>
+      (await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, id))).filter((h) => h.action !== "media-list-added").map((h) => [h.action, h.actor, h.detail]).sort();
+    expect(await history(a)).toEqual([
+      ["media-list-opted-out", ACTOR, "media-distribution-lists:budget"],
+      ["unsubscribed", ACTOR, "asked staff"],
+    ]);
+    expect(await history(b.id)).toEqual([["unsubscribed", ACTOR, "asked staff"]]);
+    for (const id of [a, b.id]) expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, id)))[0]).toMatchObject({ status: "deleted", endedAt: expect.any(Date) });
+    await expect(addMediaMember(tdb.db, "budget", { email: "bulk-stop-a@example.test", source: "manual-media" }, ACTOR)).rejects.toBeInstanceOf(OptedOutError);
+
+    const { subscriberId: c } = await addMediaMember(tdb.db, "budget", { email: "bulk-plain@example.test", source: "manual-media" }, ACTOR);
+    expect(await bulkAction(tdb.db, [c], "delete", ACTOR, { askedToStop: false })).toEqual({ changed: 1, skipped: [] });
+    expect(await actions(c)).toEqual(["media-list-added", "media-list-removed", "staff-deleted"]);
+  });
+
   it("bulk records an unexpected failure on one row as an error, logs no address, and carries on", async () => {
     const before = await add("bulk-a@example.test");
     const broken = await add("bulk-boom@example.test");

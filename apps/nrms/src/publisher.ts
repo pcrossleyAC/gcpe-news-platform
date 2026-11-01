@@ -127,11 +127,7 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
     eventId = (await enqueueEvent(tx, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: true, ...extra } }, opts.subscribers)).id;
     await writeLog(tx, id, SYSTEM_ACTOR, `Republished to ${destinations(view)}`);
   }
-  if (emailAgain.send) {
-    // Which events carried it, so the release can show whether NoD got it (newest kept).
-    const eventIds = [...emailAgain.send.eventIds, eventId].slice(-MAX_TRACKED_EVENTS);
-    await tx.update(newsReleases).set({ lastEmailAgain: { ...emailAgain.send, eventIds } }).where(eq(newsReleases.id, id));
-  }
+  if (emailAgain.send) await trackEmailAgain(tx, id, emailAgain.send, eventId);
   if (emailAgain.line) await writeLog(tx, id, SYSTEM_ACTOR, emailAgain.line);
   await tx.insert(releasePublications).values({ releaseId: id, publishedAt: row!.updatedAt, actorId: SYSTEM_ACTOR.id, actorName: SYSTEM_ACTOR.name, record });
   await emitLinkChange(tx, before, await linkStateOf(tx, id), opts.subscribers);
@@ -141,7 +137,14 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
 /** How many carrying events a release remembers for "did NoD get it". */
 const MAX_TRACKED_EVENTS = 20;
 
-const toEvent = ({ eventIds: _ids, ...e }: SentEmailAgain): EmailAgain => e;
+/** The event's `emailAgain` for a request passed on (its NRMS-only `eventIds` left out). */
+export const toEvent = ({ eventIds: _ids, ...e }: SentEmailAgain): EmailAgain => e;
+
+/** Records that `eventId` carried `sent`, so the release can show whether NoD got it (newest kept). */
+export async function trackEmailAgain(tx: Tx, id: string, sent: SentEmailAgain, eventId: string): Promise<void> {
+  const eventIds = [...sent.eventIds, eventId].slice(-MAX_TRACKED_EVENTS);
+  await tx.update(newsReleases).set({ lastEmailAgain: { ...sent, eventIds } }).where(eq(newsReleases.id, id));
+}
 
 /**
  * Owner decision 2026-10-31: the "Also email it again?" this republish carries. A request waiting

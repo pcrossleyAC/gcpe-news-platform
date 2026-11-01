@@ -23,7 +23,7 @@ export interface DirectoryContactsEditorProps {
 }
 
 type TextKey = "group" | "groupUrl" | "subgroup" | "name" | "phone" | "cell" | "email";
-const FIELDS: { key: TextKey; label: string; type?: "tel" | "email"; description?: string }[] = [
+export const FIELDS: { key: TextKey; label: string; type?: "tel" | "email"; description?: string }[] = [
   { key: "group", label: "Group" },
   { key: "groupUrl", label: "Group link", description: "Optional. A page on this site, like /ministries/health/, or a full web address starting with https://." },
   { key: "subgroup", label: "Subgroup" },

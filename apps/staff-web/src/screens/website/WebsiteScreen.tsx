@@ -12,6 +12,7 @@ const SECTIONS: { to: string; label: string; manageOnly: boolean }[] = [
   { to: "featured", label: "What's featured where", manageOnly: false },
   { to: "links", label: "Resource links", manageOnly: true },
   { to: "files", label: "Files", manageOnly: true },
+  { to: "address-check", label: "Hub address check", manageOnly: true },
   { to: "log", label: "Website log", manageOnly: false },
 ];
 

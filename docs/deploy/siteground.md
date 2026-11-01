@@ -650,6 +650,11 @@ Entra sign-in is on when `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET` or `
 
 **Fake Microsoft sign-in (test sites only).** `FAKE_ENTRA_ENABLED=true` plus `CORE_PUBLIC_BASE_URL` mounts a fake at `/fake-entra` and points Core at it. Its picker offers two made-up identities, `entra-staff@example.test` and `entra-unknown@example.test`; create a Core user with the first email to try a successful sign-in. **Anyone who can reach the site can then sign in as that user without a password**, so enable it only while testing and give that user no more roles than the test needs. The stack refuses it in real production and alongside any real Entra setting; on a test site such as boxs.ca, turning it on doesn't touch `CORE_LOCAL_PASSWORDS_ALLOWED` or anyone's existing password.
 
+**The Hub's internal names (`NRMS_INTERNAL_HOSTS`).** Not needed on a single-host site such as
+boxs.ca: the Hub and the public site share the host, so no address on it is treated as "points at
+the Hub". On a deployment where staff reach the Hub under names the public can't open, see
+windows.md, D7 ("Other names for the app server").
+
 ## Flickr (Phase 3c)
 
 Fake mode is automatic whenever NRMS has no effective Flickr key (`FLICKR_API_KEY` /
@@ -1291,12 +1296,31 @@ written) and the lock-contention case above.
 correct. Start early on cutover day, well before the switch-over time: step 3 can take a while.
 
 1. Turn legacy's own publisher off (nothing may publish from both systems at once).
-2. `npm run nrms:replay-to-news-api -- --confirm` — re-sends every already-published, live
-   release to the News API as `release.updated` with `notify: false`, so the public site and the
-   News API's own data agree with NRMS's copy before NRMS's publisher starts touching anything.
-   NoD only reacts to `release.published` from `nrms` (`apps/nod/src/app.ts:32`), so this never
-   emails a subscriber — pinned by a NoD test. Dry run (no `--confirm`) lists what it would send
-   and changes nothing; its count is the backlog step 3 waits on.
+2. After step 1, `npm run nrms:replay-to-news-api -- --confirm` — re-sends every
+   already-published, live release to the News API as `release.updated` with `notify: false`, so
+   the public site and the News API's own data agree with NRMS's copy before NRMS's publisher
+   starts touching anything. Run it from a full checkout with the app's `DATABASE_URL` and an
+   `EVENT_SUBSCRIBERS` naming `news-api` only, with `types: ["release.updated"]`. As with the
+   other replay commands, only `name` and `types` matter; the running stack delivers the events
+   itself:
+
+   ```sh
+   DATABASE_URL=... \
+   EVENT_SUBSCRIBERS='[{"name":"news-api","url":"https://replay-cli.example.test/unused","secret":"unused-by-cli-000000000000000000000000","types":["release.updated"]}]' \
+     npm run nrms:replay-to-news-api -- --confirm
+   ```
+
+   Don't add `nod`. NoD ignores a `release.updated` for a release it doesn't have (it creates
+   no item and emails nobody), but it would overwrite its copy of every release it already has
+   with NRMS's and rebuild any of their email still waiting, and it would act on any "Email the
+   correction" request it hasn't confirmed getting. Cutover needs none of that. Run this way, the
+   replay emails nobody. (If `nod` is ever listed, a release whose request was already passed to
+   NoD carries it again under the same correction number, as every republish does; NoD acts on
+   each number once, so nobody gets a corrected copy twice, and both runs list any release whose
+   request NoD hasn't confirmed getting.) The confirmed run also lists releases skipped because
+   they were unpublished or changed while it ran (nothing is sent for those). Dry run (no
+   `--confirm`) lists what it would send and changes nothing; its count is the backlog step 3
+   waits on.
 3. **Wait until NRMS has no deliveries waiting** (suite review O4, owner 2026-10-31). The
    replay queues one delivery per live release, and NRMS delivers its outbox oldest first, so a
    release published now would wait behind the whole replay, its subscriber email included. Poll
@@ -1775,7 +1799,7 @@ JSON error means it hasn't been raised.
      npm run nrms:replay-activity-links -- --confirm
    ```
 
-   (`nrms:replay-to-news-api`'s own `EVENT_SUBSCRIBERS` isn't needed for this step — it sends `release.updated`, not `activity.updated`/`release.status_changed` — but is set up the same way, with a subscriber naming `news-api` and `types: ["release.updated"]`.)
+   (`nrms:replay-to-news-api` isn't needed for this step — it sends `release.updated`, not `activity.updated`/`release.status_changed` — but its `EVENT_SUBSCRIBERS` is set up the same way, naming `news-api` only with `types: ["release.updated"]`: see "Cutover order", step 2.)
 3. **Seeded users:** run `scripts/siteground-seed-users.sh https://boxs.ca` again to add `planner@example.test` ("Test Release Planner", NRMS Editor with Calendar Read Only at GCPE Headquarters).
 
 **Hand checks on boxs.ca** (spec §16 acceptance 13 and 14; they need `gcpe_calendar`):

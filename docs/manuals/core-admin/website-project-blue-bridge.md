@@ -3,7 +3,7 @@ id: website-project-blue-bridge
 title: Website and Project Blue Bridge
 manual: core-admin
 order: 90
-routes: [/website/blue-bridge, /website, /website/carousel, /website/pins, /website/live-feed, /website/links, /website/files, /website/settings, /website/banner, /website/footer, /website/social, /website/theme, /website/ministry-pages, /website/media-contacts, /website/page-text, /website/navigation, /website/identity, /website/settings-history]
+routes: [/website/blue-bridge, /website, /website/carousel, /website/pins, /website/live-feed, /website/links, /website/files, /website/address-check, /website/settings, /website/banner, /website/footer, /website/social, /website/theme, /website/ministry-pages, /website/media-contacts, /website/page-text, /website/navigation, /website/identity, /website/settings-history]
 screens: [website]
 topics: []
 ---
@@ -13,7 +13,7 @@ In **Website**, the one thing only you can change is **Project Blue Bridge**: th
 
 ## What you can and can't change in Website
 
-You can open every **Website** tab: **Carousel**, **Emergency pins**, **Live Feed**, **What's featured where**, **Resource links**, **Files**, **Website log** and **Site settings**. You see what is live, but there are no **Save** or **Publish** buttons.
+You can open every **Website** tab: **Carousel**, **Emergency pins**, **Live Feed**, **What's featured where**, **Resource links**, **Files**, **Hub address check**, **Website log** and **Site settings**. You see what is live, but there are no **Save** or **Publish** buttons.
 
 Site editors make those changes. The [Site editor manual](manual:nrms-site-editor) explains what each tab does. If your work needs them, give your own account the **NRMS Site editor** role on [Users](manual:users).
 

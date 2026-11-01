@@ -90,6 +90,23 @@ describe("BodyEditor", () => {
       expect(onChange.mock.calls.at(-1)![0]).toContain("<asset>https://news.gov.bc.ca/files/clip.mp4</asset>");
     });
 
+    it("suite fix W2 (M3): Insert asset also turns a /files/ address on another of the Hub's internal names into the public one", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.gov.bc.ca", filesBase: "https://news.gov.bc.ca", internalHosts: ["gcpe-app01.internal.gov.bc.ca"] });
+          throw new Error(`unhandled: ${url}`);
+        }),
+      );
+      const onChange = vi.fn();
+      vi.stubGlobal("prompt", vi.fn(() => "https://gcpe-app01.internal.gov.bc.ca/files/clip.mp4"));
+      render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={onChange} readOnly={false} />);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Insert asset" }));
+      await waitFor(() => expect(onChange).toHaveBeenCalled());
+      expect(onChange.mock.calls.at(-1)![0]).toContain("<asset>https://news.gov.bc.ca/files/clip.mp4</asset>");
+    });
+
     it("Link turns a Hub /files/ address into the public one, and asks before using any other Hub address", async () => {
       withPublicBase();
       const onChange = vi.fn();

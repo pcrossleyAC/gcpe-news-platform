@@ -50,7 +50,7 @@ export const LABEL_HINTS: Record<LabelKey, string> = {
   slideActionLabel: "Link text on a home page slide or emergency notice that has no link text of its own.",
 };
 
-const LISTING_FIELDS: Record<ListingKind, string> = {
+export const LISTING_FIELDS: Record<ListingKind, string> = {
   releases: "Releases page title",
   stories: "Stories page title",
   factsheets: "Factsheets page title",

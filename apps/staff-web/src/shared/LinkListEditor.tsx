@@ -6,7 +6,7 @@ import { useAnnouncer } from "./Announcer";
 import { Button } from "./BusyButton";
 import { useMoveFocusRestore } from "./useMoveFocusRestore";
 import { HostWarning } from "./HostWarning";
-import { staffHostWarning, usePublicFilesOrigin } from "./publicAddress";
+import { useStaffHostWarning } from "./publicAddress";
 
 /** A row the editor left completely blank — dropped before sending, as news.gov does. */
 const isBlank = (link: LinkSetting) => [link.text, link.url, link.summary ?? ""].every((v) => v.trim() === "");
@@ -55,7 +55,7 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
   const addRef = useRef<HTMLSpanElement>(null);
   const pendingFocus = useRef<string | "add" | null>(null);
   // W1: an address pasted from the Hub's own (internal) host works for staff but not the public.
-  const publicOrigin = usePublicFilesOrigin();
+  const staffHostWarning = useStaffHostWarning();
 
   // Each row's stable key (React identity and focus targets), parallel to `links` and permuted
   // with it by every action below; a list replaced from outside (a reload) just keeps its keys.
@@ -132,7 +132,7 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
       {links.map((link, index) => {
         const key = keys.current[index]!;
         const others = [...(rowErrors.get(index) ?? [])].filter(([name]) => !shown.includes(name as Shown));
-        const hostWarning = staffHostWarning(link.url, publicOrigin);
+        const hostWarning = staffHostWarning(link.url);
         return (
           <fieldset key={key} data-row-key={key} className="gcpe-link-list__row">
             <legend>{`Link ${index + 1}`}</legend>

@@ -6,7 +6,7 @@ import { Button } from "../../shared/BusyButton";
 import { useShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { HostWarning } from "../../shared/HostWarning";
-import { staffHostWarning, usePublicFilesOrigin } from "../../shared/publicAddress";
+import { useStaffHostWarning } from "../../shared/publicAddress";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { canManageWebsite } from "./access";
 import { SaveResult, clockTime } from "./SaveResult";
@@ -40,8 +40,8 @@ function PinForm({ pin, canEdit, onSaved, timeZone, reportDirty }: PinFormProps)
   const [facebookPostUrl, setFacebookPostUrl] = useState(pin.slide.facebookPostUrl);
   const [justify, setJustify] = useState<Justify>(pin.slide.justify);
   const [imageError, setImageError] = useState<string | null>(null);
-  const publicOrigin = usePublicFilesOrigin();
-  const actionWarning = staffHostWarning(actionUrl, publicOrigin);
+  const staffHostWarning = useStaffHostWarning();
+  const actionWarning = staffHostWarning(actionUrl);
 
   const [addressErrors, setAddressErrors] = useState<{ actionUrl?: string; facebookPostUrl?: string }>({});
   const addressProblems = Object.values(addressErrors);

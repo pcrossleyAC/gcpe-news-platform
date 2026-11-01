@@ -12,7 +12,7 @@ import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
 
 const TITLE = "Ministry page headings";
 
-const FIELD_LABEL: Record<keyof MinistryPageLabels, string> = {
+export const FIELD_LABEL: Record<keyof MinistryPageLabels, string> = {
   moreFromMinistry: "More from this Ministry heading",
   ministryWebsite: "Ministry website heading",
   ministryPhotos: "Ministry photos heading",

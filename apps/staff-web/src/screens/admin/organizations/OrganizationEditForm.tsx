@@ -5,7 +5,7 @@ import { apiFetch } from "../../../api/client";
 import type { LinkSetting } from "@gcpe/site-settings";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
 import { HostWarning } from "../../../shared/HostWarning";
-import { staffHostWarning, usePublicFilesOrigin } from "../../../shared/publicAddress";
+import { useStaffHostWarning } from "../../../shared/publicAddress";
 import { useAnnouncer } from "../../../shared/Announcer";
 import { BodyEditor } from "../../../editor/BodyEditor";
 import { FIX_BELOW, fieldErrorsOf, messagesOf } from "../messages";
@@ -199,7 +199,7 @@ export function OrganizationEditForm({
   const photoPreview = photo.startsWith("https://") ? photo : null;
   // W1: a photo address copied from the Hub's own (internal) host previews for staff but is
   // broken for the public.
-  const photoHostWarning = staffHostWarning(photo, usePublicFilesOrigin());
+  const photoHostWarning = useStaffHostWarning()(photo);
   const bioPatch = bioToPatch(bio);
   // Compared with the stored value normalised the same way, so a stored biography with no text
   // (`<p>&nbsp;</p>`) is not cleared to null by an unrelated save.

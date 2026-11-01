@@ -3,7 +3,7 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { wallClockToInstant } from "@gcpe/config";
 import { localDateTime } from "@gcpe/nrms-contract";
-import { SECTION_KEYS, type SiteSettings } from "@gcpe/site-settings";
+import { SECTION_KEYS, internalHostNames, type SiteSettings } from "@gcpe/site-settings";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { SubscriberConfig } from "@gcpe/events";
@@ -30,6 +30,7 @@ import { MAX_SITE_IMAGE_BYTES, type SlideImageFiles } from "../website/slide-ima
 import { actionLabelField, httpOrEmpty, justifySchema, slideInputSchema } from "../website/slide-input";
 import { deleteFile, listFiles, uploadFile, MAX_SITE_FILE_BYTES } from "../website/files";
 import { featuredWhere } from "../website/features";
+import { findInternalLinks } from "../website/internal-links";
 import { getLinks, saveLinks } from "../website/links";
 import { getBlueBridge, getLiveFeed, saveLiveFeed, setBlueBridge, type LiveFeedDefaults } from "../website/settings";
 import { parseLocalDateTime } from "../releases/workflow";
@@ -65,6 +66,10 @@ export interface SiteRouteDeps {
   siteUrl: string;
   /** Plan 3d task 4: Project Blue Bridge's post-commit notify. */
   notify: (subject: string, text: string) => Promise<void>;
+  /** Suite fix W2 (M3): the Hub's internal host names, without the public site's (see createApp); unset → only the request's own host. */
+  internalHosts?: string[];
+  /** W2 fix round 1 (M4): this deployment's public site URL, never internal. */
+  publicSiteUrl?: string;
 }
 
 /** Legacy ProjectBlueBridge.aspx:50 — shown on every GET so the staff app can display it next to the switch. */
@@ -374,6 +379,18 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     run(async (req, res) => {
       const input = blueBridgeSchema.parse(req.body);
       res.json(await setBlueBridge(db, input, actorOf(req), { subscribers, timeZone, siteUrl, notify }));
+    }),
+  );
+
+  // Suite fix W2 (M4): the Hub address check. Read-only; the hosts are the configured internal
+  // names plus the one the Hub was opened on (as the Hub's own field warnings use), never the
+  // public site's.
+  r.get(
+    "/site/internal-links",
+    settingsRead,
+    run(async (req, res) => {
+      const hosts = internalHostNames([...(deps.internalHosts ?? []), req.get("host") ?? ""], [siteUrl, deps.publicSiteUrl ?? "", slideFiles.filesBase]);
+      res.json({ links: await findInternalLinks(db, hosts) });
     }),
   );
 

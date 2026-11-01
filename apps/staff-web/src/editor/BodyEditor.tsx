@@ -5,7 +5,7 @@ import { Asset, bodyExtensions } from "./schema";
 import { AssetChip } from "./AssetChip";
 import { reduceToAllowedHtml } from "./pasteFilter";
 import { BIO_TAGS, BODY_TAGS } from "@gcpe/nrms-contract";
-import { checkHubAddress, fetchPublicFilesOrigin } from "../shared/publicAddress";
+import { checkHubAddress, fetchHubAddresses } from "../shared/publicAddress";
 
 /** The browser-only variant of the `<asset>` node — same schema as {@link Asset}, plus the
  * interactive chip node view (AssetChip.tsx), which schema.ts itself can't depend on (no React
@@ -120,7 +120,8 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
   // the HTML the public reads. A Hub /files/ address becomes the public one; any other asks first.
   // The public origin is asked for only when an address is typed, not on every editor's mount.
   const publicAddress = async (typed: string): Promise<string | null> => {
-    const { url, warning } = checkHubAddress(typed, await fetchPublicFilesOrigin());
+    const { origin, hubHosts } = await fetchHubAddresses();
+    const { url, warning } = checkHubAddress(typed, origin, hubHosts);
     if (warning && !window.confirm(`${warning} Use this address anyway?`)) return null;
     return url;
   };

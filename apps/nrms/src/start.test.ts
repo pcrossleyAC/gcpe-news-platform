@@ -4,7 +4,7 @@ import { decodeJwt } from "jose";
 import { hashPassword, NEWS_API_SIMILAR_ROLE, serviceTokenProvider } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb } from "../test/helpers";
-import { buildBlueBridgeNotify, coreServiceTokenOptions, distributionServiceTokenOptions, flickrConfigFromEnv, newsApiServiceTokenOptions, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
+import { buildBlueBridgeNotify, coreServiceTokenOptions, distributionServiceTokenOptions, flickrConfigFromEnv, internalHostsWarning, newsApiServiceTokenOptions, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
 import type { CoreClient, DistributionClient } from "./clients";
 
 describe("startNrms", () => {
@@ -221,6 +221,23 @@ describe("Flickr configuration", () => {
     FLICKR_ACCESS_TOKEN: "token-1",
     FLICKR_ACCESS_SECRET: "token-secret-1",
   };
+
+  it("W2 fix round 1 (N3): internalHostsWarning names the ignored INTERNAL_HOSTS entries once, and nothing when all are good", () => {
+    expect(internalHostsWarning(["hub.example", "https://gcpe-app01"])).toBeNull();
+    expect(internalHostsWarning(["hub.example", "*.gov.bc.ca", "fe80::1"])).toBe(
+      "[nrms] NRMS_INTERNAL_HOSTS: ignoring *.gov.bc.ca, fe80::1 (not a host name: wildcards aren't supported, and an IPv6 address needs brackets, such as [fe80::1])",
+    );
+  });
+
+  it("W2 fix round 1 (M4): PUBLIC_SITE_URL is optional", () => {
+    expect(nrmsEnvSchema.parse(base).PUBLIC_SITE_URL).toBeUndefined();
+    expect(nrmsEnvSchema.parse({ ...base, PUBLIC_SITE_URL: "https://news.example" }).PUBLIC_SITE_URL).toBe("https://news.example");
+  });
+
+  it("suite fix W2 (M3): INTERNAL_HOSTS is a comma-separated list, empty when unset", () => {
+    expect(nrmsEnvSchema.parse(base).INTERNAL_HOSTS).toEqual([]);
+    expect(nrmsEnvSchema.parse({ ...base, INTERNAL_HOSTS: " gcpe-app01 , https://hub.example ,," }).INTERNAL_HOSTS).toEqual(["gcpe-app01", "https://hub.example"]);
+  });
 
   it("no FLICKR_API_KEY means no Flickr (features report unavailable)", () => {
     const parsed = nrmsEnvSchema.parse(base);

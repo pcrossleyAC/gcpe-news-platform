@@ -114,6 +114,7 @@ finds its own `config/` and `migrations/` beside it.
 | `STACK_LOOPS` | no | | Default `true`: background work runs in the process (no scheduler needed). |
 | `UPDATES_HUB_ENABLED` | no | | `true` for the News API's live-updates hub; OpenShift routes pass WebSockets. |
 | `ENTRA_TENANT_ID`, `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET`, `CORE_PUBLIC_BASE_URL`, `<PREFIX>_AUTH_AUDIENCE` | for Microsoft sign-in | client secret | As `scripts/windows-env.ts` writes them. |
+| `NRMS_INTERNAL_HOSTS` | no | | Comma-separated other names staff reach the Hub on that the public can't open (bare names or `https://` addresses). The Hub's warnings about such addresses, and **Website** > **Hub address check**, use them with the page's own host and the `CORE_PUBLIC_BASE_URL` host. The public host is never counted. See windows.md, D7. |
 | `NRMS_FLICKR_*`, `NOD_MEDIA_HUB_URL`, `NOD_EMERGENCY_FEED_URL`, `NEWSAPI_EMBEDDINGS_*`, … | no | keys are | Outside services; unset means the stack's fakes on a test site, nothing in production. See siteground.md. |
 | `NOD_EMERGENCY_FEED` | real production, unless the feed URL is set | | `off` switches emergency alerts off on purpose. The real production site refuses to start with neither this nor `NOD_EMERGENCY_FEED_URL`, and with Microsoft sign-in or the mail settings incomplete (docs/deploy/windows.md, "Real production: what the stack refuses"); `--check` reports the same under `production`. |
 

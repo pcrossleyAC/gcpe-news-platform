@@ -690,6 +690,21 @@ the way in.
 from starting; the reason is in `C:\gcpe\service\logs\gcpe-stack.err.log`). On
 `https://<internal host>/hub/`, **Sign in with Microsoft** returns you to the Hub signed in.
 
+**Other names for the app server.** The Hub warns when someone pastes an address on the Hub's own
+server into a web address box (the public can't open it), and **Website** > **Hub address check**
+lists such addresses already saved. It knows the name in the browser's address bar and the
+`CORE_PUBLIC_BASE_URL` host. If staff also reach the app server under other names (a DNS alias,
+the short server name), add them, comma-separated, then `Restart-Service gcpe-stack`:
+
+```
+NRMS_INTERNAL_HOSTS=gcpe-prod-app,<alias>.<internal domain>
+```
+
+Bare names or `https://` addresses both work. Wildcards (`*.gov.bc.ca`) aren't supported, and an IPv6
+address needs its brackets (`[fe80::1]`); the stack logs any entry it ignores at startup
+(`[nrms] NRMS_INTERNAL_HOSTS: ignoring …`). Never list the public host: an address there works
+for the public, so it is ignored if listed.
+
 **Session length.** A staff session lasts at most 12 hours from sign-in (Microsoft, password or
 `admin`), however often the Hub renews it; then the person signs in again. To change it, add
 `SESSION_MAX_HOURS=<hours>` (more than 0, at most 168) to `gcpe.env` and `Restart-Service
@@ -1215,6 +1230,8 @@ At go-live: `.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<
   finds nothing from the last start.
 - One of the Core Admins signs in with Microsoft: Website → Project Blue Bridge no longer says
   "This is a TEST site.", and Subscribers → Operations shows no warning you didn't expect.
+- **Website** > **Hub address check** says nothing points at the Hub (a site editor fixes each
+  address it lists, on the screen it names).
 
 **Break-glass in an emergency** (nobody who can sign in has Core Admin, or Microsoft sign-in is
 down). It makes no change to how the public site looks or is indexed:
