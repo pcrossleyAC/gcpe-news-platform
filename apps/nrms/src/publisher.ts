@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
+import { sqlInterval, sqlNow, type Db, type DbOrTx, type TestClock, type Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type EmailAgain, type SubscriberConfig } from "@gcpe/events";
 import { publishProblems, type ReleaseView } from "@gcpe/nrms-contract";
 import { governmentTerms, newsReleases, releasePublications, type SentEmailAgain } from "./db/schema";
@@ -256,4 +256,20 @@ export function startPublisher(opts: PublisherOptions & { intervalMs?: number })
     clearInterval(timer);
     await running;
   };
+}
+
+/**
+ * Suite review O2.1: releases whose publish time passed more than `graceMs` ago and that are
+ * still scheduled (or stuck publishing), leaving out ones on hold. `/stack/health` reports them,
+ * since the publisher otherwise fails silently from the operator's point of view.
+ */
+export async function overdueScheduled(db: DbOrTx, opts: { graceMs: number; now?: TestClock }): Promise<{ count: number; oldestMinutes: number | null }> {
+  const now = sqlNow(opts.now);
+  const { rows } = await db.execute<{ n: number; oldest: number | null }>(sql`
+    SELECT count(*)::int AS n, floor(extract(epoch from (${now} - min(publish_at))) / 60)::int AS oldest
+      FROM ${newsReleases}
+     WHERE status IN ('scheduled', 'publishing') AND NOT on_hold AND publish_at <= ${now} - ${sqlInterval(opts.graceMs)}`);
+  const r = rows[0];
+  const count = Number(r?.n ?? 0);
+  return { count, oldestMinutes: count === 0 || r?.oldest === null || r?.oldest === undefined ? null : Number(r.oldest) };
 }

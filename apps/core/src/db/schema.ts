@@ -231,3 +231,29 @@ export const coreAudit = pgTable(
   },
   (t) => [index("core_audit_target_idx").on(t.targetType, t.targetId, t.at), index("core_audit_at_idx").on(t.at)],
 );
+
+/**
+ * Suite review fix round 1, M1 (controller ruling 2026-11-01): who dismissed which undelivered
+ * update, and when — the Hub's Undelivered updates screen, for any app's outbox. The app's own
+ * outbox row is marked `status = 'dismissed'` (packages/events undelivered.ts); this keeps the
+ * record, with what the update was, so one Core table serves every app. No foreign key: the
+ * event lives in another app's database.
+ */
+export const outboxDismissals = pgTable(
+  "outbox_dismissals",
+  {
+    /** The app whose outbox held it: nrms, core, distribution, news-api, calendar. */
+    app: text("app").notNull(),
+    eventId: uuid("event_id").notNull(),
+    subscriber: text("subscriber").notNull(),
+    eventType: text("event_type").notNull(),
+    about: text("about"),
+    lastError: text("last_error"),
+    queuedAt: timestamp("queued_at", { withTimezone: true }).notNull(),
+    replaced: boolean("replaced").notNull().default(false),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }).notNull().defaultNow(),
+    actorId: text("actor_id").notNull(),
+    actorName: text("actor_name").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.app, t.eventId, t.subscriber] }), index("outbox_dismissals_dismissed_at_idx").on(t.dismissedAt)],
+);

@@ -50,6 +50,7 @@ import { GovernmentTermsScreen } from "./screens/admin/government-terms/Governme
 import { MediaListNamesScreen } from "./screens/admin/media-lists/MediaListNamesScreen";
 import { ErrorLogScreen } from "./screens/admin/errors/ErrorLogScreen";
 import { AdminHistoryScreen } from "./screens/admin/history/AdminHistoryScreen";
+import { UndeliveredUpdatesScreen } from "./screens/admin/undelivered/UndeliveredUpdatesScreen";
 import { SubscribersSection } from "./screens/subscribers/SubscribersSection";
 import { SubscribersScreen } from "./screens/subscribers/SubscribersScreen";
 import { AddSubscriberScreen } from "./screens/subscribers/AddSubscriberScreen";
@@ -191,6 +192,7 @@ export const routes: RouteObject[] = [
           { path: "media-list-names", element: <MediaListNamesScreen /> },
           { path: "error-log", element: <ErrorLogScreen /> },
           { path: "admin-history", element: <AdminHistoryScreen /> },
+          { path: "undelivered-updates", element: <UndeliveredUpdatesScreen /> },
           { path: "*", element: <NotFoundScreen /> },
         ],
       },

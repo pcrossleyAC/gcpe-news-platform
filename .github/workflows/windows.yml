@@ -102,7 +102,7 @@ jobs:
           function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
           $health = curl.exe -k -sS -f https://localhost/stack/health | ConvertFrom-Json
           $health | ConvertTo-Json -Depth 5
-          Check 'health ok through IIS' ($health.status -eq 'ok')
+          Check 'health ok (or degraded) through IIS' ($health.status -in @('ok', 'degraded'))
           Check 'every app up' (@($health.apps.PSObject.Properties | Where-Object { -not $_.Value }).Count -eq 0)
           Check 'semantic search can use pgvector' ((Get-Content C:\gcpe\logs\install-*.log -Raw) -match 'pgvector: on')
           $hub = curl.exe -k -sS -o NUL -w '%{http_code}' https://localhost/hub/
@@ -187,7 +187,7 @@ jobs:
           $open = @(Get-GcpeInboundAllowRules -Ports @('443', '80') -ExceptDisplayName @('GCPE web: allowed client ranges only'))
           Check "no other rule opens 443 or 80, TCP or UDP ($(($open | ForEach-Object { $_.DisplayName }) -join ', '))" ($open.Count -eq 0)
           $health = curl.exe -k -sS -f https://localhost/stack/health | ConvertFrom-Json
-          Check 'the site still answers on loopback' ($health.status -eq 'ok')
+          Check 'the site still answers on loopback' ($health.status -in @('ok', 'degraded'))
       - name: A release that never becomes healthy is rolled back
         run: |
           $before = (Get-Item C:\gcpe\current).Target
@@ -198,7 +198,7 @@ jobs:
           if (-not $failed) { throw 'the broken release was not refused' }
           if ((Get-Item C:\gcpe\current).Target -ne $before) { throw 'current was not rolled back' }
           $health = curl.exe -k -sS -f https://localhost/stack/health | ConvertFrom-Json
-          if ($health.status -ne 'ok') { throw 'the site is not healthy after the rollback' }
+          if ($health.status -notin @('ok', 'degraded')) { throw 'the site is not healthy after the rollback' }
           Write-Host 'ok: rolled back and healthy'
       - name: The firewall restriction is kept on a re-run and removed by -AllowAllClients
         run: |

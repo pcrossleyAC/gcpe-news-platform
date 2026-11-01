@@ -466,7 +466,8 @@ reach NRMS first:
 Replace `<domain>` and `<TICK_TOKEN>` below.
 
 ```sh
-# 1. Aggregate health — every mounted app's own /health/ready, cached 5s.
+# 1. Aggregate health — every mounted app's own /health/ready plus the background checks
+#    (windows.md §7.7), cached 5s. "ok"; "degraded" (200) means a check is red.
 curl -s https://<domain>/stack/health
 
 # 2. Log in as the local admin (the password you set via siteground:env).
@@ -1292,7 +1293,7 @@ report), `1` on any error, including a stage failing partway through (a partial 
 written) and the lock-contention case above.
 
 **Cutover order**, once the report balances and every imported scheduled release is confirmed
-correct:
+correct. Start early on cutover day, well before the switch-over time: step 3 can take a while.
 
 1. Turn legacy's own publisher off (nothing may publish from both systems at once).
 2. After step 1, `npm run nrms:replay-to-news-api -- --confirm` — re-sends every
@@ -1317,11 +1318,21 @@ correct:
    NoD carries it again under the same correction number, as every republish does; NoD acts on
    each number once, so nobody gets a corrected copy twice, and both runs list any release whose
    request NoD hasn't confirmed getting.) The confirmed run also lists releases skipped because
-   they were unpublished or changed while it ran (nothing is sent for those). Its events are
-   delivered oldest first, so a live publish made while they are still going out waits behind
-   them: let them finish going out before step 3. Dry run (no `--confirm`) lists what it would
-   send and changes nothing.
-3. `npm run nrms:release-holds -- --confirm` — clears `on_hold` on every imported scheduled
+   they were unpublished or changed while it ran (nothing is sent for those). Dry run (no
+   `--confirm`) lists what it would send and changes nothing; its count is the backlog step 3
+   waits on.
+3. **Wait until NRMS has no deliveries waiting** (suite review O4, owner 2026-10-31). The
+   replay queues one delivery per live release, and NRMS delivers its outbox oldest first, so a
+   release published now would wait behind the whole replay, its subscriber email included. Poll
+   the health check until `checks."outbox.nrms".pending` is `0`:
+   ```sh
+   curl -s https://<site>/stack/health | jq '.checks."outbox.nrms"'
+   ```
+   (On Windows: `(curl.exe -k -s https://localhost/stack/health | ConvertFrom-Json).checks.'outbox.nrms'`.)
+   If `pending` stops going down, the News API is refusing some: the Hub's **Undelivered updates**
+   and **Error log** say why. A refused delivery keeps retrying for up to 24 hours, so fix the
+   cause rather than waiting it out. Time the replay on Test first to know how long this takes.
+4. `npm run nrms:release-holds -- --confirm` — clears `on_hold` on every imported scheduled
    release (they import held, per spec §8's safety rule 2, so NRMS's publisher never fires on
    stale/incomplete data mid-import) and lets NRMS's own publisher take over scheduling. Dry run
    lists what's on hold, with past-due ones flagged "will publish immediately" since the

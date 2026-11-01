@@ -14,10 +14,10 @@ describe("the Calendar's undelivered events (spec addendum §5.1)", () => {
   let w: World;
   let app: ReturnType<typeof createTestApp>;
   let sysCookie = "";
-  const dead = async (status: "dead" | "pending" | "delivered" = "dead", aggregateId = "activity:7") => {
+  const dead = async (status: "dead" | "pending" | "delivered" = "dead", aggregateId = "activity:7", sequence = 1) => {
     const id = randomUUID();
-    const envelope = { id, type: "activity.updated", version: 1, source: "calendar", aggregateId, sequence: 1, occurredAt: "2026-09-01T00:00:00Z", correlationId: randomUUID(), data: { id: 7, isConfidential: true, isDeleted: false } };
-    await tdb.db.insert(outboxEvents).values({ id, type: envelope.type, aggregateId: envelope.aggregateId, sequence: 1, envelope, createdAt: new Date("2026-09-01T00:00:00Z") });
+    const envelope = { id, type: "activity.updated", version: 1, source: "calendar", aggregateId, sequence, occurredAt: "2026-09-01T00:00:00Z", correlationId: randomUUID(), data: { id: 7, isConfidential: true, isDeleted: false } };
+    await tdb.db.insert(outboxEvents).values({ id, type: envelope.type, aggregateId: envelope.aggregateId, sequence, envelope, createdAt: new Date("2026-09-01T00:00:00Z") });
     await tdb.db.insert(outboxDeliveries).values({ eventId: id, subscriber: "nrms", status, attempts: 9, lastError: "HTTP 503" });
     return id;
   };
@@ -81,6 +81,15 @@ describe("the Calendar's undelivered events (spec addendum §5.1)", () => {
     const pending = await dead("pending");
     expect((await call(app, "post", "/api/dead-letters/retry", sysCookie, { eventId: pending, subscriber: "nrms" })).status).toBe(404);
     expect((await call(app, "post", "/api/dead-letters/retry", sysCookie, { eventId: "nope", subscriber: "nrms" })).status).toBe(400);
+  });
+
+  // Suite review fix round 1, I1: a newer change to the same activity, to the same app, replaced it.
+  it("a retry of a delivery a newer one for the same activity replaced is 409, with a plain reason", async () => {
+    const older = await dead("dead", "activity:88", 1);
+    await dead("dead", "activity:88", 2);
+    const res = await call(app, "post", "/api/dead-letters/retry", sysCookie, { eventId: older, subscriber: "nrms" });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "A newer update replaced this one, so it isn't sent again." });
   });
 
   it("lists the 200 most recent and says when there are more", async () => {

@@ -19,6 +19,19 @@ export interface TickRunner {
   run(): Promise<{ skipped: true } | ({ skipped: false } & TickRunResult)>;
 }
 
+/** A dispatcher's `{delivered, retried, dead}` (packages/events dispatchOnce). */
+function isDispatchResult(v: unknown): v is { delivered: number; retried: number; dead: number } {
+  if (typeof v !== "object" || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return typeof r.delivered === "number" && typeof r.retried === "number" && typeof r.dead === "number";
+}
+
+/** "ok", or for a dispatch step that retried or gave up on deliveries, how many (suite review O1.1). */
+function outcomeOf(result: unknown): string {
+  if (!isDispatchResult(result) || (result.retried === 0 && result.dead === 0)) return "ok";
+  return `ok: ${result.delivered} delivered, ${result.retried} to retry, ${result.dead} undelivered`;
+}
+
 /**
  * Runs `steps` strictly in order, each in its own try/catch (one step's failure never stops
  * the rest), and coalesces overlapping calls: a call that arrives while a previous one is
@@ -41,8 +54,7 @@ export function createTickRunner(steps: TickStep[]): TickRunner {
         const ran: Record<string, string> = {};
         for (const step of steps) {
           try {
-            await step.run();
-            ran[step.name] = "ok";
+            ran[step.name] = outcomeOf(await step.run());
           } catch (e) {
             ran[step.name] = `error: ${e instanceof Error ? e.message : String(e)}`;
             // Fix round 1, P2-R30 M3: a failed step is otherwise only visible in the tick

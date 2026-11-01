@@ -147,7 +147,8 @@ describe("router (basename /hub)", () => {
         }
         if (url === "/nrms/api/site/carousels") return jsonResponse(200, { live: null, next: null, past: [] });
         if (url === "/core/api/users") return jsonResponse(200, []);
-        if (url === "/stack/errors?limit=200") return jsonResponse(200, { errors: [] });
+        if (url === "/stack/errors?group=1&limit=200") return jsonResponse(200, { groups: [], entries: 0 });
+        if (url === "/stack/undelivered") return jsonResponse(200, { apps: [] });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -165,6 +166,9 @@ describe("router (basename /hub)", () => {
 
     router.navigate("/error-log");
     expect(await screen.findByRole("heading", { level: 1, name: "Error log" })).toBeInTheDocument();
+
+    router.navigate("/undelivered-updates");
+    expect(await screen.findByRole("heading", { level: 1, name: "Undelivered updates" })).toBeInTheDocument();
   });
 
   // Decided after the plan was written: search is a POST to /nod/api/subscribers/search, never

@@ -139,7 +139,14 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
       if (res.rowCount) result.delivered++;
     } else if (Number(row.age_ms) + sinceClaim() >= maxAgeMs) {
       const res = await opts.db.update(outboxDeliveries).set({ status: "dead", attempts, lockedUntil: null, lastError: error }).where(where);
-      if (res.rowCount) result.dead++;
+      if (res.rowCount) {
+        result.dead++;
+        // Suite review O1.1: logged once, at the moment it goes dead, so it reaches the Hub's Error
+        // log. Names the event and the reason only: never the envelope or its data.
+        console.error(
+          `[events] gave up delivering ${row.envelope.type} for ${row.envelope.aggregateId} to ${row.subscriber} after ${attempts} attempts: ${error}. It is listed on Undelivered updates.`,
+        );
+      }
     } else {
       const res = await opts.db
         .update(outboxDeliveries)

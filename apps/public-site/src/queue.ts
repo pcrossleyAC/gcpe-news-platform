@@ -69,3 +69,12 @@ export async function queueDepth(db: DbOrTx): Promise<number> {
   const { rows } = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM rebuild_queue`);
   return rows[0]?.n ?? 0;
 }
+
+/** Suite review O2.1: the queue's length and its oldest page's wait in whole minutes, for `/stack/health`. */
+export async function queueHealth(db: DbOrTx): Promise<{ pages: number; oldestMinutes: number | null }> {
+  const { rows } = await db.execute<{ n: number; oldest: number | null }>(
+    sql`SELECT count(*)::int AS n, floor(extract(epoch from (now() - min(queued_at))) / 60)::int AS oldest FROM rebuild_queue`,
+  );
+  const n = Number(rows[0]?.n ?? 0);
+  return { pages: n, oldestMinutes: n === 0 || rows[0]?.oldest == null ? null : Math.max(0, Number(rows[0].oldest)) };
+}

@@ -42,7 +42,9 @@ import { textCompression } from "./compress";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { checkCalendarDbTimeZone, pgOffsetOf, type DbTimeZoneStatus } from "./db-time-zone";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
-import { installErrorCapture, type ErrorEntry } from "./errors";
+import { groupErrors, installErrorCapture, type ErrorEntry } from "./errors";
+import { HEALTH_LIMITS, runOpsChecks, type Check, type OpsSources, type TimeoutStreaks } from "./ops-checks";
+import { undeliveredRouter } from "./undelivered";
 import { mountSite, rootSiteNotFound, siteBasePath } from "./site-mount";
 import {
   assertPrivateDir,
@@ -262,7 +264,7 @@ const HEALTH_CACHE_TTL_MS = 5_000;
  * `newsApiSearch` (spec §5.3) is the News API's startup search mode; like `startedAt`, it is
  * constant for the process, so it sits outside the cache.
  */
-function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "semantic" | "text"): Router {
+function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "semantic" | "text", ops: OpsSources): Router {
   const checks: { name: string; path: string }[] = [
     { name: "core", path: "/core/health/ready" },
     { name: "nrms", path: "/nrms/health/ready" },
@@ -272,28 +274,49 @@ function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "
     { name: "news-api", path: "/health/ready" },
   ];
   if (withCalendar) checks.push({ name: "calendar", path: "/calendar/health/ready" });
-  let cached: { expiresAt: number; status: number; body: { status: string; apps: Record<string, boolean> } } | undefined;
+  let cached: { expiresAt: number; status: number; body: { status: string; apps: Record<string, boolean>; checks: Record<string, Check> } } | undefined;
   const r = Router();
-  r.get("/health", async (_req, res) => {
-    if (cached && cached.expiresAt > Date.now()) {
-      return void res.status(cached.status).json({ ...cached.body, newsApiSearch, startedAt, pid: process.pid });
-    }
+  // Fix round 3, N8: kept across computations so a check that keeps timing out turns red.
+  const timeoutStreaks: TimeoutStreaks = new Map();
+  type Computed = { status: number; body: { status: string; apps: Record<string, boolean>; checks: Record<string, Check> } };
+  const compute = async (): Promise<Computed> => {
     const apps: Record<string, boolean> = {};
-    await Promise.all(
-      checks.map(async ({ name, path }) => {
-        try {
-          const response = await fetch(`${INTERNAL_ORIGIN}${path}`);
-          apps[name] = response.ok;
-        } catch {
-          apps[name] = false;
-        }
-      }),
-    );
+    const [, opsChecks] = await Promise.all([
+      Promise.all(
+        checks.map(async ({ name, path }) => {
+          try {
+            const response = await fetch(`${INTERNAL_ORIGIN}${path}`);
+            apps[name] = response.ok;
+          } catch {
+            apps[name] = false;
+          }
+        }),
+      ),
+      runOpsChecks(ops, HEALTH_LIMITS, timeoutStreaks),
+    ]);
+    // Suite review O2.1 (owner 2026-10-31): an app down is "unavailable" (503, as before); every app
+    // up but a background check red is "degraded", still 200 so a load balancer or the deploy's
+    // own health wait doesn't take the site out over a backlog.
     const ok = Object.values(apps).every(Boolean);
-    const status = ok ? 200 : 503;
-    const body = { status: ok ? "ok" : "unavailable", apps };
-    cached = { expiresAt: Date.now() + HEALTH_CACHE_TTL_MS, status, body };
-    res.status(status).json({ ...body, newsApiSearch, startedAt, pid: process.pid });
+    return { status: ok ? 200 : 503, body: { status: !ok ? "unavailable" : Object.values(opsChecks).some((c) => c.ok === false) ? "degraded" : "ok", apps, checks: opsChecks } };
+  };
+  // Fix round 1, N3: one recomputation at a time, shared by every caller that misses the cache
+  // while it runs (the endpoint is public on SiteGround).
+  let inflight: Promise<Computed> | undefined;
+  r.get("/health", async (_req, res) => {
+    if (!(cached && cached.expiresAt > Date.now())) {
+      inflight ??= compute()
+        .then((c) => {
+          cached = { expiresAt: Date.now() + HEALTH_CACHE_TTL_MS, ...c };
+          return c;
+        })
+        .finally(() => {
+          inflight = undefined;
+        });
+      const c = await inflight;
+      return void res.status(c.status).json({ ...c.body, newsApiSearch, startedAt, pid: process.pid });
+    }
+    res.status(cached.status).json({ ...cached.body, newsApiSearch, startedAt, pid: process.pid });
   });
   return r;
 }
@@ -313,6 +336,9 @@ function errorsRouter(auth: Parameters<typeof requireBearer>[0], entries: () => 
       Number.isFinite(requested) && requested > 0
         ? Math.min(Math.trunc(requested), ERROR_LOG_MAX_RESPONSE_LIMIT)
         : ERROR_LOG_DEFAULT_RESPONSE_LIMIT;
+    // Suite review O2.3: `?group=1` folds identical messages across the whole kept ring, newest
+    // first, at most `limit` groups — what the Hub's Error log shows.
+    if (req.query.group === "1") return void res.json({ groups: groupErrors(all, limit), entries: all.length });
     res.json({ errors: all.slice(Math.max(0, all.length - limit)) });
   });
   return r;
@@ -597,8 +623,25 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const combinedLoginLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
   app.use(["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token", "/core/auth/login"], combinedLoginLimiter);
 
-  app.use("/stack", healthRouter(new Date(startedAt).toISOString(), calendar !== null, newsApi.searchMode));
+  // Suite review O1/O2 (owner 2026-10-31): every app with an outbox (NoD and the public site send
+  // no events), in the order the Hub lists them.
+  const outboxes = [
+    { name: "nrms", outbox: nrms.outbox },
+    { name: "core", outbox: core.outbox },
+    { name: "distribution", outbox: distribution.outbox },
+    { name: "news-api", outbox: newsApi.outbox },
+    ...(calendar ? [{ name: "calendar", outbox: calendar.outbox }] : []),
+  ];
+  const opsSources: OpsSources = {
+    outboxes,
+    overdueScheduled: (graceMs, timeoutMs) => nrms.overdueScheduled(graceMs, timeoutMs),
+    nod: (timeoutMs) => nod.health(timeoutMs),
+    rebuildQueue: (timeoutMs) => siteBuilder.rebuildQueue(timeoutMs),
+    uptimeMinutes: () => (Date.now() - startedAt) / 60_000,
+  };
+  app.use("/stack", healthRouter(new Date(startedAt).toISOString(), calendar !== null, newsApi.searchMode, opsSources));
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
+  app.use("/stack", undeliveredRouter(errorsAuth.bearer, outboxes, core.outboxDismissals));
   app.use(
     "/stack",
     tickRouter(

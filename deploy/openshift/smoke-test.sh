@@ -111,7 +111,8 @@ wait_for() { # url expected-status seconds
 BASE="http://127.0.0.1:$HOST_PORT"
 wait_for "$BASE/stack/health" 200 180
 health="$(curl -s "$BASE/stack/health")"
-echo "$health" | grep -q '"status":"ok"' || { log "unexpected /stack/health: $health"; exit 1; }
+# "degraded" (still 200) is every app up with a background check red; only "unavailable" fails.
+echo "$health" | grep -Eq '"status":"(ok|degraded)"' || { log "unexpected /stack/health: $health"; exit 1; }
 log "/stack/health: $health"
 wait_for "$BASE/" 200 120
 log "/: 200"

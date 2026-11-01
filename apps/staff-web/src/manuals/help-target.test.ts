@@ -163,6 +163,10 @@ describe("Help on the Calendar screens, with the compiled manuals", () => {
     expect(helpTargetFor(path, as("Calendar.Administrator"))).toBe(`/help/manuals/${adminPage}`);
     expect(helpTargetFor(path, as("Calendar.SysAdmin"))).toBe(`/help/manuals/${adminPage}`);
   });
+  // Suite review O1.3: the Hub-wide Undelivered updates screen has its own Core administrator page.
+  it("on /undelivered-updates, a Core administrator gets the Undelivered updates page", () => {
+    expect(helpTargetFor("/undelivered-updates", as("Core.Admin"))).toBe("/help/manuals/core-admin/undelivered-updates");
+  });
   const ADMIN: [string, string][] = [
     ["/calendar/users", "calendar-users"],
     ["/calendar/lookups/categories", "calendar-lookups"],

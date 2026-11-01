@@ -36,7 +36,7 @@ async function renderShell(roles: string[], tzCheck?: object) {
   await waitFor(() => expect(screen.getByText("Signed in as Pat")).toBeInTheDocument());
 }
 
-const allLabels = ["Releases", "Search", "Website", "Subscribers", "Calendar", "Users", "Calendar access", "Organizations", "Government terms", "Sectors, themes and tags", "Release page titles", "Media list names", "Error log", "Admin history"];
+const allLabels = ["Releases", "Search", "Website", "Subscribers", "Calendar", "Users", "Calendar access", "Organizations", "Government terms", "Sectors, themes and tags", "Release page titles", "Media list names", "Error log", "Admin history", "Undelivered updates"];
 const visibleLabels = () => allLabels.filter((label) => screen.queryByRole("link", { name: label }) !== null);
 
 describe("AppShell nav — roles decide what's shown", () => {
@@ -79,9 +79,9 @@ describe("AppShell nav — roles decide what's shown", () => {
     expect(visibleLabels()).toEqual(["Releases", "Search", "Website", "Organizations"]);
   });
 
-  it("Core.Admin sees Website (to reach Project Blue Bridge), Users, Media list names, the error log and Admin history", async () => {
+  it("Core.Admin sees Website (to reach Project Blue Bridge), Users, Media list names, the error log, Admin history and Undelivered updates", async () => {
     await renderShell(["Core.Admin"]);
-    expect(visibleLabels()).toEqual(["Website", "Users", "Calendar access", "Organizations", "Government terms", "Sectors, themes and tags", "Release page titles", "Media list names", "Error log", "Admin history"]);
+    expect(visibleLabels()).toEqual(["Website", "Users", "Calendar access", "Organizations", "Government terms", "Sectors, themes and tags", "Release page titles", "Media list names", "Error log", "Admin history", "Undelivered updates"]);
   });
 
   it("each NoD role sees Subscribers; NRMS roles don't", async () => {

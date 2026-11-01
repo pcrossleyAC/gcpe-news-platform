@@ -57,6 +57,18 @@ describe("tick execution", () => {
     expect(order).toEqual(["nrms.publish", "nrms.dispatch"]);
   });
 
+  // Suite review O1.1: a dispatch step's {delivered, retried, dead} is no longer thrown away, so
+  // the tick's own answer shows deliveries that are being retried or were given up on.
+  it("reports a dispatch step's retried and undelivered counts instead of a bare ok", async () => {
+    const steps: TickStep[] = [
+      { name: "nrms.dispatch", run: async () => ({ delivered: 3, retried: 1, dead: 2 }) },
+      { name: "core.dispatch", run: async () => ({ delivered: 4, retried: 0, dead: 0 }) },
+      { name: "nod.digest", run: async () => ({ ran: false }) },
+    ];
+    const res = await request(appWith(steps)).post("/stack/tick").set("authorization", `Bearer ${TOKEN}`);
+    expect(res.body.ran).toEqual({ "nrms.dispatch": "ok: 3 delivered, 1 to retry, 2 undelivered", "core.dispatch": "ok", "nod.digest": "ok" });
+  });
+
   it("isolates a failing step in its own try/catch, still running the rest", async () => {
     const order: string[] = [];
     const steps: TickStep[] = [

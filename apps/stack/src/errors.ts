@@ -18,8 +18,13 @@ export function redact(message: string): string {
 }
 
 export interface ErrorEntry {
+  /** When it was logged — for a folded entry, the last time. */
   timestamp: string;
   message: string;
+  /** Suite review fix round 1, M2: how many times this exact message was logged while kept
+   * (absent = once), and when it first was (absent = `timestamp`). */
+  count?: number;
+  firstAt?: string;
   /** This process's pid, so a reader can tell which process (of possibly several, across
    * restarts) logged a given entry. */
   pid: number;
@@ -89,12 +94,34 @@ function loadPersisted(filePath: string, cap: number): ErrorEntry[] {
     if (line.trim().length === 0) continue;
     try {
       const parsed = JSON.parse(line) as unknown;
-      if (isErrorEntry(parsed)) entries.push(parsed);
+      if (isErrorEntry(parsed)) fold(entries, parsed);
     } catch {
       // One corrupt line doesn't lose the rest of the file.
     }
   }
   return entries.length > cap ? entries.slice(entries.length - cap) : entries;
+}
+
+/**
+ * Suite review fix round 1, M2: adds `entry` to `entries` (oldest first), folding it into an entry
+ * with exactly the same message if one is kept: one count, first and last time, moved to the newest
+ * end. A line that carries its own `count` is already the running total (this build writes the
+ * whole folded entry each time), so it replaces the kept one; a plain line (an older build's, or a
+ * first occurrence) adds one. Returns the entry as it now stands.
+ */
+function fold(entries: ErrorEntry[], entry: ErrorEntry): ErrorEntry {
+  const at = entries.findIndex((e) => e.message === entry.message);
+  if (at === -1) {
+    entries.push(entry);
+    return entry;
+  }
+  const kept = entries.splice(at, 1)[0]!;
+  const merged: ErrorEntry =
+    entry.count !== undefined
+      ? entry
+      : { ...entry, count: (kept.count ?? 1) + 1, firstAt: kept.firstAt ?? kept.timestamp };
+  entries.push(merged);
+  return merged;
 }
 
 /** Rewrites `filePath` to hold exactly `entries` (oldest first), one JSON object per line.
@@ -150,8 +177,7 @@ export function installErrorCapture(options: number | ErrorCaptureOptions = {}):
 
   const original = console.error;
   console.error = ((...args: unknown[]) => {
-    const entry: ErrorEntry = { timestamp: new Date().toISOString(), message: redact(format(...args)), pid, startedAt };
-    buffer.push(entry);
+    const entry = fold(buffer, { timestamp: new Date().toISOString(), message: redact(format(...args)), pid, startedAt });
     if (buffer.length > limit) buffer.splice(0, buffer.length - limit);
     if (filePath) {
       append(filePath, entry);
@@ -169,4 +195,42 @@ export function installErrorCapture(options: number | ErrorCaptureOptions = {}):
       console.error = original;
     },
   };
+}
+
+/** Identical messages folded together (suite review O2.3): how many, the first and last time, and
+ * the process that logged the last one. */
+export interface ErrorGroup {
+  message: string;
+  count: number;
+  firstAt: string;
+  lastAt: string;
+  pid: number;
+  startedAt: string;
+}
+
+/**
+ * Groups `entries` (oldest first, as the ring keeps them) by their exact message, newest group
+ * (by its last time) first, at most `limit` groups. The capture already folds repeats (fix round 1,
+ * M2), so this mostly passes entries through as groups; it still sums any that weren't folded.
+ */
+export function groupErrors(entries: ErrorEntry[], limit = Infinity): ErrorGroup[] {
+  const groups = new Map<string, ErrorGroup>();
+  for (const e of entries) {
+    const n = e.count ?? 1;
+    const first = e.firstAt ?? e.timestamp;
+    const g = groups.get(e.message);
+    if (g) {
+      g.count += n;
+      if (first < g.firstAt) g.firstAt = first;
+      g.lastAt = e.timestamp;
+      g.pid = e.pid;
+      g.startedAt = e.startedAt;
+      // Re-inserted so the Map's order follows each group's latest entry.
+      groups.delete(e.message);
+      groups.set(e.message, g);
+    } else {
+      groups.set(e.message, { message: e.message, count: n, firstAt: first, lastAt: e.timestamp, pid: e.pid, startedAt: e.startedAt });
+    }
+  }
+  return [...groups.values()].reverse().slice(0, limit);
 }

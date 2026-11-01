@@ -4,7 +4,7 @@ import { authFromEnv } from "@gcpe/auth";
 import { parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations, type Db } from "@gcpe/db-kit";
-import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
+import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin } from "@gcpe/events";
 import { createApp } from "./app";
 import { graphBounceSource } from "./bounces/graph";
 import { runBouncesIfDue, startBounceLoop } from "./bounces/run";
@@ -36,6 +36,9 @@ export interface AppHandle {
   /** One iteration of each background loop, using the same function and options the loop
    * itself uses. */
   workers: Record<string, () => Promise<unknown>>;
+  /** This app's outbox: its undelivered updates and backlog, for the stack's Undelivered updates
+   * screen and `/stack/health` (suite review O1/O2). */
+  outbox: OutboxAdmin;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
   /** Closers that must run *before* the http server closes. Distribution has none — always
@@ -109,6 +112,7 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
   return {
     app,
     port: parsed.PORT,
+    outbox: outboxAdmin(db),
     workers: {
       send: () => sendDue(sendOptions),
       bounces: () => runBouncesIfDue(db, bounceSource, { subscribers, messageIdDomain: parsed.MESSAGE_ID_DOMAIN }),

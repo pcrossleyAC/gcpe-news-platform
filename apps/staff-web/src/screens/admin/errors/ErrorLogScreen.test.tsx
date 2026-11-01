@@ -17,10 +17,12 @@ function withAuth(children: React.ReactNode) {
   );
 }
 
-const ENTRIES = [
-  { timestamp: "2026-10-05T10:00:00.000Z", message: "first error", pid: 111, startedAt: "2026-10-05T00:00:00.000Z" },
-  { timestamp: "2026-10-05T12:00:00.000Z", message: "second error", pid: 111, startedAt: "2026-10-05T00:00:00.000Z" },
+// Suite review O2.3: the screen asks for identical messages grouped, newest group first.
+const GROUPS = [
+  { message: "emergency feed check failed: HTTP 500", count: 212, firstAt: "2026-10-04T10:00:00.000Z", lastAt: "2026-10-05T12:00:00.000Z", pid: 111, startedAt: "2026-10-04T00:00:00.000Z" },
+  { message: "first error", count: 1, firstAt: "2026-10-05T10:00:00.000Z", lastAt: "2026-10-05T10:00:00.000Z", pid: 111, startedAt: "2026-10-05T00:00:00.000Z" },
 ];
+const GROUPED_URL = "/stack/errors?group=1&limit=200";
 
 describe("ErrorLogScreen", () => {
   afterEach(() => {
@@ -36,7 +38,7 @@ describe("ErrorLogScreen", () => {
       vi.fn(async (url: string) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-        if (url === "/stack/errors?limit=200") return jsonResponse(200, { errors: ENTRIES });
+        if (url === GROUPED_URL) return jsonResponse(200, { groups: GROUPS, entries: 213 });
         throw new Error(`unhandled: ${url}`);
       }),
     );
@@ -45,7 +47,7 @@ describe("ErrorLogScreen", () => {
     await waitFor(() => expect(document.title).toBe("Error log — GCPE News Staff"));
   });
 
-  it("renders entries newest first, with a Refresh button that re-fetches", async () => {
+  it("shows each error once, newest first, with how often it happened, and a Refresh button that re-fetches", async () => {
     const calls: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -53,22 +55,24 @@ describe("ErrorLogScreen", () => {
         calls.push(url);
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-        if (url === "/stack/errors?limit=200") return jsonResponse(200, { errors: ENTRIES });
+        if (url === GROUPED_URL) return jsonResponse(200, { groups: GROUPS, entries: 213 });
         throw new Error(`unhandled: ${url}`);
       }),
     );
     render(withAuth(<ErrorLogScreen />));
-    await screen.findByText("second error");
+    await screen.findByText("first error");
 
     const rows = screen.getAllByRole("row");
-    // rows[0] is the header row; the newest entry ("second error") must come first.
-    expect(rows[1]).toHaveTextContent("second error");
+    // rows[0] is the header row; the group seen most recently comes first.
+    expect(rows[1]).toHaveTextContent("emergency feed check failed: HTTP 500");
+    expect(rows[1]).toHaveTextContent(/212 times, first .*Oct.* 4/);
     expect(rows[2]).toHaveTextContent("first error");
+    expect(rows[2]).toHaveTextContent("Once");
 
-    const before = calls.filter((u) => u === "/stack/errors?limit=200").length;
+    const before = calls.filter((u) => u === GROUPED_URL).length;
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Refresh" }));
-    await waitFor(() => expect(calls.filter((u) => u === "/stack/errors?limit=200").length).toBe(before + 1));
+    await waitFor(() => expect(calls.filter((u) => u === GROUPED_URL).length).toBe(before + 1));
   });
 
   it("a non-Core.Admin is blocked", async () => {

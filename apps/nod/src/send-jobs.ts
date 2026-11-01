@@ -680,12 +680,14 @@ export async function sendDueJobs(
   return result;
 }
 
-export function startJobSender(opts: SendJobsOptions & { intervalMs?: number }): () => Promise<void> {
+export function startJobSender(opts: SendJobsOptions & { intervalMs?: number; onSuccess?: () => void }): () => Promise<void> {
   let stopped = false;
   let running: Promise<unknown> | null = null;
   const timer = setInterval(() => {
     if (stopped || running) return;
     running = sendDueJobs(opts)
+      // Suite review O2.1: /stack/health's "nod.send-loop" check (start.ts keeps the time).
+      .then(() => opts.onSuccess?.())
       .catch((e) => console.error("[nod] send failed", e))
       .finally(() => {
         running = null;

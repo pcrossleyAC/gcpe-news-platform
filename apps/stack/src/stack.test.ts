@@ -1,6 +1,7 @@
 // Stack-level tests (task-14-brief.md's checklist, plus fix round 1 / P2-R30) and the Phase 2
 // exit check replayed through the stack's single server and /stack/tick instead of six
 // separate processes.
+import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
@@ -274,9 +275,25 @@ describe("apps/stack", () => {
   it("GET /stack/health aggregates every app's own readiness", async () => {
     const res = await fetch(`${instance.stackUrl}/stack/health`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; apps: Record<string, boolean>; newsApiSearch: string };
+    const body = (await res.json()) as { status: string; apps: Record<string, boolean>; checks: Record<string, { ok: boolean }>; newsApiSearch: string };
     expect(body.status).toBe("ok");
     expect(body.apps).toEqual({ core: true, nrms: true, nod: true, distribution: true, "site-builder": true, "news-api": true, calendar: true });
+    // Suite review O2.1: the background checks, all green on a fresh stack (the fake emergency
+    // feed and fake Media Hub count as switched on).
+    expect(Object.keys(body.checks)).toEqual([
+      "outbox.nrms",
+      "outbox.core",
+      "outbox.distribution",
+      "outbox.news-api",
+      "outbox.calendar",
+      "releases.overdue",
+      "nod.digest",
+      "nod.emergency-feed",
+      "nod.media-sync",
+      "nod.send-loop",
+      "site.rebuild-queue",
+    ]);
+    expect(Object.entries(body.checks).filter(([, c]) => !c.ok)).toEqual([]);
     // The stack's tenant has semanticSearch off, so the News API reports text mode.
     expect(body.newsApiSearch).toBe("text");
   });
@@ -310,6 +327,27 @@ describe("apps/stack", () => {
       // Exactly our own one outer call — if the cache were absent, this would also count 6
       // more (one loopback fetch per mounted app's /health/ready), i.e. 7.
       expect(calls).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  // Suite review fix round 1, N3: when the cache has run out, callers arriving together share one
+  // recomputation instead of each re-running every app's readiness and every check.
+  it("GET /stack/health computes once for callers that arrive together after the cache runs out", { timeout: 20_000 }, async () => {
+    await fetch(`${instance.stackUrl}/stack/health`);
+    await new Promise((r) => setTimeout(r, 5_200)); // past the 5 s cache
+    const originalFetch = globalThis.fetch;
+    let readiness = 0;
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      if (String(args[0]).endsWith("/health/ready")) readiness++;
+      return originalFetch(...args);
+    }) as typeof fetch;
+    try {
+      const all = await Promise.all(Array.from({ length: 5 }, () => fetch(`${instance.stackUrl}/stack/health`)));
+      expect(all.map((r) => r.status)).toEqual([200, 200, 200, 200, 200]);
+      // One round: one readiness fetch per mounted app (seven here, the Calendar included).
+      expect(readiness).toBe(7);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1015,6 +1053,197 @@ describe("apps/stack", () => {
       const nonAdminToken = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
       const res = await fetch(`${instance.stackUrl}/stack/errors`, { headers: { authorization: `Bearer ${nonAdminToken}` } });
       expect(res.status).toBe(403);
+    });
+  });
+
+  // Suite review O1.3 (owner 2026-10-31): every app's undelivered updates, Core.Admin only.
+  describe("/stack/undelivered", () => {
+    const admin = () => ({ authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json", "x-gcpe-request": "1" });
+    /** An event NoD gave up on 25 hours ago, written straight into NRMS's outbox. */
+    async function deadInNrms(headline: string, aggregateId?: string, sequence = 1): Promise<string> {
+      const id = randomUUID();
+      const envelope = { id, type: "release.published", data: { key: `2026TEST-${id.slice(0, 6)}`, documents: [{ headline }], summary: "never shown" } };
+      await instance.dbs.nrms.pool.query("INSERT INTO outbox_events (id, type, aggregate_id, sequence, envelope, created_at) VALUES ($1, 'release.published', $2, $4, $3, now() - interval '25 hours')", [id, aggregateId ?? `release:${id}`, envelope, sequence]);
+      await instance.dbs.nrms.pool.query("INSERT INTO outbox_deliveries (event_id, subscriber, status, attempts, last_error) VALUES ($1, 'nod', 'dead', 9, 'HTTP 503')", [id]);
+      return id;
+    }
+    afterAll(async () => {
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE aggregate_id LIKE 'release:%' AND envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    it("401s with no bearer and 403s without Core.Admin", async () => {
+      expect((await fetch(`${instance.stackUrl}/stack/undelivered`)).status).toBe(401);
+      const editor = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      expect((await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: { authorization: `Bearer ${editor}` } })).status).toBe(403);
+    });
+
+    it("lists each app's undelivered updates, retries one, then retries all", async () => {
+      const one = await deadInNrms("Undelivered probe one");
+      await deadInNrms("Undelivered probe two");
+      const res = await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { apps: { app: string; items: { eventId: string; about: string | null; subscriber: string; lastError: string | null }[]; total: number }[] };
+      expect(body.apps.map((a) => a.app)).toEqual(["nrms", "core", "distribution", "news-api", "calendar"]);
+      const nrms = body.apps[0]!;
+      expect(nrms.total).toBe(2);
+      expect(nrms.items.find((i) => i.eventId === one)).toMatchObject({ about: "Undelivered probe one", subscriber: "nod", lastError: "HTTP 503" });
+      expect(JSON.stringify(body)).not.toContain("never shown");
+
+      const retry = (b: unknown) => fetch(`${instance.stackUrl}/stack/undelivered/retry`, { method: "POST", headers: admin(), body: JSON.stringify(b) });
+      expect((await retry({ app: "nrms", eventId: one, subscriber: "nod" })).status).toBe(204);
+      expect((await retry({ app: "nrms", eventId: one, subscriber: "nod" })).status).toBe(404);
+      expect((await retry({ app: "nod", eventId: one, subscriber: "nod" })).status).toBe(400);
+      const [row] = (await instance.dbs.nrms.pool.query("SELECT status FROM outbox_deliveries WHERE event_id = $1", [one])).rows;
+      expect(row.status).toBe("pending");
+
+      const all = await fetch(`${instance.stackUrl}/stack/undelivered/retry-all`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms" }) });
+      expect(await all.json()).toEqual({ retried: 1, replaced: 0, overtaken: 0, busy: 0 });
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 1, I1: never resend an update a newer one for the same record replaced.
+    it("refuses to retry a replaced update, with a plain reason, and lists it as replaced", async () => {
+      const aggregate = `release:${randomUUID()}`;
+      const older = await deadInNrms("Replaced probe", aggregate, 1);
+      await deadInNrms("Replaced probe newer", aggregate, 2);
+      const res = await fetch(`${instance.stackUrl}/stack/undelivered/retry`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms", eventId: older, subscriber: "nod" }) });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "A newer update replaced this one, so it isn't sent again." });
+      const body = (await (await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() })).json()) as { apps: { app: string; items: { eventId: string; replaced: boolean }[]; replaced: number }[] };
+      expect(body.apps[0]!.items.find((i) => i.eventId === older)!.replaced).toBe(true);
+      expect(body.apps[0]!.replaced).toBe(1);
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 2, M4: a correction that reached NoD first doesn't make a lost publish "replaced".
+    it("refuses a retry the receiver would ignore, saying why, and keeps it listed as overtaken", async () => {
+      const aggregate = `release:${randomUUID()}`;
+      const published = await deadInNrms("Overtaken probe", aggregate, 1);
+      const later = await deadInNrms("Overtaken probe", aggregate, 2);
+      await instance.dbs.nrms.pool.query("UPDATE outbox_events SET type = 'release.updated' WHERE id = $1", [later]);
+      await instance.dbs.nrms.pool.query("UPDATE outbox_deliveries SET status = 'delivered' WHERE event_id = $1", [later]);
+      const res = await fetch(`${instance.stackUrl}/stack/undelivered/retry`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms", eventId: published, subscriber: "nod" }) });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "A later change to the same record already arrived, so this can't be sent again." });
+      const body = (await (await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() })).json()) as { apps: { items: { eventId: string; replaced: boolean; overtaken: boolean }[]; overtaken: number }[] };
+      expect(body.apps[0]!.items.find((i) => i.eventId === published)).toMatchObject({ replaced: false, overtaken: true });
+      expect(body.apps[0]!.overtaken).toBe(1);
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 4, N10.
+    it("asks to try again in a minute while a newer version of the update is being sent", async () => {
+      const aggregate = `release:${randomUUID()}`;
+      const older = await deadInNrms("Busy probe", aggregate, 1);
+      const newer = await deadInNrms("Busy probe", aggregate, 2);
+      await instance.dbs.nrms.pool.query("UPDATE outbox_events SET type = 'release.updated' WHERE id = $1", [newer]);
+      await instance.dbs.nrms.pool.query("UPDATE outbox_deliveries SET status = 'pending', locked_until = now() + interval '1 minute' WHERE event_id = $1", [newer]);
+      const res = await fetch(`${instance.stackUrl}/stack/undelivered/retry`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms", eventId: older, subscriber: "nod" }) });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "This update's newer version is being sent right now. Try again in a minute." });
+      const all = await fetch(`${instance.stackUrl}/stack/undelivered/retry-all`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms" }) });
+      expect(await all.json()).toMatchObject({ retried: 0, busy: 1 });
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 2, N6: who and when are recorded first; if that fails, nothing is dismissed.
+    it("leaves the update undelivered when its dismissal can't be recorded", async () => {
+      const one = await deadInNrms("Unrecorded dismiss probe");
+      await instance.dbs.core.pool.query("ALTER TABLE outbox_dismissals RENAME TO outbox_dismissals_away");
+      try {
+        const res = await fetch(`${instance.stackUrl}/stack/undelivered/dismiss`, { method: "POST", headers: admin(), body: JSON.stringify({ app: "nrms", eventId: one, subscriber: "nod" }) });
+        expect(res.status).toBe(500);
+        const all = await fetch(`${instance.stackUrl}/stack/undelivered/dismiss-all`, { method: "POST", headers: admin(), body: "{}" });
+        expect(all.status).toBe(500);
+      } finally {
+        await instance.dbs.core.pool.query("ALTER TABLE outbox_dismissals_away RENAME TO outbox_dismissals");
+      }
+      const [row] = (await instance.dbs.nrms.pool.query("SELECT status FROM outbox_deliveries WHERE event_id = $1", [one])).rows;
+      expect(row.status).toBe("dead");
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+
+    // Fix round 1, M1: dismissing one, or all, records who did it.
+    it("dismisses one, then all, recording who and when", async () => {
+      const one = await deadInNrms("Dismiss probe one");
+      await deadInNrms("Dismiss probe two");
+      const dismiss = (b: unknown) => fetch(`${instance.stackUrl}/stack/undelivered/dismiss`, { method: "POST", headers: admin(), body: JSON.stringify(b) });
+      expect((await dismiss({ app: "nrms", eventId: one, subscriber: "nod" })).status).toBe(204);
+      expect((await dismiss({ app: "nrms", eventId: one, subscriber: "nod" })).status).toBe(404);
+      const all = await fetch(`${instance.stackUrl}/stack/undelivered/dismiss-all`, { method: "POST", headers: admin(), body: "{}" });
+      expect(await all.json()).toEqual({ dismissed: 1 });
+      const body = (await (await fetch(`${instance.stackUrl}/stack/undelivered`, { headers: admin() })).json()) as {
+        apps: { total: number }[];
+        dismissed: { app: string; eventId: string; about: string | null; dismissedBy: string; dismissedAt: string }[];
+      };
+      expect(body.apps.every((a) => a.total === 0)).toBe(true);
+      const mine = body.dismissed.find((d) => d.eventId === one)!;
+      expect(mine).toMatchObject({ app: "nrms", about: "Dismiss probe one" });
+      expect(mine.dismissedBy).toBeTruthy();
+      expect(body.dismissed.filter((d) => d.about?.startsWith("Dismiss probe"))).toHaveLength(2);
+      const [row] = (await instance.dbs.nrms.pool.query("SELECT status FROM outbox_deliveries WHERE event_id = $1", [one])).rows;
+      expect(row.status).toBe("dismissed");
+      await instance.dbs.nrms.pool.query("DELETE FROM outbox_events WHERE envelope->'data'->>'summary' = 'never shown'");
+    });
+  });
+
+  // Suite review O2.1: a red check makes /stack/health "degraded", still 200.
+  describe("/stack/health checks", () => {
+    const health = async () => {
+      const res = await fetch(`${instance.stackUrl}/stack/health`);
+      return { code: res.status, body: (await res.json()) as { status: string; checks: Record<string, Record<string, unknown>> } };
+    };
+    /** Past the 5-second health cache. */
+    async function until(pred: (b: Awaited<ReturnType<typeof health>>) => boolean) {
+      const deadline = Date.now() + 9_000;
+      for (;;) {
+        const h = await health();
+        if (pred(h) || Date.now() > deadline) return h;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+
+    it("is degraded, still 200, while an update from the last week is undelivered, and ok again once it's dismissed", { timeout: 30_000 }, async () => {
+      const id = randomUUID();
+      await instance.dbs.core.pool.query("INSERT INTO outbox_events (id, type, aggregate_id, sequence, envelope, created_at) VALUES ($1, 'org.deactivated', 'org:health-probe', 1, $2, now() - interval '2 days')", [id, { id, data: { key: "health-probe" } }]);
+      await instance.dbs.core.pool.query("INSERT INTO outbox_deliveries (event_id, subscriber, status, attempts, last_error) VALUES ($1, 'nrms', 'dead', 9, 'HTTP 500')", [id]);
+      try {
+        const red = await until((h) => h.body.status === "degraded");
+        expect(red.code).toBe(200);
+        expect(red.body.status).toBe("degraded");
+        expect(red.body.checks["outbox.core"]).toMatchObject({ ok: false, undelivered: 1, recentUndelivered: 1 });
+        // Fix round 1, M1: dismissing it is what clears the alarm.
+        const res = await fetch(`${instance.stackUrl}/stack/undelivered/dismiss`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ app: "core", eventId: id, subscriber: "nrms" }),
+        });
+        expect(res.status).toBe(204);
+        const green = await until((h) => h.body.status === "ok");
+        expect(green.body.status).toBe("ok");
+        expect(green.body.checks["outbox.core"]).toMatchObject({ ok: true, undelivered: 0 });
+      } finally {
+        await instance.dbs.core.pool.query("DELETE FROM outbox_events WHERE id = $1", [id]);
+      }
+    });
+
+    it("knows when NoD's send loop last ran once a tick has run it", { timeout: 30_000 }, async () => {
+      await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+      const h = await until((x) => x.body.checks["nod.send-loop"]?.minutesSinceLastRun === 0);
+      expect(h.body.checks["nod.send-loop"]).toEqual({ ok: true, minutesSinceLastRun: 0 });
+    });
+  });
+
+  describe("/stack/errors?group=1", () => {
+    it("folds identical messages into one group with a count", async () => {
+      for (let i = 0; i < 3; i++) console.error("stack.test.ts group-probe repeated");
+      console.error("stack.test.ts group-probe single");
+      const res = await fetch(`${instance.stackUrl}/stack/errors?group=1&limit=200`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { groups: { message: string; count: number; firstAt: string; lastAt: string }[]; entries: number };
+      expect(body.groups[0]).toMatchObject({ message: "stack.test.ts group-probe single", count: 1 });
+      expect(body.groups[1]).toMatchObject({ message: "stack.test.ts group-probe repeated", count: 3 });
+      expect(body.entries).toBeGreaterThanOrEqual(4);
     });
   });
 

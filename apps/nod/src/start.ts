@@ -3,12 +3,13 @@ import { z } from "zod";
 import express from "express";
 import { authFromEnv, isValidPasswordHash, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
-import { createDb, runMigrations } from "@gcpe/db-kit";
+import { createDb, runMigrations, withStatementTimeout } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
 import { createItemSending } from "./as-it-happens";
 import { runBounceSummaryIfDue, startBounceSummaryLoop } from "./bounce-summary";
 import { runDigestIfDue, startDigestLoop } from "./digest";
+import { nodHealth, type NodHealth } from "./health";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
 import { runEmergencyFeedIfDue, type EmergencyFeedDeps } from "./emergency/ingest";
@@ -117,6 +118,8 @@ export interface AppHandle {
   /** One iteration of each background loop, using the same function and options the loop
    * itself uses. */
   workers: Record<string, () => Promise<unknown>>;
+  /** What `/stack/health` reports about NoD's background work (health.ts; suite review O2.1). */
+  health(timeoutMs: number): Promise<NodHealth>;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
   /** Closers that must run *before* the http server closes. NoD has none — always empty —
@@ -265,11 +268,23 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   let stopEmergencyFeedLoop: (() => Promise<void>) | undefined;
   let stopPurgeLoop: (() => Promise<void>) | undefined;
 
+  // Suite review O2.1: the send loop records no run of its own, so its last success is kept here,
+  // in memory, for /stack/health (unknown again after a restart).
+  let sendLastOkAt: number | null = null;
+  const markSent = () => {
+    sendLastOkAt = Date.now();
+  };
+
   return {
     app,
     port: parsed.PORT,
+    health: (timeoutMs) => withStatementTimeout(db, timeoutMs, (tx) => nodHealth(tx, { emergencyFeedOn: emergencyFeed.url !== null, mediaSyncOn: mediaHub !== null, sendLastOkAt: () => sendLastOkAt })),
     workers: {
-      send: () => sendDueJobs(sendJobsOptions),
+      send: async () => {
+        const result = await sendDueJobs(sendJobsOptions);
+        markSent();
+        return result;
+      },
       // Task 6: the 17:00 daily digest -- a no-op call every tick until the tenant's wall
       // clock actually reaches DIGEST_HOUR for a cutoff not already run.
       digest: () => runDigestIfDue(db, tenant.timeZone, render),
@@ -292,7 +307,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       needsReferenceData: () => needsReferenceData(db),
     },
     startLoops() {
-      stopJobSender = startJobSender(sendJobsOptions);
+      stopJobSender = startJobSender({ ...sendJobsOptions, onSuccess: markSent });
       // The standalone NoD image and STACK_LOOPS=true must also run the digest -- the
       // workers.digest hook above only ever fires once, when a caller asks for it.
       stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });

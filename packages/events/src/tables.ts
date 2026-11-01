@@ -1,13 +1,19 @@
 import { index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
-export const outboxEvents = pgTable("outbox_events", {
-  id: uuid("id").primaryKey(),
-  type: text("type").notNull(),
-  aggregateId: text("aggregate_id").notNull(),
-  sequence: integer("sequence").notNull(),
-  envelope: jsonb("envelope").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const outboxEvents = pgTable(
+  "outbox_events",
+  {
+    id: uuid("id").primaryKey(),
+    type: text("type").notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    envelope: jsonb("envelope").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Suite review fix round 2, I2: undelivered.ts's "replaced" check looks up newer events for the
+  // same record; without this it scanned the whole (never pruned) table once per undelivered row.
+  (t) => [index("outbox_events_aggregate_seq_idx").on(t.aggregateId, t.sequence)],
+);
 
 export const outboxDeliveries = pgTable(
   "outbox_deliveries",

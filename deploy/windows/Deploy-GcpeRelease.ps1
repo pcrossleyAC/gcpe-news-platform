@@ -8,7 +8,8 @@
      touching the running site; a release that fails the check is removed and nothing changes.
   3. Stops the gcpe-stack service, points <Root>\current at the new release, starts the service.
      The stack applies any new database migrations as it starts.
-  4. Waits for /stack/health to report "ok" directly and through IIS. If either doesn't, points
+  4. Waits for /stack/health to report "ok" (or "degraded": every app up, a background check red)
+     directly and through IIS. If either doesn't, points
      <Root>\current back at the previous release, restarts, and exits with an error.
   5. Keeps the newest -Keep releases and deletes older ones.
 
