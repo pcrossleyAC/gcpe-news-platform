@@ -148,8 +148,10 @@ describe("a republish re-emails only when asked", () => {
     const jobKeys = async () => (await tdb.db.select({ key: sendJobs.jobKey }).from(sendJobs).where(eq(sendJobs.itemKey, r5.key))).map((j) => j.key).sort();
     expect(await jobKeys()).toEqual([`as_it_happens:${r5.key}`, `correction:1:as_it_happens:${r5.key}`]);
 
-    // The corrected copy goes; a second replay later (same number) makes no new send.
+    // The corrected copy goes, once; a second replay later (same number) makes no new send.
+    sent.length = 0;
     await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    expect(sent.filter((m) => m.emails.includes("reader5@x.test")).map((m) => m.subject)).toEqual([expect.stringMatching(/^Corrected: /)]);
     sent.length = 0;
     expect((await sendEvent(app, envelope("nrms", "release.updated", { ...r5, notify: false, emailAgain: emailAgain(1) }, r5.key))).body).toEqual({ outcome: "applied" });
     await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });

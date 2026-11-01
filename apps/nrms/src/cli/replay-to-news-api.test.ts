@@ -8,7 +8,7 @@ import { publishDue } from "../publisher";
 import { createRelease, deleteRelease } from "../releases/service";
 import { loadView } from "../releases/store";
 import { approve, requestEmailAgain, unpublish } from "../releases/workflow";
-import { replayToNewsApi } from "./replay-to-news-api";
+import { printResult, replayToNewsApi } from "./replay-to-news-api";
 
 const TIME_ZONE = "America/Vancouver";
 
@@ -191,5 +191,63 @@ describe("replayToNewsApi and a waiting Email the correction request", () => {
     const result = await replayToNewsApi(tdb.db, { confirm: true, subscribers: subs });
     expect(result.keys).not.toContain(due.key);
     expect((await updatedFor(due.key!)).length).toBe(before);
+  });
+
+  // Review N1/N2: a release unpublished after the candidate list is read, before its turn, is
+  // skipped (no event, so the News API can't put it back) and listed apart from those replayed.
+  it("a release unpublished during the run is skipped, not replayed, and reported as skipped", async () => {
+    const first = await createScheduledRelease(tdb.db, { headline: "Replayed first" });
+    const second = await createScheduledRelease(tdb.db, { headline: "Unpublished mid-run" });
+    await publishDue({ db: tdb.db, subscribers: subs });
+    const before = (await updatedFor(second.key!)).length;
+    const result = await replayToNewsApi(tdb.db, {
+      confirm: true,
+      subscribers: subs,
+      beforeRelease: async (key) => {
+        if (key === second.key) await unpublish(tdb.db, second.id, (await loadView(tdb.db, second.id))!.version, editor);
+      },
+    });
+    expect(result.keys).toContain(second.key);
+    expect(result.skipped).toEqual([second.key]);
+    expect((await updatedFor(second.key!)).length).toBe(before);
+    expect((await updatedFor(first.key!)).length).toBe(1);
+    const out: string[] = [];
+    printResult(result, (l) => out.push(l));
+    expect(out).toContain(`Replayed ${result.count - 1} of ${result.count} release(s) to the News API as release.updated (notify: false).`);
+    expect(out).toContain("1 release(s) skipped: unpublished or changed while the replay ran (nothing sent for them):");
+    expect(out).toContain(`  ${second.key}`);
+  });
+
+  // Review N5: the one case the replay can email people: a release whose last Email the
+  // correction request News On Demand hasn't confirmed getting. Listed in both runs when NoD gets
+  // the replay, so the operator can decide before --confirm.
+  it("lists releases carrying a request News On Demand hasn't confirmed, when NoD is a target", async () => {
+    const unconfirmed = await createScheduledRelease(tdb.db, { mediaListKeys: ["regional"], headline: "Not confirmed" });
+    const confirmed = await createScheduledRelease(tdb.db, { mediaListKeys: ["regional"], headline: "Confirmed" });
+    await publishDue({ db: tdb.db, subscribers: subs });
+    for (const r of [unconfirmed, confirmed]) {
+      await requestEmailAgain(tdb.db, r.id, { version: (await loadView(tdb.db, r.id))!.version, subscribers: true, mediaLists: false }, editor);
+    }
+    await publishDue({ db: tdb.db, subscribers: subs });
+    await tdb.pool.query("UPDATE outbox_deliveries SET status = 'delivered' WHERE subscriber = 'nod'");
+    const unconfirmedEv = (await updatedFor(unconfirmed.key!)).at(-1)!;
+    await tdb.pool.query("UPDATE outbox_deliveries SET status = 'dead' WHERE event_id = $1", [unconfirmedEv.id]);
+
+    const dry = await replayToNewsApi(tdb.db, { confirm: false, subscribers: subs });
+    expect(dry.unconfirmedCorrections).toEqual([unconfirmed.key]);
+    const out: string[] = [];
+    printResult(dry, (l) => out.push(l));
+    expect(out).toContain(
+      "1 release(s) will carry an Email the correction request News On Demand hasn't confirmed getting; News On Demand sends that corrected copy when this replay reaches it:",
+    );
+    expect(out.at(-2)).toBe(`  ${unconfirmed.key}`);
+
+    // Without NoD among the subscribers nothing can be emailed, so nothing is listed.
+    const newsApiOnly: SubscriberConfig[] = [{ name: "news-api", url: "http://news-api.invalid/events", secret: "s".repeat(40), types: ["release.updated"] }];
+    expect((await replayToNewsApi(tdb.db, { confirm: false, subscribers: newsApiOnly })).unconfirmedCorrections).toEqual([]);
+
+    // The confirmed run reports the same list, judged before its own events are added.
+    const run = await replayToNewsApi(tdb.db, { confirm: true, subscribers: subs });
+    expect(run.unconfirmedCorrections).toEqual([unconfirmed.key]);
   });
 });
