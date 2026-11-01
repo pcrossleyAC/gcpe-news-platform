@@ -131,7 +131,9 @@ test.describe("§8 Subscribers flows (NoD Editor)", () => {
     await page.getByRole("button", { name: "Delete" }).click();
     await settleModalTransition(page);
     await expectNoSeriousA11yViolations(page, "delete subscriber dialog");
+    await page.getByRole("alertdialog").getByText("Something else, such as a duplicate or test record").click();
     await page.getByRole("button", { name: "Confirm delete" }).click();
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
     // Not a bare "Unsubscribed or deleted" substring match: the status <dd> above also reads
     // exactly that, so this targets the sentence that names when and that it's final.
     await expect(page.getByText("Only they can subscribe again.")).toBeVisible();

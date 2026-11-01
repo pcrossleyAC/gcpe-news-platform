@@ -8,8 +8,8 @@ import { RequireAuth } from "../../session/RequireAuth";
 import { MediaListsScreen } from "./MediaListsScreen";
 
 const LISTS = [
-  { listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 12, needsAttention: 2 },
-  { listKey: "media-distribution-lists:old", key: "old", name: "Old list", active: false, members: 0, needsAttention: 0 },
+  { listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 12, disabled: 2, needsAttention: 2 },
+  { listKey: "media-distribution-lists:old", key: "old", name: "Old list", active: false, members: 0, disabled: 0, needsAttention: 0 },
 ];
 const SYNC = { since: null, at: "2026-10-07T09:00:00.000Z", result: { contacts: 5, updated: 1, flagged: 1, removed: 0, errors: 0 }, running: false };
 
@@ -51,7 +51,8 @@ describe("MediaListsScreen", () => {
     stub(["NoD.Viewer"]);
     renderIt();
     expect(await screen.findByRole("link", { name: "Budget" })).toHaveAttribute("href", "/subscribers/media-lists/budget");
-    expect(screen.getByRole("row", { name: /Budget 12 2 Active/ })).toBeInTheDocument();
+    // N4: Disabled members aren't counted among those who get the email, but are shown.
+    expect(screen.getByRole("row", { name: /Budget 12 \(and 2 Disabled, who get nothing\) 2 Active/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /Old list 0 0 Retired/ })).toBeInTheDocument();
     expect(screen.getByText("5 changed contacts: 1 updated, 1 flagged, 0 removed, 0 skipped.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sync with Media Hub now" })).toBeNull();

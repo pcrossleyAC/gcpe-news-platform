@@ -37,6 +37,8 @@ export const addSubscriberSchema = z
 const prefsBody = z.object({ asItHappens: z.boolean(), digest: z.boolean(), allNews: z.boolean(), listKeys: z.array(z.string().max(200)).max(500) });
 const statusBody = z.object({ status: z.enum(["active", "disabled"]) });
 const emailBody = z.object({ email: subscriberEmailSchema, confirmOptOut: z.boolean().optional() });
+/** No body is an ordinary delete (N5: `askedToStop` records their opt-out as an unsubscribe). */
+const deleteBody = z.object({ askedToStop: z.boolean().optional() }).optional();
 const bulkBody = z.object({ action: z.enum(BULK_ACTIONS), ids: z.array(z.string().uuid()).min(1).max(BULK_MAX) });
 
 const idParam = z.string().uuid();
@@ -139,7 +141,8 @@ export function staffSubscriberRoutes(db: Db): Router {
   }));
 
   r.delete("/subscribers/:id", write, withId(async (id, req, res) => {
-    res.json(await deleteSubscriber(db, id, actorOf(req).name));
+    const body = deleteBody.parse(req.body);
+    res.json(await deleteSubscriber(db, id, actorOf(req).name, { askedToStop: body?.askedToStop }));
   }));
 
   return r;

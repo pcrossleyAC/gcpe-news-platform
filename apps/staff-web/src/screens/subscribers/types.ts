@@ -94,12 +94,16 @@ export interface MediaListSummary {
   key: string;
   name: string;
   active: boolean;
+  /** Members who get the list's email (active only). */
   members: number;
+  /** Disabled members: on the list, sent nothing, not in `members` (N4). */
+  disabled: number;
   needsAttention: number;
 }
 export interface MediaMember {
   subscriberId: string;
   email: string;
+  status: SubscriberStatus;
   source: string;
   mediaHubContactId: number | null;
   mediaHubEmailRef: string | null;
@@ -122,6 +126,11 @@ export interface AddMemberResult {
   subscriberId: string;
   created: boolean;
   newsEmailOff: boolean;
+  /** What the add did, for the message (N12). */
+  email?: string;
+  alreadyMember?: boolean;
+  reactivated?: boolean;
+  relinked?: boolean;
 }
 
 /** apps/nod/src/media-hub/contract.ts */
@@ -206,4 +215,23 @@ export interface OperationsStatus {
   purge: PurgeStatus;
   emergencyFeed: EmergencyFeedStatus;
   opsEmailSet: boolean;
+  outgoing: OutgoingStatus;
+}
+
+/** apps/nod/src/outgoing.ts (N3) */
+export interface OutgoingGroup {
+  jobIds: string[];
+  kind: "as_it_happens" | "emergency" | "media" | "digest";
+  title: string | null;
+  itemKey: string | null;
+  digestCutoff: string | null;
+  releases: number;
+  emails: number;
+  createdAt: string;
+  attempts: number;
+  lastError: string | null;
+}
+export interface OutgoingStatus {
+  held: { emails: number; releases: number; oldestAt: string | null; groups: OutgoingGroup[] };
+  failed: OutgoingGroup[];
 }

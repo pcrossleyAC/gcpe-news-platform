@@ -382,7 +382,7 @@ describe("/api/media-lists", () => {
     await addMediaMember(tdb.db, "budget", { email: "list-member@example.com", source: "manual-media" }, "test");
     const res = await request(app).get("/api/media-lists").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 1, needsAttention: 0 }]);
+    expect(res.body).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 1, disabled: 0, needsAttention: 0 }]);
   });
 
   it("GET /api/media-lists/:key/members 404s for an unknown media list", async () => {
@@ -394,7 +394,7 @@ describe("/api/media-lists", () => {
     const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "shown@example.com", source: "manual-media" }, "test");
     const res = await request(app).get("/api/media-lists/budget/members").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(200);
-    expect(res.body).toContainEqual({ subscriberId, email: "shown@example.com", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: null, attentionAt: null });
+    expect(res.body).toContainEqual({ subscriberId, email: "shown@example.com", status: "active", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: null, attentionAt: null });
   });
 
   it("POST /api/media-lists/:key/members creates (201) then is idempotent (200); 404s an unknown list", async () => {
@@ -811,9 +811,17 @@ describe("GET /api/settings, POST /api/settings/pause|resume", () => {
     expect(pauseAgain.body).toEqual({ paused: true, changed: false });
     expect(distribution.send).toHaveBeenCalledTimes(1);
 
+    // Review M4: the resume answer says how much it actually released, counted as it unpaused.
+    const [held] = await tdb.db.insert(sendJobs).values({ jobKey: "as_it_happens:resume-count" }).returning({ id: sendJobs.id });
+    const [who] = await tdb.db.insert(subscribers).values({ email: "resume-count@example.test", status: "active" }).returning({ id: subscribers.id });
+    await tdb.db.execute(sql`INSERT INTO job_recipients (job_id, subscriber_id) VALUES (${held!.id}::uuid, ${who!.id}::uuid)`);
     const resume = await request(app).post("/api/settings/resume").set("authorization", `Bearer ${admin}`);
     expect(resume.status).toBe(200);
-    expect(resume.body).toEqual({ paused: false, changed: true });
+    expect(resume.body).toEqual({ paused: false, changed: true, released: { emails: 1, releases: 0 } });
+    await tdb.db.delete(sendJobs).where(eq(sendJobs.id, held!.id));
+    await tdb.db.delete(subscribers).where(eq(subscribers.id, who!.id));
+    const again = await request(app).post("/api/settings/resume").set("authorization", `Bearer ${admin}`);
+    expect(again.body).toEqual({ paused: false, changed: false, released: null });
     expect(distribution.send).toHaveBeenCalledTimes(2);
     expect((distribution.send.mock.calls[1]![0] as MessageRequest).subject).toBe("BC Gov News On Demand sending resumed");
 

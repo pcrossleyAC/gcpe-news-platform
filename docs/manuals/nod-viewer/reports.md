@@ -45,7 +45,7 @@ You can't download email addresses. **Reports** says "CSV files with email addre
 ## Read the numbers
 
 - **Handed off, not bounced** counts emails handed to Distribution, the sending service, less bounces. It is not proof of delivery. An email still queued, or one Distribution failed to send, still counts.
-- **Not sent** means not yet handed off, including a send still going out.
+- **Not sent** means not yet handed off: a send still going out, held while News On Demand sending is paused, failed, or cancelled by a Subscribers administrator.
 - Daily digest emails are counted in **Daily digest runs**, once for each subscriber, not in **Sends per release**.
 - **Items in window** on **Daily digest runs** is worked out when you open the report. A release withdrawn since the run no longer counts, so an older run's number can go down.
 - **Distribution sent and bounced** won't match the other two reports. It counts by the day it sent, has its own **Failed** column, and counts every bounce. The other reports go by the day the release was published or the digest ran, and count only bounces matched to a news email.

@@ -1,6 +1,7 @@
 import type { Db } from "@gcpe/db-kit";
 import type { DistributionClient } from "./distribution-client";
 import { getEmergencyFeedStatus, type EmergencyFeedStatus } from "./emergency/ingest";
+import { getOutgoing, type OutgoingStatus } from "./outgoing";
 import { getPurgeStatus, type PurgeStatus } from "./purge";
 import { getSettings, getSoftCodesCounted, resolveBounceSummaryAddress, type BounceSummaryAddress } from "./settings";
 import { safeErrorLabel } from "./subscribe/journeys";
@@ -17,6 +18,8 @@ export interface OperationsStatus {
   emergencyFeed: EmergencyFeedStatus;
   /** Whether a pause or resume emails an operations inbox (NOD_OPS_EMAIL); never the address. */
   opsEmailSet: boolean;
+  /** Held and failed news email (N3). */
+  outgoing: OutgoingStatus;
 }
 
 export interface OperationsOptions {
@@ -31,7 +34,7 @@ export async function getOperations(
   distribution: Pick<DistributionClient, "getSettings" | "bounceSource">,
   opts: OperationsOptions,
 ): Promise<OperationsStatus> {
-  const [nod, bounceSummary, dist, bounceSource, softCodesCounted, purge, emergencyFeed] = await Promise.all([
+  const [nod, bounceSummary, dist, bounceSource, softCodesCounted, purge, emergencyFeed, outgoing] = await Promise.all([
     getSettings(db),
     resolveBounceSummaryAddress(db, opts.bounceSummaryFallback),
     distribution.getSettings().then(
@@ -51,6 +54,7 @@ export async function getOperations(
     getSoftCodesCounted(db),
     getPurgeStatus(db, opts.timeZone),
     getEmergencyFeedStatus(db, opts.emergencyFeedUrl),
+    getOutgoing(db),
   ]);
-  return { nod, distribution: dist, bounceSource, bounceSummary, softCodesCounted, purge, emergencyFeed, opsEmailSet: Boolean(opts.opsEmail) };
+  return { nod, distribution: dist, bounceSource, bounceSummary, softCodesCounted, purge, emergencyFeed, opsEmailSet: Boolean(opts.opsEmail), outgoing };
 }

@@ -5,7 +5,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
-import { operationsLog } from "../db/schema";
+import { nodSettings, operationsLog, sendJobs } from "../db/schema";
 import type { DistributionClient } from "../distribution-client";
 
 describe("operations routes", () => {
@@ -56,7 +56,26 @@ describe("operations routes", () => {
       purge: { enabled: false, preview: { pendingSubscribers: 0, endedSubscribers: 0, unusedLinks: 0, expiredSendLinks: 0 }, lastRun: null, nextRunAt: expect.any(String) },
       emergencyFeed: { url: "https://emergency.example.test/feed.xml", checkedAt: null, result: null },
       opsEmailSet: false,
+      outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
     });
+  });
+
+  it("N3: cancels held news email only while paused; Admin only; ids must be send job ids", async () => {
+    const [job] = await tdb.db.insert(sendJobs).values({ jobKey: "as_it_happens:held-route" }).returning({ id: sendJobs.id });
+    const cancel = (tok: string, body: object) => request(app).post("/api/operations/held-email/cancel").set("authorization", `Bearer ${tok}`).send(body);
+    expect((await cancel(editor, { jobIds: [job!.id] })).status).toBe(403);
+    expect((await cancel(admin, { jobIds: ["not-a-uuid"] })).status).toBe(400);
+    expect((await cancel(admin, { jobIds: [] })).status).toBe(400);
+    const running = await cancel(admin, { jobIds: [job!.id] });
+    expect([running.status, running.body]).toEqual([409, { error: "not-paused" }]);
+    await tdb.db.update(nodSettings).set({ paused: true }).where(eq(nodSettings.id, 1));
+    try {
+      const paused = await cancel(admin, { jobIds: [job!.id] });
+      expect([paused.status, paused.body]).toEqual([200, { cancelledJobs: 1, cancelledEmails: 0 }]);
+      expect((await tdb.db.select({ status: sendJobs.status }).from(sendJobs).where(eq(sendJobs.id, job!.id)))[0]!.status).toBe("cancelled");
+    } finally {
+      await tdb.db.update(nodSettings).set({ paused: false }).where(eq(nodSettings.id, 1));
+    }
   });
 
   it("sets, validates and clears the summary address; an empty string clears it", async () => {
