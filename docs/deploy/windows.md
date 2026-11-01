@@ -16,7 +16,7 @@ Contents:
 2. [Before you start](#2-before-you-start)
 3. [Dev server](#3-dev-server)
 4. [Test: app server, then DMZ proxy](#4-test-app-server-then-dmz-proxy)
-5. [Prod (later)](#5-prod-later)
+5. [Prod](#5-prod)
 6. [After every deploy](#6-after-every-deploy)
 7. [Operations](#7-operations)
 8. [DMZ proxy reference](#8-dmz-proxy-reference)
@@ -137,7 +137,7 @@ Administrator account, and:
   the app server or the DMZ proxy takes the public site down ([7.4](#74-patching)), so restarts
   happen in a patch window you choose.
 
-| | Dev | Test | Prod (later) |
+| | Dev | Test | Prod |
 |---|---|---|---|
 | Servers | 1 internal: app + PostgreSQL | 1 internal (app + PostgreSQL), 1 DMZ (proxy #1) | 2 internal (app; database), 1 DMZ (proxy #2) |
 | Size (app server) | 4+ cores, 8+ GB RAM, 50+ GB free | the same; add the legacy data and files (measure `C:\gcpe\data` on Dev after the import) | the same; database server sized like the Test app server |
@@ -253,7 +253,7 @@ you configure that service):
 | `graph.microsoft.com` (and `login.microsoftonline.com`) | TCP 443 | only if bounce reading via Microsoft Graph is turned on | `DIST_BOUNCE_SOURCE=graph` |
 | Media Hub host(s) | TCP 443 | Media Hub configured | `NOD_MEDIA_HUB_URL`, `NOD_MEDIA_HUB_TOKEN_URL` |
 | `api.flickr.com`, `www.flickr.com` | TCP 443 | Flickr configured | NRMS `FLICKR_REST_URL`, `FLICKR_OEMBED_URL`, `FLICKR_OAUTH_URL` defaults |
-| your Azure OpenAI endpoint host | TCP 443 | semantic search turned on | `AZURE_OPENAI_ENDPOINT` |
+| your Azure OpenAI endpoint host | TCP 443 | semantic search turned on | `NEWSAPI_AZURE_OPENAI_ENDPOINT` |
 | `www.emergencyinfobc.gov.bc.ca` | TCP 443 | emergency alerts feed configured | `NOD_EMERGENCY_FEED_URL` |
 | legacy SQL Server | TCP 1433 (a named instance: also UDP 1434, the SQL Browser, or its fixed port) | import period only | `Import-GcpeLegacy.ps1 -SqlServer` |
 | `api.news.gov.bc.ca`, `bcgovnews-etg7c8etapa6btfr.z03.azurefd.net` (legacy files on Azure) | TCP 443 | import period only (`news-api-import-files.mjs`, `legacy-files-copy.mjs`) | defaults in `apps/news-api/src/import/public-fetch.ts`, `public-files.ts`, `apps/stack/src/legacy-files/options.ts` |
@@ -321,7 +321,11 @@ installers and `prereqs\pgvector\vector.dll`.
 ```
 
 It asks for the password of the break-glass `admin` login (12+ characters); put it in the
-password manager. Every parameter:
+password manager. Anything you leave off the command line that it needs is asked for, in this
+order: first the PostgreSQL superuser password (only with `-PostgresAdminUrl`, after IIS, URL
+Rewrite, ARR and Node.js are installed), then, in the configuration step, the SMTP relay host, the
+From address, the inboxes mail is redirected to, the Entra client secret (`-Environment Prod`),
+the `admin` password and the SMTP user's password. Every parameter:
 
 | Parameter | Meaning |
 |---|---|
@@ -420,6 +424,21 @@ Get-NetFirewallRule -PolicyStore ActiveStore -Enabled True -Direction Inbound -A
 From a staff workstation: `https://<Dev internal host>/hub/` shows the Hub sign-in (a certificate
 warning with the self-signed certificate is expected); sign in as `admin`. From a machine outside
 the staff ranges the connection times out.
+
+**Optional, recommended on Prod and Test: turn off 8.3 short names** on the volume that holds
+`C:\gcpe`, and strip the ones already made under the data folder. The public site refuses
+addresses with `~`, but `/files` and `/hub` have their own file servers, and on a volume with short
+names an upload could be opened by its short name without its random part. Check with the
+server's owner that nothing else on that volume needs short names (the change is volume-wide).
+From the URL cutover runbook ([url-cutover-runbook.md](../parity/url-cutover-runbook.md), section
+3, "Before the day (install)"); not tested on Windows from here:
+
+```powershell
+fsutil 8dot3name query C:
+fsutil 8dot3name set C: 1
+fsutil 8dot3name strip /t /s C:\gcpe\data    # lists what would change, changes nothing
+fsutil 8dot3name strip /s C:\gcpe\data
+```
 
 ### D3. Import the legacy data
 
@@ -590,8 +609,12 @@ don't exist yet and the log says `nothing to copy`).
    a deploy job that waits for the Dev server's runner.
 
 4. In the new repository's **Settings**:
-   - **Branches:** protect `main`, and `develop` once it exists (pull request with an approving review, the `ci`
-     and `windows` checks passing).
+   - **Branches:** protect `main`, and `develop` once it exists (pull request with an approving review, and
+     required status checks). The checks are named by job, as GitHub's picker lists them (a check only
+     appears there after it has run once): `test` and `site-quality` (workflow `ci`), and `install (windows-2025)`
+     (workflow `windows`; there is also a `windows` workflow job named `test`, which runs the suite on
+     Windows). Paul decides whether `e2e` (workflow `ci`) and `image` (workflow `openshift-image`) are
+     required too. `install (windows-2022)` is the previous Windows release; don't require it.
    - **Environments → New environment `dev`:** add required reviewers if Dev deploys should wait
      for a click; restrict it to the `develop` branch.
 
@@ -672,7 +695,10 @@ gcpe-stack`; every app uses the one value. Deactivating a user in the Hub, or th
 ends that session at once in every app. If Core's database is down, staff see "The Hub can't check
 your sign-in right now" (nobody is signed out) and `admin` still works. An `admin` Sign out during
 that outage is held in memory only, so a restart before the database returns revives that cookie;
-rotate `SESSION_SECRET` afterwards if that matters. The manual pages say 12
+set a new `SESSION_SECRET` (any random value of 32+ characters) in `gcpe.env` afterwards if that
+matters, and restart. **Do not rotate `STACK_EVENT_SECRET` for this:** it also changes the key
+for the unsubscribe links already in subscribers' e-mail (they would stop working) and the apps'
+key for calling each other. The manual pages say 12
 hours: edit them if you change the value. Details: siteground.md, "Revoking access".
 
 Rolling back past this change (Core migration 0012) means deploying the previous release and
@@ -687,13 +713,13 @@ then `Restart-Service gcpe-stack`, and open its outbound firewall rule first
 | Service | Settings | Notes |
 |---|---|---|
 | Media Hub (NoD) | `NOD_MEDIA_HUB_URL`, `NOD_MEDIA_HUB_TOKEN_URL`, `NOD_MEDIA_HUB_CLIENT_ID`, `NOD_MEDIA_HUB_CLIENT_SECRET`, `NOD_MEDIA_HUB_SCOPE` | |
-| Legacy Membership lookup (NoD) | `NOD_MEMBERSHIP_API_USERNAME`, `NOD_MEMBERSHIP_API_PASSWORD_HASH` | The password setting is the hash `npm run nod:membership-hash` prints, never a plain password. With either unset, the lookup always answers 503. |
+| Legacy Membership lookup (NoD) | `NOD_MEMBERSHIP_API_USERNAME`, `NOD_MEMBERSHIP_API_PASSWORD_HASH` | The password setting is the hash `npm run nod:membership-hash` prints, never a plain password. Run that on a developer machine from a full repository checkout after `npm ci`: the server package doesn't contain it. With either unset, the lookup always answers 503. |
 | Emergency alerts feed | `NOD_EMERGENCY_FEED_URL=https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true` | Must be the final URL, no redirect. Prod refuses to start without it unless `NOD_EMERGENCY_FEED=off` is set on purpose ([Real production](#real-production-what-the-stack-refuses)). |
 | Flickr (NRMS) | `NRMS_FLICKR_API_KEY`, `NRMS_FLICKR_API_SECRET`, `NRMS_FLICKR_ACCESS_TOKEN`, `NRMS_FLICKR_ACCESS_SECRET`, `NRMS_FLICKR_ALERT_EMAILS` | siteground.md, "Flickr". |
-| Semantic search | `NEWSAPI_EMBEDDINGS_PROVIDER=azure-openai`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, and `"semanticSearch": true` in the tenant file (below) | pgvector is already on. `/stack/health` then says `"newsApiSearch": "semantic"`. Never turn on `staffAi` before the privacy impact assessment approves it. |
-| Google Search Console | `SITE_GOOGLE_VERIFICATION_FILE`, `SITE_GOOGLE_SITE_VERIFICATION` | Prod go-live only ([5](#5-prod-later)). |
+| Semantic search | `NEWSAPI_EMBEDDINGS_PROVIDER=azure-openai`, `NEWSAPI_AZURE_OPENAI_ENDPOINT`, `NEWSAPI_AZURE_OPENAI_API_KEY`, `NEWSAPI_AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, and `"semanticSearch": true` in the tenant file (below) | pgvector is already on. `/stack/health` then says `"newsApiSearch": "semantic"`. Never turn on `staffAi` before the privacy impact assessment approves it. |
+| Google Search Console | `SITE_GOOGLE_VERIFICATION_FILE`, `SITE_GOOGLE_SITE_VERIFICATION` | Prod go-live only ([5](#5-prod)). |
 | Real mail | remove `DIST_MAIL_REDIRECT_TO` **and** add `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true` | Prod only (P4). Removing the redirect alone stops Distribution starting, and the whole stack with it. |
-| Bounce mailbox | `DIST_BOUNCE_SOURCE=graph`, `DIST_GRAPH_TENANT_ID`, `DIST_GRAPH_CLIENT_ID`, `DIST_GRAPH_CLIENT_SECRET`, `DIST_BOUNCE_MAILBOX` | All five or Distribution refuses to start. Without them Prod starts with a warning, and Operations says bounces aren't being read. |
+| Bounce mailbox | `DIST_BOUNCE_SOURCE=graph`, `DIST_GRAPH_TENANT_ID`, `DIST_GRAPH_CLIENT_ID`, `DIST_GRAPH_CLIENT_SECRET`, `DIST_BOUNCE_MAILBOX` | All five or Distribution refuses to start. Without them Prod starts with a warning, and Operations says bounces aren't being read. **IT must provide:** the shared bounce mailbox (its address is `DIST_BOUNCE_MAILBOX`); an Entra app registration with a client secret and the Microsoft Graph **application** permission `Mail.ReadWrite` (admin consent), limited to that one mailbox by an Exchange Online application access policy (otherwise it can read every mailbox); and its tenant id, client id and secret (`DIST_GRAPH_TENANT_ID`, `DIST_GRAPH_CLIENT_ID`, `DIST_GRAPH_CLIENT_SECRET`; on the stack the app's own `GRAPH_*` and `BOUNCE_MAILBOX` settings carry the `DIST_` prefix). It reads the Inbox and moves handled messages to a `Processed` folder it creates, hence read-write. **Only tested against recorded responses, never against a real mailbox.** |
 
 **The tenant file** (`semanticSearch`, `staffAi` and the other tenant features) ships inside each
 release, at `C:\gcpe\current\config\tenants\bc.json`, so an edit there is lost at the next
@@ -769,7 +795,10 @@ two proxy hops, and IIS reachable only from the DMZ proxy and the staff ranges:
 - Every other parameter as in D2.
 
 Then D3 (import), D4 (backup), D7 (Entra, with `CORE_PUBLIC_BASE_URL=https://<Test internal host>`)
-and D8 as on Dev.
+and D8 as on Dev. The command above passes no Entra options, so D7 writes the whole block. If you
+add `-EntraTenantId` and the other three Entra options here (as for Prod, P2), the installer
+writes `CORE_PUBLIC_BASE_URL=https://<public host>` on Test too: change that line to the internal
+host, run `stack.js --check` and `Restart-Service gcpe-stack`, as D7 says.
 
 **Check it** (on the app server)
 
@@ -953,10 +982,12 @@ address, not the visitor's, and the restriction cannot tell visitors apart.
   on the app server. (The app server's IIS log always shows the DMZ server as the client; that is
   expected.)
 
-## 5. Prod (later)
+## 5. Prod
 
-Not built yet. The order is: database server, app server, DMZ proxy #2, go-live switches. Prod
-uses the same scripts; what differs is below.
+Prod is built (P1 to P4) and uses the same scripts as Test; what differs is below. It has not been
+run on a real Prod server yet ([9](#9-not-yet-verified)). The order is: database server (P1), app
+server (P2), DMZ proxy #2 (P3), go-live switches (P4). Only P5, the static fallback for patch
+reboots, is not built.
 
 ### Real production: what the stack refuses
 
@@ -1011,10 +1042,12 @@ address only (and turns off any other rule opening 5432, such as one the EDB ins
 stops if one comes from Group Policy), and prints the `-PostgresAdminUrl` for P2.
 
 Then schedule its backup (databases only; it detects that) and set up WAL archiving
-([7.2](#72-prod-point-in-time-recovery-to-set-up-when-prods-database-server-arrives)):
+([7.2](#72-prod-point-in-time-recovery-to-set-up-when-prods-database-server-arrives)). No `gcpe_*`
+database exists yet (P2 creates them), and the first run would stop with "No gcpe_* databases on
+this server", so skip it now and run the task once after P2:
 
 ```powershell
-.\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>
+.\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share> -SkipFirstRun
 ```
 
 Recommended: exclude the data folder from Defender real-time scanning
@@ -1028,13 +1061,15 @@ Get-NetFirewallRule -DisplayName 'GCPE PostgreSQL from the app server' | Get-Net
 Get-NetFirewallRule -DisplayName '*postgres*' -PolicyStore ActiveStore | Select-Object DisplayName, Enabled, Action
 Select-String -Path C:\gcpe\pgdata\pg_hba.conf -Pattern 'GCPE app server'
 Select-String -Path C:\gcpe\pgdata\postgresql.conf -Pattern '^listen_addresses'
+Get-ScheduledTask -TaskName 'GCPE nightly backup'
 ```
 
 Expect `Running`; the app server's address; among the `*postgres*` rules, only **GCPE PostgreSQL
 from the app server** enabled; one `pg_hba` line for it; and `listen_addresses = '*'`
 (the EDB installer's default; assumed, not yet seen on a real server: if it says `localhost`,
 change it to `'*'` and `Restart-Service postgresql-x64-17`). From the app server:
-`Test-NetConnection <database server> -Port 5432` is `TcpTestSucceeded : True`.
+`Test-NetConnection <database server> -Port 5432` is `TcpTestSucceeded : True`. The backup task is
+registered (its first run comes after P2).
 
 ### P2. The app server
 
@@ -1047,8 +1082,10 @@ change it to `'*'` and `Restart-Service postgresql-x64-17`). From the app server
     -EmergencyFeedUrl 'https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true'
 ```
 
-It asks for the superuser password (copy it from `postgres-superuser.txt` on the database server)
-and the Entra client secret, and does not install PostgreSQL here. `-Environment Prod` writes the
+It does not install PostgreSQL here. After it has installed IIS, URL Rewrite, ARR and Node.js, it
+asks for the superuser password (copy it from `postgres-superuser.txt` on the database server);
+then, in the configuration step, for the Entra client secret and the `admin` password (and the
+SMTP password if you gave `-SmtpUser`). `-Environment Prod` writes the
 real production site from the first start ([Real production](#real-production-what-the-stack-refuses)):
 `SITE_ENVIRONMENT=production`, so the stack makes its production checks and uses no fakes. The site is
 not public yet: DMZ proxy #2 lets only the staff ranges in until go-live (P3). The break-glass admin
@@ -1057,11 +1094,33 @@ go-live. Prod never sends real mail by default: without `-MailRedirectTo` it ask
 empty answer stops the install, and only `-SendRealMail` sends to the real recipients from the
 first start. Then D3 (final import, at
 cutover, while break-glass is still on), D7 (Entra: the redirect URI on the internal host), D8,
-and the backup for the files:
+and the backup for the files (and, as D2 says, optionally turn off 8.3 short names), on the app server:
 
 ```powershell
 .\Register-GcpeBackup.ps1 -BackupPath \\<backup server>\<share>
 ```
+
+Now that the databases exist, run the database server's backup once (**on the database server**)
+and check it finished (`LastTaskResult` 0):
+
+```powershell
+Start-ScheduledTask -TaskName 'GCPE nightly backup'
+Get-ScheduledTaskInfo -TaskName 'GCPE nightly backup' | Select-Object LastRunTime, LastTaskResult
+```
+
+**Right after the install, point the Entra callback at the internal host.** Because the Entra
+options were given, the installer wrote `CORE_PUBLIC_BASE_URL=https://<public host>` (the
+`-HostName`), but the callback must not go through the DMZ (D7). In `C:\gcpe\config\gcpe.env`
+change that one line to `CORE_PUBLIC_BASE_URL=https://<Prod internal host>`, then check and restart:
+
+```powershell
+& 'C:\Program Files\nodejs\node.exe' --env-file=C:\gcpe\config\gcpe.env C:\gcpe\current\stack.js --check
+Restart-Service gcpe-stack
+```
+
+`--check` must say `"ok": true`. Until you do, **Sign in with Microsoft** sends people to the
+public host, where it can't work. `Select-String C:\gcpe\config\gcpe.env -Pattern '^CORE_PUBLIC_BASE_URL='`
+shows the value. This replaces D7's step 2 for Prod; D7's other steps still apply.
 
 Set `NEWSAPI_SEARCH_SEMANTIC_MAX_CONCURRENT` explicitly in `gcpe.env` (its default counts this
 server's cores, but the vector queries run on the database server's).
@@ -1099,8 +1158,13 @@ At go-live: `.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<
 **Then** in `C:\gcpe\config\gcpe.env` on the Prod app server:
 
 1. **Turn break-glass off:** cut these five lines and paste them into
-   `C:\gcpe\config\break-glass.env`, which the service never reads (keep that file readable by
-   Administrators only, as `gcpe.env` is: `icacls C:\gcpe\config\break-glass.env /inheritance:r /grant:r Administrators:F`):
+   `C:\gcpe\config\break-glass.env`, which the service never reads (Notepad: in the
+   Save As box set **Save as type** to **All files**, or it is saved as `break-glass.env.txt`.
+   Lock the file the way `Install-Gcpe.ps1` locks `gcpe.env`: no inheritance, full control for
+   Administrators and SYSTEM only, and no one else. SYSTEM must be there because the nightly
+   backup runs as SYSTEM and copies all of `C:\gcpe\config`; without it the backup fails on this
+   file. The service account is left out on purpose, since the service must never read it:
+   `icacls C:\gcpe\config\break-glass.env /inheritance:r /grant:r "Administrators:F" "SYSTEM:F"`):
    `LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION`, `LOCAL_ADMIN_USERNAME`,
    `LOCAL_ADMIN_PASSWORD_HASH`, `LOCAL_AUTH_SECRET`.
 2. **`SITE_ENVIRONMENT=production`**: if the file says `SITE_ENVIRONMENT=test` instead (an install
@@ -1129,7 +1193,8 @@ At go-live: `.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<
 - `curl.exe -s https://<public host>/robots.txt` no longer ends with `Disallow: /`;
   `curl.exe -sI https://<public host>/` has no `X-Robots-Tag`, and
   `curl.exe -s https://<public host>/ | Select-String noindex` finds nothing.
-- `curl.exe -s -o NUL -w '%{http_code}' -X POST https://localhost/core/auth/local/token` is `404`
+- `curl.exe -k -s -o NUL -w '%{http_code}' -X POST https://localhost/core/auth/local/token` is `404`
+  (`-k`: Prod's certificate is for the public host, not for `localhost`)
   (no break-glass login), and `Get-Content C:\gcpe\service\logs\gcpe-stack.err.log -Tail 300 | Select-String 'LOCAL ADMIN LOGIN ENABLED|NO ADMIN|refusing to start'`
   finds nothing from the last start.
 - One of the Core Admins signs in with Microsoft: Website → Project Blue Bridge no longer says
