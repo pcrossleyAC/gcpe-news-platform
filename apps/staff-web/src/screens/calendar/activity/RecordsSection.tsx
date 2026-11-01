@@ -4,6 +4,7 @@ import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, type Act
 import { ApiError } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { activityApi } from "./api";
+import { formatInZone } from "../../../format/bcTime";
 
 const TOO_BIG = "A file can be at most 25 MB.";
 /** The server's own words for a full activity (apps/calendar/src/activities/files.ts). */
@@ -11,7 +12,7 @@ const FULL = `An activity holds at most ${ATTACHMENT_MAX_FILES} files. Remove on
 /** A same-name upload replaces the old file. Lenient on purpose: the server has the last word on what counts as the same name. */
 const nameKey = (name: string) => name.toLowerCase();
 const size = (n: number) => (n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const day = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
+const day = (iso: string, timeZone: string) => formatInZone(iso, timeZone, { month: "short", day: "numeric", year: "numeric" });
 
 /**
  * Whether the page says it instead, once: the freeze or a lock (423), the activity gone (404) or

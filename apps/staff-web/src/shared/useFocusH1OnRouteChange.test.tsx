@@ -72,3 +72,25 @@ describe("useFocusH1OnRouteChange (I5)", () => {
     expect(h1).toHaveFocus();
   });
 });
+
+function Redrawn({ redraw }: { redraw: number }): React.JSX.Element {
+  const ref = useFocusH1OnRouteChange<HTMLElement>(redraw);
+  return (
+    <main ref={ref}>
+      <h1 key={redraw}>Screen</h1>
+      <button type="button">Elsewhere</button>
+    </main>
+  );
+}
+
+// Review minor 2: AppShell redraws the screen when a late time-zone correction arrives.
+describe("useFocusH1OnRouteChange: a redraw on the same route", () => {
+  afterEach(cleanup);
+
+  it("focuses the new h1 again", () => {
+    const { rerender } = render(<MemoryRouter><Redrawn redraw={0} /></MemoryRouter>);
+    screen.getByRole("button").focus();
+    rerender(<MemoryRouter><Redrawn redraw={1} /></MemoryRouter>);
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
+  });
+});

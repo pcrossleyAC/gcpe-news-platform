@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { deliveries, items, sendJobs } from "./db/schema";
-import { matchesItem } from "./matching";
+import { asItHappensRecipient, matchesPublicly } from "./recipients";
 import { itemCategories, renderAsItHappens, renderEmergency, type RenderItem, type RenderOptions } from "./render";
 import { normalizeLinkIdentity } from "./emergency/feed";
 
@@ -91,21 +91,19 @@ export function createItemSending(opts: AsItHappensOptions): ItemSending {
     // a media-list member who also matches the release publicly gets only the one (media) copy,
     // never both. Emergency: every active subscriber matching the item's list keys, whatever
     // their own timing preference (global constraints: As-It-Happens/emergency recipients).
-    const timingCondition =
+    const itemListKeys = sql`${sql.param(item.listKeys)}::text[]`;
+    const recipient =
       kind === "as_it_happens"
-        ? sql`s.as_it_happens = true AND NOT EXISTS (SELECT 1 FROM deliveries d2 WHERE d2.item_key = ${itemKey} AND d2.subscriber_id = s.id AND d2.mode IN ('digest', 'media'))`
-        : sql`true`;
+        ? sql`${asItHappensRecipient(itemListKeys)} AND NOT EXISTS (SELECT 1 FROM deliveries d2 WHERE d2.item_key = ${itemKey} AND d2.subscriber_id = s.id AND d2.mode IN ('digest', 'media'))`
+        : matchesPublicly(itemListKeys);
 
     // I1-style set-based INSERT...SELECT, entirely server-side — no JS round trip of matched
     // subscriber ids (same reasoning as the old createAsItHappensHandler this replaces).
     const inserted = await tx.execute(sql`
       INSERT INTO deliveries (item_key, subscriber_id, mode, job_id)
-      SELECT DISTINCT ${itemKey}, s.id, 'as_it_happens', ${jobId}::uuid
+      SELECT ${itemKey}, s.id, 'as_it_happens', ${jobId}::uuid
         FROM subscribers s
-        JOIN subscriptions sub ON sub.subscriber_id = s.id
-       WHERE s.status = 'active'
-         AND ${timingCondition}
-         AND ${matchesItem(sql`sub.list_key`, sql`${sql.param(item.listKeys)}::text[]`)}
+       WHERE ${recipient}
       ON CONFLICT DO NOTHING
       RETURNING 1
     `);

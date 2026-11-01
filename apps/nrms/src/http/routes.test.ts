@@ -77,7 +77,7 @@ describe("NRMS HTTP API", () => {
   // against this server-computed one, warning if a stale browser tzdata disagrees.
   it("GET /config's tzCheck gives the server's own UTC offset for a pinned instant after BC's permanent UTC-7 switch (requires Node 24+ tzdata)", async () => {
     const res = await request(app).get("/api/config").set("cookie", viewerCookie);
-    expect(res.body.tzCheck).toEqual({ at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
+    expect(res.body.tzCheck).toEqual({ at: "2026-12-15T20:00:00Z", offsetMinutes: -420, fixedSince: "2026-03-08T10:00:00.000Z" });
   });
 
   it("a viewer can read categories and releases but can't create one", async () => {
@@ -259,6 +259,16 @@ describe("NRMS HTTP API", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ total: 1, page: 1, pageSize: 20 });
     expect(res.body.items[0].id).toBe(id);
+  });
+
+  // Suite review R9 fix round 1: a hand-edited address with an impossible date is a 400 with a
+  // plain message, never a database error.
+  it("search refuses an impossible or backwards date with a 400 and a plain message; filters work without words", async () => {
+    const bad = await get("/api/search?q=x&from=2026-02-30");
+    expect(bad.status).toBe(400);
+    expect(JSON.stringify(bad.body)).toContain("That isn't a real date.");
+    expect((await get("/api/search?from=2026-03-02&to=2026-03-01")).status).toBe(400);
+    expect((await get("/api/search?type=story&from=2020-01-01")).status).toBe(200);
   });
 
   it("go-to: a known reference → 200 { id }; unknown → 404", async () => {

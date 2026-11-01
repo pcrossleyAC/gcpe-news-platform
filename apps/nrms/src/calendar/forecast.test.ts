@@ -58,6 +58,23 @@ describe("the Forecast tab (spec addendum §11, ReleasesModel.cs:144-230)", () =
     expect(page.items[1]).toMatchObject({ kind: "release", release: { status: "scheduled", statusText: expect.any(String), activityId: null } });
   });
 
+  // Suite review R8 (fix round 1): a planned release that is still not out stays on the Forecast
+  // for 24 hours after its time passes (not cut at midnight); one that went out, or one more
+  // than 24 hours past, doesn't.
+  it("keeps releases whose time passed in the last 24 hours until they are out; older ones never", async () => {
+    const { rows } = await tdb.pool.query<{ now: Date }>("SELECT now() AS now");
+    const now = rows[0]!.now.getTime();
+    const hoursAgo = (h: number) => new Date(now - h * 3600_000).toISOString();
+    await planned("Planned an hour ago", hoursAgo(1));
+    await planned("Approved, planned 23 hours ago", hoursAgo(23), null, "approved");
+    await planned("Failed two hours ago", hoursAgo(2), null, "failed");
+    await planned("Published an hour ago", hoursAgo(1), null, "published");
+    await planned("Planned 25 hours ago", hoursAgo(25));
+    await planned("Planned later", "2031-06-12T17:00:00Z");
+    const headlines = (await forecast(tdb.db, null, { page: 1 }, opts)).items.map((i) => (i.kind === "release" ? i.release.headline : ""));
+    expect(headlines).toEqual(["Approved, planned 23 hours ago", "Failed two hours ago", "Planned an hour ago", "Planned later"]);
+  });
+
   it("leaves out confidential, deleted, unconfirmed, started, not \"Approved\", and activities a future release is linked to", async () => {
     const confidentialRow = { isConfidential: true, title: null, details: null, startAt: null, endAt: null, isAllDay: null, isConfirmed: null, contactMinistryKey: null, cityName: null, categoryNames: [], sectorKeys: [] };
     await seedActivity(tdb.db, 6101, confidentialRow);

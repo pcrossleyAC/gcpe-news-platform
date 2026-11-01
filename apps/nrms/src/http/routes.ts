@@ -38,7 +38,7 @@ import { buildEmailCopy } from "../renditions/email";
 import { buildRenditionModel } from "../renditions/model";
 import { renderPdf } from "../renditions/pdf";
 import { renderText } from "../renditions/text";
-import { approve, cancel, returnToDraft, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
+import { approve, audiencePreview, cancel, returnToDraft, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
 import { listCategories } from "../taxonomy";
 import { openReleasesOf } from "../succession";
 import { setFeature } from "../website/features";
@@ -300,6 +300,19 @@ export function apiRoutes(deps: RouteDeps): Router {
       if (outcome.kind === "empty") return void res.status(422).json({ error: "Add a headline or some body text first." });
       if (outcome.kind === "failed") return void res.status(502).json({ error: "Couldn't look for similar releases — try again." });
       res.json(outcome.found);
+    }),
+  );
+
+  // Suite review R6: about how many subscribers and media contacts a first publish reaches, for
+  // the Publish now and Schedule dialogs. Read-only: no history line, nothing stored.
+  r.get(
+    "/releases/:id/audience",
+    edit,
+    run(async (req, res) => {
+      if (!(await visibleView(req.params.id))) return notFound(res);
+      const preview = await audiencePreview(db, req.params.id, workflow);
+      if (!preview) return notFound(res);
+      res.json(preview);
     }),
   );
 

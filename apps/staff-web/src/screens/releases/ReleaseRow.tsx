@@ -14,6 +14,9 @@ export interface ReleaseRowProps {
   timeZone: string;
   /** Drafts: who last changed the release, and when. */
   showLastEdited?: boolean;
+  /** Forecast (suite review R8): a planned release whose time has passed reads "Planned time
+   * passed – not published", as an alert. The Forecast lists one only for the rest of its day. */
+  flagPassedPlanned?: boolean;
 }
 
 /** Words only, lower case: "KAMLOOPS –" and "Kamloops -" compare equal. */
@@ -55,7 +58,7 @@ function pageTitleShown(pageTitle: string, type: ReleaseType): boolean {
  * activity id, with the Approved/Flickr-alert badges), the headline linking to the release,
  * and the `LOCATION – summary` dateline clamped to two lines. Shared between the release lists
  * and search so both stay visually identical. */
-export function ReleaseRow({ item, now, timeZone, showLastEdited = false }: ReleaseRowProps): React.JSX.Element {
+export function ReleaseRow({ item, now, timeZone, showLastEdited = false, flagPassedPlanned = false }: ReleaseRowProps): React.JSX.Element {
   // Scheduled/Drafts show the planned publishAt; Published shows the actual releasedAt
   // (constraints.md / codemap §8).
   const dateIso = item.status === "published" ? item.releasedAt : item.publishAt;
@@ -71,6 +74,11 @@ export function ReleaseRow({ item, now, timeZone, showLastEdited = false }: Rele
   // whenever the reference is set, including on a failed release (fix round 1). When the status
   // itself already reads "Approved", the badge would only repeat it, so it's left off.
   const showApprovedBadge = item.approved && DRAFT_FOLDER_STATUSES.includes(item.status) && item.statusText.toLowerCase() !== "approved";
+  // Suite review R8: "Planned" (a plan only; nothing goes out) looks different from "Scheduled"
+  // (rules.ts statusText: a draft or approved release with a publish date).
+  const planned = (item.status === "draft" || item.status === "approved") && item.publishAt !== null;
+  const plannedPassed = flagPassedPlanned && planned && Date.parse(item.publishAt!) <= now.getTime();
+  const statusClass = plannedPassed ? " gcpe-badge--alert" : planned ? " gcpe-badge--planned" : "";
   const flickrAlertId = item.flickrAlert ? `flickr-alert-${item.id}` : undefined;
   const sep = " · ";
 
@@ -93,7 +101,7 @@ export function ReleaseRow({ item, now, timeZone, showLastEdited = false }: Rele
             </>
           )}
           {sep}
-          <span className="gcpe-badge gcpe-release-row__status-text">{item.statusText}</span>
+          <span className={`gcpe-badge gcpe-release-row__status-text${statusClass}`}>{plannedPassed ? "Planned time passed – not published" : item.statusText}</span>
           {showApprovedBadge && <span className="gcpe-badge gcpe-release-row__approved">Approved</span>}
           {item.flickrAlert && (
             <span className="gcpe-badge gcpe-badge--alert" aria-describedby={flickrAlertId}>

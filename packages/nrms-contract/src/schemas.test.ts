@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoriesSchema, createReleaseSchema, documentLanguageSchema, forecastQuerySchema, listQuerySchema, metaSchema, scheduleSchema, settingsSchema } from "./schemas";
+import { categoriesSchema, createReleaseSchema, documentLanguageSchema, forecastQuerySchema, listQuerySchema, metaSchema, scheduleSchema, searchQuerySchema, settingsSchema } from "./schemas";
 
 describe("schemas", () => {
   it("create: only creatable types, required headline and page title", () => {
@@ -87,5 +87,19 @@ describe("schemas", () => {
     expect(forecastQuerySchema.parse({})).toEqual({ page: 1 });
     expect(forecastQuerySchema.parse({ page: "3" })).toEqual({ page: 3 });
     for (const page of ["0", "1001", "x", "-1"]) expect(forecastQuerySchema.safeParse({ page }).success).toBe(false);
+  });
+});
+
+// Suite review R9 fix round 1: an impossible day (V8's Date.parse rolls 2026-02-30 over to March 2)
+// is refused here, not sent to the database.
+describe("searchQuerySchema dates", () => {
+  it("accepts a real day and refuses an impossible one", () => {
+    expect(searchQuerySchema.safeParse({ from: "2024-02-29" }).success).toBe(true);
+    // Year 0000 is no year Postgres accepts as a date.
+    for (const d of ["2026-02-30", "2026-13-01", "2026-04-31", "0000-01-01"]) {
+      const r = searchQuerySchema.safeParse({ from: d });
+      expect(r.success).toBe(false);
+      expect(r.error?.issues[0]?.message).toBe("That isn't a real date.");
+    }
   });
 });

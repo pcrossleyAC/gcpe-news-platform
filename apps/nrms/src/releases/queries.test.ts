@@ -5,6 +5,7 @@ import type { CreateReleaseInput, ListQuery } from "@gcpe/nrms-contract";
 import { createNrmsTestDb, createScheduledRelease, editor, sampleCreate, seedActivity, seedTaxonomy } from "../../test/helpers";
 import { LEVEL, type Viewer } from "@gcpe/calendar-contract";
 import { goTo, listFolder, releaseLog, searchReleases, startOfTomorrow } from "./queries";
+import type { SearchQuery } from "@gcpe/nrms-contract";
 import { createRelease, deleteRelease, saveCategories } from "./service";
 import { approve } from "./workflow";
 
@@ -120,7 +121,7 @@ describe("release queries", () => {
   describe("searchReleases", () => {
     /** A Calendar reader in Health, who sees the seeded activities (their contact ministry is Health). */
     const healthReader: Viewer = { level: LEVEL.readOnly, isHq: false, ministryKeys: ["health"] };
-    const search = (q: Partial<{ q: string; ministry: string; sector: string; page: number }>, viewer: Viewer | null = healthReader) =>
+    const search = (q: Partial<{ q: string; ministry: string; sector: string; page: number; type: SearchQuery["type"]; from: string; to: string }>, viewer: Viewer | null = healthReader) =>
       searchReleases(tdb.db, { q: "", page: 1, ...q }, { timeZone: TZ, nowMs: Date.now() }, viewer);
 
     it("matches headlines case-insensitively, including drafts", async () => {
@@ -174,6 +175,25 @@ describe("release queries", () => {
       expect((await search({ ministry: "finance" })).total).toBe(2);
       expect((await search({ sector: "education" })).total).toBe(2);
       expect((await search({ ministry: "finance", sector: "education" })).items.map((i) => i.id)).toEqual([both.id]);
+    });
+
+    // Suite review R9: Type and a From/To range on the release date (when it went out, or else
+    // its planned or scheduled time), BC days, both ends included, ANDed with the rest.
+    it("filters by type and by release date range, in BC days, ANDed with the other filters", async () => {
+      const story = await create({ headline: "Story on Sep 1", type: "story", publishAt: "2026-09-01T17:00:00.000Z" });
+      const late = await create({ headline: "Release late Sep 2 BC", publishAt: "2026-09-03T06:30:00.000Z" }); // 23:30 PDT Sep 2
+      const out = await create({ headline: "Release that went out Sep 5", publishAt: "2026-09-01T17:00:00.000Z" });
+      await markPublished(out.id, "2026-09-05T17:00:00.000Z");
+      await create({ headline: "Undated release" });
+      const ids = async (q: Parameters<typeof search>[0]) => (await search(q)).items.map((i) => i.id).sort();
+
+      expect(await ids({ type: "story" })).toEqual([story.id]);
+      expect((await search({ type: "release" })).total).toBe(3);
+      expect((await search({ type: "all" })).total).toBe(4);
+      expect(await ids({ from: "2026-09-02", to: "2026-09-02" })).toEqual([late.id]);
+      expect(await ids({ from: "2026-09-02" })).toEqual([late.id, out.id].sort());
+      expect(await ids({ to: "2026-09-01" })).toEqual([story.id]);
+      expect(await ids({ type: "release", to: "2026-09-04" })).toEqual([late.id]);
     });
 
     it("excludes deleted releases", async () => {
