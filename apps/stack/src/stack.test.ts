@@ -1949,6 +1949,19 @@ describe("staff session cookie across the stack", () => {
     const after = await statuses(cookie!);
     for (const path of everyApp) expect.soft(after[path]!.status, path).toBe(401);
   });
+
+  // Review S M8 (owner, 2026-10-31): a break-glass bearer token is a sign-in of its own in Core's
+  // session gate, so signing out with it ends it in every app that takes bearer tokens.
+  it("a break-glass bearer token from any app's /auth/local/token is ended in every app by signing out with it", async () => {
+    const bearerApps = everyApp.filter((p) => !p.startsWith("/calendar/"));
+    const tokenRes = await fetch(`${inst.stackUrl}/nod/auth/local/token`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }) });
+    expect(tokenRes.status).toBe(200);
+    const authorization = `Bearer ${((await tokenRes.json()) as { access_token: string }).access_token}`;
+    const codes = async () => Object.fromEntries(await Promise.all(bearerApps.map(async (p) => [p, (await fetch(`${inst.stackUrl}${p}`, { headers: { authorization } })).status] as const)));
+    for (const [path, status] of Object.entries(await codes())) expect.soft(status, path).not.toBe(401);
+    expect((await fetch(`${inst.stackUrl}/core/auth/logout`, { method: "POST", headers: { authorization } })).status).toBe(204);
+    for (const [path, status] of Object.entries(await codes())) expect.soft(status, path).toBe(401);
+  });
 });
 
 // Fix round 1: the Critical finding — selfHeal fired from inside startPublicSite always failed

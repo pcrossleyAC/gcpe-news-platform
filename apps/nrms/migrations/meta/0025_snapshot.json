@@ -1,6 +1,6 @@
 {
-  "id": "a9393fc2-8f80-495f-8943-51b998c413cb",
-  "prevId": "92f8cc4e-98ff-4483-9dd3-7ce8083342f3",
+  "id": "33f23bf9-3d1a-4e14-8b51-adb89fc0f8c2",
+  "prevId": "2202a6e3-41db-4b54-829f-61e58d579388",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2560,7 +2560,7 @@
       "checkConstraints": {
         "site_log_area_check": {
           "name": "site_log_area_check",
-          "value": "\"site_log\".\"area\" IN ('carousel','pins','live-feed','blue-bridge','links','files','features','settings')"
+          "value": "\"site_log\".\"area\" IN ('carousel','pins','live-feed','blue-bridge','links','files','features','settings','government-terms')"
         }
       },
       "isRLSEnabled": false

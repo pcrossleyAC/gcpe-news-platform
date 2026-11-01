@@ -34,6 +34,14 @@ The public page shows the alternate contact only when there is a primary contact
 
 Every release number contains the lead ministry's abbreviation, as in 2026HLTH0001. Use 2 to 10 capital letters or digits. No two active ministries may share one. A release can't be approved until its lead ministry has an abbreviation: release editors see "The lead ministry has no abbreviation yet. Ask an administrator to add one, then approve again." Changing it affects only releases approved from then on.
 
+## See who changed a ministry
+
+1. Choose **Edit** on the ministry's row.
+2. Under the form, open **History**. It lists each change to the ministry, newest first: when, who made it, and what they did, such as "Paul Smith renamed Ministry of X to Ministry of Y".
+3. If there are more, choose **Show older changes**.
+
+History covers adding the ministry, edits to its details (it names what changed, such as the minister or Featured Topics, without copying them), its name and abbreviation, **HQ**, **Public**, deactivating, reactivating and handing over. A change a published cabinet change made ends "(cabinet change)"; an abbreviation a successor took in a hand-over ends "(hand-over)". Site editors don't see **History**. Every change, for every ministry, is also on [Admin history](manual:admin-history).
+
 ## Add a ministry
 
 1. Choose **Add ministry**.

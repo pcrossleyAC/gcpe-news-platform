@@ -45,6 +45,12 @@ export interface VerifiedSession extends SessionUser {
   /** Core's id for this sign-in (`sid`), the same across renewals; the session gate looks it up.
    * Absent on a token from before the limit. */
   sid?: string;
+  /** A break-glass bearer token's own sign-in (local.ts), not a cookie: its `sid` is recorded only
+   * once it is signed out, so the gate treats a missing record as "not ended". */
+  fromToken?: true;
+  /** The break-glass password's fingerprint at sign-in (local.ts breakGlassFingerprint), carried
+   * through every renewal: Core's gate refuses a break-glass session once it no longer matches. */
+  pwf?: string;
 }
 
 export interface MintSessionOptions {
@@ -54,6 +60,8 @@ export interface MintSessionOptions {
   signedAt?: number;
   sid?: string;
   maxSessionSeconds?: number;
+  /** A break-glass sign-in's password fingerprint (review BG M1); a renewal passes it on. */
+  pwf?: string;
 }
 
 /** `opts` as a number is the old `ttlSeconds` argument. The expiry never goes past sign-in + the
@@ -70,7 +78,7 @@ export async function mintSession(
   const limit = signedAt + (o.maxSessionSeconds ?? DEFAULT_SESSION_MAX_SECONDS);
   if (limit <= now) throw new SessionLimitError();
   const expiresAt = Math.min(now + (o.ttlSeconds ?? SESSION_TTL_SECONDS), limit);
-  const token = await new SignJWT({ name: user.name, email: user.email, roles: [...user.roles], sat: signedAt, ...(o.sid ? { sid: o.sid } : {}) })
+  const token = await new SignJWT({ name: user.name, email: user.email, roles: [...user.roles], sat: signedAt, ...(o.sid ? { sid: o.sid } : {}), ...(o.pwf ? { pwf: o.pwf } : {}) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer(SESSION_ISSUER)
     .setAudience(SESSION_ISSUER)
@@ -102,6 +110,7 @@ export async function verifySession(secret: string, token: string, opts: { maxSe
     expiresAt: payload.exp!,
     signedAt,
     ...(typeof payload.sid === "string" && payload.sid ? { sid: payload.sid } : {}),
+    ...(typeof payload.pwf === "string" && payload.pwf ? { pwf: payload.pwf } : {}),
   };
 }
 

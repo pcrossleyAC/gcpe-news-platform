@@ -23,7 +23,7 @@ export const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has
  * decide what's shown, but the server is the authority"). Website is visible to every read
  * role (minors: Featured/the log are read-only for all of them; canReadWebsite) — WebsiteScreen
  * itself (and each manage-only sub-screen) still restricts the other six sections to
- * NRMS.SiteEditor/Core.Admin; Users, Media list names, the error log and Undelivered updates are Core.Admin only.
+ * NRMS.SiteEditor/Core.Admin; Users, Media list names, the error log, Admin history and Undelivered updates are Core.Admin only.
  * Subscribers is visible to any NoD role (canReadSubscribers) — an NRMS-only user never sees
  * it, and vice versa. Calendar is visible to any Calendar role (hasCalendarRole). Calendar
  * access is visible to Core.Admin, Calendar.Administrator and Calendar.SysAdmin; Organizations
@@ -54,6 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/release-page-titles", label: "Release page titles", show: isCoreAdmin },
       { to: "/media-list-names", label: "Media list names", show: (s) => s.has("Core.Admin") },
       { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
+      { to: "/admin-history", label: "Admin history", show: (s) => s.has("Core.Admin") },
       { to: "/undelivered-updates", label: "Undelivered updates", show: (s) => s.has("Core.Admin") },
     ],
   },

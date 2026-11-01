@@ -1,0 +1,2 @@
+ALTER TABLE "site_log" DROP CONSTRAINT "site_log_area_check";--> statement-breakpoint
+ALTER TABLE "site_log" ADD CONSTRAINT "site_log_area_check" CHECK ("site_log"."area" IN ('carousel','pins','live-feed','blue-bridge','links','files','features','settings','government-terms'));

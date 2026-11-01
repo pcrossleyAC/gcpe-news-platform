@@ -28,7 +28,7 @@ describe("authFromEnv", () => {
     const a = authFromEnv({ LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_PASSWORD_HASH: hash, LOCAL_AUTH_SECRET: secret });
     expect(a.local).toEqual({ username: "admin", passwordHash: hash, secret });
     expect(a.loginRouter).not.toBeNull();
-    expect(a.bearer.local).toEqual({ secret });
+    expect(a.bearer.local).toEqual({ secret, breakGlass: { username: "admin", passwordHash: hash, maxSessionSeconds: 12 * 3600, gateRequired: false } });
   });
   it('treats LOCAL_ADMIN_ENABLED="false" as disabled', () => {
     expect(() => authFromEnv({ LOCAL_ADMIN_ENABLED: "false", LOCAL_ADMIN_PASSWORD_HASH: hash, LOCAL_AUTH_SECRET: secret })).toThrow();

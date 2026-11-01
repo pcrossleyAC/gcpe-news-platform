@@ -85,7 +85,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
 
   // Its own small pool with short timeouts (review S I1): every app's cookie requests use it.
   const check = sessionCheckDb(parsed.DATABASE_URL);
-  const sessionGate = coreSessionGate(check.db, { localConfigured: auth.local !== null, secret: auth.session?.secret ?? "" });
+  const sessionGate = coreSessionGate(check.db, { breakGlass: auth.local, secret: auth.session?.secret ?? "" });
   const app = createApp({
     sessionGate,
     trustProxyHops: trustProxyHopsFrom(env),

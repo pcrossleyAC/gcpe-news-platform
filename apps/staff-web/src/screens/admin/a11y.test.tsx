@@ -21,6 +21,7 @@ import { PageTypesFixture, PAGE_IMAGES } from "./page-titles/fixtures";
 import { GovernmentTermsScreen } from "./government-terms/GovernmentTermsScreen";
 import { ACCESS_USERS, ORGS } from "./calendar-access/fixtures";
 import type { UserView } from "./users/UsersScreen";
+import { AdminHistoryScreen } from "./history/AdminHistoryScreen";
 
 async function seriousViolations(container: Element) {
   const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
@@ -62,6 +63,35 @@ describe("accessibility — Users, Media list names and error log", () => {
     (await screen.findByRole("button", { name: "Edit pat@x.invalid" })).click();
     await screen.findByRole("heading", { name: "pat@x.invalid" });
     expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("UsersScreen, with a user's History open, and Admin history", async () => {
+    const page = {
+      items: [{ id: 1, at: "2026-01-15T17:00:00Z", actorId: "u1", actorName: "Pat", action: "user.roles", targetType: "user", targetId: "u1", targetLabel: "Pat", details: { added: ["Core.Admin"], removed: [] } }],
+      total: 60,
+      page: 1,
+      pageSize: 50,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/core/api/users") return jsonResponse(200, [{ ...ONE_USER, lastSignInAt: "2026-01-15T17:00:00Z" }]);
+        if (url.startsWith("/core/api/audit?")) return jsonResponse(200, page);
+        if (url === "/core/api/organizations") return jsonResponse(200, []);
+        return jsonResponse(200, {});
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = render(withAuth(<UsersScreen />));
+    await user.click(await screen.findByRole("button", { name: "Edit pat@x.invalid" }));
+    await user.click(await screen.findByRole("button", { name: "History" }));
+    await screen.findByRole("list", { name: "Changes to Pat, newest first" });
+    expect(await seriousViolations(container)).toEqual([]);
+    cleanup();
+    const history = render(withAuth(<AdminHistoryScreen />));
+    await screen.findByRole("table", { name: "Admin history, newest first" });
+    expect(await seriousViolations(history.container)).toEqual([]);
   });
 
   it("MediaListNamesScreen", async () => {
