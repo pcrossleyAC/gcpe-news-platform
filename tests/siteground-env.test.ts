@@ -105,6 +105,14 @@ describe("buildEnvLines", () => {
     expect(isTestSite(Object.fromEntries(map))).toBe(true);
   });
 
+  it("an older boxs.ca env without SITE_ENVIRONMENT=test is refused at startup, never silently live (2026-10-31)", async () => {
+    const { productionProblems } = await import("../apps/stack/src/env");
+    const env = Object.fromEntries(parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n")));
+    expect(productionProblems(env).errors).toEqual([]);
+    delete env.SITE_ENVIRONMENT;
+    expect(productionProblems(env).errors.join("\n")).toMatch(/Microsoft sign-in/);
+  });
+
   it("never sets PORT (SiteGround injects it)", () => {
     const map = parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n"));
     expect(map.has("PORT")).toBe(false);
