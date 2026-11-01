@@ -44,7 +44,7 @@ You see "Saved." The archive pages and the current-term link rebuild by themselv
 
 ## See who changed a term
 
-Each start, date change, name change, old archive address change and deletion is listed in **Website** > **Website log**, with who made it and when. Choose **Government terms** in **Filter by area**. For example: "Moved the start of the government term starting November 20, 2028 to November 21, 2028". Everyone who can open **Website** sees these lines; term dates are public anyway.
+Each start, date change, name change, old archive address change and deletion is listed in **Website** > **Website log**, with who made it and when. Choose **Government terms** in **Filter by area**. For example: "Moved the start of the government term starting November 20, 2028 to November 21, 2028". Only Core administrators see these lines and the **Government terms** filter.
 
 ## What happens next
 

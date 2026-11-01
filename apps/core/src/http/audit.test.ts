@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
@@ -205,6 +205,21 @@ describe("Core admin audit trail", () => {
     expect(res.status).toBe(202);
     const [entry] = await historyOf("core", "republish");
     expect(entry).toMatchObject({ action: "core.republished", actorName: "Paul Smith", details: { enqueued: res.body.enqueued } });
+  });
+
+  it("a republish whose audit entry can't be written still answers 202, and logs why", async () => {
+    const audit = await import("../services/audit");
+    const spy = vi.spyOn(audit, "recordAudit").mockRejectedValueOnce(new Error("insert failed"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const res = await as(adminCookie).post("/api/admin/republish");
+      expect(res.status).toBe(202);
+      expect(typeof res.body.enqueued).toBe("number");
+      expect(logged).toHaveBeenCalledWith("[core] republish ran, but its audit entry couldn't be written", "Error");
+    } finally {
+      spy.mockRestore();
+      logged.mockRestore();
+    }
   });
 
   it("GET /api/audit is Core.Admin only, filters by who, what and BC dates, and pages", async () => {

@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jsonResponse } from "../../../test/jsonResponse";
+import { MemoryRouter } from "react-router";
+import { SessionProvider } from "../../session/SessionContext";
+import { RequireAuth } from "../../session/RequireAuth";
 import { LogScreen } from "./LogScreen";
 import type { SiteLogEntry } from "./types";
 
@@ -68,18 +71,38 @@ describe("LogScreen", () => {
     expect(screen.getByRole("option", { name: "Site settings" })).toHaveValue("settings");
   });
 
-  it("labels Government terms entries and offers them as a filter", async () => {
+  const asRoles = (roles: string[]) =>
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
         if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
         if (url.startsWith("/nrms/api/site/log")) return jsonResponse(200, [{ at: "2026-10-05T12:00:00.000Z", actorName: "Pat", area: "government-terms", text: "Added a government term starting November 20, 2028" }]);
         throw new Error(`unhandled: ${url}`);
       }),
     );
-    render(<LogScreen />);
+  const withSession = () => (
+    <SessionProvider>
+      <MemoryRouter>
+        <RequireAuth>
+          <LogScreen />
+        </RequireAuth>
+      </MemoryRouter>
+    </SessionProvider>
+  );
+
+  it("labels Government terms entries and offers them as a filter, to Core administrators", async () => {
+    asRoles(["Core.Admin"]);
+    render(withSession());
     await screen.findByText("Added a government term starting November 20, 2028");
     expect(screen.getByRole("cell", { name: "Government terms" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Government terms" })).toHaveValue("government-terms");
+  });
+
+  it("doesn't offer the Government terms filter to a site editor", async () => {
+    asRoles(["NRMS.SiteEditor"]);
+    render(withSession());
+    expect(await screen.findByRole("option", { name: "Carousel" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Government terms" })).toBeNull();
   });
 });

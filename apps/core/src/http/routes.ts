@@ -340,7 +340,13 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     safe(async (req, res) => {
       const enqueued = await republishAll(db, subscribers);
       // Suite review O3 (N5): who re-sent everything. republishAll commits on its own, so this is a separate write after it.
-      await recordAudit(db, actorOf(req), { action: "core.republished", targetType: "core", targetId: "republish", targetLabel: "Core records", details: { enqueued } });
+      // Everything is already re-sent: a failed entry is logged, not reported as a failed republish
+      // (an admin would only run it again).
+      try {
+        await recordAudit(db, actorOf(req), { action: "core.republished", targetType: "core", targetId: "republish", targetLabel: "Core records", details: { enqueued } });
+      } catch (e) {
+        console.error("[core] republish ran, but its audit entry couldn't be written", safeErrorLabel(e));
+      }
       res.status(202).json({ enqueued });
     }),
   );

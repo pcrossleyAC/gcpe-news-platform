@@ -271,5 +271,11 @@ describe("NRMS government-term admin API", () => {
       ["Ada Admin", "government-terms", "Moved the start of the government term starting November 20, 2028 (Next government) to November 21, 2028"],
       ["Ada Admin", "government-terms", "Added a government term starting November 20, 2028 (Next government)"],
     ]);
+    // Owner: viewable by Core administrators. A site editor's Website log leaves these lines out.
+    const forEditor = await request(app).get("/api/site/log").set("cookie", editor);
+    expect(forEditor.status).toBe(200);
+    expect(forEditor.body.some((l: { area: string }) => l.area === "government-terms")).toBe(false);
+    expect((await request(app).get("/api/site/log?area=government-terms").set("cookie", editor)).body).toEqual([]);
+    expect((await request(app).get("/api/site/log").set("cookie", admin)).body.some((l: { area: string }) => l.area === "government-terms")).toBe(true);
   });
 });

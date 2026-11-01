@@ -30,7 +30,7 @@ To see one person's or one ministry's changes, choose **Edit** on their row on [
 - Changes are kept for good. Nothing on this screen can be edited or deleted.
 - Only what changed is kept: a name or abbreviation before and after, the roles given or taken, which ministry details changed. Passwords never are: the history says only that a new password was set.
 - Changes made before the Hub started keeping this history aren't listed.
-- Changes on **Government terms** aren't listed here. They are in **Website** > **Website log**: choose **Government terms** in **Filter by area**. Site editors and everyone else who can open **Website** see those lines too; term dates are public anyway.
+- Changes on **Government terms** aren't listed here. They are in **Website** > **Website log**: choose **Government terms** in **Filter by area**. Only Core administrators see those lines.
 - Two entries aren't made on these screens. A person's first Microsoft sign-in, which links their account, is listed under their own name. Sending every ministry, user, sector, theme and tag to the other apps again is listed under whoever started it.
 
 ## Can't do this?
