@@ -37,6 +37,8 @@ export function operationsRoutes(db: Db, deps: SettingsRouteDeps): Router {
         bounceSummaryFallback: deps.bounceSummaryFallback,
         timeZone: deps.timeZone,
         emergencyFeedUrl: deps.emergencyFeedUrl,
+        emergencyFeedOff: deps.emergencyFeedOff,
+        testSite: deps.testSite,
         opsEmail: deps.opsEmail,
       }),
     );

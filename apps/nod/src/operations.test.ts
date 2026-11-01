@@ -37,7 +37,7 @@ describe("operations", () => {
       getSettings: vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED ops@example.test")),
       bounceSource: vi.fn().mockRejectedValue(new Error("timeout")),
     } as unknown as Pick<DistributionClient, "getSettings" | "bounceSource">;
-    const ops = await getOperations(tdb.db, distribution, { bounceSummaryFallback: "server@example.test", timeZone: "America/Vancouver", emergencyFeedUrl: null, opsEmail: null });
+    const ops = await getOperations(tdb.db, distribution, { bounceSummaryFallback: "server@example.test", timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: false, testSite: true, opsEmail: null });
     expect(ops).toEqual({
       nod: { paused: false, lastDigestCutoff: null },
       distribution: null,
@@ -45,7 +45,8 @@ describe("operations", () => {
       bounceSummary: { address: "server@example.test", from: "server" },
       softCodesCounted: [],
       purge: expect.objectContaining({ enabled: false }),
-      emergencyFeed: { url: null, checkedAt: null, result: null },
+      emergencyFeed: { url: null, checkedAt: null, result: null, switchedOff: false },
+      testSite: true,
       opsEmailSet: false,
       outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
     });
@@ -59,7 +60,17 @@ describe("operations", () => {
       bounceSource: vi.fn().mockResolvedValue({ source: "fake" }),
     } as unknown as Pick<DistributionClient, "getSettings" | "bounceSource">;
     expect(
-      await getOperations(tdb.db, distribution, { bounceSummaryFallback: null, timeZone: "America/Vancouver", emergencyFeedUrl: null, opsEmail: "ops@example.test" }),
+      await getOperations(tdb.db, distribution, { bounceSummaryFallback: null, timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: false, testSite: true, opsEmail: "ops@example.test" }),
     ).toMatchObject({ distribution: { paused: true }, bounceSource: "fake", opsEmailSet: true });
+  });
+
+  it("real production: says whether this is a test site and whether emergency alerts were switched off on purpose (2026-10-31, T4)", async () => {
+    const distribution = {
+      getSettings: vi.fn().mockResolvedValue({ paused: false }),
+      bounceSource: vi.fn().mockResolvedValue({ source: "fake" }),
+    } as unknown as Pick<DistributionClient, "getSettings" | "bounceSource">;
+    expect(
+      await getOperations(tdb.db, distribution, { bounceSummaryFallback: null, timeZone: "America/Vancouver", emergencyFeedUrl: null, emergencyFeedOff: true, testSite: false, opsEmail: null }),
+    ).toMatchObject({ testSite: false, bounceSource: "fake", emergencyFeed: { url: null, switchedOff: true } });
   });
 });

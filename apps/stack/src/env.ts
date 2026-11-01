@@ -181,8 +181,69 @@ export const FAKE_EMERGENCY_FEED_ENV: Readonly<Record<string, string>> = {
  * reads no feed at all rather than made-up alerts.
  */
 export function usesFakeEmergencyFeed(env: NodeJS.ProcessEnv): boolean {
-  if (env.NOD_EMERGENCY_FEED_URL) return false;
+  if (env.NOD_EMERGENCY_FEED_URL || env.NOD_EMERGENCY_FEED === "off") return false;
   return isTestSite(env);
+}
+
+/** What real production refuses (errors) or starts with but says out loud (warnings). */
+export interface ProductionProblems {
+  errors: string[];
+  warnings: string[];
+}
+
+const setting = (env: NodeJS.ProcessEnv, key: string) => typeof env[key] === "string" && env[key] !== "";
+
+/**
+ * Owner decisions 2026-10-31 (production configuration T4): on the real production deployment
+ * (@gcpe/config's isRealProduction), a forgotten setting that would otherwise degrade silently on a
+ * public government site stops the stack starting instead, so a deploy fails and rolls back rather
+ * than going live wrong. Run by startStack and by `stack --check`. Nothing here applies to a test
+ * site (SITE_ENVIRONMENT=test, or NODE_ENV other than production).
+ *
+ * - Staff sign in with Microsoft: without Core's Entra settings, user passwords would quietly stay
+ *   allowed (core/src/entra/config.ts).
+ * - The emergency feed (option C): NOD_EMERGENCY_FEED_URL, or NOD_EMERGENCY_FEED=off said
+ *   explicitly; off starts with a warning, and Operations says alerts are switched off.
+ * - Bounces: graph in production; fake (manual upload), or unset, starts with a warning, and
+ *   Operations says bounces aren't being read. Graph keeps Distribution's own all-or-nothing check.
+ * - Real mail switched on (DIST_MAIL_ALLOW_REAL_RECIPIENTS) while DIST_MAIL_REDIRECT_TO is still
+ *   set: the redirect wins at send time, so nobody would get the mail and nothing would say so.
+ */
+export function productionProblems(env: NodeJS.ProcessEnv): ProductionProblems {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!isRealProduction(env)) return { errors, warnings };
+
+  const signIn = ["ENTRA_TENANT_ID", "CORE_ENTRA_CLIENT_ID", "CORE_ENTRA_CLIENT_SECRET", "CORE_PUBLIC_BASE_URL"];
+  const missing = signIn.filter((k) => !setting(env, k));
+  if (missing.length > 0) {
+    errors.push(
+      `real production needs Microsoft sign-in for staff: set ${signIn.join(", ")} (missing: ${missing.join(", ")}). ` +
+        "A test site is marked with SITE_ENVIRONMENT=test instead.",
+    );
+  }
+
+  const feedUrl = setting(env, "NOD_EMERGENCY_FEED_URL");
+  const feedSwitch = env.NOD_EMERGENCY_FEED;
+  if (feedSwitch !== undefined && feedSwitch !== "" && feedSwitch !== "off") {
+    errors.push(`NOD_EMERGENCY_FEED must be "off" or not set (it is "${feedSwitch.slice(0, 20)}")`);
+  } else if (feedUrl && feedSwitch === "off") {
+    errors.push("NOD_EMERGENCY_FEED_URL and NOD_EMERGENCY_FEED=off are both set: keep one");
+  } else if (!feedUrl && feedSwitch !== "off") {
+    errors.push("real production reads the emergency alerts feed: set NOD_EMERGENCY_FEED_URL, or NOD_EMERGENCY_FEED=off to switch emergency alerts off on purpose");
+  } else if (feedSwitch === "off") {
+    warnings.push("Emergency alerts are switched off (NOD_EMERGENCY_FEED=off): no emergency alerts are read or emailed");
+  }
+
+  const bounceSource = env.DIST_BOUNCE_SOURCE || "fake";
+  if (bounceSource === "fake") {
+    warnings.push("Bounces aren't being read: bounce handling is set to manual upload (DIST_BOUNCE_SOURCE is not graph). Ask IT to set up the bounce mailbox.");
+  }
+
+  if (setting(env, "DIST_MAIL_REDIRECT_TO") && env.DIST_MAIL_ALLOW_REAL_RECIPIENTS === "true") {
+    errors.push("DIST_MAIL_REDIRECT_TO and DIST_MAIL_ALLOW_REAL_RECIPIENTS=true are both set: the redirect would still catch every message. Remove DIST_MAIL_REDIRECT_TO to send real mail, or remove DIST_MAIL_ALLOW_REAL_RECIPIENTS to keep redirecting.");
+  }
+  return { errors, warnings };
 }
 
 /** Where the stack mounts its fake Microsoft sign-in when FAKE_ENTRA_ENABLED=true. */

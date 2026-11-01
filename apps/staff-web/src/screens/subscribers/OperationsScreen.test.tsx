@@ -25,7 +25,9 @@ const OPS: OperationsStatus = {
     url: "https://emergency.example.test/feed.xml",
     checkedAt: "2026-10-07T18:00:00.000Z",
     result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, failed: 0, error: null },
+    switchedOff: false,
   },
+  testSite: true,
   opsEmailSet: true,
   outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
 };
@@ -535,9 +537,58 @@ describe("OperationsScreen", () => {
   });
 
   it("the emergency feed: none configured says so", async () => {
-    stub(["NoD.Admin"], { ...OPS, emergencyFeed: { url: null, checkedAt: null, result: null } });
+    stub(["NoD.Admin"], { ...OPS, emergencyFeed: { url: null, checkedAt: null, result: null, switchedOff: false } });
     renderIt();
     expect(await screen.findByText("No feed is configured (EMERGENCY_FEED_URL), so no emergency alerts are read.")).toBeInTheDocument();
+  });
+});
+
+// Production configuration T4 (owner decisions 2026-10-31): the live site never hides that bounces
+// or emergency alerts aren't being read.
+describe("OperationsScreen on the live site", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("with manual bounce upload, warns that bounces aren't being read, and the upload isn't called a test", async () => {
+    stub(["NoD.Admin"], { ...OPS, testSite: false });
+    renderIt();
+    const bounces = await screen.findByRole("region", { name: "Bounce upload" });
+    expect(within(bounces).getByText("Bounces aren’t being read: bounce handling is set to manual upload. Ask IT to set up the bounce mailbox.")).toBeInTheDocument();
+    expect(bounces).not.toHaveTextContent(/test/i);
+    expect(screen.queryByRole("region", { name: "Test bounce upload" })).toBeNull();
+    expect(within(bounces).getByRole("button", { name: "Upload bounce" })).toBeInTheDocument();
+  });
+
+  it("a test site keeps the test upload and no warning; reading the bounce mailbox shows neither", async () => {
+    stub(["NoD.Admin"]);
+    renderIt();
+    await screen.findByRole("region", { name: "Test bounce upload" });
+    expect(screen.queryByText(/Bounces aren’t being read/)).toBeNull();
+    cleanup();
+    stub(["NoD.Admin"], { ...OPS, testSite: false, bounceSource: "graph" });
+    renderIt();
+    await screen.findByRole("region", { name: "Emergency alerts feed" });
+    expect(screen.queryByText(/Bounces aren’t being read/)).toBeNull();
+    expect(screen.queryByRole("region", { name: /bounce upload/i })).toBeNull();
+  });
+
+  it("emergency alerts switched off on purpose say so plainly", async () => {
+    stub(["NoD.Admin"], { ...OPS, testSite: false, emergencyFeed: { url: null, checkedAt: null, result: null, switchedOff: true } });
+    renderIt();
+    const feed = await screen.findByRole("region", { name: "Emergency alerts feed" });
+    expect(within(feed).getByText("Emergency alerts are switched off: no emergency alerts are read or emailed to the Emergency Info BC list. Ask IT to set up the emergency alerts feed.")).toBeInTheDocument();
+    expect(feed).not.toHaveTextContent("EMERGENCY_FEED");
+  });
+
+  it("both warnings together pass axe with no violations", async () => {
+    const axe = (await import("axe-core")).default;
+    stub(["NoD.Admin"], { ...OPS, testSite: false, emergencyFeed: { url: null, checkedAt: null, result: null, switchedOff: true } });
+    renderIt();
+    await screen.findByRole("region", { name: "Bounce upload" });
+    const results = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    expect(results.violations.map((v) => v.id)).toEqual([]);
   });
 });
 

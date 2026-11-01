@@ -75,6 +75,10 @@ export interface SettingsRouteDeps {
   nodAppId: string;
   /** EMERGENCY_FEED_URL, shown on Operations; null = no feed configured. */
   emergencyFeedUrl: string | null;
+  /** NOD_EMERGENCY_FEED=off: emergency alerts switched off on purpose (Operations says so). */
+  emergencyFeedOff: boolean;
+  /** @gcpe/config's isTestSite, for Operations' real-production warnings. */
+  testSite: boolean;
 }
 
 export function apiRoutes(

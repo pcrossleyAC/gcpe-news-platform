@@ -6,7 +6,7 @@ import type { Server } from "node:http";
 import express, { Router, type Express } from "express";
 import rateLimit from "express-rate-limit";
 import type { ZodTypeAny } from "zod";
-import { authFromEnv, requireBearer, requireRole, sessionGateInstalled, setSessionGate } from "@gcpe/auth";
+import { authFromEnv, requireBearer, requireRole, serviceTokenProvider, sessionGateInstalled, setSessionGate } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createFakeEmergencyFeed } from "@gcpe/emergency-feed-fake";
@@ -22,10 +22,18 @@ import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../co
 import { distributionEnvSchema } from "../../distribution/src/env";
 import { startDistribution, type AppHandle as DistributionHandle } from "../../distribution/src/start";
 import { newsApiEnvSchema } from "../../news-api/src/env";
-import { startNewsApi, type AppHandle as NewsApiHandle } from "../../news-api/src/start";
-import { nodEnvSchema, startNod, type AppHandle as NodHandle } from "../../nod/src/start";
-import { nrmsEnvSchema, startNrms, type AppHandle as NrmsHandle } from "../../nrms/src/start";
-import { publicSiteEnvSchema } from "../../public-site/src/env";
+import { nodSubscribeTokenOptions, startNewsApi, type AppHandle as NewsApiHandle } from "../../news-api/src/start";
+import { distributionTokenFor, mediaHubTokenFor, nodEnvSchema, startNod, type AppHandle as NodHandle } from "../../nod/src/start";
+import {
+  coreServiceTokenOptions,
+  distributionServiceTokenOptions,
+  newsApiServiceTokenOptions,
+  nodServiceTokenOptions,
+  nrmsEnvSchema,
+  startNrms,
+  type AppHandle as NrmsHandle,
+} from "../../nrms/src/start";
+import { newsApiTokenOptions, publicSiteEnvSchema } from "../../public-site/src/env";
 import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../public-site/src/start";
 
 import { noStoreByDefault } from "./cache-control";
@@ -47,6 +55,8 @@ import {
   FAKE_FLICKR,
   FAKE_FLICKR_PATH,
   FAKE_MEDIA_HUB_PATH,
+  productionProblems,
+  type ProductionProblems,
   resolveSelfUrls,
   type AppPrefix,
   stackEnvSchema,
@@ -162,6 +172,42 @@ export const SITE_PASS_THROUGH: readonly string[] = STACK_OWNED_PREFIXES.filter(
 /** Every folder the stack serves to anyone, named by the setting that moves it. */
 function publicDirs(nrmsStorage: string | undefined, siteOutput: string | undefined, staffWeb: string | undefined): Record<string, string | undefined> {
   return { "NRMS_STORAGE_DIR (served at /files)": nrmsStorage, "SITE_OUTPUT_DIR (served at / and /site)": siteOutput, "STAFF_WEB_DIR (served at /hub)": staffWeb };
+}
+
+/** Throws on real production's refusals (productionProblems); logs each warning, never silently. */
+function assertProductionReady(env: NodeJS.ProcessEnv): void {
+  const { errors, warnings } = productionProblems(env);
+  if (errors.length > 0) {
+    throw new Error(`[stack] refusing to start: this is the real production site (NODE_ENV=production without SITE_ENVIRONMENT=test), and ${errors.join("; ")}`);
+  }
+  for (const w of warnings) console.warn(`[stack] PRODUCTION WARNING: ${w}`);
+}
+
+/**
+ * The service tokens each app builds when it starts (serviceTokenProvider throws at construction
+ * when a caller has no way to get one: no Entra client credentials, not inside the stack, no
+ * break-glass secret). `stack --check` builds them the same way, from the same option functions,
+ * so a deployment that can't start fails the check too. Nothing is minted or fetched.
+ */
+function buildServiceTokens(prefix: AppPrefix, parsed: unknown, view: NodeJS.ProcessEnv): void {
+  const auth = () => authFromEnv(view);
+  if (prefix === "NRMS") {
+    const p = parsed as Parameters<typeof nodServiceTokenOptions>[0] & Parameters<typeof distributionServiceTokenOptions>[0] & Parameters<typeof coreServiceTokenOptions>[0] & Parameters<typeof newsApiServiceTokenOptions>[0];
+    const { local, internal } = auth();
+    if (p.NOD_URL) serviceTokenProvider(nodServiceTokenOptions(p, local, internal));
+    if (p.DISTRIBUTION_URL) serviceTokenProvider(distributionServiceTokenOptions(p, local, internal));
+    if (p.CORE_URL) serviceTokenProvider(coreServiceTokenOptions(p, local, internal));
+    if (p.NEWS_API_URL) serviceTokenProvider(newsApiServiceTokenOptions(p, local, internal));
+  } else if (prefix === "NOD") {
+    const p = parsed as Parameters<typeof distributionTokenFor>[0];
+    distributionTokenFor(p, auth());
+    if (p.MEDIA_HUB_URL) mediaHubTokenFor(p, auth());
+  } else if (prefix === "SITE") {
+    serviceTokenProvider(newsApiTokenOptions(parsed as Parameters<typeof newsApiTokenOptions>[0], view));
+  } else if (prefix === "NEWSAPI") {
+    const p = parsed as Parameters<typeof nodSubscribeTokenOptions>[0];
+    if (p.NOD_BASE_URL) serviceTokenProvider(nodSubscribeTokenOptions(p, view));
+  }
 }
 
 /**
@@ -288,6 +334,11 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // itself) spends time opening DB connections / running migrations.
   const tenant = loadTenantConfig(stackEnv.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
+
+  // Owner decisions 2026-10-31 (production configuration T4): the real production site refuses to
+  // start with a setting missing that would otherwise fail silently, before any database or folder
+  // is touched, so a deploy fails (and Deploy-GcpeRelease rolls back) instead of going live wrong.
+  assertProductionReady(env);
 
   // The one folder that survives a SiteGround redeploy (site output, uploaded files)
   // — resolved and checked writable before any app starts, so a misconfigured/unwritable
@@ -720,6 +771,8 @@ export interface StackCheckResult {
   apps: Record<string, StackCheckAppResult>;
   /** A warning only, never part of `ok`: the Calendar database's tzdata (db-time-zone.ts). Absent when the Calendar isn't configured. */
   calendarDbTimeZone?: DbTimeZoneStatus;
+  /** Real production's refusals (any error fails `ok`) and warnings; both empty on a test site. */
+  production: ProductionProblems;
 }
 
 /** Every app the stack runs, with the env schema its start<App>() parses — the Calendar only when
@@ -834,6 +887,14 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
       }
     }
     if (c.label === "calendar" && calendarStorageError) errors.push(calendarStorageError);
+    // The service tokens this app builds at startup, built the same way (only once its env parsed).
+    if (parsed.success && errors.length === 0) {
+      try {
+        buildServiceTokens(c.prefix, parsed.data, view);
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
+    }
 
     if (errors.length > 0) {
       ok = false;
@@ -854,7 +915,9 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   // The one connection --check opens: a single read-only probe of the Calendar's database,
   // bounded by queryOnce's timeout, that can't fail the check.
   const calendarDbTimeZone = calendarConfigured(env) ? await checkCalendarDbTimeZone(tenant, pgOffsetOf(resolvedEnvFor(env, "CALENDAR", dataDir).DATABASE_URL!)) : undefined;
-  return { ok, tenantId: tenant.tenantId, timeZone: tenant.timeZone, apps, ...(calendarDbTimeZone ? { calendarDbTimeZone } : {}) };
+  const production = productionProblems(env);
+  if (production.errors.length > 0) ok = false;
+  return { ok, tenantId: tenant.tenantId, timeZone: tenant.timeZone, apps, ...(calendarDbTimeZone ? { calendarDbTimeZone } : {}), production };
 }
 
 export interface StackMigrateResult {

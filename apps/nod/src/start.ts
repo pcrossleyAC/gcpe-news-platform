@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv, isValidPasswordHash, serviceTokenProvider } from "@gcpe/auth";
-import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
+import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
@@ -74,6 +74,9 @@ export const nodEnvSchema = z.object({
   // Unset: no alerts are read. The stack points test sites at its fake feed. The operator sets
   // `NOD_EMERGENCY_FEED_URL`; envFor strips the "NOD_" prefix.
   EMERGENCY_FEED_URL: z.string().url().optional(),
+  // `NOD_EMERGENCY_FEED=off`: no emergency alerts read, on purpose. Real production refuses to
+  // start with neither this nor a URL (owner decision 2026-10-31, option C; apps/stack/src/env.ts).
+  EMERGENCY_FEED: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["off"]).optional()),
   // The page emailed verify/manage links open. Default: the public site's test page.
   SUBSCRIBE_PAGE_URL: z.string().url().optional(),
   // Base URL of the public Subscribe API, carrying the one-click unsubscribe path
@@ -126,6 +129,39 @@ export interface AppHandle {
   closers: Closer[];
 }
 
+type NodAuth = Pick<ReturnType<typeof authFromEnv>, "local" | "internal">;
+
+/** NoD's token for Distribution, built once at startup; exported so `stack --check` builds it
+ * exactly as startup does (a deployment with no way to get one fails both). */
+export function distributionTokenFor(parsed: z.infer<typeof nodEnvSchema>, auth: NodAuth): () => Promise<string> {
+  return distributionTokenProvider({
+    tokenUrl: parsed.DISTRIBUTION_TOKEN_URL,
+    clientId: parsed.DISTRIBUTION_CLIENT_ID,
+    clientSecret: parsed.DISTRIBUTION_CLIENT_SECRET,
+    scope: parsed.DISTRIBUTION_SCOPE,
+    local: auth.local,
+    internal: auth.internal,
+    targetUrl: parsed.DISTRIBUTION_URL,
+  });
+}
+
+/** NoD's token for the Media Hub, when one is configured (MEDIA_HUB_URL); exported for `stack --check`. */
+export function mediaHubTokenFor(parsed: z.infer<typeof nodEnvSchema>, auth: NodAuth): () => Promise<string> {
+  return serviceTokenProvider({
+    tokenUrl: parsed.MEDIA_HUB_TOKEN_URL,
+    clientId: parsed.MEDIA_HUB_CLIENT_ID,
+    clientSecret: parsed.MEDIA_HUB_CLIENT_SECRET,
+    scope: parsed.MEDIA_HUB_SCOPE,
+    local: auth.local,
+    // Only for the stack's own fake Media Hub (in-process); a real one needs Entra.
+    internal: auth.internal,
+    targetUrl: parsed.MEDIA_HUB_URL,
+    subject: "nod",
+    roles: ["MediaHub.ContactsRead"],
+    envPrefix: "NOD_MEDIA_HUB",
+  });
+}
+
 /**
  * Wires up everything NoD's main.ts needs: parses env, runs migrations, builds the
  * Distribution client/token provider and the Express app, and the pieces behind its job
@@ -143,15 +179,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
 
-  const getDistributionToken = distributionTokenProvider({
-    tokenUrl: parsed.DISTRIBUTION_TOKEN_URL,
-    clientId: parsed.DISTRIBUTION_CLIENT_ID,
-    clientSecret: parsed.DISTRIBUTION_CLIENT_SECRET,
-    scope: parsed.DISTRIBUTION_SCOPE,
-    local: auth.local,
-    internal: auth.internal,
-    targetUrl: parsed.DISTRIBUTION_URL,
-  });
+  const getDistributionToken = distributionTokenFor(parsed, auth);
   const distribution = distributionClient({
     baseUrl: parsed.DISTRIBUTION_URL,
     getToken: getDistributionToken,
@@ -176,26 +204,20 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS, replyTo: { news: parsed.REPLY_TO } };
 
   const emergencyFeed: EmergencyFeedDeps = { db, url: parsed.EMERGENCY_FEED_URL ?? null, items: createItemSending({ render }) };
-  if (!emergencyFeed.url) console.warn("[nod] EMERGENCY_FEED_URL is not set: no emergency alerts are read");
+  if (!emergencyFeed.url) {
+    console.warn(
+      parsed.EMERGENCY_FEED === "off"
+        ? "[nod] emergency alerts are switched off (EMERGENCY_FEED=off): no emergency alerts are read"
+        : "[nod] EMERGENCY_FEED_URL is not set: no emergency alerts are read",
+    );
+  }
 
   // Only built when a Media Hub is actually configured -- search and add-from-hub answer 503
   // otherwise (routes.ts), and there is then no token provider to fail at startup.
   const mediaHub: MediaHubClient | null = parsed.MEDIA_HUB_URL
     ? mediaHubClient({
         baseUrl: parsed.MEDIA_HUB_URL,
-        getToken: serviceTokenProvider({
-          tokenUrl: parsed.MEDIA_HUB_TOKEN_URL,
-          clientId: parsed.MEDIA_HUB_CLIENT_ID,
-          clientSecret: parsed.MEDIA_HUB_CLIENT_SECRET,
-          scope: parsed.MEDIA_HUB_SCOPE,
-          local: auth.local,
-          // Only for the stack's own fake Media Hub (in-process); a real one needs Entra.
-          internal: auth.internal,
-          targetUrl: parsed.MEDIA_HUB_URL,
-          subject: "nod",
-          roles: ["MediaHub.ContactsRead"],
-          envPrefix: "NOD_MEDIA_HUB",
-        }),
+        getToken: mediaHubTokenFor(parsed, auth),
         timeoutMs: parsed.MEDIA_HUB_TIMEOUT_MS,
       })
     : null;
@@ -220,6 +242,8 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     bounceSummaryFallback: parsed.BOUNCE_SUMMARY_EMAIL ?? null,
     distributionAppId: parsed.DISTRIBUTION_APP_ID ?? parsed.DISTRIBUTION_CLIENT_ID ?? "nod",
     emergencyFeedUrl: parsed.EMERGENCY_FEED_URL ?? null,
+    emergencyFeedOff: parsed.EMERGENCY_FEED === "off",
+    testSite: isTestSite(env),
     mediaHub,
     membership:
       parsed.MEMBERSHIP_API_USERNAME && parsed.MEMBERSHIP_API_PASSWORD_HASH

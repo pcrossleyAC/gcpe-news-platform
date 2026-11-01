@@ -53,6 +53,10 @@ export interface AppDeps {
   distributionAppId?: string;
   /** EMERGENCY_FEED_URL, for Operations. */
   emergencyFeedUrl?: string | null;
+  /** NOD_EMERGENCY_FEED=off, for Operations. Default false. */
+  emergencyFeedOff?: boolean;
+  /** @gcpe/config's isTestSite(env), for Operations. Default true (no real-production warnings). */
+  testSite?: boolean;
 }
 
 const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce" | "bounceSource" | "dailyReport"> = {
@@ -128,6 +132,8 @@ export function createApp(deps: AppDeps): express.Express {
         bounceSummaryFallback: deps.bounceSummaryFallback ?? null,
         nodAppId: deps.distributionAppId ?? "nod",
         emergencyFeedUrl: deps.emergencyFeedUrl ?? null,
+        emergencyFeedOff: deps.emergencyFeedOff ?? false,
+        testSite: deps.testSite ?? true,
       },
       deps.mediaHub ?? null,
     ),

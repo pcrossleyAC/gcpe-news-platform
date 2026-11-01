@@ -1299,8 +1299,10 @@ new alerts to everyone on the Emergency Info BC list, whatever their own timing 
     -d '{"title":"Test alert","html":"<p>Test.</p>"}' https://boxs.ca/fake-emergency-feed/__fake/alerts
   ```
   then wait up to 5 minutes (or trigger a tick).
-- Production sets `NOD_EMERGENCY_FEED_URL`. With it unset, no alerts are read, and Operations
-  says so. The production feed redirects the bare domain to `www`, and the fetch refuses
+- Production sets `NOD_EMERGENCY_FEED_URL`, or `NOD_EMERGENCY_FEED=off` to switch emergency
+  alerts off on purpose: the real production site refuses to start with neither (owner decision
+  2026-10-31). With it off, no alerts are read, and Operations says emergency alerts are switched
+  off. `NOD_EMERGENCY_FEED=off` also turns off the fake feed on a test site. The production feed redirects the bare domain to `www`, and the fetch refuses
   redirects on purpose (an operator must point it at the real, final URL, not trust whatever a
   redirect's target happens to be) — configure the `www` form, not the bare domain.
 - The first successful read of a feed URL (including a changed one) records its current alerts

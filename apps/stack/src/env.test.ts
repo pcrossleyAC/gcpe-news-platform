@@ -20,6 +20,7 @@ import {
   resolveSelfSubscribers,
   resolveSelfUrls,
   routeSecret,
+  productionProblems,
   serviceTokenSecretFrom,
   sessionSecretFrom,
   stackEnvSchema,
@@ -790,5 +791,75 @@ describe("the stack's internal service-token key (2026-10-31, T2)", () => {
     expect(envFor({ STACK_EVENT_SECRET: STACK, NRMS_SERVICE_TOKEN_SECRET: "x".repeat(40), SERVICE_TOKEN_SECRET: "y".repeat(40) }, "NRMS").SERVICE_TOKEN_SECRET).toBe(serviceTokenSecretFrom(STACK));
     expect(envFor({}, "NRMS").SERVICE_TOKEN_SECRET).toBeUndefined();
     expect(envFor({ NRMS_SERVICE_TOKEN_SECRET: "x".repeat(40) }, "NRMS").SERVICE_TOKEN_SECRET).toBeUndefined();
+  });
+});
+
+describe("productionProblems: what real production refuses or warns about (2026-10-31, T4)", () => {
+  /** A real production env that passes every rule. */
+  const good = (): NodeJS.ProcessEnv => ({
+    NODE_ENV: "production",
+    ENTRA_TENANT_ID: "11111111-1111-4111-8111-111111111111",
+    CORE_ENTRA_CLIENT_ID: "22222222-2222-4222-8222-222222222222",
+    CORE_ENTRA_CLIENT_SECRET: "secret",
+    CORE_PUBLIC_BASE_URL: "https://news.example.gov.bc.ca",
+    NOD_EMERGENCY_FEED_URL: "https://emergency.example.gov.bc.ca/feed.xml",
+    DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
+    DIST_BOUNCE_SOURCE: "graph",
+  });
+
+  it("nothing at all on a test site, whatever is missing", () => {
+    expect(productionProblems({ NODE_ENV: "production", SITE_ENVIRONMENT: "test" })).toEqual({ errors: [], warnings: [] });
+    expect(productionProblems({})).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("a complete real production env has no errors and no warnings", () => {
+    expect(productionProblems(good())).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("refuses real production without Microsoft sign-in for staff (user passwords would quietly stay on)", () => {
+    for (const k of ["ENTRA_TENANT_ID", "CORE_ENTRA_CLIENT_ID", "CORE_ENTRA_CLIENT_SECRET", "CORE_PUBLIC_BASE_URL"]) {
+      const env = good();
+      delete env[k];
+      expect(productionProblems(env).errors.join("\n"), k).toMatch(/Microsoft sign-in.*CORE_ENTRA_CLIENT_ID/);
+    }
+  });
+
+  it("emergency feed (option C): a URL, or NOD_EMERGENCY_FEED=off said explicitly, which is a warning", () => {
+    const none = good();
+    delete none.NOD_EMERGENCY_FEED_URL;
+    expect(productionProblems(none).errors.join("\n")).toMatch(/NOD_EMERGENCY_FEED_URL.*NOD_EMERGENCY_FEED=off/);
+    const off = { ...none, NOD_EMERGENCY_FEED: "off" };
+    expect(productionProblems(off).errors).toEqual([]);
+    expect(productionProblems(off).warnings.join("\n")).toMatch(/emergency alerts are switched off/i);
+    expect(productionProblems({ ...good(), NOD_EMERGENCY_FEED: "off" }).errors.join("\n")).toMatch(/both/);
+    expect(productionProblems({ ...none, NOD_EMERGENCY_FEED: "on" }).errors.join("\n")).toMatch(/NOD_EMERGENCY_FEED must be "off"/);
+    expect(productionProblems({ ...none, NOD_EMERGENCY_FEED_URL: "" }).errors.length).toBe(1);
+  });
+
+  it("bounces: graph is quiet; fake or unset starts with a warning, never silently", () => {
+    for (const source of [undefined, "fake"]) {
+      const env = { ...good(), DIST_BOUNCE_SOURCE: source };
+      const p = productionProblems(env);
+      expect(p.errors, String(source)).toEqual([]);
+      expect(p.warnings.join("\n"), String(source)).toMatch(/Bounces aren't being read: bounce handling is set to manual upload/);
+    }
+  });
+
+  it("refuses real mail switched on while the redirect is still there (the redirect would silently win)", () => {
+    expect(productionProblems({ ...good(), DIST_MAIL_REDIRECT_TO: "ops@example.gov.bc.ca" }).errors.join("\n")).toMatch(/DIST_MAIL_REDIRECT_TO.*DIST_MAIL_ALLOW_REAL_RECIPIENTS/);
+    // A redirect alone (before go-live) is fine.
+    const before = { ...good(), DIST_MAIL_REDIRECT_TO: "ops@example.gov.bc.ca", DIST_MAIL_ALLOW_REAL_RECIPIENTS: undefined };
+    expect(productionProblems(before).errors).toEqual([]);
+  });
+
+  it("break-glass allowed in production is still real production: the rules apply", () => {
+    const env = { ...good(), LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", NOD_EMERGENCY_FEED_URL: undefined };
+    expect(productionProblems(env).errors.length).toBe(1);
+  });
+
+  it("NOD_EMERGENCY_FEED=off turns the fake feed off on a test site too", () => {
+    expect(usesFakeEmergencyFeed({ NOD_EMERGENCY_FEED: "off" })).toBe(false);
+    expect(envFor({ NOD_EMERGENCY_FEED: "off" }, "NOD").EMERGENCY_FEED_URL).toBeUndefined();
+    expect(envFor({ NOD_EMERGENCY_FEED: "off" }, "NOD").EMERGENCY_FEED).toBe("off");
   });
 });

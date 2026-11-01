@@ -683,11 +683,12 @@ then `Restart-Service gcpe-stack`, and open its outbound firewall rule first
 |---|---|---|
 | Media Hub (NoD) | `NOD_MEDIA_HUB_URL`, `NOD_MEDIA_HUB_TOKEN_URL`, `NOD_MEDIA_HUB_CLIENT_ID`, `NOD_MEDIA_HUB_CLIENT_SECRET`, `NOD_MEDIA_HUB_SCOPE` | |
 | Legacy Membership lookup (NoD) | `NOD_MEMBERSHIP_API_USERNAME`, `NOD_MEMBERSHIP_API_PASSWORD_HASH` | The password setting is the hash `npm run nod:membership-hash` prints, never a plain password. With either unset, the lookup always answers 503. |
-| Emergency alerts feed | `NOD_EMERGENCY_FEED_URL=https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true` | Must be the final URL, no redirect. |
+| Emergency alerts feed | `NOD_EMERGENCY_FEED_URL=https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true` | Must be the final URL, no redirect. Prod refuses to start without it unless `NOD_EMERGENCY_FEED=off` is set on purpose ([Real production](#real-production-what-the-stack-refuses)). |
 | Flickr (NRMS) | `NRMS_FLICKR_API_KEY`, `NRMS_FLICKR_API_SECRET`, `NRMS_FLICKR_ACCESS_TOKEN`, `NRMS_FLICKR_ACCESS_SECRET`, `NRMS_FLICKR_ALERT_EMAILS` | siteground.md, "Flickr". |
 | Semantic search | `NEWSAPI_EMBEDDINGS_PROVIDER=azure-openai`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, and `"semanticSearch": true` in the tenant file (below) | pgvector is already on. `/stack/health` then says `"newsApiSearch": "semantic"`. Never turn on `staffAi` before the privacy impact assessment approves it. |
 | Google Search Console | `SITE_GOOGLE_VERIFICATION_FILE`, `SITE_GOOGLE_SITE_VERIFICATION` | Prod go-live only ([5](#5-prod-later)). |
-| Real mail | remove `DIST_MAIL_REDIRECT_TO` | Prod only. |
+| Real mail | remove `DIST_MAIL_REDIRECT_TO` **and** add `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true` | Prod only (P4). Removing the redirect alone stops Distribution starting, and the whole stack with it. |
+| Bounce mailbox | `DIST_BOUNCE_SOURCE=graph`, `DIST_GRAPH_TENANT_ID`, `DIST_GRAPH_CLIENT_ID`, `DIST_GRAPH_CLIENT_SECRET`, `DIST_BOUNCE_MAILBOX` | All five or Distribution refuses to start. Without them Prod starts with a warning, and Operations says bounces aren't being read. |
 
 **The tenant file** (`semanticSearch`, `staffAi` and the other tenant features) ships inside each
 release, at `C:\gcpe\current\config\tenants\bc.json`, so an edit there is lost at the next
@@ -951,6 +952,37 @@ address, not the visitor's, and the restriction cannot tell visitors apart.
 
 Not built yet. The order is: database server, app server, DMZ proxy #2, go-live switches. Prod
 uses the same scripts; what differs is below.
+
+### Real production: what the stack refuses
+
+A deployment is the **real production site** when `NODE_ENV=production` and there is no
+`SITE_ENVIRONMENT=test` line (Dev, Test and boxs.ca have that line). Break-glass
+(`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`) doesn't change that: it only allows the local admin login.
+On the real production site the stack checks these at startup, before it opens any database; a
+refusal stops the start (and a deploy's own `stack.js --check` fails first, so the running site isn't
+changed), a warning starts it and says so:
+
+| Setting | If it's wrong | |
+|---|---|---|
+| `ENTRA_TENANT_ID`, `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET`, `CORE_PUBLIC_BASE_URL` | Refused if any is missing: without them staff passwords would quietly stay allowed. | refuse |
+| `NOD_EMERGENCY_FEED_URL` | Refused unless it is set, or `NOD_EMERGENCY_FEED=off` is set on purpose. Both set is refused too. | refuse |
+| `NOD_EMERGENCY_FEED=off` | Starts; logs that emergency alerts are switched off; Operations says so. | warning |
+| `DIST_BOUNCE_SOURCE` | Unset or `fake`: starts; logs "Bounces aren't being read: bounce handling is set to manual upload"; Operations says so. `graph` needs all its settings (D8). | warning |
+| `DIST_MAIL_REDIRECT_TO` with `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true` | Refused: the redirect would still catch every message. | refuse |
+
+The apps' calls to each other inside the stack don't need the break-glass admin: they use a key
+the stack derives from `STACK_EVENT_SECRET` (owner decision 2026-10-31), and that key is accepted
+only on the stack's own in-memory connections, never through IIS or the network.
+
+**Check it** before a restart, with the new values (it starts nothing and opens no database):
+
+```powershell
+& 'C:\Program Files\nodejs\node.exe' --env-file=C:\gcpe\config\gcpe.env C:\gcpe\current\stack.js --check
+```
+
+`"ok": true`, and `production.errors` empty; `production.warnings` lists what will be logged.
+After the restart, `Get-Content C:\gcpe\service\logs\gcpe-stack.err.log -Tail 300 | Select-String 'PRODUCTION WARNING|refusing to start'`
+shows the same lines.
 
 ### P1. The database server
 
