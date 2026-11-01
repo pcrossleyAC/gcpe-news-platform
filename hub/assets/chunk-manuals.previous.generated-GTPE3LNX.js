@@ -495,7 +495,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Enter a number such as 3.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},g=null,c={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+`,changed:"2026-10-30"},g=null,u={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p>In <strong>Website</strong>, the one thing only you can change is <strong>Project Blue Bridge</strong>: the switch that puts the public site into mourning when the King dies. Everything else in <strong>Website</strong> is view-only for you.</p>
 <h2>What you can and can&#39;t change in Website</h2>
 <p>You can open every <strong>Website</strong> tab: <strong>Carousel</strong>, <strong>Emergency pins</strong>, <strong>Live Feed</strong>, <strong>What&#39;s featured where</strong>, <strong>Resource links</strong>, <strong>Files</strong>, <strong>Website log</strong> and <strong>Site settings</strong>. You see what is live, but there are no <strong>Save</strong> or <strong>Publish</strong> buttons.</p>
@@ -532,7 +532,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Someone else changed the switch while you had the page open. Choose <strong>Reload</strong> and check its state.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},u=null,p={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},c=null,p={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>The carousel is the set of slides at the top of the public home page. Visitors see one slide at a time and move between them with <strong>Previous</strong> and <strong>Next</strong>; the slides don&#39;t turn by themselves.</p>
 <p><strong>Carousel</strong> has three parts:</p>
 <ul>
@@ -677,7 +677,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Another site editor changed this notice while you had the page open. Choose <strong>Reload</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},b={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},y={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Live Feed</strong> controls the public site&#39;s <strong>Live Webcast</strong> button, which plays a live stream such as a news conference.</p>
 <ul>
 <li><strong>M3U URL</strong> is the address of the stream itself. It is needed to turn the feed on.</li>
@@ -723,7 +723,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Another site editor saved the Live Feed while you had the page open. Choose <strong>Reload</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},y={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},b={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Resource links</strong> is the list of links shown on the public home page under the <strong>Resources</strong> heading, in the order you set.</p>
 <h2>Change the links</h2>
 <ol>
@@ -761,7 +761,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Another site editor saved the list while you had the page open. Choose <strong>Reload</strong>. Your unsaved changes are lost.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},v={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},f={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Files</strong> holds documents and images the public can open at a fixed web address, such as a media guide or a minister&#39;s photo. You can upload any type of file of up to 512 MB.</p>
 <p>The list shows the 50 newest files, each linked to its public address. To find an older one, type part of its name in <strong>Search files</strong> and choose <strong>Search</strong>.</p>
 <h2>Upload a file</h2>
@@ -817,7 +817,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Most often this happens just after the Hub was updated: a page left open from before the update sends the file in a way the Hub no longer accepts.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},f=null,w={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},v=null,w={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Website</strong> &gt; <strong>Site settings</strong> lists the screens that set how the public site looks and reads: <strong>Site banner</strong>, <strong>Footer links</strong>, <strong>Social links</strong>, <strong>Theme colours</strong>, <strong>Ministry page headings</strong>, <strong>Media contacts page</strong>, <strong>Page text</strong>, <strong>Navigation and labels</strong> and <strong>Site identity</strong>. They all save and publish the same way. <strong>Settings history</strong> lists everything published so far.</p>
 <h2>Your draft</h2>
 <p>You have one private draft that covers all of these screens. Other site editors have their own, and nobody else sees yours.</p>
@@ -1703,7 +1703,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>The <strong>Publish now</strong> box says so, with the date. Once that 5 pm has passed, it says &quot;That time has passed, so daily digest subscribers who didn&#39;t get it then won&#39;t.&quot;</p>
 <h2>Embargoes</h2>
 <p>There is no separate embargo setting. <strong>Schedule</strong> is the embargo: until the scheduled time, the public page, the files and the emails don&#39;t exist outside the Hub. Anyone with Hub access can read the release before then.</p>
-`,changed:"2026-10-30"},F={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-30"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <h2>Correct a published release</h2>
 <ol>
 <li>Open the release and make the change.</li>
@@ -1737,7 +1737,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>A draft that was never approved is deleted for good: &quot;This draft has never been approved \u2014 deleting it is permanent and can&#39;t be undone.&quot;</li>
 <li>A release with a reference number disappears from the folders and <strong>Search</strong>, but its record is kept: &quot;This release has a reference number (NEWS-00010) \u2014 deleting it hides it from the lists but keeps the record.&quot;</li>
 </ul>
-`,changed:"2026-10-31"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-10-31"},F={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <h2>Open a release you know</h2>
 <ol>
 <li>Type into <strong>Find a release</strong>, at the top of the side menu, one of:<ul>
@@ -3364,7 +3364,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p><strong>Help</strong>, at the top of every screen, opens the page of this manual for the screen you are on. The Help page also lists the keyboard shortcuts. Shortcuts that save, such as \u2318S or Ctrl+S, do nothing for you on the <strong>Subscribers</strong> screens.</p>
 <h2>Signing in</h2>
 <p>Choose <strong>Sign in with Microsoft</strong> and use your government Microsoft account. You need a Hub account first: if you see &quot;Your account hasn&#39;t been set up. Contact an administrator.&quot;, ask a Core administrator to add you. Signing out of the Hub doesn&#39;t sign you out of Microsoft.</p>
-`,changed:"2026-10-30"},lt=null,gt=null,ct={html:`<p><strong>Who this is for:</strong> Subscribers viewers (NoD.Viewer).</p>
+`,changed:"2026-10-30"},lt=null,gt=null,ut={html:`<p><strong>Who this is for:</strong> Subscribers viewers (NoD.Viewer).</p>
 <p><strong>Media lists</strong> holds the reporters on each media list. Release editors pick these lists on a release, and every member gets the full-text media version.</p>
 <p>The table shows each list&#39;s <strong>Members</strong>, how many <strong>Need attention</strong>, and its <strong>Status</strong>. <strong>Members</strong> counts only the members who get the list&#39;s email. Disabled members get nothing, so they aren&#39;t counted; the cell then adds, for example, &quot;(and 2 Disabled, who get nothing)&quot;. A <strong>Retired</strong> list can&#39;t be put on a release, and nothing is sent to it.</p>
 <h2>See who is on a list</h2>
@@ -3425,7 +3425,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The address in your browser is wrong. Go back to <strong>Media lists</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},ut=null,pt={html:`<p><strong>Who this is for:</strong> Subscribers viewers (NoD.Viewer).</p>
+`,changed:"2026-10-31"},ct=null,pt={html:`<p><strong>Who this is for:</strong> Subscribers viewers (NoD.Viewer).</p>
 <p><strong>Reports</strong> shows who receives what, who left, and what was sent. Dates and times are BC time.</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
 <thead>
@@ -3594,7 +3594,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>What you see in the side menu</h2>
 <p>Under <strong>Work</strong> you see <strong>Calendar</strong>. Under <strong>Administration</strong> you see <strong>Calendar access</strong>.</p>
 <p>The Calendar&#39;s tabs are <strong>Calendar</strong>, <strong>Updates</strong>, <strong>Lookups</strong>, <strong>Users</strong> and <strong>Transfer</strong>. System administrators also see <strong>Undelivered events</strong>.</p>
-`,changed:"2026-10-30"},bt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-30"},yt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p><strong>Calendar access</strong>, under <strong>Administration</strong> in the side menu, gives a person a Calendar role and the ministries they work for. Each person has one role or <strong>No Calendar access</strong>.</p>
 <p>The table shows everyone with a Hub account: <strong>Name</strong>, <strong>Email</strong>, <strong>Calendar role</strong> and <strong>Ministries</strong>. Inactive people are hidden until you tick <strong>Show inactive users, including those with no email</strong>.</p>
 <h2>What you can give</h2>
@@ -3674,7 +3674,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The named ministry (shown by its short web name) was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},yt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-30"},bt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p><strong>Calendar</strong> &gt; <strong>Users</strong> lists everyone with Calendar access, one row for each of their ministries: <strong>Name</strong>, <strong>Ministry</strong>, <strong>Comm contact</strong>, <strong>Calendar role</strong> and <strong>Active</strong>.</p>
 <ul>
 <li>Type a name or a ministry abbreviation in <strong>Find by name or ministry</strong> to narrow the list.</li>
@@ -3695,10 +3695,11 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>A rank makes the person a comm contact for that ministry, so editors can choose them as an activity&#39;s <strong>Comm Contact</strong>. The page has one <strong>Comm contact rank for</strong> box for each of their ministries.</p>
 <ol>
 <li>Choose a rank: <strong>Comm Director</strong>, <strong>Comm Manager</strong>, <strong>Sr. PAO</strong>, <strong>PAO</strong>, <strong>Jr. PAO</strong> or <strong>Other</strong>.</li>
-<li>The rank saves as soon as you choose it. You see &quot;Saved the comm-contact rank.&quot;</li>
+<li>The rank saves as soon as you choose it. Beside the box you see, for example, &quot;Saved: Comm Director for Health (HLTH).&quot; If it doesn&#39;t save, the same place says why, such as &quot;The rank wasn&#39;t saved. Try again.&quot;</li>
 </ol>
 <p>Choose <strong>Not a comm contact</strong> to stop offering them. Activities that already have them as comm contact keep them, but can&#39;t be cloned until they have an active comm contact.</p>
-<p>&quot;Give this user a ministry under Calendar access (Edit Calendar access) first.&quot; means they have no ministry yet. Choose <strong>Edit Calendar access</strong> above and give them one, wait a minute, then reload the page.</p>
+<p>&quot;Give this user a ministry under Calendar access (Edit Calendar access) first.&quot; means they have no ministry yet. Choose <strong>Edit Calendar access</strong> above and give them one.</p>
+<p>Just after you give someone a ministry, the page says &quot;Setting up their ministries in the Calendar\u2026 The rank appears here in a moment.&quot; Stay on the page: the rank box for the new ministry appears by itself, usually within a minute. If it hasn&#39;t after about a minute and a half, the page says &quot;The Calendar hasn&#39;t picked up their new ministries yet. Reload the page in a minute.&quot;</p>
 <h2>Deactivate someone</h2>
 <p>Deactivating closes the person&#39;s Hub account. They can&#39;t sign in again until reactivated, and the Hub signs them out within 10 minutes.</p>
 <ol>
@@ -3773,7 +3774,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 <tr>
 <td>&quot;Health isn&#39;t one of this user&#39;s ministries in the Calendar yet. Save their ministries first.&quot;</td>
-<td>That ministry was only just given. Wait a minute, reload, and choose the rank again.</td>
+<td>That ministry was only just given, or taken away, in another window. Reload the page, and choose the rank again once its box appears.</td>
 </tr>
 <tr>
 <td>&quot;A user with that email already exists.&quot;</td>
@@ -3784,7 +3785,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The address you opened isn&#39;t a Calendar user. Go back to <strong>All Calendar users</strong>.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},vt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-31"},ft={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p><strong>Calendar</strong> &gt; <strong>Transfer</strong> moves every activity of one comm contact to another, past ones included. Use it when someone leaves or changes jobs. Deleted activities stay where they are.</p>
 <h2>Move the activities</h2>
 <ol>
@@ -3846,7 +3847,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Some activities moved and the rest didn&#39;t. Choose <strong>Preview</strong> again to see what is left, then transfer again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},ft={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-31"},vt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p><strong>Calendar</strong> &gt; <strong>Lookups</strong> holds the choices offered on activities, such as categories, cities and HQ tags. Choose a lookup to see its rows. Rows are never deleted: you stop offering a row by making it inactive.</p>
 <h2>Who can change which lookup</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -3987,7 +3988,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Open the activity from the list.</li>
 <li>Choose <strong>Review</strong>. You are back on the list and see, for example, &quot;Reviewed HLTH-1.&quot;</li>
 </ol>
-<p>Review marks the activity <strong>Reviewed</strong> and clears its &quot;changed&quot; marks. If you have unsaved changes, save or cancel them first; the page says &quot;Save or cancel your changes to review or clone.&quot; To save them and review in one step, choose <strong>Save and review</strong>.</p>
+<p>Review marks the activity <strong>Reviewed</strong> and clears its &quot;changed&quot; marks. If you have unsaved changes, save or cancel them first; the page says &quot;Save or cancel your changes to review or clone, or choose Save and review.&quot; <strong>Save and review</strong> saves them and reviews in one step.</p>
 <h2>Save and review</h2>
 <p>When you change an activity yourself, your save marks your own changes &quot;Changed: needs review&quot;. <strong>Save and review</strong>, beside <strong>Save</strong>, saves your changes and then marks the activity <strong>Reviewed</strong>, as <strong>Save</strong> followed by <strong>Review</strong> would. You are back on the list and see, for example, &quot;Saved and reviewed HLTH-1.&quot; \u2318S or Ctrl+S is still a plain <strong>Save</strong>.</p>
 <ul>
@@ -4000,7 +4001,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Review several at once</h2>
 <ol>
 <li>In the list, tick the box beside each activity number, such as <strong>Select HLTH-1</strong>.</li>
-<li>Choose <strong>Review selected</strong>. The button shows how many are ticked, up to 500 at a time.</li>
+<li>Choose <strong>Review selected</strong>, beside <strong>New activity</strong>. The button shows how many are ticked, up to 500 at a time.</li>
+<li>The Hub asks first, for example &quot;Review 3 activities?&quot;: &quot;Their \u201CChanged: needs review\u201D marks are cleared and they become Reviewed. This can\u2019t be undone.&quot; Choose <strong>Review</strong>, or <strong>Cancel</strong> to review nothing.</li>
 <li>You see, for example, &quot;Reviewed 3 activities.&quot;</li>
 </ol>
 <p>An activity someone changed after your list loaded is skipped, and named: &quot;1 skipped because it changed since the list loaded: HLTH-2.&quot; Open it, check the change, and review it again.</p>
@@ -4215,15 +4217,15 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Choose an activity&#39;s title to open it. When you come back, its row is brought into view.</li>
 <li>The <strong>Activity Id</strong> column shows the ministry and number, such as HLTH-12. It also shows <strong>Reviewed</strong> when HQ has reviewed the activity, <strong>Shared</strong> when it is shared with other ministries, and <strong>Release</strong> when a news release is linked to it.</li>
 <li>Under the title you see when it was last updated, by whom, and when it was created.</li>
-<li><strong>Not for Look Ahead</strong> under <strong>Categories</strong> marks an activity kept out of the Look Ahead. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-overview">Who sees an activity</a>.</li>
-<li>Point at the date to see the scheduling considerations, at the title to see the significance, and at <strong>Comm. Materials</strong> to see the origin and distribution.</li>
-<li>Choose a column heading to sort by it, except <strong>Premier</strong>. Choose it again to reverse the order.</li>
+<li><strong>Confidential (not for Look Ahead)</strong> under <strong>Categories</strong> marks a confidential activity. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-overview">Who sees an activity</a>.</li>
+<li>Point at the date to see the scheduling considerations, at the title to see the significance, and at <strong>Comm Materials</strong> to see the origin and distribution.</li>
+<li>Choose a column heading to sort by it, except <strong>Premier Requested</strong>. Choose it again to reverse the order.</li>
 <li><strong>What the column names mean</strong>, under the list, explains the short names.</li>
 </ul>
 <h2>Filter the list</h2>
 <ol>
 <li>Open <strong>Filters</strong>. The line beside it shows the filter in use, or &quot;No filters&quot;.</li>
-<li>Fill in what you want. You can use <strong>From</strong>, <strong>To</strong>, <strong>This day only</strong>, <strong>Search for</strong>, <strong>HQ Tags</strong>, <strong>Issue</strong>, <strong>Date Confirmed</strong>, <strong>Status</strong>, <strong>Category</strong>, <strong>Lead Ministry</strong>, <strong>Comm Contact</strong>, <strong>Representative</strong>, <strong>Initiative</strong>, <strong>Premier Requested</strong> and <strong>Distribution</strong>.</li>
+<li>Fill in what you want. You can use <strong>From</strong>, <strong>To</strong>, <strong>This day only</strong>, <strong>Search for</strong>, <strong>HQ Tags</strong>, <strong>Issue</strong>, <strong>Dates Confirmed</strong>, <strong>Status</strong>, <strong>Category</strong>, <strong>Lead Ministry</strong>, <strong>Comm Contact</strong>, <strong>Representative</strong>, <strong>HQ Initiatives &amp; Leads</strong>, <strong>Premier Requested</strong> and <strong>Distribution</strong>.</li>
 <li>Under <strong>Display</strong>, choose <strong>Show All</strong>, <strong>My Ministries&#39; Activities Only</strong>, <strong>My Activities Only</strong> or <strong>My Watchlist Only</strong>.</li>
 <li>Choose <strong>Apply filters</strong>.</li>
 </ol>
@@ -4242,9 +4244,10 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ol>
 <li>Set the filter and choose <strong>Apply filters</strong>.</li>
 <li>Open <strong>Saved views</strong>.</li>
-<li>Type a name in <strong>Name for this filter</strong>.</li>
-<li>Choose <strong>Save query</strong>. You see, for example, &quot;Saved the query \u201CMy week\u201D.&quot;</li>
+<li>Type a name in <strong>Name for this query</strong>.</li>
+<li>Choose <strong>Save this filter as a query</strong>. You see, for example, &quot;Saved the query \u201CMy week\u201D.&quot;</li>
 </ol>
+<p>A query saves the filter the list is running. While <strong>Filters</strong> has changes you haven&#39;t applied, <strong>Save this filter as a query</strong> waits and says &quot;Apply filters first&quot;. <strong>Display</strong> isn&#39;t saved with a query.</p>
 <p>To run a saved filter, choose its name. <strong>Saved views</strong> then shows, for example, &quot;Running \u201CMy week\u201D&quot;. Each query also has <strong>Rename</strong>, <strong>Up</strong>, <strong>Down</strong> and <strong>Delete</strong>.</p>
 <p>&quot;Your queries changed in another tab, so they were reloaded.&quot; means you changed them somewhere else. Try again.</p>
 <h2>Columns</h2>
@@ -4252,7 +4255,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Choose <strong>Columns</strong>.</li>
 <li>Tick or untick the columns under <strong>Show these columns</strong>.</li>
 </ol>
-<p>The Hub keeps your choice for next time. <strong>Activity Id</strong> always shows. At first, <strong>HQ Tags</strong>, <strong>Ministry</strong>, <strong>Status</strong> and <strong>Translations</strong> are hidden.</p>
+<p>The Hub keeps your choice for next time. <strong>Activity Id</strong> always shows. At first, <strong>HQ Tags</strong>, <strong>Lead Ministry</strong>, <strong>Status</strong> and <strong>Translations</strong> are hidden.</p>
 <h2>Month and Week</h2>
 <p>Choose <strong>Month</strong> or <strong>Week</strong> to see the same filter as a calendar. An activity that runs several days shows on each of them. Use <strong>Previous month</strong>, <strong>Today</strong> and <strong>Next month</strong> (or <strong>Previous week</strong> and <strong>Next week</strong>) to move. Choose <strong>List</strong> to go back.</p>
 <p>At most 1,000 activities fit. &quot;Only the first 1,000 activities are shown. Narrow the filter to see the rest.&quot; means there are more.</p>
@@ -4261,7 +4264,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Use <strong>My Watchlist Only</strong> in <strong>Filters</strong> to list your starred activities. The star also works during the daily change freeze.</p>
 <h2>Excel export</h2>
 <ol>
-<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Export and reports</strong>. Check the filter it says it will use, such as &quot;Uses your list filter: none (every activity you can see).&quot;</li>
 <li>Choose <strong>Excel export</strong>. A spreadsheet of the activities your filter finds downloads, up to 10,000.</li>
 </ol>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -4284,7 +4287,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>The freeze line</h2>
 <p>&quot;Daily change freeze.&quot; at the top of the list says when no changes can be made. While the freeze applies to you, it shows as a <strong>Change freeze</strong> warning and <strong>New activity</strong> is hidden. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-lock-and-freeze">The edit lock and the daily change freeze</a>.</p>
 <h2>HQ tools</h2>
-<p>If you are in an HQ organization, you also see the <strong>Look Ahead filter</strong>, <strong>Corporate Queries</strong> under <strong>Saved views</strong>, and <strong>LA status</strong>. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a>.</p>
+<p>If you are in an HQ organization, you also see the <strong>Confidential filter</strong>, <strong>Corporate Queries</strong> under <strong>Saved views</strong>, and <strong>LA status</strong>. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a>.</p>
 <p>For <strong>Review selected</strong>, deleted activities, the <strong>Exec Look Ahead</strong> and other administrator tasks, see the Calendar administrator manual.</p>
 <h2>Older activities</h2>
 <p>Activities that ended before the move to this Calendar weren&#39;t brought over, except awareness dates. If you need an older one, ask a Calendar administrator.</p>
@@ -4313,7 +4316,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Your column or display choice wasn&#39;t kept. Try again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},At={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+`,changed:"2026-10-31"},At={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
 <p><strong>Calendar</strong> &gt; <strong>Updates</strong> lists recent changes to the activities you can see, newest first. It opens on <strong>Today&#39;s updates</strong>. <strong>Latest 5 updates</strong> shows the five newest.</p>
 <p>Each line says when, who, and what they did: &quot;added activity&quot;, &quot;changed activity&quot;, &quot;reviewed activity&quot; or &quot;added new clone&quot;. Then come the activity&#39;s number, its title and its dates as they are now. Point at the title to see the summary.</p>
 <p>Choose the activity&#39;s number to open it. <strong>Save</strong> or <strong>Cancel</strong> there brings you back to the same updates.</p>
@@ -4359,7 +4362,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Add an activity</h2>
 <ol>
 <li>On <strong>Calendar</strong>, choose <strong>New activity</strong>.</li>
-<li>Fill in the fields. The times start at 8:00 AM to 6:00 PM. If you have only one ministry, it is already the <strong>Lead Ministry</strong>.</li>
+<li>Fill in the fields. The times start at 8:00 AM to 6:00 PM. If you have only one ministry, it is already the <strong>Lead Ministry</strong>. If you are a comm contact of the lead ministry, you are already its <strong>Comm Contact</strong>. Choosing another <strong>Lead Ministry</strong> picks you again where you are one of its comm contacts, until you choose a comm contact yourself. The <strong>End</strong> date follows the <strong>Start</strong> date until you set the end date yourself.</li>
 <li>Choose <strong>Save</strong>. You see, for example, &quot;Created HLTH-21.&quot; The activity stays open, so you can add files.</li>
 </ol>
 <p><strong>New activity</strong> is hidden during the daily change freeze, unless you are in an HQ organization.</p>
@@ -4367,7 +4370,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ol>
 <li>Open the activity: choose its title in the list or the calendar, or its number on <strong>Updates</strong>.</li>
 <li>Make your changes. As soon as you change something, the activity is yours to edit: anyone else who opens it sees it read-only until you finish.</li>
-<li>Choose <strong>Save</strong>. You are back where you came from and see, for example, &quot;Saved HLTH-21.&quot;</li>
+<li>Choose <strong>Save</strong>. You are back where you came from and see, for example, &quot;Saved HLTH-21.&quot; In an HQ organization you also see <strong>Save and review</strong>, which saves and marks it reviewed in one step. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-hq">HQ review and corporate queries</a>.</li>
 </ol>
 <p><strong>Cancel</strong> goes back without saving. If you have unsaved changes, the Hub asks &quot;You have unsaved changes to this activity. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> or <strong>Leave</strong>.</p>
 <h2>If Save finds a problem</h2>
@@ -4377,7 +4380,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>A new activity is <strong>New</strong>. Saving a change to most fields makes it <strong>Changed</strong>, until HQ reviews it.</li>
 <li>HQ sees which fields changed, marked &quot;Changed: needs review&quot;.</li>
-<li>The change reaches <strong>Releases</strong> within a minute. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-releases">Releases and the Forecast</a>.</li>
+<li>The change reaches <strong>Releases</strong> within a minute. A release already linked to the activity doesn&#39;t change. If a linked release is still to go out and you change a date or time, a warning above <strong>Save</strong> says so, for example &quot;A release is planned against HLTH-21 (Release 2026HLTH0001: Scheduled, Nov 4, 2026 10:00 AM). Changing the date or time here doesn&#39;t move the release. Tell the release editor.&quot; The same words follow &quot;Saved HLTH-21.&quot; Tell the release editor. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-releases">Releases and the Forecast</a>.</li>
 <li>Every change is kept in <strong>View changes</strong>.</li>
 <li>Nobody is emailed.</li>
 </ul>
@@ -4385,13 +4388,14 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>&quot;Your ministry is shared on this activity: you can view it but not change it.&quot; means another ministry leads it. The fields are read-only, each checklist shows only what is ticked (or &quot;None&quot;), and the button is <strong>Back</strong>.</p>
 <p>An activity also opens read-only while someone else is editing it, or during the daily change freeze. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-lock-and-freeze">The edit lock and the daily change freeze</a>.</p>
 <h2>Clone an activity</h2>
-<p><strong>Clone</strong> makes a new activity from this one, for the same lead ministry and comm contact.</p>
+<p><strong>Clone</strong> opens <strong>New activity</strong> filled in from this one, for the same lead ministry and comm contact. Nothing is created until you choose <strong>Save</strong>.</p>
 <ol>
 <li>Open the activity.</li>
-<li>Choose <strong>Clone</strong>. The new activity opens, and you see, for example, &quot;Cloned HLTH-21 as HLTH-22.&quot;</li>
-<li>Check it, change what differs, and choose <strong>Save</strong>.</li>
+<li>Choose <strong>Clone</strong>. <strong>New activity</strong> opens with &quot;This is an unsaved copy of HLTH-21. Nothing is created until you choose Save. Cancel leaves no copy behind.&quot;</li>
+<li>Change what differs, and choose <strong>Save</strong>. You see, for example, &quot;Cloned HLTH-21 as HLTH-22.&quot; The new activity stays open, so you can add files.</li>
 </ol>
-<p>The clone starts as <strong>New</strong>. It copies the activity&#39;s fields except these:</p>
+<p><strong>Cancel</strong>, or leaving the page another way, creates nothing.</p>
+<p>The copy starts as <strong>New</strong>, and its <strong>View changes</strong> says &quot;created it as a clone&quot;, naming the activity it was cloned from. It copies the activity&#39;s fields except these:</p>
 <ul>
 <li>the release date and time are emptied;</li>
 <li><strong>Internal notes</strong> is emptied;</li>
@@ -4408,7 +4412,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Under <strong>Records</strong>, choose <strong>Add files</strong> and pick one or more files.</li>
 <li>Each file is added straight away, on its own. You see, for example, &quot;Added 2 files.&quot;</li>
 </ol>
-<p>A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50. A file with the same name replaces the old one.</p>
+<p>A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50.</p>
+<p>A file with the same name as one already attached replaces it, but only after you agree. The Hub asks, for example, &quot;A file named Briefing note.docx is already attached (added Oct 12, 2026 by Pat Smith). Replace it? The old file is deleted.&quot; Choose <strong>Replace</strong>, and you see &quot;Replaced Briefing note.docx.&quot; Choose <strong>Cancel</strong>, and you see &quot;Nothing was added.&quot;: none of the files you picked is added.</p>
 <p>To remove a file, choose <strong>Remove</strong> beside it, then <strong>Remove</strong> again in the &quot;The file is deleted from this activity.&quot; box.</p>
 <p>Adding or removing a file doesn&#39;t touch your unsaved changes to the fields. Like saving, it isn&#39;t possible while someone else is editing the activity, or during the daily change freeze unless you are in an HQ organization. A file opens only for people who can see its activity.</p>
 <h2>View changes</h2>
@@ -4459,16 +4464,20 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Choose another category.</td>
 </tr>
 <tr>
+<td>&quot;You can no longer copy the activity this was copied from. Start a new activity instead.&quot;</td>
+<td>The activity you cloned was deleted, or moved out of your ministries, while the copy was open. Choose <strong>Cancel</strong>, then <strong>New activity</strong>.</td>
+</tr>
+<tr>
 <td>&quot;Couldn&#39;t save. Your changes are still here; try again.&quot;</td>
 <td>Something went wrong on the way. Choose <strong>Save</strong> again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},xt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
-<p>An activity&#39;s fields are in sections: <strong>Overview</strong>, <strong>Planning</strong>, <strong>Ministry</strong>, <strong>Schedule</strong>, <strong>Release</strong>, <strong>Event</strong> and, when turned on, <strong>Records</strong>. In an HQ organization you also see <strong>Look Ahead</strong>. A &quot;?&quot; beside a field explains it.</p>
+`,changed:"2026-10-31"},xt={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced).</p>
+<p>An activity&#39;s fields are in sections, in this order: <strong>Overview</strong>, <strong>Ministry</strong>, <strong>Planning</strong>, <strong>Schedule</strong>, <strong>Release</strong>, <strong>Event</strong> and, when turned on, <strong>Records</strong>. In an HQ organization you also see <strong>Look Ahead</strong>, after <strong>Event</strong>. A &quot;?&quot; beside a field explains it.</p>
 <h2>What you must fill in</h2>
 <p>Fields marked &quot;(required)&quot; must be filled in before you can save:</p>
 <ul>
-<li><strong>Category</strong>, <strong>Title</strong>, <strong>Comm Contact</strong> and <strong>Lead Ministry</strong>;</li>
+<li><strong>Category</strong>, <strong>Title</strong>, <strong>Lead Ministry</strong> and <strong>Comm Contact</strong>;</li>
 <li><strong>Start date</strong> and <strong>End date</strong>, and both times unless you tick <strong>All Day</strong>;</li>
 <li><strong>Summary</strong>, <strong>Significance</strong> and <strong>Scheduling considerations</strong>. In an HQ organization these three are optional.</li>
 </ul>
@@ -4486,8 +4495,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The kind of activity. <strong>HQ Placeholder</strong> is offered only to HQ.</td>
 </tr>
 <tr>
-<td><strong>Not for Look Ahead</strong></td>
-<td>Tick it to keep the activity out of the Look Ahead. Only its lead and shared ministries, HQ advanced users and HQ Administrators then see it, and it isn&#39;t offered on the releases <strong>Forecast</strong>.</td>
+<td><strong>Confidential (not for Look Ahead)</strong></td>
+<td>Tick it to make the activity confidential. The old Calendar called it <strong>Not for Look Ahead</strong>. Only its lead and shared ministries, HQ advanced users and HQ Administrators then see it, and it isn&#39;t offered on the releases <strong>Forecast</strong>. A new activity isn&#39;t given a Look Ahead section, but ticking it doesn&#39;t take away a section the activity already has.</td>
 </tr>
 <tr>
 <td><strong>Title</strong></td>
@@ -4518,37 +4527,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Type a tag and choose <strong>Add tag</strong>, or press Enter. Existing tags are suggested as you type. A new tag is created when you save. Up to 20. Choose \xD7 beside a tag to remove it.</td>
 </tr>
 </tbody></table></div>
-<h2>Planning</h2>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
-<thead>
-<tr>
-<th>Field</th>
-<th>What to enter</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>Comm Contact</strong></td>
-<td>The communications person responsible. Only the lead ministry&#39;s active comm contacts are offered, so choose the <strong>Lead Ministry</strong> first.</td>
-</tr>
-<tr>
-<td><strong>Key activity</strong></td>
-<td>Tick it for a key activity.</td>
-</tr>
-<tr>
-<td><strong>Strategy</strong></td>
-<td>Up to 500 characters.</td>
-</tr>
-<tr>
-<td><strong>Comm Materials</strong></td>
-<td>The products planned, such as a news release.</td>
-</tr>
-<tr>
-<td><strong>Internal notes</strong></td>
-<td>Up to 4,000 characters.</td>
-</tr>
-</tbody></table></div>
 <h2>Ministry</h2>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
 <th>Field</th>
@@ -4568,8 +4548,36 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Tick the other ministries that should see it. They can open it but not change it.</td>
 </tr>
 </tbody></table></div>
-<h2>Look Ahead</h2>
-<p>Only HQ sees this section. Other users&#39; saves leave it as it is.</p>
+<h2>Planning</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Comm Contact</strong></td>
+<td>The communications person responsible. Only the active comm contacts of the <strong>Lead Ministry</strong>, chosen above, are offered.</td>
+</tr>
+<tr>
+<td><strong>Key activity</strong></td>
+<td>Tick it for a key activity.</td>
+</tr>
+<tr>
+<td><strong>Strategy</strong></td>
+<td>Up to 500 characters.</td>
+</tr>
+<tr>
+<td><strong>Comm Materials</strong></td>
+<td>The products planned, such as a news release.</td>
+</tr>
+<tr>
+<td><strong>Internal notes</strong></td>
+<td>Up to 4,000 characters.</td>
+</tr>
+</tbody></table></div>
+<h2>Schedule</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 4 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
@@ -4578,46 +4586,20 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </thead>
 <tbody><tr>
-<td><strong>Executive Summary</strong></td>
-<td>Shown in HQ&#39;s Look Ahead report. Up to 2,000 characters.</td>
+<td><strong>All Day</strong></td>
+<td>Tick it for an all-day activity. It hides the times below it.</td>
 </tr>
 <tr>
-<td><strong>LA Status</strong></td>
-<td><strong>None</strong>, <strong>New</strong> or <strong>Changed</strong>. HQ&#39;s Look Ahead flags the activity NEW or CHANGED.</td>
+<td><strong>Dates Confirmed</strong></td>
+<td>Tick it once the date is firm. Only confirmed activities are offered on the releases <strong>Forecast</strong>.</td>
 </tr>
 <tr>
-<td><strong>LA Section</strong></td>
-<td>Where the activity goes in the Look Ahead. It is worked out from the category, <strong>Issue</strong>, <strong>Dates Confirmed</strong> and <strong>Comm Materials</strong>, and says &quot;Inferred from the activity&quot;. Choose another section to override it; it then says &quot;Override&quot; and offers <strong>Use the inferred section</strong>. Awareness dates and activities led by the ministry shown as <strong>CITENG</strong> keep a fixed section, which can&#39;t be overridden.</td>
-</tr>
-<tr>
-<td><strong>Long Term Outlook</strong></td>
-<td>Tick it to list the activity in the Look Ahead&#39;s Long Term Outlook.</td>
-</tr>
-</tbody></table></div>
-<p>An activity marked <strong>Not for Look Ahead</strong> whose section is overridden needs an <strong>Executive Summary</strong>.</p>
-<h2>Schedule</h2>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 5 \u2014 scrollable" tabindex="0"><table>
-<thead>
-<tr>
-<th>Field</th>
-<th>What to enter</th>
-</tr>
-</thead>
-<tbody><tr>
 <td><strong>Start date</strong>, <strong>Start time</strong></td>
 <td>Times go in 5-minute steps.</td>
 </tr>
 <tr>
 <td><strong>End date</strong>, <strong>End time</strong></td>
 <td>The end can&#39;t be before the start.</td>
-</tr>
-<tr>
-<td><strong>All Day</strong></td>
-<td>Hides the times.</td>
-</tr>
-<tr>
-<td><strong>Dates Confirmed</strong></td>
-<td>Tick it once the date is firm. Only confirmed activities are offered on the releases <strong>Forecast</strong>.</td>
 </tr>
 <tr>
 <td><strong>Potential Dates</strong></td>
@@ -4630,7 +4612,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tbody></table></div>
 <h2>Release</h2>
 <p>Some categories, such as <strong>TV / Radio</strong> and <strong>Awareness Day / Week / Month</strong>, have no release. For those this section is hidden, and choosing one empties the release date and time.</p>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 6 \u2014 scrollable" tabindex="0"><table>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 5 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
 <th>Field</th>
@@ -4639,7 +4621,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </thead>
 <tbody><tr>
 <td><strong>Release date</strong>, <strong>Release time</strong></td>
-<td>When the news release goes out. Fill in both, or neither. It can&#39;t be after the end date.</td>
+<td>When the news release goes out. Fill in both, or leave both empty: <strong>Release time</strong> starts at &quot;Choose a time&quot;. It can&#39;t be after the end date.</td>
 </tr>
 <tr>
 <td><strong>Origin</strong>, <strong>Distribution</strong></td>
@@ -4659,7 +4641,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <h2>Event</h2>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 7 \u2014 scrollable" tabindex="0"><table>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 6 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
 <th>Field</th>
@@ -4687,12 +4669,39 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Who plans the event, and the videographer.</td>
 </tr>
 </tbody></table></div>
+<h2>Look Ahead</h2>
+<p>Only HQ sees this section. Other users&#39; saves leave it as it is.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 7 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Executive Summary</strong></td>
+<td>Shown in HQ&#39;s Look Ahead report. Up to 2,000 characters.</td>
+</tr>
+<tr>
+<td><strong>LA Status</strong></td>
+<td><strong>None</strong>, <strong>New</strong> or <strong>Changed</strong>. HQ&#39;s Look Ahead flags the activity NEW or CHANGED.</td>
+</tr>
+<tr>
+<td><strong>LA Section</strong></td>
+<td>Where the activity goes in the Look Ahead. It is worked out from fields above it: <strong>Category</strong>, <strong>Issue</strong>, <strong>Confidential (not for Look Ahead)</strong>, <strong>Lead Ministry</strong>, <strong>Comm Materials</strong>, <strong>Dates Confirmed</strong> and the start and end dates. Its hint names them. Choose another section to override it; it then says &quot;Override&quot; and offers <strong>Use the inferred section</strong>. Awareness dates and activities led by the ministry shown as <strong>CITENG</strong> keep a fixed section, which can&#39;t be overridden.</td>
+</tr>
+<tr>
+<td><strong>Long Term Outlook</strong></td>
+<td>Tick it to list the activity in the Look Ahead&#39;s Long Term Outlook.</td>
+</tr>
+</tbody></table></div>
+<p>An activity marked <strong>Confidential (not for Look Ahead)</strong> whose section is overridden needs an <strong>Executive Summary</strong>.</p>
 <p>For <strong>Records</strong>, see <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-activity">Add or change an activity</a>.</p>
 <h2>Choices no longer in use</h2>
 <p>A choice that has been retired shows &quot;(no longer in use)&quot; when an activity already has it. The activity keeps it. You can&#39;t choose it for another activity.</p>
 <h2>Long text from the old Calendar</h2>
 <p>Some activities brought over from the old Calendar have longer text than the limits allow. They still save. The limits apply only to text you change.</p>
-`,changed:"2026-10-30"},Wt=null,Ht={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced) who belong to an HQ organization.</p>
+`,changed:"2026-10-31"},Wt=null,Ht={html:`<p><strong>Who this is for:</strong> Calendar advanced users (Calendar.Advanced) who belong to an HQ organization.</p>
 <p>HQ reviews what the ministries enter. If none of your ministries is an HQ organization, you don&#39;t see these tools.</p>
 <h2>What HQ sees</h2>
 <ul>
@@ -4754,7 +4763,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Make a report</h2>
 <ol>
 <li>Set the list&#39;s filter to the dates and activities you want. See <a href="/hub/help/manuals/calendar-advanced/calendar-advanced-list">The activity list</a>.</li>
-<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Export and reports</strong>. The panel starts by saying which filter it will use, for example &quot;Uses your list filter: Dates: 2026-11-01 to 2026-11-14 \xB7 My Watchlist Only.&quot; It warns you when something you may not have meant to keep narrows it: a <strong>Display</strong> choice the list keeps from last time, or an activity number in <strong>Search for</strong>, which leaves only that activity and ignores the dates and other filters. Change the filter under <strong>Filters</strong> first if that isn&#39;t what you want.</li>
 <li>Choose <strong>Look Ahead</strong>, <strong>30/60/90</strong> or <strong>Planning</strong>. You see, for example, &quot;Preparing your Look Ahead report\u2026&quot;.</li>
 <li>Wait a few seconds. The PDF downloads by itself and you see &quot;The Look Ahead report has downloaded.&quot;</li>
 </ol>
@@ -4781,10 +4790,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <ul>
+<li>Each report says under its heading which filter it used, and the Excel export says it on its last row, below the confidentiality notice, for example &quot;Filter: Dates: 2026-11-01 to 2026-11-14 \xB7 Lead Ministry: HLTH&quot;, or &quot;Filter: none (every activity you can see)&quot;.</li>
 <li>A report holds only activities you can see. Deleted activities are never in it.</li>
 <li>Reports include Awareness dates even when the list leaves them out.</li>
 <li>Each activity number in a report links to the activity in the Hub.</li>
 <li>Each report is marked &quot;DRAFT AND CONFIDENTIAL&quot;. Share it only with people who may see those activities.</li>
+<li>Reports and the Excel export still mark confidential activities &quot;Not for Look Ahead&quot;.</li>
 </ul>
 <h2>If you are in an HQ organization</h2>
 <ul>
@@ -4845,7 +4856,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>its category starts with &quot;Approved&quot;, such as <strong>Approved Release</strong>;</li>
 <li><strong>Dates Confirmed</strong> is ticked;</li>
-<li>it isn&#39;t marked <strong>Not for Look Ahead</strong>;</li>
+<li>it isn&#39;t marked <strong>Confidential (not for Look Ahead)</strong>;</li>
 <li>it starts from now on, and isn&#39;t deleted;</li>
 <li>no upcoming release is linked to it yet.</li>
 </ul>
@@ -4854,11 +4865,11 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>Your changes reach <strong>Releases</strong> within a minute.</li>
 <li>Changing an activity doesn&#39;t change a release already linked to it. What was copied into the release stays as it was. Tell the release editor if the release needs to change.</li>
-<li>Marking an activity <strong>Not for Look Ahead</strong> takes it off the <strong>Forecast</strong>. A release editor who types its number sees, for example, &quot;Calendar activity 3: its details aren&#39;t shown to you.&quot;</li>
+<li>Marking an activity <strong>Confidential (not for Look Ahead)</strong> takes it off the <strong>Forecast</strong>. A release editor who types its number sees, for example, &quot;Calendar activity 3: its details aren&#39;t shown to you.&quot;</li>
 <li>A deleted activity leaves the <strong>Forecast</strong>, and no release can be linked to it from then on.</li>
 <li>Nobody is emailed.</li>
 </ul>
-`,changed:"2026-10-30"},Nt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},Nt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p>You keep your ministry&#39;s activities in the Corporate Calendar up to date. The Corporate Calendar is the government-wide plan of announcements and events. You add and change activities, follow what changed on <strong>Updates</strong>, and make reports.</p>
 <h2>Ministry or HQ</h2>
 <p>Whether one of your ministries is an HQ organization, such as GCPE Headquarters, decides what you can do.</p>
@@ -5008,15 +5019,15 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Choose an activity&#39;s title to open it. When you come back, its row is brought into view.</li>
 <li>The <strong>Activity Id</strong> column shows the ministry and number, such as HLTH-12. It also shows <strong>Reviewed</strong> when HQ has reviewed the activity, <strong>Shared</strong> when it is shared with other ministries, and <strong>Release</strong> when a news release is linked to it.</li>
 <li>Under the title you see when it was last updated, by whom, and when it was created.</li>
-<li><strong>Not for Look Ahead</strong> under <strong>Categories</strong> marks an activity kept out of the Look Ahead. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-overview">Who sees an activity</a>.</li>
-<li>Point at the date to see the scheduling considerations, at the title to see the significance, and at <strong>Comm. Materials</strong> to see the origin and distribution.</li>
-<li>Choose a column heading to sort by it, except <strong>Premier</strong>. Choose it again to reverse the order.</li>
+<li><strong>Confidential (not for Look Ahead)</strong> under <strong>Categories</strong> marks a confidential activity. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-overview">Who sees an activity</a>.</li>
+<li>Point at the date to see the scheduling considerations, at the title to see the significance, and at <strong>Comm Materials</strong> to see the origin and distribution.</li>
+<li>Choose a column heading to sort by it, except <strong>Premier Requested</strong>. Choose it again to reverse the order.</li>
 <li><strong>What the column names mean</strong>, under the list, explains the short names.</li>
 </ul>
 <h2>Filter the list</h2>
 <ol>
 <li>Open <strong>Filters</strong>. The line beside it shows the filter in use, or &quot;No filters&quot;.</li>
-<li>Fill in what you want. You can use <strong>From</strong>, <strong>To</strong>, <strong>This day only</strong>, <strong>Search for</strong>, <strong>HQ Tags</strong>, <strong>Issue</strong>, <strong>Date Confirmed</strong>, <strong>Status</strong>, <strong>Category</strong>, <strong>Lead Ministry</strong>, <strong>Comm Contact</strong>, <strong>Representative</strong>, <strong>Initiative</strong>, <strong>Premier Requested</strong> and <strong>Distribution</strong>.</li>
+<li>Fill in what you want. You can use <strong>From</strong>, <strong>To</strong>, <strong>This day only</strong>, <strong>Search for</strong>, <strong>HQ Tags</strong>, <strong>Issue</strong>, <strong>Dates Confirmed</strong>, <strong>Status</strong>, <strong>Category</strong>, <strong>Lead Ministry</strong>, <strong>Comm Contact</strong>, <strong>Representative</strong>, <strong>HQ Initiatives &amp; Leads</strong>, <strong>Premier Requested</strong> and <strong>Distribution</strong>.</li>
 <li>Under <strong>Display</strong>, choose <strong>Show All</strong>, <strong>My Ministries&#39; Activities Only</strong>, <strong>My Activities Only</strong> or <strong>My Watchlist Only</strong>.</li>
 <li>Choose <strong>Apply filters</strong>.</li>
 </ol>
@@ -5035,9 +5046,10 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ol>
 <li>Set the filter and choose <strong>Apply filters</strong>.</li>
 <li>Open <strong>Saved views</strong>.</li>
-<li>Type a name in <strong>Name for this filter</strong>.</li>
-<li>Choose <strong>Save query</strong>. You see, for example, &quot;Saved the query \u201CMy week\u201D.&quot;</li>
+<li>Type a name in <strong>Name for this query</strong>.</li>
+<li>Choose <strong>Save this filter as a query</strong>. You see, for example, &quot;Saved the query \u201CMy week\u201D.&quot;</li>
 </ol>
+<p>A query saves the filter the list is running. While <strong>Filters</strong> has changes you haven&#39;t applied, <strong>Save this filter as a query</strong> waits and says &quot;Apply filters first&quot;. <strong>Display</strong> isn&#39;t saved with a query.</p>
 <p>To run a saved filter, choose its name. <strong>Saved views</strong> then shows, for example, &quot;Running \u201CMy week\u201D&quot;. Each query also has <strong>Rename</strong>, <strong>Up</strong>, <strong>Down</strong> and <strong>Delete</strong>.</p>
 <p>&quot;Your queries changed in another tab, so they were reloaded.&quot; means you changed them somewhere else. Try again.</p>
 <h2>Columns</h2>
@@ -5045,7 +5057,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Choose <strong>Columns</strong>.</li>
 <li>Tick or untick the columns under <strong>Show these columns</strong>.</li>
 </ol>
-<p>The Hub keeps your choice for next time. <strong>Activity Id</strong> always shows. At first, <strong>HQ Tags</strong>, <strong>Ministry</strong>, <strong>Status</strong> and <strong>Translations</strong> are hidden.</p>
+<p>The Hub keeps your choice for next time. <strong>Activity Id</strong> always shows. At first, <strong>HQ Tags</strong>, <strong>Lead Ministry</strong>, <strong>Status</strong> and <strong>Translations</strong> are hidden.</p>
 <h2>Month and Week</h2>
 <p>Choose <strong>Month</strong> or <strong>Week</strong> to see the same filter as a calendar. An activity that runs several days shows on each of them. Use <strong>Previous month</strong>, <strong>Today</strong> and <strong>Next month</strong> (or <strong>Previous week</strong> and <strong>Next week</strong>) to move. Choose <strong>List</strong> to go back.</p>
 <p>At most 1,000 activities fit. &quot;Only the first 1,000 activities are shown. Narrow the filter to see the rest.&quot; means there are more.</p>
@@ -5054,7 +5066,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Use <strong>My Watchlist Only</strong> in <strong>Filters</strong> to list your starred activities. The star also works during the daily change freeze.</p>
 <h2>Excel export</h2>
 <ol>
-<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Export and reports</strong>. Check the filter it says it will use, such as &quot;Uses your list filter: none (every activity you can see).&quot;</li>
 <li>Choose <strong>Excel export</strong>. A spreadsheet of the activities your filter finds downloads, up to 10,000.</li>
 </ol>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -5103,7 +5115,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Your column or display choice wasn&#39;t kept. Try again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},Et={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},Et={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p><strong>Calendar</strong> &gt; <strong>Updates</strong> lists recent changes to the activities you can see, newest first. It opens on <strong>Today&#39;s updates</strong>. <strong>Latest 5 updates</strong> shows the five newest.</p>
 <p>Each line says when, who, and what they did: &quot;added activity&quot;, &quot;changed activity&quot;, &quot;reviewed activity&quot; or &quot;added new clone&quot;. Then come the activity&#39;s number, its title and its dates as they are now. Point at the title to see the summary.</p>
 <p>Choose the activity&#39;s number to open it. <strong>Save</strong> or <strong>Cancel</strong> there brings you back to the same updates.</p>
@@ -5145,14 +5157,14 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 `,changed:"2026-10-30"},It={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
-<p>You add activities for your ministries, and change the activities your ministries lead. In an HQ organization you can add and change any ministry&#39;s activities you can see. What each field is for is on <a href="/hub/help/manuals/calendar-editor/calendar-editor-fields">Activity fields</a>.</p>
+<p>You add activities for your ministries, and change the activities your ministries lead. As an HQ editor you can add and change any ministry&#39;s activities you can see. What each field is for is on <a href="/hub/help/manuals/calendar-editor/calendar-editor-fields">Activity fields</a>.</p>
 <h2>Add an activity</h2>
 <ol>
 <li>On <strong>Calendar</strong>, choose <strong>New activity</strong>.</li>
-<li>Fill in the fields. The times start at 8:00 AM to 6:00 PM. If you have only one ministry, it is already the <strong>Lead Ministry</strong>.</li>
+<li>Fill in the fields. The times start as 8:00 AM to 6:00 PM. If you have only one ministry, it is already the <strong>Lead Ministry</strong>. If you are a comm contact of the lead ministry, you are already its <strong>Comm Contact</strong>. Choosing another <strong>Lead Ministry</strong> picks you again where you are one of its comm contacts, until you choose a comm contact yourself. The <strong>End</strong> date follows the <strong>Start</strong> date until you set the end date yourself.</li>
 <li>Choose <strong>Save</strong>. You see, for example, &quot;Created HLTH-21.&quot; The activity stays open, so you can add files.</li>
 </ol>
-<p><strong>New activity</strong> is hidden during the daily change freeze, unless you are in an HQ organization.</p>
+<p><strong>New activity</strong> is hidden during the daily change freeze, unless you are an HQ editor.</p>
 <h2>Change an activity</h2>
 <ol>
 <li>Open the activity: choose its title in the list or the calendar, or its number on <strong>Updates</strong>.</li>
@@ -5168,7 +5180,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>A new activity is <strong>New</strong>. Saving a change to most fields makes it <strong>Changed</strong>, until HQ reviews it.</li>
 <li>HQ sees which fields changed, marked &quot;Changed: needs review&quot;.</li>
 <li>Everyone who can see the activity sees your change straight away, in the list, on <strong>Updates</strong> and in reports.</li>
-<li>The change reaches <strong>Releases</strong> within a minute. A release already linked to the activity doesn&#39;t change. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-releases">Releases and the Forecast</a>.</li>
+<li>The change reaches <strong>Releases</strong> within a minute. A release already linked to the activity doesn&#39;t change. If a linked release is still to go out and you change a date or time, a warning above <strong>Save</strong> says so, for example &quot;A release is planned against HLTH-21 (Release 2026HLTH0001: Scheduled, Nov 4, 2026 10:00 AM). Changing the date or time here doesn&#39;t move the release. Tell the release editor.&quot; The same words follow &quot;Saved HLTH-21.&quot; Tell the release editor. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-releases">Releases and the Forecast</a>.</li>
 <li>Every change is kept in <strong>View changes</strong>.</li>
 <li>Nobody is emailed. Tell people yourself if they need to know.</li>
 </ul>
@@ -5176,13 +5188,14 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>&quot;Your ministry is shared on this activity: you can view it but not change it.&quot; means another ministry leads it. The fields are read-only, each checklist shows only what is ticked (or &quot;None&quot;), and the button is <strong>Back</strong>.</p>
 <p>An activity also opens read-only while someone else is editing it, or during the daily change freeze. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-lock-and-freeze">The edit lock and the daily change freeze</a>.</p>
 <h2>Clone an activity</h2>
-<p><strong>Clone</strong> makes a new activity from this one, for the same lead ministry and comm contact.</p>
+<p><strong>Clone</strong> opens <strong>New activity</strong> filled in from this one, for the same lead ministry and comm contact. Nothing is created until you choose <strong>Save</strong>.</p>
 <ol>
 <li>Open the activity.</li>
-<li>Choose <strong>Clone</strong>. The new activity opens, and you see, for example, &quot;Cloned HLTH-21 as HLTH-22.&quot;</li>
-<li>Check it, change what differs, and choose <strong>Save</strong>.</li>
+<li>Choose <strong>Clone</strong>. <strong>New activity</strong> opens with &quot;This is an unsaved copy of HLTH-21. Nothing is created until you choose Save. Cancel leaves no copy behind.&quot;</li>
+<li>Change what differs, and choose <strong>Save</strong>. You see, for example, &quot;Cloned HLTH-21 as HLTH-22.&quot; The new activity stays open, so you can add files.</li>
 </ol>
-<p>The clone is saved as soon as you choose <strong>Clone</strong>, and starts as <strong>New</strong>. It copies the activity&#39;s fields except these:</p>
+<p><strong>Cancel</strong>, or leaving the page another way, creates nothing.</p>
+<p>The copy starts as <strong>New</strong>, and its <strong>View changes</strong> says &quot;created it as a clone&quot;, naming the activity it was cloned from. It copies the activity&#39;s fields except these:</p>
 <ul>
 <li>the release date and time are emptied;</li>
 <li><strong>Internal notes</strong> is emptied;</li>
@@ -5190,7 +5203,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>of the <strong>HQ Tags</strong>, only &quot;30-60-90&quot; is kept;</li>
 <li>files and linked releases stay with the original.</li>
 </ul>
-<p>If you have unsaved changes, <strong>Clone</strong> waits: &quot;Save or cancel your changes to review or clone.&quot; <strong>Clone</strong> isn&#39;t offered during the daily change freeze, unless you are in an HQ organization.</p>
+<p>If you have unsaved changes, <strong>Clone</strong> waits: &quot;Save or cancel your changes to review or clone.&quot; <strong>Clone</strong> isn&#39;t offered during the daily change freeze, unless you are an HQ editor.</p>
 <h2>Add files</h2>
 <p>The <strong>Records</strong> section appears only when it is turned on for your Calendar. When it shows:</p>
 <ol>
@@ -5198,9 +5211,10 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Under <strong>Records</strong>, choose <strong>Add files</strong> and pick one or more files.</li>
 <li>Each file is added straight away, on its own. You see, for example, &quot;Added 2 files.&quot;</li>
 </ol>
-<p>A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50. A file with the same name replaces the old one.</p>
+<p>A file can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV. Each can be up to 25 MB, and an activity holds up to 50.</p>
+<p>A file with the same name as one already attached replaces it, but only after you agree. The Hub asks, for example, &quot;A file named Briefing note.docx is already attached (added Oct 12, 2026 by Pat Smith). Replace it? The old file is deleted.&quot; Choose <strong>Replace</strong>, and you see &quot;Replaced Briefing note.docx.&quot; Choose <strong>Cancel</strong>, and you see &quot;Nothing was added.&quot;: none of the files you picked is added.</p>
 <p>To remove a file, choose <strong>Remove</strong> beside it, then <strong>Remove</strong> again in the &quot;The file is deleted from this activity.&quot; box.</p>
-<p>Adding or removing a file doesn&#39;t touch your unsaved changes to the fields. Like saving, it isn&#39;t possible while someone else is editing the activity, or during the daily change freeze unless you are in an HQ organization. A file opens only for people who can see its activity.</p>
+<p>Adding or removing a file doesn&#39;t touch your unsaved changes to the fields. Like saving, it isn&#39;t possible while someone else is editing the activity, or during the daily change freeze unless you are an HQ editor. A file opens only for people who can see its activity.</p>
 <h2>View changes</h2>
 <p><strong>View changes</strong> lists every change to the activity, newest first. Each entry says when, who and what they did, such as &quot;created it&quot;, &quot;changed it&quot;, &quot;created it as a clone&quot;, &quot;reviewed it&quot;, &quot;transferred it&quot; or &quot;cleared its LA status&quot;. A table shows each field before and after. Changes brought over from the old Calendar are marked &quot;from legacy log&quot;.</p>
 <p>Choose <strong>Back to the activity</strong> to return.</p>
@@ -5222,7 +5236,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 <tr>
 <td>&quot;Someone else changed this activity \u2014 reload to see their changes&quot;</td>
-<td>Someone saved it after you opened it. Choose <strong>Reload</strong>. If you have unsaved changes, it asks &quot;Reload and lose your changes? The activity as it is now replaces them.&quot; Choose <strong>Reload</strong>, then make your change again, or <strong>Keep editing</strong>.</td>
+<td>Someone saved it, reviewed it or cleared its LA status after you opened it. Choose <strong>Reload</strong>. If you have unsaved changes, it asks &quot;Reload and lose your changes? The activity as it is now replaces them.&quot; Choose <strong>Reload</strong>, then make your change again, or <strong>Keep editing</strong>.</td>
 </tr>
 <tr>
 <td>&quot;This activity is no longer available.&quot;</td>
@@ -5249,16 +5263,20 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Choose another category.</td>
 </tr>
 <tr>
+<td>&quot;You can no longer copy the activity this was copied from. Start a new activity instead.&quot;</td>
+<td>The activity you cloned was deleted, or moved out of your ministries, while the copy was open. Choose <strong>Cancel</strong>, then <strong>New activity</strong>.</td>
+</tr>
+<tr>
 <td>&quot;Couldn&#39;t save. Your changes are still here; try again.&quot;</td>
 <td>Something went wrong on the way. Choose <strong>Save</strong> again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},Ft={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
-<p>An activity&#39;s fields are in sections: <strong>Overview</strong>, <strong>Planning</strong>, <strong>Ministry</strong>, <strong>Schedule</strong>, <strong>Release</strong>, <strong>Event</strong> and, when turned on, <strong>Records</strong>. HQ editors also see <strong>Look Ahead</strong>. A &quot;?&quot; beside a field explains it.</p>
+`,changed:"2026-10-31"},Lt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+<p>An activity&#39;s fields are in sections, in this order: <strong>Overview</strong>, <strong>Ministry</strong>, <strong>Planning</strong>, <strong>Schedule</strong>, <strong>Release</strong>, <strong>Event</strong> and, when turned on, <strong>Records</strong>. HQ editors also see <strong>Look Ahead</strong>, after <strong>Event</strong>. A &quot;?&quot; beside a field explains it.</p>
 <h2>What you must fill in</h2>
 <p>Fields marked &quot;(required)&quot; must be filled in before you can save:</p>
 <ul>
-<li><strong>Category</strong>, <strong>Title</strong>, <strong>Comm Contact</strong> and <strong>Lead Ministry</strong>;</li>
+<li><strong>Category</strong>, <strong>Title</strong>, <strong>Lead Ministry</strong> and <strong>Comm Contact</strong>;</li>
 <li><strong>Start date</strong> and <strong>End date</strong>, and both times unless you tick <strong>All Day</strong>;</li>
 <li><strong>Summary</strong>, <strong>Significance</strong> and <strong>Scheduling considerations</strong>. For HQ editors these three are optional.</li>
 </ul>
@@ -5276,8 +5294,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The kind of activity. <strong>HQ Placeholder</strong> is offered only to HQ editors.</td>
 </tr>
 <tr>
-<td><strong>Not for Look Ahead</strong></td>
-<td>Tick it to keep the activity out of the Look Ahead. Only its lead and shared ministries, HQ advanced users and HQ administrators then see it, and it isn&#39;t offered on the releases <strong>Forecast</strong>.</td>
+<td><strong>Confidential (not for Look Ahead)</strong></td>
+<td>Tick it to make the activity confidential. The old Calendar called it <strong>Not for Look Ahead</strong>. Only its lead and shared ministries, HQ advanced users and HQ administrators then see it, and it isn&#39;t offered on the releases <strong>Forecast</strong>. A new activity isn&#39;t given a Look Ahead section, but ticking it doesn&#39;t take away a section the activity already has.</td>
 </tr>
 <tr>
 <td><strong>Title</strong></td>
@@ -5308,37 +5326,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Type a tag and choose <strong>Add tag</strong>, or press Enter. Existing tags are suggested as you type. A new tag is created when you save. Up to 20. Choose \xD7 beside a tag to remove it.</td>
 </tr>
 </tbody></table></div>
-<h2>Planning</h2>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
-<thead>
-<tr>
-<th>Field</th>
-<th>What to enter</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>Comm Contact</strong></td>
-<td>The communications person responsible. Only the lead ministry&#39;s active comm contacts are offered, so choose the <strong>Lead Ministry</strong> first.</td>
-</tr>
-<tr>
-<td><strong>Key activity</strong></td>
-<td>Tick it for a key activity.</td>
-</tr>
-<tr>
-<td><strong>Strategy</strong></td>
-<td>Up to 500 characters.</td>
-</tr>
-<tr>
-<td><strong>Comm Materials</strong></td>
-<td>The products planned, such as a news release.</td>
-</tr>
-<tr>
-<td><strong>Internal notes</strong></td>
-<td>Up to 4,000 characters.</td>
-</tr>
-</tbody></table></div>
 <h2>Ministry</h2>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
 <th>Field</th>
@@ -5358,8 +5347,36 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Tick the other ministries that should see it. They can open it but not change it.</td>
 </tr>
 </tbody></table></div>
-<h2>Look Ahead</h2>
-<p>Only HQ editors and above see this section. When a ministry editor saves, it stays as it is.</p>
+<h2>Planning</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Comm Contact</strong></td>
+<td>The communications person responsible. Only the active comm contacts of the <strong>Lead Ministry</strong>, chosen above, are offered.</td>
+</tr>
+<tr>
+<td><strong>Key activity</strong></td>
+<td>Tick it for a key activity.</td>
+</tr>
+<tr>
+<td><strong>Strategy</strong></td>
+<td>Up to 500 characters.</td>
+</tr>
+<tr>
+<td><strong>Comm Materials</strong></td>
+<td>The products planned, such as a news release.</td>
+</tr>
+<tr>
+<td><strong>Internal notes</strong></td>
+<td>Up to 4,000 characters.</td>
+</tr>
+</tbody></table></div>
+<h2>Schedule</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 4 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
@@ -5368,47 +5385,20 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </thead>
 <tbody><tr>
-<td><strong>Executive Summary</strong></td>
-<td>Shown in HQ&#39;s Look Ahead report. Up to 2,000 characters.</td>
+<td><strong>All Day</strong></td>
+<td>Tick it for an all-day activity. It hides the times below it.</td>
 </tr>
 <tr>
-<td><strong>LA Status</strong></td>
-<td><strong>None</strong>, <strong>New</strong> or <strong>Changed</strong>. HQ&#39;s Look Ahead flags the activity NEW or CHANGED.</td>
+<td><strong>Dates Confirmed</strong></td>
+<td>Tick it once the date is firm. Only confirmed activities are offered on the releases <strong>Forecast</strong>.</td>
 </tr>
 <tr>
-<td><strong>LA Section</strong></td>
-<td>Where the activity goes in the Look Ahead. It is worked out from the category, <strong>Issue</strong>, <strong>Dates Confirmed</strong> and <strong>Comm Materials</strong>, and says &quot;Inferred from the activity&quot;. Choose another section to override it; it then says &quot;Override&quot; and offers <strong>Use the inferred section</strong>. Awareness dates and activities led by the ministry shown as <strong>CITENG</strong> keep a fixed section, which can&#39;t be overridden.</td>
-</tr>
-<tr>
-<td><strong>Long Term Outlook</strong></td>
-<td>Tick it to list the activity in the Look Ahead&#39;s Long Term Outlook.</td>
-</tr>
-</tbody></table></div>
-<p>A clone&#39;s <strong>Executive Summary</strong> is set to &quot;**&quot;.</p>
-<p>An activity marked <strong>Not for Look Ahead</strong> whose section is overridden needs an <strong>Executive Summary</strong>.</p>
-<h2>Schedule</h2>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 5 \u2014 scrollable" tabindex="0"><table>
-<thead>
-<tr>
-<th>Field</th>
-<th>What to enter</th>
-</tr>
-</thead>
-<tbody><tr>
 <td><strong>Start date</strong>, <strong>Start time</strong></td>
 <td>Times go in 5-minute steps.</td>
 </tr>
 <tr>
 <td><strong>End date</strong>, <strong>End time</strong></td>
 <td>The end can&#39;t be before the start.</td>
-</tr>
-<tr>
-<td><strong>All Day</strong></td>
-<td>Hides the times.</td>
-</tr>
-<tr>
-<td><strong>Dates Confirmed</strong></td>
-<td>Tick it once the date is firm. Only confirmed activities are offered on the releases <strong>Forecast</strong>.</td>
 </tr>
 <tr>
 <td><strong>Potential Dates</strong></td>
@@ -5421,7 +5411,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tbody></table></div>
 <h2>Release</h2>
 <p>Some categories, such as <strong>TV / Radio</strong> and <strong>Awareness Day / Week / Month</strong>, have no release. For those this section is hidden, and choosing one empties the release date and time.</p>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 6 \u2014 scrollable" tabindex="0"><table>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 5 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
 <th>Field</th>
@@ -5430,7 +5420,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </thead>
 <tbody><tr>
 <td><strong>Release date</strong>, <strong>Release time</strong></td>
-<td>When the news release goes out. Fill in both, or neither. It can&#39;t be after the end date.</td>
+<td>When the news release goes out. Fill in both, or leave both empty: <strong>Release time</strong> starts at &quot;Choose a time&quot;. It can&#39;t be after the end date.</td>
 </tr>
 <tr>
 <td><strong>Origin</strong>, <strong>Distribution</strong></td>
@@ -5450,7 +5440,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <h2>Event</h2>
-<div class="gcpe-table-scroll" role="region" aria-label="Table 7 \u2014 scrollable" tabindex="0"><table>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 6 \u2014 scrollable" tabindex="0"><table>
 <thead>
 <tr>
 <th>Field</th>
@@ -5478,12 +5468,40 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Who plans the event, and the videographer.</td>
 </tr>
 </tbody></table></div>
+<h2>Look Ahead</h2>
+<p>Only HQ editors and above see this section. When a ministry editor saves, it stays as it is.</p>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 7 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What to enter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Executive Summary</strong></td>
+<td>Shown in HQ&#39;s Look Ahead report. Up to 2,000 characters.</td>
+</tr>
+<tr>
+<td><strong>LA Status</strong></td>
+<td><strong>None</strong>, <strong>New</strong> or <strong>Changed</strong>. HQ&#39;s Look Ahead flags the activity NEW or CHANGED.</td>
+</tr>
+<tr>
+<td><strong>LA Section</strong></td>
+<td>Where the activity goes in the Look Ahead. It is worked out from fields above it: <strong>Category</strong>, <strong>Issue</strong>, <strong>Confidential (not for Look Ahead)</strong>, <strong>Lead Ministry</strong>, <strong>Comm Materials</strong>, <strong>Dates Confirmed</strong> and the start and end dates. Its hint names them. Choose another section to override it; it then says &quot;Override&quot; and offers <strong>Use the inferred section</strong>. Awareness dates and activities led by the ministry shown as <strong>CITENG</strong> keep a fixed section, which can&#39;t be overridden.</td>
+</tr>
+<tr>
+<td><strong>Long Term Outlook</strong></td>
+<td>Tick it to list the activity in the Look Ahead&#39;s Long Term Outlook.</td>
+</tr>
+</tbody></table></div>
+<p>A clone&#39;s <strong>Executive Summary</strong> is set to &quot;**&quot;.</p>
+<p>An activity marked <strong>Confidential (not for Look Ahead)</strong> whose section is overridden needs an <strong>Executive Summary</strong>.</p>
 <p>For <strong>Records</strong>, see <a href="/hub/help/manuals/calendar-editor/calendar-editor-activity">Add or change an activity</a>.</p>
 <h2>Choices no longer in use</h2>
 <p>A choice that has been retired shows &quot;(no longer in use)&quot; when an activity already has it. The activity keeps it. You can&#39;t choose it for another activity.</p>
 <h2>Long text from the old Calendar</h2>
 <p>Some activities brought over from the old Calendar have longer text than the limits allow. They still save. The limits apply only to text you change.</p>
-`,changed:"2026-10-30"},Lt={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},Ft={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p>Two things can open an activity read-only even though you may change it: someone else editing it, and the daily change freeze.</p>
 <h2>When someone else is editing</h2>
 <p>Only one person edits an activity at a time. The first person to change a field holds the edit lock. Anyone else who opens the activity sees, for example, &quot;Pat Example is editing this activity (since 2:15 PM). It opens for editing when they save or cancel, or after 15 minutes without input.&quot;</p>
@@ -5545,7 +5563,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Make a report</h2>
 <ol>
 <li>Set the list&#39;s filter to the dates and activities you want. See <a href="/hub/help/manuals/calendar-editor/calendar-editor-list">The activity list</a>.</li>
-<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Export and reports</strong>. The panel starts by saying which filter it will use, for example &quot;Uses your list filter: Dates: 2026-11-01 to 2026-11-14 \xB7 My Watchlist Only.&quot; It warns you when something you may not have meant to keep narrows it: a <strong>Display</strong> choice the list keeps from last time, or an activity number in <strong>Search for</strong>, which leaves only that activity and ignores the dates and other filters. Change the filter under <strong>Filters</strong> first if that isn&#39;t what you want.</li>
 <li>Choose <strong>Look Ahead</strong>, <strong>30/60/90</strong> or <strong>Planning</strong>. You see, for example, &quot;Preparing your Look Ahead report\u2026&quot;.</li>
 <li>Wait a few seconds. The PDF downloads by itself and you see &quot;The Look Ahead report has downloaded.&quot;</li>
 </ol>
@@ -5572,11 +5590,13 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <ul>
+<li>Each report says under its heading which filter it used, and the Excel export says it on its last row, below the confidentiality notice, for example &quot;Filter: Dates: 2026-11-01 to 2026-11-14 \xB7 Lead Ministry: HLTH&quot;, or &quot;Filter: none (every activity you can see)&quot;.</li>
 <li>A report holds only activities you can see. Deleted activities are never in it.</li>
 <li>Reports include Awareness dates even when the list leaves them out.</li>
 <li>Unless you are an HQ editor, your Look Ahead shows no Executive Summary and no NEW or CHANGED flags.</li>
 <li>Each activity number in a report links to the activity in the Hub.</li>
 <li>Each report is marked &quot;DRAFT AND CONFIDENTIAL&quot;. Share it only with people who may see those activities.</li>
+<li>Reports and the Excel export still mark confidential activities &quot;Not for Look Ahead&quot;.</li>
 </ul>
 <h2>If you are an HQ editor</h2>
 <ul>
@@ -5620,7 +5640,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Try again. If it keeps failing, tell your Calendar administrator.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},Ut={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
+`,changed:"2026-10-31"},Ut={html:`<p><strong>Who this is for:</strong> Calendar editors (Calendar.Editor).</p>
 <p>Release editors plan news releases from Calendar activities in <strong>Releases</strong>. A release can be linked to an activity, and the activity then shows that release.</p>
 <h2>BC Gov News on an activity</h2>
 <p><strong>BC Gov News</strong>, at the end of the <strong>Release</strong> section, lists the releases linked to the activity, or says &quot;No releases are linked to this activity.&quot;</p>
@@ -5636,7 +5656,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>its category starts with &quot;Approved&quot;, such as <strong>Approved Release</strong>;</li>
 <li><strong>Dates Confirmed</strong> is ticked;</li>
-<li>it isn&#39;t marked <strong>Not for Look Ahead</strong>;</li>
+<li>it isn&#39;t marked <strong>Confidential (not for Look Ahead)</strong>;</li>
 <li>it starts from now on, and isn&#39;t deleted;</li>
 <li>no upcoming release is linked to it yet.</li>
 </ul>
@@ -5645,11 +5665,11 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ul>
 <li>Your changes reach <strong>Releases</strong> within a minute.</li>
 <li>Changing an activity doesn&#39;t change a release already linked to it. What was copied into the release stays as it was. Tell the release editor if the release needs to change.</li>
-<li>Marking an activity <strong>Not for Look Ahead</strong> takes it off the <strong>Forecast</strong>. A release editor who types its number sees, for example, &quot;Calendar activity 3: its details aren&#39;t shown to you.&quot;</li>
+<li>Marking an activity <strong>Confidential (not for Look Ahead)</strong> takes it off the <strong>Forecast</strong>. A release editor who types its number sees, for example, &quot;Calendar activity 3: its details aren&#39;t shown to you.&quot;</li>
 <li>A deleted activity leaves the <strong>Forecast</strong>, and no release can be linked to it from then on.</li>
 <li>Nobody is emailed.</li>
 </ul>
-`,changed:"2026-10-30"},Yt={html:`<p><strong>Who this is for:</strong> Calendar read-only users (Calendar.ReadOnly).</p>
+`,changed:"2026-10-31"},Yt={html:`<p><strong>Who this is for:</strong> Calendar read-only users (Calendar.ReadOnly).</p>
 <p>You can see activities in the Corporate Calendar, the government-wide plan of announcements and events. You can&#39;t add, change or delete them. If an activity needs changing, ask a Calendar editor of its ministry.</p>
 <h2>What you can do</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -5722,15 +5742,15 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Choose an activity&#39;s title to open it. See <a href="/hub/help/manuals/calendar-readonly/calendar-readonly-activity">Read an activity</a>.</li>
 <li>The <strong>Activity Id</strong> column shows the ministry and number, such as HLTH-12. It also shows <strong>Reviewed</strong> when HQ has reviewed the activity, <strong>Shared</strong> when it is shared with other ministries, and <strong>Release</strong> when a news release is linked to it.</li>
 <li>Under the title you see when it was last updated, by whom, and when it was created.</li>
-<li><strong>Not for Look Ahead</strong> under <strong>Categories</strong> marks an activity kept out of the Look Ahead.</li>
-<li>Point at the date to see the scheduling considerations, at the title to see the significance, and at <strong>Comm. Materials</strong> to see the origin and distribution.</li>
-<li>Choose a column heading to sort by it, except <strong>Premier</strong>. Choose it again to reverse the order.</li>
+<li><strong>Confidential (not for Look Ahead)</strong> under <strong>Categories</strong> marks a confidential activity.</li>
+<li>Point at the date to see the scheduling considerations, at the title to see the significance, and at <strong>Comm Materials</strong> to see the origin and distribution.</li>
+<li>Choose a column heading to sort by it, except <strong>Premier Requested</strong>. Choose it again to reverse the order.</li>
 <li><strong>What the column names mean</strong>, under the list, explains the short names.</li>
 </ul>
 <h2>Filter the list</h2>
 <ol>
 <li>Open <strong>Filters</strong>. The line beside it shows the filter in use, or &quot;No filters&quot;.</li>
-<li>Fill in what you want. You can use <strong>From</strong>, <strong>To</strong>, <strong>This day only</strong>, <strong>Search for</strong>, <strong>HQ Tags</strong>, <strong>Issue</strong>, <strong>Date Confirmed</strong>, <strong>Status</strong>, <strong>Category</strong>, <strong>Lead Ministry</strong>, <strong>Comm Contact</strong>, <strong>Representative</strong>, <strong>Initiative</strong>, <strong>Premier Requested</strong> and <strong>Distribution</strong>.</li>
+<li>Fill in what you want. You can use <strong>From</strong>, <strong>To</strong>, <strong>This day only</strong>, <strong>Search for</strong>, <strong>HQ Tags</strong>, <strong>Issue</strong>, <strong>Dates Confirmed</strong>, <strong>Status</strong>, <strong>Category</strong>, <strong>Lead Ministry</strong>, <strong>Comm Contact</strong>, <strong>Representative</strong>, <strong>HQ Initiatives &amp; Leads</strong>, <strong>Premier Requested</strong> and <strong>Distribution</strong>.</li>
 <li>Under <strong>Display</strong>, choose <strong>Show All</strong>, <strong>My Ministries&#39; Activities Only</strong>, <strong>My Activities Only</strong> or <strong>My Watchlist Only</strong>.</li>
 <li>Choose <strong>Apply filters</strong>.</li>
 </ol>
@@ -5749,16 +5769,17 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <ol>
 <li>Set the filter and choose <strong>Apply filters</strong>.</li>
 <li>Open <strong>Saved views</strong>.</li>
-<li>Type a name in <strong>Name for this filter</strong>.</li>
-<li>Choose <strong>Save query</strong>. You see, for example, &quot;Saved the query \u201CMy week\u201D.&quot;</li>
+<li>Type a name in <strong>Name for this query</strong>.</li>
+<li>Choose <strong>Save this filter as a query</strong>. You see, for example, &quot;Saved the query \u201CMy week\u201D.&quot;</li>
 </ol>
+<p>A query saves the filter the list is running. While <strong>Filters</strong> has changes you haven&#39;t applied, <strong>Save this filter as a query</strong> waits and says &quot;Apply filters first&quot;. <strong>Display</strong> isn&#39;t saved with a query.</p>
 <p>To run a saved filter, choose its name. <strong>Saved views</strong> then shows, for example, &quot;Running \u201CMy week\u201D&quot;. Each query also has <strong>Rename</strong>, <strong>Up</strong>, <strong>Down</strong> and <strong>Delete</strong>.</p>
 <h2>Columns</h2>
 <ol>
 <li>Choose <strong>Columns</strong>.</li>
 <li>Tick or untick the columns under <strong>Show these columns</strong>.</li>
 </ol>
-<p>The Hub keeps your choice for next time. <strong>Activity Id</strong> always shows. At first, <strong>HQ Tags</strong>, <strong>Ministry</strong>, <strong>Status</strong> and <strong>Translations</strong> are hidden.</p>
+<p>The Hub keeps your choice for next time. <strong>Activity Id</strong> always shows. At first, <strong>HQ Tags</strong>, <strong>Lead Ministry</strong>, <strong>Status</strong> and <strong>Translations</strong> are hidden.</p>
 <h2>Month and Week</h2>
 <p>Choose <strong>Month</strong> or <strong>Week</strong> to see the same filter as a calendar. An activity that runs several days shows on each of them. Use <strong>Previous month</strong>, <strong>Today</strong> and <strong>Next month</strong> (or <strong>Previous week</strong> and <strong>Next week</strong>) to move. Choose <strong>List</strong> to go back.</p>
 <p>At most 1,000 activities fit. &quot;Only the first 1,000 activities are shown. Narrow the filter to see the rest.&quot; means there are more.</p>
@@ -5793,7 +5814,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Your column or display choice wasn&#39;t kept. Try again.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},Bt={html:`<p><strong>Who this is for:</strong> Calendar read-only users (Calendar.ReadOnly).</p>
+`,changed:"2026-10-31"},Bt={html:`<p><strong>Who this is for:</strong> Calendar read-only users (Calendar.ReadOnly).</p>
 <p><strong>Calendar</strong> &gt; <strong>Updates</strong> lists recent changes to the activities you can see, newest first. It opens on <strong>Today&#39;s updates</strong>. <strong>Latest 5 updates</strong> shows the five newest.</p>
 <p>Each line says when, who, and what they did: &quot;added activity&quot;, &quot;changed activity&quot;, &quot;reviewed activity&quot; or &quot;added new clone&quot;. Then come the activity&#39;s number, its title and its dates as they are now. Point at the title to see the summary.</p>
 <p>Choose the activity&#39;s number to open it. <strong>Back</strong> there brings you back to the same updates.</p>
@@ -5875,13 +5896,13 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Excel export</h2>
 <ol>
 <li>Set the list&#39;s filter. See <a href="/hub/help/manuals/calendar-readonly/calendar-readonly-list">The activity list</a>.</li>
-<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Export and reports</strong>. The panel starts by saying which filter it will use, for example &quot;Uses your list filter: Dates: 2026-11-01 to 2026-11-14 \xB7 My Watchlist Only.&quot; It warns you when something you may not have meant to keep narrows it: a <strong>Display</strong> choice the list keeps from last time, or an activity number in <strong>Search for</strong>, which leaves only that activity and ignores the dates and other filters. Change the filter under <strong>Filters</strong> first if that isn&#39;t what you want.</li>
 <li>Choose <strong>Excel export</strong>. A spreadsheet of the activities your filter finds downloads, up to 10,000.</li>
 </ol>
 <h2>PDF reports</h2>
 <ol>
 <li>Set the list&#39;s filter to the dates and activities you want.</li>
-<li>Choose <strong>Export and reports</strong>.</li>
+<li>Choose <strong>Export and reports</strong>, and check the filter it says it will use.</li>
 <li>Choose <strong>Look Ahead</strong>, <strong>30/60/90</strong> or <strong>Planning</strong>. You see, for example, &quot;Preparing your Look Ahead report\u2026&quot;.</li>
 <li>Wait a few seconds. The PDF downloads by itself and you see &quot;The Look Ahead report has downloaded.&quot;</li>
 </ol>
@@ -5908,11 +5929,13 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tbody></table></div>
 <ul>
 <li>Reports list activities in date order, whatever the list is sorted by.</li>
+<li>Each report says under its heading which filter it used, and the Excel export says it on its last row, below the confidentiality notice, for example &quot;Filter: Dates: 2026-11-01 to 2026-11-14 \xB7 Lead Ministry: HLTH&quot;, or &quot;Filter: none (every activity you can see)&quot;.</li>
 <li>A report holds only activities you can see. Deleted activities are never in it.</li>
 <li>Reports include awareness dates even when the list leaves them out.</li>
 <li>Your Look Ahead shows no Executive Summary and no NEW or CHANGED flags. Those are for HQ editors and above.</li>
 <li>Each activity number in a report links to the activity in the Hub.</li>
 <li>Each report is marked &quot;DRAFT AND CONFIDENTIAL&quot;. Share it only with people who may see those activities.</li>
+<li>Reports and the Excel export still mark confidential activities &quot;Not for Look Ahead&quot;.</li>
 </ul>
 <h2>Can&#39;t do this?</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
@@ -5959,7 +5982,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Try again. If it keeps failing, tell your Calendar administrator.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},Vt={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin), with one part for site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},Vt={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin), with one part for site editors (NRMS.SiteEditor).</p>
 <p>The Hub dates the archive, builds its pages and sends old ministry addresses to the new ones by itself. You enter one date and, where ministries change, prepare one cabinet change.</p>
 <h2>At a glance</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
@@ -6021,4 +6044,4 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Take down or change any election notice on <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Site banner</strong>, and publish. See <a href="/hub/help/manuals/nrms-site-editor/site-banner">Site banner</a>.</li>
 <li>Update the ministers&#39; contact records in Media Hub. The Hub does not change them.</li>
 </ol>
-`,changed:"2026-10-30"},Kt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":c,"site-editor-overview":u,carousel:p,"emergency-pins":m,"live-feed":b,"resource-links":y,"website-files":v,"featured-and-website-log":f,"site-settings":w,"site-banner":q,"theme-colours":C,"footer-and-navigation":k,"social-links":T,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":D,"editor-approve-and-publish":E,"editor-what-happens-next":I,"editor-correct-unpublish-delete":F,"editor-find-a-release":L,"editor-featured-and-log":O,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":V,"who-gets-which-email":K,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ct,"nod-viewer-lists-and-categories":ut,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":bt,"calendar-users":yt,"calendar-transfer":vt,"calendar-lookups":ft,"calendar-delete-activity":wt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":kt,"calendar-advanced-list":Tt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Dt,"calendar-editor-updates":Et,"calendar-editor-activity":It,"calendar-editor-fields":Ft,"calendar-editor-lock-and-freeze":Lt,"calendar-editor-hq":Ot,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Vt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",bt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",Tt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",kt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",wt as"calendar-delete-activity",It as"calendar-editor-activity",Ft as"calendar-editor-fields",Ot as"calendar-editor-hq",Dt as"calendar-editor-list",Lt as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",Et as"calendar-editor-updates",qt as"calendar-hq-review",ft as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",vt as"calendar-transfer",Ct as"calendar-undelivered-events",yt as"calendar-users",p as carousel,n as"core-admin-overview",Kt as default,ot as"editor-add-a-subscriber",E as"editor-approve-and-publish",dt as"editor-bounces",F as"editor-correct-unpublish-delete",O as"editor-featured-and-log",D as"editor-files-and-media",L as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",I as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",f as"featured-and-website-log",j as"find-and-change-subscribers",k as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",b as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Vt as"new-government",V as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ut as"nod-viewer-lists-and-categories",ct as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",y as"resource-links",d as"sectors-themes-and-tags",q as"site-banner",W as"site-editor-organizations",u as"site-editor-overview",x as"site-identity",w as"site-settings",T as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",v as"website-files",c as"website-project-blue-bridge",K as"who-gets-which-email"};
+`,changed:"2026-10-30"},Kt={"core-admin-overview":n,users:s,"calendar-access":o,organizations:r,"cabinet-change":a,"government-terms":i,"sectors-themes-and-tags":d,"release-page-titles":h,"media-list-names":l,"error-log":g,"website-project-blue-bridge":u,"site-editor-overview":c,carousel:p,"emergency-pins":m,"live-feed":y,"resource-links":b,"website-files":f,"featured-and-website-log":v,"site-settings":w,"site-banner":q,"theme-colours":C,"footer-and-navigation":k,"social-links":T,"ministry-pages-and-media-contacts":A,"page-text":S,"site-identity":x,"site-editor-organizations":W,"editor-overview":H,"editor-release-folders":M,"editor-start-a-release":R,"editor-write-a-release":N,"editor-files-and-media":D,"editor-approve-and-publish":E,"editor-what-happens-next":I,"editor-correct-unpublish-delete":L,"editor-find-a-release":F,"editor-featured-and-log":O,"editor-shortcuts-and-help":P,"viewer-overview":U,"viewer-release-folders":Y,"viewer-read-a-release":Q,"viewer-find-a-release":B,"viewer-featured-and-log":z,"viewer-shortcuts-and-help":G,"nod-admin-overview":V,"who-gets-which-email":K,"find-and-change-subscribers":j,"add-a-subscriber":J,"lists-and-categories":X,"subscriber-media-lists":Z,"subscriber-reports":_,"subscriber-operations":$,bounces:tt,"nod-editor-overview":et,"editor-who-gets-which-email":nt,"editor-find-and-change-subscribers":st,"editor-add-a-subscriber":ot,"editor-media-lists":rt,"editor-subscriber-reports":at,"editor-lists-and-categories":it,"editor-bounces":dt,"nod-viewer-overview":ht,"nod-viewer-who-gets-which-email":lt,"nod-viewer-find-subscribers":gt,"nod-viewer-media-lists":ut,"nod-viewer-lists-and-categories":ct,"nod-viewer-reports":pt,"calendar-admin-overview":mt,"calendar-admin-access":yt,"calendar-users":bt,"calendar-transfer":ft,"calendar-lookups":vt,"calendar-delete-activity":wt,"calendar-hq-review":qt,"calendar-undelivered-events":Ct,"calendar-advanced-overview":kt,"calendar-advanced-list":Tt,"calendar-advanced-updates":At,"calendar-advanced-activity":St,"calendar-advanced-fields":xt,"calendar-advanced-lock-and-freeze":Wt,"calendar-advanced-hq":Ht,"calendar-advanced-reports":Mt,"calendar-advanced-releases":Rt,"calendar-editor-overview":Nt,"calendar-editor-list":Dt,"calendar-editor-updates":Et,"calendar-editor-activity":It,"calendar-editor-fields":Lt,"calendar-editor-lock-and-freeze":Ft,"calendar-editor-hq":Ot,"calendar-editor-reports":Pt,"calendar-editor-releases":Ut,"calendar-readonly-overview":Yt,"calendar-readonly-list":Qt,"calendar-readonly-updates":Bt,"calendar-readonly-activity":zt,"calendar-readonly-reports":Gt,"new-government":Vt};export{J as"add-a-subscriber",tt as bounces,a as"cabinet-change",o as"calendar-access",yt as"calendar-admin-access",mt as"calendar-admin-overview",St as"calendar-advanced-activity",xt as"calendar-advanced-fields",Ht as"calendar-advanced-hq",Tt as"calendar-advanced-list",Wt as"calendar-advanced-lock-and-freeze",kt as"calendar-advanced-overview",Rt as"calendar-advanced-releases",Mt as"calendar-advanced-reports",At as"calendar-advanced-updates",wt as"calendar-delete-activity",It as"calendar-editor-activity",Lt as"calendar-editor-fields",Ot as"calendar-editor-hq",Dt as"calendar-editor-list",Ft as"calendar-editor-lock-and-freeze",Nt as"calendar-editor-overview",Ut as"calendar-editor-releases",Pt as"calendar-editor-reports",Et as"calendar-editor-updates",qt as"calendar-hq-review",vt as"calendar-lookups",zt as"calendar-readonly-activity",Qt as"calendar-readonly-list",Yt as"calendar-readonly-overview",Gt as"calendar-readonly-reports",Bt as"calendar-readonly-updates",ft as"calendar-transfer",Ct as"calendar-undelivered-events",bt as"calendar-users",p as carousel,n as"core-admin-overview",Kt as default,ot as"editor-add-a-subscriber",E as"editor-approve-and-publish",dt as"editor-bounces",L as"editor-correct-unpublish-delete",O as"editor-featured-and-log",D as"editor-files-and-media",F as"editor-find-a-release",st as"editor-find-and-change-subscribers",it as"editor-lists-and-categories",rt as"editor-media-lists",H as"editor-overview",M as"editor-release-folders",P as"editor-shortcuts-and-help",R as"editor-start-a-release",at as"editor-subscriber-reports",I as"editor-what-happens-next",nt as"editor-who-gets-which-email",N as"editor-write-a-release",m as"emergency-pins",g as"error-log",v as"featured-and-website-log",j as"find-and-change-subscribers",k as"footer-and-navigation",i as"government-terms",X as"lists-and-categories",y as"live-feed",l as"media-list-names",A as"ministry-pages-and-media-contacts",Vt as"new-government",V as"nod-admin-overview",et as"nod-editor-overview",gt as"nod-viewer-find-subscribers",ct as"nod-viewer-lists-and-categories",ut as"nod-viewer-media-lists",ht as"nod-viewer-overview",pt as"nod-viewer-reports",lt as"nod-viewer-who-gets-which-email",r as organizations,S as"page-text",h as"release-page-titles",b as"resource-links",d as"sectors-themes-and-tags",q as"site-banner",W as"site-editor-organizations",c as"site-editor-overview",x as"site-identity",w as"site-settings",T as"social-links",Z as"subscriber-media-lists",$ as"subscriber-operations",_ as"subscriber-reports",C as"theme-colours",s as users,z as"viewer-featured-and-log",B as"viewer-find-a-release",U as"viewer-overview",Q as"viewer-read-a-release",Y as"viewer-release-folders",G as"viewer-shortcuts-and-help",f as"website-files",u as"website-project-blue-bridge",K as"who-gets-which-email"};
