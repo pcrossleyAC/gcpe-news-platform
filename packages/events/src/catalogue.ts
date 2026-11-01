@@ -137,6 +137,21 @@ export const releaseRecordSchema = z.object({
 });
 export type ReleaseRecord = z.infer<typeof releaseRecordSchema>;
 
+/**
+ * Owner decision 2026-10-31: a republish of a release that already went out can ask NoD to email
+ * the people who already got it a corrected copy ("Corrected: " before the subject), per tick.
+ * `seq` is the release's correction number (1, 2, ...), so each one is its own send; who asked
+ * (by name) and when go in NoD's log. Absent on every other publish.
+ */
+export const emailAgainSchema = z.object({
+  seq: z.number().int().min(1),
+  subscribers: z.boolean(),
+  mediaLists: z.boolean(),
+  requestedBy: z.string().min(1).max(200),
+  requestedAt: offsetDateTime,
+});
+export type EmailAgain = z.infer<typeof emailAgainSchema>;
+
 export const categoryKindSchema = z.enum(["ministries", "sectors", "themes", "tags"]);
 export type CategoryKind = z.infer<typeof categoryKindSchema>;
 
@@ -361,8 +376,8 @@ export const eventDataSchemas = {
   "tag.deactivated": termDeactivated,
   "service.upserted": termRecordSchema,
   "service.deactivated": termDeactivated,
-  "release.published": releaseRecordSchema,
-  "release.updated": releaseRecordSchema.extend({ notify: z.boolean() }),
+  "release.published": releaseRecordSchema.extend({ emailAgain: emailAgainSchema.optional() }),
+  "release.updated": releaseRecordSchema.extend({ notify: z.boolean(), emailAgain: emailAgainSchema.optional() }),
   "release.unpublished": z.object({ key: z.string().min(1) }),
   "media_list.created": mediaListRecordSchema,
   "media_list.updated": mediaListRecordSchema,

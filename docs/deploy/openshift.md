@@ -164,7 +164,11 @@ or corrected after the rollback on the site again. It takes the change feed's lo
 site can't skip its changes; still, run siteground.md's after-deploy check only once every process
 is on the new build (an older process still running can re-store an Advisory it receives meanwhile). NRMS `0022_site_file_tombstones` adds the table of
 deleted Website file names that stops `/files` falling back to legacy's copy (same guide, "Website
-section").
+section"). NoD `0033_correction_modes` (corrected copies) changes only metadata on the large
+`deliveries` table (its mode check is replaced `NOT VALID`, so the table isn't scanned) plus a column
+with a default and an index on the small `send_jobs`: its locks last milliseconds. It sets a 5-second
+lock timeout, so on a busy table it fails the migration (retry it) rather than stall NoD. NRMS
+`0023_release_email_again` adds three columns to `news_releases`.
 
 ## PostgreSQL
 

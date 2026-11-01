@@ -70,7 +70,7 @@ const HOW_TO: HowTo[] = [
         show: canEditReleases,
         text: (
           <>
-            <strong>Correct a published release:</strong> edit it and save; it republishes. Subscribers and media lists aren&rsquo;t emailed again.
+            <strong>Correct a published release:</strong> edit it and save; it republishes. Subscribers and media lists aren&rsquo;t emailed again unless you choose <strong>Email the correction</strong>.
           </>
         ),
       },

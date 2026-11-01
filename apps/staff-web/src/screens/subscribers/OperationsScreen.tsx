@@ -1,3 +1,4 @@
+import { formatInZone } from "../../format/bcTime";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
@@ -140,11 +141,14 @@ const KIND_LABELS: Record<OutgoingGroup["kind"], string> = {
   emergency: "Emergency alert",
   media: "Media list",
   digest: "Daily digest",
+  // Owner decision 2026-10-31: "Also email it again?" on a republish.
+  correction: "Corrected copy to subscribers",
+  correction_media: "Corrected copy to media lists",
 };
 
 function groupTitle(g: OutgoingGroup, timeZone: string): string {
   if (g.kind !== "digest") return g.title ?? "A release no longer in News On Demand";
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(g.digestCutoff ?? g.createdAt));
+  const day = formatInZone(new Date(g.digestCutoff ?? g.createdAt), timeZone, { month: "short", day: "numeric", year: "numeric" }, "en-CA");
   return `Daily digest of ${day}, ${plural(g.releases, "release")}`;
 }
 const groupLabel = (g: OutgoingGroup, timeZone: string) => `${groupTitle(g, timeZone)} (${KIND_LABELS[g.kind]})`;

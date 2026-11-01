@@ -316,6 +316,31 @@ describe("ReleaseEditorPage", () => {
     expect(within(bar).getByRole("button", { name: republishes ? "Save and republish" : "Save changes" })).toBeInTheDocument();
   });
 
+  // Review I3 (fix round 1): a save that republishes a release that already went out emails nobody;
+  // the page then points to Email the correction.
+  it("after Save and republish, says nobody was emailed again and points to Email the correction", async () => {
+    const v = releaseView({ status: "published", live: true, key: "k1", reference: "NEWS-00001", releasedAt: "2026-01-01T00:00:00.000Z", everPublished: true });
+    stubFetch({ view: v });
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const base = fetchMock.getMockImplementation()! as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method && init.method !== "GET") return jsonResponse(200, { ...v, status: "publishing", version: v.version + 1 });
+      if (url.endsWith("/email-again-audience")) return jsonResponse(200, { subscribers: { count: 1 }, mediaContacts: null, both: 0 });
+      return base(url, init);
+    });
+    const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${v.id}`] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Location"), "V");
+    expect(screen.queryByText(/weren’t emailed again/)).not.toBeInTheDocument();
+    await user.click(within(await screen.findByRole("region", { name: "Unsaved changes" })).getByRole("button", { name: "Save and republish" }));
+    expect(await screen.findByText("Republished. People who already got it weren’t emailed again. To send them the corrected version, use Email the correction.")).toBeInTheDocument();
+  });
+
   // Suite review R3: changes discarded with Leave must not come back. A kept draft (from a 401)
   // that was restored and then discarded is gone when the release is opened again.
   it("Leave discards a restored draft: opening the release again shows the saved content", async () => {

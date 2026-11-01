@@ -9,7 +9,7 @@ topics: []
 ---
 **Who this is for:** Release editors (NRMS.Editor).
 
-Publishing emails people. Publishing again after an unpublish emails only people who weren't reached the first time. Saving, approving, scheduling, correcting and unpublishing don't email anyone.
+Publishing emails people. Publishing again after an unpublish emails only people who weren't reached the first time. Saving, approving, scheduling, correcting and unpublishing don't email anyone. The one exception is when you choose to email a correction to the people who already got it: see [Email the correction](manual:editor-correct-unpublish-delete).
 
 ## When you publish
 
@@ -35,6 +35,7 @@ Saving any change republishes it at once, with no box asking first. The status s
 
 - The public page shows the change within a couple of minutes.
 - Nobody is emailed again. People already emailed keep the first version; the 5 pm digest carries the corrected one if you correct it before 5 pm.
+- To tell the people who already got it, choose **Email the correction**. They get the release as it is now, with "Corrected:" before the subject. You choose subscribers, media lists or both, and see how many people each is first. Nobody new is emailed.
 - Media lists can't be changed on a release or factsheet once it has gone out: the boxes in **Publish settings** are greyed out, with "Media lists can't change after it has gone out."
 
 ## When you unpublish
@@ -46,7 +47,7 @@ Saving any change republishes it at once, with no box asking first. The status s
 
 ## When you publish it again after an unpublish
 
-The release goes back on the public site at the same address. People who already got it aren't emailed again.
+The release goes back on the public site at the same address. People who already got it aren't emailed again, unless you tick them under **Also email it again?** in the **Publish now** or **Schedule** box. Then they get a corrected copy, as with **Email the correction**.
 
 If you unpublished it before all its emails had gone out, the media list members and As-it-happens subscribers it hadn't reached are emailed when you publish it again. Daily-digest subscribers get it only if it is back on the site before the 5 pm digest that would have carried it: 5 pm on the day it first went out, or the next day if it first went out after 5 pm.
 

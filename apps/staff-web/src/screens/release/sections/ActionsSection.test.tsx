@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import { useUnsavedChangesGuard } from "../useUnsavedChanges";
@@ -26,8 +27,14 @@ function renderActions(view: ReleaseView, setView: (v: ReleaseView) => void = ()
 
 /** The Publish now dialog's own lookups (site address, list and category names) plus the POSTs it
  * may send, recorded in `posts`. */
-function publishFetch(posts: { url: string; body: unknown }[], next: ReleaseView, audience: unknown = { asItHappens: null, digest: null, mediaContacts: null }) {
+function publishFetch(
+  posts: { url: string; body: unknown }[],
+  next: ReleaseView,
+  audience: unknown = { asItHappens: null, digest: null, mediaContacts: null },
+  againAudience: unknown = { subscribers: { count: 4 }, mediaContacts: { count: 3 }, both: 1 },
+) {
   return vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/email-again-audience")) return againAudience instanceof Response ? againAudience : jsonResponse(200, againAudience);
     if (url.endsWith("/audience")) return audience instanceof Response ? audience : jsonResponse(200, audience);
     if (url === "/nrms/api/config") return jsonResponse(200, { publicSiteUrl: "https://news.example.test/" });
     if (url === "/nrms/api/media-lists") return jsonResponse(200, [{ key: "regional", displayName: "Regional newspapers", isActive: true }]);
@@ -384,7 +391,7 @@ describe("ActionsSection", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Publish now" }));
     const dialog = await screen.findByRole("dialog");
-    expect(dialog).toHaveTextContent("Subscribers and media lists already received this when it was first published; they won’t be emailed again.");
+    expect(dialog).toHaveTextContent("Subscribers and media lists already received this when it was first published; they won’t be emailed again unless you choose to below.");
     expect(dialog).not.toHaveTextContent("Emails News on Demand");
     expect(dialog).not.toHaveTextContent("Sends to media distribution lists");
     expect(dialog).not.toHaveTextContent("hadn’t reached");
@@ -412,7 +419,7 @@ describe("ActionsSection", () => {
     it("says people already emailed aren't emailed again, and that anyone a cut-short send hadn't reached is emailed now", async () => {
       vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T18:00:00Z") });
       const dialog = await openPublishNow(unpublished());
-      expect(dialog).toHaveTextContent("Anyone already emailed about it won’t be emailed again.");
+      expect(dialog).toHaveTextContent("Anyone already emailed about it won’t be emailed again unless you choose to below.");
       await waitFor(() =>
         expect(dialog).toHaveTextContent(
           "If unpublishing stopped its emails before they all went out, the people they hadn’t reached yet are emailed now: members of Regional newspapers, and News on Demand subscribers who chose As it happens.",
@@ -468,6 +475,211 @@ describe("ActionsSection", () => {
       expect(dialog).toHaveTextContent("News on Demand subscribers will not be emailed.");
       expect(dialog).not.toHaveTextContent("hadn’t reached");
       expect(dialog).not.toHaveTextContent("Daily digest");
+    });
+  });
+
+  // Owner decision 2026-10-31: a republish of a release that already went out offers "Also email it
+  // again?", unticked, a tick each for subscribers and media lists with how many already got it.
+  describe("Also email it again?", () => {
+    const failedCorrection = (over: Partial<ReleaseView> = {}) =>
+      releaseView({
+        status: "failed", live: true, key: "k1", reference: "NEWS-00001", releasedAt: "2026-10-01T17:00:00.000Z", everPublished: true,
+        ministries: ["health"], leadMinistryKey: "health", mediaListKeys: ["regional"], publishOptions: { toWeb: true, toSubscribers: true, toMediaLists: true },
+        ...over,
+      });
+    const unpublished = (over: Partial<ReleaseView> = {}) => failedCorrection({ status: "approved", live: false, ...over });
+    const open = async (v: ReleaseView, posts: { url: string; body: unknown }[] = [], againAudience?: unknown) => {
+      vi.stubGlobal("fetch", publishFetch(posts, v, undefined, againAudience));
+      renderActions(v);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Publish now" }));
+      return { user, dialog: await screen.findByRole("dialog") };
+    };
+
+    it("Publish now of a failed correction: unticked by default, with counts; ticked, the request says who", async () => {
+      const posts: { url: string; body: unknown }[] = [];
+      const { user, dialog } = await open(failedCorrection(), posts);
+      const group = within(dialog).getByRole("group", { name: "Also email it again?" });
+      const subs = await within(group).findByRole("checkbox", { name: "News on Demand subscribers who got it (4 people)" });
+      const media = within(group).getByRole("checkbox", { name: "Media list contacts who got it (3 people)" });
+      expect(subs).not.toBeChecked();
+      expect(media).not.toBeChecked();
+      expect(group).toHaveTextContent("Only people who already got it, and are still subscribed, get it again: the release as saved, with “Corrected:” before the subject. Nobody new is emailed.");
+      await user.click(subs);
+      expect(group).toHaveTextContent("Emails 4 people again.");
+      await user.click(media);
+      expect(group).toHaveTextContent("Emails 6 people again. 1 person in both gets one copy, the media one.");
+      await user.click(within(dialog).getByRole("button", { name: "Publish now" }));
+      await waitFor(() => expect(posts).toHaveLength(1));
+      expect(posts[0]).toEqual({ url: "/nrms/api/releases/" + failedCorrection().id + "/schedule", body: { version: 1, publishAt: "now", emailAgain: { subscribers: true, mediaLists: true } } });
+    });
+
+    it("left unticked, Publish now asks for nothing", async () => {
+      const posts: { url: string; body: unknown }[] = [];
+      const { user, dialog } = await open(unpublished(), posts);
+      await within(dialog).findByRole("checkbox", { name: /subscribers who got it \(4 people\)/ });
+      await user.click(within(dialog).getByRole("button", { name: "Publish now" }));
+      await waitFor(() => expect(posts).toHaveLength(1));
+      expect(posts[0]!.body).toEqual({ version: 1, publishAt: "now" });
+    });
+
+    // Review M5: a scheduled send is worked out when it goes out.
+    it("the Schedule confirmation says its numbers are as of now", async () => {
+      const v = unpublished();
+      vi.stubGlobal("fetch", publishFetch([], v));
+      renderActions(v);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Schedule" }));
+      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
+      fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
+      await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByRole("group", { name: "Also email it again?" })).toHaveTextContent("These numbers are as of now; who gets it is worked out when it goes out.");
+    });
+
+    it("no subscribers tick once the release no longer goes to subscribers", async () => {
+      const { dialog } = await open(failedCorrection({ publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: true } }));
+      await within(dialog).findByRole("checkbox", { name: /Media list contacts who got it/ });
+      expect(within(dialog).queryByRole("checkbox", { name: /subscribers who got it/ })).not.toBeInTheDocument();
+    });
+
+    it("the Schedule confirmation after an unpublish offers it too, and sends the ticks with the time", async () => {
+      const posts: { url: string; body: unknown }[] = [];
+      const v = unpublished();
+      vi.stubGlobal("fetch", publishFetch(posts, v));
+      renderActions(v);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Schedule" }));
+      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2031-06-15" } });
+      fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
+      await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(await within(dialog).findByRole("checkbox", { name: /Media list contacts who got it/ }));
+      await user.click(within(dialog).getByRole("button", { name: "Schedule" }));
+      await waitFor(() => expect(posts).toHaveLength(1));
+      expect(posts[0]!.body).toEqual({ version: 1, publishAtLocal: "2031-06-15T14:30", emailAgain: { subscribers: false, mediaLists: true } });
+    });
+
+    it("not offered on a first publish", async () => {
+      const fetchMock = publishFetch([], releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" }));
+      vi.stubGlobal("fetch", fetchMock);
+      renderActions(releaseView({ status: "approved", key: "k1", reference: "NEWS-00001" }));
+      await userEvent.setup().click(screen.getByRole("button", { name: "Publish now" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).queryByRole("group", { name: "Also email it again?" })).not.toBeInTheDocument();
+      expect(fetchMock.mock.calls.map((c) => c[0])).not.toContain(expect.stringContaining("email-again"));
+    });
+
+    it("an advisory offers media lists only; nobody to email leaves a tick unavailable; counts it can't get are said", async () => {
+      const adv = await open(failedCorrection({ type: "advisory", ministries: [], leadMinistryKey: null }), [], { subscribers: null, mediaContacts: { count: 0 }, both: 0 });
+      expect(within(adv.dialog).queryByRole("checkbox", { name: /subscribers/ })).not.toBeInTheDocument();
+      expect(await within(adv.dialog).findByRole("checkbox", { name: "Media list contacts who got it (nobody to email)" })).toBeDisabled();
+      cleanup();
+      const down = await open(failedCorrection(), [], new Response("x", { status: 502 }));
+      expect(await within(down.dialog).findByRole("checkbox", { name: "News on Demand subscribers who got it (count unavailable)" })).toBeEnabled();
+    });
+
+    describe("Email the correction (a published, live release)", () => {
+      const live = (over: Partial<ReleaseView> = {}) => failedCorrection({ status: "published", ...over });
+
+      it("asks who first; Republish and email is unavailable until something is ticked; then POSTs /email-again", async () => {
+        const posts: { url: string; body: unknown }[] = [];
+        const v = live();
+        vi.stubGlobal("fetch", publishFetch(posts, { ...v, status: "publishing" }));
+        renderActions(v);
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", { name: "Email the correction" }));
+        const dialog = await screen.findByRole("dialog");
+        expect(dialog).toHaveTextContent("Email the correction?");
+        expect(dialog).toHaveTextContent("This republishes the release as saved, then emails it again to the people you tick.");
+        const go = within(dialog).getByRole("button", { name: "Republish and email" });
+        expect(go).toBeDisabled();
+        await user.click(await within(within(dialog).getByRole("group", { name: "Also email it again?" })).findByRole("checkbox", { name: /subscribers who got it/ }));
+        expect(go).toBeEnabled();
+        await user.click(go);
+        await waitFor(() => expect(posts).toHaveLength(1));
+        expect(posts[0]).toEqual({ url: `/nrms/api/releases/${v.id}/email-again`, body: { version: 1, subscribers: true, mediaLists: false } });
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      });
+
+      it("has no axe violations with the dialog open and both ticked", async () => {
+        const v = live();
+        vi.stubGlobal("fetch", publishFetch([], v));
+        renderActions(v);
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", { name: "Email the correction" }));
+        const dialog = await screen.findByRole("dialog");
+        await user.click(await within(dialog).findByRole("checkbox", { name: /subscribers who got it/ }));
+        await user.click(within(dialog).getByRole("checkbox", { name: /Media list contacts who got it/ }));
+        const results = await axe.run(dialog, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+        expect(results.violations).toEqual([]);
+      });
+
+      // Review M4: a second correction emails the same people again; say so first.
+      it("warns when a correction was already emailed", async () => {
+        const v = live({ lastCorrection: { seq: 1, subscribers: true, mediaLists: false, requestedBy: "Pat Editor", requestedAt: "2026-10-31T21:15:00.000Z", state: "delivered" } });
+        vi.stubGlobal("fetch", publishFetch([], v));
+        renderActions(v);
+        await userEvent.setup().click(screen.getByRole("button", { name: "Email the correction" }));
+        const dialog = await screen.findByRole("dialog");
+        expect(dialog).toHaveTextContent("Already emailed a correction on Oct 31, 2026 2:15 PM, asked for by Pat Editor. This sends another to the same people.");
+      });
+
+      // Review I2: what happened to the request is shown on the release.
+      it("says when a request is waiting, on its way, or didn't reach News On Demand", () => {
+        renderActions(live({ status: "publishing", emailAgainPending: { subscribers: true, mediaLists: true, requestedBy: "Pat Editor", requestedAt: "2026-10-31T21:15:00.000Z" } }));
+        expect(screen.getByText("Emailing it again to subscribers and media lists who got it is waiting for it to republish.")).toBeInTheDocument();
+        cleanup();
+        const last = { seq: 1, subscribers: true, mediaLists: false, requestedBy: "Pat Editor", requestedAt: "2026-10-31T21:15:00.000Z" };
+        renderActions(live({ lastCorrection: { ...last, state: "waiting" } }));
+        expect(screen.getByText("The corrected email asked for on Oct 31, 2026 2:15 PM is on its way to News On Demand.")).toBeInTheDocument();
+        cleanup();
+        renderActions(live({ lastCorrection: { ...last, state: "not-delivered" } }));
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "The corrected email asked for on Oct 31, 2026 2:15 PM didn’t reach News On Demand, so nobody was emailed. Choose Email the correction to send it again.",
+        );
+        cleanup();
+        renderActions(live({ lastCorrection: { ...last, state: "delivered" } }));
+        expect(screen.queryByText(/corrected email asked for/)).not.toBeInTheDocument();
+      });
+
+      // Review I3: after Save and republish, point to the action.
+      it("after a save republished it, says nobody was emailed again and points to Email the correction", () => {
+        render(
+          <MemoryRouter>
+            <ActionsSection view={live({ status: "publishing" })} setView={() => {}} timeZone="America/Vancouver" republishedBySave />
+          </MemoryRouter>,
+        );
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "Republished. People who already got it weren’t emailed again. To send them the corrected version, use Email the correction.",
+        );
+      });
+
+      it("opens unticked every time", async () => {
+        const v = live();
+        vi.stubGlobal("fetch", publishFetch([], v));
+        renderActions(v);
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", { name: "Email the correction" }));
+        let dialog = await screen.findByRole("dialog");
+        await user.click(await within(dialog).findByRole("checkbox", { name: /subscribers who got it/ }));
+        await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+        await user.click(screen.getByRole("button", { name: "Email the correction" }));
+        dialog = await screen.findByRole("dialog");
+        expect(await within(dialog).findByRole("checkbox", { name: /subscribers who got it/ })).not.toBeChecked();
+      });
+
+      it("unavailable while a section has unsaved edits, saying why; not offered off the site or for a type with nobody to email", () => {
+        renderActions(live(), () => {}, [{ key: "page-details", label: "Save page details", save: async () => true }]);
+        expect(screen.getByRole("button", { name: "Email the correction" })).toBeDisabled();
+        expect(screen.getByText("Email the correction is unavailable until:")).toBeInTheDocument();
+        cleanup();
+        renderActions(unpublished());
+        expect(screen.queryByRole("button", { name: "Email the correction" })).not.toBeInTheDocument();
+        cleanup();
+        renderActions(live({ type: "update", publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: false }, mediaListKeys: [] }));
+        expect(screen.queryByRole("button", { name: "Email the correction" })).not.toBeInTheDocument();
+      });
     });
   });
 

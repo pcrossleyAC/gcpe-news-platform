@@ -16,7 +16,7 @@ export const FAILED_DAYS = 30;
 /** At most this many failed rows, newest first. */
 export const FAILED_LIMIT = 50;
 
-export type OutgoingKind = "as_it_happens" | "emergency" | "media" | "digest";
+export type OutgoingKind = "as_it_happens" | "emergency" | "media" | "digest" | "correction" | "correction_media";
 
 /** One release's email of one kind, or one daily digest run (its jobs together). */
 export interface OutgoingGroup {
@@ -145,7 +145,14 @@ const plural = (n: number, one: string) => `${n.toLocaleString("en-CA")} ${one}$
 /** The operations log's detail is plain text with no length limit in the schema; kept to this so
  * one cancel of a long pause stays a readable row. */
 export const CANCEL_LOG_MAX = 2000;
-const KIND_WORDS: Record<OutgoingKind, string> = { as_it_happens: "As it happens", emergency: "Emergency alert", media: "Media list", digest: "Daily digest" };
+const KIND_WORDS: Record<OutgoingKind, string> = {
+  as_it_happens: "As it happens",
+  emergency: "Emergency alert",
+  media: "Media list",
+  digest: "Daily digest",
+  correction: "Corrected copy to subscribers",
+  correction_media: "Corrected copy to media lists",
+};
 
 /** "N send jobs, N emails: As it happens <key> "<title>" (N emails); Daily digest <day> (N releases, N emails)",
  * cut at {@link CANCEL_LOG_MAX} with "and N more" (review I1: the record says what was cancelled). */

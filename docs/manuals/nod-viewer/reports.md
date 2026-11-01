@@ -15,7 +15,7 @@ topics: []
 |---|---|
 | **Active subscribers by list** | How many active subscribers each list has now, split by timing. **Show members** lists the people on one list. |
 | **Recent unsubscribes** | Everyone who unsubscribed, or was deleted by staff, in the last 90 days. |
-| **Sends per release** | For each release or alert published in the dates you choose, the as-it-happens and media list emails. |
+| **Sends per release** | For each release or alert published in the dates you choose, the as-it-happens and media list emails, and any corrected copies a release editor emailed again. |
 | **Daily digest runs** | Each 5:00 pm digest: how many subscribers and emails. |
 | **Distribution sent and bounced** | Every email sent from any app, by day and sender. |
 

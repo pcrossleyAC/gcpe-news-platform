@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
-import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
+import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type EmailAgainChoice, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
+import { formatInZone, formatToPartsInZone } from "../../../format/bcTime";
 import { Button } from "../../../shared/BusyButton";
 import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
@@ -13,6 +14,10 @@ import type { Categories } from "../categories";
 import { useSaveQueue, withVersion } from "../saveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
+import { emailAgainBody, EmailAgainFields, emailAgainOffer, NO_EMAIL_AGAIN } from "./EmailAgainFields";
+
+/** "subscribers", "media lists" or "subscribers and media lists". */
+const who = (c: EmailAgainChoice) => [c.subscribers && "subscribers", c.mediaLists && "media lists"].filter(Boolean).join(" and ");
 import { bcLocalToInstant, instantToBcLocal, wallClockNowMinute } from "../timezone";
 import { placeholderHits } from "../placeholders";
 import { APPROVE_LIST_ID, readiness } from "../readiness";
@@ -31,8 +36,8 @@ export function scheduleText(local: string): string {
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = time.split(":").map(Number);
   const at = new Date(Date.UTC(y!, mo! - 1, d!, h!, mi!));
-  const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(at);
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(at).map((x) => [x.type, x.value]));
+  const day = formatInZone(at, "UTC", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const p = Object.fromEntries(formatToPartsInZone(at, "UTC", { hour: "numeric", minute: "2-digit", hour12: true }).map((x) => [x.type, x.value]));
   return `${day} at ${p.hour}:${p.minute} ${p.dayPeriod} Pacific time`;
 }
 
@@ -73,6 +78,9 @@ export interface ActionsSectionProps {
    * Approve, Publish now and Schedule are unavailable: they act on the release as saved, so
    * the edits on screen would be left out (owner decision 2026-10-29). */
   unsaved?: DirtySection[];
+  /** Review I3: a save just republished this live release (the page's one Save): nobody was
+   * emailed, so say how to email the people who got it. */
+  republishedBySave?: boolean;
 }
 
 /** A reason an action is unavailable, and the section/field it links to (if any). */
@@ -91,7 +99,7 @@ const unsavedName = (label: string) => label.replace(/^save\s+/i, "");
  * preconditions; the server remains the authority (constraints.md) — these are convenience
  * gates, not the enforcement.
  */
-export function ActionsSection({ view, setView, timeZone, unsaved = [] }: ActionsSectionProps): React.JSX.Element {
+export function ActionsSection({ view, setView, timeZone, unsaved = [], republishedBySave = false }: ActionsSectionProps): React.JSX.Element {
   const navigate = useNavigate();
   const section = useReleaseSection(view, setView);
   const queue = useSaveQueue();
@@ -122,6 +130,14 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   const [publishOpen, setPublishOpen] = useState(false);
   const [scheduleConfirmOpen, setScheduleConfirmOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [emailedSinceSave, setEmailedSinceSave] = useState(false);
+  // Owner decision 2026-10-31: "Also email it again?", unticked whenever a publish dialog opens.
+  const [emailAgain, setEmailAgain] = useState<EmailAgainChoice>(NO_EMAIL_AGAIN);
+  const openWithEmailAgain = (setOpen: (open: boolean) => void) => (open: boolean) => {
+    if (open) setEmailAgain(NO_EMAIL_AGAIN);
+    setOpen(open);
+  };
   const [returnOpen, setReturnOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   // After a successful Publish now, Approve or Return to draft its button leaves the page (the
@@ -155,12 +171,16 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   // unpublished but not deleted; a failed republish after an unpublish is the other way round.
   const canUnpublish = rules.unpublishable && view.live && UNPUBLISHABLE_STATUSES.has(view.status);
   const canDelete = DELETABLE_STATUSES.has(view.status) && !view.live;
+  // Owner decision 2026-10-31: a live release's edits republish on save with no box (suite review
+  // R7); emailing the correction is this separate action, which republishes it and emails it again.
+  const canEmailCorrection = view.live && (view.status === "published" || view.status === "publishing") && emailAgainOffer(view) !== null;
   // Why Approve/Publish are greyed out, said next to the buttons themselves (the header's
   // checklists are a long scroll away) — hand-check feedback on boxs.ca.
   const unsavedBlockers: Blocker[] = unsaved.map((s) => ({ text: `Save your changes to ${unsavedName(s.label)} first.`, target: unsavedTarget(s.key, view) }));
   const asBlockers = (problems: string[]): Blocker[] => problems.map((p) => ({ text: p, target: blockerTarget(p) }));
   const approveBlockers = canApprove ? [...unsavedBlockers, ...asBlockers(approveProblems(view))] : [];
   const publishBlockers = canPublish ? [...unsavedBlockers, ...asBlockers(publishProblems(view))] : [];
+  const correctionBlockers = canEmailCorrection ? [...unsavedBlockers, ...asBlockers(publishProblems(view))] : [];
   // forms-b #16: the one list of what publishing needs (the header only links here). Where Publish
   // now isn't offered it's listed on its own: on a draft (leaving out what Approve already lists),
   // approved with no URL key yet, and (fix round 1) scheduled or published, since the publisher
@@ -210,9 +230,16 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
   // Publish now's dialog names it. A live release's publishAt is when it went out, never ahead.
   const plannedLater = !view.live && view.publishAt && Date.parse(view.publishAt) > Date.now() ? view.publishAt : null;
   const publishNow = () =>
-    void section.save("/schedule", { version: view.version, publishAt: "now" }, "POST").then((next) => {
+    void section.save("/schedule", { version: view.version, publishAt: "now", emailAgain: emailAgainBody(emailAgain) }, "POST").then((next) => {
       if (!next) return;
       setPublishOpen(false);
+      setFocusHeading(true);
+    });
+  const emailCorrection = () =>
+    void section.save("/email-again", { version: view.version, ...emailAgain }, "POST").then((next) => {
+      if (!next) return;
+      setCorrectionOpen(false);
+      setEmailedSinceSave(true);
       setFocusHeading(true);
     });
   const cancelSchedule = () =>
@@ -239,6 +266,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
     const problem = futureProblem(scheduleValue.local);
     if (problem) return setScheduleError(problem);
     section.clear();
+    setEmailAgain(NO_EMAIL_AGAIN);
     setScheduleConfirmOpen(true);
   };
   const submitSchedule = async () => {
@@ -251,7 +279,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
     }
     // Fix round 1, finding 3: sends the raw BC wall-clock string (`publishAtLocal`), not a
     // client-converted instant — the server (whose tzdata is authoritative) converts it.
-    const result = await section.save("/schedule", { version: view.version, publishAtLocal: scheduleValue.local }, "POST");
+    const result = await section.save("/schedule", { version: view.version, publishAtLocal: scheduleValue.local, emailAgain: emailAgainBody(emailAgain) }, "POST");
     if (result) {
       setScheduleConfirmOpen(false);
       setSchedulerOpen(false);
@@ -341,7 +369,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
           <>
             {/* Owner decision 2026-10-29: a confirm dialog saying what publishing does, same
              * pattern as Unpublish; only the dialog's own button sends the request. */}
-            <DialogTrigger isOpen={publishOpen} onOpenChange={setPublishOpen}>
+            <DialogTrigger isOpen={publishOpen} onOpenChange={openWithEmailAgain(setPublishOpen)}>
               <Button isPending={section.saving} isDisabled={publishBlockers.length > 0} aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}>
                 Publish now
               </Button>
@@ -366,6 +394,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                     </p>
                   )}
                   <PublishConsequences view={view} timeZone={timeZone} />
+                  <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} timeZone={timeZone} />
                   <ActionErrors section={section} />
                 </AlertDialog>
               </Modal>
@@ -385,6 +414,38 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
           </>
         )}
         {needsKeyFirst && <p>Set a URL key in Page details before this can be published.</p>}
+
+        {canEmailCorrection && (
+          <DialogTrigger isOpen={correctionOpen} onOpenChange={openWithEmailAgain(setCorrectionOpen)}>
+            <Button variant="secondary" isPending={section.saving} isDisabled={correctionBlockers.length > 0} aria-describedby={correctionBlockers.length > 0 ? "actions-correction-why" : undefined}>
+              Email the correction
+            </Button>
+            <Modal isDismissable>
+              <AlertDialog
+                title="Email the correction?"
+                buttons={
+                  <>
+                    <Button variant="secondary" onPress={() => setCorrectionOpen(false)} isPending={section.saving}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onPress={emailCorrection}
+                      isPending={section.saving}
+                      isDisabled={correctionBlockers.length > 0 || (!emailAgain.subscribers && !emailAgain.mediaLists)}
+                      pendingLabel="Republishing…"
+                    >
+                      Republish and email
+                    </Button>
+                  </>
+                }
+              >
+                <p>This republishes the {typeName} as saved, then emails it again to the people you tick.</p>
+                <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} timeZone={timeZone} />
+                <ActionErrors section={section} />
+              </AlertDialog>
+            </Modal>
+          </DialogTrigger>
+        )}
 
         {canReturnToDraft && (
           <DialogTrigger isOpen={returnOpen} onOpenChange={setReturnOpen}>
@@ -534,6 +595,23 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
           items={publishLater}
         />
       )}
+      {canEmailCorrection && republishedBySave && !emailedSinceSave && !view.emailAgainPending && (
+        <p role="status" className="gcpe-release-editor__why">
+          Republished. People who already got it weren&rsquo;t emailed again. To send them the corrected version, use Email the correction.
+        </p>
+      )}
+      {view.emailAgainPending && <p className="gcpe-release-editor__why">{`Emailing it again to ${who(view.emailAgainPending)} who got it is waiting for it to republish.`}</p>}
+      {view.lastCorrection?.state === "waiting" && (
+        <p className="gcpe-release-editor__why">{`The corrected email asked for on ${dateTimeText(view.lastCorrection.requestedAt, timeZone)} is on its way to News On Demand.`}</p>
+      )}
+      {view.lastCorrection?.state === "not-delivered" && (
+        <InlineAlert
+          variant="danger"
+          role="alert"
+          description={`The corrected email asked for on ${dateTimeText(view.lastCorrection.requestedAt, timeZone)} didn’t reach News On Demand, so nobody was emailed. Choose Email the correction to send it again.`}
+        />
+      )}
+      {correctionBlockers.length > 0 && <BlockerList id="actions-correction-why" lead="Email the correction is unavailable until:" items={correctionBlockers} />}
       {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead={canSchedule ? "Publish now and Schedule are unavailable until:" : "Publish now is unavailable until:"} items={publishBlockers} />}
 
       {schedulerOpen && canSchedule && (
@@ -580,6 +658,7 @@ export function ActionsSection({ view, setView, timeZone, unsaved = [] }: Action
                 }
               >
                 {scheduleValue && <PublishConsequences view={view} at={scheduleText(scheduleValue.local)} atInstant={scheduleValue.instant} timeZone={timeZone} />}
+                <EmailAgainFields view={view} value={emailAgain} onChange={setEmailAgain} timeZone={timeZone} scheduled />
                 <ActionErrors section={section} />
               </AlertDialog>
             </Modal>
@@ -671,7 +750,7 @@ export function digestCutoffFor(releasedAt: string, timeZone: string): string {
 }
 
 /** "Oct 1, 2026" in the tenant's zone. */
-const dayText = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
+const dayText = (iso: string, timeZone: string) => formatInZone(iso, timeZone, { month: "short", day: "numeric", year: "numeric" });
 
 /**
  * What Publish now (or, given `at`, Schedule) will do, from the release as saved (publishing is blocked while anything is
@@ -684,7 +763,8 @@ const dayText = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-U
  *
  * Who is emailed (apps/nod/src/items.ts, as-it-happens.ts, media-send.ts):
  * - first publish: the media lists and News on Demand subscribers;
- * - a correction of a live release: nobody;
+ * - a correction of a live release: nobody, unless "Also email it again?" (EmailAgainFields,
+ *   owner decision 2026-10-31) is ticked: then those who already got it get a corrected copy;
  * - publishing again after an unpublish: nobody already emailed. An unpublish deletes the
  *   sends that hadn't gone out yet, and this publish sends to the people they hadn't reached.
  *   This screen can't tell whether that happened, so it says it conditionally.
@@ -754,11 +834,16 @@ function PublishConsequences({
   ];
   const web = <li>{view.publishOptions.toWeb ? `Publishes to ${host || "the public news site"} ${at ? `on ${at}` : "now"}.` : "Doesn't go on the public news site."}</li>;
 
+  // Owner decision 2026-10-31: those who already got it can be emailed again, by choice (below).
+  const unlessTicked = emailAgainOffer(view) !== null;
   if (correction) {
     return (
       <ul className="gcpe-publish-consequences">
         {web}
-        <li>Subscribers and media lists already received this when it was first published; they won&rsquo;t be emailed again.</li>
+        <li>
+          Subscribers and media lists already received this when it was first published; they won&rsquo;t be emailed again
+          {unlessTicked ? " unless you choose to below." : "."}
+        </li>
       </ul>
     );
   }
@@ -771,7 +856,7 @@ function PublishConsequences({
     return (
       <ul className="gcpe-publish-consequences">
         {web}
-        <li>Anyone already emailed about it won&rsquo;t be emailed again.</li>
+        <li>Anyone already emailed about it won&rsquo;t be emailed again{unlessTicked ? " unless you choose to below." : "."}</li>
         <li>{`If unpublishing stopped its emails before they all went out, the people they hadn\u2019t reached yet are emailed ${atInstant ? "when it goes out" : "now"}: ${reached}.`}</li>
         {toSubscribers && (
           <li>{goesUp > Date.parse(cutoff) ? `${digestRule} That time has passed, so daily digest subscribers who didn\u2019t get it then won\u2019t.` : digestRule}</li>
