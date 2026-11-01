@@ -6,7 +6,9 @@ import { Button } from "../../shared/BusyButton";
 import { useFormShortcut } from "../../shared/shortcuts";
 import { HelpToggle } from "../../shared/HelpToggle";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { canManageWebsite } from "./access";
+import { SaveResult, clockTime } from "./SaveResult";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { LiveFeedView } from "./types";
 
@@ -23,7 +25,10 @@ export function LiveFeedScreen(): React.JSX.Element {
   useDocumentTitle("Live Feed");
   const canManage = canManageWebsite(session);
   const canEdit = session.has("NRMS.SiteEditor");
-  const section = useVersionedSave<LiveFeedView>();
+  const section = useVersionedSave<LiveFeedView>({ quiet: true });
+  const timeZone = useTenantTimeZone();
+  // W8: what the last save did, on screen.
+  const [result, setResult] = useState("");
   const [feed, setFeed] = useState<LiveFeedView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(false);
@@ -68,7 +73,14 @@ export function LiveFeedScreen(): React.JSX.Element {
       return;
     }
     void section.run(() => apiFetch<LiveFeedView>("/nrms/api/site/live-feed", { method: "PUT", body: { version: feed.version, enabled, manifestUrl, m3uUrl } })).then((next) => {
-      if (next) resetFrom(next);
+      if (!next) return;
+      resetFrom(next);
+      const at = clockTime(new Date(), timeZone);
+      setResult(
+        next.enabled
+          ? `Saved at ${at}. Live now: the Live Webcast button shows on the public site within a few minutes.`
+          : `Saved at ${at}. The Live Feed is off: the Live Webcast button goes from the public site within a few minutes.`,
+      );
     });
   };
 
@@ -115,6 +127,7 @@ export function LiveFeedScreen(): React.JSX.Element {
           </Button>
         )}
       </form>
+      <SaveResult text={result} />
     </div>
   );
 }

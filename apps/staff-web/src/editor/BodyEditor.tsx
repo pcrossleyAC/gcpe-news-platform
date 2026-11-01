@@ -5,6 +5,7 @@ import { Asset, bodyExtensions } from "./schema";
 import { AssetChip } from "./AssetChip";
 import { reduceToAllowedHtml } from "./pasteFilter";
 import { BIO_TAGS, BODY_TAGS } from "@gcpe/nrms-contract";
+import { checkHubAddress, fetchPublicFilesOrigin } from "../shared/publicAddress";
 
 /** The browser-only variant of the `<asset>` node — same schema as {@link Asset}, plus the
  * interactive chip node view (AssetChip.tsx), which schema.ts itself can't depend on (no React
@@ -115,20 +116,33 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
     };
   }, [editor]);
 
-  const insertAsset = () => {
+  // W1 fix round 1 (I4): an address copied from the Hub's own (internal) host would be stored in
+  // the HTML the public reads. A Hub /files/ address becomes the public one; any other asks first.
+  // The public origin is asked for only when an address is typed, not on every editor's mount.
+  const publicAddress = async (typed: string): Promise<string | null> => {
+    const { url, warning } = checkHubAddress(typed, await fetchPublicFilesOrigin());
+    if (warning && !window.confirm(`${warning} Use this address anyway?`)) return null;
+    return url;
+  };
+
+  const insertAsset = async () => {
     if (!editor) return;
-    const url = window.prompt("Asset URL (e.g. a YouTube link)");
+    const typed = window.prompt("Asset URL (e.g. a YouTube link)");
+    if (!typed) return;
+    const url = await publicAddress(typed);
     if (!url) return;
     editor.chain().focus().insertContent({ type: "asset", attrs: { url } }).run();
   };
 
-  const toggleLink = () => {
+  const toggleLink = async () => {
     if (!editor) return;
     if (editor.isActive("link")) {
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
       return;
     }
-    const url = window.prompt("Link URL (http://, https:// or mailto:)");
+    const typed = window.prompt("Link URL (http://, https:// or mailto:)");
+    if (!typed) return;
+    const url = await publicAddress(typed);
     if (!url) return;
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   };

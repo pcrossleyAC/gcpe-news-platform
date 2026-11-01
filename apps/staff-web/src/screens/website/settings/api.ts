@@ -46,14 +46,15 @@ export const getSettings = () => apiFetch<SettingsState>(BASE);
 export const saveSettingsDraft = (body: { baseRevision: number | null; section: SectionKey; value: unknown }) =>
   apiFetch<SettingsState>(`${BASE}/draft`, { method: "PUT", body });
 
-/** Throws an ApiError: 422 with a {@link PublishInvalid} body, 409 with a {@link PublishConflict} one. */
-export const publishSettings = (body: { baseRevision: number | null; section: SectionKey; value: unknown; note?: string }) =>
+/** Throws an ApiError: 422 with a {@link PublishInvalid} body, 409 with a {@link PublishConflict} one.
+ * `onlySection` (W4): publish what is live plus this section only; the rest of the draft is kept. */
+export const publishSettings = (body: { baseRevision: number | null; section: SectionKey; value: unknown; note?: string; onlySection?: boolean }) =>
   apiFetch<{ revision: number; state: SettingsState }>(`${BASE}/publish`, { method: "POST", body });
 
 export const discardSettingsDraft = () => apiFetch<void>(`${BASE}/draft`, { method: "DELETE" });
 
 export const rebaseSettings = (body: { section: SectionKey; value: unknown }) =>
-  apiFetch<SettingsState & { setAside: SectionKey[] }>(`${BASE}/rebase`, { method: "POST", body });
+  apiFetch<SettingsState & { alsoChangedByThem: SectionKey[] }>(`${BASE}/rebase`, { method: "POST", body });
 
 /** The tenant's own defaults (what "Reset to defaults" puts back). */
 export const getSettingsDefaults = () => apiFetch<SiteSettings>(`${BASE}/defaults`);

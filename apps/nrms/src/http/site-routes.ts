@@ -157,7 +157,7 @@ const sectionKey = z.enum(SECTION_KEYS);
 const baseRevision = z.number().int().positive().nullable();
 const sectionBody = z.object({ section: sectionKey, value: z.unknown() });
 const draftBody = sectionBody.extend({ baseRevision });
-const publishBody = draftBody.extend({ note: z.string().max(500).optional() });
+const publishBody = draftBody.extend({ note: z.string().max(500).optional(), onlySection: z.boolean().optional() });
 const restoreBody = z.object({ revision: z.number().int().positive(), baseRevision });
 const REVISION = /^[1-9]\d{0,8}$/;
 
@@ -455,7 +455,7 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     run(async (req, res) => {
       const b = publishBody.parse(req.body);
       const actor = actorOf(req);
-      const result = await publishSettings(db, actor, defaults(), subscribers, { ...sectionInput(b), baseRevision: b.baseRevision, note: b.note });
+      const result = await publishSettings(db, actor, defaults(), subscribers, { ...sectionInput(b), baseRevision: b.baseRevision, note: b.note, onlySection: b.onlySection });
       if (result.result !== "published") return notPublished(res, result);
       res.json({ revision: result.revision, state: await getSettingsState(db, actor, defaults()) });
     }),
@@ -474,7 +474,8 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     edit,
     needDefaults,
     json,
-    run(async (req, res) => void res.json(await rebaseDraft(db, actorOf(req), defaults(), sectionInput(sectionBody.parse(req.body))))),
+    // N3 (fix round 2): setAside, always empty now, for Hub tabs opened before this release. Remove in the next one.
+    run(async (req, res) => void res.json({ ...(await rebaseDraft(db, actorOf(req), defaults(), sectionInput(sectionBody.parse(req.body)))), setAside: [] })),
   );
   r.get(
     "/site/settings/history",

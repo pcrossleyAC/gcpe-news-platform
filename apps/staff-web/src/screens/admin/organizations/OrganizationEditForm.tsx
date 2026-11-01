@@ -4,6 +4,8 @@ import { useFormShortcut } from "../../../shared/shortcuts";
 import { apiFetch } from "../../../api/client";
 import type { LinkSetting } from "@gcpe/site-settings";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
+import { HostWarning } from "../../../shared/HostWarning";
+import { staffHostWarning, usePublicFilesOrigin } from "../../../shared/publicAddress";
 import { useAnnouncer } from "../../../shared/Announcer";
 import { BodyEditor } from "../../../editor/BodyEditor";
 import { FIX_BELOW, fieldErrorsOf, messagesOf } from "../messages";
@@ -191,6 +193,9 @@ export function OrganizationEditForm({
   // Only a full https:// address is previewed — the same rule the server applies on save.
   const photo = minister.photoUrl.trim();
   const photoPreview = photo.startsWith("https://") ? photo : null;
+  // W1: a photo address copied from the Hub's own (internal) host previews for staff but is
+  // broken for the public.
+  const photoHostWarning = staffHostWarning(photo, usePublicFilesOrigin());
   const bioPatch = bioToPatch(bio);
   // Compared with the stored value normalised the same way, so a stored biography with no text
   // (`<p>&nbsp;</p>`) is not cleared to null by an unrelated save.
@@ -473,15 +478,17 @@ export function OrganizationEditForm({
       <div className="gcpe-field gcpe-field--wide">
         <label htmlFor={id("mphoto")}>Minister photo URL</label>
         <p id={id("mphoto-hint")}>
-          Upload the photo under Website → Files, then paste its address here.
+          Upload the photo under Website → Files, then use its Copy public
+          address button and paste the address here.
         </p>
         <input
           id={id("mphoto")}
           type="text"
           value={minister.photoUrl}
           onChange={setM("photoUrl")}
-          aria-describedby={`${id("mphoto-hint")} ${id("mphoto-preview")}`}
+          aria-describedby={`${id("mphoto-hint")}${photoHostWarning ? ` ${id("mphoto-host")}` : ""} ${id("mphoto-preview")}`}
         />
+        <HostWarning id={id("mphoto-host")} text={photoHostWarning} />
         <div
           id={id("mphoto-preview")}
           className="gcpe-photo-preview"

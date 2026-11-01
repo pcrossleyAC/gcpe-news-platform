@@ -42,6 +42,8 @@ const NEXT_CAROUSEL: CarouselView = {
   goLiveAt: "2027-01-01T12:00:00.000Z",
   wentLiveAt: null,
   version: 1,
+  createdAt: "2026-09-01T12:00:00.000Z",
+  updatedAt: "2026-09-01T12:00:00.000Z",
   slides: [],
 };
 
@@ -145,6 +147,8 @@ describe("CarouselScreen", () => {
       goLiveAt: null,
       wentLiveAt: "2026-10-01T12:00:00.000Z",
       version: 4,
+      createdAt: "2026-09-01T12:00:00.000Z",
+      updatedAt: "2026-09-01T12:00:00.000Z",
       slides: [{ id: "slide-1", headline: "Live headline", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }],
     };
     const puts: { url: string; body: Record<string, unknown> }[] = [];
@@ -334,7 +338,8 @@ describe("CarouselScreen", () => {
     moveDown.focus();
     await user.click(moveDown);
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Slide 1 moved to position 2");
+    // The Hub's announcer (the cards' own save results are status regions too, still empty).
+    await waitFor(() => expect(screen.getAllByRole("status").map((e) => e.textContent).join(" ")).toContain("Slide 1 moved to position 2"));
     // slide-1 is now last — its own "down" is the new boundary (disabled); fall back to "up".
     await waitFor(() => expect(screen.getByRole("button", { name: "Move slide 2 up" })).toHaveFocus());
   });
@@ -416,6 +421,8 @@ describe("CarouselScreen", () => {
       goLiveAt: null,
       wentLiveAt: "2026-10-01T12:00:00.000Z",
       version: 4,
+      createdAt: "2026-09-01T12:00:00.000Z",
+      updatedAt: "2026-09-01T12:00:00.000Z",
       slides: [{ id: "slide-1", headline: "Live headline", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: true, imageUrl: "/nrms/api/site/slides/slide-1/image" }],
     };
     const stub = () => {
@@ -541,6 +548,99 @@ describe("CarouselScreen", () => {
       await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/carousels/next-1" && c.method === "PUT")).toBe(true));
       const body = JSON.parse(calls.find((c) => c.url === "/nrms/api/site/carousels/next-1")!.body as string) as { slides: Record<string, unknown>[] };
       expect(body.slides).toEqual([{ headline: "New one", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", imageUpload: UPLOAD }]);
+    });
+  });
+  describe("W3/W8: a scheduled next carousel, and what a save did", () => {
+    const LIVE: CarouselView = {
+      id: "live-1",
+      state: "live",
+      goLiveAt: null,
+      wentLiveAt: "2026-10-01T12:00:00.000Z",
+      version: 4,
+      createdAt: "2026-09-20T12:00:00.000Z",
+      updatedAt: "2026-10-01T12:00:00.000Z",
+      slides: [{ id: "slide-1", headline: "Live headline", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }],
+    };
+    // Copied from the live slides on Oct 20, 2026, 10:00 AM (BC time).
+    const NEXT: CarouselView = { ...NEXT_CAROUSEL, createdAt: "2026-10-20T17:00:00.000Z", updatedAt: "2026-10-20T17:00:00.000Z" };
+
+    const stub = (carousels: () => CarouselsResponse, handle: (url: string, init?: RequestInit) => Response | undefined = () => undefined) =>
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+          if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
+          if (url === "/nrms/api/site/carousels") return jsonResponse(200, carousels());
+          const out = handle(url, init);
+          if (out) return out;
+          throw new Error(`unhandled: ${url}`);
+        }),
+      );
+
+    it("the live publish dialog warns that the scheduled next carousel was copied earlier and won't include these changes", async () => {
+      stub(() => ({ live: LIVE, next: NEXT, past: [] }));
+      render(withAuth(<CarouselScreen />));
+      const liveSection = (await screen.findByRole("region", { name: "Live carousel" })) as HTMLElement;
+      const user = userEvent.setup();
+      await user.click(within(liveSection).getByRole("button", { name: "Publish carousel changes" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent(/The next carousel was copied from these slides on Oct 20, 2026, 10:00 AM, so it won.t include these changes\./);
+      expect(dialog).toHaveTextContent(/When it goes live on Jan 1, 2027, .+, it replaces them\. Make the same changes on the next carousel too\./);
+    });
+
+    it("with no next carousel, the dialog says nothing about one", async () => {
+      stub(() => ({ live: LIVE, next: null, past: [] }));
+      render(withAuth(<CarouselScreen />));
+      const liveSection = (await screen.findByRole("region", { name: "Live carousel" })) as HTMLElement;
+      const user = userEvent.setup();
+      await user.click(within(liveSection).getByRole("button", { name: "Publish carousel changes" }));
+      expect(await screen.findByRole("dialog")).not.toHaveTextContent("next carousel");
+    });
+
+    it("the Next panel says when it was copied, and warns when the live carousel changed after that", async () => {
+      stub(() => ({ live: LIVE, next: NEXT, past: [] }));
+      render(withAuth(<CarouselScreen />));
+      const nextSection = (await screen.findByRole("region", { name: "Next carousel" })) as HTMLElement;
+      expect(nextSection).toHaveTextContent(/Copied from the live carousel on Oct 20, 2026, 10:00 AM\. It goes live on Jan 1, 2027/);
+      expect(nextSection).not.toHaveTextContent("after this copy was made");
+      cleanup();
+
+      stub(() => ({ live: { ...LIVE, updatedAt: "2026-10-25T18:30:00.000Z" }, next: NEXT, past: [] }));
+      render(withAuth(<CarouselScreen />));
+      const again = (await screen.findByRole("region", { name: "Next carousel" })) as HTMLElement;
+      expect(again).toHaveTextContent(
+        /The live carousel was changed on Oct 25, 2026, 11:30 AM, after this copy was made\. Those changes aren.t in this carousel: make them here too, or they.ll be undone when it goes live\./,
+      );
+    });
+
+    it("publishing the live carousel says it is live now; saving the next one says when it goes live", async () => {
+      let live = LIVE;
+      let next = NEXT;
+      stub(
+        () => ({ live, next, past: [] }),
+        (url, init) => {
+          if (url === "/nrms/api/site/carousels/live-1" && init?.method === "PUT") {
+            live = { ...live, version: 5, updatedAt: "2026-10-31T19:00:00.000Z" };
+            return jsonResponse(200, live);
+          }
+          if (url === "/nrms/api/site/carousels/next-1" && init?.method === "PUT") {
+            next = { ...next, version: 2 };
+            return jsonResponse(200, next);
+          }
+          return undefined;
+        },
+      );
+      render(withAuth(<CarouselScreen />));
+      const liveSection = (await screen.findByRole("region", { name: "Live carousel" })) as HTMLElement;
+      const nextSection = screen.getByRole("region", { name: "Next carousel" }) as HTMLElement;
+      const user = userEvent.setup();
+      await user.click(within(liveSection).getByRole("button", { name: "Publish carousel changes" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: "Publish carousel changes" }));
+      expect(await within(liveSection).findByText(/^Published at \d{1,2}:\d{2}\s?[AP]M\. Live now: the public home page shows the changes within a few minutes\.$/)).toHaveAttribute("role", "status");
+
+      await user.click(within(nextSection).getByRole("button", { name: "Save carousel" }));
+      expect(await within(nextSection).findByText(/^Saved at .+\. Not live yet: this carousel goes live on Jan 1, 2027, .+\.$/)).toHaveAttribute("role", "status");
     });
   });
 });
