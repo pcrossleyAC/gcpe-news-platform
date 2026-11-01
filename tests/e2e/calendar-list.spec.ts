@@ -145,7 +145,10 @@ test.describe("the Calendar list: journeys", () => {
     const view = await apiCall<{ version: number; fields: object }>(hq, `/calendar/api/activities/${h}`);
     await apiCall(hq, `/calendar/api/activities/${h}`, { method: "PUT", body: { ...view.fields, title: `Rev H changed ${rev}`, version: view.version, tabId: null } });
     await page.getByRole("button", { name: "Review selected (2)" }).click();
+    await page.getByRole("alertdialog", { name: "Review 2 activities?" }).getByRole("button", { name: "Review" }).click();
     await expect(page.getByText(`Reviewed 1 activity. 1 skipped because it changed since the list loaded: HLTH-${h}.`)).toBeVisible();
+    // The confirmation fades out; scan once it has gone, not mid-fade.
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
     await expectNoSeriousA11yViolations(page, "after Review selected");
     expect((await apiCall<ListPage>(hq, `/calendar/api/list?q=${q({ filter: { from: "2031-06-01", to: "2031-06-30", quickSearch: rev } })}&offset=0`)).rows.map((r) => [r.id, r.status])).toEqual([
       [g, "reviewed"],

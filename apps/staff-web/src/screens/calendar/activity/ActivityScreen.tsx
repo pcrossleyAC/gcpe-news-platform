@@ -1,7 +1,8 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
-import { checkActivity, friendlySpan, inferLookAhead, type ActivityFields, type ActivityView, type ClonePrefill, type EditorOptions, type FieldError, type HqSection } from "@gcpe/calendar-contract";
+import { checkActivity, inferLookAhead, type ActivityFields, type ActivityView, type ClonePrefill, type EditorOptions, type FieldError, type HqSection } from "@gcpe/calendar-contract";
+import { friendlySpan } from "../../../format/calendarDates";
 import { ApiError, onUnauthorized } from "../../../api/client";
 import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";

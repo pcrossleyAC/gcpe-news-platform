@@ -1,5 +1,7 @@
 import { Link, useLocation } from "react-router";
-import { friendlyDateRange, friendlySpan, type ListColumn, type ListRow, type NeedsReviewKey } from "@gcpe/calendar-contract";
+import type { ListColumn, ListRow, NeedsReviewKey } from "@gcpe/calendar-contract";
+import { formatInZone } from "../../../format/bcTime";
+import { friendlyDateRange, friendlySpan } from "../../../format/calendarDates";
 import { activityPath } from "../activity/paths";
 
 /** Which needs-review flags mark which column (ActivityListProvider.ashx.cs's ApplyMarkup calls). */
@@ -19,7 +21,7 @@ export function TitleLink({ id, children }: { id: number; children: React.ReactN
 }
 
 const STATUS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
-const shortDate = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
+const shortDate = (iso: string, timeZone: string) => formatInZone(iso, timeZone, { month: "short", day: "numeric", year: "numeric" });
 
 export interface TableTools {
   /** Rows ticked for Review selected, by id. */

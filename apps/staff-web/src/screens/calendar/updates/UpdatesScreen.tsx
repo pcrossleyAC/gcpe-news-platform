@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Button, InlineAlert } from "@bcgov/design-system-react-components";
-import { FEED_KEYWORD_MAX, FEED_MAX_ITEMS, friendlyDateRange, type FeedAction, type FeedItem, type FeedPage, type FeedQuery } from "@gcpe/calendar-contract";
+import { FEED_KEYWORD_MAX, FEED_MAX_ITEMS, type FeedAction, type FeedItem, type FeedPage, type FeedQuery } from "@gcpe/calendar-contract";
+import { friendlyDateRange } from "../../../format/calendarDates";
 import { ApiError } from "../../../api/client";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { minIdOf } from "../activity/form";
