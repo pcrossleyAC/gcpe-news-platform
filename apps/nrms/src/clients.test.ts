@@ -41,6 +41,20 @@ describe("nodClient.releaseAudience (suite review R6)", () => {
   });
 });
 
+describe("nodClient.correctionAudience (owner decision 2026-10-31)", () => {
+  it("asks NoD who already got a release, per email-again tick", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({ subscribers: 5, mediaContacts: 6, both: 1 }), { status: 200 }));
+    const client = nodClient({ baseUrl: "https://nod.example/", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    const a = await client.correctionAudience({ itemKey: "2026HLTH0001-000001", listKeys: ["ministries:health"], mediaListKeys: ["media-distribution-lists:budget"] });
+    expect(a).toEqual({ subscribers: 5, mediaContacts: 6, both: 1 });
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(String(url)).toBe("https://nod.example/api/subscribers/correction-audience?key=2026HLTH0001-000001&lists=ministries%3Ahealth&media=media-distribution-lists%3Abudget");
+    expect(init?.headers).toMatchObject({ authorization: "Bearer tok" });
+    const down = nodClient({ baseUrl: "https://nod.example", getToken: async () => "tok", fetchImpl: (async () => new Response("x", { status: 502 })) as unknown as typeof fetch });
+    await expect(down.correctionAudience({ itemKey: "k", listKeys: [], mediaListKeys: [] })).rejects.toThrow(/HTTP 502/);
+  });
+});
+
 describe("coreClient", () => {
   it("fetches admin emails via a signed GET", async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({ emails: ["a@example.test", "b@example.test"] }), { status: 200 }));

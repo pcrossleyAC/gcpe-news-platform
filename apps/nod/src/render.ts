@@ -83,6 +83,12 @@ function subjectFor(prefix: string, item: RenderItem): string {
   return sanitizeSubject(raw, raw);
 }
 
+/** Owner decision 2026-10-31: a corrected copy's subject is "Corrected: " before the subject its
+ * kind renders (`subject`, already sanitised), cut to Distribution's limit the same way. */
+export function correctedSubject(subject: string): string {
+  return truncateByUtf16Units(`Corrected: ${subject}`, MAX_SUBJECT_UTF16_UNITS);
+}
+
 function categoryLineHtml(categories: { name: string; url: string | null }[]): string {
   return categories
     .map((c) => (c.url ? `<a href="${escapeHtml(c.url)}" style="color:#666666;text-decoration:underline;">${neutralizeHtml(c.name)}</a>` : neutralizeHtml(c.name)))

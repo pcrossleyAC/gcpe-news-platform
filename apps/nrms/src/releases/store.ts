@@ -1,10 +1,10 @@
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
-import { LANG_EN, type CategoryKind, type LanguageId, type ReleaseFeatureView, type ReleaseView } from "@gcpe/nrms-contract";
+import { LANG_EN, type CategoryKind, type LanguageId, type LastCorrectionView, type ReleaseFeatureView, type ReleaseView } from "@gcpe/nrms-contract";
 import {
   categoryFeatures, documentContacts, documentLanguages, mediaLists, newsReleases, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseLog, releaseMediaLists, releasePublications,
-  type NewsReleaseRow,
+  type NewsReleaseRow, type SentEmailAgain,
 } from "../db/schema";
 import { ReleaseNotFoundError, VersionConflictError } from "./errors";
 
@@ -71,6 +71,8 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
     assetUrl: r.assetUrl, assetAltText: r.assetAltText, hasMediaAssets: r.hasMediaAssets, hasTranslations: r.hasTranslations,
     redirectUrl: r.redirectUrl, keywords: r.keywords, atomId: r.atomId, nodSubscribers: r.nodSubscribers, mediaSubscribers: r.mediaSubscribers, lastError: r.lastError,
     flickrAlert: r.flickrAlert,
+    emailAgainPending: r.emailAgain ? { subscribers: r.emailAgain.subscribers, mediaLists: r.emailAgain.mediaLists, requestedBy: r.emailAgain.actorName, requestedAt: r.emailAgain.at } : null,
+    lastCorrection: r.lastEmailAgain ? await lastCorrection(db, r.lastEmailAgain) : null,
     languages: langs
       .sort((a, b) => langOrder(a.languageId, b.languageId))
       .map((l) => ({ languageId: l.languageId as LanguageId, location: l.location, summary: l.summary, summaryEdited: l.summaryEdited, socialMediaSummary: l.socialMediaSummary })),
@@ -94,20 +96,39 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
   };
 }
 
+/** The NoD event subscriber's name (apps/stack env.ts): whose outbox deliveries say whether NoD got a request. */
+export const NOD_SUBSCRIBER = "nod";
+
+/**
+ * Review I2: the latest corrected email passed to NoD, and whether NoD received it, from the
+ * outbox deliveries of the events that carried it (by id, so no scan): any delivered means NoD has
+ * it (NoD acts on each number once); any still pending, on its way; all given up on, not sent;
+ * none to NoD, unknown.
+ */
+async function lastCorrection(db: DbOrTx, sent: SentEmailAgain): Promise<LastCorrectionView> {
+  const ids = sent.eventIds ?? [];
+  const { rows } = ids.length
+    ? await db.execute<{ status: string }>(sql`SELECT status FROM outbox_deliveries WHERE subscriber = ${NOD_SUBSCRIBER} AND event_id = ANY(${sql.param(ids)}::uuid[])`)
+    : { rows: [] as { status: string }[] };
+  const has = (s: string) => rows.some((r) => r.status === s);
+  const state = has("delivered") ? "delivered" : has("pending") ? "waiting" : has("dead") ? "not-delivered" : "unknown";
+  return { seq: sent.seq, subscribers: sent.subscribers, mediaLists: sent.mediaLists, requestedBy: sent.requestedBy, requestedAt: sent.requestedAt, state };
+}
+
 export async function writeLog(tx: DbOrTx, releaseId: string, actor: Actor, text: string): Promise<void> {
   await tx.insert(releaseLog).values({ releaseId, actorId: actor.id, actorName: actor.name, text: text.slice(0, 500) });
 }
 
 /**
- * Every edit goes through here: row lock, version check, the change, version bump, one log
- * line, and — when the release is live — the correction transition (published → publishing).
+ * Every edit goes through here: row lock, version check, the change, version bump, its log
+ * line(s), and — when the release is live — the correction transition (published → publishing).
  */
 export async function mutateRelease(
   db: Db,
   id: string,
   expectedVersion: number,
   actor: Actor,
-  change: (tx: Tx, row: NewsReleaseRow) => Promise<string | null>,
+  change: (tx: Tx, row: NewsReleaseRow) => Promise<string | string[] | null>,
   opts: { correction?: boolean } = {},
 ): Promise<ReleaseView> {
   if (!isUuid(id)) throw new ReleaseNotFoundError(id);
@@ -121,7 +142,7 @@ export async function mutateRelease(
       .update(newsReleases)
       .set({ version: row.version + 1, updatedAt: sql`now()`, ...(correction ? { status: "publishing" as const } : {}) })
       .where(and(eq(newsReleases.id, id)));
-    if (text) await writeLog(tx, id, actor, text);
+    for (const line of Array.isArray(text) ? text : text ? [text] : []) await writeLog(tx, id, actor, line);
     if (correction) await writeLog(tx, id, actor, "Edited after publishing — will republish");
     return (await loadView(tx, id))!;
   });

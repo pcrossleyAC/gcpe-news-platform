@@ -53,8 +53,15 @@ export function toReleaseRecord(v: ReleaseView, at: { publishDate: string; times
   };
 }
 
+/** Review M8: what a republish adds to the record's event at most — `notify`, and an email-again
+ * request with the longest name the event allows. */
+const REPUBLISH_ADDITIONS = {
+  notify: true,
+  emailAgain: { seq: 2_147_483_647, subscribers: true, mediaLists: true, requestedBy: "x".repeat(200), requestedAt: "2026-10-31T00:00:00.000+00:00" },
+};
+
 export function assertPublishable(record: ReleaseRecord): void {
   releaseRecordSchema.parse(record);
-  const bytes = envelopeByteLength(sizingEnvelope({ type: "release.published", source: "nrms", aggregateId: record.key, data: record }));
+  const bytes = envelopeByteLength(sizingEnvelope({ type: "release.published", source: "nrms", aggregateId: record.key, data: { ...record, ...REPUBLISH_ADDITIONS } }));
   if (bytes > MAX_EVENT_BYTES) throw new ReleaseTooLargeError(`This release would publish as ${bytes} bytes; the limit is ${MAX_EVENT_BYTES}.`);
 }

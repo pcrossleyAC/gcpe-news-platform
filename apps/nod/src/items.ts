@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { DbOrTx, Tx } from "@gcpe/db-kit";
-import { indexKeysFor, type EventEnvelope, type EventHandler, type ReleaseRecord } from "@gcpe/events";
+import { indexKeysFor, type EmailAgain, type EventEnvelope, type EventHandler, type ReleaseRecord } from "@gcpe/events";
 import { deliveries, items, sendJobs } from "./db/schema";
 import { mediaListKey } from "./lists";
 
@@ -128,6 +128,13 @@ export interface ItemHandlerOptions {
    * (apps/nod/src/as-it-happens.ts's `createItemSend`). The return value (whether a job was
    * created) isn't used here; typed loosely so any such function fits without an adapter. */
   onPublished: (tx: Tx, r: ReleaseRecord) => Promise<unknown>;
+  /** Owner decision 2026-10-31: called after a republish (either event) that carries an
+   * "email it again" request, once the item is up to date -- correction.ts's
+   * `createCorrectionSends`. Never called without one, so a plain republish emails nobody again. */
+  onEmailAgain?: (tx: Tx, r: ReleaseRecord, emailAgain: EmailAgain) => Promise<unknown>;
+  /** Review I4: called once a correction has refreshed the item, before any corrected copy is
+   * made -- correction.ts's `rerenderWaitingEmail`, so email still waiting goes out corrected. */
+  onRefreshed?: (tx: Tx, r: ReleaseRecord) => Promise<unknown>;
 }
 
 /**
@@ -137,12 +144,16 @@ export interface ItemHandlerOptions {
  */
 export function itemHandlers(opts: ItemHandlerOptions): (e: EventEnvelope) => EventHandler | undefined {
   const onReleasePublished: EventHandler = async (tx, event) => {
-    const r = event.data as ReleaseRecord;
+    const r = event.data as ReleaseRecord & { emailAgain?: EmailAgain };
     await upsertReleaseItem(tx, r, opts.publicSiteUrl);
     await opts.onPublished(tx, r);
+    if (r.emailAgain && opts.onEmailAgain) await opts.onEmailAgain(tx, r, r.emailAgain);
   };
   const onReleaseUpdated: EventHandler = async (tx, event) => {
-    await refreshReleaseItem(tx, event.data as ReleaseRecord, opts.publicSiteUrl);
+    const r = event.data as ReleaseRecord & { emailAgain?: EmailAgain };
+    const refreshed = await refreshReleaseItem(tx, r, opts.publicSiteUrl);
+    if (refreshed && opts.onRefreshed) await opts.onRefreshed(tx, r);
+    if (refreshed && r.emailAgain && opts.onEmailAgain) await opts.onEmailAgain(tx, r, r.emailAgain);
   };
   const onReleaseUnpublished: EventHandler = async (tx, event) => {
     const { key } = event.data as { key: string };

@@ -40,7 +40,7 @@ To resume, choose **Resume Distribution**, then **Confirm resume**. The Hub warn
 
 This section shows news email that hasn't gone out yet, and news email that failed.
 
-While News On Demand sending is paused, it says how much is held, for example "Held while paused: 1,205 emails for 3 releases. The oldest has waited 12 days, since …". The **Held news email** table has one row per release and type: **As it happens**, **Media list**, **Emergency alert**, or **Daily digest** (one row per daily digest, with how many releases it carries). **Emails** counts the active subscribers it would still go to, leaving out anyone an earlier try already reached. **Note** shows when an email has already been tried and what went wrong.
+While News On Demand sending is paused, it says how much is held, for example "Held while paused: 1,205 emails for 3 releases. The oldest has waited 12 days, since …". The **Held news email** table has one row per release and type: **As it happens**, **Media list**, **Emergency alert**, **Daily digest** (one row per daily digest, with how many releases it carries), or **Corrected copy to subscribers** and **Corrected copy to media lists** (a corrected release a release editor chose to email again to the people who already got it). **Emails** counts the active subscribers it would still go to, leaving out anyone an earlier try already reached. **Note** shows when an email has already been tried and what went wrong.
 
 While sending is running, the section normally says "Nothing is waiting to go out." Anything listed is waiting to be tried again.
 

@@ -1,13 +1,14 @@
 import { eq, sql } from "drizzle-orm";
 import { sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
-import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
+import { enqueueEvent, type EmailAgain, type SubscriberConfig } from "@gcpe/events";
 import { publishProblems, type ReleaseView } from "@gcpe/nrms-contract";
-import { governmentTerms, newsReleases, releasePublications } from "./db/schema";
+import { governmentTerms, newsReleases, releasePublications, type SentEmailAgain } from "./db/schema";
 import { DeferPublish } from "./media/flickr-jobs";
 import { ReleaseRuleError } from "./releases/errors";
 import { emitLinkChange, linkStateOf } from "./releases/link-events";
 import { toReleaseRecord } from "./releases/record";
 import { loadView, SYSTEM_ACTOR, writeLog } from "./releases/store";
+import { emailAgainOffer, emailAgainWho } from "./releases/workflow";
 import { clearFeaturesFor } from "./website/features";
 
 export interface PublisherOptions {
@@ -115,17 +116,64 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
     { publishDate: row!.releasedAt!.toISOString(), timestamp: row!.updatedAt.toISOString() },
     { filesBase: opts.filesBase, rendition },
   );
+  const emailAgain = await takeEmailAgain(tx, id, view);
+  const extra = emailAgain.send ? { emailAgain: toEvent(emailAgain.send) } : {};
+  let eventId: string;
   if (goLive) {
-    await enqueueEvent(tx, { type: "release.published", source: "nrms", aggregateId: record.key, data: record }, opts.subscribers);
+    eventId = (await enqueueEvent(tx, { type: "release.published", source: "nrms", aggregateId: record.key, data: { ...record, ...extra } }, opts.subscribers)).id;
     await writeLog(tx, id, SYSTEM_ACTOR, "Released for Publishing");
     await writeLog(tx, id, SYSTEM_ACTOR, `Published to ${destinations(view)}`);
   } else {
-    await enqueueEvent(tx, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: true } }, opts.subscribers);
+    eventId = (await enqueueEvent(tx, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: true, ...extra } }, opts.subscribers)).id;
     await writeLog(tx, id, SYSTEM_ACTOR, `Republished to ${destinations(view)}`);
   }
+  if (emailAgain.send) {
+    // Which events carried it, so the release can show whether NoD got it (newest kept).
+    const eventIds = [...emailAgain.send.eventIds, eventId].slice(-MAX_TRACKED_EVENTS);
+    await tx.update(newsReleases).set({ lastEmailAgain: { ...emailAgain.send, eventIds } }).where(eq(newsReleases.id, id));
+  }
+  if (emailAgain.line) await writeLog(tx, id, SYSTEM_ACTOR, emailAgain.line);
   await tx.insert(releasePublications).values({ releaseId: id, publishedAt: row!.updatedAt, actorId: SYSTEM_ACTOR.id, actorName: SYSTEM_ACTOR.name, record });
   await emitLinkChange(tx, before, await linkStateOf(tx, id), opts.subscribers);
   return { kind: goLive ? "published" : "updated", key: record.key };
+}
+
+/** How many carrying events a release remembers for "did NoD get it". */
+const MAX_TRACKED_EVENTS = 20;
+
+const toEvent = ({ eventIds: _ids, ...e }: SentEmailAgain): EmailAgain => e;
+
+/**
+ * Owner decision 2026-10-31: the "Also email it again?" this republish carries. A request waiting
+ * on the row is taken off it: what it can still offer as it goes out is passed on — a ticked
+ * audience it no longer goes to is left out, and said so — under the release's next correction
+ * number, so NoD makes it a send of its own. Review I2: with nothing new, the last request passed
+ * on is repeated (until an unpublish drops it), so an earlier event that NoD never applied —
+ * overtaken by a later one, or given up on — can't lose it; NoD acts on each number once.
+ */
+async function takeEmailAgain(tx: Tx, id: string, view: ReleaseView): Promise<{ send: SentEmailAgain | null; line: string | null }> {
+  const [row] = await tx
+    .select({ request: newsReleases.emailAgain, done: newsReleases.correctionsEmailed, last: newsReleases.lastEmailAgain })
+    .from(newsReleases)
+    .where(eq(newsReleases.id, id));
+  const request = row?.request;
+  const last = row?.last ?? null;
+  if (!request) return { send: last, line: null };
+  const offer = emailAgainOffer({ ...view, everPublished: true })!;
+  const go = { subscribers: request.subscribers && offer.subscribers, mediaLists: request.mediaLists && offer.mediaLists };
+  if (!go.subscribers && !go.mediaLists) {
+    await tx.update(newsReleases).set({ emailAgain: null }).where(eq(newsReleases.id, id));
+    return { send: last, line: `Not emailed again: it no longer goes to ${emailAgainWho(request)}` };
+  }
+  const seq = row!.done + 1;
+  await tx.update(newsReleases).set({ emailAgain: null, correctionsEmailed: seq }).where(eq(newsReleases.id, id));
+  const name = request.actorName.slice(0, 200) || "Unknown"; // the event allows up to 200 characters
+  return {
+    send: { seq, ...go, requestedBy: name, requestedAt: request.at, eventIds: [] },
+    // What NRMS knows: it passed the request on. NoD's log records the copies it made; the
+    // release shows whether NoD received it (store.ts lastCorrection).
+    line: `Passed to News On Demand: email it again with "Corrected:" to ${emailAgainWho(go)} who got it (correction ${seq}, as ${name} asked)`,
+  };
 }
 
 /**

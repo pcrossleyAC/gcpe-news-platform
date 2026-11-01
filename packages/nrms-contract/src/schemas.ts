@@ -152,11 +152,19 @@ export const reorderDocumentsSchema = z.object({ version, documentIds: z.array(z
  * `wallClockToInstant`, rather than trusting a browser that may have stale tzdata). Neither or
  * both is a 400, not a silently-ambiguous choice between them.
  */
+/** Owner decision 2026-10-31: "Also email it again?" on a republish — who already got it, per tick. */
+export const emailAgainChoiceSchema = z.object({ subscribers: z.boolean(), mediaLists: z.boolean() });
+export type EmailAgainChoice = z.infer<typeof emailAgainChoiceSchema>;
+/** Email the correction (a live release): republish it and email it again. */
+export const emailAgainSchema = emailAgainChoiceSchema.extend({ version });
+export type EmailAgainInput = z.infer<typeof emailAgainSchema>;
+
 export const scheduleSchema = z
   .object({
     version,
     publishAt: z.union([z.literal("now"), z.string().datetime({ offset: true })]).optional(),
     publishAtLocal: localDateTime.optional(),
+    emailAgain: emailAgainChoiceSchema.optional(),
   })
   .refine((v) => (v.publishAt !== undefined) !== (v.publishAtLocal !== undefined), {
     message: "Provide exactly one of publishAt or publishAtLocal.",

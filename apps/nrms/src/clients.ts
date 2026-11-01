@@ -24,9 +24,25 @@ export interface ReleaseAudienceCounts {
   mediaContacts: number;
 }
 
+/** What NoD's `/api/subscribers/correction-audience` takes (apps/nod/src/correction.ts). */
+export interface CorrectionAudienceQuery {
+  itemKey: string;
+  listKeys: string[];
+  /** NoD media list keys (`media-distribution-lists:<key>`); empty when no media copy can go. */
+  mediaListKeys: string[];
+}
+
+/** Who already got a release, per "Also email it again?" tick, and how many are in both. */
+export interface CorrectionAudienceCounts {
+  subscribers: number;
+  mediaContacts: number;
+  both: number;
+}
+
 export interface NodClient {
   countSubscribers(listKeys: string[]): Promise<number>;
   releaseAudience(q: ReleaseAudienceQuery): Promise<ReleaseAudienceCounts>;
+  correctionAudience(q: CorrectionAudienceQuery): Promise<CorrectionAudienceCounts>;
 }
 
 /**
@@ -61,6 +77,17 @@ export function nodClient(opts: NodClientOptions): NodClient {
       });
       if (!res.ok) throw new Error(`NoD release audience failed: HTTP ${res.status}`);
       return (await res.json()) as ReleaseAudienceCounts;
+    },
+    // Owner decision 2026-10-31: the "Also email it again?" numbers. Same 5 s bound and token.
+    async correctionAudience(q: CorrectionAudienceQuery): Promise<CorrectionAudienceCounts> {
+      const token = await opts.getToken();
+      const params = new URLSearchParams({ key: q.itemKey, lists: q.listKeys.join(","), media: q.mediaListKeys.join(",") });
+      const res = await doFetch(`${base}/api/subscribers/correction-audience?${params}`, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`NoD correction audience failed: HTTP ${res.status}`);
+      return (await res.json()) as CorrectionAudienceCounts;
     },
   };
 }
