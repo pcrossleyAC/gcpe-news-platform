@@ -179,7 +179,9 @@ section"). NoD `0033_correction_modes` (corrected copies) changes only metadata 
 `deliveries` table (its mode check is replaced `NOT VALID`, so the table isn't scanned) plus a column
 with a default and an index on the small `send_jobs`: its locks last milliseconds. It sets a 5-second
 lock timeout, so on a busy table it fails the migration (retry it) rather than stall NoD. NRMS
-`0023_release_email_again` adds three columns to `news_releases`.
+`0023_release_email_again` adds three columns to `news_releases`. Core `0013_core_audit` adds the
+`core_audit` table (the Hub's Admin history, kept forever) and a nullable `last_sign_in_at` column on
+`users`; rolling back leaves both in place, unused (never drop them by hand).
 
 ## PostgreSQL
 
