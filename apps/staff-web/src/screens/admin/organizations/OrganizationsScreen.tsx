@@ -11,6 +11,7 @@ import type { OrgRecord } from "@gcpe/events/catalogue";
 import { AddOrganizationForm } from "./AddOrganizationForm";
 import { OrganizationEditForm, SAVED_MESSAGE } from "./OrganizationEditForm";
 import { HandOverPanel } from "./HandOverPanel";
+import { HistoryDisclosure } from "../history/HistoryDisclosure";
 import { abbreviationTakenMessage } from "./abbreviation";
 import { afterDialogsClose } from "../../../shared/afterDialogsClose";
 import { LeavePageGuard, useDirtyParts } from "../../../shared/LeaveGuard";
@@ -359,6 +360,17 @@ export function OrganizationsScreen(): React.JSX.Element {
             setStatus(SAVED_MESSAGE);
             reload();
           }}
+        />
+      )}
+      {/* Suite review O3: who changed this organization, for Core administrators. */}
+      {isAdmin && orgs && editingKey && orgs.some((o) => o.key === editingKey) && (
+        <HistoryDisclosure
+          key={`history-${editingKey}`}
+          targetType="organization"
+          targetId={editingKey}
+          name={orgs.find((o) => o.key === editingKey)!.displayName}
+          version={orgs.find((o) => o.key === editingKey)!.updatedAt}
+          orgName={(k) => orgs.find((o) => o.key === k)?.displayName}
         />
       )}
       {isAdmin &&

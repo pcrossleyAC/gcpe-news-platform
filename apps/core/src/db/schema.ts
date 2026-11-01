@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigserial, boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { OrgRecord, TermRecord } from "@gcpe/events";
 import type { LegacyExtras } from "../services/legacy-extras";
 
@@ -73,6 +73,8 @@ export const users = pgTable(
     /** The Entra object id (`oid`) this user signs in as, once linked. Set together with sign_in_method 'entra'. */
     entraOid: text("entra_oid"),
     legacyId: uuid("legacy_id"),
+    /** Suite review O3: the last password or Microsoft sign-in. Null: never signed in (since this was added). */
+    lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -200,4 +202,32 @@ export const staffSessions = pgTable(
     endedAt: timestamp("ended_at", { withTimezone: true }),
   },
   (t) => [index("staff_sessions_user_id_idx").on(t.userId), index("staff_sessions_signed_at_idx").on(t.signedAt)],
+);
+
+/**
+ * Suite review O3 (owner decision 2026-10-31): who changed what in Core's admin screens (Users,
+ * Calendar access, Organizations, Government terms and cabinet changes), written in the same
+ * transaction as the change and kept forever. `details` is a small summary of the change (names,
+ * flags, role lists, which fields changed): never a password, token or other secret, and never a
+ * whole biography. Core administrators read it in the Hub (History, Admin history).
+ */
+export const coreAudit = pgTable(
+  "core_audit",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    /** The verified caller's subject: a user id, the break-glass id, a service subject or a system actor. */
+    actorId: text("actor_id").notNull(),
+    /** The caller's name as it was then. */
+    actorName: text("actor_name").notNull(),
+    /** What happened, such as "user.roles" or "org.renamed" (services/audit.ts lists them). */
+    action: text("action").notNull(),
+    targetType: text("target_type").$type<"user" | "organization" | "term" | "cabinet-change" | "core">().notNull(),
+    /** The user id, organization key, "kind:key" of a term, or cabinet change id. */
+    targetId: text("target_id").notNull(),
+    /** The target's name as it was then, so the entry still reads well after a rename or deletion. */
+    targetLabel: text("target_label").notNull(),
+    details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (t) => [index("core_audit_target_idx").on(t.targetType, t.targetId, t.at), index("core_audit_at_idx").on(t.at)],
 );

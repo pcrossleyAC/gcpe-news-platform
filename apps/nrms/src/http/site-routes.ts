@@ -1,5 +1,5 @@
 import express, { Router, type NextFunction, type Request, type Response } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { wallClockToInstant } from "@gcpe/config";
 import { localDateTime } from "@gcpe/nrms-contract";
@@ -78,7 +78,7 @@ export const BLUE_BRIDGE_WARNING = "Do not click OK unless you have approval fro
 /** Slide/pin images' 2 MiB cap, defined beside the slide image store (website/slide-images.ts). */
 export { MAX_SITE_IMAGE_BYTES };
 const SLOT = /^(primary|secondary)$/;
-const AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features", "settings"];
+const AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features", "settings", "government-terms"];
 
 const dateish = z.string().refine((s) => !Number.isNaN(Date.parse(s)), "must be a valid date/time");
 /**
@@ -348,7 +348,8 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
       const rows = await db
         .select({ at: siteLog.at, actorName: siteLog.actorName, area: siteLog.area, text: siteLog.text })
         .from(siteLog)
-        .where(and(area ? eq(siteLog.area, area) : undefined))
+        // Government terms lines are Core administrators' only (owner, 2026-10-31: suite review O3).
+        .where(and(area ? eq(siteLog.area, area) : undefined, req.auth?.roles.includes("Core.Admin") ? undefined : ne(siteLog.area, "government-terms")))
         .orderBy(desc(siteLog.at), desc(siteLog.id))
         .limit(limit);
       res.json(rows.map((row) => ({ ...row, at: row.at.toISOString() })));

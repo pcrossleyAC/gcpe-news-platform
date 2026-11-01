@@ -676,7 +676,7 @@ describe("NRMS HTTP API", () => {
     const passwordHash = await hashPassword("local-test-pass");
     const localApp = createApp({
       db: tdb.db,
-      auth: { local: { secret } },
+      auth: { local: { secret, breakGlass: { username: "admin", passwordHash } } },
       loginRouter: localLoginRouter({ username: "admin", passwordHash, secret }),
       eventSecrets: {},
       workflow: { timeZone: "America/Vancouver" },

@@ -1,7 +1,7 @@
 import express, { Router } from "express";
 import { z } from "zod";
 import type { Db, TestClock } from "@gcpe/db-kit";
-import { requireRole } from "@gcpe/auth";
+import { actorOf, requireRole } from "@gcpe/auth";
 import type { SubscriberConfig } from "@gcpe/events";
 import {
   createGovernmentTerm,
@@ -73,7 +73,7 @@ export function governmentTermRoutes(deps: GovernmentTermRouteDeps): Router {
     json,
     term(async (req, res) => {
       const input = createSchema.parse(req.body);
-      res.status(201).json(await db.transaction((tx) => createGovernmentTerm(tx, input, opts)));
+      res.status(201).json(await db.transaction((tx) => createGovernmentTerm(tx, input, { ...opts, actor: actorOf(req) })));
     }),
   );
   r.patch(
@@ -82,14 +82,14 @@ export function governmentTermRoutes(deps: GovernmentTermRouteDeps): Router {
     json,
     term(async (req: express.Request<Params>, res) => {
       const patch = patchSchema.parse(req.body);
-      res.json(await db.transaction((tx) => updateGovernmentTerm(tx, req.params.id, patch, opts)));
+      res.json(await db.transaction((tx) => updateGovernmentTerm(tx, req.params.id, patch, { ...opts, actor: actorOf(req) })));
     }),
   );
   r.delete(
     "/government-terms/:id",
     admin,
     term(async (req: express.Request<Params>, res) => {
-      await db.transaction((tx) => deleteGovernmentTerm(tx, req.params.id, opts));
+      await db.transaction((tx) => deleteGovernmentTerm(tx, req.params.id, { ...opts, actor: actorOf(req) }));
       res.status(204).end();
     }),
   );

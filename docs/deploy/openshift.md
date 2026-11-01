@@ -97,7 +97,7 @@ finds its own `config/` and `migrations/` beside it.
 | --- | --- | --- | --- |
 | `TICK_TOKEN` | yes | yes | ≥ 32 characters. Guards `/stack/tick`; with `STACK_LOOPS=true` nothing needs to call it. |
 | `LOCAL_AUTH_SECRET` | with local admin | yes | ≥ 32 characters. Signs the break-glass admin's tokens only. |
-| `STACK_EVENT_SECRET` | yes in practice | yes | ≥ 32 characters. The stack derives every internal event subscription, signing secret and NoD's link secret from it, and the key the apps sign their calls to each other with (so those calls don't depend on the break-glass admin). Changing it signs everyone out and needs a restart of every replica at once. Do not change it just to end sessions: it also changes NoD's unsubscribe-link key, so links already emailed stop working. To end sessions only, set a new explicit `SESSION_SECRET` (32+ characters) instead. |
+| `STACK_EVENT_SECRET` | yes in practice | yes | ≥ 32 characters. The stack derives every internal event subscription, signing secret and NoD's link secret from it, and the key the apps sign their calls to each other with (so those calls don't depend on the break-glass admin). Changing it signs everyone out and needs a restart of every replica at once. Do not change it just to end sessions: it also changes NoD's unsubscribe-link key, so links already emailed stop working. To end sessions only, set a new explicit `SESSION_SECRET` (32+ characters) instead, and keep it set (removing it brings back the derived one). That signs every staff user out; to end only break-glass access, set a new break-glass password. |
 | `CORE_DATABASE_URL`, `NRMS_DATABASE_URL`, `NEWSAPI_DATABASE_URL`, `SITE_DATABASE_URL`, `NOD_DATABASE_URL`, `DIST_DATABASE_URL` | yes | yes | One database per app, `postgres://…`. Never `self:/…`. |
 | `CALENDAR_DATABASE_URL` | no | yes | Unset: the Calendar is not mounted (`/calendar` answers 503); every other app runs. |
 | `SITE_NEWS_API_URL` | yes | | `self:/` |
@@ -180,7 +180,12 @@ section"). NoD `0033_correction_modes` (corrected copies) changes only metadata 
 `deliveries` table (its mode check is replaced `NOT VALID`, so the table isn't scanned) plus a column
 with a default and an index on the small `send_jobs`: its locks last milliseconds. It sets a 5-second
 lock timeout, so on a busy table it fails the migration (retry it) rather than stall NoD. NRMS
-`0023_release_email_again` adds three columns to `news_releases`.
+`0023_release_email_again` adds three columns to `news_releases`. Core `0013_core_audit` adds the
+`core_audit` table (the Hub's Admin history, kept forever) and a nullable `last_sign_in_at` column on
+`users`; rolling back leaves both in place, unused (never drop them by hand). NRMS
+`0024_site_log_government_terms` widens `site_log`'s area check to allow `government-terms` (the
+Government terms screen's changes, in the Website log); the table is small, so the check's rescan is
+quick. Rolling back is safe: an older image never writes that area, and the wider check stays.
 
 ## PostgreSQL
 

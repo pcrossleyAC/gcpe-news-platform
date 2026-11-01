@@ -182,3 +182,10 @@ describe("Help on Page not found, with the compiled manuals", () => {
     expect(helpTargetFor("/subscribers/no/such/screen", as("NoD.Editor"))).toBe("/help/manuals/nod-editor/editor-find-and-change-subscribers");
   });
 });
+
+describe("Help on Admin history, with the compiled manuals", () => {
+  it("opens the Core admin manual's Admin history page", () => {
+    expect(helpTargetFor("/admin-history", as("Core.Admin"))).toBe("/help/manuals/core-admin/admin-history");
+    expect(helpTargetFor("/admin-history", as("NRMS.Editor"))).toBe("/help");
+  });
+});

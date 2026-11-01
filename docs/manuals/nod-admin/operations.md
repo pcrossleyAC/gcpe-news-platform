@@ -52,7 +52,7 @@ Everything held goes out when you resume, however old it is. After a long pause,
 2. The Hub asks "Cancel held email?", says how many emails for how many releases won't be sent, and lists each one. If emergency alerts are among them, it adds, for example, "This includes 1 emergency alert."
 3. Choose **Cancel held email**. You see, for example, "Cancelled 1,200 held emails." If some had already started going out just before the pause, the message adds "Some had already started going out, so they weren’t cancelled." To keep them, choose **Keep it**.
 
-Each cancel is recorded with your name and the releases and daily digests it cancelled.
+Each cancel is recorded with your name and the releases and daily digests it cancelled. **Cancel all held email** works however much is held. If some of that email went out or was cancelled after the page loaded, you see "Some of this email went out or was cancelled since this page loaded, so nothing was cancelled." Choose **Keep it**, check the updated list and try again.
 
 Cancelled email is never sent, and this can't be undone. If an editor later unpublishes the release and publishes it again, it is emailed again as a new release. On **Sends per release**, cancelled as-it-happens and media list emails count as **Not sent**; a cancelled daily digest is left out of **Daily digest runs**. You can cancel only while News On Demand sending is paused. If someone resumed it meanwhile, you see "News On Demand sending isn’t paused, so nothing was cancelled. Pause it first."
 

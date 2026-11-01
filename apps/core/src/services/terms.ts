@@ -4,6 +4,15 @@ import { enqueueEvent, termEventType, termRecordSchema, type SubscriberConfig, t
 import { terms } from "../db/schema";
 import { sameLegacyExtras, type LegacyExtras } from "./legacy-extras";
 import { CORE_SOURCE, lockAggregate, termAggregateId } from "./aggregate";
+import { recordAudit, type AuditActor } from "./audit";
+
+const termEntry = (kind: TermKind, key: string, label: string | null, action: string, details: Record<string, unknown> = {}) => ({
+  action,
+  targetType: "term" as const,
+  targetId: `${kind}:${key}`,
+  targetLabel: label ?? key,
+  details: { kind, ...details },
+});
 
 export const termInputSchema = termRecordSchema.omit({ updatedAt: true });
 export type TermInput = Omit<TermRecord, "updatedAt">;
@@ -72,6 +81,8 @@ export async function upsertTerm(
     legacyId?: string;
     /** Raw legacy HTML (sectors only). undefined keeps the stored value; a difference alone is stored with no event. */
     legacyExtras?: LegacyExtras | null;
+    /** Who is making the change, for Core's audit trail. The importer leaves it out. */
+    audit?: AuditActor;
   } = {},
 ): Promise<{ record: TermRecord; changed: boolean }> {
   const data = termInputSchema.parse(input);
@@ -118,6 +129,14 @@ export async function upsertTerm(
       { type: termEventType(record.kind, "upserted"), source: CORE_SOURCE, aggregateId: termAggregateId(record.kind, record.key), data: record },
       subscribers,
     );
+    if (!existing) await recordAudit(tx, opts.audit, termEntry(record.kind, record.key, record.displayName, "term.created"));
+    else {
+      const before = toTermRecord(existing);
+      const fields = (["sortOrder", "social"] as const).filter((f) => JSON.stringify(before[f]) !== JSON.stringify(record[f]));
+      const renamed = before.displayName !== record.displayName ? { name: { from: before.displayName, to: record.displayName } } : {};
+      const active = before.isActive !== record.isActive ? { active: { from: before.isActive, to: record.isActive } } : {};
+      await recordAudit(tx, opts.audit, termEntry(record.kind, record.key, record.displayName, "term.edited", { ...renamed, ...active, fields }));
+    }
     return { record, changed: true };
   });
 }
@@ -128,7 +147,7 @@ export async function upsertTerm(
  * aggregate lock, so two adds of one key cannot overwrite each other. Emits the same upserted event
  * upsertTerm does, so subscribers need no change.
  */
-export async function createTerm(db: Db, input: TermInput, subscribers: SubscriberConfig[]): Promise<{ record: TermRecord }> {
+export async function createTerm(db: Db, input: TermInput, subscribers: SubscriberConfig[], audit?: AuditActor): Promise<{ record: TermRecord }> {
   const data = termInputSchema.parse(input);
   const displayName = checkTermName(data);
   if (!NEW_TERM_KEY.test(data.key)) throw new TermRuleError("key-format");
@@ -154,11 +173,12 @@ export async function createTerm(db: Db, input: TermInput, subscribers: Subscrib
       { type: termEventType(record.kind, "upserted"), source: CORE_SOURCE, aggregateId: termAggregateId(record.kind, record.key), data: record },
       subscribers,
     );
+    await recordAudit(tx, audit, termEntry(record.kind, record.key, record.displayName, "term.created"));
     return { record };
   });
 }
 
-export async function deactivateTerm(db: Db, kind: TermKind, key: string, subscribers: SubscriberConfig[]): Promise<boolean> {
+export async function deactivateTerm(db: Db, kind: TermKind, key: string, subscribers: SubscriberConfig[], audit?: AuditActor): Promise<boolean> {
   return db.transaction(async (tx) => {
     await lockAggregate(tx, termAggregateId(kind, key));
     const [existing] = await tx
@@ -173,6 +193,7 @@ export async function deactivateTerm(db: Db, kind: TermKind, key: string, subscr
       .set({ isActive: false, updatedAt: new Date() })
       .where(and(eq(terms.kind, kind), eq(terms.key, key)));
     await enqueueEvent(tx, { type: termEventType(kind, "deactivated"), source: CORE_SOURCE, aggregateId: termAggregateId(kind, key), data: { kind, key } }, subscribers);
+    await recordAudit(tx, audit, termEntry(kind, key, existing.displayName, "term.deactivated"));
     return true;
   });
 }

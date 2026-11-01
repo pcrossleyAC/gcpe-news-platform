@@ -608,3 +608,82 @@ describe("UsersScreen: leaving with unsaved changes", () => {
   });
 });
 
+
+/** Suite review O3: when each person last signed in, and who changed their account. */
+describe("UsersScreen: Last signed in and History", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it("shows each person's last sign-in in BC time, or Never", async () => {
+    const SIGNED: UserView = { ...OTHER, lastSignInAt: "2026-01-15T17:00:00Z" };
+    const NEVER: UserView = { ...SELF, lastSignInAt: null };
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [NEVER, SIGNED]);
+      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const table = await screen.findByRole("table", { name: "Staff users" });
+    expect(within(table).getByRole("columnheader", { name: "Last signed in" })).toBeInTheDocument();
+    const row = (name: string) => within(table).getByRole("rowheader", { name }).closest("tr")!;
+    // 17:00 UTC in January is 9:00 AM in BC.
+    expect(row("Other")).toHaveTextContent(/Jan 15, 2026\s9:00\sAM/);
+    expect(within(row("Self")).getByText("Never")).toBeInTheDocument();
+  });
+
+  it("History opens closed, then lists who changed the person, newest first, in plain words", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, OTHER]);
+      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+      if (url.startsWith("/core/api/audit?")) {
+        return jsonResponse(200, {
+          items: [
+            { id: 2, at: "2026-01-16T17:00:00Z", actorId: "self-1", actorName: "Paul Smith", action: "user.roles", targetType: "user", targetId: "other-1", targetLabel: "Other", details: { added: ["Core.Admin"], removed: [] } },
+            { id: 1, at: "2026-01-15T17:00:00Z", actorId: "self-1", actorName: "Paul Smith", action: "user.created", targetType: "user", targetId: "other-1", targetLabel: "Other", details: { email: "other@x.invalid", roles: ["NRMS.Viewer"], isActive: true } },
+          ],
+          total: 2,
+          page: 1,
+          pageSize: 20,
+        });
+      }
+      return null;
+    });
+    const user = userEvent.setup();
+    render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid", user);
+    const editor = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest<HTMLElement>(".gcpe-users__editor")!;
+    const toggle = within(editor).getByRole("button", { name: "History" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(calls.some((c) => c.url.startsWith("/core/api/audit"))).toBe(false);
+    await user.click(toggle);
+    const list = await within(editor).findByRole("list", { name: "Changes to Other, newest first" });
+    const items = within(list).getAllByRole("listitem").map((li) => li.textContent?.replace(/\s/g, " "));
+    expect(items).toEqual(["Jan 16, 2026 9:00 AM — Paul Smith gave Core Admin to Other", "Jan 15, 2026 9:00 AM — Paul Smith added Other (other@x.invalid) with NRMS Viewer"]);
+    expect(calls.find((c) => c.url.startsWith("/core/api/audit"))!.url).toBe("/core/api/audit?targetType=user&targetId=other-1&page=1&pageSize=20");
+    expect(within(editor).queryByRole("button", { name: "Show older changes" })).toBeNull();
+  });
+
+  it("History says so when nothing is recorded, or it can't load", async () => {
+    let fail = false;
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [OTHER]);
+      if (url.startsWith("/core/api/audit?")) return fail ? jsonResponse(500, { error: "internal error" }) : jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 });
+      return null;
+    });
+    const user = userEvent.setup();
+    render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid", user);
+    await user.click(screen.getByRole("button", { name: "History" }));
+    expect(await screen.findByText("No changes recorded yet.")).toBeInTheDocument();
+    cleanup();
+    fail = true;
+    render(withAuth(<UsersScreen />));
+    await openEditor("other@x.invalid", user);
+    await user.click(screen.getByRole("button", { name: "History" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t load the history.");
+  });
+});

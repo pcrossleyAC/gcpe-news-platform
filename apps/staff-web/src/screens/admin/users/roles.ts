@@ -23,3 +23,9 @@ export const STAFF_ROLES: StaffRoleInfo[] = [
   { role: "NoD.Admin", description: "Everything a NoD Editor can do, plus News on Demand operations and list categories." },
   { role: "Distribution.Send", description: "Send media distribution emails." },
 ];
+
+/** The role's area and name, shortened for a badge ("NRMS.SiteEditor" → "NRMS Site editor"). Also Admin history's wording. */
+export const roleBadge = (role: string): string => {
+  const [area, name = ""] = role.split(".");
+  return `${area} ${name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/ (\w)/g, (_, c: string) => ` ${c.toLowerCase()}`)}`.trim();
+};

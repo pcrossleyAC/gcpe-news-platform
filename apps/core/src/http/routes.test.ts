@@ -347,7 +347,7 @@ describe("Core HTTP API", () => {
     const localApp = createApp({
       db: tdb.db,
       subscribers: [],
-      auth: { local: { secret } },
+      auth: { local: { secret, breakGlass: { username: "admin", passwordHash } } },
       loginRouter: localLoginRouter({ username: "admin", passwordHash, secret }),
     });
 
