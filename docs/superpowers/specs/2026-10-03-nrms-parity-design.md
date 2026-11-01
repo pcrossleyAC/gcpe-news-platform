@@ -247,6 +247,7 @@ Every change emits the existing `site.content.changed` event (`packages/events/s
   1. The import writes no outbox events and starts no Flickr jobs.
   2. Imported scheduled releases stay on hold. The publisher skips `on_hold` rows. `npm run nrms:release-holds` clears the holds at cutover, after legacy's publisher is off.
   3. `npm run nrms:replay-to-news-api` sends each published release as `release.updated` with `notify: false`. NoD reacts only to `release.published` from NRMS (`apps/nod/src/app.ts:32`), so the replay sends no subscriber email. A test pins this.
+     *Amended 2026-10-31 (owner, suite review H re-review N2):* a release whose "Email the correction" request was already passed to NoD (`last_email_again`) carries it again in the replay's event, under the same correction number, like every republish, so a replay event that overtakes the one that first carried it can't lose the request. NoD acts on each correction number once, so nobody is emailed a corrected copy twice; otherwise the replay still emails nobody.
   4. Every run writes a report: legacy and NRMS row counts per table, skipped rows with reasons, and warnings for releases that break the new validation (imported anyway; they must be fixed before publishing).
   5. A re-run skips rows edited in NRMS since the last import and lists them in the report.
 - **Test data:**

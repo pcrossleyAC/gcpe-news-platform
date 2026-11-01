@@ -4,9 +4,17 @@
  * `notify: false`, through the normal outbox (delivery by the usual dispatcher) -- exactly the
  * record-building the publisher's own correction path uses (publisher.ts's `processOne`), minus
  * the log entry and the frozen `release_publications` copy a real correction writes, since this
- * is a replay of existing data, not a new edit. NoD only reacts to `release.published` from
- * `nrms` (apps/nod/src/app.ts:32), so this never emails a subscriber -- pinned by a NoD test.
- * Dry run by default; `--confirm` to actually enqueue.
+ * is a replay of existing data, not a new edit. A plain `release.updated` never emails anyone in
+ * NoD -- pinned by a NoD test. Dry run by default; `--confirm` to actually enqueue.
+ *
+ * Re-review N2: like every republish, it carries the release's latest "Email the correction"
+ * request already passed on (`last_email_again`), under the same correction number. A replay
+ * event can overtake the event that first carried it, and NoD then drops that one as stale; the
+ * replay event still brings the request. NoD acts on each correction number once
+ * (items.corrections_sent), so a request NoD already acted on is never sent again.
+ *
+ * Ordering: the dispatcher delivers oldest first, so a live publish made while the replay's
+ * events are still being delivered waits behind them. Run the replay well before switch-over.
  *
  * I4: each release is replayed inside its own savepoint (a nested `tx.transaction`), so one bad
  * release (e.g. its current content now builds an oversized envelope -- `MAX_EVENT_BYTES`)
@@ -22,6 +30,7 @@ import { createDb, type Db } from "@gcpe/db-kit";
 import { enqueueEvent, parseSubscribers, type SubscriberConfig } from "@gcpe/events";
 import { newsReleases } from "../db/schema";
 import { stripParamsLines } from "../import/redact";
+import { toEvent, trackEmailAgain } from "../publisher";
 import { toReleaseRecord } from "../releases/record";
 import { loadView } from "../releases/store";
 
@@ -80,10 +89,19 @@ export async function replayToNewsApi(db: Db, opts: ReplayOptions): Promise<Repl
       for (const c of batch) {
         try {
           await tx.transaction(async (savepoint) => {
+            // Locked and re-checked, so a publish or unpublish of this release meanwhile can't
+            // interleave with the replay (the publisher claims releases FOR UPDATE too).
+            const [row] = await savepoint.select({ last: newsReleases.lastEmailAgain }).from(newsReleases).where(and(eq(newsReleases.id, c.id), LIVE)).for("update");
+            if (!row) return;
             const view = await loadView(savepoint, c.id);
             if (!view || !view.releasedAt) return; // defensive: shouldn't happen for published+live
             const record = toReleaseRecord(view, { publishDate: view.releasedAt, timestamp: nowIso }, { filesBase: opts.filesBase });
-            await enqueueEvent(savepoint, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: false } }, opts.subscribers);
+            // N2: the release's latest "Email the correction" request rides along, as on every
+            // republish (publisher.ts takeEmailAgain), so a replay event that overtakes the one
+            // that first carried it can't lose it. Same correction number: NoD acts on it once.
+            const extra = row.last ? { emailAgain: toEvent(row.last) } : {};
+            const event = await enqueueEvent(savepoint, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: false, ...extra } }, opts.subscribers);
+            if (row.last) await trackEmailAgain(savepoint, c.id, row.last, event.id);
           });
         } catch (e) {
           failures.push({ key: c.key ?? c.id, reason: stripParamsLines(e instanceof Error ? e.message : String(e)) });

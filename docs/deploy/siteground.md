@@ -1291,9 +1291,13 @@ correct:
 2. `npm run nrms:replay-to-news-api -- --confirm` — re-sends every already-published, live
    release to the News API as `release.updated` with `notify: false`, so the public site and the
    News API's own data agree with NRMS's copy before NRMS's publisher starts touching anything.
-   NoD only reacts to `release.published` from `nrms` (`apps/nod/src/app.ts:32`), so this never
-   emails a subscriber — pinned by a NoD test. Dry run (no `--confirm`) lists what it would send
-   and changes nothing.
+   A plain `release.updated` never emails anyone in NoD — pinned by a NoD test. The one
+   exception is deliberate: a release whose "Email the correction" request was already passed to
+   NoD carries that request again under the same correction number, as every republish does, so
+   the replay can't lose it; NoD acts on each correction number once, so nobody gets a corrected
+   copy twice. Its events are delivered oldest first, so a live publish made while they are still
+   being delivered waits behind them: run it well before switch-over. Dry run (no `--confirm`)
+   lists what it would send and changes nothing.
 3. `npm run nrms:release-holds -- --confirm` — clears `on_hold` on every imported scheduled
    release (they import held, per spec §8's safety rule 2, so NRMS's publisher never fires on
    stale/incomplete data mid-import) and lets NRMS's own publisher take over scheduling. Dry run

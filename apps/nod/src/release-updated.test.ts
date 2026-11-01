@@ -133,6 +133,30 @@ describe("a republish re-emails only when asked", () => {
     expect(jobs.map((j) => j.key).sort()).toEqual([`as_it_happens:${r2.key}`, `correction:1:as_it_happens:${r2.key}`]);
   });
 
+  // Re-review N2: the cutover replay (nrms:replay-to-news-api) sends notify:false and carries the
+  // release's latest request under the same number. If it overtakes the event that first carried
+  // the request, that one arrives stale; the replay still brings it, and it's acted on once.
+  it("a replay event that overtakes the request's own event still brings it, once; a replay of one already acted on sends nothing", async () => {
+    const r5 = { ...release, key: "CORRECTED-5" };
+    await addSubscriber(tdb.db, { email: "reader5@x.test", lists: "all" });
+    await sendEvent(app, envelope("nrms", "release.published", r5, r5.key));
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    const original = envelope("nrms", "release.updated", { ...r5, notify: true, emailAgain: emailAgain(1) }, r5.key);
+    const replay = envelope("nrms", "release.updated", { ...r5, notify: false, emailAgain: emailAgain(1) }, r5.key);
+    expect((await sendEvent(app, replay)).body).toEqual({ outcome: "applied" });
+    expect((await sendEvent(app, original)).body).toEqual({ outcome: "stale" });
+    const jobKeys = async () => (await tdb.db.select({ key: sendJobs.jobKey }).from(sendJobs).where(eq(sendJobs.itemKey, r5.key))).map((j) => j.key).sort();
+    expect(await jobKeys()).toEqual([`as_it_happens:${r5.key}`, `correction:1:as_it_happens:${r5.key}`]);
+
+    // The corrected copy goes; a second replay later (same number) makes no new send.
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    sent.length = 0;
+    expect((await sendEvent(app, envelope("nrms", "release.updated", { ...r5, notify: false, emailAgain: emailAgain(1) }, r5.key))).body).toEqual({ outcome: "applied" });
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    expect(await jobKeys()).toEqual([`as_it_happens:${r5.key}`, `correction:1:as_it_happens:${r5.key}`]);
+    expect(sent).toEqual([]);
+  });
+
   // Re-review N3: a request applied late (carried by a later republish) follows what the release
   // goes to now.
   it("a request applied late sends only to what the release still goes to", async () => {
