@@ -6,11 +6,6 @@
  * email). Nobody new, nobody since unsubscribed or made inactive, one copy per person per
  * correction (the media copy wins, as the first send's "one copy per person per release").
  *
- * N2 (owner 2026-10-31): a subscriber's copy comes the way they got the release. Someone who got
- * it As it happens gets the As-It-Happens template; someone who got it only in a daily digest gets
- * a one-item daily digest ("Corrected: " before the digest's subject), sent straight away. Someone
- * who got it both ways gets one copy, the As-It-Happens one.
- *
  * Each correction is its own deliberate send: its jobs are keyed by the release's correction
  * number (`correction:<n>:<kind>:<key>`), separate from the first send's `as_it_happens:<key>` and
  * `media:<key>`, so a normal republish still never re-emails anyone. Its deliveries are mode
@@ -25,7 +20,7 @@ import type { DbOrTx, Tx } from "@gcpe/db-kit";
 import { renderDigestItems } from "./digest";
 import { correctionMode, items, sendJobs, type ItemRow } from "./db/schema";
 import { correctionMediaRecipient, correctionSubscriberRecipient } from "./recipients";
-import { correctedSubject, itemCategories, renderAsItHappens, renderDigest, renderMedia, type Rendered, type RenderOptions } from "./render";
+import { correctedSubject, itemCategories, renderAsItHappens, renderMedia, type Rendered, type RenderOptions } from "./render";
 import { writeOpsLog } from "./settings";
 
 /** What NRMS sends with the republish (the event's `emailAgain`). */
@@ -66,29 +61,19 @@ export async function correctionAudience(db: DbOrTx, input: CorrectionAudienceIn
   return { subscribers: r.subscribers, mediaContacts: r.media, both: r.both };
 }
 
-type CorrectionKind = "correction" | "correction_digest" | "correction_media";
-/** Each corrected-copy kind's job-key part and Distribution priority, as its first send's. */
-const KIND_SHAPE: Record<CorrectionKind, { part: string; priority: "immediate" | "digest" | "media" }> = {
-  correction: { part: "as_it_happens", priority: "immediate" },
-  correction_digest: { part: "digest", priority: "digest" },
-  correction_media: { part: "media", priority: "media" },
-};
-
 /** Creates one corrected-copy job and its deliveries/recipients; the number of people it reaches
  * (0 when the job already existed or nobody qualifies, and then no job is left behind). */
-async function createJob(tx: Tx, itemKey: string, seq: number, kind: CorrectionKind, rendered: Rendered, recipient: SQL): Promise<number> {
-  const { part, priority } = KIND_SHAPE[kind];
-  const jobKey = `correction:${seq}:${part}:${itemKey}`;
+async function createJob(tx: Tx, itemKey: string, seq: number, kind: "correction" | "correction_media", rendered: Rendered, recipient: SQL): Promise<number> {
+  const jobKey = `correction:${seq}:${kind === "correction_media" ? "media" : "as_it_happens"}:${itemKey}`;
   const created = await tx
     .insert(sendJobs)
-    .values({ jobKey, itemKey, kind, priority, subject: correctedSubject(rendered.subject), html: rendered.html, text: rendered.text })
+    .values({ jobKey, itemKey, kind, priority: kind === "correction_media" ? "media" : "immediate", subject: correctedSubject(rendered.subject), html: rendered.html, text: rendered.text })
     .onConflictDoNothing({ target: sendJobs.jobKey })
     .returning({ id: sendJobs.id });
   if (created.length === 0) return 0;
   const jobId = created[0]!.id;
   // ON CONFLICT DO NOTHING on (item, subscriber, 'correction:<n>'): someone already given this
-  // correction's media copy gets no subscriber copy as well, and someone given its As-It-Happens
-  // copy no digest copy.
+  // correction's media copy gets no subscriber copy as well.
   const inserted = await tx.execute(sql`
     INSERT INTO deliveries (item_key, subscriber_id, mode, job_id)
     SELECT ${itemKey}, s.id, ${correctionMode(seq)}, ${jobId}::uuid
@@ -112,8 +97,7 @@ const plural = (n: number, one: string) => `${n.toLocaleString("en-CA")} ${one}$
 /**
  * Makes the corrected copies for `itemKey` from the item as it is now (the republish refreshed
  * it first, in the same transaction): the media copy (the media template) first, then the
- * subscriber copies to everyone left: the As-It-Happens template to those who got it As it
- * happens, then a one-item daily digest to those who got it only in a digest. Nothing for a release that's off
+ * subscriber copy (the As-It-Happens template) to everyone left. Nothing for a release that's off
  * the site or that NoD never had. Writes one NoD log row naming who asked and when.
  */
 export async function createCorrectionSends(tx: Tx, itemKey: string, req: CorrectionRequest, render: RenderOptions): Promise<{ subscribers: number; mediaContacts: number }> {
@@ -133,9 +117,7 @@ export async function createCorrectionSends(tx: Tx, itemKey: string, req: Correc
   let subscribers = 0;
   // An advisory never goes to subscribers (its normal send is media lists only), whatever NRMS asked.
   if (req.subscribers && item.postKind !== "advisories") {
-    const listKeys = sql`${sql.param(item.listKeys)}::text[]`;
-    subscribers = await createJob(tx, itemKey, req.seq, "correction", renderAsItHappens(base, render), correctionSubscriberRecipient(itemKey, listKeys, ["as_it_happens"]));
-    subscribers += await createJob(tx, itemKey, req.seq, "correction_digest", renderDigest([base], render), correctionSubscriberRecipient(itemKey, listKeys, ["digest"]));
+    subscribers = await createJob(tx, itemKey, req.seq, "correction", renderAsItHappens(base, render), correctionSubscriberRecipient(itemKey, sql`${sql.param(item.listKeys)}::text[]`));
   }
 
   const asked = [req.subscribers && plural(subscribers, "subscriber"), req.mediaLists && plural(mediaContacts, "media contact")].filter(Boolean).join(", ");
@@ -152,7 +134,7 @@ async function renderBase(tx: DbOrTx, item: ItemRow) {
  * Review I4: after a release is corrected (its item refreshed, same transaction), every email of it
  * still waiting is rebuilt from the corrected release, so someone whose first email a pause is
  * holding gets the right content: its As-It-Happens and media jobs, its corrected copies (still
- * "Corrected: ", a digest copy still a one-item digest), and each daily digest carrying it (rebuilt from its items, as the sender does when
+ * "Corrected: "), and each daily digest carrying it (rebuilt from its items, as the sender does when
  * one is withdrawn). Only a job nothing of which has gone yet: pending, not claimed by the sender
  * (the same test as an unpublish), no part handed to Distribution, no delivery attempted -- a part
  * already handed off is never re-sent with different content under the same key. Returns how many
@@ -180,10 +162,7 @@ export async function rerenderWaitingEmail(tx: Tx, itemKey: string, render: Rend
     if (job.kind === "as_it_happens") rendered = single;
     else if (job.kind === "media") rendered = media;
     else if (job.kind === "correction") rendered = { ...single, subject: correctedSubject(single.subject) };
-    else if (job.kind === "correction_digest") {
-      const digest = renderDigest([base], render);
-      rendered = { ...digest, subject: correctedSubject(digest.subject) };
-    } else if (job.kind === "correction_media") rendered = media && { ...media, subject: correctedSubject(media.subject) };
+    else if (job.kind === "correction_media") rendered = media && { ...media, subject: correctedSubject(media.subject) };
     else if (job.kind === "digest") {
       const { rows: keys } = await tx.execute<{ item_key: string }>(sql`SELECT DISTINCT item_key FROM deliveries WHERE job_id = ${job.id}::uuid`);
       rendered = await renderDigestItems(tx, keys.map((k) => k.item_key), render);

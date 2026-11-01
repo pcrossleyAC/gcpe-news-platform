@@ -157,8 +157,6 @@ const KIND_LABELS: Record<OutgoingGroup["kind"], string> = {
   digest: "Daily digest",
   // Owner decision 2026-10-31: "Also email it again?" on a republish.
   correction: "Corrected copy to subscribers",
-  // N2: the corrected copy for someone who got the release only in a daily digest.
-  correction_digest: "Corrected daily digest to subscribers",
   correction_media: "Corrected copy to media lists",
 };
 
