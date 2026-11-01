@@ -98,6 +98,24 @@ describe("buildEnvLines", () => {
     expect(tooLong).toEqual([]);
   });
 
+  it("marks the deployment a test site with SITE_ENVIRONMENT=test, which isTestSite reads (2026-10-31, T1)", async () => {
+    const { isTestSite } = await import("@gcpe/config");
+    const map = parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n"));
+    expect(map.get("SITE_ENVIRONMENT")).toBe("test");
+    expect(isTestSite(Object.fromEntries(map))).toBe(true);
+  });
+
+  it("an older boxs.ca env without SITE_ENVIRONMENT=test is refused at startup whatever else it has, never live (2026-10-31, fix round 1 M1)", async () => {
+    const { productionProblems } = await import("../apps/stack/src/env");
+    const env = Object.fromEntries(parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n")));
+    expect(productionProblems(env).errors).toEqual([]);
+    delete env.SITE_ENVIRONMENT;
+    expect(productionProblems(env).errors.join("\n")).toMatch(/still has LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test site/);
+    // Fix round 1 (M1): refused whatever else it has, Microsoft sign-in and the feed included.
+    const complete = { ...env, ENTRA_TENANT_ID: "t", CORE_ENTRA_CLIENT_ID: "c", CORE_ENTRA_CLIENT_SECRET: "s", CORE_PUBLIC_BASE_URL: "https://boxs.ca", NOD_EMERGENCY_FEED_URL: "https://x.example/feed", DIST_BOUNCE_SOURCE: "graph" };
+    expect(productionProblems(complete).errors.join("\n")).toMatch(/Set SITE_ENVIRONMENT=test for a test site/);
+  });
+
   it("never sets PORT (SiteGround injects it)", () => {
     const map = parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n"));
     expect(map.has("PORT")).toBe(false);

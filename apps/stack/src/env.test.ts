@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { subscribersFor, type EventEnvelope, type SubscriberConfig } from "@gcpe/events";
@@ -19,6 +20,8 @@ import {
   resolveSelfSubscribers,
   resolveSelfUrls,
   routeSecret,
+  productionProblems,
+  serviceTokenSecretFrom,
   sessionSecretFrom,
   stackEnvSchema,
   usesFakeEmergencyFeed,
@@ -551,11 +554,16 @@ describe("when the stack uses the fake Flickr (fix round 1: never silently in pr
     expect(Object.keys(view).filter((k) => k.startsWith("FLICKR_"))).toEqual([]);
   });
 
-  it("production + LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true (a test deployment) → fake", () => {
-    const env = { ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" };
+  it("production + SITE_ENVIRONMENT=test (a test deployment) → fake", () => {
+    const env = { ...prod, SITE_ENVIRONMENT: "test" };
     expect(usesFakeFlickr(env)).toBe(true);
     expect(envFor(env, "NRMS")).toMatchObject(FAKE_FLICKR_ENV);
-    expect(usesFakeFlickr({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "false" })).toBe(false);
+  });
+
+  it("production + break-glass allowed (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true) is still real production → no fake (2026-10-31, T1)", () => {
+    const env = { ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" };
+    expect(usesFakeFlickr(env)).toBe(false);
+    expect(Object.keys(envFor(env, "NRMS")).filter((k) => k.startsWith("FLICKR_"))).toEqual([]);
   });
 
   it("an explicit FLICKR_MODE=fake (shared or NRMS-prefixed) → fake, even in production", () => {
@@ -618,8 +626,10 @@ describe("Media Hub in the stack", () => {
   it("never silently fakes in production (fix round 1's own rule for Flickr, applied here too)", () => {
     expect(usesFakeMediaHub(prod)).toBe(false);
     expect(envFor(prod, "NOD").MEDIA_HUB_URL).toBeUndefined();
-    expect(usesFakeMediaHub({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
-    expect(envFor({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }, "NOD")).toMatchObject(FAKE_MEDIA_HUB_ENV);
+    expect(usesFakeMediaHub({ ...prod, SITE_ENVIRONMENT: "test" })).toBe(true);
+    expect(envFor({ ...prod, SITE_ENVIRONMENT: "test" }, "NOD")).toMatchObject(FAKE_MEDIA_HUB_ENV);
+    // Break-glass allowed in production is not a test site (2026-10-31, T1).
+    expect(usesFakeMediaHub({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(false);
   });
 });
 
@@ -638,8 +648,11 @@ describe("fake emergency feed", () => {
     expect(usesFakeEmergencyFeed({ NODE_ENV: "production" })).toBe(false);
     expect(envFor({ NODE_ENV: "production" }, "NOD").EMERGENCY_FEED_URL).toBeUndefined();
   });
-  it("an explicitly allowed test deployment in production mode still gets the fake", () => {
-    expect(usesFakeEmergencyFeed({ NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
+  it("a test deployment in production mode (SITE_ENVIRONMENT=test) still gets the fake", () => {
+    expect(usesFakeEmergencyFeed({ NODE_ENV: "production", SITE_ENVIRONMENT: "test" })).toBe(true);
+  });
+  it("break-glass allowed in production is not a test site: no fake feed (2026-10-31, T1)", () => {
+    expect(usesFakeEmergencyFeed({ NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(false);
   });
 });
 
@@ -759,5 +772,140 @@ describe("TRUST_PROXY_HOPS", () => {
   });
   it("is shared with every app's env view", () => {
     for (const prefix of APP_PREFIXES) expect(envFor({ TRUST_PROXY_HOPS: "2" }, prefix).TRUST_PROXY_HOPS, prefix).toBe("2");
+  });
+});
+
+describe("the stack's internal service-token key (2026-10-31, T2)", () => {
+  const STACK = "e".repeat(48);
+  it("every app gets the same SERVICE_TOKEN_SECRET, HMAC(STACK_EVENT_SECRET, gcpe-service-token), never a secret it already has", () => {
+    const expected = createHmac("sha256", STACK).update("gcpe-service-token").digest("hex");
+    expect(serviceTokenSecretFrom(STACK)).toBe(expected);
+    for (const p of APP_PREFIXES) {
+      const view = envFor({ STACK_EVENT_SECRET: STACK, LOCAL_AUTH_SECRET: "l".repeat(40) }, p);
+      expect(view.SERVICE_TOKEN_SECRET, p).toBe(expected);
+      expect(view.SERVICE_TOKEN_SECRET).not.toBe(view.SESSION_SECRET);
+      expect(view.SERVICE_TOKEN_SECRET).not.toBe(view.LOCAL_AUTH_SECRET);
+    }
+  });
+  it("no setting can replace it, and there is none without STACK_EVENT_SECRET", () => {
+    expect(envFor({ STACK_EVENT_SECRET: STACK, NRMS_SERVICE_TOKEN_SECRET: "x".repeat(40), SERVICE_TOKEN_SECRET: "y".repeat(40) }, "NRMS").SERVICE_TOKEN_SECRET).toBe(serviceTokenSecretFrom(STACK));
+    expect(envFor({}, "NRMS").SERVICE_TOKEN_SECRET).toBeUndefined();
+    expect(envFor({ NRMS_SERVICE_TOKEN_SECRET: "x".repeat(40) }, "NRMS").SERVICE_TOKEN_SECRET).toBeUndefined();
+  });
+});
+
+describe("productionProblems: what real production refuses or warns about (2026-10-31, T4)", () => {
+  /** A real production env that passes every rule. */
+  const good = (): NodeJS.ProcessEnv => ({
+    NODE_ENV: "production",
+    ENTRA_TENANT_ID: "11111111-1111-4111-8111-111111111111",
+    CORE_ENTRA_CLIENT_ID: "22222222-2222-4222-8222-222222222222",
+    CORE_ENTRA_CLIENT_SECRET: "secret",
+    CORE_PUBLIC_BASE_URL: "https://news.example.gov.bc.ca",
+    NOD_EMERGENCY_FEED_URL: "https://emergency.example.gov.bc.ca/feed.xml",
+    DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
+    DIST_BOUNCE_SOURCE: "graph",
+  });
+
+  it("nothing at all on a test site, whatever is missing", () => {
+    expect(productionProblems({ NODE_ENV: "production", SITE_ENVIRONMENT: "test" })).toEqual({ errors: [], warnings: [] });
+    expect(productionProblems({})).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("a complete real production env has no errors and no warnings", () => {
+    expect(productionProblems(good())).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("refuses real production without Microsoft sign-in for staff (user passwords would quietly stay on)", () => {
+    for (const k of ["ENTRA_TENANT_ID", "CORE_ENTRA_CLIENT_ID", "CORE_ENTRA_CLIENT_SECRET", "CORE_PUBLIC_BASE_URL"]) {
+      const env = good();
+      delete env[k];
+      expect(productionProblems(env).errors.join("\n"), k).toMatch(/Microsoft sign-in.*CORE_ENTRA_CLIENT_ID/);
+    }
+  });
+
+  it("emergency feed (option C): a URL, or NOD_EMERGENCY_FEED=off said explicitly, which is a warning", () => {
+    const none = good();
+    delete none.NOD_EMERGENCY_FEED_URL;
+    expect(productionProblems(none).errors.join("\n")).toMatch(/NOD_EMERGENCY_FEED_URL.*NOD_EMERGENCY_FEED=off/);
+    const off = { ...none, NOD_EMERGENCY_FEED: "off" };
+    expect(productionProblems(off).errors).toEqual([]);
+    expect(productionProblems(off).warnings.join("\n")).toMatch(/emergency alerts are switched off/i);
+    expect(productionProblems({ ...good(), NOD_EMERGENCY_FEED: "off" }).errors.join("\n")).toMatch(/both/);
+    expect(productionProblems({ ...none, NOD_EMERGENCY_FEED: "on" }).errors.join("\n")).toMatch(/NOD_EMERGENCY_FEED must be "off"/);
+    expect(productionProblems({ ...none, NOD_EMERGENCY_FEED_URL: "" }).errors.length).toBe(1);
+  });
+
+  it("bounces: graph is quiet; fake or unset starts with a warning, never silently", () => {
+    for (const source of [undefined, "fake"]) {
+      const env = { ...good(), DIST_BOUNCE_SOURCE: source };
+      const p = productionProblems(env);
+      expect(p.errors, String(source)).toEqual([]);
+      expect(p.warnings.join("\n"), String(source)).toMatch(/Bounces aren't being read: bounce handling is set to manual upload/);
+    }
+  });
+
+  it("refuses real mail switched on while the redirect is still there (the redirect would silently win)", () => {
+    expect(productionProblems({ ...good(), DIST_MAIL_REDIRECT_TO: "ops@example.gov.bc.ca" }).errors.join("\n")).toMatch(/DIST_MAIL_REDIRECT_TO.*DIST_MAIL_ALLOW_REAL_RECIPIENTS/);
+    // A redirect alone (before go-live) is fine.
+    const before = { ...good(), DIST_MAIL_REDIRECT_TO: "ops@example.gov.bc.ca", DIST_MAIL_ALLOW_REAL_RECIPIENTS: undefined };
+    expect(productionProblems(before).errors).toEqual([]);
+  });
+
+  it("break-glass allowed in production is still real production: the rules apply", () => {
+    const env = { ...good(), SITE_ENVIRONMENT: "production", LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", NOD_EMERGENCY_FEED_URL: undefined };
+    expect(productionProblems(env).errors.length).toBe(1);
+  });
+
+  // Fix round 1, M1: an env from before 2026-10-31 (boxs.ca) relied on this setting alone to be a
+  // test site. Whatever else it has, it must never come up as indexable production.
+  it("refuses LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true with no SITE_ENVIRONMENT, even when everything else is complete", () => {
+    const old = { ...good(), LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" };
+    for (const site of [undefined, "", "  "]) {
+      expect(productionProblems({ ...old, SITE_ENVIRONMENT: site }).errors, String(site)).toEqual([
+        "This deployment still has LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test site. Set SITE_ENVIRONMENT=test for a test site, or remove LOCAL_ADMIN_ALLOW_IN_PRODUCTION for real production (or set SITE_ENVIRONMENT=production to keep break-glass allowed on the real production site).",
+      ]);
+    }
+    expect(productionProblems({ ...old, SITE_ENVIRONMENT: "production" }).errors).toEqual([]);
+    expect(productionProblems({ ...old, SITE_ENVIRONMENT: "test" })).toEqual({ errors: [], warnings: [] });
+    expect(productionProblems({ ...old, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "false" }).errors).toEqual([]);
+  });
+
+  // Fix round 2 (R1): a misspelt SITE_ENVIRONMENT must never quietly mean the live site.
+  it("SITE_ENVIRONMENT: Test and 'test ' are test sites; staging is refused; production and unset are the live site", () => {
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: "Test" })).toEqual({ errors: [], warnings: [] });
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: "test " })).toEqual({ errors: [], warnings: [] });
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: "staging" }).errors).toEqual([
+      'SITE_ENVIRONMENT must be "test" (a test site) or "production" (the real production site), or not set; it is "staging"',
+    ]);
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: " Production " }).errors).toEqual([]);
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: undefined }).errors).toEqual([]);
+    // ALLOW=true with a misspelt value is refused too, never accepted as "set".
+    expect(productionProblems({ ...good(), SITE_ENVIRONMENT: "prod", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }).errors.join("\n")).toMatch(/SITE_ENVIRONMENT must be "test"/);
+  });
+
+  it("break-glass on, and staff passwords allowed, on real production start with a warning each (fix round 1, M2, M3)", () => {
+    const on = { ...good(), SITE_ENVIRONMENT: "production", LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true", CORE_LOCAL_PASSWORDS_ALLOWED: "true" };
+    const p = productionProblems(on);
+    expect(p.errors).toEqual([]);
+    expect(p.warnings).toEqual([
+      "The break-glass admin is on (LOCAL_ADMIN_ENABLED=true): anyone with its password can sign in with every admin role. Turn it off at go-live (P4), or once an emergency is over.",
+      expect.stringMatching(/^Staff passwords are allowed \(CORE_LOCAL_PASSWORDS_ALLOWED=true\)/),
+    ]);
+    expect(productionProblems({ ...on, LOCAL_ADMIN_ENABLED: "false", CORE_LOCAL_PASSWORDS_ALLOWED: "false" }).warnings).toEqual([]);
+  });
+
+  it("NOD_EMERGENCY_FEED=off turns the fake feed off on a test site too", () => {
+    expect(usesFakeEmergencyFeed({ NOD_EMERGENCY_FEED: "off" })).toBe(false);
+    expect(envFor({ NOD_EMERGENCY_FEED: "off" }, "NOD").EMERGENCY_FEED_URL).toBeUndefined();
+    expect(envFor({ NOD_EMERGENCY_FEED: "off" }, "NOD").EMERGENCY_FEED).toBe("off");
+  });
+});
+
+describe("Operations' live-site sign-in notices (fix round 1, M2, M3)", () => {
+  it("NoD's view carries Core's CORE_LOCAL_PASSWORDS_ALLOWED under that name, and no other app's does", () => {
+    expect(envFor({ CORE_LOCAL_PASSWORDS_ALLOWED: "true" }, "NOD").CORE_LOCAL_PASSWORDS_ALLOWED).toBe("true");
+    expect(envFor({}, "NOD").CORE_LOCAL_PASSWORDS_ALLOWED).toBeUndefined();
+    expect(envFor({ CORE_LOCAL_PASSWORDS_ALLOWED: "true" }, "NRMS").CORE_LOCAL_PASSWORDS_ALLOWED).toBeUndefined();
   });
 });

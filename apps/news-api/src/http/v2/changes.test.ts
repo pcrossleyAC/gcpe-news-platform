@@ -51,6 +51,20 @@ describe("changesBearerFromEnv", () => {
   });
 });
 
+describe("changesBearerFromEnv: the stack's internal token (2026-10-31, T2)", () => {
+  const INTERNAL = "i".repeat(64);
+  it("accepts the internal token with neither Entra nor local admin (break-glass off)", () => {
+    expect(changesBearerFromEnv({ SERVICE_TOKEN_SECRET: INTERNAL })).toEqual({ internal: { secret: INTERNAL } });
+    expect(changesBearerFromEnv({ ENTRA_TENANT_ID: "t", SERVICE_TOKEN_SECRET: INTERNAL })).toEqual({ internal: { secret: INTERNAL } });
+  });
+  it("keeps Entra alongside it, and never a session secret", () => {
+    const bearer = changesBearerFromEnv({ ENTRA_TENANT_ID: "11111111-1111-4111-8111-111111111111", AUTH_AUDIENCE: "api://n", SERVICE_TOKEN_SECRET: INTERNAL, SESSION_SECRET: "s".repeat(40) });
+    expect(bearer?.internal).toEqual({ secret: INTERNAL });
+    expect(bearer?.audience).toBe("api://n");
+    expect(bearer?.session).toBeUndefined();
+  });
+});
+
 describe("GET /api/v2/changes", () => {
   let tdb: TestDatabase;
   const app = (bearer: { local: { secret: string } } | null) => {

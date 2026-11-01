@@ -1,6 +1,6 @@
 import { jwtVerify } from "jose";
 import { describe, expect, it } from "vitest";
-import { mintLocalToken } from "@gcpe/auth";
+import { INTERNAL_ISSUER, mintLocalToken } from "@gcpe/auth";
 import { distributionTokenProvider } from "./distribution-token";
 
 const LOCAL_SECRET = "a".repeat(32);
@@ -61,7 +61,9 @@ describe("distributionTokenProvider", () => {
     // A real mint and a cached-but-identical mint are indistinguishable by content alone
     // (same claims, same secret), so this counts actual calls to the minter rather than
     // comparing the returned JWT strings.
-    let now = 1_000_000;
+    // A clock near the real one: the minted token's own iat/exp follow it, and jwtVerify below
+    // checks exp against the wall clock.
+    let now = Date.now();
     let mintCalls = 0;
     const mintToken: typeof mintLocalToken = async (o) => {
       mintCalls++;
@@ -89,5 +91,12 @@ describe("distributionTokenProvider", () => {
 
   it("throws at construction time when neither Entra nor local auth is configured", () => {
     expect(() => distributionTokenProvider({ local: null })).toThrow(/configure DISTRIBUTION_TOKEN_URL.*or enable LOCAL_ADMIN_ENABLED/s);
+  });
+
+  it("inside the stack, uses the internal token (same nod identity and roles), so it works with break-glass off (2026-10-31, T2)", async () => {
+    const secret = "i".repeat(64);
+    const getToken = distributionTokenProvider({ local: null, internal: { secret }, targetUrl: "http://stack.internal/distribution" });
+    const { payload } = await jwtVerify(await getToken(), localKey(secret), { algorithms: ["HS256"], issuer: INTERNAL_ISSUER });
+    expect(payload).toMatchObject({ sub: "nod", azp: "nod", roles: ["Distribution.Send", "Distribution.Operate"] });
   });
 });

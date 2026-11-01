@@ -96,8 +96,8 @@ finds its own `config/` and `migrations/` beside it.
 | Variable | Required | Secret | Notes |
 | --- | --- | --- | --- |
 | `TICK_TOKEN` | yes | yes | ≥ 32 characters. Guards `/stack/tick`; with `STACK_LOOPS=true` nothing needs to call it. |
-| `LOCAL_AUTH_SECRET` | yes | yes | ≥ 32 characters. Signs staff sessions. |
-| `STACK_EVENT_SECRET` | yes in practice | yes | ≥ 32 characters. The stack derives every internal event subscription, signing secret and NoD's link secret from it. |
+| `LOCAL_AUTH_SECRET` | with local admin | yes | ≥ 32 characters. Signs the break-glass admin's tokens only. |
+| `STACK_EVENT_SECRET` | yes in practice | yes | ≥ 32 characters. The stack derives every internal event subscription, signing secret and NoD's link secret from it, and the key the apps sign their calls to each other with (so those calls don't depend on the break-glass admin). Changing it signs everyone out and needs a restart of every replica at once. |
 | `CORE_DATABASE_URL`, `NRMS_DATABASE_URL`, `NEWSAPI_DATABASE_URL`, `SITE_DATABASE_URL`, `NOD_DATABASE_URL`, `DIST_DATABASE_URL` | yes | yes | One database per app, `postgres://…`. Never `self:/…`. |
 | `CALENDAR_DATABASE_URL` | no | yes | Unset: the Calendar is not mounted (`/calendar` answers 503); every other app runs. |
 | `SITE_NEWS_API_URL` | yes | | `self:/` |
@@ -105,9 +105,9 @@ finds its own `config/` and `migrations/` beside it.
 | `SITE_PUBLIC_SITE_URL`, `NOD_PUBLIC_SITE_URL` | yes | | `https://<public host>`, the bare origin |
 | `NOD_DISTRIBUTION_URL` | yes | | `self:/distribution` |
 | `DIST_SMTP_HOST`, `DIST_MAIL_FROM` | yes | | `DIST_SMTP_PORT`, `DIST_SMTP_SECURE` optional; `DIST_SMTP_USER`/`DIST_SMTP_PASS` optional and secret. |
-| `DIST_MAIL_REDIRECT_TO` | test sites | | Every message goes here instead. |
-| `SITE_ENVIRONMENT` | test sites | | `test` on anything but the real production site. |
-| `LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_USERNAME`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION` | test sites | | The break-glass admin login; `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` is needed with `NODE_ENV=production`. |
+| `DIST_MAIL_REDIRECT_TO` | test sites | | Every message goes here instead. The real production site removes it and sets `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true` (both together is refused). |
+| `SITE_ENVIRONMENT` | test sites | | `test` on anything but the real production site; `production` (or unset) on it. Case and spaces are ignored; under `NODE_ENV=production` any other value is refused at startup. |
+| `LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_USERNAME`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION` | test sites | | The break-glass admin login; `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` is needed with `NODE_ENV=production`. It only allows the login: it does not make a test site (`SITE_ENVIRONMENT=test` does). |
 | `LOCAL_ADMIN_PASSWORD_HASH` | with local admin | yes | `npm run auth:hash-password` |
 | `TRUST_PROXY_HOPS` | no | | Default `1`: the OpenShift router. `2` if another proxy is in front of it. |
 | `SESSION_MAX_HOURS` | no | | Default `12`: a staff session ends this many hours after sign-in, whatever the renewals (more than 0, at most 168). One value for every app. The manual pages say 12 hours: edit them if you change it. Rolling back past Core migration 0012: deploy the previous image and leave `staff_sessions` in place; never drop it by hand. |
@@ -115,6 +115,17 @@ finds its own `config/` and `migrations/` beside it.
 | `UPDATES_HUB_ENABLED` | no | | `true` for the News API's live-updates hub; OpenShift routes pass WebSockets. |
 | `ENTRA_TENANT_ID`, `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET`, `CORE_PUBLIC_BASE_URL`, `<PREFIX>_AUTH_AUDIENCE` | for Microsoft sign-in | client secret | As `scripts/windows-env.ts` writes them. |
 | `NRMS_FLICKR_*`, `NOD_MEDIA_HUB_URL`, `NOD_EMERGENCY_FEED_URL`, `NEWSAPI_EMBEDDINGS_*`, … | no | keys are | Outside services; unset means the stack's fakes on a test site, nothing in production. See siteground.md. |
+| `NOD_EMERGENCY_FEED` | real production, unless the feed URL is set | | `off` switches emergency alerts off on purpose. The real production site refuses to start with neither this nor `NOD_EMERGENCY_FEED_URL`, and with Microsoft sign-in or the mail settings incomplete (docs/deploy/windows.md, "Real production: what the stack refuses"); `--check` reports the same under `production`. |
+
+**The real production site on OpenShift** follows the same go-live steps as Windows
+(docs/deploy/windows.md, P4): leave out `SITE_ENVIRONMENT` and every `LOCAL_ADMIN_*` and
+`LOCAL_AUTH_SECRET` (keep them in a Secret that isn't mounted, for break-glass in an emergency),
+remove `DIST_MAIL_REDIRECT_TO` and set `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true`, and set Microsoft
+sign-in and the emergency feed (or `NOD_EMERGENCY_FEED=off`); set `SITE_ENVIRONMENT=production`,
+which break-glass in an emergency needs. The stack refuses to start without
+them and `--check` names what is missing. The apps' calls to each other stay in the one pod and
+need no break-glass. Splitting them into a public and a staff tier would need Entra client
+credentials between the tiers, which isn't built.
 
 `node stack.js --check` validates a set of variables without starting anything:
 `oc run gcpe-check --rm -i --restart=Never --image=<image> --overrides=<envFrom> -- node stack.js --check`,

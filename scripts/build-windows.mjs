@@ -38,6 +38,8 @@ export const TOOLS = [
   "apps/news-api/src/cli/search-backfill.ts",
   "scripts/windows-env.ts",
   "scripts/windows-db-setup.ts",
+  // A fresh break-glass password hash, for turning break-glass on in an emergency (windows.md P4).
+  "packages/auth/src/cli/hash-password.ts",
 ];
 
 /** What the DMZ proxy's package holds (deploy/windows/), and nothing else. */

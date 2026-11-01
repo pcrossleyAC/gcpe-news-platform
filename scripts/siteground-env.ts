@@ -83,6 +83,9 @@ export function buildEnvLines(input: SiteGroundEnvInput, secrets: GeneratedSecre
     "# TENANT_CONFIG is left unset -- the artifact's own config/tenants/bc.json next to stack.js is used.",
     "",
     "NODE_ENV=production",
+    // boxs.ca is a test site (noindex, TEST banner, the fakes): SITE_ENVIRONMENT=test is the only
+    // setting that says so (owner decision 2026-10-31; LOCAL_ADMIN_ALLOW_IN_PRODUCTION no longer does).
+    "SITE_ENVIRONMENT=test",
     "STACK_LOOPS=false",
     "UPDATES_HUB_ENABLED=false",
     `TICK_TOKEN=${secrets.tickToken}`,

@@ -71,6 +71,7 @@ function OperationsPanels(): React.JSX.Element {
       {message && <p role="status">{message}</p>}
       {ops && (
         <>
+          {!ops.testSite && (ops.breakGlassOn || ops.staffPasswordsOn) && <LiveSignInNotice breakGlassOn={ops.breakGlassOn} staffPasswordsOn={ops.staffPasswordsOn} />}
           {/* Who hears about a pause or resume: NOD_OPS_EMAIL, when one is set up (settings.ts). */}
           <PauseControl
             title="News On Demand sending"
@@ -110,10 +111,23 @@ function OperationsPanels(): React.JSX.Element {
           <EmergencyFeedPanel feed={ops.emergencyFeed} timeZone={timeZone} />
           <SoftCodesForm value={ops.softCodesCounted} onDone={done} reportDirty={forms.report} />
           <PurgeControl purge={ops.purge} timeZone={timeZone} onDone={done} />
-          {ops.bounceSource === "fake" && <BounceUpload onDone={done} />}
+          {ops.bounceSource === "fake" && <BounceUpload live={!ops.testSite} onDone={done} />}
         </>
       )}
     </div>
+  );
+}
+
+/** Fix round 1 (M2, M3): on the live site, sign-in that should normally be off is never silent. */
+function LiveSignInNotice({ breakGlassOn, staffPasswordsOn }: { breakGlassOn: boolean; staffPasswordsOn: boolean }): React.JSX.Element {
+  return (
+    <section aria-labelledby="ops-live-sign-in">
+      <h2 id="ops-live-sign-in">Sign-in on the live site</h2>
+      {breakGlassOn && (
+        <InlineAlert variant="warning" description="The break-glass admin is on: anyone with its password can sign in with every admin role. Ask IT to turn it off once the problem is fixed." />
+      )}
+      {staffPasswordsOn && <InlineAlert variant="warning" description="Staff passwords are allowed: staff can sign in without Microsoft. Ask IT to turn this off unless it is meant to be on." />}
+    </section>
   );
 }
 
@@ -563,7 +577,12 @@ function EmergencyFeedPanel({ feed, timeZone }: { feed: EmergencyFeedStatus; tim
   return (
     <section aria-labelledby="ops-emergency-feed">
       <h2 id="ops-emergency-feed">Emergency alerts feed</h2>
-      {feed.url === null ? (
+      {feed.url === null && feed.switchedOff ? (
+        <InlineAlert
+          variant="warning"
+          description="Emergency alerts are switched off: no emergency alerts are read or emailed to the Emergency Info BC list. Ask IT to set up the emergency alerts feed."
+        />
+      ) : feed.url === null ? (
         <p>No feed is configured (EMERGENCY_FEED_URL), so no emergency alerts are read.</p>
       ) : (
         <>
@@ -586,8 +605,10 @@ function EmergencyFeedPanel({ feed, timeZone }: { feed: EmergencyFeedStatus; tim
   );
 }
 
-/** Test sites only: shown when Distribution's bounce source is the fake mailbox (spec §7). */
-function BounceUpload({ onDone }: { onDone(text: string): void }): React.JSX.Element {
+/** Shown when Distribution's bounce source is the fake mailbox (spec §7): a test site's test upload,
+ * or, on the live site (owner decision 2026-10-31), the manual upload, with a warning that bounces
+ * aren't being read. */
+function BounceUpload({ live, onDone }: { live: boolean; onDone(text: string): void }): React.JSX.Element {
   const [raw, setRaw] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -610,7 +631,9 @@ function BounceUpload({ onDone }: { onDone(text: string): void }): React.JSX.Ele
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 404
-          ? "This site doesn’t use the test mailbox."
+          ? live
+            ? "This site doesn’t take bounce uploads."
+            : "This site doesn’t use the test mailbox."
           : e instanceof ApiError && e.status === 400
             ? `Not uploaded: ${e.message}`
             : "Couldn’t upload. Try again.",
@@ -621,8 +644,15 @@ function BounceUpload({ onDone }: { onDone(text: string): void }): React.JSX.Ele
   };
   return (
     <section aria-labelledby="ops-bounce-upload">
-      <h2 id="ops-bounce-upload">Test bounce upload</h2>
-      <p>Test sites only: every email is redirected, so real bounces never arrive. Upload a bounce message to test bounce handling.</p>
+      <h2 id="ops-bounce-upload">{live ? "Bounce upload" : "Test bounce upload"}</h2>
+      {live ? (
+        <>
+          <InlineAlert variant="warning" description="Bounces aren’t being read: bounce handling is set to manual upload. Ask IT to set up the bounce mailbox." />
+          <p>Until then, upload a bounce message you received to record the bounce.</p>
+        </>
+      ) : (
+        <p>Test sites only: every email is redirected, so real bounces never arrive. Upload a bounce message to test bounce handling.</p>
+      )}
       <label>
         Bounce message (.eml)
         <input type="file" accept=".eml,message/rfc822,text/plain" onChange={(e) => void onFile(e)} disabled={busy} />

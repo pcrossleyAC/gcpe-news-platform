@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import express from "express";
-import { authFromEnv, NOD_SUBSCRIBE_API_ROLE, serviceTokenProvider } from "@gcpe/auth";
+import type { z } from "zod";
+import { authFromEnv, NOD_SUBSCRIBE_API_ROLE, serviceTokenProvider, type ServiceTokenOptions } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { CircuitBreaker, createEmbeddingProvider, createGuardedEmbedder } from "@gcpe/embeddings";
@@ -69,6 +70,30 @@ export interface AppHandle {
 }
 
 /**
+ * The News API's token for the public Subscribe proxy to NoD: Entra when configured; otherwise,
+ * inside the stack, its internal token (2026-10-31, T2); otherwise, on test sites, a local token
+ * carrying the subscribe role. Exported so `stack --check` builds it exactly as startup does.
+ */
+export function nodSubscribeTokenOptions(
+  parsed: Pick<z.infer<typeof newsApiEnvSchema>, "NOD_BASE_URL" | "NOD_TOKEN_URL" | "NOD_CLIENT_ID" | "NOD_CLIENT_SECRET" | "NOD_SCOPE">,
+  env: NodeJS.ProcessEnv,
+): ServiceTokenOptions {
+  const noNodEntra = [parsed.NOD_TOKEN_URL, parsed.NOD_CLIENT_ID, parsed.NOD_CLIENT_SECRET, parsed.NOD_SCOPE].every((v) => !v);
+  return {
+    tokenUrl: parsed.NOD_TOKEN_URL,
+    clientId: parsed.NOD_CLIENT_ID,
+    clientSecret: parsed.NOD_CLIENT_SECRET,
+    scope: parsed.NOD_SCOPE,
+    local: noNodEntra && env.LOCAL_ADMIN_ENABLED === "true" ? authFromEnv(env).local : null,
+    internal: noNodEntra && env.SERVICE_TOKEN_SECRET ? { secret: env.SERVICE_TOKEN_SECRET } : null,
+    targetUrl: parsed.NOD_BASE_URL,
+    subject: "news-api",
+    roles: [NOD_SUBSCRIBE_API_ROLE],
+    envPrefix: "NOD",
+  };
+}
+
+/**
  * Wires up everything News API's main.ts needs: parses env, loads + self-checks the tenant
  * config, runs migrations, builds the SignalR updates hub and its Postgres LISTEN connection,
  * and the Express app. Identical behaviour to the former main.ts.
@@ -131,18 +156,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
 
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
-  const nodEntra = [parsed.NOD_TOKEN_URL, parsed.NOD_CLIENT_ID, parsed.NOD_CLIENT_SECRET, parsed.NOD_SCOPE];
-  // Entra when configured; otherwise, on test sites, a local token carrying the subscribe
-  // role (same fallback NRMS uses for its NoD calls).
-  const getToken = parsed.NOD_BASE_URL
-    ? serviceTokenProvider({
-        tokenUrl: parsed.NOD_TOKEN_URL, clientId: parsed.NOD_CLIENT_ID, clientSecret: parsed.NOD_CLIENT_SECRET, scope: parsed.NOD_SCOPE,
-        local: nodEntra.every((v) => !v) && env.LOCAL_ADMIN_ENABLED === "true" ? authFromEnv(env).local : null,
-        subject: "news-api",
-        roles: [NOD_SUBSCRIBE_API_ROLE],
-        envPrefix: "NOD",
-      })
-    : undefined;
+  const getToken = parsed.NOD_BASE_URL ? serviceTokenProvider(nodSubscribeTokenOptions(parsed, env)) : undefined;
 
   // Assigned once listenForUpdates() resolves below; until then readiness reports
   // unavailable. Read through this mutable binding (not captured by value) so createApp's

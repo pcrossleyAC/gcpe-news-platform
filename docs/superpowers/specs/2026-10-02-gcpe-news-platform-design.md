@@ -349,6 +349,7 @@ Ported from the `nrms` prototype (NestJS/Prisma → Express/Drizzle per §3.4) a
 
 - Staff auth: Entra OIDC auth-code + PKCE via `openid-client`; stateless signed cookies; Core roles checked per request **and per record** (ministry scope, confidentiality).
 - Service-to-service: Entra client-credential tokens for APIs; HMAC + timestamp for webhooks.
+  - **Amendment 2026-10-31 (owner approved, production configuration T2):** inside the one stack process, the apps call each other with the stack's own internal token instead: HS256, issuer and audience `gcpe-internal`, keyed by `HMAC(STACK_EVENT_SECRET, "gcpe-service-token")`, carrying the caller's own subject, azp and roles, and accepted only on the stack's in-memory connections (never over IIS, the DMZ or the network). It replaces the break-glass `LOCAL_AUTH_SECRET` token those calls used, so break-glass can be off in production. Entra client credentials are still chosen when configured, and are for apps split across processes or servers (T8, not built).
 - Secrets only in OpenShift Secrets / local `.env` (never committed); CI runs secret scanning, `npm audit`, container image scanning.
 - PII: subscriber emails stored only in NoD and Distribution; PII columns encrypted at rest; admin access audited; embeddings never include subscriber data; staff-side AI over unpublished drafts behind a feature flag, **off by default**, pending PIA.
 - Internet-facing: News API and static site only. All other apps internal.

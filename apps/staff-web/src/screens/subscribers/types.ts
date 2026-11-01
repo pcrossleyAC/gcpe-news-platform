@@ -203,6 +203,8 @@ export interface EmergencyFeedStatus {
   url: string | null;
   checkedAt: string | null;
   result: EmergencyFeedResult | null;
+  /** Switched off on purpose in the server settings (NOD_EMERGENCY_FEED=off). */
+  switchedOff: boolean;
 }
 
 /** apps/nod/src/operations.ts */
@@ -214,6 +216,11 @@ export interface OperationsStatus {
   softCodesCounted: string[];
   purge: PurgeStatus;
   emergencyFeed: EmergencyFeedStatus;
+  /** False on the live (real production) site. */
+  testSite: boolean;
+  /** The break-glass admin is on / staff passwords are allowed (shown on the live site only). */
+  breakGlassOn: boolean;
+  staffPasswordsOn: boolean;
   opsEmailSet: boolean;
   outgoing: OutgoingStatus;
 }

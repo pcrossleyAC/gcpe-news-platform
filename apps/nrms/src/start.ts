@@ -131,10 +131,13 @@ export function flickrConfigFromEnv(parsed: z.infer<typeof nrmsEnvSchema>): Flic
  * count needs. Not added to STAFF_ROLES: no human ever holds it.
  */
 export function nodServiceTokenOptions(
-  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "NOD_TOKEN_URL" | "NOD_CLIENT_ID" | "NOD_CLIENT_SECRET" | "NOD_SCOPE">,
+  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "NOD_TOKEN_URL" | "NOD_CLIENT_ID" | "NOD_CLIENT_SECRET" | "NOD_SCOPE"> & Partial<Pick<z.infer<typeof nrmsEnvSchema>, "NOD_URL">>,
   local: LocalAuthConfig | null,
+  internal: { secret: string } | null = null,
 ): ServiceTokenOptions {
   return {
+    internal,
+    targetUrl: parsed.NOD_URL,
     tokenUrl: parsed.NOD_TOKEN_URL,
     clientId: parsed.NOD_CLIENT_ID,
     clientSecret: parsed.NOD_CLIENT_SECRET,
@@ -151,10 +154,13 @@ export function nodServiceTokenOptions(
  * token's azp, which Distribution uses as the app id that scopes idempotency keys and batches.
  */
 export function distributionServiceTokenOptions(
-  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "DISTRIBUTION_TOKEN_URL" | "DISTRIBUTION_CLIENT_ID" | "DISTRIBUTION_CLIENT_SECRET" | "DISTRIBUTION_SCOPE">,
+  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "DISTRIBUTION_TOKEN_URL" | "DISTRIBUTION_CLIENT_ID" | "DISTRIBUTION_CLIENT_SECRET" | "DISTRIBUTION_SCOPE"> & Partial<Pick<z.infer<typeof nrmsEnvSchema>, "DISTRIBUTION_URL">>,
   local: LocalAuthConfig | null,
+  internal: { secret: string } | null = null,
 ): ServiceTokenOptions {
   return {
+    internal,
+    targetUrl: parsed.DISTRIBUTION_URL,
     tokenUrl: parsed.DISTRIBUTION_TOKEN_URL,
     clientId: parsed.DISTRIBUTION_CLIENT_ID,
     clientSecret: parsed.DISTRIBUTION_CLIENT_SECRET,
@@ -173,10 +179,13 @@ export function distributionServiceTokenOptions(
  * `Core.Admin`, which is a full admin credential.
  */
 export function coreServiceTokenOptions(
-  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "CORE_TOKEN_URL" | "CORE_CLIENT_ID" | "CORE_CLIENT_SECRET" | "CORE_SCOPE">,
+  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "CORE_TOKEN_URL" | "CORE_CLIENT_ID" | "CORE_CLIENT_SECRET" | "CORE_SCOPE"> & Partial<Pick<z.infer<typeof nrmsEnvSchema>, "CORE_URL">>,
   local: LocalAuthConfig | null,
+  internal: { secret: string } | null = null,
 ): ServiceTokenOptions {
   return {
+    internal,
+    targetUrl: parsed.CORE_URL,
     tokenUrl: parsed.CORE_TOKEN_URL,
     clientId: parsed.CORE_CLIENT_ID,
     clientSecret: parsed.CORE_CLIENT_SECRET,
@@ -191,10 +200,13 @@ export function coreServiceTokenOptions(
 /** {@link ServiceTokenOptions} for NRMS's calls to the News API's similar route: only the
  * `NewsApi.Similar` service role (not a staff role). */
 export function newsApiServiceTokenOptions(
-  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "NEWS_API_TOKEN_URL" | "NEWS_API_CLIENT_ID" | "NEWS_API_CLIENT_SECRET" | "NEWS_API_SCOPE">,
+  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "NEWS_API_TOKEN_URL" | "NEWS_API_CLIENT_ID" | "NEWS_API_CLIENT_SECRET" | "NEWS_API_SCOPE"> & Partial<Pick<z.infer<typeof nrmsEnvSchema>, "NEWS_API_URL">>,
   local: LocalAuthConfig | null,
+  internal: { secret: string } | null = null,
 ): ServiceTokenOptions {
   return {
+    internal,
+    targetUrl: parsed.NEWS_API_URL,
     tokenUrl: parsed.NEWS_API_TOKEN_URL,
     clientId: parsed.NEWS_API_CLIENT_ID,
     clientSecret: parsed.NEWS_API_CLIENT_SECRET,
@@ -282,7 +294,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const nod = parsed.NOD_URL
     ? nodClient({
         baseUrl: parsed.NOD_URL,
-        getToken: serviceTokenProvider(nodServiceTokenOptions(parsed, auth.local)),
+        getToken: serviceTokenProvider(nodServiceTokenOptions(parsed, auth.local, auth.internal)),
       })
     : undefined;
   const countSubscribers = nod?.countSubscribers;
@@ -295,14 +307,14 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const siteSettingsDefaults = loadSiteSettingsDefaults(parsed.TENANT_CONFIG, tenant.site.theme);
   const liveFeedDefaults = { manifestUrl: parsed.LIVE_WEBCAST_MANIFEST_URL_DEFAULT ?? "", m3uUrl: parsed.LIVE_WEBCAST_M3U_URL_DEFAULT ?? "" };
   const distribution = parsed.DISTRIBUTION_URL
-    ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local)) })
+    ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local, auth.internal)) })
     : undefined;
   const core = parsed.CORE_URL
-    ? coreClient({ baseUrl: parsed.CORE_URL, getToken: serviceTokenProvider(coreServiceTokenOptions(parsed, auth.local)) })
+    ? coreClient({ baseUrl: parsed.CORE_URL, getToken: serviceTokenProvider(coreServiceTokenOptions(parsed, auth.local, auth.internal)) })
     : undefined;
   const similar = parsed.NEWS_API_URL
     ? {
-        client: newsApiSimilarClient({ baseUrl: parsed.NEWS_API_URL, getToken: serviceTokenProvider(newsApiServiceTokenOptions(parsed, auth.local)) }),
+        client: newsApiSimilarClient({ baseUrl: parsed.NEWS_API_URL, getToken: serviceTokenProvider(newsApiServiceTokenOptions(parsed, auth.local, auth.internal)) }),
         staffAi: tenant.features.staffAi,
       }
     : undefined;

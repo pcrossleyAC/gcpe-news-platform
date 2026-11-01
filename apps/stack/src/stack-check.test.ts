@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { checkStack } from "./stack";
+import { checkStack, startStack } from "./stack";
 
 const TICK_TOKEN = "t".repeat(32);
 const LOCAL_AUTH_SECRET = "s".repeat(32);
@@ -204,6 +204,9 @@ describe("checkStack", () => {
     const env = baseEnv();
     env.NODE_ENV = "production";
     env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION = "true";
+    // A test site in production mode (boxs.ca's shape): break-glass alone no longer makes one
+    // (2026-10-31), and real production has its own checks (the "real production" block below).
+    env.SITE_ENVIRONMENT = "test";
     const result = await checkStack(env);
     expect(result.ok).toBe(true);
   });
@@ -251,6 +254,7 @@ describe("checkStack", () => {
     const env = baseEnv();
     env.NODE_ENV = "production";
     env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION = "true";
+    env.SITE_ENVIRONMENT = "test";
     env.NEWSAPI_EMBEDDINGS_PROVIDER = "stand-in";
     const result = await checkStack(env);
     expect(result.apps["news-api"]?.ok).toBe(true);
@@ -266,5 +270,66 @@ describe("checkStack", () => {
     expect(result.apps["public-site"]?.ok).toBe(false);
     expect(result.apps["public-site"]?.error).toMatch(/SITE_\*/);
     expect(result.apps.core?.ok).toBe(true);
+  });
+});
+
+// Production configuration (owner decisions 2026-10-31): the real production shape, with the
+// break-glass admin off, checked without a database.
+describe("checkStack: real production", () => {
+  const AUDIENCE = "api://22222222-2222-4222-8222-222222222222";
+  function prodEnv(): NodeJS.ProcessEnv {
+    const env = baseEnv();
+    for (const k of ["LOCAL_ADMIN_ENABLED", "LOCAL_ADMIN_PASSWORD_HASH", "LOCAL_AUTH_SECRET", "DIST_MAIL_REDIRECT_TO"]) delete env[k];
+    // The stack derives every event route and the internal service-token key from this.
+    for (const k of Object.keys(env)) if (/_EVENT_(SUBSCRIBERS|SECRETS)$/.test(k)) delete env[k];
+    return {
+      ...env,
+      NODE_ENV: "production",
+      STACK_EVENT_SECRET: "e".repeat(48),
+      ENTRA_TENANT_ID: "11111111-1111-4111-8111-111111111111",
+      CORE_ENTRA_CLIENT_ID: "22222222-2222-4222-8222-222222222222",
+      CORE_ENTRA_CLIENT_SECRET: "client-secret",
+      CORE_PUBLIC_BASE_URL: "https://news.example.invalid",
+      ...Object.fromEntries(["CORE", "NRMS", "NEWSAPI", "SITE", "NOD", "DIST", "CALENDAR"].map((p) => [`${p}_AUTH_AUDIENCE`, AUDIENCE])),
+      NOD_EMERGENCY_FEED: "off",
+      DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
+    };
+  }
+
+  it("passes with local admin off, and reports its warnings (emergency alerts off, bounces by manual upload)", async () => {
+    const result = await checkStack(prodEnv());
+    expect(result.apps).toEqual(expect.objectContaining({ core: expect.objectContaining({ ok: true }), nrms: expect.objectContaining({ ok: true }), nod: expect.objectContaining({ ok: true }) }));
+    expect(result.ok).toBe(true);
+    expect(result.production?.errors).toEqual([]);
+    expect(result.production?.warnings.join("\n")).toMatch(/Emergency alerts are switched off/);
+    expect(result.production?.warnings.join("\n")).toMatch(/Bounces aren't being read/);
+  });
+
+  it("fails, naming the setting, when real production has neither an emergency feed nor NOD_EMERGENCY_FEED=off", async () => {
+    const env = prodEnv();
+    delete env.NOD_EMERGENCY_FEED;
+    const result = await checkStack(env);
+    expect(result.ok).toBe(false);
+    expect(result.production?.errors.join("\n")).toMatch(/NOD_EMERGENCY_FEED_URL/);
+  });
+
+  it("fails when the apps would have no way to call each other (no STACK_EVENT_SECRET, local admin off): the token each app builds at startup", async () => {
+    const env = prodEnv();
+    delete env.STACK_EVENT_SECRET;
+    // Explicit event wiring instead, so only the service tokens are missing.
+    Object.assign(env, { NOD_LINK_SECRET: "l".repeat(32), SESSION_SECRET: "s".repeat(40) });
+    const result = await checkStack(env);
+    expect(result.ok).toBe(false);
+    expect(result.apps.nrms?.error).toMatch(/NOD_TOKEN_URL/);
+    expect(result.apps.nod?.error).toMatch(/DISTRIBUTION_TOKEN_URL/);
+    expect(result.apps["public-site"]?.error).toMatch(/NEWS_API_TOKEN_URL/);
+    expect(result.apps["news-api"]?.error).toMatch(/NOD_TOKEN_URL/);
+  });
+
+  it("startStack refuses real production with a problem before touching any database or folder", async () => {
+    const env = prodEnv();
+    delete env.CORE_ENTRA_CLIENT_SECRET;
+    env.DATA_DIR = "/nonexistent-gcpe-check/data";
+    await expect(startStack(env)).rejects.toThrow(/refusing to start.*Microsoft sign-in/s);
   });
 });

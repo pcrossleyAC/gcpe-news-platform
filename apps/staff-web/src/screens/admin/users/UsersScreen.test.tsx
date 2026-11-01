@@ -252,6 +252,24 @@ describe("UsersScreen", () => {
     expect(await screen.findByText("you can't remove your own admin access")).toBeInTheDocument();
   });
 
+  // Production configuration T5 (2026-10-31): Core refuses to deactivate the last active Core Admin.
+  it("shows Core's last-admin reason when deactivating the last active Core Admin", async () => {
+    const reason = "this is the last active Core Admin: give Core Admin to someone else first, so someone can still manage users";
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF]);
+      if (url === "/core/api/users/self-1" && init?.method === "PATCH") return jsonResponse(409, { error: reason });
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    await openEditor("self@x.invalid");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("switch", { name: "self@x.invalid is active" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Deactivate" }));
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "self@x.invalid is active" })).toBeChecked();
+  });
+
   // Owner decision 2026-10-29: switching Active off asks first; switching it on stays instant.
   it("asks before deactivating a user; Cancel leaves them active and posts nothing", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];

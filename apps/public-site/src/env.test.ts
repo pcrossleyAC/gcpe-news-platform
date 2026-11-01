@@ -255,6 +255,15 @@ describe("newsApiTokenOptions", () => {
   });
 });
 
+it("newsApiTokenOptions inside the stack: the internal token for an in-process News API, with local admin off (2026-10-31, T2)", async () => {
+  const { decodeJwt } = await import("jose");
+  const none = { NEWS_API_TOKEN_URL: undefined, NEWS_API_CLIENT_ID: undefined, NEWS_API_CLIENT_SECRET: undefined, NEWS_API_SCOPE: undefined };
+  const opts = newsApiTokenOptions({ ...none, NEWS_API_URL: "http://stack.internal/" }, { SERVICE_TOKEN_SECRET: "i".repeat(64) });
+  expect(decodeJwt(await serviceTokenProvider(opts)())).toMatchObject({ iss: "gcpe-internal", sub: "site-builder", roles: ["NewsApi.ChangesRead"] });
+  // Never for a News API somewhere else.
+  expect(() => serviceTokenProvider(newsApiTokenOptions({ ...none, NEWS_API_URL: "https://api.example.test/" }, { SERVICE_TOKEN_SECRET: "i".repeat(64) }))).toThrow(/NEWS_API_TOKEN_URL/);
+});
+
 describe("Google Search Console verification env", () => {
   const parse = (extra: Record<string, string>) => parseEnv(publicSiteEnvSchema(tenant), { ...BASE, ...extra });
   it("accepts valid values, and unset or empty means none", () => {

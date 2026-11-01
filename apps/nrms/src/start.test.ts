@@ -157,6 +157,23 @@ it("newsApiServiceTokenOptions: subject nrms, only the NewsApi.Similar role, NEW
   expect(o).toMatchObject({ subject: "nrms", roles: [NEWS_API_SIMILAR_ROLE], envPrefix: "NEWS_API" });
 });
 
+// Production configuration T2 (2026-10-31): inside the stack every one of NRMS's four calls uses
+// the stack's internal token, so they keep working with break-glass off.
+describe("NRMS's four service tokens inside the stack", () => {
+  const internal = { secret: "i".repeat(64) };
+  const cases = [
+    ["NoD", nodServiceTokenOptions, { NOD_URL: "http://stack.internal/nod" }, ["NoD.SubscriberCount"]],
+    ["Distribution", distributionServiceTokenOptions, { DISTRIBUTION_URL: "http://stack.internal/distribution" }, ["Distribution.Send"]],
+    ["Core", coreServiceTokenOptions, { CORE_URL: "http://stack.internal/core" }, ["Core.AdminDirectory"]],
+    ["News API", newsApiServiceTokenOptions, { NEWS_API_URL: "http://stack.internal/" }, [NEWS_API_SIMILAR_ROLE]],
+  ] as const;
+  it.each(cases)("%s: the internal token, subject and azp nrms, with local admin off", async (_name, fn, url, roles) => {
+    const opts = (fn as (p: object, l: null, i: typeof internal) => Parameters<typeof serviceTokenProvider>[0])(url, null, internal);
+    const payload = decodeJwt(await serviceTokenProvider(opts)());
+    expect(payload).toMatchObject({ iss: "gcpe-internal", sub: "nrms", azp: "nrms", roles: [...roles] });
+  });
+});
+
 // Minor 2 (fix round 1): pulled out of startNrms so the branching can be tested directly.
 describe("buildBlueBridgeNotify", () => {
   it("logs the subject only when either client is missing — never sends, never addresses", async () => {

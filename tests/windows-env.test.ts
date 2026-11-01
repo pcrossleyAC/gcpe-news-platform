@@ -199,3 +199,58 @@ describe("proxy hops input", () => {
     for (const n of [0, 6, 1.5, "2"]) expect(windowsEnvInputSchema.safeParse({ ...input(), proxyHops: n }).success, String(n)).toBe(false);
   });
 });
+
+// Production configuration T3 (owner approved 2026-10-31): Install-Gcpe.ps1 -Environment Prod.
+describe("production mode", () => {
+  const entra = { tenantId: "11111111-1111-4111-8111-111111111111", clientId: "22222222-2222-4222-8222-222222222222", clientSecret: "s3cr#t", audience: "api://22222222-2222-4222-8222-222222222222" };
+  const prod = (over: Partial<WindowsEnvInput> = {}): WindowsEnvInput => input({ environment: "prod", entra, mailRedirectTo: [], realMail: true, emergencyFeedUrl: "https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true", ...over });
+  const ALL = ["NODE_ENV", "SITE_ENVIRONMENT", "LOCAL_ADMIN_ENABLED", "LOCAL_ADMIN_ALLOW_IN_PRODUCTION", "DIST_MAIL_REDIRECT_TO", "DIST_MAIL_ALLOW_REAL_RECIPIENTS", "NOD_EMERGENCY_FEED_URL", "NOD_EMERGENCY_FEED"];
+
+  it("is the real production site from its first start: SITE_ENVIRONMENT=production, break-glass on for setting up (P4 removes it), real mail, the emergency feed", () => {
+    expect(readWithNode(buildWindowsEnvLines(windowsEnvInputSchema.parse(prod()), HASH, generateSecrets()), ALL)).toEqual({
+      NODE_ENV: "production",
+      // Fix round 1 (M1): the real production site says so, so break-glass may be on there.
+      SITE_ENVIRONMENT: "production",
+      LOCAL_ADMIN_ENABLED: "true",
+      LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true",
+      DIST_MAIL_REDIRECT_TO: undefined,
+      DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
+      NOD_EMERGENCY_FEED_URL: "https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true",
+      NOD_EMERGENCY_FEED: undefined,
+    });
+  });
+
+  it("keeps redirecting mail until go-live when a redirect is given, and can switch emergency alerts off on purpose", () => {
+    const env = readWithNode(buildWindowsEnvLines(windowsEnvInputSchema.parse(prod({ mailRedirectTo: ["prod-inbox@example.gov.bc.ca"], realMail: undefined, emergencyFeedUrl: undefined, emergencyFeedOff: true })), HASH, generateSecrets()), ALL);
+    expect(env).toMatchObject({ DIST_MAIL_REDIRECT_TO: "prod-inbox@example.gov.bc.ca", NOD_EMERGENCY_FEED: "off" });
+    expect(env.DIST_MAIL_ALLOW_REAL_RECIPIENTS).toBeUndefined();
+    expect(env.NOD_EMERGENCY_FEED_URL).toBeUndefined();
+  });
+
+  it("what it writes passes the stack's real-production checks, break-glass included", async () => {
+    const { productionProblems } = await import("../apps/stack/src/env");
+    const { authFromEnv } = await import("../packages/auth/src/from-env");
+    const { hashPassword } = await import("../packages/auth/src/password");
+    const lines = buildWindowsEnvLines(windowsEnvInputSchema.parse(prod()), await hashPassword("correct horse battery"), generateSecrets());
+    const env = readWithNode(lines, [...ALL, "ENTRA_TENANT_ID", "CORE_ENTRA_CLIENT_ID", "CORE_ENTRA_CLIENT_SECRET", "CORE_PUBLIC_BASE_URL", "LOCAL_ADMIN_PASSWORD_HASH", "LOCAL_AUTH_SECRET", "CORE_AUTH_AUDIENCE"]);
+    const defined = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined)) as NodeJS.ProcessEnv;
+    expect(productionProblems(defined).errors).toEqual([]);
+    expect(() => authFromEnv({ ...defined, AUTH_AUDIENCE: defined.CORE_AUTH_AUDIENCE })).not.toThrow();
+  });
+
+  it.each([
+    ["no mail redirect and no explicit real mail (fix round 1, I1: never real mail by default)", { realMail: undefined }],
+    ["both a mail redirect and real mail", { mailRedirectTo: ["prod-inbox@example.gov.bc.ca"] }],
+    ["no Entra", { entra: undefined }],
+    ["no emergency feed and no explicit off", { emergencyFeedUrl: undefined }],
+    ["both an emergency feed and off", { emergencyFeedOff: true }],
+  ])("refuses %s", (_label, over) => {
+    expect(windowsEnvInputSchema.safeParse(prod(over as Partial<WindowsEnvInput>)).success).toBe(false);
+  });
+
+  it("a test site still needs a mail redirect, and is the default; real mail is Prod only", () => {
+    expect(windowsEnvInputSchema.parse(input()).environment).toBe("test");
+    expect(windowsEnvInputSchema.safeParse(input({ environment: "test", mailRedirectTo: [] })).success).toBe(false);
+    expect(windowsEnvInputSchema.safeParse(input({ realMail: true })).success).toBe(false);
+  });
+});

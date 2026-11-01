@@ -31,6 +31,7 @@ data:
   DIST_MAIL_REDIRECT_TO: "<ops@example.gov.bc.ca>"
 
   LOCAL_ADMIN_ENABLED: "true"
-  # Required alongside NODE_ENV=production for the local admin (break-glass) login on a test site.
+  # Required alongside NODE_ENV=production for the local admin (break-glass) login. It doesn't make a
+  # test site (SITE_ENVIRONMENT does); the real production site leaves every LOCAL_ADMIN_* out.
   LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true"
   LOCAL_ADMIN_USERNAME: "<admin username>"

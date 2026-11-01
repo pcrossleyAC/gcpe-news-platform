@@ -1,5 +1,6 @@
 import { createServer, request, type IncomingMessage, type RequestListener } from "node:http";
 import { duplexPair } from "node:stream";
+import { INTERNAL_ORIGIN as ORIGIN, markInternalSocket } from "@gcpe/auth";
 
 /**
  * The origin every `self:/…` URL resolves to (see env.ts). Requests to it never touch the
@@ -12,9 +13,10 @@ import { duplexPair } from "node:stream";
  * also cheaper and doesn't depend on the host's networking at all.
  *
  * `.internal` is reserved for private use (ICANN, 2024), so if the dispatcher below were ever
- * missing, these URLs would fail to resolve rather than reach some other host.
+ * missing, these URLs would fail to resolve rather than reach some other host. Defined in
+ * @gcpe/auth, which decides by it whether a service token may be sent to a URL.
  */
-export const INTERNAL_ORIGIN = "http://stack.internal";
+export const INTERNAL_ORIGIN = ORIGIN;
 
 type Fetch = typeof fetch;
 
@@ -81,6 +83,9 @@ export function installInternalFetch(getApp: () => RequestListener | undefined):
     const [clientSide, serverSide] = duplexPair();
     // What Express/req.ip sees for these requests; internal calls are loopback by nature.
     Object.defineProperty(serverSide, "remoteAddress", { value: "127.0.0.1" });
+    // The only place a connection is marked internal: @gcpe/auth accepts the stack's internal
+    // service token on marked connections only, never on a real socket (2026-10-31, T2).
+    markInternalSocket(serverSide);
     server.emit("connection", serverSide);
 
     const res = await new Promise<IncomingMessage>((resolve, reject) => {

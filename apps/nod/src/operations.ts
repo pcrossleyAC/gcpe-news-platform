@@ -15,7 +15,14 @@ export interface OperationsStatus {
   bounceSummary: BounceSummaryAddress;
   softCodesCounted: string[];
   purge: PurgeStatus;
-  emergencyFeed: EmergencyFeedStatus;
+  /** `switchedOff`: NOD_EMERGENCY_FEED=off, set on purpose (owner decision 2026-10-31, option C). */
+  emergencyFeed: EmergencyFeedStatus & { switchedOff: boolean };
+  /** @gcpe/config's isTestSite: the screen warns on real production that bounces aren't read. */
+  testSite: boolean;
+  /** Fix round 1 (M2, M3): the break-glass admin is on (LOCAL_ADMIN_ENABLED), and staff passwords
+   * are allowed (Core's LOCAL_PASSWORDS_ALLOWED); the screen says so on the live site. */
+  breakGlassOn: boolean;
+  staffPasswordsOn: boolean;
   /** Whether a pause or resume emails an operations inbox (NOD_OPS_EMAIL); never the address. */
   opsEmailSet: boolean;
   /** Held and failed news email (N3). */
@@ -26,6 +33,11 @@ export interface OperationsOptions {
   bounceSummaryFallback: string | null;
   timeZone: string;
   emergencyFeedUrl: string | null;
+  /** NOD_EMERGENCY_FEED=off. */
+  emergencyFeedOff: boolean;
+  testSite: boolean;
+  breakGlassOn: boolean;
+  staffPasswordsOn: boolean;
   opsEmail: string | null;
 }
 
@@ -56,5 +68,18 @@ export async function getOperations(
     getEmergencyFeedStatus(db, opts.emergencyFeedUrl),
     getOutgoing(db),
   ]);
-  return { nod, distribution: dist, bounceSource, bounceSummary, softCodesCounted, purge, emergencyFeed, opsEmailSet: Boolean(opts.opsEmail), outgoing };
+  return {
+    nod,
+    distribution: dist,
+    bounceSource,
+    bounceSummary,
+    softCodesCounted,
+    purge,
+    emergencyFeed: { ...emergencyFeed, switchedOff: opts.emergencyFeedOff },
+    testSite: opts.testSite,
+    breakGlassOn: opts.breakGlassOn,
+    staffPasswordsOn: opts.staffPasswordsOn,
+    opsEmailSet: Boolean(opts.opsEmail),
+    outgoing,
+  };
 }

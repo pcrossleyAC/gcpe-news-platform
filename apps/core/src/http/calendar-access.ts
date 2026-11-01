@@ -14,7 +14,8 @@ import {
   setCalendarUserActive,
   UnknownOrganizationError,
 } from "../services/calendar-access";
-import { linkUserSchema, UserAlreadyHasEmailError, UserExistsError, UserNeedsEmailError, UserNotFoundError } from "../services/users";
+import { LastAdminError, linkUserSchema, UserAlreadyHasEmailError, UserExistsError, UserNeedsEmailError, UserNotFoundError } from "../services/users";
+import { LAST_ADMIN_MESSAGE } from "./users";
 import { isSelf, SelfLockoutError } from "./self";
 
 /** Who may open these routes at all; checkCalendarGrant then decides each change (C125, C140). */
@@ -29,6 +30,7 @@ const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: R
     if (e instanceof UnknownOrganizationError) return void res.status(400).json({ error: "unknown or inactive ministry", keys: e.keys });
     if (e instanceof CalendarOnlyError) return void res.status(403).json({ error: CALENDAR_ONLY_MESSAGES[e.reason], reason: e.reason });
     if (e instanceof SelfLockoutError) return void res.status(409).json({ error: "you can't deactivate yourself" });
+    if (e instanceof LastAdminError) return void res.status(409).json({ error: LAST_ADMIN_MESSAGE });
     if (e instanceof UserNeedsEmailError) return void res.status(409).json({ error: "set an email before activating this user" });
     if (e instanceof UserAlreadyHasEmailError) return void res.status(409).json({ error: "this user already has an email" });
     if (e instanceof UserExistsError) return void res.status(409).json({ error: "a user with that email already exists" });

@@ -14,8 +14,8 @@ const optionalString = z.preprocess(blankToUndefined, z.string().optional());
 
 /**
  * Merged into an app's own env schema (the News API's), so `node stack.js --check` applies the
- * same rules a real start does. NODE_ENV, LOCAL_ADMIN_ALLOW_IN_PRODUCTION and SITE_ENVIRONMENT
- * are read only for the production guard; they are shared, unprefixed stack variables.
+ * same rules a real start does. NODE_ENV and SITE_ENVIRONMENT are read only for the production
+ * guard; they are shared, unprefixed stack variables.
  */
 export const embeddingsEnvShape = {
   EMBEDDINGS_PROVIDER: z.preprocess(blankToUndefined, z.enum(["azure-openai", "stand-in"]).optional()),
@@ -25,7 +25,6 @@ export const embeddingsEnvShape = {
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT: optionalString,
   AZURE_OPENAI_API_VERSION: z.preprocess(blankToUndefined, z.string().default(DEFAULT_AZURE_API_VERSION)),
   NODE_ENV: optionalString,
-  LOCAL_ADMIN_ALLOW_IN_PRODUCTION: optionalString,
   SITE_ENVIRONMENT: optionalString,
 };
 
@@ -45,7 +44,7 @@ export function refineEmbeddingsEnv(env: EmbeddingsEnv, ctx: z.RefinementCtx): v
       code: z.ZodIssueCode.custom,
       path: ["EMBEDDINGS_PROVIDER"],
       message:
-        "stand-in is refused on a production deployment (NODE_ENV=production without LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true or SITE_ENVIRONMENT=test)",
+        "stand-in is refused on a production deployment (NODE_ENV=production without SITE_ENVIRONMENT=test)",
     });
   }
 }

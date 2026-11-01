@@ -89,11 +89,20 @@ A soft bounce is a temporary failure, such as a full mailbox. Its code starts wi
 
 Leave the box empty to count none.
 
+## Sign-in on the live site
+
+On the live site only, this section shows at the top of Operations when sign-in that is normally off is on:
+
+- "The break-glass admin is on": the emergency administrator login is turned on. Anyone with its password can sign in with every admin role. It is meant to be on only while IT fixes a problem. Ask IT to turn it off once the problem is fixed.
+- "Staff passwords are allowed": staff can sign in with a password instead of Microsoft. Ask IT to turn this off unless it is meant to be on.
+
 ## Emergency alerts feed
 
 This section shows when the Emergency Info BC feed was last checked and how many alerts were new. Nothing here can be changed. A warning means the last check failed; it tries again every 5 minutes by itself.
 
 The first time a feed is read, its alerts are recorded without emailing anyone. Only alerts posted after that are sent.
+
+If the section says **Emergency alerts are switched off**, the server is set up not to read the feed at all, so no emergency alerts are emailed to the Emergency Info BC list. Ask IT to set up the emergency alerts feed.
 
 ## Retention purge
 
@@ -119,10 +128,14 @@ Records imported from the old system that had already ended are kept until 90 da
 
 ## Test bounce upload
 
-This section shows on test sites only, where every email is redirected and real bounces never arrive.
+This section shows on test sites, where every email is redirected and real bounces never arrive.
 
 1. Choose a bounce message file under **Bounce message (.eml)**, or paste it in **Or paste the message**.
 2. Choose **Upload bounce**. You see "Uploaded. Bounce processing picks it up within 15 minutes."
+
+## Bounce upload (live site)
+
+On the live site this section shows only while bounces are handled by manual upload. It warns: "Bounces aren’t being read: bounce handling is set to manual upload. Ask IT to set up the bounce mailbox." Until IT does, upload each bounce message you receive the same way as above, so it is recorded. Once the bounce mailbox is set up, bounces are read by themselves and this section goes away.
 
 ## If you leave before saving
 

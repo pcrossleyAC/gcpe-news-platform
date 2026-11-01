@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isRealProduction, trustProxyHopsSchema } from "@gcpe/config";
+import { isRealProduction, isTestSite, siteEnvironment, trustProxyHopsSchema } from "@gcpe/config";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { DEFAULT_LEGACY_FILES_ORIGIN, parseOrigin } from "./legacy-files/options";
 import { createProjectionHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
@@ -155,15 +155,16 @@ export const FAKE_MEDIA_HUB_ENV: Readonly<Record<string, string>> = {
 
 /**
  * True when the stack runs, and points NoD at, its fake Media Hub: NoD has no effective
- * `MEDIA_HUB_URL` ("" counts as none) AND this is not a real production deployment -- same
- * safety net as {@link usesFakeFlickr} (NODE_ENV isn't "production", or it's a test deployment
- * via LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true). Production with no Media Hub configured fails
- * closed instead: no Media Hub at all, so search/add-from-hub answer 503 rather than serving
- * made-up contacts that could get added to a real media list.
+ * `MEDIA_HUB_URL` ("" counts as none) AND this is a test site (@gcpe/config's isTestSite:
+ * NODE_ENV isn't "production", or SITE_ENVIRONMENT=test) -- same safety net as
+ * {@link usesFakeFlickr}. Production with no Media Hub configured fails closed instead: no Media
+ * Hub at all, so search/add-from-hub answer 503 rather than serving made-up contacts that could
+ * get added to a real media list. Break-glass allowed in production
+ * (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true) is not a test site (owner decision 2026-10-31).
  */
 export function usesFakeMediaHub(env: NodeJS.ProcessEnv): boolean {
   if (env.NOD_MEDIA_HUB_URL) return false;
-  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
+  return isTestSite(env);
 }
 
 /** Where the stack mounts its fake emergency feed when NoD has no real one configured. */
@@ -180,8 +181,94 @@ export const FAKE_EMERGENCY_FEED_ENV: Readonly<Record<string, string>> = {
  * reads no feed at all rather than made-up alerts.
  */
 export function usesFakeEmergencyFeed(env: NodeJS.ProcessEnv): boolean {
-  if (env.NOD_EMERGENCY_FEED_URL) return false;
-  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
+  if (env.NOD_EMERGENCY_FEED_URL || env.NOD_EMERGENCY_FEED === "off") return false;
+  return isTestSite(env);
+}
+
+/** What real production refuses (errors) or starts with but says out loud (warnings). */
+export interface ProductionProblems {
+  errors: string[];
+  warnings: string[];
+}
+
+const setting = (env: NodeJS.ProcessEnv, key: string) => typeof env[key] === "string" && env[key] !== "";
+
+/**
+ * Owner decisions 2026-10-31 (production configuration T4): on the real production deployment
+ * (@gcpe/config's isRealProduction), a forgotten setting that would otherwise degrade silently on a
+ * public government site stops the stack starting instead, so a deploy fails and rolls back rather
+ * than going live wrong. Run by startStack and by `stack --check`. Nothing here applies to a test
+ * site (SITE_ENVIRONMENT=test, or NODE_ENV other than production).
+ *
+ * - Staff sign in with Microsoft: without Core's Entra settings, user passwords would quietly stay
+ *   allowed (core/src/entra/config.ts).
+ * - The emergency feed (option C): NOD_EMERGENCY_FEED_URL, or NOD_EMERGENCY_FEED=off said
+ *   explicitly; off starts with a warning, and Operations says alerts are switched off.
+ * - Bounces: graph in production; fake (manual upload), or unset, starts with a warning, and
+ *   Operations says bounces aren't being read. Graph keeps Distribution's own all-or-nothing check.
+ * - Real mail switched on (DIST_MAIL_ALLOW_REAL_RECIPIENTS) while DIST_MAIL_REDIRECT_TO is still
+ *   set: the redirect wins at send time, so nobody would get the mail and nothing would say so.
+ */
+export function productionProblems(env: NodeJS.ProcessEnv): ProductionProblems {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!isRealProduction(env)) return { errors, warnings };
+
+  // Fix round 2 (R1): a misspelt value ("staging", "prod") must never quietly mean the live site.
+  const site = siteEnvironment(env);
+  if (site !== "" && site !== "production") {
+    errors.push(`SITE_ENVIRONMENT must be "test" (a test site) or "production" (the real production site), or not set; it is "${(env.SITE_ENVIRONMENT ?? "").slice(0, 30)}"`);
+    return { errors, warnings };
+  }
+
+  // Fix round 1 (M1): until 2026-10-31, LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true alone made a test site
+  // (boxs.ca's env). Such an env must never come up as the indexable production site, whatever else
+  // it has: the real production site says so with SITE_ENVIRONMENT=production to keep it.
+  if (env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" && site === "") {
+    errors.push(
+      "This deployment still has LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, which used to mark a test site. Set SITE_ENVIRONMENT=test for a test site, or remove LOCAL_ADMIN_ALLOW_IN_PRODUCTION for real production (or set SITE_ENVIRONMENT=production to keep break-glass allowed on the real production site).",
+    );
+    return { errors, warnings };
+  }
+
+  const signIn = ["ENTRA_TENANT_ID", "CORE_ENTRA_CLIENT_ID", "CORE_ENTRA_CLIENT_SECRET", "CORE_PUBLIC_BASE_URL"];
+  const missing = signIn.filter((k) => !setting(env, k));
+  if (missing.length > 0) {
+    errors.push(
+      `real production needs Microsoft sign-in for staff: set ${signIn.join(", ")} (missing: ${missing.join(", ")}). ` +
+        "A test site is marked with SITE_ENVIRONMENT=test instead.",
+    );
+  }
+
+  const feedUrl = setting(env, "NOD_EMERGENCY_FEED_URL");
+  const feedSwitch = env.NOD_EMERGENCY_FEED;
+  if (feedSwitch !== undefined && feedSwitch !== "" && feedSwitch !== "off") {
+    errors.push(`NOD_EMERGENCY_FEED must be "off" or not set (it is "${feedSwitch.slice(0, 20)}")`);
+  } else if (feedUrl && feedSwitch === "off") {
+    errors.push("NOD_EMERGENCY_FEED_URL and NOD_EMERGENCY_FEED=off are both set: keep one");
+  } else if (!feedUrl && feedSwitch !== "off") {
+    errors.push("real production reads the emergency alerts feed: set NOD_EMERGENCY_FEED_URL, or NOD_EMERGENCY_FEED=off to switch emergency alerts off on purpose");
+  } else if (feedSwitch === "off") {
+    warnings.push("Emergency alerts are switched off (NOD_EMERGENCY_FEED=off): no emergency alerts are read or emailed");
+  }
+
+  const bounceSource = env.DIST_BOUNCE_SOURCE || "fake";
+  if (bounceSource === "fake") {
+    warnings.push("Bounces aren't being read: bounce handling is set to manual upload (DIST_BOUNCE_SOURCE is not graph). Ask IT to set up the bounce mailbox.");
+  }
+
+  // Fix round 1 (M2, M3): on purpose in an emergency, but never silent.
+  if (env.LOCAL_ADMIN_ENABLED === "true") {
+    warnings.push("The break-glass admin is on (LOCAL_ADMIN_ENABLED=true): anyone with its password can sign in with every admin role. Turn it off at go-live (P4), or once an emergency is over.");
+  }
+  if (env.CORE_LOCAL_PASSWORDS_ALLOWED === "true") {
+    warnings.push("Staff passwords are allowed (CORE_LOCAL_PASSWORDS_ALLOWED=true): staff can sign in without Microsoft.");
+  }
+
+  if (setting(env, "DIST_MAIL_REDIRECT_TO") && env.DIST_MAIL_ALLOW_REAL_RECIPIENTS === "true") {
+    errors.push("DIST_MAIL_REDIRECT_TO and DIST_MAIL_ALLOW_REAL_RECIPIENTS=true are both set: the redirect would still catch every message. Remove DIST_MAIL_REDIRECT_TO to send real mail, or remove DIST_MAIL_ALLOW_REAL_RECIPIENTS to keep redirecting.");
+  }
+  return { errors, warnings };
 }
 
 /** Where the stack mounts its fake Microsoft sign-in when FAKE_ENTRA_ENABLED=true. */
@@ -248,15 +335,15 @@ function nrmsFlickrSetting(env: NodeJS.ProcessEnv, name: string): string | undef
 
 /**
  * True when the stack runs, and points NRMS at, its fake Flickr: NRMS has no effective Flickr
- * key ("" counts as none) AND this is not a real production deployment — NODE_ENV isn't
- * "production", or it's a test deployment (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true), or the fake
+ * key ("" counts as none) AND this is not a real production deployment — a test site
+ * (@gcpe/config's isTestSite: NODE_ENV isn't "production", or SITE_ENVIRONMENT=test), or the fake
  * is asked for explicitly (FLICKR_MODE=fake). Production with a lost key fails closed instead:
  * no Flickr at all, so the publisher alerts and asset status reads "unavailable" — never the
  * fake's "this photo no longer exists" for a real photo.
  */
 export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
   if (nrmsFlickrSetting(env, "FLICKR_API_KEY")) return false;
-  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || nrmsFlickrSetting(env, "FLICKR_MODE") === "fake";
+  return isTestSite(env) || nrmsFlickrSetting(env, "FLICKR_MODE") === "fake";
 }
 
 /**
@@ -270,7 +357,7 @@ export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
  * deployments. DATA_DIR (Task 1) is shared too — the one folder, outside any SiteGround deploy
  * folder, that survives a redeploy (see data-dir.ts). SITE_ENVIRONMENT (plan 3d task 4) is
  * shared so an operator can mark a whole deployment (e.g. boxs.ca) a test site with one
- * setting, reaching Public Site's `isTestSite` the same way NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION do.
+ * setting, reaching every app's `isTestSite` the same way NODE_ENV does.
  */
 function isSharedKey(key: string): boolean {
   return (
@@ -335,6 +422,9 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // No Media Hub configured at all → the stack's fake Media Hub (see stack.ts).
   if (prefix === "NOD" && usesFakeMediaHub(env)) Object.assign(view, FAKE_MEDIA_HUB_ENV);
   if (prefix === "NOD" && usesFakeEmergencyFeed(env)) Object.assign(view, FAKE_EMERGENCY_FEED_ENV);
+  // Fix round 1 (M3): Operations says when staff passwords are allowed on the live site, which is
+  // Core's setting; NoD gets it under Core's own name, read for that notice only.
+  if (prefix === "NOD" && env.CORE_LOCAL_PASSWORDS_ALLOWED !== undefined) view.CORE_LOCAL_PASSWORDS_ALLOWED = env.CORE_LOCAL_PASSWORDS_ALLOWED;
   // FAKE_ENTRA_ENABLED on a test site → Core signs staff in through the stack's fake Microsoft.
   if (prefix === "CORE" && usesFakeEntra(env)) Object.assign(view, FAKE_ENTRA_CORE_ENV);
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
@@ -350,6 +440,12 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // check); without it, a cookie is refused (503), never accepted on its signature alone. Last,
   // so no setting can turn it off.
   if (view.SESSION_SECRET) view.SESSION_GATE_REQUIRED = "true";
+  // Owner decision 2026-10-31 (production configuration, T2): the apps' tokens for calling each
+  // other in-process get their own key, from the stack secret rather than the break-glass admin's
+  // LOCAL_AUTH_SECRET, so break-glass can be off in production. Last, so no setting replaces it;
+  // without STACK_EVENT_SECRET there is none and an app falls back to the break-glass key.
+  if (env.STACK_EVENT_SECRET) view.SERVICE_TOKEN_SECRET = serviceTokenSecretFrom(env.STACK_EVENT_SECRET);
+  else delete view.SERVICE_TOKEN_SECRET;
   return view;
 }
 
@@ -426,6 +522,12 @@ export function routeSecret(stackSecret: string, route: EventRoute): string {
  * SiteGround deployment needs no extra setting: HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-session"). */
 export function sessionSecretFrom(stackSecret: string): string {
   return createHmac("sha256", stackSecret).update("gcpe-session").digest("hex");
+}
+
+/** The key every app signs and checks its in-process service tokens with (@gcpe/auth's
+ * internal.ts): HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-service-token"). */
+export function serviceTokenSecretFrom(stackSecret: string): string {
+  return createHmac("sha256", stackSecret).update("gcpe-service-token").digest("hex");
 }
 
 /** EVENT_SUBSCRIBERS (senders) and EVENT_SECRETS (receivers) for every app, derived from one secret. */

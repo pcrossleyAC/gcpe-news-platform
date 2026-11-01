@@ -2,6 +2,7 @@ export { actorOf, entraIssuer, entraJwks, requireAnyRole, requireBearer, require
 export { CALENDAR_LEVELS, calendarLevel, checkCalendarGrant, grantCeiling, isCalendarRole, type CalendarGrantCheck, type CalendarGrantRefusal } from "./calendar-roles";
 export { createClientCredentialsProvider } from "./client-credentials";
 export { authFromEnv } from "./from-env";
+export { INTERNAL_AUDIENCE, INTERNAL_ISSUER, INTERNAL_ORIGIN, isInternalRequest, isInternalUrl, markInternalSocket, mintInternalToken } from "./internal";
 export { ADMIN_ROLES, LOCAL_AUDIENCE, LOCAL_ISSUER, localLoginRouter, mintLocalToken, type LocalAuthConfig } from "./local";
 export { hashPassword, isValidPasswordHash, verifyPassword } from "./password";
 export {

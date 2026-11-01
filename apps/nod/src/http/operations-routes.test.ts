@@ -54,7 +54,11 @@ describe("operations routes", () => {
       bounceSummary: { address: "server@example.test", from: "server" },
       softCodesCounted: [],
       purge: { enabled: false, preview: { pendingSubscribers: 0, endedSubscribers: 0, unusedLinks: 0, expiredSendLinks: 0 }, lastRun: null, nextRunAt: expect.any(String) },
-      emergencyFeed: { url: "https://emergency.example.test/feed.xml", checkedAt: null, result: null },
+      emergencyFeed: { url: "https://emergency.example.test/feed.xml", checkedAt: null, result: null, switchedOff: false },
+      // createApp's default when start.ts doesn't say: a test site, so no real-production warnings.
+      testSite: true,
+      breakGlassOn: false,
+      staffPasswordsOn: false,
       opsEmailSet: false,
       outgoing: { held: { emails: 0, releases: 0, oldestAt: null, groups: [] }, failed: [] },
     });
