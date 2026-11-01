@@ -206,6 +206,7 @@ Added to the existing staff app (`apps/staff-web`): the same sign-in, shell, des
   - Search by email (substring) and filter by status.
   - Edit timing, lists and status; change email (staff-initiated, no verification, history written); delete (unsubscribe).
     - *Amendment (2026-10-31, owner approved, suite review N5):* the delete dialog asks why. "They asked us to stop sending them email" records the person's own unsubscribe (history `unsubscribed` and `media-list-opted-out`, actor the staff member), so media-list re-adds ask first and the purge keeps the opt-out. "Something else" is the plain staff delete (C82). See C311.
+    - *Amendment (2026-10-31, owner approved, batch N2):* **Delete selected** asks the same question with the same choices, and the answer applies to each ticked subscriber exactly as the record's delete does. See C311.
   - History (from `subscriber_history`).
   - Bulk activate/deactivate/delete on a search result, with confirmation.
   - Add a subscriber (active immediately, C51).

@@ -39,7 +39,11 @@ const statusBody = z.object({ status: z.enum(["active", "disabled"]) });
 const emailBody = z.object({ email: subscriberEmailSchema, confirmOptOut: z.boolean().optional() });
 /** No body is an ordinary delete (N5: `askedToStop` records their opt-out as an unsubscribe). */
 const deleteBody = z.object({ askedToStop: z.boolean().optional() }).optional();
-const bulkBody = z.object({ action: z.enum(BULK_ACTIONS), ids: z.array(z.string().uuid()).min(1).max(BULK_MAX) });
+/** `askedToStop` (N2) is the single delete's reason, for every row of a bulk delete; absent is
+ * the ordinary delete. It means nothing for activate/deactivate, so it's refused there. */
+const bulkBody = z
+  .object({ action: z.enum(BULK_ACTIONS), ids: z.array(z.string().uuid()).min(1).max(BULK_MAX), askedToStop: z.boolean().optional() })
+  .refine((b) => b.askedToStop === undefined || b.action === "delete", { message: "askedToStop is only for delete", path: ["askedToStop"] });
 
 const idParam = z.string().uuid();
 /** An empty string in the JSON body (a form field cleared rather than removed) means the same
@@ -110,8 +114,8 @@ export function staffSubscriberRoutes(db: Db): Router {
   }));
 
   r.post("/subscribers/bulk", write, privateErrors(async (req, res) => {
-    const { action, ids } = bulkBody.parse(req.body);
-    res.json(await bulkAction(db, ids, action, actorOf(req).name));
+    const { action, ids, askedToStop } = bulkBody.parse(req.body);
+    res.json(await bulkAction(db, ids, action, actorOf(req).name, { askedToStop }));
   }));
 
   r.get("/subscribers/:id", read, withId(async (id, _req, res) => {

@@ -11,6 +11,7 @@ import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useSearchShortcut } from "../../shared/shortcuts";
 import { Pagination } from "../releases/Pagination";
 import { canEditSubscribers } from "./access";
+import { DELETE_REASON_REQUIRED, DeleteReasonField, type DeleteReason } from "./DeleteReason";
 import { STATUS_FILTER_OPTIONS, STATUS_LABELS, timingLabel } from "./labels";
 import type { BulkAction, BulkResult, BulkSkipReason, StatusFilter, SubscriberPage } from "./types";
 import type { BackToResults, SubscriberLinkState, SubscribersSearchState } from "./backToResults";
@@ -107,6 +108,9 @@ export function SubscribersScreen(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  // N2: Delete selected asks why, with the record's own choice (DeleteReason.tsx), for all of them.
+  const [deleteWhy, setDeleteWhy] = useState<DeleteReason | null>(null);
+  const [deleteWhyError, setDeleteWhyError] = useState<string | null>(null);
 
   // Only the latest search may land: an earlier, slower response arriving after it would
   // otherwise replace the results for what the staff member is now looking at.
@@ -160,10 +164,12 @@ export function SubscribersScreen(): React.JSX.Element {
   const backTo: BackToResults = { path: `${location.pathname}${location.search}`, state: { subscribersQ: q } };
 
   const runBulk = async (action: BulkAction) => {
+    if (action === "delete" && !deleteWhy) return setDeleteWhyError(DELETE_REASON_REQUIRED);
     setBusy(true);
     setBulkError(null);
     try {
-      const r = await apiFetch<BulkResult>("/nod/api/subscribers/bulk", { method: "POST", body: { action, ids: selected } });
+      const body = action === "delete" ? { action, ids: selected, askedToStop: deleteWhy === "asked" } : { action, ids: selected };
+      const r = await apiFetch<BulkResult>("/nod/api/subscribers/bulk", { method: "POST", body });
       setOutcome(describeBulk(r));
       setPendingAction(null);
       reload();
@@ -208,6 +214,8 @@ export function SubscribersScreen(): React.JSX.Element {
               onOpenChange={(open) => {
                 if (open) {
                   setBulkError(null);
+                  setDeleteWhy(null);
+                  setDeleteWhyError(null);
                   setPendingAction(a);
                 } else {
                   setPendingAction(null);
@@ -234,6 +242,16 @@ export function SubscribersScreen(): React.JSX.Element {
                   }
                 >
                   <p>{BULK_COPY[a].body}</p>
+                  {a === "delete" && (
+                    <DeleteReasonField
+                      value={deleteWhy}
+                      error={deleteWhyError}
+                      onChange={(v) => {
+                        setDeleteWhy(v);
+                        setDeleteWhyError(null);
+                      }}
+                    />
+                  )}
                   {bulkError && <InlineAlert variant="danger" role="alert" description={bulkError} />}
                 </AlertDialog>
               </Modal>
