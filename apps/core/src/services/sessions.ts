@@ -64,7 +64,12 @@ export async function startSession(db: Db, userId: string, signedAt: number, max
     }
     return sid;
   }
-  await db.insert(staffSessions).values({ sid, userId, signedAt: new Date(signedAt * 1000) }).onConflictDoNothing();
+  const at = new Date(signedAt * 1000);
+  await db.insert(staffSessions).values({ sid, userId, signedAt: at }).onConflictDoNothing();
+  // Suite review O3: the Users screen's "Last signed in". Every password and Microsoft sign-in
+  // records its session here; a pre-limit token's first renewal passes its own (older) sign-in
+  // time, so the latest one is kept.
+  if (isUuid(userId)) await db.update(users).set({ lastSignInAt: sql`greatest(${users.lastSignInAt}, ${at.toISOString()}::timestamptz)` }).where(eq(users.id, userId));
   await pruneOld(db, maxSessionSeconds);
   return sid;
 }

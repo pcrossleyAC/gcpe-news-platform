@@ -76,6 +76,15 @@ function stub(
         return jsonResponse(201, created);
       }
       if (url === "/core/api/organizations") return jsonResponse(200, orgs);
+      if (url.startsWith("/core/api/audit?"))
+        return jsonResponse(200, {
+          items: [
+            { id: 1, at: "2026-01-15T17:00:00Z", actorId: "u1", actorName: "Pat", action: "org.edited", targetType: "organization", targetId: "health", targetLabel: "Health", details: { name: { from: "Ministry of Health", to: "Health" }, fields: [] } },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 20,
+        });
       if (
         url === "/core/api/organizations/health/deactivate" &&
         init?.method === "POST"
@@ -991,3 +1000,51 @@ describe("OrganizationsScreen: leaving with unsaved changes", () => {
   });
 });
 
+
+/** Suite review O3: who changed an organization, for Core administrators. */
+describe("OrganizationsScreen: History", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    failures = {};
+  });
+
+  it("a Core admin editing an organization can open its History", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(["Core.Admin"], calls);
+    const user = userEvent.setup();
+    render(
+      <SessionProvider>
+        <MemoryRouter>
+          <RequireAuth>
+            <OrganizationsScreen />
+          </RequireAuth>
+        </MemoryRouter>
+      </SessionProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "Edit Health" }));
+    await user.click(screen.getByRole("button", { name: "History" }));
+    const list = await screen.findByRole("list", { name: "Changes to Health, newest first" });
+    expect(list.textContent?.replace(/\s/g, " ")).toBe("Jan 15, 2026 9:00 AM — Pat renamed Ministry of Health to Health");
+    expect(calls.some((c) => c.url === "/core/api/audit?targetType=organization&targetId=health&page=1&pageSize=20")).toBe(true);
+  });
+
+  it("a site editor editing an organization sees no History", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(["NRMS.SiteEditor"], calls);
+    const user = userEvent.setup();
+    render(
+      <SessionProvider>
+        <MemoryRouter>
+          <RequireAuth>
+            <OrganizationsScreen />
+          </RequireAuth>
+        </MemoryRouter>
+      </SessionProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "Edit Health" }));
+    expect(await screen.findByRole("heading", { name: "Edit Health" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
+    expect(calls.some((c) => c.url.startsWith("/core/api/audit"))).toBe(false);
+  });
+});

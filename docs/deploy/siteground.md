@@ -611,6 +611,8 @@ The check has its own small pool of Core database connections (4, giving up afte
 
 The Hub's own wording ("Sessions last 12 hours.") follows `SESSION_MAX_HOURS`; the manual pages say 12 hours and need editing if you change it.
 
+**Admin history and last sign-in.** Core migration `0013` (applied at startup) adds `core_audit`, the record of who made each change on Users, Calendar access, Organizations, Sectors, themes and tags and Cabinet change (the Hub's **History** and **Admin history**, Core administrators only, kept forever with no pruning; it never holds a password), and `users.last_sign_in_at`, stamped at each password or Microsoft sign-in. Nothing to configure. Rolling back past it means deploying the previous version and leaving both in place; never drop them by hand. NRMS migration `0024` (also at startup) lets the Website log hold **Government terms** lines, so changes on that screen say who made them; rolling back leaves the wider check in place, harmlessly.
+
 Rolling back past this change means deploying the previous version and leaving the `staff_sessions` table in place (unused and harmless); never drop it by hand, since the migration journal would still list it and a later deploy wouldn't re-create it. To end every session at once, including break-glass, set a new explicit `SESSION_SECRET` (32+ characters) and keep it set: this signs every staff user out. Do not rotate `STACK_EVENT_SECRET` for this: it also re-derives the event secrets, NoD's unsubscribe-link key and the apps' internal call key, so unsubscribe links already emailed would stop working.
 
 ## Staff sign-in with Microsoft Entra

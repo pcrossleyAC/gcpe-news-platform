@@ -713,6 +713,11 @@ them only while it stays off: when you turn it back on, set a new password (step
 Rolling back past this change (Core migration 0012) means deploying the previous release and
 leaving the `staff_sessions` table in place; never drop it by hand.
 
+Core migration 0013 (applied at startup, nothing to configure) adds the Hub's Admin history
+(`core_audit`, kept forever) and each user's last sign-in time. Rolling back past it means
+deploying the previous release and leaving both in place; never drop them by hand. NRMS migration
+0024 lets the Website log record Government terms changes; rolling back leaves it in place, harmlessly.
+
 ### D8. Connect the outside services
 
 Until these are set, the stack uses built-in fakes and says so in its log. Add each to `gcpe.env`,
