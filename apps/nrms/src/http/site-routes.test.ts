@@ -693,10 +693,10 @@ describe("GET /site/internal-links: the Hub address check (suite fix W2)", () =>
     tdb = await createNrmsTestDb();
     app = createApp({
       db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver", filesBase: "https://news.example" },
-      subscribers: [], siteUrl: "https://news.example", internalHosts: ["hub.example", "news.example"],
+      subscribers: [], siteUrl: "https://news.example", publicSiteUrl: "https://test-news.example", internalHosts: ["hub.example", "news.example", "test-news.example"],
     });
     await tdb.pool.query(
-      "INSERT INTO resource_links (sort_index, text, url) VALUES (0, 'Alias', 'https://hub.example/files/a.pdf'), (1, 'Page host', 'https://gcpe-app01.internal/files/b.pdf'), (2, 'Public', 'https://news.example/files/c.pdf')",
+      "INSERT INTO resource_links (sort_index, text, url) VALUES (0, 'Alias', 'https://hub.example/files/a.pdf'), (1, 'Page host', 'https://gcpe-app01.internal/files/b.pdf'), (2, 'Public', 'https://news.example/files/c.pdf'), (3, 'This deployment', 'https://test-news.example/x')",
     );
   });
   afterAll(async () => {

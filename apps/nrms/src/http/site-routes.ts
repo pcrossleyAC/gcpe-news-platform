@@ -68,6 +68,8 @@ export interface SiteRouteDeps {
   notify: (subject: string, text: string) => Promise<void>;
   /** Suite fix W2 (M3): the Hub's internal host names, without the public site's (see createApp); unset → only the request's own host. */
   internalHosts?: string[];
+  /** W2 fix round 1 (M4): this deployment's public site URL, never internal. */
+  publicSiteUrl?: string;
 }
 
 /** Legacy ProjectBlueBridge.aspx:50 — shown on every GET so the staff app can display it next to the switch. */
@@ -386,7 +388,7 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     "/site/internal-links",
     settingsRead,
     run(async (req, res) => {
-      const hosts = internalHostNames([...(deps.internalHosts ?? []), req.get("host") ?? ""], [siteUrl, slideFiles.filesBase]);
+      const hosts = internalHostNames([...(deps.internalHosts ?? []), req.get("host") ?? ""], [siteUrl, deps.publicSiteUrl ?? "", slideFiles.filesBase]);
       res.json({ links: await findInternalLinks(db, hosts) });
     }),
   );

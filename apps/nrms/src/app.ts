@@ -54,6 +54,8 @@ export function createApp(deps: {
   /** Suite fix W2 (M3), env INTERNAL_HOSTS: the Hub's internal host names or addresses. The public
    * site's own hosts (siteUrl, workflow.filesBase) are dropped; unset → none beyond the page's own. */
   internalHosts?: string[];
+  /** W2 fix round 1 (M4), env PUBLIC_SITE_URL: this deployment's public site URL; its host is dropped from internalHosts too. */
+  publicSiteUrl?: string;
   /** The tenant's `calendar.forecastCategoryPrefix` (Forecast and the activity lookup); unset → no activity can be planned against. */
   forecastCategoryPrefix?: string | null;
   /** GET /config's isTestSite: @gcpe/config's isTestSite(env). Unset → true (fail safe: an
@@ -66,7 +68,7 @@ export function createApp(deps: {
   /** Test seam: the clock the government-term routes read "today" from; production leaves it unset (database clock). */
   clock?: TestClock;
 }): express.Express {
-  const internalHosts = internalHostNames(deps.internalHosts ?? [], [deps.siteUrl ?? "", deps.workflow.filesBase ?? ""]);
+  const internalHosts = internalHostNames(deps.internalHosts ?? [], [deps.siteUrl ?? "", deps.publicSiteUrl ?? "", deps.workflow.filesBase ?? ""]);
   const slideFiles: SlideImageFiles = deps.slideFiles ?? { store: deps.store ?? localStore(tmpdir(), "/files/"), filesBase: deps.workflow.filesBase ?? "" };
 
   const app = express();
@@ -99,6 +101,7 @@ export function createApp(deps: {
       slideFiles,
       siteUrl: deps.siteUrl ?? "",
       internalHosts,
+      publicSiteUrl: deps.publicSiteUrl,
       notify: deps.blueBridgeNotify ?? (async (subject) => void console.log(`[nrms] blue bridge: ${subject}`)),
     }),
     governmentTermRoutes({ db: deps.db, subscribers: deps.subscribers ?? [], timeZone: deps.workflow.timeZone, now: deps.clock }),

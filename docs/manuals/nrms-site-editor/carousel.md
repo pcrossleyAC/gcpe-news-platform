@@ -34,7 +34,7 @@ If next slides are waiting to go live, the box also says "The next carousel was 
 
 Leave **Action label** empty to use the standard link words, set on [Navigation and labels](manual:footer-and-navigation).
 
-To link to a file from **Files**, paste the address from its **Copy public address** button. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." It shows for every web address of the Hub's server, not just the one you are using.
+To link to a file from **Files**, paste the address from its **Copy public address** button. An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." It shows for the Hub's other known web addresses too, not just the one you are using.
 
 ## Add or change a slide's image
 

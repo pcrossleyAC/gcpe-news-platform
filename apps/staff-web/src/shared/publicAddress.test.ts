@@ -51,4 +51,12 @@ describe("W1: public addresses for Website files", () => {
     // The page's own host, as before, with a port.
     expect(staffHostWarning("http://localhost:4600/files/a.pdf", "https://news.gov.bc.ca", "localhost:4600")).toBe(STAFF_HOST_WARNING);
   });
+
+  it("fix round 1 (N1, N2): a trailing dot and a protocol-relative address on a Hub host warn too", () => {
+    const hosts = ["hub.gov.bc.ca"];
+    expect(staffHostWarning("https://hub.gov.bc.ca./files/a.pdf", "https://news.gov.bc.ca", hosts)).toBe(STAFF_HOST_WARNING);
+    expect(staffHostWarning("//hub.gov.bc.ca/files/a.pdf", "https://news.gov.bc.ca", hosts)).toBe(STAFF_HOST_WARNING);
+    expect(checkHubAddress("//hub.gov.bc.ca/files/a.pdf", "https://news.gov.bc.ca", hosts)).toEqual({ url: "https://news.gov.bc.ca/files/a.pdf", warning: null });
+    expect(staffHostWarning("https://news.gov.bc.ca./files/a.pdf", "https://news.gov.bc.ca", ["news.gov.bc.ca"])).toBeNull();
+  });
 });

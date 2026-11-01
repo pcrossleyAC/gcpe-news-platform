@@ -11,8 +11,8 @@ const LINKS: InternalLink[] = [
   { screen: "carousel", where: "Live carousel, slide 2: action URL", address: "https://gcpe-app01.internal/files/minister.jpg" },
   { screen: "carousel", where: "Next carousel, slide 1: Facebook post URL", address: "https://hub.example/fb" },
   { screen: "links", where: "Link 2 URL", address: "https://hub.example/files/r.pdf" },
-  { screen: "settings", section: "footer", where: "Link “Contact us”", address: "https://hub.example/contact" },
-  { screen: "settings", section: "pageText", where: "", address: "https://hub.example/files/help.pdf" },
+  { screen: "settings", section: "footer", where: "", path: ["helpLinks", 0, "url"], address: "https://hub.example/contact" },
+  { screen: "settings", section: "pageText", where: "", path: ["subscribeHelpHtml"], address: "https://hub.example/files/help.pdf" },
 ];
 
 function renderAs(role: string, links: InternalLink[] | "fail" = LINKS) {
@@ -53,7 +53,12 @@ describe("AddressCheckScreen (suite fix W2)", () => {
     expect(items).toEqual(["Live carousel, slide 2: action URL: https://gcpe-app01.internal/files/minister.jpg", "Next carousel, slide 1: Facebook post URL: https://hub.example/fb"]);
 
     expect(within(screen.getByRole("region", { name: "Footer links" })).getByRole("link", { name: "Open Footer links" })).toHaveAttribute("href", "/website/footer");
-    expect(within(screen.getByRole("region", { name: "Page text" })).getByRole("listitem")).toHaveTextContent(/^https:\/\/hub\.example\/files\/help\.pdf$/);
+    // Fix round 1 (M2): a settings address names its field as the screen does, rich text included.
+    expect(within(screen.getByRole("region", { name: "Footer links" })).getByRole("listitem")).toHaveTextContent(/^Help links, link 1: Web address: https:\/\/hub\.example\/contact$/);
+    expect(within(screen.getByRole("region", { name: "Page text" })).getByRole("listitem")).toHaveTextContent(/^Subscribe page: Help line: https:\/\/hub\.example\/files\/help\.pdf$/);
+    // M3: Organizations isn't checked here, and the page says where to look instead.
+    expect(screen.getByText(/aren’t checked here/)).toHaveTextContent("Ministry details on Organizations (page links, minister photo and biography) aren’t checked here: open each ministry on Organizations and check them there.");
+    expect(screen.getByRole("link", { name: "Organizations" })).toHaveAttribute("href", "/organizations");
     expect(screen.getByText("5 saved addresses point at the Hub.")).toBeInTheDocument();
     // Read-only: nothing here changes anything.
     expect(screen.queryByRole("button")).toBeNull();

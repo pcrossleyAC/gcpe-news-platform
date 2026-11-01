@@ -18,8 +18,11 @@ export interface InternalLink {
   /** The Hub screen where it is edited; for "settings", `section` names the settings screen. */
   screen: InternalLinkScreen;
   section?: SectionKey;
-  /** Where on that screen, in the screen's own field names ("" when the screen is enough). */
+  /** Where on that screen, in the screen's own field names; "" for settings, which carry `path`. */
   where: string;
+  /** Fix round 1 (M2), settings only: the field's place in its section (keys and list positions,
+   * such as ["helpLinks", 0, "url"]); the Hub names it with the settings screen's own labels. */
+  path?: (string | number)[];
   /** The address as stored. */
   address: string;
 }
@@ -51,7 +54,10 @@ export async function findInternalLinks(db: DbOrTx, hosts: readonly string[]): P
     check("carousel", `${prefix}: Facebook post URL`, s.facebookPostUrl);
   }
 
-  const pins = await db.select().from(emergencyPins);
+  // N7: the text columns only, not the images.
+  const pins = await db
+    .select({ slot: emergencyPins.slot, headline: emergencyPins.headline, summary: emergencyPins.summary, actionUrl: emergencyPins.actionUrl, facebookPostUrl: emergencyPins.facebookPostUrl })
+    .from(emergencyPins);
   for (const slot of ["primary", "secondary"] as const) {
     const pin = pins.find((p) => p.slot === slot);
     if (!pin) continue;
@@ -78,21 +84,17 @@ export async function findInternalLinks(db: DbOrTx, hosts: readonly string[]): P
   if (live) {
     const doc = live.document as unknown as Record<string, unknown>;
     for (const section of SECTION_KEYS) {
-      walk(doc[section], null, (text, linkText) => {
-        for (const address of internalAddressesIn(text, hosts)) found.push({ screen: "settings", section, where: linkText ? `Link “${linkText}”` : "", address });
+      walk(doc[section], [], (text, path) => {
+        for (const address of internalAddressesIn(text, hosts)) found.push({ screen: "settings", section, where: "", path, address });
       });
     }
   }
   return found;
 }
 
-/** Every string under `value`, with the `text` of the object holding it when that object is a link (has text and url). */
-function walk(value: unknown, linkText: string | null, visit: (text: string, linkText: string | null) => void): void {
-  if (typeof value === "string") return visit(value, linkText);
-  if (Array.isArray(value)) return value.forEach((v) => walk(v, null, visit));
-  if (value && typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const ownText = typeof obj.text === "string" && typeof obj.url === "string" && obj.text.trim() ? obj.text.trim() : null;
-    for (const v of Object.values(obj)) walk(v, ownText, visit);
-  }
+/** Every string under `value`, with its path of keys and list positions from there. */
+function walk(value: unknown, path: (string | number)[], visit: (text: string, path: (string | number)[]) => void): void {
+  if (typeof value === "string") return visit(value, path);
+  if (Array.isArray(value)) return value.forEach((v, i) => walk(v, [...path, i], visit));
+  if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(v, [...path, k], visit);
 }

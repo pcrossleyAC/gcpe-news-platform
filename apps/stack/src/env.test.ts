@@ -920,4 +920,12 @@ describe("the Hub's internal host names (suite fix W2, M3)", () => {
     expect(envFor({}, "NRMS").INTERNAL_HOSTS).toBeUndefined();
     expect(envFor({ CORE_PUBLIC_BASE_URL: "https://gcpe-prod-app.internal.example" }, "NOD").INTERNAL_HOSTS).toBeUndefined();
   });
+
+  it("fix round 1 (M4): NRMS also gets the stack's public site URL, so the public host is never internal even with the files on another origin", () => {
+    const env = { SITE_PUBLIC_SITE_URL: "https://news.example", NRMS_PUBLIC_FILES_BASE: "https://files.example", CORE_PUBLIC_BASE_URL: "https://news.example" };
+    expect(envFor(env, "NRMS").PUBLIC_SITE_URL).toBe("https://news.example");
+    expect(envFor(env, "NRMS").PUBLIC_FILES_BASE).toBe("https://files.example");
+    expect(envFor({}, "NRMS").PUBLIC_SITE_URL).toBeUndefined();
+    expect(envFor(env, "NOD").PUBLIC_SITE_URL).toBeUndefined();
+  });
 });

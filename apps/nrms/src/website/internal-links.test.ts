@@ -69,7 +69,7 @@ describe("website/internal-links", () => {
     ]);
   });
 
-  it("lists the published site settings by screen, naming the link when it has text, including rich text", async () => {
+  it("lists the published site settings by screen, with the field's place in its section (fix round 1, M2), including rich text", async () => {
     const doc: SiteSettings = structuredClone(bcSettings());
     doc.footer.helpLinks = [{ text: "Contact us", url: `${HUB}/contact` }, ...doc.footer.helpLinks];
     doc.connect.policyLink = { text: "Policy", url: `${ALIAS}/files/policy.pdf` };
@@ -84,9 +84,9 @@ describe("website/internal-links", () => {
     ]);
 
     expect(await findInternalLinks(tdb.db, HOSTS)).toEqual([
-      { screen: "settings", section: "footer", where: "Link “Contact us”", address: `${HUB}/contact` },
-      { screen: "settings", section: "connect", where: "Link “Policy”", address: `${ALIAS}/files/policy.pdf` },
-      { screen: "settings", section: "pageText", where: "", address: `${HUB}/files/help.pdf` },
+      { screen: "settings", section: "footer", where: "", path: ["helpLinks", 0, "url"], address: `${HUB}/contact` },
+      { screen: "settings", section: "connect", where: "", path: ["policyLink", "url"], address: `${ALIAS}/files/policy.pdf` },
+      { screen: "settings", section: "pageText", where: "", path: ["subscribeHelpHtml"], address: `${HUB}/files/help.pdf` },
     ]);
   });
 });

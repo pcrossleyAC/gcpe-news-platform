@@ -21,9 +21,11 @@ topics: []
 
 Drafts that nobody has published, and past carousels, aren't on the public site, so they aren't checked. Release text isn't checked either.
 
+**Organizations isn't checked here.** Each ministry's page links, minister photo and biography are on [Organizations](manual:site-editor-organizations): open each ministry there and check them. A minister photo address on the Hub shows a warning on that form.
+
 ## Fix what it lists
 
-Each screen with an address to fix has its own heading, the addresses under it, and where on the screen each one is (such as "Live carousel, slide 2: action URL", or the link's text on a settings screen).
+Each screen with an address to fix has its own heading, the addresses under it, and where on the screen each one is, in the screen's own names: for example "Live carousel, slide 2: action URL", "Help links, link 1: Web address" or "Subscribe page: Help line".
 
 1. Choose **Open** and the screen's name, such as **Open Carousel**.
 2. Find the address and replace it. For a file, open [Files](manual:website-files), choose **Copy public address** beside the file, and paste that instead.

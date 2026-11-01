@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hostNameOf, internalAddressesIn, internalHostNames } from "./index";
+import { hostNameOf, internalAddressesIn, internalHostNames, invalidHostEntries } from "./index";
 
 describe("internal hosts (suite fix W2, M3)", () => {
   it("hostNameOf takes a bare name, a name with a port, or a full address, lowercased; anything else is empty", () => {
@@ -25,5 +25,20 @@ describe("internal hosts (suite fix W2, M3)", () => {
     expect(internalAddressesIn("/files/x.pdf", hosts)).toEqual([]);
     expect(internalAddressesIn("https://hub.gov.bc.ca.evil.example/x", hosts)).toEqual([]);
     expect(internalAddressesIn("https://gcpe-app01/x", [])).toEqual([]);
+  });
+
+  it("fix round 1 (N1, N2, N3): a trailing dot is the same host, protocol-relative addresses count, and wildcards or bare IPv6 are not host names", () => {
+    expect(hostNameOf("hub.example.")).toBe("hub.example");
+    expect(hostNameOf("https://HUB.example./x")).toBe("hub.example");
+    expect(hostNameOf("*.gov.bc.ca")).toBe("");
+    expect(hostNameOf("fe80::1")).toBe("");
+    expect(hostNameOf("[fe80::1]")).toBe("[fe80::1]");
+    expect(hostNameOf("https://")).toBe("");
+    expect(invalidHostEntries(["hub.example", "*.gov.bc.ca", "fe80::1", "https://", " "])).toEqual(["*.gov.bc.ca", "fe80::1", "https://"]);
+    const hosts = ["hub.example"];
+    expect(internalAddressesIn("https://hub.example./files/x", hosts)).toEqual(["https://hub.example./files/x"]);
+    expect(internalAddressesIn('<img src="//hub.example/files/x.jpg"> and //hub.example/y', hosts)).toEqual(["//hub.example/files/x.jpg", "//hub.example/y"]);
+    // A doubled slash inside a path isn't an address.
+    expect(internalAddressesIn("https://news.example/a//hub.example/b", hosts)).toEqual([]);
   });
 });

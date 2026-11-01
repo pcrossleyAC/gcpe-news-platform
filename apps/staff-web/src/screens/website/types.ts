@@ -116,7 +116,9 @@ export interface InternalLink {
   screen: "carousel" | "pins" | "live-feed" | "links" | "settings";
   /** For "settings": the settings screen's section. */
   section?: SectionKey;
-  /** Where on that screen ("" when the screen is enough). */
+  /** Where on that screen ("" when the screen is enough, and for settings, which carry `path`). */
   where: string;
+  /** Settings only: the field's place in its section, named by settingsFieldLocation. */
+  path?: (string | number)[];
   address: string;
 }

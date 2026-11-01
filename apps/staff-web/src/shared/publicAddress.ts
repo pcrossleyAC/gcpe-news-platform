@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { hostNameOf } from "@gcpe/site-settings";
+import { hostNameOf, normalHostName, parseAddress } from "@gcpe/site-settings";
 import { apiFetch } from "../api/client";
 
 /**
@@ -56,13 +56,11 @@ export const STAFF_HOST_WARNING = "This address points at the Hub, which the pub
  * Hosts compare by name, ignoring case and port.
  */
 export function staffHostWarning(url: string, publicOrigin: string, hubHosts: string | readonly string[] = window.location.host): string | null {
-  let host: string;
-  try {
-    host = new URL(url.trim()).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-  const publicHost = originOf(publicOrigin) ? new URL(publicOrigin).hostname.toLowerCase() : "";
+  // Fix round 1 (N1, N2): `//host/…` counts, as a browser opens it; `host.` is `host`.
+  const parsed = parseAddress(url);
+  if (!parsed) return null;
+  const host = normalHostName(parsed.hostname);
+  const publicHost = originOf(publicOrigin) ? normalHostName(new URL(publicOrigin).hostname) : "";
   if (host === "" || publicHost === "" || host === publicHost) return null;
   const hosts = (typeof hubHosts === "string" ? [hubHosts] : hubHosts).map(hostNameOf);
   return hosts.includes(host) ? STAFF_HOST_WARNING : null;
@@ -77,7 +75,7 @@ export function staffHostWarning(url: string, publicOrigin: string, hubHosts: st
 export function checkHubAddress(url: string, publicOrigin: string, hubHosts: string | readonly string[] = window.location.host): { url: string; warning: string | null } {
   const warning = staffHostWarning(url, publicOrigin, hubHosts);
   if (!warning) return { url, warning: null };
-  const parsed = new URL(url.trim());
+  const parsed = parseAddress(url)!;
   if (parsed.pathname.startsWith("/files/")) return { url: new URL(`${parsed.pathname}${parsed.search}${parsed.hash}`, publicOrigin).href, warning: null };
   return { url, warning };
 }

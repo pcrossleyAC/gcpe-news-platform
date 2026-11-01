@@ -82,6 +82,14 @@ describe("NRMS HTTP API", () => {
     expect((await request(withHosts).get("/api/config").set("cookie", viewerCookie)).body.internalHosts).toEqual(["gcpe-app01", "hub.example"]);
   });
 
+  it("W2 fix round 1 (M4): the deployment's public site host is never internal, even when the files are served from another origin", async () => {
+    const withHosts = createApp({
+      db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver", filesBase: "https://files.example" },
+      siteUrl: "https://news.gov.bc.ca", publicSiteUrl: "https://test-news.example", internalHosts: ["https://test-news.example", "hub.example"],
+    });
+    expect((await request(withHosts).get("/api/config").set("cookie", viewerCookie)).body.internalHosts).toEqual(["hub.example"]);
+  });
+
   // Fix round 1 (3f Task 3), finding 3: the browser compares its own offset for `tzCheck.at`
   // against this server-computed one, warning if a stale browser tzdata disagrees.
   it("GET /config's tzCheck gives the server's own UTC offset for a pinned instant after BC's permanent UTC-7 switch (requires Node 24+ tzdata)", async () => {

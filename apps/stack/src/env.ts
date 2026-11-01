@@ -428,6 +428,9 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // Suite fix W2 (M3): the Hub's internal names, for its warnings about addresses the public can't
   // open and its Hub address check: NRMS_INTERNAL_HOSTS (aliases) plus Core's sign-in host.
   if (prefix === "NRMS" && env.CORE_PUBLIC_BASE_URL) view.INTERNAL_HOSTS = [view.INTERNAL_HOSTS, env.CORE_PUBLIC_BASE_URL].filter(Boolean).join(",");
+  // Fix round 1 (M4): and the public site's URL, whose host never counts as internal (NRMS's own
+  // siteUrl is the tenant's production URL, and PUBLIC_FILES_BASE may be another origin).
+  if (prefix === "NRMS" && env.SITE_PUBLIC_SITE_URL && view.PUBLIC_SITE_URL === undefined) view.PUBLIC_SITE_URL = env.SITE_PUBLIC_SITE_URL;
   // FAKE_ENTRA_ENABLED on a test site → Core signs staff in through the stack's fake Microsoft.
   if (prefix === "CORE" && usesFakeEntra(env)) Object.assign(view, FAKE_ENTRA_CORE_ENV);
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {

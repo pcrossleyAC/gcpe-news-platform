@@ -6,6 +6,7 @@ import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
 import { settingsScreenFor } from "./WebsiteScreen";
+import { settingsFieldLocation } from "./settings/fieldLocation";
 import type { InternalLink } from "./types";
 
 const SCREEN: Record<Exclude<InternalLink["screen"], "settings">, { label: string; path: string }> = {
@@ -14,6 +15,9 @@ const SCREEN: Record<Exclude<InternalLink["screen"], "settings">, { label: strin
   "live-feed": { label: "Live Feed", path: "/website/live-feed" },
   links: { label: "Resource links", path: "/website/links" },
 };
+
+/** Where on its screen: NRMS's own words, or for settings the field as the settings screen names it (fix round 1, M2). */
+const locationOf = (link: InternalLink): string => (link.screen === "settings" && link.section && link.path ? settingsFieldLocation(link.section, link.path) : link.where);
 
 const screenOf = (link: InternalLink) => (link.screen === "settings" && link.section ? settingsScreenFor(link.section) : SCREEN[link.screen as keyof typeof SCREEN]);
 
@@ -63,6 +67,11 @@ export function AddressCheckScreen(): React.JSX.Element {
         replace the address: for a file, use its <strong>Copy public address</strong> on <Link to="/website/files">Files</Link>.
       </p>
       <p>This checks the live and next carousels, the emergency pins, the Live Feed, the resource links and the published site settings.</p>
+      {/* Fix round 1 (M3): Organizations is stored outside the Website section, so it isn't scanned. */}
+      <p>
+        Ministry details on Organizations (page links, minister photo and biography) aren&rsquo;t checked here: open each ministry on <Link to="/organizations">Organizations</Link> and
+        check them there.
+      </p>
       {loadError ? (
         <InlineAlert variant="danger" role="alert" description={loadError} />
       ) : links === null ? (
@@ -81,7 +90,7 @@ export function AddressCheckScreen(): React.JSX.Element {
               <ul>
                 {g.links.map((l, i) => (
                   <li key={i}>
-                    {l.where ? `${l.where}: ` : ""}
+                    {locationOf(l) ? `${locationOf(l)}: ` : ""}
                     <span className="gcpe-address-check__address">{l.address}</span>
                   </li>
                 ))}

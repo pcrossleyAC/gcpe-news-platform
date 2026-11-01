@@ -13,7 +13,7 @@ import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
 
 const TITLE = "Footer links";
 
-const LISTS = [
+export const LISTS = [
   { field: "helpLinks", legend: "Help links" },
   { field: "connectLinks", legend: "Connect with Us links" },
   { field: "moreInfoLinks", legend: "More Info links" },

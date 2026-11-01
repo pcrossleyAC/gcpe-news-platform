@@ -698,7 +698,9 @@ the short server name), add them, comma-separated, then `Restart-Service gcpe-st
 NRMS_INTERNAL_HOSTS=gcpe-prod-app,<alias>.<internal domain>
 ```
 
-Bare names or `https://` addresses both work. Never list the public host: an address there works
+Bare names or `https://` addresses both work. Wildcards (`*.gov.bc.ca`) aren't supported, and an IPv6
+address needs its brackets (`[fe80::1]`); the stack logs any entry it ignores at startup
+(`[nrms] NRMS_INTERNAL_HOSTS: ignoring …`). Never list the public host: an address there works
 for the public, so it is ignored if listed.
 
 **Session length.** A staff session lasts at most 12 hours from sign-in (Microsoft, password or

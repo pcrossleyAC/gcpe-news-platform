@@ -29,7 +29,7 @@ To put a file in a minister's photo on [Organizations](manual:site-editor-organi
 1. Choose **Copy public address** beside the file. You see "Copied the public address of {name}." While the page is still working out the public address, the button is greyed out and the page says "Working out the public address…".
 2. Paste the address into the other screen's web address box.
 
-Don't copy the address from your browser's address bar while you are in the Hub. That address points at the Hub's own server, which the public can't open: you would see the file, but visitors would get a broken image or link. A web address box holding such an address says "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." It shows for every web address of the Hub's server, not just the one you are using.
+Don't copy the address from your browser's address bar while you are in the Hub. That address points at the Hub's own server, which the public can't open: you would see the file, but visitors would get a broken image or link. A web address box holding such an address says "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." It shows for the Hub's other known web addresses too, not just the one you are using.
 
 
 

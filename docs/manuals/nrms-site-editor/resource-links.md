@@ -19,7 +19,7 @@ topics: []
 4. To remove one, choose **Remove link 1**. It goes at once, with no question, but nothing is saved yet.
 5. Choose **Save links**. This saves the whole list as it stands. You see "Saved at 2:30 PM. Live now: the public home page shows the resource links within a few minutes." (with the time).
 
-A link's address must start with http:// or https://, or with / for a page on the public site, such as /files/media-guide.pdf. For a file, you can also paste the address from its **Copy public address** button on [Files](manual:website-files). An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." It shows for every web address of the Hub's server, not just the one you are using.
+A link's address must start with http:// or https://, or with / for a page on the public site, such as /files/media-guide.pdf. For a file, you can also paste the address from its **Copy public address** button on [Files](manual:website-files). An address copied from the Hub itself shows "This address points at the Hub, which the public can't open. On Website → Files, use Copy public address and paste that instead." It shows for the Hub's other known web addresses too, not just the one you are using.
 
 If you change your mind before saving, reload the page. The list goes back to what is saved.
 
