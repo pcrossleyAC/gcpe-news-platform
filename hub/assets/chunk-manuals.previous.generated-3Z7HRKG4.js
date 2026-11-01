@@ -151,10 +151,10 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <h2>Deactivate or reactivate someone</h2>
 <ol>
 <li>Choose <strong>Edit</strong> on their row.</li>
-<li>Switch <strong>Active</strong> off. The Hub asks &quot;Deactivate {name}?&quot; and explains &quot;They can&#39;t sign in until reactivated.&quot;</li>
+<li>Switch <strong>Active</strong> off. The Hub asks &quot;Deactivate {name}?&quot; and explains &quot;They&#39;re signed out at once and can&#39;t sign in until reactivated.&quot;</li>
 <li>Choose <strong>Deactivate</strong>. You see &quot;Saved&quot; beside the switch.</li>
 </ol>
-<p>To bring them back, switch <strong>Active</strong> on. It saves straight away, with no question.</p>
+<p>To bring them back, switch <strong>Active</strong> on. It saves straight away, with no question. They sign in again as usual: reactivating doesn&#39;t bring back the session they had.</p>
 <h2>Link a person who has no email</h2>
 <p>People brought in from the old Calendar without an email show &quot;No email&quot; and &quot;Inactive until linked to an email.&quot; They can&#39;t sign in.</p>
 <ol>
@@ -172,8 +172,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Until they do, they are back on password sign-in, and any password they had before works again.</p>
 <h2>What happens next</h2>
 <ul>
-<li>Role changes and deactivation reach the person within 10 minutes. They take effect at once if the person reloads the Hub or comes back to its tab.</li>
-<li>A deactivated person is signed out at that point and can&#39;t sign in again.</li>
+<li>Deactivating signs the person out at once, everywhere in the Hub. The next thing they do is refused, and the Hub tells them &quot;Your session has ended&quot;. If they try to sign in again, they see &quot;Your account is not active. Contact a Core administrator.&quot;</li>
+<li>A role you take away stops working at once: the next thing they try that needs it is refused. Their Hub menus catch up within 10 minutes, or at once if they reload the Hub or come back to its tab.</li>
 <li>No change on this screen sends an email.</li>
 </ul>
 <h2>If you leave before saving</h2>
@@ -3011,6 +3011,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Choose a bounce message file under <strong>Bounce message (.eml)</strong>, or paste it in <strong>Or paste the message</strong>.</li>
 <li>Choose <strong>Upload bounce</strong>. You see &quot;Uploaded. Bounce processing picks it up within 15 minutes.&quot;</li>
 </ol>
+<h2>If you leave before saving</h2>
+<p>If you have changes you haven&#39;t saved and you go to another screen or choose your browser&#39;s <strong>Back</strong>, the Hub asks &quot;You have unsaved changes on this page. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> to keep working, or <strong>Leave</strong> to discard the changes. Closing or reloading the tab gets your browser&#39;s own question.</p>
 <h2>Can&#39;t do this?</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
 <thead>
@@ -4186,13 +4188,13 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>&quot;Give this user a ministry under Calendar access (Edit Calendar access) first.&quot; means they have no ministry yet. Choose <strong>Edit Calendar access</strong> above and give them one.</p>
 <p>Just after you give someone a ministry, or take one away, the page says &quot;Updating their ministries in the Calendar\u2026 This page catches up by itself in a moment.&quot; Stay on the page: the rank boxes follow by themselves, usually within a minute. If they haven&#39;t after about a minute and a half, the page says &quot;The Calendar hasn&#39;t picked up their ministry changes yet. Reload the page in a minute.&quot;</p>
 <h2>Deactivate someone</h2>
-<p>Deactivating closes the person&#39;s Hub account. They can&#39;t sign in again until reactivated, and the Hub signs them out within 10 minutes.</p>
+<p>Deactivating closes the person&#39;s Hub account. It signs them out at once, everywhere in the Hub, and they can&#39;t sign in again until reactivated.</p>
 <ol>
 <li>Under <strong>Account</strong>, choose <strong>Deactivate</strong> followed by their name.</li>
 <li>The page lists their <strong>Open activities</strong>: activities you can see where they are the comm contact, that aren&#39;t deleted and haven&#39;t ended, even if you set them to <strong>Not a comm contact</strong>. Only the first 500 are listed.</li>
 <li>If they also work for ministries you don&#39;t belong to, the page says &quot;They also work for ministries you don&#39;t belong to. Ask an HQ Administrator to check and transfer their activities there.&quot; You can&#39;t see their activities in those ministries, so the page doesn&#39;t say whether there are any. With none listed, it says &quot;No open activities in your ministries.&quot; instead of &quot;No open activities.&quot;</li>
 <li>To hand the listed activities over first, choose <strong>Transfer their activities first</strong>. <strong>Transfer</strong> opens with them already chosen as <strong>From comm contact</strong> when they are a comm contact for one ministry; for several, choose which. See <a href="/hub/help/manuals/calendar-admin/calendar-transfer">Transfer activities</a>.</li>
-<li>Choose <strong>Deactivate</strong>, or <strong>Deactivate anyway</strong> when activities are listed. You see that the person &quot;is deactivated. The Calendar picks this up within a minute.&quot;</li>
+<li>Choose <strong>Deactivate</strong>, or <strong>Deactivate anyway</strong> when activities are listed. You see that the person &quot;is deactivated and signed out. The Calendar&#39;s lists catch up within a minute.&quot;</li>
 </ol>
 <p>Deactivating doesn&#39;t move their activities. Each one keeps them as comm contact and can still be saved, but can&#39;t be cloned until it has an active comm contact. Editors can&#39;t choose them as a comm contact any more.</p>
 <p>Nobody is emailed, including the person.</p>
