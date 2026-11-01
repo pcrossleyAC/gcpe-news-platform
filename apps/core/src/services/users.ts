@@ -6,6 +6,7 @@ import { enqueueEvent, type SubscriberConfig, type UserRecord } from "@gcpe/even
 import { organizations, roleGrants, userOrganizations, users } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, userAggregateId } from "./aggregate";
 import { endUserSessions } from "./sessions";
+import { recordAudit, type AuditActor } from "./audit";
 
 const email = z.string().trim().toLowerCase().email().max(254);
 const password = z.string().min(12, "use at least 12 characters").max(200);
@@ -46,6 +47,8 @@ export interface UserView {
   calendarRole: CalendarRole | null;
   /** The user's ministries, M(u), by organization key, sorted. */
   organizationKeys: string[];
+  /** Suite review O3: their last password or Microsoft sign-in; null if never. */
+  lastSignInAt: string | null;
 }
 
 export class UserExistsError extends Error {}
@@ -106,6 +109,16 @@ type UserRow = typeof users.$inferSelect;
  * reads can't change before the write commits. Throws to refuse. */
 export type UserGuard = (tx: Tx, id: string) => Promise<void>;
 
+/** Who is making the change, for Core's audit trail (services/audit.ts). Omitted by the seed and importers. */
+export interface UserWriteOpts {
+  guard?: UserGuard;
+  audit?: AuditActor;
+}
+
+/** The user's name in an audit entry: their display name, as it is once the change is made. */
+const userEntry = (id: string, label: string, action: string, details: Record<string, unknown> = {}) =>
+  ({ action, targetType: "user" as const, targetId: id, targetLabel: label, details });
+
 async function withAccess(db: DbOrTx, rows: UserRow[]): Promise<UserView[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
@@ -135,6 +148,7 @@ async function withAccess(db: DbOrTx, rows: UserRow[]): Promise<UserView[]> {
     roles: (flat.get(r.id) ?? []).sort((a, b) => a.localeCompare(b, "en")),
     calendarRole: calendar.get(r.id) ?? null,
     organizationKeys: (orgKeys.get(r.id) ?? []).sort(),
+    lastSignInAt: r.lastSignInAt ? r.lastSignInAt.toISOString() : null,
   }));
 }
 
@@ -187,7 +201,7 @@ export async function findUserByEmail(db: Db, address: string): Promise<UserView
   return (await withAccess(db, rows))[0] ?? null;
 }
 
-export async function createUser(db: Db, input: CreateUserInput, subscribers: SubscriberConfig[]): Promise<UserView> {
+export async function createUser(db: Db, input: CreateUserInput, subscribers: SubscriberConfig[], opts: UserWriteOpts = {}): Promise<UserView> {
   const passwordHash = input.password ? await hashPassword(input.password) : null;
   try {
     const id = await db.transaction(async (tx) => {
@@ -199,6 +213,7 @@ export async function createUser(db: Db, input: CreateUserInput, subscribers: Su
       const unique = [...new Set(input.roles)];
       if (unique.length) await tx.insert(roleGrants).values(unique.map((role) => ({ userId: row!.id, role })));
       await emitUserUpserted(tx, row!.id, subscribers);
+      await recordAudit(tx, opts.audit, userEntry(row!.id, input.displayName, "user.created", { email: input.email, roles: unique.sort((a, b) => a.localeCompare(b, "en")), isActive: input.isActive }));
       return row!.id;
     });
     return (await getUser(db, id))!;
@@ -211,12 +226,12 @@ export async function createUser(db: Db, input: CreateUserInput, subscribers: Su
   }
 }
 
-export async function updateUser(db: Db, id: string, patch: UpdateUserInput, subscribers: SubscriberConfig[], opts: { guard?: UserGuard } = {}): Promise<UserView> {
+export async function updateUser(db: Db, id: string, patch: UpdateUserInput, subscribers: SubscriberConfig[], opts: UserWriteOpts = {}): Promise<UserView> {
   if (!isUuid(id)) throw new UserNotFoundError(id);
   try {
     await db.transaction(async (tx) => {
       await lockUser(tx, id);
-      const [row] = await tx.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, id)).for("update");
+      const [row] = await tx.select({ id: users.id, email: users.email, displayName: users.displayName, isActive: users.isActive }).from(users).where(eq(users.id, id)).for("update");
       if (!row) throw new UserNotFoundError(id);
       await opts.guard?.(tx, row.id);
       if (patch.isActive === true && row.email === null) throw new UserNeedsEmailError(id);
@@ -228,6 +243,11 @@ export async function updateUser(db: Db, id: string, patch: UpdateUserInput, sub
       // Owner decision 2026-10-31: a deactivation ends their sessions for good, in every app.
       if (patch.isActive === false) await endUserSessions(tx, row.id);
       await emitUserUpserted(tx, row.id, subscribers);
+      const name = patch.displayName ?? row.displayName;
+      if (patch.displayName !== undefined && patch.displayName !== row.displayName)
+        await recordAudit(tx, opts.audit, userEntry(row.id, name, "user.renamed", { from: row.displayName, to: patch.displayName }));
+      if (patch.isActive !== undefined && patch.isActive !== row.isActive)
+        await recordAudit(tx, opts.audit, userEntry(row.id, name, patch.isActive ? "user.activated" : "user.deactivated"));
     });
   } catch (e) {
     // A no-email user (legacy Calendar import) can't be reactivated (users_active_needs_email);
@@ -242,17 +262,18 @@ export async function updateUser(db: Db, id: string, patch: UpdateUserInput, sub
  * Sets the email of a user who has none, and activates them (spec addendum §4): legacy
  * Calendar users imported without an email are linked this way, and Entra matching later uses it.
  */
-export async function linkUser(db: Db, id: string, address: string, subscribers: SubscriberConfig[], opts: { guard?: UserGuard } = {}): Promise<UserView> {
+export async function linkUser(db: Db, id: string, address: string, subscribers: SubscriberConfig[], opts: UserWriteOpts = {}): Promise<UserView> {
   if (!isUuid(id)) throw new UserNotFoundError(id);
   try {
     await db.transaction(async (tx) => {
       await lockUser(tx, id);
-      const [row] = await tx.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, id)).for("update");
+      const [row] = await tx.select({ id: users.id, email: users.email, displayName: users.displayName }).from(users).where(eq(users.id, id)).for("update");
       if (!row) throw new UserNotFoundError(id);
       await opts.guard?.(tx, row.id);
       if (row.email !== null) throw new UserAlreadyHasEmailError(id);
       await tx.update(users).set({ email: address, isActive: true, updatedAt: new Date() }).where(eq(users.id, row.id));
       await emitUserUpserted(tx, row.id, subscribers);
+      await recordAudit(tx, opts.audit, userEntry(row.id, row.displayName, "user.linked", { email: address }));
     });
   } catch (e) {
     if (isDuplicateEmail(e)) throw new UserExistsError(address);
@@ -262,31 +283,41 @@ export async function linkUser(db: Db, id: string, address: string, subscribers:
 }
 
 /** Replaces the user's flat roles. The Calendar role is changed only through calendar-access.ts and is kept here. */
-export async function setRoles(db: Db, id: string, next: string[], subscribers: SubscriberConfig[]): Promise<UserView> {
+export async function setRoles(db: Db, id: string, next: string[], subscribers: SubscriberConfig[], opts: { audit?: AuditActor } = {}): Promise<UserView> {
   if (next.some(isCalendarRole)) throw new Error("setRoles never sets a Calendar role; use setCalendarAccess");
   if (!isUuid(id)) throw new UserNotFoundError(id);
   await db.transaction(async (tx) => {
     await lockUser(tx, id);
-    const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
+    const [row] = await tx.select({ id: users.id, displayName: users.displayName }).from(users).where(eq(users.id, id)).for("update");
     if (!row) throw new UserNotFoundError(id);
     if (!next.includes("Core.Admin")) await keepAnActiveAdmin(tx, row.id);
+    const before = (await tx.select({ role: roleGrants.role }).from(roleGrants).where(and(eq(roleGrants.userId, row.id), notLike(roleGrants.role, "Calendar.%")))).map((g) => g.role);
     await tx.delete(roleGrants).where(and(eq(roleGrants.userId, row.id), notLike(roleGrants.role, "Calendar.%")));
     const unique = [...new Set(next)];
     if (unique.length) await tx.insert(roleGrants).values(unique.map((role) => ({ userId: row.id, role })));
     await tx.update(users).set({ updatedAt: new Date() }).where(eq(users.id, row.id));
     await emitUserUpserted(tx, row.id, subscribers);
+    const byName = (a: string, b: string) => a.localeCompare(b, "en");
+    const added = unique.filter((r) => !before.includes(r)).sort(byName);
+    const removed = before.filter((r) => !unique.includes(r)).sort(byName);
+    if (added.length || removed.length) await recordAudit(tx, opts.audit, userEntry(row.id, row.displayName, "user.roles", { added, removed }));
   });
   return (await getUser(db, id))!;
 }
 
-export async function setPassword(db: Db, id: string, pw: string): Promise<void> {
+export async function setPassword(db: Db, id: string, pw: string, opts: { audit?: AuditActor } = {}): Promise<void> {
   if (!isUuid(id)) throw new UserNotFoundError(id);
   const passwordHash = await hashPassword(pw);
-  const updated = await db
-    .update(users)
-    .set({ passwordHash, signInMethod: "local", updatedAt: new Date() })
-    .where(and(eq(users.id, id), isNull(users.entraOid)))
-    .returning({ id: users.id });
+  // The entry says only that a password was set: never the password, nor its hash.
+  const updated = await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(users)
+      .set({ passwordHash, signInMethod: "local", updatedAt: new Date() })
+      .where(and(eq(users.id, id), isNull(users.entraOid)))
+      .returning({ id: users.id, displayName: users.displayName });
+    if (rows[0]) await recordAudit(tx, opts.audit, userEntry(rows[0].id, rows[0].displayName, "user.password-set"));
+    return rows;
+  });
   if (updated.length > 0) return;
   const [exists] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
   throw exists ? new UserLinkedToEntraError(id) : new UserNotFoundError(id);
@@ -362,7 +393,7 @@ export async function matchEntraUser(db: Db, oid: string, email: string | null):
     outcome = await db.transaction(async (tx) => {
       await lockUser(tx, candidate.id);
       const [row] = await tx
-        .select({ id: users.id, email: users.email, isActive: users.isActive, entraOid: users.entraOid })
+        .select({ id: users.id, email: users.email, isActive: users.isActive, entraOid: users.entraOid, displayName: users.displayName })
         .from(users)
         .where(and(eq(users.id, candidate.id), sql`lower(${users.email}) = lower(${email})`))
         .for("update");
@@ -370,6 +401,8 @@ export async function matchEntraUser(db: Db, oid: string, email: string | null):
       if (row.entraOid !== null) return row.entraOid === oid ? "linked" : "conflict";
       if (!row.isActive) return "inactive";
       await tx.update(users).set({ entraOid: oid, signInMethod: "entra", updatedAt: new Date() }).where(eq(users.id, row.id));
+      // Not an admin change, but History would otherwise show an unlink with no link before it.
+      await recordAudit(tx, { id: row.id, name: row.displayName }, userEntry(row.id, row.displayName, "user.microsoft-linked"));
       return "linked";
     });
   } catch (e) {
@@ -385,14 +418,15 @@ export async function matchEntraUser(db: Db, oid: string, email: string | null):
 
 /** Core.Admin unlink: forgets the user's Entra identity and returns them to
  * local sign-in. The next Entra sign-in matches by email again. */
-export async function unlinkEntra(db: Db, id: string, subscribers: SubscriberConfig[]): Promise<UserView> {
+export async function unlinkEntra(db: Db, id: string, subscribers: SubscriberConfig[], opts: { audit?: AuditActor } = {}): Promise<UserView> {
   if (!isUuid(id)) throw new UserNotFoundError(id);
   await db.transaction(async (tx) => {
     await lockUser(tx, id);
-    const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
+    const [row] = await tx.select({ id: users.id, displayName: users.displayName, entraOid: users.entraOid }).from(users).where(eq(users.id, id)).for("update");
     if (!row) throw new UserNotFoundError(id);
     await tx.update(users).set({ entraOid: null, signInMethod: "local", updatedAt: new Date() }).where(eq(users.id, row.id));
     await emitUserUpserted(tx, row.id, subscribers);
+    if (row.entraOid !== null) await recordAudit(tx, opts.audit, userEntry(row.id, row.displayName, "user.microsoft-unlinked"));
   });
   return (await getUser(db, id))!;
 }

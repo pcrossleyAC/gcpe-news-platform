@@ -25,6 +25,7 @@ import {
   upsertOrganization,
 } from "../services/organizations";
 import { listManualReviews, manualReviewInputSchema, recordManualReview } from "../services/manual-reviews";
+import { auditQuerySchema, listAudit, recordAudit } from "../services/audit";
 import { republishAll } from "../services/republish";
 import {
   DEFAULT_TIME_ZONE,
@@ -95,7 +96,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     safe(async (req, res) => {
       const input = orgCreateSchema.parse(req.body);
       if (!orgKeyFromName(input.displayName)) return void res.status(400).json({ error: "name must contain a letter or digit" });
-      const result = await createOrganization(db, input, subscribers);
+      const result = await createOrganization(db, input, subscribers, undefined, undefined, actorOf(req));
       "conflict" in result ? res.status(409).json({ error: "exists", key: result.conflict }) : res.status(201).json(result.record);
     }),
   );
@@ -113,7 +114,11 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
       const input = orgInputSchema.parse(req.body);
       if (input.key !== req.params.key) return void res.status(400).json({ error: "body key must match path" });
       // Refuses a second active holder of an abbreviation, reactivation included (N11): 409 abbreviation-taken.
-      const result = await upsertOrganization(db, input, subscribers, { respectStaffEdits: req.query.overwriteStaffEdits !== "true", checkAbbreviation: true });
+      const result = await upsertOrganization(db, input, subscribers, {
+        respectStaffEdits: req.query.overwriteStaffEdits !== "true",
+        checkAbbreviation: true,
+        audit: actorOf(req),
+      });
       if (result.skippedStaffEdit) return void res.status(409).json({ error: "staff-edited" });
       res.json(result.record);
     }),
@@ -124,7 +129,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     admin,
     safe<{ key: string }>(async (req, res) => {
       const { isHq } = hqSchema.parse(req.body);
-      const record = await setOrganizationHq(db, req.params.key, isHq, subscribers);
+      const record = await setOrganizationHq(db, req.params.key, isHq, subscribers, actorOf(req));
       record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );
@@ -134,7 +139,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     admin,
     safe<{ key: string }>(async (req, res) => {
       const { isPublic } = publicSchema.parse(req.body);
-      const record = await setOrganizationPublic(db, req.params.key, isPublic, subscribers);
+      const record = await setOrganizationPublic(db, req.params.key, isPublic, subscribers, actorOf(req));
       record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );
@@ -147,7 +152,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
       if (!isAdmin && body && typeof body === "object" && [...ADMIN_ONLY_PROFILE_FIELDS, "isHq", "isPublic"].some((f) => f in body)) {
         return void res.status(403).json({ error: "forbidden" });
       }
-      const record = await patchOrganizationProfile(db, req.params.key, orgProfilePatchSchema.parse(body), subscribers);
+      const record = await patchOrganizationProfile(db, req.params.key, orgProfilePatchSchema.parse(body), subscribers, undefined, undefined, actorOf(req));
       record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );
@@ -155,7 +160,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     "/organizations/:key/deactivate",
     admin,
     safe<{ key: string }>(async (req, res) => {
-      (await deactivateOrganization(db, req.params.key, subscribers)) ? res.status(204).end() : res.status(404).json({ error: "not found" });
+      (await deactivateOrganization(db, req.params.key, subscribers, undefined, undefined, actorOf(req))) ? res.status(204).end() : res.status(404).json({ error: "not found" });
     }),
   );
   // New-government spec §4: hand a ministry over to its successors. The preview is Core's part of
@@ -172,7 +177,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     "/organizations/:key/succeed",
     admin,
     safe<{ key: string }>(async (req, res) => {
-      const record = await succeedOrganization(db, req.params.key, successionInputSchema.parse(req.body), subscribers);
+      const record = await succeedOrganization(db, req.params.key, successionInputSchema.parse(req.body), subscribers, undefined, undefined, actorOf(req));
       record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );
@@ -197,7 +202,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     admin,
     safe(async (req, res) => {
       const { operations } = draftSchema.parse(req.body);
-      res.json(view(await saveCabinetChangeDraft(db, operations, actorOf(req).name)));
+      res.json(view(await saveCabinetChangeDraft(db, operations, actorOf(req).name, actorOf(req))));
     }),
   );
   r.post(
@@ -212,10 +217,10 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
   r.post(
     "/cabinet-change/publish",
     admin,
-    safe(async (_req, res) => {
+    safe(async (req, res) => {
       const change = await getOpenCabinetChange(db);
       if (!change) return noOpenChange(res);
-      const result = await publishCabinetChange(db, change.id, subscribers);
+      const result = await publishCabinetChange(db, change.id, subscribers, { audit: actorOf(req) });
       const status = { published: 200, stale: 409, invalid: 422, "not-open": 404 }[result.result];
       res.status(status).json(result);
     }),
@@ -238,7 +243,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
       const at = "at" in body ? new Date(body.at) : localToInstant(body.scheduledForLocal, timeZone)!;
       const change = await getOpenCabinetChange(db);
       if (!change) return noOpenChange(res);
-      const result = await scheduleCabinetChange(db, change.id, at);
+      const result = await scheduleCabinetChange(db, change.id, at, undefined, actorOf(req));
       if (result.result === "scheduled") return void res.json(view(result.change));
       if (result.result === "not-open") return noOpenChange(res);
       if (result.result === "past") return void res.status(422).json({ result: "past", error: "Choose a time in the future." });
@@ -248,9 +253,9 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
   r.post(
     "/cabinet-change/cancel",
     admin,
-    safe(async (_req, res) => {
+    safe(async (req, res) => {
       const change = await getOpenCabinetChange(db);
-      if (!change || !(await cancelCabinetChange(db, change.id))) return noOpenChange(res);
+      if (!change || !(await cancelCabinetChange(db, change.id, actorOf(req)))) return noOpenChange(res);
       res.status(204).end();
     }),
   );
@@ -280,7 +285,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
       if (!kind) return;
       const parsed = termInputSchema.strict().parse(req.body);
       if (parsed.kind !== kind) return void res.status(400).json({ error: "body kind must match path" });
-      res.status(201).json((await createTerm(db, parsed, subscribers)).record);
+      res.status(201).json((await createTerm(db, parsed, subscribers, actorOf(req))).record);
     }),
   );
   r.put(
@@ -293,7 +298,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
       if (parsed.kind !== kind || parsed.key !== req.params.key) return void res.status(400).json({ error: "body kind/key must match path" });
       await checkTermWrite(db, parsed);
       const input = { ...parsed, displayName: parsed.displayName!.trim() };
-      res.json((await upsertTerm(db, input, subscribers)).record);
+      res.json((await upsertTerm(db, input, subscribers, { audit: actorOf(req) })).record);
     }),
   );
   r.post(
@@ -302,7 +307,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     safe<{ kind: string; key: string }>(async (req, res) => {
       const kind = parseKind(req, res);
       if (!kind) return;
-      (await deactivateTerm(db, kind, req.params.key, subscribers)) ? res.status(204).end() : res.status(404).json({ error: "not found" });
+      (await deactivateTerm(db, kind, req.params.key, subscribers, actorOf(req))) ? res.status(204).end() : res.status(404).json({ error: "not found" });
     }),
   );
 
@@ -321,10 +326,29 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
     }),
   );
 
+  // Suite review O3: Core's admin audit trail, newest first: one user's or organization's
+  // history (targetType + targetId), or Admin history's filters. Core administrators only.
+  r.get(
+    "/audit",
+    admin,
+    safe(async (req, res) => void res.json(await listAudit(db, auditQuerySchema.parse(req.query), timeZone))),
+  );
+
   r.post(
     "/admin/republish",
     admin,
-    safe(async (_req, res) => void res.status(202).json({ enqueued: await republishAll(db, subscribers) })),
+    safe(async (req, res) => {
+      const enqueued = await republishAll(db, subscribers);
+      // Suite review O3 (N5): who re-sent everything. republishAll commits on its own, so this is a separate write after it.
+      // Everything is already re-sent: a failed entry is logged, not reported as a failed republish
+      // (an admin would only run it again).
+      try {
+        await recordAudit(db, actorOf(req), { action: "core.republished", targetType: "core", targetId: "republish", targetLabel: "Core records", details: { enqueued } });
+      } catch (e) {
+        console.error("[core] republish ran, but its audit entry couldn't be written", safeErrorLabel(e));
+      }
+      res.status(202).json({ enqueued });
+    }),
   );
 
   // Plan 3d task 4: NRMS's Project Blue Bridge notify — a narrow, read-only directory lookup,

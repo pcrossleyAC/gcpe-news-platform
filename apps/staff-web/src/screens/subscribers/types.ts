@@ -239,6 +239,6 @@ export interface OutgoingGroup {
   lastError: string | null;
 }
 export interface OutgoingStatus {
-  held: { emails: number; releases: number; oldestAt: string | null; groups: OutgoingGroup[] };
+  held: { emails: number; releases: number; oldestAt: string | null; jobs: number; heldKey: string; newestAt: string | null; groups: OutgoingGroup[] };
   failed: OutgoingGroup[];
 }

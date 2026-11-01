@@ -6,6 +6,7 @@ import { safeErrorLabel } from "@gcpe/http-kit";
 import { wallClockToInstant } from "@gcpe/config";
 import { cabinetChanges, organizations, userOrganizations } from "../db/schema";
 import { lockAggregate, orgAggregateId, userAggregateId } from "./aggregate";
+import { recordAudit, SCHEDULED_CABINET_ACTOR, type AuditActor } from "./audit";
 import {
   SuccessionError,
   createOrganization,
@@ -131,26 +132,30 @@ export async function getOpenCabinetChange(db: Db): Promise<CabinetChangeRecord 
  * time). Saving a scheduled change returns it to draft: it must be previewed and scheduled again.
  * Throws ZodError for operations the schema refuses.
  */
-export async function saveCabinetChangeDraft(db: Db, operations: unknown, createdBy: string | null): Promise<CabinetChangeRecord> {
+export async function saveCabinetChangeDraft(db: Db, operations: unknown, createdBy: string | null, audit?: AuditActor): Promise<CabinetChangeRecord> {
   const parsed = cabinetOperationsSchema.parse(operations);
   return db.transaction(async (tx) => {
     await lockAggregate(tx, CABINET_CHANGE_LOCK);
     const open = await openRow(tx);
-    if (open) {
-      const [row] = await tx
-        .update(cabinetChanges)
-        .set({ operations: parsed, status: "draft", scheduledFor: null, error: null, transientFailures: 0, updatedAt: new Date() })
-        .where(eq(cabinetChanges.id, open.id))
-        .returning();
-      return toRecord(row!);
-    }
-    const [row] = await tx.insert(cabinetChanges).values({ operations: parsed, status: "draft", createdBy }).returning();
+    const [row] = open
+      ? await tx
+          .update(cabinetChanges)
+          .set({ operations: parsed, status: "draft", scheduledFor: null, error: null, transientFailures: 0, updatedAt: new Date() })
+          .where(eq(cabinetChanges.id, open.id))
+          .returning()
+      : await tx.insert(cabinetChanges).values({ operations: parsed, status: "draft", createdBy }).returning();
+    await cabinetAudit(tx, audit, "cabinet.saved", row!.id, { operations: parsed.length });
     return toRecord(row!);
   });
 }
 
+/** One audit entry about the cabinet change itself. */
+function cabinetAudit(tx: Tx, audit: AuditActor | undefined, action: string, id: string, details: Record<string, unknown> = {}): Promise<void> {
+  return recordAudit(tx, audit, { action, targetType: "cabinet-change", targetId: id, targetLabel: "Cabinet change", details });
+}
+
 /** Cancels the change if it is still open. */
-export async function cancelCabinetChange(db: Db, id: string): Promise<boolean> {
+export async function cancelCabinetChange(db: Db, id: string, audit?: AuditActor): Promise<boolean> {
   return db.transaction(async (tx) => {
     await lockAggregate(tx, CABINET_CHANGE_LOCK);
     const rows = await tx
@@ -158,6 +163,7 @@ export async function cancelCabinetChange(db: Db, id: string): Promise<boolean> 
       .set({ status: "cancelled", updatedAt: new Date() })
       .where(and(eq(cabinetChanges.id, id), inArray(cabinetChanges.status, OPEN)))
       .returning({ id: cabinetChanges.id });
+    if (rows.length) await cabinetAudit(tx, audit, "cabinet.cancelled", id);
     return rows.length > 0;
   });
 }
@@ -219,8 +225,10 @@ async function applyOperations(
   tx: Tx,
   ops: CabinetOperation[],
   subscribers: SubscriberConfig[],
-  opts: { now?: TestClock; stopAtStale: boolean },
+  opts: { now?: TestClock; stopAtStale: boolean; audit?: AuditActor },
 ): Promise<Applied> {
+  // Each ministry's own history shows what the change did to it, by whom, and that a cabinet change did it.
+  const audit = opts.audit && { ...opts.audit, via: "cabinet-change" as const };
   const orgKeys = new Set<string>();
   for (const op of ops) {
     if (op.op === "create") {
@@ -305,20 +313,20 @@ async function applyOperations(
       try {
         await tx.transaction(async (sp) => {
           if (op.op === "update") {
-            await patchOrganizationProfile(db, op.key, op.patch, subscribers, sp, opts.now);
+            await patchOrganizationProfile(db, op.key, op.patch, subscribers, sp, opts.now, audit);
             claimedBy.set(op.key, claimedBy.get(op.key) ?? i);
           } else if (op.op === "create") {
             const { ref: r, op: _op, ...input } = op;
-            const result = await createOrganization(db, input, subscribers, sp, opts.now);
+            const result = await createOrganization(db, input, subscribers, sp, opts.now, audit);
             if ("conflict" in result) return problem(i, `${op.displayName} already exists.`);
             created.set(r, result.record.key);
             claimedBy.set(result.record.key, claimedBy.get(result.record.key) ?? i);
           } else if (op.noSuccessor) {
-            await deactivateOrganization(db, op.key, subscribers, sp, opts.now);
+            await deactivateOrganization(db, op.key, subscribers, sp, opts.now, audit);
           } else {
             const keys = successorKeys(op, created);
             if (!keys) return problem(i, `A new ministry ${byKey.get(op.key)!.displayName} hands over to wasn't created.`);
-            await succeedOrganization(db, op.key, { successorKeys: keys, ...op.moves }, subscribers, sp, opts.now);
+            await succeedOrganization(db, op.key, { successorKeys: keys, ...op.moves }, subscribers, sp, opts.now, audit);
             if (op.moves.takeAbbreviation) claimedBy.set(keys[0]!, claimedBy.get(keys[0]!) ?? i);
           }
         });
@@ -432,7 +440,7 @@ export async function previewCabinetChange(
 
 type InternalPublish = Exclude<PublishResult, { result: "stale" }> | { result: "stale"; key: string; displayName: string } | { result: "not-due" };
 
-async function publish(db: Db, id: string, subscribers: SubscriberConfig[], opts: { now?: TestClock; onlyIfDue?: boolean }): Promise<InternalPublish> {
+async function publish(db: Db, id: string, subscribers: SubscriberConfig[], opts: { now?: TestClock; onlyIfDue?: boolean; audit?: AuditActor }): Promise<InternalPublish> {
   // Nothing is written before the last check, so the refusals simply return; a stale or invalid
   // change throws Rollback to undo the operations it ran.
   return rolledBack<InternalPublish>(() =>
@@ -453,11 +461,12 @@ async function publish(db: Db, id: string, subscribers: SubscriberConfig[], opts
       // One instant for every stamp this publish writes: each ministry's updatedAt and staffEditedAt,
       // org.succeeded's `at`, and publishedAt.
       const at = opts.now ? opts.now() : new Date();
-      const applied = await applyOperations(db, tx, read.ops, subscribers, { now: () => at, stopAtStale: true });
+      const applied = await applyOperations(db, tx, read.ops, subscribers, { now: () => at, stopAtStale: true, audit: opts.audit });
       const first = applied.stale[0];
       if (first) throw new Rollback({ result: "stale", key: first.key, displayName: first.displayName });
       if (applied.problems.length) throw new Rollback({ result: "invalid", problems: applied.problems });
       await tx.update(cabinetChanges).set({ status: "published", publishedAt: at, error: null, updatedAt: at }).where(eq(cabinetChanges.id, id));
+      await cabinetAudit(tx, opts.audit, "cabinet.published", id, { operations: read.ops.length });
       return { result: "published" };
     }),
   );
@@ -468,8 +477,8 @@ async function publish(db: Db, id: string, subscribers: SubscriberConfig[], opts
  * function, or nothing. A stale expectedUpdatedAt refuses the whole change, naming the first stale
  * ministry; any other problem refuses it with every problem found. `now` is a test clock.
  */
-export async function publishCabinetChange(db: Db, id: string, subscribers: SubscriberConfig[], opts: { now?: TestClock } = {}): Promise<PublishResult> {
-  const result = await publish(db, id, subscribers, { now: opts.now });
+export async function publishCabinetChange(db: Db, id: string, subscribers: SubscriberConfig[], opts: { now?: TestClock; audit?: AuditActor } = {}): Promise<PublishResult> {
+  const result = await publish(db, id, subscribers, { now: opts.now, audit: opts.audit });
   if (result.result === "stale") return { result: "stale", key: result.key };
   if (result.result === "not-due") return { result: "not-open" };
   return result;
@@ -485,7 +494,7 @@ export type ScheduleResult =
  * Schedules the open change to publish at `at` (the swearing-in time). Refuses a time not in the
  * future, and a change whose preview has problems (stale ministries included).
  */
-export async function scheduleCabinetChange(db: Db, id: string, at: Date, now?: TestClock): Promise<ScheduleResult> {
+export async function scheduleCabinetChange(db: Db, id: string, at: Date, now?: TestClock, audit?: AuditActor): Promise<ScheduleResult> {
   if (at.getTime() <= (now ? now() : new Date()).getTime()) return { result: "past" };
   return db.transaction(async (tx): Promise<ScheduleResult> => {
     await lockAggregate(tx, CABINET_CHANGE_LOCK);
@@ -500,6 +509,7 @@ export async function scheduleCabinetChange(db: Db, id: string, at: Date, now?: 
       .set({ status: "scheduled", scheduledFor: at, error: null, transientFailures: 0, updatedAt: new Date() })
       .where(eq(cabinetChanges.id, id))
       .returning();
+    await cabinetAudit(tx, audit, "cabinet.scheduled", id, { at: at.toISOString() });
     return { result: "scheduled", change: toRecord(updated!) };
   });
 }
@@ -572,7 +582,7 @@ export async function publishDueCabinetChanges(db: Db, subscribers: SubscriberCo
     let error: string;
     let reason: string;
     try {
-      const result = await publish(db, id, subscribers, { now, onlyIfDue: true });
+      const result = await publish(db, id, subscribers, { now, onlyIfDue: true, audit: SCHEDULED_CABINET_ACTOR });
       if (result.result === "published") published++;
       if (result.result !== "stale" && result.result !== "invalid") continue;
       reason = result.result;

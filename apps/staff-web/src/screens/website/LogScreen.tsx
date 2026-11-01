@@ -6,6 +6,7 @@ import { formatWhen } from "../../format/dates";
 import { TableScroll } from "../../shared/TableScroll";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { SITE_LOG_AREAS, type SiteLogArea, type SiteLogEntry } from "./types";
+import { useOptionalSession } from "../../session/SessionContext";
 
 const AREA_LABEL: Record<SiteLogArea, string> = {
   carousel: "Carousel",
@@ -16,6 +17,8 @@ const AREA_LABEL: Record<SiteLogArea, string> = {
   files: "Files",
   features: "Features",
   settings: "Site settings",
+  // Suite review O3: Core administrators' Government terms changes (NRMS keeps them in this log).
+  "government-terms": "Government terms",
 };
 
 /**
@@ -27,6 +30,9 @@ export function LogScreen(): React.JSX.Element {
   const timeZone = useTenantTimeZone();
   useDocumentTitle("Website log");
   const [area, setArea] = useState<SiteLogArea | "">("");
+  // Core administrators alone see Government terms lines (the server leaves them out for everyone else).
+  const isCoreAdmin = useOptionalSession()?.has("Core.Admin") ?? false;
+  const areas = SITE_LOG_AREAS.filter((a) => a !== "government-terms" || isCoreAdmin);
   const [entries, setEntries] = useState<SiteLogEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -54,7 +60,7 @@ export function LogScreen(): React.JSX.Element {
         Filter by area
         <select value={area} onChange={(e) => setArea(e.target.value as SiteLogArea | "")}>
           <option value="">(all)</option>
-          {SITE_LOG_AREAS.map((a) => (
+          {areas.map((a) => (
             <option key={a} value={a}>
               {AREA_LABEL[a]}
             </option>

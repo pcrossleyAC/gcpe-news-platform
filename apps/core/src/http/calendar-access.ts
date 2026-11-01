@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type RequestHandler, type Resp
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
+import { actorOf } from "@gcpe/auth";
 import {
   CALENDAR_ONLY_MESSAGES,
   calendarAccessSchema,
@@ -59,7 +60,7 @@ export function calendarAccessRouter(db: Db, subscribers: SubscriberConfig[]): R
     run<IdParams>(async (req, res) => {
       const input = calendarAccessSchema.parse(req.body);
       // The actor is the verified caller, whose roles Core has already re-derived for a session.
-      res.json(await setCalendarAccess(db, { id: req.auth!.subject, roles: req.auth!.roles }, req.params.id, input, subscribers));
+      res.json(await setCalendarAccess(db, { id: req.auth!.subject, roles: req.auth!.roles, name: actorOf(req).name }, req.params.id, input, subscribers));
     }),
   );
   r.put(
@@ -68,7 +69,7 @@ export function calendarAccessRouter(db: Db, subscribers: SubscriberConfig[]): R
     run<IdParams>(async (req, res) => {
       const { isActive } = activeSchema.parse(req.body);
       if (!isActive && isSelf(req)) throw new SelfLockoutError();
-      res.json(await setCalendarUserActive(db, { id: req.auth!.subject, roles: req.auth!.roles }, req.params.id, isActive, subscribers));
+      res.json(await setCalendarUserActive(db, { id: req.auth!.subject, roles: req.auth!.roles, name: actorOf(req).name }, req.params.id, isActive, subscribers));
     }),
   );
   r.post(
@@ -76,7 +77,7 @@ export function calendarAccessRouter(db: Db, subscribers: SubscriberConfig[]): R
     sessionOnly,
     run<IdParams>(async (req, res) => {
       const { email } = linkSchema.parse(req.body);
-      res.json(await linkCalendarUser(db, { id: req.auth!.subject, roles: req.auth!.roles }, req.params.id, email, subscribers));
+      res.json(await linkCalendarUser(db, { id: req.auth!.subject, roles: req.auth!.roles, name: actorOf(req).name }, req.params.id, email, subscribers));
     }),
   );
   return r;

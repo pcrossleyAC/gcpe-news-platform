@@ -48,6 +48,7 @@ import { PageTitlesScreen } from "./screens/admin/page-titles/PageTitlesScreen";
 import { GovernmentTermsScreen } from "./screens/admin/government-terms/GovernmentTermsScreen";
 import { MediaListNamesScreen } from "./screens/admin/media-lists/MediaListNamesScreen";
 import { ErrorLogScreen } from "./screens/admin/errors/ErrorLogScreen";
+import { AdminHistoryScreen } from "./screens/admin/history/AdminHistoryScreen";
 import { SubscribersSection } from "./screens/subscribers/SubscribersSection";
 import { SubscribersScreen } from "./screens/subscribers/SubscribersScreen";
 import { AddSubscriberScreen } from "./screens/subscribers/AddSubscriberScreen";
@@ -187,6 +188,7 @@ export const routes: RouteObject[] = [
           { path: "release-page-titles", element: <PageTitlesScreen /> },
           { path: "media-list-names", element: <MediaListNamesScreen /> },
           { path: "error-log", element: <ErrorLogScreen /> },
+          { path: "admin-history", element: <AdminHistoryScreen /> },
           { path: "*", element: <NotFoundScreen /> },
         ],
       },

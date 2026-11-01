@@ -42,6 +42,10 @@ You see "Saved." The archive pages and the current-term link rebuild by themselv
 1. Choose **Delete** on its row. The Hub asks "Delete the term starting {date}? Nothing is listed under it yet, and the current term stays as it is."
 2. Choose **Confirm**. You see "The term starting {date} is deleted."
 
+## See who changed a term
+
+Each start, date change, name change, old archive address change and deletion is listed in **Website** > **Website log**, with who made it and when. Choose **Government terms** in **Filter by area**. For example: "Moved the start of the government term starting November 20, 2028 to November 21, 2028". Only Core administrators see these lines and the **Government terms** filter.
+
 ## What happens next
 
 - Each release is listed under the term that covers the day it was published, in BC time. A release published at 11:59 p.m. the day before the start date stays in the old term. One published at 12:00 a.m. on the start date is in the new term.
