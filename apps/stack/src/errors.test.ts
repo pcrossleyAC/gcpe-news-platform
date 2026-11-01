@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { installErrorCapture } from "./errors";
+import { groupErrors, installErrorCapture, type ErrorEntry } from "./errors";
 
 describe("installErrorCapture", () => {
   let capture: ReturnType<typeof installErrorCapture> | undefined;
@@ -204,5 +204,29 @@ describe("installErrorCapture", () => {
       expect(corrupt.entries()).toEqual([]);
       corrupt.close();
     });
+  });
+});
+
+// Suite review O2.3 (owner 2026-10-31): one outage repeating the same message must not push every
+// other error out of the Error log's view.
+describe("groupErrors", () => {
+  const at = (minute: number, message: string, pid = 1): ErrorEntry => ({ timestamp: new Date(Date.UTC(2026, 9, 31, 10, minute)).toISOString(), message, pid, startedAt: "2026-10-31T00:00:00.000Z" });
+
+  it("folds identical messages into one group with a count, first and last time, newest group first", () => {
+    const entries = [at(0, "feed down"), at(1, "other"), at(5, "feed down", 2), at(10, "feed down", 3)];
+    expect(groupErrors(entries)).toEqual([
+      { message: "feed down", count: 3, firstAt: at(0, "").timestamp, lastAt: at(10, "").timestamp, pid: 3, startedAt: "2026-10-31T00:00:00.000Z" },
+      { message: "other", count: 1, firstAt: at(1, "").timestamp, lastAt: at(1, "").timestamp, pid: 1, startedAt: "2026-10-31T00:00:00.000Z" },
+    ]);
+  });
+
+  it("keeps messages that differ at all apart, and caps the number of groups", () => {
+    const entries = [at(0, "a"), at(1, "a "), at(2, "b"), at(3, "c")];
+    expect(groupErrors(entries).map((g) => g.message)).toEqual(["c", "b", "a ", "a"]);
+    expect(groupErrors(entries, 2).map((g) => g.message)).toEqual(["c", "b"]);
+  });
+
+  it("is empty for no entries", () => {
+    expect(groupErrors([])).toEqual([]);
   });
 });

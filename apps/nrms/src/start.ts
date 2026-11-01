@@ -5,7 +5,7 @@ import { authFromEnv, NEWS_API_SIMILAR_ROLE, serviceTokenProvider, type LocalAut
 import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
-import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
+import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { coreClient, distributionClient, newsApiSimilarClient, nodClient, type CoreClient, type DistributionClient } from "./clients";
@@ -14,7 +14,7 @@ import { needsCalendarViewers } from "./calendar/projection";
 import { defaultSoundcloudOembed, type EmbedDeps } from "./media/embeds";
 import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
-import { publishDue, startPublisher } from "./publisher";
+import { overdueScheduled, publishDue, startPublisher } from "./publisher";
 import { startSiteLoop, switchCarousels } from "./website/carousel";
 import { seedGovernmentTerms, syncGovernmentTerms } from "./government-terms";
 import { ensureSlideImageFiles } from "./website/slide-images";
@@ -258,6 +258,12 @@ export interface AppHandle {
   /** One iteration of each background loop, using the same function and options the loop
    * itself uses. */
   workers: Record<string, () => Promise<unknown>>;
+  /** This app's outbox: its undelivered updates and backlog, for the stack's Undelivered updates
+   * screen and `/stack/health` (suite review O1/O2). */
+  outbox: OutboxAdmin;
+  /** Releases past their publish time (by more than `graceMs`) and still not published, leaving
+   * out ones on hold — `/stack/health`'s "releases.overdue" check (suite review O2.1). */
+  overdueScheduled(graceMs: number): Promise<{ count: number; oldestMinutes: number | null }>;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
   /** Q17: whether the stack's public `/files/<storageKey>` may serve this release file right now
@@ -397,6 +403,8 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   return {
     app,
     port: parsed.PORT,
+    outbox: outboxAdmin(db),
+    overdueScheduled: (graceMs) => overdueScheduled(db, { graceMs }),
     workers: {
       flickr: () => processFlickrJobs(flickrJobsOpts),
       site: () => switchCarousels(db, subscribers, slideFiles),

@@ -244,8 +244,10 @@ function Invoke-GcpeMsi {
     Invoke-GcpeInstaller -FilePath 'msiexec.exe' -Arguments (@('/i', "`"$MsiPath`"", '/qn', '/norestart', '/l*v', "`"$log`"") + $Properties)
 }
 
-# Polls a /stack/health URL until it answers 200 with status "ok" (curl.exe ships with Windows
-# Server 2019 and later; -k because a Dev site may use a self-signed certificate).
+# Polls a /stack/health URL until it answers 200 with status "ok" or "degraded" (curl.exe ships
+# with Windows Server 2019 and later; -k because a Dev site may use a self-signed certificate).
+# "degraded" means every app is up but a background check is red, such as an undelivered update
+# (docs/deploy/windows.md §7): the release works, so a deploy must not roll back over it.
 function Wait-GcpeHealth {
     param([Parameter(Mandatory)][string]$Url, [int]$TimeoutSec = 180)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -258,12 +260,12 @@ function Wait-GcpeHealth {
         if ($LASTEXITCODE -eq 0) {
             try {
                 $json = $last | ConvertFrom-Json
-                if ($json.status -eq 'ok') { return $json }
+                if ($json.status -in @('ok', 'degraded')) { return $json }
             } catch { }
         }
         Start-Sleep -Seconds 3
     }
-    throw "$Url did not report status ok within $TimeoutSec s. Last response: $last"
+    throw "$Url did not report status ok or degraded within $TimeoutSec s. Last response: $last"
 }
 
 function Get-GcpeJunctionTarget {

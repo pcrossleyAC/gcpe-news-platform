@@ -7,7 +7,7 @@ import { ReleaseRuleError, ReleaseStateError } from "./releases/errors";
 import { deleteRelease, saveCategories, saveDocumentLanguage } from "./releases/service";
 import { loadView } from "./releases/store";
 import { cancel, schedule, unpublish } from "./releases/workflow";
-import { publishDue, startPublisher } from "./publisher";
+import { overdueScheduled, publishDue, startPublisher } from "./publisher";
 import { renderTextBody, TEXT_FOOTER } from "./renditions/text";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://news.invalid/events", secret: "s".repeat(40), types: ["*"] }];
@@ -316,6 +316,21 @@ describe("publisher", () => {
     const later = await createScheduledRelease(tdb.db, {}, new Date(Date.now() + 60 * 60_000));
     const future = new Date((await dbClock(tdb.db)).getTime() + 2 * 60 * 60_000);
     expect((await publishDue({ db: tdb.db, subscribers: subs, now: () => future })).published).toEqual([later.key]);
+  });
+
+  // Suite review O2.1: /stack/health's "releases.overdue" check — scheduled, not on hold, past its
+  // time by more than the grace, and still not published.
+  it("counts releases overdue to publish, leaving out held ones and ones inside the grace", async () => {
+    const now = await dbClock(tdb.db);
+    expect(await overdueScheduled(tdb.db, { graceMs: 10 * 60_000 })).toEqual({ count: 0, oldestMinutes: null });
+    await createScheduledRelease(tdb.db, {}, new Date(now.getTime() - 45 * 60_000));
+    await createScheduledRelease(tdb.db, {}, new Date(now.getTime() - 20 * 60_000));
+    await createScheduledRelease(tdb.db, {}, new Date(now.getTime() - 5 * 60_000));
+    const held = await createScheduledRelease(tdb.db, {}, new Date(now.getTime() - 90 * 60_000));
+    await tdb.db.execute(sql`UPDATE news_releases SET on_hold = true WHERE id = ${held.id}`);
+    expect(await overdueScheduled(tdb.db, { graceMs: 10 * 60_000, now: () => now })).toEqual({ count: 2, oldestMinutes: 45 });
+    await publishDue({ db: tdb.db, subscribers: subs });
+    expect(await overdueScheduled(tdb.db, { graceMs: 10 * 60_000 })).toEqual({ count: 0, oldestMinutes: null });
   });
 
   it("prepareMedia can replace the asset URL in what's published", async () => {

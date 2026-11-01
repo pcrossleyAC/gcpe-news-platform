@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
-import { completePage, deferPage, dependentPriority, enqueuePages, nextBatch, PRIORITY, queueDepth } from "./queue";
+import { completePage, deferPage, dependentPriority, enqueuePages, nextBatch, PRIORITY, queueDepth, queueHealth } from "./queue";
 
 describe("rebuild queue", () => {
   let tdb: TestDatabase;
@@ -25,6 +25,14 @@ describe("rebuild queue", () => {
     await enqueuePages(tdb.db, [{ pageId: "a", priority: 1 }, { pageId: "b", priority: 1 }]);
     await enqueuePages(tdb.db, [{ pageId: "a", priority: 3 }]);
     expect(await ids()).toEqual(["b@1", "a@1"]);
+  });
+
+  // Suite review O2.1: /stack/health's "site.rebuild-queue" check.
+  it("reports how many pages wait and how long the oldest has waited", async () => {
+    expect(await queueHealth(tdb.db)).toEqual({ pages: 0, oldestMinutes: null });
+    await enqueuePages(tdb.db, [{ pageId: "home", priority: 1 }, { pageId: "post:A", priority: 2 }]);
+    await tdb.pool.query("UPDATE rebuild_queue SET queued_at = now() - interval '95 minutes' WHERE page_id = 'post:A'");
+    expect(await queueHealth(tdb.db)).toEqual({ pages: 2, oldestMinutes: 95 });
   });
 
   it("a page re-queued during its render stays queued", async () => {

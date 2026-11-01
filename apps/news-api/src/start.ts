@@ -6,7 +6,7 @@ import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } f
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { CircuitBreaker, createEmbeddingProvider, createGuardedEmbedder } from "@gcpe/embeddings";
 import type { Closer } from "@gcpe/http-kit";
-import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
+import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin } from "@gcpe/events";
 import { createApp } from "./app";
 import { pruneChanges } from "./changes";
 import { hasHnswIndex, hasPgvector, resolveSearchMode } from "./embeddings/pgvector";
@@ -41,6 +41,9 @@ export interface AppHandle {
    * itself uses. The hub's ping timer and the LISTEN connection are not loops of this kind
    * — there is no "run once" for them. */
   workers: Record<string, () => Promise<unknown>>;
+  /** This app's outbox: its undelivered updates and backlog, for the stack's Undelivered updates
+   * screen and `/stack/health` (suite review O1/O2). */
+  outbox: OutboxAdmin;
   /**
    * The key of the published post whose NEWS-n reference is `reference` (case-insensitive), or
    * null. The public site's /<n> short links (url-compat T5) use it; served by
@@ -256,6 +259,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     timeZone: tenant.timeZone,
     searchMode,
     postKeyByReference: async (reference) => (await getPostByReference(db, reference))?.key ?? null,
+    outbox: outboxAdmin(db),
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
       changesPrune: () => pruneChanges(db),

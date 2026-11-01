@@ -5,7 +5,7 @@ import { authFromEnv } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
-import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
+import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin } from "@gcpe/events";
 import type { SessionGate } from "@gcpe/auth";
 import { createApp } from "./app";
 import { sessionCheckDb, sessionGate as coreSessionGate } from "./services/sessions";
@@ -33,6 +33,9 @@ export interface AppHandle {
   /** One iteration of each background loop, using the same function and options the loop
    * itself uses. */
   workers: Record<string, () => Promise<unknown>>;
+  /** This app's outbox: its undelivered updates and backlog, for the stack's Undelivered updates
+   * screen and `/stack/health` (suite review O1/O2). */
+  outbox: OutboxAdmin;
   /** Core's session gate: the stack installs it for every app in its process (setSessionGate),
    * so a deactivation or sign-out is refused on the very next request anywhere. */
   sessionGate: SessionGate;
@@ -106,6 +109,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     app,
     port: parsed.PORT,
     sessionGate,
+    outbox: outboxAdmin(db),
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
       // Phase 4a: lets the stack ask Core to re-emit every org/term as an upserted event — the

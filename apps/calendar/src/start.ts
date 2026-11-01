@@ -4,7 +4,7 @@ import type express from "express";
 import { authFromEnv } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
-import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
+import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin } from "@gcpe/events";
 import { type Closer, safeErrorLabel } from "@gcpe/http-kit";
 import { localStore } from "@gcpe/storage";
 import { sweepLocks } from "./activities/locks";
@@ -51,6 +51,9 @@ export interface AppHandle {
   app: express.Express;
   port: number;
   workers: Record<string, () => Promise<unknown>>;
+  /** This app's outbox: its undelivered updates and backlog, for the stack's Undelivered updates
+   * screen and `/stack/health` (suite review O1/O2). */
+  outbox: OutboxAdmin;
   startLoops(): void;
   closeBeforeServer: Closer[];
   closers: Closer[];
@@ -81,6 +84,7 @@ export async function startCalendar(env: NodeJS.ProcessEnv): Promise<AppHandle> 
     app,
     port: parsed.PORT,
     storageDir: parsed.STORAGE_DIR,
+    outbox: outboxAdmin(db),
     workers: {
       // Delivers activity.* to NRMS.
       dispatch: () => dispatchOnce({ db, subscribers }),

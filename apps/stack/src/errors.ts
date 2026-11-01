@@ -170,3 +170,38 @@ export function installErrorCapture(options: number | ErrorCaptureOptions = {}):
     },
   };
 }
+
+/** Identical messages folded together (suite review O2.3): how many, the first and last time, and
+ * the process that logged the last one. */
+export interface ErrorGroup {
+  message: string;
+  count: number;
+  firstAt: string;
+  lastAt: string;
+  pid: number;
+  startedAt: string;
+}
+
+/**
+ * Groups `entries` (oldest first, as the ring keeps them) by their exact message, newest group
+ * (by its last time) first, at most `limit` groups. So one outage logging the same line every few
+ * minutes is one row, and the other errors stay in view.
+ */
+export function groupErrors(entries: ErrorEntry[], limit = Infinity): ErrorGroup[] {
+  const groups = new Map<string, ErrorGroup>();
+  for (const e of entries) {
+    const g = groups.get(e.message);
+    if (g) {
+      g.count++;
+      g.lastAt = e.timestamp;
+      g.pid = e.pid;
+      g.startedAt = e.startedAt;
+      // Re-inserted so the Map's order follows each group's latest entry.
+      groups.delete(e.message);
+      groups.set(e.message, g);
+    } else {
+      groups.set(e.message, { message: e.message, count: 1, firstAt: e.timestamp, lastAt: e.timestamp, pid: e.pid, startedAt: e.startedAt });
+    }
+  }
+  return [...groups.values()].reverse().slice(0, limit);
+}

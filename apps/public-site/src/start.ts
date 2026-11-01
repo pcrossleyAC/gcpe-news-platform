@@ -12,6 +12,7 @@ import { newsApiTokenOptions, publicSiteEnvSchema, resolveTenantConfig, tenantCo
 import { every } from "./loop";
 import { newsApiClient } from "./news-api-client";
 import { postIndex } from "./post-index";
+import { queueHealth } from "./queue";
 import type { SiteInfo } from "./render";
 import { selfHeal } from "./self-heal";
 import { fsStorage } from "./storage";
@@ -26,6 +27,8 @@ export interface AppHandle {
   /** `sync`: queues and drains up to SITE_REBUILD_BATCH pages (spec §6.2) — what the stack's
    * `site.sync` tick step runs (apps/stack/src/stack.ts). */
   workers: Record<string, () => Promise<unknown>>;
+  /** The rebuild queue's length and oldest wait, for `/stack/health` (suite review O2.1). */
+  rebuildQueue(): Promise<{ pages: number; oldestMinutes: number | null }>;
   /** Starts the standalone `site.sync` loop (main.ts), every SYNC_INTERVAL_MS. A no-op in the
    * stack, which ticks `workers.sync` itself instead. */
   startLoops(): void;
@@ -118,6 +121,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
     app,
     port: parsed.PORT,
     workers: { sync: () => syncSite(syncDeps) },
+    rebuildQueue: () => queueHealth(db),
     startLoops() {
       stop = every(parsed.SYNC_INTERVAL_MS, "site.sync", () => syncSite(syncDeps));
     },
