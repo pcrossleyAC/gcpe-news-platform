@@ -201,6 +201,19 @@ and restart the Node.js app. The site-state marker records the base URL, so the 
 one rebuild-all, which the next ticks drain; `/site/…` then 301s to `/…`. Check with
 `curl -sI https://<domain>/site/ministries/` (expect `301`, `location: /ministries/`).
 
+**Before deploying any build from 2026-10-31 or later to boxs.ca:** in Site Tools → Devs → Node.js →
+your project → Environment Variables, add this line if it isn't there, then deploy:
+
+```
+SITE_ENVIRONMENT=test
+```
+
+Until then boxs.ca was a test site only because of `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`, which no
+longer counts (owner decision 2026-10-31). Without the line the new build treats boxs.ca as the
+real production site and refuses to start (no Microsoft sign-in, no emergency feed setting); the
+error log names what it wants. Adding the line first is harmless with the older build: it
+already reads `SITE_ENVIRONMENT=test` the same way.
+
 **`TRUST_PROXY_HOPS`** (optional, a whole number 1 to 5, default `1`). How many reverse proxies sit
 in front of the stack and add to `X-Forwarded-For`. Every app, and the stack itself, uses it to
 find the visitor's address (`req.ip`), which the logs and the per-IP limits (login, subscribe,

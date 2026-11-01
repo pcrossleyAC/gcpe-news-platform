@@ -117,6 +117,15 @@ finds its own `config/` and `migrations/` beside it.
 | `NRMS_FLICKR_*`, `NOD_MEDIA_HUB_URL`, `NOD_EMERGENCY_FEED_URL`, `NEWSAPI_EMBEDDINGS_*`, … | no | keys are | Outside services; unset means the stack's fakes on a test site, nothing in production. See siteground.md. |
 | `NOD_EMERGENCY_FEED` | real production, unless the feed URL is set | | `off` switches emergency alerts off on purpose. The real production site refuses to start with neither this nor `NOD_EMERGENCY_FEED_URL`, and with Microsoft sign-in or the mail settings incomplete (docs/deploy/windows.md, "Real production: what the stack refuses"); `--check` reports the same under `production`. |
 
+**The real production site on OpenShift** follows the same go-live steps as Windows
+(docs/deploy/windows.md, P4): leave out `SITE_ENVIRONMENT` and every `LOCAL_ADMIN_*` and
+`LOCAL_AUTH_SECRET` (keep them in a Secret that isn't mounted, for break-glass in an emergency),
+remove `DIST_MAIL_REDIRECT_TO` and set `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true`, and set Microsoft
+sign-in and the emergency feed (or `NOD_EMERGENCY_FEED=off`). The stack refuses to start without
+them and `--check` names what is missing. The apps' calls to each other stay in the one pod and
+need no break-glass. Splitting them into a public and a staff tier would need Entra client
+credentials between the tiers, which isn't built.
+
 `node stack.js --check` validates a set of variables without starting anything:
 `oc run gcpe-check --rm -i --restart=Never --image=<image> --overrides=<envFrom> -- node stack.js --check`,
 or `oc debug deploy/gcpe-stack -- node stack.js --check`.

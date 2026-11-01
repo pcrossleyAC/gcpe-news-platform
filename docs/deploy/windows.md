@@ -1072,19 +1072,75 @@ At go-live: `.\Install-GcpeProxy.ps1 -HostName <public host> -Upstream https://<
 
 ### P4. Go-live switches
 
-In `C:\gcpe\config\gcpe.env` on the Prod app server, then `Restart-Service gcpe-stack`:
+**Before you start**, all of these must be true:
 
-1. Remove `SITE_ENVIRONMENT=test` (the site stops being noindex; `robots.txt` stops disallowing).
-2. Set `SITE_GOOGLE_VERIFICATION_FILE` and/or `SITE_GOOGLE_SITE_VERIFICATION` to the values Search
+1. **At least two people hold Core Admin**, are active, have their government email, and have each
+   signed in with Microsoft on Prod (Admin → Users shows **Sign-in: Microsoft** for them). Add them
+   on the Users screen while signed in as the break-glass `admin`. Core refuses to deactivate the
+   last active Core Admin or take Core Admin from them, and logs `[core] NO ADMIN` at startup when
+   break-glass is off and no active Core Admin has an email.
+2. **The final legacy import (D3) is done.** Its Nrms and Nod steps sign in as the break-glass
+   admin; with break-glass off, `Import-GcpeLegacy.ps1` stops before importing anything.
+3. **The outside services are set** (D8): the emergency feed (or `NOD_EMERGENCY_FEED=off` on
+   purpose), and the bounce mailbox if it's ready (without it, Prod starts with a warning and
+   Operations says bounces aren't being read).
+
+**Then** in `C:\gcpe\config\gcpe.env` on the Prod app server:
+
+1. **Turn break-glass off:** cut these five lines and paste them into
+   `C:\gcpe\config\break-glass.env`, which the service never reads (keep that file readable by
+   Administrators only, as `gcpe.env` is: `icacls C:\gcpe\config\break-glass.env /inheritance:r /grant:r Administrators:F`):
+   `LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION`, `LOCAL_ADMIN_USERNAME`,
+   `LOCAL_ADMIN_PASSWORD_HASH`, `LOCAL_AUTH_SECRET`.
+2. **Remove `SITE_ENVIRONMENT=test`** if the file has it (an install made with `-Environment Test`,
+   or before `-Environment Prod` existed): the site stops being noindex and `robots.txt` stops
+   disallowing.
+3. **Real mail:** remove `DIST_MAIL_REDIRECT_TO` **and** add `DIST_MAIL_ALLOW_REAL_RECIPIENTS=true`
+   (if it isn't there). Removing the redirect alone stops Distribution starting; both together is
+   refused.
+4. Set `SITE_GOOGLE_VERIFICATION_FILE` and/or `SITE_GOOGLE_SITE_VERIFICATION` to the values Search
    Console issues for the live domain (formats: siteground.md, "Robots and Google Search Console
    verification").
-3. Remove `DIST_MAIL_REDIRECT_TO`: from now on mail reaches real people.
-4. **Not built yet:** a production configuration with Entra for the apps' calls to each other and
-   the break-glass local admin off (`LOCAL_ADMIN_ENABLED`, `LOCAL_ADMIN_ALLOW_IN_PRODUCTION`). This
-   must exist before Prod goes live ([9](#9-not-yet-verified)).
+5. **Check before restarting**, then restart:
 
-**Check it**: `curl.exe -s https://<public host>/robots.txt` no longer ends with `Disallow: /`;
-`curl.exe -sI https://<public host>/` has no `X-Robots-Tag`.
+   ```powershell
+   & 'C:\Program Files\nodejs\node.exe' --env-file=C:\gcpe\config\gcpe.env C:\gcpe\current\stack.js --check
+   Restart-Service gcpe-stack
+   ```
+
+   `--check` must say `"ok": true` with `production.errors` empty. The apps' calls to each other
+   don't need break-glass (they use a key derived from `STACK_EVENT_SECRET`), so the stack starts
+   with it off.
+
+**Check it**:
+
+- `curl.exe -s https://<public host>/robots.txt` no longer ends with `Disallow: /`;
+  `curl.exe -sI https://<public host>/` has no `X-Robots-Tag`, and
+  `curl.exe -s https://<public host>/ | Select-String noindex` finds nothing.
+- `curl.exe -s -o NUL -w '%{http_code}' -X POST https://localhost/core/auth/local/token` is `404`
+  (no break-glass login), and `Get-Content C:\gcpe\service\logs\gcpe-stack.err.log -Tail 300 | Select-String 'LOCAL ADMIN LOGIN ENABLED|NO ADMIN|refusing to start'`
+  finds nothing from the last start.
+- One of the Core Admins signs in with Microsoft: Website → Project Blue Bridge no longer says
+  "This is a TEST site.", and Subscribers → Operations shows no warning you didn't expect.
+
+**Break-glass in an emergency** (nobody who can sign in has Core Admin, or Microsoft sign-in is
+down). It makes no change to how the public site looks or is indexed:
+
+1. On the app server, as an Administrator, make a fresh password and secret, and note the
+   password in the password manager:
+
+   ```powershell
+   & 'C:\Program Files\nodejs\node.exe' C:\gcpe\current\packages\auth\src\cli\hash-password.js
+   $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { '{0:x2}' -f $_ })
+   ```
+
+2. Copy the five lines from `C:\gcpe\config\break-glass.env` back into `gcpe.env`, with the new
+   hash as `LOCAL_ADMIN_PASSWORD_HASH` and the new 64-character value as `LOCAL_AUTH_SECRET`, then
+   `Restart-Service gcpe-stack`. Sign in with the `admin` user name and the new password.
+3. Fix the problem (for example, give a second person Core Admin).
+4. Cut the five lines out of `gcpe.env` again and `Restart-Service gcpe-stack`. Every break-glass
+   session ends at that restart.
+5. Record in the operations log who turned it on, when, why and when it went off.
 
 ### P5. Static fallback for patch reboots (planned, not built)
 
@@ -1533,6 +1589,11 @@ runners (not on government servers, and not on a domain-joined machine):
   the IIS log while a control request does; no `Referer` field; the log cleanup task deletes a
   40-day-old log and keeps a fresh one. The next step, `-AllowedClientRanges`, failed on a script
   bug (an empty result's `.Count` under StrictMode), fixed after that run; nothing after it ran.
+- Added 2026-10-31 and **not yet run on Windows** (PowerShell wasn't available to the change):
+  `Install-Gcpe.ps1 -Environment Prod` and its `-EmergencyFeedUrl`/`-EmergencyFeedOff`;
+  `Import-GcpeLegacy.ps1` stopping early with break-glass off; the bundled
+  `packages\auth\src\cli\hash-password.js`. The production-shaped stack itself (break-glass off,
+  every app-to-app call) is checked on every pull request by `apps/stack/src/stack-production.test.ts`.
 - Added since and **not yet run on Windows**: `-AllowedClientRanges` on the app server (only the
   rule set is checked: CI has no second machine to be refused, and Windows never filters
   loopback), closing 5432 and QUIC, the private data/log folders, the nightly backup (task run as
@@ -1572,7 +1633,7 @@ Calendar dry run.
 | Dev and Test app server install, DMZ proxy, database server script | Static fallback copy of the public site on the DMZ proxy (P5) |
 | `-ProxyHops`, `-AllowedClientRanges`, no port in `X-Forwarded-For` | Clearing `X-Forwarded-For` from non-DMZ clients, or trusting proxy addresses instead of a count (8.3) |
 | Private IIS logs and retention, nightly backups with retention | WAL archiving and point-in-time recovery for Prod (7.2), a deploy path for Test/Prod other than by hand |
-| Test-site configuration (local admin on, mail redirected) | **Production configuration**: Entra for the apps' calls to each other and local admin off, required before Prod goes live |
+| Test-site configuration (local admin on, mail redirected), and the production configuration (`-Environment Prod`, the real-production checks, the apps' calls to each other without break-glass, break-glass off at go-live, P4) | Entra client credentials for the apps' calls to each other, needed only once apps run on separate servers |
 | | Release attachments blocked until publish: separate branch `feat/release-files-gate` (T0) |
 | | Encrypted PostgreSQL connections between the Prod app and database servers |
 | | Monitoring and alerting (health, disk, certificate expiry, backup task result) |
