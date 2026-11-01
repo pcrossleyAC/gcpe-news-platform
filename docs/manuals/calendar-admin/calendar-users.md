@@ -72,7 +72,7 @@ They can then sign in with Microsoft using that address.
 
 ## Who you can deactivate, reactivate or link
 
-Only people who use nothing in the Hub but the Calendar, and whose Calendar access you could change. You can't deactivate yourself, so the button isn't shown on your own page.
+Only people who use nothing in the Hub but the Calendar, and whose Calendar access you could change. You can't deactivate yourself, so the button isn't shown on your own page. Nobody can deactivate the last active Core Admin: the Hub says "this is the last active Core Admin: give Core Admin to someone else first, so someone can still manage users".
 
 For anyone else you can't change, **Account** says why instead of showing the button. The message names the button it replaces: deactivate, reactivate or link.
 

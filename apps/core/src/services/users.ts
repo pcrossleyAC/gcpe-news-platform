@@ -60,6 +60,25 @@ export class UserNeedsEmailError extends Error {}
 export class UserAlreadyHasEmailError extends Error {}
 /** Setting a password for a user who signs in with Entra: unlink them first. */
 export class UserLinkedToEntraError extends Error {}
+/** Owner decision 2026-10-31 (production configuration T5): deactivating, or taking Core.Admin
+ * from, the last active Core.Admin is refused. With the break-glass admin off, they are the only
+ * way to manage users, so losing them would lock everyone out of user administration. */
+export class LastAdminError extends Error {}
+
+/**
+ * Throws LastAdminError when `userId` is an active Core.Admin and no other active user is one.
+ * Takes one transaction-wide lock first, so two admins removed at the same moment can't each see
+ * the other still there: the second waits for the first and then sees it gone.
+ */
+async function keepAnActiveAdmin(tx: Tx, userId: string): Promise<void> {
+  await lockAggregate(tx, "core:last-active-admin");
+  const admins = await tx
+    .select({ id: users.id })
+    .from(users)
+    .innerJoin(roleGrants, eq(roleGrants.userId, users.id))
+    .where(and(eq(users.isActive, true), eq(roleGrants.role, "Core.Admin")));
+  if (admins.some((a) => a.id === userId) && admins.every((a) => a.id === userId)) throw new LastAdminError(userId);
+}
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
 /** Postgres stores and returns UUIDs lowercased: locking that form makes two differently-cased
@@ -201,6 +220,7 @@ export async function updateUser(db: Db, id: string, patch: UpdateUserInput, sub
       if (!row) throw new UserNotFoundError(id);
       await opts.guard?.(tx, row.id);
       if (patch.isActive === true && row.email === null) throw new UserNeedsEmailError(id);
+      if (patch.isActive === false) await keepAnActiveAdmin(tx, row.id);
       await tx
         .update(users)
         .set({ ...patch, updatedAt: new Date() })
@@ -249,6 +269,7 @@ export async function setRoles(db: Db, id: string, next: string[], subscribers: 
     await lockUser(tx, id);
     const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
     if (!row) throw new UserNotFoundError(id);
+    if (!next.includes("Core.Admin")) await keepAnActiveAdmin(tx, row.id);
     await tx.delete(roleGrants).where(and(eq(roleGrants.userId, row.id), notLike(roleGrants.role, "Calendar.%")));
     const unique = [...new Set(next)];
     if (unique.length) await tx.insert(roleGrants).values(unique.map((role) => ({ userId: row.id, role })));

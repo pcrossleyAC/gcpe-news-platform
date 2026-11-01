@@ -23,6 +23,9 @@ describe("Core /api re-checks session identity on every request", () => {
       auth: { session: { secret: SECRET }, local: { secret: LOCAL_BEARER_SECRET } },
       session: { secret: SECRET, secure: false, local: null },
     });
+    // Another active Core.Admin, so the admins below may be deactivated or demoted: the last one
+    // never can be (2026-10-31, last-admin.test.ts).
+    await createUser(tdb.db, createUserSchema.parse({ email: "keeper-admin@example.test", displayName: "Keeper", roles: ["Core.Admin"], password: "admin password 123" }), []);
   });
   afterAll(async () => {
     await tdb.drop();

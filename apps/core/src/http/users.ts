@@ -5,6 +5,7 @@ import type { SubscriberConfig } from "@gcpe/events";
 import {
   createUser,
   createUserSchema,
+  LastAdminError,
   linkUser,
   linkUserSchema,
   listUsers,
@@ -24,12 +25,15 @@ import {
 import { isSelf, SelfLockoutError } from "./self";
 
 type IdParams = { id: string };
+/** Shown as is on the Hub's Users screen (and the Calendar user screen). */
+export const LAST_ADMIN_MESSAGE = "this is the last active Core Admin: give Core Admin to someone else first, so someone can still manage users";
 const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: Request<P>, res: Response, next: NextFunction) =>
   h(req, res).catch((e: unknown) => {
     if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
     if (e instanceof UserExistsError) return void res.status(409).json({ error: "a user with that email already exists" });
     if (e instanceof UserNotFoundError) return void res.status(404).json({ error: "not found" });
     if (e instanceof SelfLockoutError) return void res.status(409).json({ error: "you can't remove your own admin access" });
+    if (e instanceof LastAdminError) return void res.status(409).json({ error: LAST_ADMIN_MESSAGE });
     if (e instanceof UserNeedsEmailError) return void res.status(409).json({ error: "set an email before activating this user" });
     if (e instanceof UserAlreadyHasEmailError) return void res.status(409).json({ error: "this user already has an email" });
     if (e instanceof UserLinkedToEntraError) return void res.status(409).json({ error: "this user signs in with Microsoft; unlink them first" });

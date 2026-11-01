@@ -99,6 +99,7 @@ If you have changes you haven't saved and you go to another screen or choose you
 | "a user with that email already exists" | Someone already has that address. Filter the table to find them. |
 | "use at least 12 characters" | The password is too short. |
 | "you can't remove your own admin access" | You tried to take Core Admin off yourself, or to deactivate yourself. Ask another Core administrator. |
+| "this is the last active Core Admin: give Core Admin to someone else first, so someone can still manage users" | Nobody else who is active has Core Admin, so this change would leave no one able to manage users. Give another active person Core Admin first, then try again. |
 | "this user signs in with Microsoft; unlink them first" | Passwords can't be set for Microsoft sign-in. Unlink them first if they really need a password. |
 | "set an email before activating this user" | The person has no email. Use **Link and activate**. |
 | "this user already has an email" | The person was linked already. Reload the page. |

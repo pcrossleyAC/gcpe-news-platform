@@ -12,6 +12,7 @@ import { sessionCheckDb, sessionGate as coreSessionGate } from "./services/sessi
 import { createEntraClient } from "./entra/client";
 import { signInSettingsFromEnv } from "./entra/config";
 import { republishAll } from "./services/republish";
+import { adminEmails } from "./services/users";
 import { publishDueCabinetChanges } from "./services/cabinet-changes";
 
 export const coreEnvSchema = z.object({
@@ -63,6 +64,15 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   // Fail fast when this runtime's tzdata disagrees with the tenant's pinned self-check, as NRMS and the News API do.
   const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
+
+  // Production configuration T5 (2026-10-31): with break-glass off and Microsoft sign-in on, an
+  // active Core Admin with an email is the only way in to manage users. Without one, say so
+  // loudly; never refuse to start, which would take the public site down too.
+  if (auth.local === null && signIn.entra && (await adminEmails(db)).length === 0) {
+    console.warn(
+      "[core] NO ADMIN: no active Core Admin can sign in with Microsoft (none has an email), and the break-glass admin is off: nobody can manage users. Turn break-glass on to add one (docs/deploy/windows.md, P4).",
+    );
+  }
 
   // Its own small pool with short timeouts (review S I1): every app's cookie requests use it.
   const check = sessionCheckDb(parsed.DATABASE_URL);
