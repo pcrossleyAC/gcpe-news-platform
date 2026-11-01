@@ -45,7 +45,7 @@ describe("changesBearerFromEnv", () => {
     const { hashPassword } = await import("@gcpe/auth");
     const env = { ...local, LOCAL_ADMIN_PASSWORD_HASH: await hashPassword("pw-for-tests-only"), ENTRA_TENANT_ID: "t", SESSION_SECRET: "s".repeat(40) };
     const bearer = changesBearerFromEnv(env);
-    expect(bearer?.local).toEqual({ secret: SECRET });
+    expect(bearer?.local).toMatchObject({ secret: SECRET, breakGlass: { username: "admin", passwordHash: env.LOCAL_ADMIN_PASSWORD_HASH } });
     expect(bearer?.issuer).toBeUndefined();
     expect(bearer?.session).toBeUndefined();
   });

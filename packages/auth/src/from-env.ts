@@ -71,15 +71,17 @@ export function authFromEnv(
   const local = e.LOCAL_ADMIN_ENABLED ? { username: e.LOCAL_ADMIN_USERNAME, passwordHash: e.LOCAL_ADMIN_PASSWORD_HASH!, secret: e.LOCAL_AUTH_SECRET! } : null;
   if (local) console.warn("[auth] LOCAL ADMIN LOGIN ENABLED — test environments only");
   const internal = e.SERVICE_TOKEN_SECRET ? { secret: e.SERVICE_TOKEN_SECRET } : null;
-  const session = e.SESSION_SECRET ? { secret: e.SESSION_SECRET, secure: e.SESSION_COOKIE_SECURE, maxSessionSeconds: Math.round(e.SESSION_MAX_HOURS * 3600) } : null;
+  const maxSessionSeconds = Math.round(e.SESSION_MAX_HOURS * 3600);
+  const session = e.SESSION_SECRET ? { secret: e.SESSION_SECRET, secure: e.SESSION_COOKIE_SECURE, maxSessionSeconds } : null;
   return {
     bearer: {
       ...(e.ENTRA_TENANT_ID ? { issuer: entraIssuer(e.ENTRA_TENANT_ID), audience: e.AUTH_AUDIENCE!, keys: entraJwks(e.ENTRA_TENANT_ID) } : {}),
-      ...(local ? { local: { secret: local.secret } } : {}),
+      // Review S M8: break-glass tokens are checked against the current password and session limit.
+      ...(local ? { local: { secret: local.secret, breakGlass: { username: local.username, passwordHash: local.passwordHash, maxSessionSeconds, gateRequired: e.SESSION_GATE_REQUIRED } } } : {}),
       ...(internal ? { internal } : {}),
       ...(session ? { session: { ...session, gateRequired: e.SESSION_GATE_REQUIRED } } : {}),
     },
-    loginRouter: local ? localLoginRouter(local) : null,
+    loginRouter: local ? localLoginRouter(local, { maxSessionSeconds }) : null,
     local,
     internal,
     session,
