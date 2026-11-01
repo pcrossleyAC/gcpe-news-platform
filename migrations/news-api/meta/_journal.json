@@ -92,6 +92,13 @@
       "when": 1793471438368,
       "tag": "0012_unpublish_advisories",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793517932570,
+      "tag": "0013_outbox_events_aggregate_seq",
+      "breakpoints": true
     }
   ]
 }

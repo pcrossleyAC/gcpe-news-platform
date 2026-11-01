@@ -15,6 +15,13 @@
       "when": 1791701311323,
       "tag": "0001_legacy_import",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793517933005,
+      "tag": "0002_outbox_events_aggregate_seq",
+      "breakpoints": true
     }
   ]
 }
