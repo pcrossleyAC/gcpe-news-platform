@@ -168,12 +168,15 @@ export async function changeEmail(db: Db, id: string, rawEmail: string, actor: s
 /** One transaction per subscriber, not one for the batch: a single transaction would hold up
  * to BULK_MAX address locks until the end and block every journey touching any of them, and
  * one row's refusal would roll back all the rest. Each outcome is reported instead — an
- * unexpected failure too, so the rows already changed are still counted. */
-export async function bulkAction(db: Db, ids: string[], action: BulkAction, actor: string): Promise<BulkResult> {
+ * unexpected failure too, so the rows already changed are still counted.
+ *
+ * A bulk delete takes the single delete's `askedToStop` (N2, owner 2026-10-31) and applies it
+ * to every row, so each one ends exactly as {@link deleteSubscriber} ends it. */
+export async function bulkAction(db: Db, ids: string[], action: BulkAction, actor: string, opts: { askedToStop?: boolean } = {}): Promise<BulkResult> {
   const result: BulkResult = { changed: 0, skipped: [] };
   for (const id of [...new Set(ids)]) {
     try {
-      const { changed } = action === "delete" ? await deleteSubscriber(db, id, actor) : await setStatus(db, id, action === "activate" ? "active" : "disabled", actor);
+      const { changed } = action === "delete" ? await deleteSubscriber(db, id, actor, opts) : await setStatus(db, id, action === "activate" ? "active" : "disabled", actor);
       if (changed) result.changed++;
       else result.skipped.push({ id, reason: "unchanged" });
     } catch (e) {

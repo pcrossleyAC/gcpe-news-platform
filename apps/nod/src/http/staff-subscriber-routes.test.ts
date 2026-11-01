@@ -184,6 +184,19 @@ describe("staff subscriber routes — writes", () => {
     expect(history.map((h) => h.action)).not.toContain("staff-deleted");
   });
 
+  it("N2: bulk delete with askedToStop records an unsubscribe for each; the flag is only for delete and must be true or false", async () => {
+    const { body: { id: one } } = await send("post", "/api/subscribers", editor, { email: "bulk-asked-1@example.test", lists: "all" });
+    const { body: { id: two } } = await send("post", "/api/subscribers", editor, { email: "bulk-asked-2@example.test", lists: "all" });
+    expect((await send("post", "/api/subscribers/bulk", editor, { action: "delete", ids: [one], askedToStop: "yes" })).status).toBe(400);
+    expect((await send("post", "/api/subscribers/bulk", editor, { action: "deactivate", ids: [one], askedToStop: true })).status).toBe(400);
+    expect((await send("post", "/api/subscribers/bulk", editor, { action: "delete", ids: [one, two], askedToStop: true })).body).toEqual({ changed: 2, skipped: [] });
+    for (const id of [one, two]) {
+      const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, id));
+      expect(history.map((h) => h.action)).toContain("unsubscribed");
+      expect(history.map((h) => h.action)).not.toContain("staff-deleted");
+    }
+  });
+
   it("add and change email cap an address at 150 characters, the same as the public journey", async () => {
     const address = (length: number) => `${"a".repeat(60)}@${"b".repeat(length - 66)}.test`;
     expect(address(151)).toHaveLength(151);

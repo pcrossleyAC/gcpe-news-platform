@@ -115,9 +115,51 @@ describe("SubscribersScreen", () => {
     expect(calls.some((c) => c.url === "/nod/api/subscribers/bulk")).toBe(false);
 
     await user.click(screen.getByRole("button", { name: "Delete selected (2)" }));
-    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Confirm delete" }));
-    await waitFor(() => expect(calls.find((c) => c.url === "/nod/api/subscribers/bulk")?.body).toEqual({ action: "delete", ids: PAGE.items.map((i) => i.id) }));
+    const again = await screen.findByRole("alertdialog");
+    // N2: the same "Why are you deleting them?" choice as a single delete; without it nothing is sent.
+    await user.click(within(again).getByRole("button", { name: "Confirm delete" }));
+    expect(await within(again).findByText("Choose why you’re deleting them.")).toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/nod/api/subscribers/bulk")).toBe(false);
+    await user.click(within(again).getByRole("radio", { name: "Something else, such as a duplicate or test record" }));
+    expect(again).not.toHaveTextContent("This is kept as their unsubscribe.");
+    await user.click(within(again).getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === "/nod/api/subscribers/bulk")?.body).toEqual({ action: "delete", ids: PAGE.items.map((i) => i.id), askedToStop: false }),
+    );
     expect(await screen.findByRole("status")).toHaveTextContent("1 changed. 1 skipped: already in that state.");
+  });
+
+  it("N2: bulk delete with \"They asked us to stop\" sends askedToStop for all of them and explains what it records; reopening starts unchosen", async () => {
+    const calls = stub(["NoD.Editor"], () => ({ changed: 2, skipped: [] }));
+    renderAt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "Select all on this page" }));
+    await user.click(screen.getByRole("button", { name: "Delete selected (2)" }));
+    let dialog = await screen.findByRole("alertdialog");
+    const why = within(dialog).getByRole("radiogroup", { name: /^Why are you deleting them\?/ });
+    await user.click(within(why).getByRole("radio", { name: "They asked us to stop sending them email" }));
+    expect(dialog).toHaveTextContent("This is kept as their unsubscribe. If anyone adds them to a media list later, the Hub asks first.");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Delete selected (2)" }));
+    dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByRole("radio", { name: "They asked us to stop sending them email" })).not.toBeChecked();
+    await user.click(within(dialog).getByRole("radio", { name: "They asked us to stop sending them email" }));
+    await user.click(within(dialog).getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === "/nod/api/subscribers/bulk")?.body).toEqual({ action: "delete", ids: PAGE.items.map((i) => i.id), askedToStop: true }),
+    );
+  });
+
+  it("N2: bulk deactivate asks no reason and sends none", async () => {
+    const calls = stub(["NoD.Editor"], () => ({ changed: 2, skipped: [] }));
+    renderAt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "Select all on this page" }));
+    await user.click(screen.getByRole("button", { name: "Deactivate selected (2)" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).queryByRole("radiogroup")).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Confirm deactivate" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/nod/api/subscribers/bulk")?.body).toEqual({ action: "deactivate", ids: PAGE.items.map((i) => i.id) }));
   });
 
   it("a bulk row that failed unexpectedly is reported as a skip to try again", async () => {

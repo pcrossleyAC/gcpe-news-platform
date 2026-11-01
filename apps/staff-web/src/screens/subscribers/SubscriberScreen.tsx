@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useParams } from "react-router";
-import { AlertDialog, DialogTrigger, InlineAlert, Modal, Radio, RadioGroup, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
@@ -11,6 +11,7 @@ import { useFormShortcut } from "../../shared/shortcuts";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
 import { backToFrom } from "./backToResults";
+import { DELETE_REASON_REQUIRED, DeleteReasonField, type DeleteReason } from "./DeleteReason";
 import { ListPicker } from "./ListPicker";
 import { attentionLabel, STATUS_LABELS, timingLabel } from "./labels";
 import { LeavePageGuard, useDirtyParts, useReportDirty, type ReportDirty } from "../../shared/LeaveGuard";
@@ -390,9 +391,8 @@ function DeleteSection({ detail, onDeleted, setNotice }: { detail: SubscriberDet
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // N5: why they're being deleted. "asked" keeps it as their unsubscribe (a media list re-add
-  // then asks first); "other" is the plain cleanup delete. No default, so it's a real choice.
-  const [why, setWhy] = useState<"asked" | "other" | null>(null);
+  // N5: why they're being deleted (DeleteReason.tsx).
+  const [why, setWhy] = useState<DeleteReason | null>(null);
   const [whyError, setWhyError] = useState<string | null>(null);
   const onOpenChange = (o: boolean) => {
     setOpen(o);
@@ -402,7 +402,7 @@ function DeleteSection({ detail, onDeleted, setNotice }: { detail: SubscriberDet
   };
 
   const confirmDelete = async () => {
-    if (!why) return setWhyError("Choose why you’re deleting them.");
+    if (!why) return setWhyError(DELETE_REASON_REQUIRED);
     setBusy(true);
     setError(null);
     setNotice(() => null);
@@ -439,21 +439,14 @@ function DeleteSection({ detail, onDeleted, setNotice }: { detail: SubscriberDet
           }
         >
           <p>They stop receiving email and are removed from every media list. Only they can subscribe again.</p>
-          <RadioGroup
-            label="Why are you deleting them?"
-            value={why ?? ""}
+          <DeleteReasonField
+            value={why}
+            error={whyError}
             onChange={(v) => {
-              setWhy(v === "asked" ? "asked" : "other");
+              setWhy(v);
               setWhyError(null);
             }}
-            isRequired
-            isInvalid={whyError !== null}
-            errorMessage={whyError ?? undefined}
-          >
-            <Radio value="asked">They asked us to stop sending them email</Radio>
-            <Radio value="other">Something else, such as a duplicate or test record</Radio>
-          </RadioGroup>
-          {why === "asked" && <p>This is kept as their unsubscribe. If anyone adds them to a media list later, the Hub asks first.</p>}
+          />
           {error && <InlineAlert variant="danger" role="alert" description={error} />}
         </AlertDialog>
       </Modal>

@@ -1,7 +1,7 @@
 /** axe checks for the Subscribers section: every screen stays free of serious/critical
  * WCAG 2a/2aa violations, including with a confirm dialog open. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import axe from "axe-core";
@@ -194,7 +194,12 @@ describe("accessibility — Subscribers", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: "Select all on this page" }));
     await user.click(screen.getByRole("button", { name: "Delete selected (2)" }));
-    await screen.findByRole("alertdialog");
+    const dialog = await screen.findByRole("alertdialog");
+    // N2: with the reason's error and then its explanation showing.
+    await user.click(within(dialog).getByRole("button", { name: "Confirm delete" }));
+    await within(dialog).findByText("Choose why you’re deleting them.");
+    expect(await seriousViolations(container, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
+    await user.click(within(dialog).getByRole("radio", { name: "They asked us to stop sending them email" }));
     // React Aria hides the rest of the page from screen readers via `inert` on real browsers
     // (verified in @bcgov/design-system-react-components's ModalOverlay: it asks for
     // `shouldUseInert: true`), which also makes that content unfocusable. jsdom doesn't
