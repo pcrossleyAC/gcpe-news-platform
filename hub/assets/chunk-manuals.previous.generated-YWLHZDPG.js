@@ -2637,6 +2637,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </ol>
 <p><strong>Delete selected</strong> is always the <strong>Something else</strong> kind of delete. If a person asked to stop their email, delete them from their own record and choose <strong>They asked us to stop sending them email</strong>, so it&#39;s kept as their unsubscribe.</p>
 <p>Only the ticked rows on the page you are looking at are changed. A message such as &quot;1 changed. 1 skipped: already in that state.&quot; tells you the result. Rows are skipped when they are already in that state, or when their status doesn&#39;t allow it, such as activating someone who unsubscribed.</p>
+<h2>If you leave before saving</h2>
+<p>If you have changes you haven&#39;t saved and you go to another screen or choose your browser&#39;s <strong>Back</strong>, the Hub asks &quot;You have unsaved changes on this page. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> to keep working, or <strong>Leave</strong> to discard the changes. Closing or reloading the tab gets your browser&#39;s own question.</p>
 <h2>Can&#39;t do this?</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
 <thead>
@@ -3459,6 +3461,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Something went wrong for that row. Try it again.</td>
 </tr>
 </tbody></table></div>
+<h2>If you leave before saving</h2>
+<p>If you have changes you haven&#39;t saved and you go to another screen or choose your browser&#39;s <strong>Back</strong>, the Hub asks &quot;You have unsaved changes on this page. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> to keep working, or <strong>Leave</strong> to discard the changes. Closing or reloading the tab gets your browser&#39;s own question.</p>
 <h2>Can&#39;t do this?</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
 <thead>
