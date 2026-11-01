@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { mintSession } from "@gcpe/auth";
+import { breakGlassFingerprint, mintSession } from "@gcpe/auth";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { createApp } from "../app";
 import { coreAudit, roleGrants, users } from "../db/schema";
@@ -24,7 +24,7 @@ describe("Core admin audit trail", () => {
   let viewerCookie: string;
   let breakGlassCookie: string;
 
-  const cookieFor = async (u: { id: string; name: string; roles: string[] }) => `gcpe_session=${(await mintSession(SECRET, { ...u, email: "" })).token}`;
+  const cookieFor = async (u: { id: string; name: string; roles: string[] }, pwf?: string) => `gcpe_session=${(await mintSession(SECRET, { ...u, email: "" }, pwf ? { pwf } : {})).token}`;
 
   beforeAll(async () => {
     tdb = await createCoreTestDb();
@@ -44,7 +44,8 @@ describe("Core admin audit trail", () => {
     calAdminCookie = await cookieFor({ id: cal.id, name: "Cal Admin", roles: ["Calendar.SysAdmin"] });
     const viewer = await createUser(tdb.db, createUserSchema.parse({ email: "viewer@example.test", displayName: "Vee", roles: ["NRMS.Viewer"], password: "viewer password 123" }), []);
     viewerCookie = await cookieFor({ id: viewer.id, name: "Vee", roles: ["NRMS.Viewer"] });
-    breakGlassCookie = await cookieFor({ id: BREAK_GLASS_ID, name: BREAK_GLASS_NAME, roles: ["Core.Admin"] });
+    // A break-glass cookie carries the password fingerprint its sign-in recorded.
+    breakGlassCookie = await cookieFor({ id: BREAK_GLASS_ID, name: BREAK_GLASS_NAME, roles: ["Core.Admin"] }, breakGlassFingerprint(SECRET, "unused"));
   });
   afterAll(async () => {
     await tdb.drop();
