@@ -31,7 +31,7 @@ You prepare its wording, under **Project Blue Bridge banner**:
 
 Change them, then choose **Publish**. Check them ahead of time: once the switch is on, the banner shows whatever was last published here.
 
-**Website** > **Site settings** > **Project Blue Bridge** shows whether it is on: "Project Blue Bridge is currently OFF." (or ON). You see no switch there. While it is on, your own [site banner](manual:site-banner) is hidden.
+**Website** > **Site settings** > **Project Blue Bridge** shows whether it is on: "Project Blue Bridge is currently OFF." (or ON). You see no switch there. While it is on, your own [site banner](manual:site-banner) still shows, under the Blue Bridge banner.
 
 ## Can't do this?
 

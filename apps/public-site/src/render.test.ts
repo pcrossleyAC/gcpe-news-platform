@@ -438,7 +438,7 @@ describe("renderPage site banner placeholder", () => {
     const close = closeDiv!.querySelector(":scope > button")!;
     expect([close.id, close.getAttribute("type"), close.getAttribute("aria-label")]).toEqual(["btnCloseBannerBridge", "button", "Close banner"]);
     expect(close.querySelector("use")?.getAttribute("href")).toBe("/site/assets/site/icons.svg#i-xmark");
-    // The site banner placeholder and script follow it, so the script sees it and stands down.
+    // The site banner placeholder and script follow it, so a site banner shows under it (C327).
     expect(bridge.nextElementSibling?.id).toBe("site-banner");
     expect(doc.querySelector('link[href="/site/assets/legacy/Content/granville-bridge-theme.css"]')).not.toBeNull();
     expect([...doc.querySelectorAll("#BCGov-logo, #sm-BCGov-logo, #BCGov-logo-footer")].map((i) => i.getAttribute("src")!.replace(/^.*\//, ""))).toEqual([

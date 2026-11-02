@@ -32,7 +32,7 @@ The banner switches on and off by itself at the **Show from** and **Hide after**
 
 - The banner shows within a few minutes of publishing.
 - It needs JavaScript in the visitor's browser.
-- While Project Blue Bridge is on, its own black banner shows instead, and yours is hidden.
+- While Project Blue Bridge is on, its black banner shows first and yours shows under it, so an emergency still reaches visitors.
 
 ## Can't do this?
 

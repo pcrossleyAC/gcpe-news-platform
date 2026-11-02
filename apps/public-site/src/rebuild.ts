@@ -80,10 +80,11 @@ export const SITE_STATE_PATH = ".site-state.json";
  * pages' Search News control, kind feed links and the Connect factsheets feed row (parity plan 4, batch G). 19: card
  * Translations / Media Assets links only when a file list is non-empty (legacy file import). 20-21: see git log. 22: the parity
  * re-audit (parity 6): feed items keep news.gov's atomId ids with a category, release pages show the short NEWS-n link
- * and Related Articles times, Connect With Us rows of five, Premier first on /ministries/. Bump for body render changes
+ * and Related Articles times, Connect With Us rows of five, Premier first on /ministries/. 23: the inline site banner
+ * script shows under the Blue Bridge banner instead of standing down (C327). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 22;
+export const RENDER_CHROME_VERSION = 23;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
