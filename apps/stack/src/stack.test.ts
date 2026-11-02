@@ -1287,6 +1287,33 @@ describe("apps/stack", () => {
     expect(body.ministries).toContainEqual({ key: "health", name: "Health", abbreviation: "HLTH" });
   });
 
+  // C324: Core's preview route reaches the public site's renderer in the same process (wired
+  // after the public site starts), which draws the page from the unsaved record and the News API.
+  it("the Hub's ministry preview renders through the public site and saves nothing", async () => {
+    const admin = { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` };
+    expect((await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, { method: "PUT", headers: admin, body: JSON.stringify(healthOrg) })).status).toBe(200);
+    expect((await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } })).status).toBe(200);
+    const events = async () => Number((await instance.dbs.core.pool.query<{ n: string }>("SELECT count(*) AS n FROM outbox_events")).rows[0]!.n);
+    const eventsBefore = await events();
+
+    const res = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}/profile/preview`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ displayName: "Health Preview", minister: { name: "Honourable Preview Person", detailsHtml: "<p>Preview bio</p>" } }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ministryPage: string; biographyPage: string | null; onSite: boolean };
+    expect(body.onSite).toBe(true);
+    expect(body.ministryPage).toMatch(/<h1[^>]*>Health Preview<\/h1>/);
+    expect(body.ministryPage).toContain("Honourable Preview Person");
+    expect(body.ministryPage).toContain('<meta name="robots" content="noindex">');
+    expect(body.biographyPage).toContain("Preview bio");
+    const stored = (await (await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, { headers: admin })).json()) as { displayName: string };
+    expect(stored.displayName).toBe(healthOrg.displayName);
+    expect(await events()).toBe(eventsBefore);
+  });
+
   // Task 2 (Phase 4a): NoD's `lists` mirror Core's taxonomy events over the same CORE->NOD
   // route NRMS already uses for its own copy (see the test just above). The Subscribe API's
   // own SubscriptionItems/ministries route isn't wired until Task 6 — this asserts the mirror

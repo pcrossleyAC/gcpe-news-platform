@@ -4,7 +4,7 @@ import { tzCheckFor } from "@gcpe/config";
 import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import { EventTooLargeError, orgKeyFromName, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
+import { EventTooLargeError, orgKeyFromName, termKindSchema, type OrgRecord, type SubscriberConfig, type TermKind } from "@gcpe/events";
 import {
   ADMIN_ONLY_PROFILE_FIELDS,
   AbbreviationTakenError,
@@ -16,6 +16,7 @@ import {
   orgInputSchema,
   orgProfilePatchSchema,
   patchOrganizationProfile,
+  previewOrganizationProfile,
   setOrganizationHq,
   setOrganizationPublic,
   SuccessionError,
@@ -74,7 +75,11 @@ function safe<P>(fn: (req: Request<P>, res: Response) => Promise<void>) {
   return (req: Request<P>, res: Response) => fn(req, res).catch((e: unknown) => handleError(res, e));
 }
 
-export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZone?: string } = {}): express.Router {
+/** A ministry's public pages rendered from an organization record that may not be stored: the
+ * public site's own renderer, which the stack provides (absent when Core runs alone). */
+export type MinistryPreviewRenderer = (org: OrgRecord) => Promise<{ ministryPage: string; biographyPage: string | null }>;
+
+export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZone?: string; ministryPreview?: MinistryPreviewRenderer } = {}): express.Router {
   const timeZone = opts.timeZone ?? DEFAULT_TIME_ZONE;
   const r = express.Router();
   const admin = requireRole("Core.Admin");
@@ -143,17 +148,34 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[], opts: { timeZ
       record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );
+  /** The profile PATCH's own refusal of fields only Core.Admin may change. */
+  const forbiddenProfileFields = (req: Request): boolean => {
+    const body: unknown = req.body;
+    const isAdmin = req.auth?.roles.includes("Core.Admin") ?? false;
+    return !isAdmin && !!body && typeof body === "object" && [...ADMIN_ONLY_PROFILE_FIELDS, "isHq", "isPublic"].some((f) => f in body);
+  };
   r.patch(
     "/organizations/:key/profile",
     requireAnyRole("Core.Admin", "NRMS.SiteEditor"),
     safe<{ key: string }>(async (req, res) => {
-      const body: unknown = req.body;
-      const isAdmin = req.auth?.roles.includes("Core.Admin") ?? false;
-      if (!isAdmin && body && typeof body === "object" && [...ADMIN_ONLY_PROFILE_FIELDS, "isHq", "isPublic"].some((f) => f in body)) {
-        return void res.status(403).json({ error: "forbidden" });
-      }
-      const record = await patchOrganizationProfile(db, req.params.key, orgProfilePatchSchema.parse(body), subscribers, undefined, undefined, actorOf(req));
+      if (forbiddenProfileFields(req)) return void res.status(403).json({ error: "forbidden" });
+      const record = await patchOrganizationProfile(db, req.params.key, orgProfilePatchSchema.parse(req.body), subscribers, undefined, undefined, actorOf(req));
       record ? res.json(record) : res.status(404).json({ error: "not found" });
+    }),
+  );
+  // C324: the ministry's public pages as this PATCH would leave them, nothing saved. The same
+  // body, roles and refusals as the PATCH; `onSite` says whether the public site shows the ministry.
+  r.post(
+    "/organizations/:key/profile/preview",
+    requireAnyRole("Core.Admin", "NRMS.SiteEditor"),
+    safe<{ key: string }>(async (req, res) => {
+      if (forbiddenProfileFields(req)) return void res.status(403).json({ error: "forbidden" });
+      const patch = orgProfilePatchSchema.parse(req.body);
+      if (!opts.ministryPreview) return void res.status(503).json({ error: "preview unavailable" });
+      const record = await previewOrganizationProfile(db, req.params.key, patch, subscribers);
+      if (!record) return void res.status(404).json({ error: "not found" });
+      const pages = await opts.ministryPreview(record);
+      res.set("Cache-Control", "no-store").json({ ...pages, onSite: record.isActive && record.isPublic });
     }),
   );
   r.post(

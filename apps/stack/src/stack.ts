@@ -19,6 +19,7 @@ import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { calendarEnvSchema, startCalendar, type AppHandle as CalendarHandle } from "../../calendar/src/start";
 import { signInSettingsFromEnv } from "../../core/src/entra/config";
 import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../core/src/start";
+import type { OrgRecord } from "@gcpe/events";
 import { distributionEnvSchema } from "../../distribution/src/env";
 import { startDistribution, type AppHandle as DistributionHandle } from "../../distribution/src/start";
 import { newsApiEnvSchema } from "../../news-api/src/env";
@@ -404,7 +405,13 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const uninstallInternalFetch = installInternalFetch(() => stackApp);
 
   // Fix round 1, P2-R30 M5: name the app and its env prefix in any startup failure.
-  const core: CoreHandle = await startNamed("Core", "CORE", () => startCore(coreEnv));
+  // The profile preview (C324) renders with the public site, which starts after Core.
+  let previewSite: PublicSiteHandle | undefined;
+  const ministryPreview = (org: OrgRecord) => {
+    if (!previewSite) throw new Error("the public site has not started");
+    return previewSite.previewMinistry(org);
+  };
+  const core: CoreHandle = await startNamed("Core", "CORE", () => startCore(coreEnv, { ministryPreview }));
   // Owner decision 2026-10-31: every app in this process checks a staff cookie with Core (still
   // active, not signed out), so a deactivation is refused on the very next request anywhere, not
   // only in Core. Installed before the other apps start, removed on shutdown.
@@ -419,6 +426,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   if (!calendar) console.warn("[stack] CALENDAR_DATABASE_URL is not set: the Calendar is not mounted (/calendar answers 503)");
   const distribution: DistributionHandle = await startNamed("Distribution", "DIST", () => startDistribution(distEnv));
   const siteBuilder: PublicSiteHandle = await startNamed("Public Site", "SITE", () => startPublicSite(siteEnv));
+  previewSite = siteBuilder;
   const newsApi: NewsApiHandle = await startNamed("News API", "NEWSAPI", () => startNewsApi(newsApiEnv, { hub: stackEnv.UPDATES_HUB_ENABLED }));
 
   console.log(`[stack] cold start complete in ${Date.now() - startedAt}ms (tenant ${tenant.tenantId}, ${tenant.timeZone})`);

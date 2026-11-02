@@ -18,6 +18,7 @@ import {
   bioToPatch,
   deactivateWarning,
 } from "./OrganizationEditForm";
+import { PREVIEW_NOTE, PREVIEW_OFF_SITE } from "./MinistryPreview";
 
 const HEALTH: OrgRecord = {
   key: "health",
@@ -969,6 +970,62 @@ describe("OrganizationEditForm", () => {
           ),
         ),
       );
+    });
+  });
+
+  describe("Preview (C324)", () => {
+    const PAGES = {
+      ministryPage: "<html><head></head><body><h1>Health</h1></body></html>",
+      biographyPage: "<html><head></head><body><h1>Honourable New Person</h1></body></html>",
+      onSite: true,
+    };
+
+    it("sends what Save would, to the preview, and shows the pages over the form without saving", async () => {
+      const { calls, onSaved, user } = setup(false, () => jsonResponse(200, PAGES));
+      const name = screen.getByLabelText("Minister name");
+      await user.clear(name);
+      await user.type(name, "Honourable New Person");
+
+      await user.click(screen.getByRole("button", { name: "Preview" }));
+
+      const dialog = await screen.findByRole("dialog", { name: "Preview: Health" });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.url).toBe("/core/api/organizations/health/profile/preview");
+      expect(calls[0]!.init!.method).toBe("POST");
+      expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({ minister: { name: "Honourable New Person" } });
+      expect(within(dialog).getByText(PREVIEW_NOTE)).toBeInTheDocument();
+      const frame = within(dialog).getByTitle("Preview of the ministry page for Health");
+      expect(frame.getAttribute("srcdoc")).toBe(PAGES.ministryPage);
+      expect(frame.getAttribute("sandbox")).not.toContain("allow-top-navigation");
+
+      await user.click(within(dialog).getByRole("button", { name: "Biography page" }));
+      expect(within(dialog).getByTitle("Preview of the biography page for Health").getAttribute("srcdoc")).toBe(PAGES.biographyPage);
+
+      await user.click(within(dialog).getByRole("button", { name: "Close preview" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(screen.getByLabelText("Minister name")).toHaveValue("Honourable New Person");
+      expect(onSaved).not.toHaveBeenCalled();
+    });
+
+    it("no biography: no page switch; a ministry off the public site says so", async () => {
+      const { user } = setup(false, () => jsonResponse(200, { ...PAGES, biographyPage: null, onSite: false }));
+      await user.click(screen.getByRole("button", { name: "Preview" }));
+      const dialog = await screen.findByRole("dialog", { name: "Preview: Health" });
+      expect(within(dialog).queryByRole("button", { name: "Biography page" })).not.toBeInTheDocument();
+      expect(within(dialog).getByText(PREVIEW_OFF_SITE)).toBeInTheDocument();
+    });
+
+    it("a refused preview shows the save's messages and no preview", async () => {
+      const { user } = setup(false, () =>
+        jsonResponse(400, {
+          error: "invalid request",
+          issues: [{ code: "invalid_string", validation: "email", path: ["minister", "email"], message: "Invalid email" }],
+        }),
+      );
+      await user.type(screen.getByLabelText("Minister email"), "nope");
+      await user.click(screen.getByRole("button", { name: "Preview" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Invalid email");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 });

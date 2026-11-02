@@ -3848,3 +3848,48 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   gap: 1rem;
   margin-top: 1rem;
 }
+
+/* The ministry preview (C324): the design system's modal stretched to the whole window, a bar
+ * with the title, note and buttons, and the rendered page below it. */
+.react-aria-ModalOverlay:has(.gcpe-preview) .bcds-react-aria-Modal {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.gcpe-preview {
+  height: 100%;
+}
+.gcpe-preview__bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+}
+.gcpe-preview__bar h2,
+.gcpe-preview__bar p {
+  margin: 0;
+}
+.gcpe-preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.gcpe-preview__pages {
+  display: flex;
+  gap: var(--layout-margin-xsmall, 0.25rem);
+  padding: var(--layout-padding-xsmall, 0.25rem);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-secondary-button-disabled, #edebe9);
+}
+.gcpe-preview__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+}

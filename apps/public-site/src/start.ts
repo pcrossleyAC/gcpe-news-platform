@@ -3,6 +3,7 @@ import express from "express";
 import { serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, isTestSite, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
+import type { OrgRecord } from "@gcpe/events";
 import { createDb, runMigrations, withStatementTimeout } from "@gcpe/db-kit";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { createApp } from "./app";
@@ -15,11 +16,14 @@ import { postIndex } from "./post-index";
 import { queueHealth } from "./queue";
 import type { SiteInfo } from "./render";
 import { selfHeal } from "./self-heal";
+import { previewMinistry } from "./preview";
 import { fsStorage } from "./storage";
 import { createRebuildHandler, kickBackgroundSync, syncSite, type SyncDeps } from "./sync";
 import { DEFAULT_THEME } from "./theme-css";
 
 export interface AppHandle {
+  /** C324: a ministry's page and biography page rendered from an organization record, nothing written (preview.ts). */
+  previewMinistry(org: OrgRecord): Promise<{ ministryPage: string; biographyPage: string | null }>;
   app: express.Express;
   /** Parsed PORT (same env var/default as before) — main.ts listens on this; nothing new to
    * parse there. */
@@ -129,5 +133,6 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
     closers: [{ name: "db pool", close: () => pool.end() }],
     // Fix round 1: not called here — see the AppHandle.selfHeal doc comment above for why.
     selfHeal: () => selfHeal(syncDeps),
+    previewMinistry: (org) => previewMinistry(syncDeps, org),
   };
 }

@@ -1,6 +1,6 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import type { CategoryDto, GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "./dto";
+import type { CategoryDto, GovernmentTermDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "./dto";
 import { renderAtomFeed, renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
@@ -76,6 +76,14 @@ function runMemo<K extends "homeFeatured" | "resourceLinks">(run: RunCache, key:
  * the release itself, which may be among them. */
 const MINISTRY_LATEST_COUNT = 4;
 
+/** The parts of a ministry's pages that a preview replaces, each built from the News API's own
+ * (null when the News API doesn't have the ministry). */
+export interface MinistryOverride {
+  ministry(live: MinistryDto | null): MinistryDto;
+  minister: MinisterDto;
+  profile(live: MinistryProfileDto | null): MinistryProfileDto;
+}
+
 export interface SiteBuilder {
   /**
    * Renders (or removes) one page; returns the ids that now need rebuilding because of it. For a
@@ -102,6 +110,12 @@ export interface SiteBuilder {
   /** The terms index, the `current` alias and every public term's page — what a
    * `government_terms` change rebuilds (new-government spec §3). */
   termPageIds(): Promise<string[]>;
+  /**
+   * C324: a ministry's page and biography page (null without a bio) as they would render with
+   * `ministry`, `minister` and `profile` in place of the News API's, nothing written. Its posts,
+   * top and feature posts and ministries of state are the News API's as they are now.
+   */
+  previewMinistry(key: string, override: MinistryOverride, opts: PageOptions): Promise<{ ministryPage: string; biographyPage: string | null }>;
 }
 
 export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null; searchApiBase?: string }): SiteBuilder {
@@ -315,6 +329,33 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   };
 
   /** Returns `sitemap:pages` when the biography page appeared or went (it lists the bio pages on disk). */
+  /** Everything a ministry's pages show around the ministry itself: its minister, posts, profile and
+   * ministries of state. Shared by the render and the Hub's preview. */
+  async function ministryContent(key: string, m: MinistryDto, run: RunCache) {
+    // The factsheets fetch runs with the others, not after them.
+    const [minister, latest, factsheetPosts, f, all] = await Promise.all([
+      newsApi.minister(key),
+      newsApi.latest("ministries", key, LATEST_COUNT),
+      newsApi.latest("ministries", key, LATEST_COUNT, { postKind: "factsheets" }),
+      featured(m.topPostKey, m.featurePostKey),
+      profiles(run),
+    ]);
+    const profileOf = (k: string) => all.find((x) => x.key.toLowerCase() === k.toLowerCase()) ?? null;
+    const profile = profileOf(key);
+    // The ministries of state under this one (legacy MinisterOfState): a child that no longer
+    // exists is skipped; a failed fetch rejects the render, as the parent's own fetches do.
+    const children = (
+      await Promise.all(
+        // Only keys that can be a ministry page id (lower-cased, CATEGORY_KEY): anything else would be a broken link.
+        (profile?.childKeys ?? []).flatMap((k) => (categoryPageId("ministries", k) ? [k] : [])).map(async (k) => {
+          const [child, childMinister] = await Promise.all([newsApi.ministry(k), newsApi.minister(k)]);
+          return child ? { ministry: child, minister: childMinister, profile: profileOf(k) } : null;
+        }),
+      )
+    ).filter((c) => c !== null);
+    return { minister, latest, factsheetPosts, f, profile, children };
+  }
+
   async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions, run: RunCache): Promise<string[]> {
     const p: PageId = { type: "category", kind, key };
     const { page, feed, atom, bio, factsheets } = categoryFiles({ kind, key });
@@ -334,27 +375,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         await removeSubPage(factsheets!);
         return bioChanged(false);
       }
-      // The factsheets fetch runs with the others, not after them.
-      const [minister, latest, factsheetPosts, f, all] = await Promise.all([
-        newsApi.minister(key),
-        newsApi.latest(kind, key, LATEST_COUNT),
-        newsApi.latest(kind, key, LATEST_COUNT, { postKind: "factsheets" }),
-        featured(m.topPostKey, m.featurePostKey),
-        profiles(run),
-      ]);
-      const profileOf = (k: string) => all.find((x) => x.key.toLowerCase() === k.toLowerCase()) ?? null;
-      const profile = profileOf(key);
-      // The ministries of state under this one (legacy MinisterOfState): a child that no longer
-      // exists is skipped; a failed fetch rejects the render, as the parent's own fetches do.
-      const children = (
-        await Promise.all(
-          // Only keys that can be a ministry page id (lower-cased, CATEGORY_KEY): anything else would be a broken link.
-          (profile?.childKeys ?? []).flatMap((k) => (categoryPageId("ministries", k) ? [k] : [])).map(async (k) => {
-            const [child, childMinister] = await Promise.all([newsApi.ministry(k), newsApi.minister(k)]);
-            return child ? { ministry: child, minister: childMinister, profile: profileOf(k) } : null;
-          }),
-        )
-      ).filter((c) => c !== null);
+      const { minister, latest, factsheetPosts, f, profile, children } = await ministryContent(key, m, run);
       feedRef.title = `${m.name}: latest news`;
       await storage.write(page, renderMinistryPage(m, minister, { ...f, latest }, site, { ...opts, feed: feedRef }, { profile, children }));
       await writeFeeds(`News from ${m.name}`, sortNewest([f.top, f.feature, ...latest]));
@@ -691,6 +712,19 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       // the alias. Term directories already on disk are listed too, so a term that has left the
       // payload is rendered once more, which removes it (F5).
       return termIdsFor(await currentTerms(newsApi, storage), await storage.listDirs("archive/terms"));
+    },
+
+    async previewMinistry(key, override, opts) {
+      const page = key.toLowerCase();
+      const p: PageId = { type: "category", kind: "ministries", key: page };
+      const m = override.ministry(await newsApi.ministry(page));
+      const { latest, f, profile: liveProfile, children } = await ministryContent(page, m, {});
+      const profile = override.profile(liveProfile);
+      const feed = { href: feedUrl(site, p), title: `${m.name}: latest news` };
+      return {
+        ministryPage: renderMinistryPage(m, override.minister, { ...f, latest }, site, { ...opts, feed }, { profile, children }),
+        biographyPage: hasBiography(override.minister) ? renderBiographyPage(m, override.minister, profile, site, opts) : null,
+      };
     },
 
     async buildAll(opts) {

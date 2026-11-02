@@ -8,6 +8,7 @@ import { HostWarning } from "../../../shared/HostWarning";
 import { useStaffHostWarning } from "../../../shared/publicAddress";
 import { useAnnouncer } from "../../../shared/Announcer";
 import { BodyEditor } from "../../../editor/BodyEditor";
+import { MinistryPreview, type MinistryPreviewPages } from "./MinistryPreview";
 import { FIX_BELOW, fieldErrorsOf, messagesOf } from "../messages";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { useReportDirty, type ReportDirty } from "../../../shared/LeaveGuard";
@@ -108,7 +109,8 @@ const plainLinks = (links: { text: string; url: string }[]) =>
  * sent whole, all four fields, blanks as ""; the biography only when its text changed, with an
  * emptied editor as null. Everything the form doesn't show (the minister's mailing address...) is
  * untouched on the server. The server trims, turns "" into null and sanitises the biography.
- * Core.Admin also sees Parent ministry, Active and Abbreviation.
+ * Core.Admin also sees Parent ministry, Active and Abbreviation. Preview (C324) shows the public
+ * ministry and biography pages as that same patch would leave them, without saving it.
  */
 export function OrganizationEditForm({
   org,
@@ -178,6 +180,9 @@ export function OrganizationEditForm({
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  // C324: the pages a save would produce, shown over the form while set.
+  const [preview, setPreview] = useState<MinistryPreviewPages | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -322,6 +327,28 @@ export function OrganizationEditForm({
       showErrors(caught);
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** Renders the public pages from what Save would send, saving nothing. Refused as a save would
+   * be, with the same messages beside the fields. */
+  const showPreview = async () => {
+    if (nameBlank || sortInvalid || previewBusy) return;
+    setMessages([]);
+    setFieldErrors([]);
+    setStatus(null);
+    setPreviewBusy(true);
+    try {
+      setPreview(
+        await apiFetch<MinistryPreviewPages>(
+          `/core/api/organizations/${encodeURIComponent(org.key)}/profile/preview`,
+          { method: "POST", body: buildPatch() },
+        ),
+      );
+    } catch (caught) {
+      showErrors(caught);
+    } finally {
+      setPreviewBusy(false);
     }
   };
 
@@ -694,7 +721,17 @@ export function OrganizationEditForm({
         <Button variant="secondary" onPress={onCancel} isPending={busy}>
           Cancel
         </Button>
+        <Button variant="secondary" onPress={showPreview} isPending={previewBusy} isDisabled={nameBlank || sortInvalid || busy}>
+          Preview
+        </Button>
       </div>
+      {preview && (
+        <MinistryPreview
+          name={displayName.trim() || org.displayName}
+          pages={preview}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </form>
   );
 }
