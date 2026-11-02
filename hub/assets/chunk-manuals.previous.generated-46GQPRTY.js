@@ -295,7 +295,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li><strong>Ministry name (required)</strong> and <strong>Additional display name</strong>, which shows in brackets under the ministry on the Media Contacts page.</li>
 <li><strong>Abbreviation</strong> and <strong>Parent ministry</strong>, straight after the names. Only you see these.</li>
 <li><strong>Sort order</strong>: a whole number that places the ministry in lists.</li>
-<li><strong>Minister name</strong> (with the title, such as &quot;Honourable Jane Doe&quot;), <strong>Minister summary</strong>, <strong>Minister email</strong> and <strong>Minister photo URL</strong>. Upload the photo under <strong>Website</strong> &gt; <strong>Files</strong> first, choose <strong>Copy public address</strong> beside it, then paste the address. A preview appears once the address starts with https://. An address copied from the Hub itself shows &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot; Visitors couldn&#39;t see that photo.</li>
+<li><strong>Minister name</strong> (with the title, such as &quot;Honourable Jane Doe&quot;), <strong>Minister summary</strong>, <strong>Minister email</strong> and <strong>Minister photo URL</strong>. Upload the photo under <strong>Website</strong> &gt; <strong>Files</strong> first, choose <strong>Copy public address</strong> beside it, then paste the address. A preview appears once the address starts with https://. An address copied from the Hub itself shows &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot; Visitors couldn&#39;t see that photo. It shows for the Hub&#39;s other known web addresses too, not just the one you are using.</li>
 <li><strong>Minister biography</strong>: shown on the minister&#39;s biography page, linked as Read Bio. <strong>Clear the biography</strong> removes that page. After you rename the minister, a note warns &quot;The biography still describes the previous minister.&quot;</li>
 <li><strong>Meet the Team links</strong>, <strong>Media contacts</strong> (<strong>Primary contact</strong>, <strong>Alternate contact</strong>, <strong>After-hours phone</strong>) and <strong>Ministry page links</strong> (<strong>Ministry website</strong>, <strong>Photos (Flickr) address</strong>, <strong>Videos (YouTube) address</strong>, <strong>Featured Topics</strong>, <strong>Featured Services</strong>).</li>
 <li><strong>Active</strong>, last, before <strong>Save</strong>. Only you see it.</li>
@@ -410,7 +410,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>That successor was itself handed over to this ministry. Choose a different successor.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},a={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+`,changed:"2026-11-01"},a={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p><strong>Cabinet change</strong> lets you prepare every ministry change for a new cabinet, then publish them all together, right away or at the swearing-in time. Open it from the <strong>Cabinet change</strong> link on <strong>Organizations</strong>. Nothing changes on the public site or for staff until you publish.</p>
 <p>One cabinet change is open at a time. It saves as you go, so you can leave and come back.</p>
 <h2>Add the changes</h2>
@@ -812,7 +812,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 `,changed:"2026-11-01"},c=null,p={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p>In <strong>Website</strong>, the one thing only you can change is <strong>Project Blue Bridge</strong>: the switch that puts the public site into mourning when the King dies. Everything else in <strong>Website</strong> is view-only for you.</p>
 <h2>What you can and can&#39;t change in Website</h2>
-<p>You can open every <strong>Website</strong> tab: <strong>Carousel</strong>, <strong>Emergency pins</strong>, <strong>Live Feed</strong>, <strong>What&#39;s featured where</strong>, <strong>Resource links</strong>, <strong>Files</strong>, <strong>Website log</strong> and <strong>Site settings</strong>. You see what is live, but there are no <strong>Save</strong> or <strong>Publish</strong> buttons.</p>
+<p>You can open every <strong>Website</strong> tab: <strong>Carousel</strong>, <strong>Emergency pins</strong>, <strong>Live Feed</strong>, <strong>What&#39;s featured where</strong>, <strong>Resource links</strong>, <strong>Files</strong>, <strong>Hub address check</strong>, <strong>Website log</strong> and <strong>Site settings</strong>. You see what is live, but there are no <strong>Save</strong> or <strong>Publish</strong> buttons.</p>
 <p>Site editors make those changes. The <a href="/hub/help/manuals/nrms-site-editor">Site editor manual</a> explains what each tab does. If your work needs them, give your own account the <strong>NRMS Site editor</strong> role on <a href="/hub/help/manuals/core-admin/users">Users</a>.</p>
 <p><strong>Website log</strong> lists every change to the public site&#39;s content: who, when and what. Use it to check who changed something.</p>
 <h2>Turn Project Blue Bridge on or off</h2>
@@ -846,7 +846,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Someone else changed the switch while you had the page open. Choose <strong>Reload</strong> and check its state.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},m={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-11-01"},m={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>You run what the public news site shows around the news releases: the home page carousel, emergency notices, links, files, the banner, the footer, colours and wording. You also keep each ministry&#39;s minister and contact details up to date.</p>
 <h2>What only you can do</h2>
 <p>Release editors and release viewers can open <strong>Website</strong>, but they see only <strong>What&#39;s featured where</strong> and <strong>Website log</strong>. Core administrators see every <strong>Website</strong> tab but can&#39;t change anything except Project Blue Bridge. Everything below is yours.</p>
@@ -1313,13 +1313,13 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>To show it later, enter <strong>Show from</strong>. To take it down by itself, enter <strong>Hide after</strong>. Both are BC time. Leave <strong>Show from</strong> blank to show it at once, and <strong>Hide after</strong> blank to keep it up until you turn it off.</li>
 <li>Tick <strong>Visitors can close the banner</strong> to give it a close button (\xD7).</li>
 <li>Check the <strong>Preview</strong>. It shows roughly how the banner looks.</li>
-<li>Choose <strong>Publish</strong>.</li>
+<li>Choose <strong>Publish</strong>, then confirm in the box that asks &quot;Publish your changes?&quot;. If your draft also has changes on other settings screens, choose <strong>Publish only Site banner</strong> to put just the banner live straight away. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</li>
 </ol>
 <p>The banner switches on and off by itself at the <strong>Show from</strong> and <strong>Hide after</strong> times. You don&#39;t need to publish again at those times.</p>
 <h2>Take the banner down</h2>
 <ol>
 <li>Under <strong>Banner type</strong>, choose <strong>Off</strong>. The preview says &quot;The banner is off, so visitors don&#39;t see it.&quot; The message and links are kept for next time.</li>
-<li>Choose <strong>Publish</strong>.</li>
+<li>Choose <strong>Publish</strong>, then confirm. If your draft also has changes on other settings screens, <strong>Publish only Site banner</strong> takes the banner down without publishing them.</li>
 </ol>
 <h2>What visitors see</h2>
 <ul>
@@ -1360,7 +1360,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>A link&#39;s web address is missing, starts with http://, or has a space in it.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},A={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-31"},A={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Theme colours</strong> sets the public site&#39;s colours: <strong>Header and buttons</strong>, <strong>Text on the header and buttons</strong>, <strong>Accent</strong>, <strong>Body text</strong>, <strong>Secondary text</strong>, <strong>Panels</strong>, <strong>Page background</strong>, <strong>Borders</strong>, <strong>Information banner</strong>, <strong>Emergency banner</strong> and <strong>Section bar colour (Connect page)</strong>. Open it from <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Theme</strong>.</p>
 <h2>Change a colour</h2>
 <ol>
@@ -1573,7 +1573,58 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Remove a contact.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},H=null,M=null,R={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-10-30"},H=null,M={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+<p><strong>Site identity</strong> sets how the public site describes itself to search engines and link previews, and the wording of the Project Blue Bridge banner. Open it from <strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Site identity</strong>. It changes the public site only when you publish. See <a href="/hub/help/manuals/nrms-site-editor/site-settings">How site settings are published</a>.</p>
+<p>The site&#39;s name and the BC logo are not set here. The support team sets them.</p>
+<h2>Change the site description or X account</h2>
+<ul>
+<li><strong>Site description</strong>: what search engines and link previews show for pages without their own summary. Keep it to about 150 characters; the limit is 300.</li>
+<li><strong>X (Twitter) account</strong>: shown in link previews, such as @BCGovNews. Leave it empty for none.</li>
+</ul>
+<p>Change the box, then choose <strong>Publish</strong>.</p>
+<h2>Project Blue Bridge</h2>
+<p>When the King dies, a Core administrator puts the public site into mourning with Project Blue Bridge: a black banner on every page and a mourning theme (a black-and-white logo, and charcoal instead of blue for the heading bars). Only a Core administrator can turn it on or off, and only with approval from the Intergovernmental Relations Secretariat (IGRS).</p>
+<p>You prepare its wording, under <strong>Project Blue Bridge banner</strong>:</p>
+<ul>
+<li><strong>Banner message</strong>: shown on every page while it is on. Type {age} where the King&#39;s age in years should go. No other placeholder in braces is allowed.</li>
+<li><strong>Birth date</strong>: used to work out {age}. It is needed only when the message uses {age}.</li>
+</ul>
+<p>Change them, then choose <strong>Publish</strong>. Check them ahead of time: once the switch is on, the banner shows whatever was last published here.</p>
+<p><strong>Website</strong> &gt; <strong>Site settings</strong> &gt; <strong>Project Blue Bridge</strong> shows whether it is on: &quot;Project Blue Bridge is currently OFF.&quot; (or ON). You see no switch there. While it is on, your own <a href="/hub/help/manuals/nrms-site-editor/site-banner">site banner</a> is hidden.</p>
+<h2>Can&#39;t do this?</h2>
+<div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>&quot;Keep it to 300 characters or fewer.&quot;</td>
+<td>Shorten the description or the banner message.</td>
+</tr>
+<tr>
+<td>&quot;Use plain text.&quot;</td>
+<td>Remove &lt; and &gt;, and line breaks, from the box.</td>
+</tr>
+<tr>
+<td>&quot;Enter an X account like @BCGovNews.&quot;</td>
+<td>The account has spaces, or characters other than letters, digits and _, or is longer than 15 characters.</td>
+</tr>
+<tr>
+<td>&quot;Enter text for this field.&quot;</td>
+<td><strong>Banner message</strong> is empty.</td>
+</tr>
+<tr>
+<td>&quot;The only placeholder is {age}.&quot;</td>
+<td>The message has another word in braces. Use only {age}.</td>
+</tr>
+<tr>
+<td>&quot;Enter a date like 1948-11-14.&quot;</td>
+<td>The message uses {age} and <strong>Birth date</strong> is empty, or the date given is in the future.</td>
+</tr>
+</tbody></table></div>
+`,changed:"2026-11-02"},R={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p><strong>Organizations</strong> holds each ministry&#39;s public details: its name, minister, biography, media contacts and page links. They appear on the public Ministries page and on each ministry&#39;s own page.</p>
 <p>The table shows each ministry&#39;s <strong>Name</strong>, <strong>Abbreviation</strong>, <strong>Minister</strong> and <strong>Active</strong>. A ministry left off the public site has a &quot;Not public&quot; badge. If any ministries are inactive, tick <strong>Show inactive organizations</strong> to list them too.</p>
 <p>Core administrators add, deactivate and hand over ministries, and set each one&#39;s abbreviation and whether it is public.</p>
@@ -1636,10 +1687,10 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 <tr>
 <td>&quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot;</td>
-<td>The address was copied from the Hub, so the preview works for you but visitors would get a broken image. Copy the photo&#39;s public address on <strong>Files</strong> and paste it instead.</td>
+<td>The address was copied from the Hub, so the preview works for you but visitors would get a broken image. Copy the photo&#39;s public address on <strong>Files</strong> and paste it instead. This applies to the Hub&#39;s other known web addresses too, not just the one you are using.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},N={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-11-01"},N={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>You write news releases, stories, factsheets and media advisories, approve them, and publish them now or at a set time. Publishing puts a release on the public news site and emails the subscribers and media lists it is meant for.</p>
 <h2>The everyday path</h2>
 <ol>
@@ -1900,6 +1951,11 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Every document also has a <strong>Page title</strong>, <strong>Headline</strong>, <strong>Subheadline</strong>, <strong>Body</strong> and <strong>Contacts</strong>.</p>
 <p>If a document already holds a byline but is Formal, or organizations but is Informal, that text shows, but can&#39;t be edited, with a note such as &quot;A formal document doesn&#39;t keep a byline. It&#39;s removed the next time this tab is saved.&quot; Copy it first if you need it.</p>
 <p>The <strong>Body</strong> toolbar has <strong>Bold</strong>, <strong>Italic</strong>, <strong>Bulleted list</strong>, <strong>Numbered list</strong>, <strong>Link</strong> and <strong>Insert asset</strong>. Pasted text keeps only that formatting.</p>
+<p>Two more buttons change how the body shows while you write, not what is saved:</p>
+<ul>
+<li><strong>Full screen</strong> fills the window with the body and its toolbar. Choose it again, or press Esc, to return to the page.</li>
+<li><strong>Show blocks</strong> outlines each paragraph and list, with a grip at its left. Drag the grip to move that paragraph or list somewhere else in the body, or put the cursor in it and choose <strong>Move up</strong> or <strong>Move down</strong>. Undo (Ctrl+Z) puts it back.</li>
+</ul>
 <p>If you give <strong>Link</strong> or <strong>Insert asset</strong> the address of a file as the Hub shows it (an address on the Hub itself, under any of its known web addresses, ending in /files/ and the file&#39;s name), the Hub puts in the file&#39;s public address instead, so visitors can open it. Any other address on the Hub asks first: &quot;This address points at the Hub, which the public can&#39;t open. \u2026 Use this address anyway?&quot; Choose <strong>Cancel</strong> and use the public address.</p>
 <p>To show a video or photo inside the body:</p>
 <ol>
@@ -1950,7 +2006,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li><strong>Email me a copy</strong> emails the release to you. You see &quot;Sent to&quot; and your address.</li>
 <li><strong>History</strong> lists what was done and by whom. Tick <strong>Show all</strong> to include every edit. <strong>Published copies</strong> lists each time it went out.</li>
 </ul>
-`,changed:"2026-11-01"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-11-02"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>Advisories have no media asset, translations or media files.</p>
 <h2>The main photo or video</h2>
 <p><strong>Media asset</strong> holds the one photo or video shown with the release.</p>
