@@ -14,11 +14,21 @@ const CATEGORIES = {
   ministries: [
     { key: "health", name: "Health", abbreviation: "HLTH" },
     { key: "education", name: "Education", abbreviation: "EDUC" },
+    { key: "gcpehq", name: "GCPE Headquarters", abbreviation: null },
+    { key: "mos-ai", name: "Minister of State for AI and New Technologies", abbreviation: null },
   ],
   sectors: [{ key: "sector1", name: "Sector One" }],
   themes: [{ key: "theme1", name: "Theme One" }],
   tags: [],
 };
+
+/** Core's flags for those ministries: GCPE Headquarters isn't public; the Minister of State has a parent. */
+const ORGS = [
+  { key: "health", parentKey: null, isPublic: true },
+  { key: "education", parentKey: null, isPublic: true },
+  { key: "gcpehq", parentKey: null, isPublic: false },
+  { key: "mos-ai", parentKey: "education", isPublic: true },
+];
 
 function stubFetch(onPut?: (body: unknown) => Response) {
   const calls: { url: string; body?: unknown }[] = [];
@@ -28,6 +38,7 @@ function stubFetch(onPut?: (body: unknown) => Response) {
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
       calls.push({ url, body });
       if (url === "/nrms/api/categories") return jsonResponse(200, CATEGORIES);
+      if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
       if (onPut) return onPut(body);
       throw new Error(`unexpected fetch: ${url}`);
     }),
@@ -104,6 +115,20 @@ describe("CategoriesSection", () => {
     stubFetch();
     renderSection(releaseView({ type: "release", ministries: ["health", "education"], leadMinistryKey: "health" }), () => {}, true);
     expect(await screen.findByRole("combobox", { name: "Lead ministry" })).toBeDisabled();
+  });
+
+  it("C326: Ministries leaves out organizations that aren't public and the Ministers of State, but keeps one the release already has", async () => {
+    stubFetch();
+    renderSection(releaseView({ type: "release", ministries: ["health"], sectors: [] }));
+    await screen.findByLabelText("Health");
+    await waitFor(() => expect(screen.queryByLabelText("GCPE Headquarters")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Education")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Minister of State for AI and New Technologies")).not.toBeInTheDocument();
+    cleanup();
+
+    stubFetch();
+    renderSection(releaseView({ type: "release", ministries: ["mos-ai"], leadMinistryKey: "mos-ai", sectors: [] }));
+    expect(await screen.findByLabelText("Minister of State for AI and New Technologies")).toBeChecked();
   });
 
   it("saves with PUT /categories carrying the current version and selections", async () => {

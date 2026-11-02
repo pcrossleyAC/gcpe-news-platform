@@ -89,7 +89,7 @@ Advisories have no summary, social media summary or keywords.
 
 ## Categories
 
-**Categories** shows what is ticked. Choose **Edit categories** to change the **Ministries**, **Lead ministry**, **Sectors**, **Themes** and **Tags**. Once you tick more than one ministry, **Lead ministry (needed before approving)** appears and says "Choose the lead ministry" until you do. An advisory doesn't need one and offers **(none)**.
+**Categories** shows what is ticked. Choose **Edit categories** to change the **Ministries**, **Lead ministry**, **Sectors**, **Themes** and **Tags**. **Ministries** lists the ministries a release can be filed under: not the Ministers of State, GCPE Headquarters or GCPE Media Relations. One a release already has still shows, so you can untick it. Once you tick more than one ministry, **Lead ministry (needed before approving)** appears and says "Choose the lead ministry" until you do. An advisory doesn't need one and offers **(none)**.
 
 These decide which subscribers are emailed and which public pages list the release. You need at least one ministry and one sector to publish, and a lead ministry when you tick more than one.
 
