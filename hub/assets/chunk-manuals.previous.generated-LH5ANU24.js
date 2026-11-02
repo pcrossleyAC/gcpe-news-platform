@@ -1900,7 +1900,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <p>Every document also has a <strong>Page title</strong>, <strong>Headline</strong>, <strong>Subheadline</strong>, <strong>Body</strong> and <strong>Contacts</strong>.</p>
 <p>If a document already holds a byline but is Formal, or organizations but is Informal, that text shows, but can&#39;t be edited, with a note such as &quot;A formal document doesn&#39;t keep a byline. It&#39;s removed the next time this tab is saved.&quot; Copy it first if you need it.</p>
 <p>The <strong>Body</strong> toolbar has <strong>Bold</strong>, <strong>Italic</strong>, <strong>Bulleted list</strong>, <strong>Numbered list</strong>, <strong>Link</strong> and <strong>Insert asset</strong>. Pasted text keeps only that formatting.</p>
-<p>If you give <strong>Link</strong> or <strong>Insert asset</strong> the address of a file as the Hub shows it (an address on the Hub itself, ending in /files/ and the file&#39;s name), the Hub puts in the file&#39;s public address instead, so visitors can open it. Any other address on the Hub asks first: &quot;This address points at the Hub, which the public can&#39;t open. \u2026 Use this address anyway?&quot; Choose <strong>Cancel</strong> and use the public address.</p>
+<p>If you give <strong>Link</strong> or <strong>Insert asset</strong> the address of a file as the Hub shows it (an address on the Hub itself, under any of its known web addresses, ending in /files/ and the file&#39;s name), the Hub puts in the file&#39;s public address instead, so visitors can open it. Any other address on the Hub asks first: &quot;This address points at the Hub, which the public can&#39;t open. \u2026 Use this address anyway?&quot; Choose <strong>Cancel</strong> and use the public address.</p>
 <p>To show a video or photo inside the body:</p>
 <ol>
 <li>Put the cursor where it should go.</li>
@@ -1950,7 +1950,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li><strong>Email me a copy</strong> emails the release to you. You see &quot;Sent to&quot; and your address.</li>
 <li><strong>History</strong> lists what was done and by whom. Tick <strong>Show all</strong> to include every edit. <strong>Published copies</strong> lists each time it went out.</li>
 </ul>
-`,changed:"2026-10-31"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
+`,changed:"2026-11-01"},L={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>Advisories have no media asset, translations or media files.</p>
 <h2>The main photo or video</h2>
 <p><strong>Media asset</strong> holds the one photo or video shown with the release.</p>
