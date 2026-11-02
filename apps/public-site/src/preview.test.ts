@@ -8,7 +8,7 @@ import { memoryStorage } from "../test/memory-storage";
 import { bcSettings, post, site } from "../test/fixtures";
 import { createSiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
-import { previewMinistry } from "./preview";
+import { ICON_SPRITE, previewMinistry } from "./preview";
 import type { SyncDeps } from "./sync";
 
 /** An organization record as Core sends it for the preview. */
@@ -85,6 +85,21 @@ describe("ministry preview (C324)", () => {
     expect(bio.body.textContent).toContain("Alex grew up in Prince George.");
 
     expect([...storage.files.keys()]).toEqual([]);
+  });
+
+  it("carries the icon sprite inside the page and points the icons at it: the Hub's frame can't reach another file", async () => {
+    const { storage, deps } = setup();
+    await storage.write(ICON_SPRITE, '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><symbol id="i-search" viewBox="0 0 1 1"></symbol></svg>');
+
+    const { ministryPage } = await previewMinistry(deps, org());
+
+    const page = doc(ministryPage);
+    expect(page.getElementById("i-search")?.tagName.toLowerCase()).toBe("symbol");
+    expect(ministryPage).not.toContain("assets/site/icons.svg");
+    const uses = [...page.querySelectorAll("svg.icon use")].map((u) => u.getAttribute("href"));
+    expect(uses.length).toBeGreaterThan(0);
+    expect(uses.every((h) => h?.startsWith("#i-"))).toBe(true);
+    expect(page.getElementById("site-banner")?.getAttribute("data-icons")).toBe("");
   });
 
   it("no biography: no biography page and no Read Bio", async () => {

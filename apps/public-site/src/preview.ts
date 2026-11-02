@@ -9,6 +9,7 @@ import { ministryMenu } from "./ministry-menu";
 import { turnOptions, type SyncDeps } from "./sync";
 import type { MinistryOverride } from "./builder";
 import type { SiteStorage } from "./storage";
+import { basePath } from "./render";
 
 /** The record's part of a ministry, as the News API maps it (apps/news-api/src/dto.ts
  * toMinistryDto); its top and feature posts are the live ministry's, which the record doesn't hold. */
@@ -44,10 +45,24 @@ export function profileFromOrg(org: OrgRecord, live: MinistryProfileDto | null):
   return { key: live?.key ?? org.key, ministerEmail: org.minister.email, teamLinks: org.teamLinks ?? [], childKeys: live?.childKeys ?? [] };
 }
 
-/** A rendered page made safe to show inside the Hub: never indexed, and every link opens in a new
- * tab instead of navigating the preview's frame. */
-export function previewDocument(html: string): string {
-  return html.replace(/<head>/i, '<head>\n<meta name="robots" content="noindex">\n<base target="_blank">');
+/** The icon sprite in the output folder (site-assets.ts writes it there). */
+export const ICON_SPRITE = "assets/site/icons.svg";
+
+/**
+ * A rendered page made safe to show inside the Hub: never indexed, and every link opens in a new
+ * tab instead of navigating the preview's frame. The Hub's frame has an opaque origin, from which a
+ * browser never follows an `<svg><use>` into another file, so the icon sprite (`sprite`, null when
+ * the output folder has none yet) goes inside the page and the icons point at it there.
+ */
+export function previewDocument(html: string, base: string, sprite: string | null): string {
+  let doc = html.replace(/<head>/i, '<head>\n<meta name="robots" content="noindex">\n<base target="_blank">');
+  if (sprite !== null) {
+    const file = `${base}/${ICON_SPRITE}`;
+    const svg = sprite.replace(/^<\?xml[^>]*>\s*/, "").replace(/<svg\b/, '<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"');
+    doc = doc.split(`"${file}#`).join('"#').split(`data-icons="${file}"`).join('data-icons=""');
+    doc = doc.replace(/<body\b[^>]*>/i, (open) => `${open}\n${svg}`);
+  }
+  return doc;
 }
 
 export async function previewMinistry(deps: SyncDeps, org: OrgRecord): Promise<{ ministryPage: string; biographyPage: string | null }> {
@@ -60,6 +75,7 @@ export async function previewMinistry(deps: SyncDeps, org: OrgRecord): Promise<{
     minister: ministerFromOrg(org),
     profile: (live) => profileFromOrg(org, live),
   };
-  const pages = await deps.builder.previewMinistry(org.key, override, pageOpts);
-  return { ministryPage: previewDocument(pages.ministryPage), biographyPage: pages.biographyPage === null ? null : previewDocument(pages.biographyPage) };
+  const [pages, sprite] = await Promise.all([deps.builder.previewMinistry(org.key, override, pageOpts), deps.storage.read(ICON_SPRITE)]);
+  const wrap = (html: string) => previewDocument(html, basePath(deps.site), sprite);
+  return { ministryPage: wrap(pages.ministryPage), biographyPage: pages.biographyPage === null ? null : wrap(pages.biographyPage) };
 }

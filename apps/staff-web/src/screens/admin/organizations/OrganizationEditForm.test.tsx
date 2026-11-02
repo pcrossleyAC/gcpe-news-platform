@@ -996,7 +996,8 @@ describe("OrganizationEditForm", () => {
       expect(within(dialog).getByText(PREVIEW_NOTE)).toBeInTheDocument();
       const frame = within(dialog).getByTitle("Preview of the ministry page for Health");
       expect(frame.getAttribute("srcdoc")).toBe(PAGES.ministryPage);
-      expect(frame.getAttribute("sandbox")).not.toContain("allow-top-navigation");
+      // Its own opaque origin, never the Hub's, and no navigating the Hub away.
+      expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-popups allow-popups-to-escape-sandbox");
 
       await user.click(within(dialog).getByRole("button", { name: "Biography page" }));
       expect(within(dialog).getByTitle("Preview of the biography page for Health").getAttribute("srcdoc")).toBe(PAGES.biographyPage);

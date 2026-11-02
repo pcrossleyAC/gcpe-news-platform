@@ -26,7 +26,8 @@ export function MinistryPreview({ name, pages, onClose }: { name: string; pages:
   const pageName = shown === "biography" && pages.biographyPage !== null ? "biography page" : "ministry page";
   return (
     <Modal isOpen isDismissable onOpenChange={(open) => !open && onClose()}>
-      <Dialog aria-labelledby={headingId} className="gcpe-preview">
+      {/* Close preview is the one close control: the design system's corner × would sit on it. */}
+      <Dialog aria-labelledby={headingId} className="gcpe-preview" isCloseable={false}>
         <div className="gcpe-preview__bar">
           <div>
             <h2 id={headingId}>Preview: {name}</h2>
@@ -49,13 +50,15 @@ export function MinistryPreview({ name, pages, onClose }: { name: string; pages:
             </Button>
           </div>
         </div>
-        {/* No navigation away from the Hub: links open in a new tab (the page's <base target>). */}
+        {/* The page's scripts run, but in an opaque origin (no allow-same-origin): nothing in the
+         * frame can reach the Hub, its cookies or this page, whatever the unsaved text holds. No
+         * navigation away from the Hub either: links open in a new tab (the page's <base target>). */}
         <iframe
           key={shown}
           className="gcpe-preview__frame"
           title={`Preview of the ${pageName} for ${name}`}
           srcDoc={html}
-          sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
+          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
         />
       </Dialog>
     </Modal>

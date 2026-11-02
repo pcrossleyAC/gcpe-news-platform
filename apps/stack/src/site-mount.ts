@@ -69,13 +69,25 @@ function companionUrlGuard(outputDir: string): RequestHandler {
   };
 }
 
+/** Public files a page loads that a browser fetches across origins only with CORS: the fonts, and the
+ * site banner and live-stream state site.js reads. */
+const CROSS_ORIGIN_FILE = /\.(woff2?|ttf|otf|eot)$|\/assets\/(site-banner|live)\.json$/i;
+
+/** Any origin may load those files (they are public): the Hub's ministry preview (C324) draws a
+ * page in a frame with an opaque origin, which gets them only with this header. Set ahead of both
+ * the stored compressed copy and express.static, so either answer carries it. */
+const crossOriginAssets: RequestHandler = (req, res, next) => {
+  if (CROSS_ORIGIN_FILE.test(req.path)) res.setHeader("Access-Control-Allow-Origin", "*");
+  next();
+};
+
 function staticSite(outputDir: string) {
   // dotfiles: "deny" keeps the render-state marker (.site-state.json) and anything else
   // dot-prefixed unservable; noStoreOnRedirect gives express.static's own trailing-slash
   // 301 a no-store so the SiteGround proxy never caches it.
   // companionUrlGuard 404s a request for a stored .br/.gz by its own URL; servePrecompressed answers
   // a page from its stored copy, and falls through to express.static for everything else.
-  return [hashedDirGuard(outputDir), companionUrlGuard(outputDir), noStoreOnRedirect, servePrecompressed(outputDir, feedContentType), express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny", setHeaders: (res, filePath) => {
+  return [crossOriginAssets, hashedDirGuard(outputDir), companionUrlGuard(outputDir), noStoreOnRedirect, servePrecompressed(outputDir, feedContentType), express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny", setHeaders: (res, filePath) => {
     const type = feedContentType(filePath);
     if (type !== null) res.setHeader("Content-Type", type);
   } })];

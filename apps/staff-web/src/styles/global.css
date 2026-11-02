@@ -3926,7 +3926,10 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   border: 0;
   border-radius: 0;
 }
-.gcpe-preview {
+.gcpe-preview,
+.gcpe-preview > .bcds-react-aria-Dialog--Container {
+  display: flex;
+  flex-direction: column;
   height: 100%;
 }
 .gcpe-preview__bar {

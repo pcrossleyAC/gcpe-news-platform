@@ -22,7 +22,7 @@ Change the box, then choose **Publish**.
 
 ## Project Blue Bridge
 
-When the King dies, a Core administrator puts the public site into mourning with Project Blue Bridge: a black banner on every page and a mourning theme. Only a Core administrator can turn it on or off, and only with approval from the Intergovernmental Relations Secretariat (IGRS).
+When the King dies, a Core administrator puts the public site into mourning with Project Blue Bridge: a black banner on every page and a mourning theme (a black-and-white logo, and charcoal instead of blue for the heading bars). Only a Core administrator can turn it on or off, and only with approval from the Intergovernmental Relations Secretariat (IGRS).
 
 You prepare its wording, under **Project Blue Bridge banner**:
 

@@ -428,6 +428,23 @@ describe("apps/stack", () => {
     expect(res.headers.get("cache-control")).toBe("public, max-age=60");
   });
 
+  it("C324: the site's fonts and its banner and live-stream JSON allow any origin (the Hub's preview frame has none); pages don't", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    const out = fsStorage(instance.outputDir);
+    await out.write("assets/legacy/fonts/probe.woff2", "font");
+    await out.write("assets/site-banner.json", "{}");
+    await out.write("assets/live.json", "{}");
+    await out.write("assets/other.json", "{}");
+    await out.write("probe-page.html", "<p>hi</p>");
+    const acao = async (path: string, encoding?: string) =>
+      (await fetch(`${instance.stackUrl}/site/${path}`, { headers: encoding ? { "accept-encoding": encoding } : {} })).headers.get("access-control-allow-origin");
+    expect(await acao("assets/legacy/fonts/probe.woff2")).toBe("*");
+    expect(await acao("assets/site-banner.json")).toBe("*");
+    expect(await acao("assets/live.json", "br, gzip")).toBe("*");
+    expect(await acao("assets/other.json")).toBeNull();
+    expect(await acao("probe-page.html")).toBeNull();
+  });
+
   // R13: the stack compresses text itself (the Windows/IIS package has no dynamic compression).
   it("compresses the site's text (br, Vary: Accept-Encoding, its public cache kept); no Accept-Encoding gets identity", async () => {
     const { fsStorage } = await import("../../public-site/src/storage");
