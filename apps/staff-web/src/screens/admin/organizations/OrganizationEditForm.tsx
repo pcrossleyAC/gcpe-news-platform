@@ -333,7 +333,7 @@ export function OrganizationEditForm({
   /** Renders the public pages from what Save would send, saving nothing. Refused as a save would
    * be, with the same messages beside the fields. */
   const showPreview = async () => {
-    if (nameBlank || sortInvalid || previewBusy) return;
+    if (nameBlank || sortInvalid || previewBusy || busy) return;
     setMessages([]);
     setFieldErrors([]);
     setStatus(null);
@@ -721,7 +721,7 @@ export function OrganizationEditForm({
         <Button variant="secondary" onPress={onCancel} isPending={busy}>
           Cancel
         </Button>
-        <Button variant="secondary" onPress={showPreview} isPending={previewBusy} isDisabled={nameBlank || sortInvalid || busy}>
+        <Button variant="secondary" onPress={showPreview} isPending={previewBusy} isDisabled={nameBlank || sortInvalid}>
           Preview
         </Button>
       </div>
