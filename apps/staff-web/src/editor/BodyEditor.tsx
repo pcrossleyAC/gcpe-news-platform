@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorContent, ReactNodeViewRenderer, useEditor, useEditorState } from "@tiptap/react";
 import { Button, ToggleButton } from "@bcgov/design-system-react-components";
 import { Asset, bodyExtensions } from "./schema";
 import { AssetChip } from "./AssetChip";
+import { ShowBlocks, blocksShown, moveBlock, setBlocksShown } from "./blocks";
 import { reduceToAllowedHtml } from "./pasteFilter";
 import { BIO_TAGS, BODY_TAGS } from "@gcpe/nrms-contract";
 import { checkHubAddress, fetchHubAddresses } from "../shared/publicAddress";
@@ -15,6 +16,20 @@ const AssetWithView = Asset.extend({
     return ReactNodeViewRenderer(AssetChip);
   },
 });
+
+/** Makes everything outside `el` inert (unfocusable, hidden from assistive technology), as a modal
+ * dialog would. Returns the undo. */
+function inertOutside(el: HTMLElement): () => void {
+  const made: Element[] = [];
+  for (let node: HTMLElement | null = el; node && node !== document.body; node = node.parentElement) {
+    for (const sibling of Array.from(node.parentElement?.children ?? [])) {
+      if (sibling === node || sibling.hasAttribute("inert")) continue;
+      sibling.setAttribute("inert", "");
+      made.push(sibling);
+    }
+  }
+  return () => made.forEach((sibling) => sibling.removeAttribute("inert"));
+}
 
 export interface BodyEditorProps {
   id: string;
@@ -40,6 +55,10 @@ export interface BodyEditorProps {
  * list, link, inserting an `<asset>` embed). Paste is reduced to the same allow-list
  * client-side (pasteFilter.ts) before ProseMirror ever parses it, matching what the server
  * sanitiser would keep.
+ *
+ * As legacy's CKEditor did (C323), **Full screen** fills the window with the editor (Esc or the
+ * button again returns), and **Show blocks** outlines each paragraph, list and division, with
+ * a handle to drag it and Move up / Move down to move it.
  */
 export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets = true, allowItalic = false, describedBy }: BodyEditorProps): React.JSX.Element {
   const attributes = (): Record<string, string> => ({
@@ -57,9 +76,11 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
   // can replace it; once they've typed, an outside value waits (it may only be the parent
   // catching up with a keystroke, and replacing would lose the newer ones).
   const typedSinceSync = useRef(false);
+  const [fullScreen, setFullScreen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
   const editor = useEditor(
     {
-      extensions: bodyExtensions(allowAssets ? AssetWithView : null, { italic: allowItalic }),
+      extensions: [...bodyExtensions(allowAssets ? AssetWithView : null, { italic: allowItalic }), ShowBlocks],
       content: value,
       editable: !readOnly,
       editorProps: {
@@ -84,8 +105,30 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
       bullet: !!e?.isActive("bulletList"),
       ordered: !!e?.isActive("orderedList"),
       link: !!e?.isActive("link"),
+      blocks: !!e && blocksShown(e.state),
+      canMoveUp: !!e && moveBlock(-1)(e.state),
+      canMoveDown: !!e && moveBlock(1)(e.state),
     }),
   });
+
+  // Full screen covers the page, so the page behind it is inert and doesn't scroll, as under a
+  // modal dialog; Esc returns.
+  useEffect(() => {
+    if (!fullScreen || !root.current) return;
+    const restoreInert = inertOutside(root.current);
+    const html = document.documentElement;
+    const overflow = html.style.overflow;
+    html.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullScreen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      restoreInert();
+      html.style.overflow = overflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [fullScreen]);
 
   // Not a content change, so no update event: TipTap's default would call onChange on mount with
   // its own rewrite of `value` (<b> as <strong>, line breaks dropped), which reads as an edit.
@@ -149,7 +192,7 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
   };
 
   return (
-    <div className="gcpe-body-editor">
+    <div ref={root} className={fullScreen ? "gcpe-body-editor gcpe-body-editor--full" : "gcpe-body-editor"}>
       <span id={`${id}-label`} className="gcpe-body-editor__label">
         {label}
       </span>
@@ -180,6 +223,25 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
             <Button size="small" variant="secondary" onPress={insertAsset}>
               Insert asset
             </Button>
+          )}
+          {/* How the editor shows, not what it saves: a group of its own. */}
+          <div className="gcpe-body-editor__toggles">
+            <ToggleButton size="small" isSelected={active.blocks} onChange={(shown) => setBlocksShown(editor.view, shown)}>
+              Show blocks
+            </ToggleButton>
+            <ToggleButton size="small" isSelected={fullScreen} onChange={setFullScreen}>
+              Full screen
+            </ToggleButton>
+          </div>
+          {active.blocks && (
+            <>
+              <Button size="small" variant="secondary" isDisabled={!active.canMoveUp} onPress={() => editor.chain().focus().command(({ state, dispatch }) => moveBlock(-1)(state, dispatch)).run()}>
+                Move up
+              </Button>
+              <Button size="small" variant="secondary" isDisabled={!active.canMoveDown} onPress={() => editor.chain().focus().command(({ state, dispatch }) => moveBlock(1)(state, dispatch)).run()}>
+                Move down
+              </Button>
+            </>
           )}
         </div>
       )}

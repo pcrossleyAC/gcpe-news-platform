@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { TiptapEditorHTMLElement } from "@tiptap/core";
 import { BodyEditor } from "./BodyEditor";
 import { caretToEnd } from "../../test/editorCaret";
 import { jsonResponse } from "../../test/jsonResponse";
@@ -326,5 +327,118 @@ describe("BodyEditor", () => {
     await user.type(field, "yz", { skipClick: true });
     expect(onChange.mock.calls.at(-1)![0]).toBe("<p>xyz</p>");
   });
-});
 
+  describe("C323: Full screen and Show blocks, as legacy's CKEditor had", () => {
+    const THREE = "<p>One</p><p>Two</p><ul><li><p>Three</p></li></ul>";
+    const editorOf = (field: HTMLElement) => (field as TiptapEditorHTMLElement).editor!;
+
+    it("Full screen fills the window and makes the page behind it inert; Esc returns", async () => {
+      render(
+        <>
+          <button type="button">Elsewhere on the page</button>
+          <div>
+            <BodyEditor id="body" label="Body" value="<p>x</p>" onChange={() => {}} readOnly={false} />
+          </div>
+        </>,
+      );
+      const field = await screen.findByLabelText("Body");
+      const user = userEvent.setup();
+      const toggle = screen.getByRole("button", { name: "Full screen" });
+
+      await user.click(toggle);
+
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      expect(field.closest(".gcpe-body-editor")).toHaveClass("gcpe-body-editor--full");
+      expect(screen.getByText("Elsewhere on the page")).toHaveAttribute("inert");
+      expect(field.closest("[inert]")).toBeNull();
+      expect(document.documentElement.style.overflow).toBe("hidden");
+
+      await user.keyboard("{Escape}");
+
+      expect(field.closest(".gcpe-body-editor")).not.toHaveClass("gcpe-body-editor--full");
+      expect(screen.getByText("Elsewhere on the page")).not.toHaveAttribute("inert");
+      expect(document.documentElement.style.overflow).toBe("");
+    });
+
+    it("leaving the page while in full screen gives the page back", async () => {
+      const { unmount } = render(<BodyEditor id="body" label="Body" value="<p>x</p>" onChange={() => {}} readOnly={false} />);
+      await screen.findByLabelText("Body");
+      await userEvent.setup().click(screen.getByRole("button", { name: "Full screen" }));
+      unmount();
+      expect(document.documentElement.style.overflow).toBe("");
+      expect(document.querySelector("[inert]")).toBeNull();
+    });
+
+    it("Show blocks outlines the blocks with a drag handle each, and changes nothing saved", async () => {
+      const onChange = vi.fn();
+      render(<BodyEditor id="body" label="Body" value={THREE} onChange={onChange} readOnly={false} />);
+      const field = await screen.findByLabelText("Body");
+      const user = userEvent.setup();
+      expect(screen.queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Show blocks" }));
+
+      expect(field).toHaveClass("gcpe-body-editor--blocks");
+      const handles = field.querySelectorAll(".gcpe-body-editor__handle");
+      expect(handles).toHaveLength(3);
+      handles.forEach((h) => expect(h).toHaveAttribute("aria-hidden", "true"));
+      expect(onChange).not.toHaveBeenCalled();
+      expect(editorOf(field).getHTML()).toBe(THREE);
+
+      await user.click(screen.getByRole("button", { name: "Show blocks" }));
+      expect(field).not.toHaveClass("gcpe-body-editor--blocks");
+      expect(field.querySelectorAll(".gcpe-body-editor__handle")).toHaveLength(0);
+    });
+
+    it("Move down and Move up move the block holding the caret, and only as far as the ends", async () => {
+      const onChange = vi.fn();
+      render(<BodyEditor id="body" label="Body" value={THREE} onChange={onChange} readOnly={false} />);
+      const field = await screen.findByLabelText("Body");
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Show blocks" }));
+      act(() => {
+        editorOf(field).commands.focus(2); // inside "One"
+      });
+      await waitFor(() => expect(screen.getByRole("button", { name: "Move up" })).toBeDisabled());
+
+      await user.click(screen.getByRole("button", { name: "Move down" }));
+      expect(onChange.mock.calls.at(-1)![0]).toBe("<p>Two</p><p>One</p><ul><li><p>Three</p></li></ul>");
+      await user.click(screen.getByRole("button", { name: "Move down" }));
+      expect(onChange.mock.calls.at(-1)![0]).toBe("<p>Two</p><ul><li><p>Three</p></li></ul><p>One</p>");
+      expect(screen.getByRole("button", { name: "Move down" })).toBeDisabled();
+
+      await user.click(screen.getByRole("button", { name: "Move up" }));
+      expect(onChange.mock.calls.at(-1)![0]).toBe("<p>Two</p><p>One</p><ul><li><p>Three</p></li></ul>");
+      // The caret moved with the block: still after the "O" of "One", which now starts after
+      // "<p>Two</p>" (5 positions). Read from the editor, not by typing: the buttons hand focus back
+      // to the editor a moment later, so a keystroke straight after could land on the button.
+      expect(editorOf(field).state.selection.from).toBe(5 + 2);
+    });
+
+    it("dragging a block's handle hands that whole block to the editor's drop as a move", async () => {
+      render(<BodyEditor id="body" label="Body" value={THREE} onChange={() => {}} readOnly={false} />);
+      const field = await screen.findByLabelText("Body");
+      await userEvent.setup().click(screen.getByRole("button", { name: "Show blocks" }));
+      const handle = field.querySelectorAll(".gcpe-body-editor__handle")[1]!;
+      const dataTransfer = { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: "" };
+      const event = new Event("dragstart", { bubbles: true });
+      Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
+
+      act(() => {
+        handle.dispatchEvent(event);
+      });
+
+      const view = editorOf(field).view as unknown as { dragging: { slice: { content: { firstChild: { textContent: string } } }; move: boolean } | null };
+      expect(view.dragging?.move).toBe(true);
+      expect(view.dragging?.slice.content.firstChild.textContent).toBe("Two");
+      expect(dataTransfer.setData).toHaveBeenCalledWith("text/plain", "Two");
+    });
+
+    it("read-only: neither button", async () => {
+      render(<BodyEditor id="body" label="Body" value="<p>x</p>" onChange={() => {}} readOnly />);
+      await screen.findByLabelText("Body");
+      expect(screen.queryByRole("button", { name: "Full screen" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Show blocks" })).not.toBeInTheDocument();
+    });
+  });
+});
