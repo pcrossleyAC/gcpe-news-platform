@@ -47,10 +47,10 @@ Links that are refused when you save:
 
 **Files** holds files people can open from the public release. On an advisory it says "An Advisory has no translations or media files." and offers no upload.
 
-- **Translations**: PDFs, such as the release in French or another language. Choose **Upload a translation (PDF)** and pick the file.
-- **Media files**: PDF, PNG or JPEG files, such as a photo or a fact sheet. Choose **Upload a media file** and pick the file. **Includes additional media assets** in **Media asset** is ticked for you.
+- **Translations**: PDFs, such as the release in French or another language. Choose **Upload translations (PDF, one or more)** and pick the files: you can pick several at once.
+- **Media files**: PDF, PNG or JPEG files, such as a photo or a fact sheet. Choose **Upload media files (one or more)** and pick the files: you can pick several at once. **Includes additional media assets** in **Media asset** is ticked for you.
 
-Each file can be up to 25 MB. A larger file isn't uploaded. A file is saved as soon as it is uploaded; you don't need **Save changes**. Choose a file's name to open it.
+Each file can be up to 25 MB. A larger file isn't uploaded. When you pick several, they upload one after another; any that can't be uploaded are listed with the reason, and the rest are still uploaded. A file is saved as soon as it is uploaded; you don't need **Save changes**. Choose a file's name to open it.
 
 Files can be opened by the public only while the release is published. Before then, and after an unpublish, only Hub staff can open them.
 

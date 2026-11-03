@@ -246,6 +246,9 @@ For a non-interactive/scripted run (CI, or re-generating without re-typing every
 (`scripts/siteground-env.ts`'s module doc comment has the full list) — intended for tests, not
 for typing a real production password into a shell history.
 
+**Environment banner (C331).** boxs.ca, a test site, shows a dark orange "TEST site" strip at the top of
+every Hub page with no extra setting. `ENVIRONMENT_NAME` changes the name it shows (display only).
+
 ### 5. GitHub deploy
 
 Site Tools → Devs → Node.js (or Git) → connect the repository, branch **`deploy/siteground`**,

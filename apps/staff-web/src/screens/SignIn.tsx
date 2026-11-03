@@ -6,6 +6,7 @@ import { ApiError, apiFetch, SIGN_IN_CHECK_UNAVAILABLE_MESSAGE } from "../api/cl
 import { safeReturnTo } from "../session/safeReturnTo";
 import { useSession } from "../session/SessionContext";
 import { useDocumentTitle } from "../shared/useDocumentTitle";
+import { EnvironmentBanner } from "../shell/environment";
 
 const SIGN_IN_FAILED = "Sign-in failed. Check your user name and password.";
 const RATE_LIMITED = "Too many attempts, wait a minute";
@@ -87,30 +88,34 @@ export function SignIn(): React.JSX.Element {
   };
 
   return (
-    <main className="gcpe-sign-in">
-      <Header title="GCPE News — Staff" />
-      <h1>Sign in</h1>
-      {ended && <InlineAlert variant="info" title="You were signed out" description={SESSION_ENDED} />}
-      {checkUnavailable && <InlineAlert variant="warning" role="status" title="Can't check your sign-in" description={SIGN_IN_CHECK_UNAVAILABLE_MESSAGE} />}
-      {(error ?? entraError) && <InlineAlert variant="danger" role="alert" description={(error ?? entraError)!} />}
-      {methodsUnavailable && !methods.entra && <InlineAlert variant="info" description={METHODS_UNAVAILABLE} />}
-      {methods.entra && (
-        <p className="gcpe-sign-in__entra">
-          <a className="gcpe-button-link" href={entraHref}>
-            Sign in with Microsoft
-          </a>
-        </p>
-      )}
-      {methods.entra && methods.local && <p className="gcpe-sign-in__or">Or sign in with a password:</p>}
-      {methods.local && (
-        <Form onSubmit={onSubmit}>
-          <TextField label="User name" name="username" value={username} onChange={setUsername} isRequired autoComplete="username" />
-          <TextField label="Password" name="password" type="password" value={password} onChange={setPassword} isRequired autoComplete="current-password" />
-          <Button type="submit" isPending={submitting} pendingLabel="Signing in…">
-            Sign in
-          </Button>
-        </Form>
-      )}
-    </main>
+    <>
+      {/* Above the centred sign-in box, full width (C331). */}
+      <EnvironmentBanner />
+      <main className="gcpe-sign-in">
+        <Header title="GCPE News — Staff" />
+        <h1>Sign in</h1>
+        {ended && <InlineAlert variant="info" title="You were signed out" description={SESSION_ENDED} />}
+        {checkUnavailable && <InlineAlert variant="warning" role="status" title="Can't check your sign-in" description={SIGN_IN_CHECK_UNAVAILABLE_MESSAGE} />}
+        {(error ?? entraError) && <InlineAlert variant="danger" role="alert" description={(error ?? entraError)!} />}
+        {methodsUnavailable && !methods.entra && <InlineAlert variant="info" description={METHODS_UNAVAILABLE} />}
+        {methods.entra && (
+          <p className="gcpe-sign-in__entra">
+            <a className="gcpe-button-link" href={entraHref}>
+              Sign in with Microsoft
+            </a>
+          </p>
+        )}
+        {methods.entra && methods.local && <p className="gcpe-sign-in__or">Or sign in with a password:</p>}
+        {methods.local && (
+          <Form onSubmit={onSubmit}>
+            <TextField label="User name" name="username" value={username} onChange={setUsername} isRequired autoComplete="username" />
+            <TextField label="Password" name="password" type="password" value={password} onChange={setPassword} isRequired autoComplete="current-password" />
+            <Button type="submit" isPending={submitting} pendingLabel="Signing in…">
+              Sign in
+            </Button>
+          </Form>
+        )}
+      </main>
+    </>
   );
 }

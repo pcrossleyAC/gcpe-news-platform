@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "import:legacy": "tsx src/import/cli.ts",
+    "import:snapshot": "tsx src/import/snapshot-cli.ts",
     "replay-to-nrms": "tsx src/cli/replay-to-nrms.ts",
     "db:generate": "drizzle-kit generate",
     "build": "node ../../scripts/build-app.mjs apps/calendar"

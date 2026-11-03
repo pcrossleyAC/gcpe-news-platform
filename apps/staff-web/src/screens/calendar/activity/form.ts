@@ -73,6 +73,11 @@ export function contactLabel(c: EditorCommContact): string {
 }
 
 /** The lead ministry's active comm contacts, plus the one the activity has. */
+/** Under Comm Contact when the lead ministry has none to offer (C329): a Calendar role alone doesn't
+ * make someone a comm contact; a comm-contact rank for the ministry does. */
+export const noCommContacts = (ministry: string): string =>
+  `${ministry} has no comm contacts yet. A Calendar administrator makes someone one under Calendar > Users: open the person and choose their Comm contact rank for ${ministry}.`;
+
 export function commContactChoices(o: EditorOptions, ministryKey: string | null, current: number | null): Choice[] {
   return o.commContacts.filter((c) => c.id === current || (c.isActive && c.ministryKey === ministryKey)).map((c) => ({ value: String(c.id), label: contactLabel(c) }));
 }

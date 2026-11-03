@@ -8,6 +8,7 @@ import { useSession } from "../session/SessionContext";
 import { hasAnyReadRole, NAV_GROUPS } from "./nav";
 import { FindRelease } from "./FindRelease";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
+import { EnvironmentBanner } from "./environment";
 import { AnnouncerProvider } from "../shared/Announcer";
 import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 import { useEscapeClosesPanels } from "../shared/escapeClosesPanels";
@@ -64,6 +65,8 @@ export function AppShell(): React.JSX.Element {
 
   return (
     <AnnouncerProvider>
+      {/* Above the shell's grid, full width (C331). */}
+      <EnvironmentBanner />
       <div className="gcpe-shell">
         <a className="gcpe-skip-link" href="#main-content">
           Skip to main content

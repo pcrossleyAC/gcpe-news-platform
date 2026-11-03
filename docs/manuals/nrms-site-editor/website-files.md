@@ -11,12 +11,12 @@ topics: []
 
 **Files** holds documents and images the public can open at a fixed web address, such as a media guide or a minister's photo. You can upload any type of file of up to 512 MB.
 
-The list shows the 50 newest files. Under each file's name is its full public address, the one visitors use, such as https://news.gov.bc.ca/files/media-guide.pdf. To find an older file, type part of its name in **Search files** and choose **Search**.
+**Upload files** is at the top. Below it, **Uploaded files** lists files newest first, 50 at a time, and says how many of how many it shows, such as "Newest first. Showing 50 of 412 files." Choose **Show more files** for the next 50. Under each file's name is its full public address, the one visitors use, such as https://news.gov.bc.ca/files/media-guide.pdf. To find a file by name, type part of it in **Search files** and choose **Search**.
 
-## Upload a file
+## Upload files
 
-1. Choose **Upload a file (any type, up to 512 MB)** and pick the file.
-2. The file appears at the top of the list when the upload finishes.
+1. Under **Upload files**, choose **Choose one or more files (any type, up to 512 MB each)** and pick the files. You can pick several at once.
+2. They upload one after another, and appear at the top of the list when they finish. Any that can't be uploaded are listed with the reason; the rest still upload.
 
 The file's public name is made from your file name: in lower case, with spaces and any character other than letters, digits, dots, hyphens and underscores turned into hyphens. For example, "Media Guide 2026.PDF" becomes media-guide-2026.pdf. Its public address ends in /files/ and that name, as in /files/media-guide-2026.pdf.
 
@@ -38,13 +38,15 @@ Don't copy the address from your browser's address bar while you are in the Hub.
 Replacing keeps the file's name and address, so every link to it keeps working.
 
 1. Upload a file with the same name. A box says "A file named "{name}" already exists".
-2. Choose **Replace it**. To keep the old file instead, choose **Cancel** and rename your file.
+2. Choose **Replace it**. To keep the old file instead, choose **Keep the existing file** and rename yours.
+
+If several of the files you picked already exist, the box asks about each in turn.
 
 Visitors may see the old copy for up to a minute.
 
 ## Delete a file
 
-1. Choose **Delete {name}** beside the file.
+1. Choose **Delete** beside the file.
 2. A box asks "Delete {name}?" and warns "This deletes the file from the public site. It can't be undone."
 3. Choose **Confirm delete**.
 

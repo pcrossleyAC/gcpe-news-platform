@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv } from "@gcpe/auth";
-import { assertTimeZoneRules, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
+import { assertTimeZoneRules, environmentName, loadTenantConfig, parseEnv, trustProxyHopsFrom } from "@gcpe/config";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type OutboxAdmin, type UndeliveredUpdate } from "@gcpe/events";
@@ -92,6 +92,7 @@ export async function startCore(env: NodeJS.ProcessEnv, opts: { ministryPreview?
   const app = createApp({
     sessionGate,
     ministryPreview: opts.ministryPreview,
+    environmentName: environmentName(env),
     trustProxyHops: trustProxyHopsFrom(env),
     db,
     subscribers,

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { withEnvironment } from "../shell/environment";
 
 /**
  * Sets `document.title` to `"<text> — GCPE News Staff"` for as long as the calling screen is
@@ -11,6 +12,6 @@ import { useEffect } from "react";
  */
 export function useDocumentTitle(text: string | null | undefined): void {
   useEffect(() => {
-    if (text) document.title = `${text} — GCPE News Staff`;
+    if (text) document.title = withEnvironment(`${text} — GCPE News Staff`);
   }, [text]);
 }

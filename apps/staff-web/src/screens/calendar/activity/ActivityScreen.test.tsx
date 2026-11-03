@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { CONFIG, HQ_ADMIN_CONFIG, HQ_ADMIN_ME, ME } from "../list/fixtures";
-import { FIELDS, renderActivity, stubActivity, view, type Call } from "./fixtures";
+import { EDITOR_OPTIONS, FIELDS, renderActivity, stubActivity, view, type Call } from "./fixtures";
 import { IDLE_MS, POLL_MS } from "./useEditLock";
 
 const ACTIVITY = "/calendar/api/activities/20001";
@@ -30,6 +30,17 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(screen.getByRole("combobox", { name: "Start time" })).toHaveValue("09:00");
     expect(screen.getByRole("textbox", { name: "Potential Dates" })).toHaveValue("");
     expect(screen.queryByRole("textbox", { name: "Other City" })).toBeNull();
+  });
+
+  it("C329: a lead ministry with no comm contacts says so, and where an administrator adds one", async () => {
+    // A new activity for Health, whose comm contacts have all been taken off.
+    const noHealthContact = { ...EDITOR_OPTIONS, commContacts: EDITOR_OPTIONS.commContacts.filter((c) => c.ministryKey !== "health") };
+    stubActivity([], { other: (url) => (url === "/calendar/api/editor-options" ? jsonResponse(200, noHealthContact) : undefined) });
+    renderActivity("/calendar/activities/new");
+    const contact = await screen.findByRole("combobox", { name: "Comm Contact" });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Lead Ministry" })).toHaveValue("health"));
+    expect(within(contact).getAllByRole("option").map((o) => o.textContent)).toEqual(["No comm contacts for this ministry yet"]);
+    expect(contact).toHaveAccessibleDescription(expect.stringContaining("Sample Health has no comm contacts yet. A Calendar administrator makes someone one under Calendar > Users"));
   });
 
   it("works down the page: Lead Ministry before Comm Contact, All Day and Dates Confirmed before the times they affect (form-order audit #3, #15)", async () => {

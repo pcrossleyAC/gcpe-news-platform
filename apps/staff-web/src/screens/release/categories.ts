@@ -60,3 +60,17 @@ export function useOrgFlags(): OrgFlags[] | null {
   }, []);
   return orgs;
 }
+
+/** A name that already names its own body: legacy's English names for these have no "Ministry of". */
+const OWN_BODY = /^(ministry|office|minister)\b|\b(secretariat|office|agency|branch|board|commission|council)$/i;
+
+/**
+ * A ministry as a formal document's Organizations line (C328): legacy's English name, which is
+ * "Ministry of <name>" for a ministry ("Ministry of Citizens' Services") and the name alone for a
+ * body that names itself ("Office of the Premier", "Intergovernmental Relations Secretariat").
+ */
+export const organizationName = (name: string): string => (OWN_BODY.test(name.trim()) ? name.trim() : `Ministry of ${name.trim()}`);
+
+/** Legacy's New release default for Organizations (GetNamesSelected): the ticked ministries, one per line, in the order ticked. */
+export const organizationsFor = (keys: string[], ministries: Term[]): string =>
+  keys.map((k) => organizationName(ministries.find((m) => m.key === k)?.name ?? k)).join("\n");

@@ -24,7 +24,7 @@ Core administrators add, deactivate and hand over ministries, and set each one's
    - **Minister name**, with the title, such as "Honourable Jane Doe" or "Premier Jane Doe". If you leave it empty, the ministry shows no minister.
    - **Minister summary** and **Minister email**.
    - **Minister photo URL**. Upload the photo on [Files](manual:website-files) first, choose **Copy public address** beside it, then paste the address here. A preview appears once the address starts with https://.
-   - **Minister biography**: shown on the minister's biography page, linked as Read Bio from the ministry page. **Clear the biography** empties it, and the biography page goes when you save.
+   - **Minister biography**: shown on the minister's biography page, linked as Read Bio from the ministry page. **Clear the biography** empties it, and the biography page goes when you save. Like a release's body, the box has **Full screen** (it fills the window; Esc returns) and **Show blocks** (it outlines each paragraph and list; drag one by its grip, or put the cursor in it and choose **Move up** or **Move down**).
    - **Meet the Team links**: shown as Meet the Team on the ministry page.
    - Under **Media contacts**: **Primary contact** and **Alternate contact** (each with **Name**, **Phone**, **Cell** and **Email**), and **After-hours phone**. **Phone** shows as Direct on the ministry page.
    - Under **Ministry page links**: **Ministry website**, **Photos (Flickr) address**, **Videos (YouTube) address**, **Featured Topics** and **Featured Services**.

@@ -357,7 +357,8 @@ export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
  * deployments. DATA_DIR (Task 1) is shared too — the one folder, outside any SiteGround deploy
  * folder, that survives a redeploy (see data-dir.ts). SITE_ENVIRONMENT (plan 3d task 4) is
  * shared so an operator can mark a whole deployment (e.g. boxs.ca) a test site with one
- * setting, reaching every app's `isTestSite` the same way NODE_ENV does.
+ * setting, reaching every app's `isTestSite` the same way NODE_ENV does. ENVIRONMENT_NAME is the
+ * display name Core's /environment gives the Hub's banner on a test site (C331).
  */
 function isSharedKey(key: string): boolean {
   return (
@@ -370,6 +371,7 @@ function isSharedKey(key: string): boolean {
     key === "SESSION_MAX_HOURS" ||
     key === "DATA_DIR" ||
     key === "SITE_ENVIRONMENT" ||
+    key === "ENVIRONMENT_NAME" ||
     key === "TRUST_PROXY_HOPS" ||
     key.startsWith("LOCAL_ADMIN_")
   );

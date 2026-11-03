@@ -4,7 +4,7 @@ import type { CalendarMe } from "../access";
 import type { CalendarConfigView } from "../list/types";
 import { CheckField, CheckList, DateTimeField, ReadOnlyForm, SelectField, TagField, TextField } from "./fields";
 import {
-  categoryChoices, commContactChoices, fieldId, inferredLabel, leadMinistryChoices, lookupChoices, needsReviewOf, SECTION_LABELS, sharedWithChoices,
+  categoryChoices, commContactChoices, noCommContacts, fieldId, inferredLabel, leadMinistryChoices, lookupChoices, needsReviewOf, SECTION_LABELS, sharedWithChoices,
   termChoices, translationChoices, withAllDay, withCategory, withMinistry, withMyContact,
 } from "./form";
 
@@ -58,6 +58,8 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
   const setLa = (patch: Partial<NonNullable<ActivityFields["lookAhead"]>>) => change((x) => ({ ...x, lookAhead: { ...x.lookAhead!, ...patch } }));
   const warnings = warningsFor(f, p.today);
   const one = (key: keyof ActivityFields) => [s ? (s[key] as number | null) : null];
+  const contactChoices = commContactChoices(o, f.contactMinistryKey, s?.commContactId ?? null);
+  const leadName = o.ministries.find((m) => m.key === f.contactMinistryKey)?.name ?? "This ministry";
 
   return (
     <ReadOnlyForm.Provider value={p.readOnly}>
@@ -89,7 +91,7 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
         <SelectField id={id("commContactId")} label="Comm Contact" help="comm-contact" required value={str(f.commContactId)} onChange={(v) => {
           p.prefill?.chose("contact");
           change({ commContactId: num(v) });
-        }} options={commContactChoices(o, f.contactMinistryKey, s?.commContactId ?? null)} empty={f.contactMinistryKey ? "Choose a comm contact" : "Choose the lead ministry first"} error={err("commContactId")} />
+        }} options={contactChoices} empty={!f.contactMinistryKey ? "Choose the lead ministry first" : contactChoices.length ? "Choose a comm contact" : "No comm contacts for this ministry yet"} hint={f.contactMinistryKey && !contactChoices.length && !p.readOnly ? noCommContacts(leadName) : undefined} error={err("commContactId")} />
         <CheckField id={id("isMilestone")} label="Key activity" checked={f.isMilestone} onChange={(v) => change({ isMilestone: v })} />
         <TextField id={id("strategy")} label="Strategy" multiline required={rules.required.strategy} value={f.strategy} onChange={(v) => change({ strategy: v })} error={err("strategy")} review={rev("strategy")} />
         <CheckList readOnly={p.readOnly} id={id("commMaterialIds")} label="Comm Materials" help="comm-materials" required={isRelease} values={f.commMaterialIds.map(String)} onChange={(v) => change({ commMaterialIds: v.map(Number) })} options={lookupChoices(o.commMaterials, s?.commMaterialIds ?? [])} error={err("commMaterialIds")} review={rev("commMaterialIds")} />

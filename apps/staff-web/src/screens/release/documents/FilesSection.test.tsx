@@ -46,7 +46,7 @@ describe("FilesSection", () => {
     render(<FilesSection view={BASE} setView={(v) => (current = v)} readOnly={false} />);
     const file = new File(["%PDF-1.4"], "translation.pdf", { type: "application/pdf" });
     const user = userEvent.setup();
-    await user.upload(screen.getByLabelText("Upload a translation (PDF)"), file);
+    await user.upload(screen.getByLabelText("Upload translations (PDF, one or more)"), file);
 
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]!.url).toBe(`/nrms/api/releases/${BASE.id}/files?kind=translation&version=${BASE.version}`);
@@ -57,12 +57,71 @@ describe("FilesSection", () => {
     expect(current.version).toBe(2);
   });
 
+  it("C330: several translations picked at once upload one after another, each at the version the last left", async () => {
+    const calls: { url: string; name: string | null }[] = [];
+    let version = BASE.version;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, name: new Headers(init.headers).get("X-GCPE-File-Name") });
+        version += 1;
+        return jsonResponse(201, releaseView({ ...BASE, version }));
+      }),
+    );
+    let current = BASE;
+    render(<FilesSection view={BASE} setView={(v) => (current = v)} readOnly={false} />);
+    const files = ["French.pdf", "Punjabi.pdf", "Tagalog.pdf"].map((n) => new File(["%PDF-1.4"], n, { type: "application/pdf" }));
+    await userEvent.setup().upload(screen.getByLabelText("Upload translations (PDF, one or more)"), files);
+
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls.map((c) => c.name)).toEqual(["French.pdf", "Punjabi.pdf", "Tagalog.pdf"]);
+    expect(calls.map((c) => new URL(c.url, "http://x").searchParams.get("version"))).toEqual([BASE.version, BASE.version + 1, BASE.version + 2].map(String));
+    await waitFor(() => expect(current.version).toBe(BASE.version + 3));
+  });
+
+  it("C330: in a batch, a refused or too-large file is named with its reason and the others still upload", async () => {
+    const names: (string | null)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const name = new Headers(init.headers).get("X-GCPE-File-Name");
+        names.push(name);
+        return name === "Bad.pdf" ? jsonResponse(422, { error: "bad", problems: ["That isn't a PDF."] }) : jsonResponse(201, releaseView({ ...BASE }));
+      }),
+    );
+    render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
+    const big = new File(["x"], "Huge.pdf", { type: "application/pdf" });
+    Object.defineProperty(big, "size", { value: 25 * 1024 * 1024 + 1 });
+    const files = [new File(["%PDF"], "French.pdf", { type: "application/pdf" }), new File(["x"], "Bad.pdf", { type: "application/pdf" }), big, new File(["%PDF"], "Tagalog.pdf", { type: "application/pdf" })];
+    await userEvent.setup().upload(screen.getByLabelText("Upload translations (PDF, one or more)"), files);
+
+    expect(await screen.findByText("Bad.pdf: That isn't a PDF.")).toBeInTheDocument();
+    expect(screen.getByText("Huge.pdf is too large to upload. A file can be at most 25 MB.")).toBeInTheDocument();
+    expect(names).toEqual(["French.pdf", "Bad.pdf", "Tagalog.pdf"]);
+  });
+
+  it("C330: a conflict stops the batch: nothing after it is sent", async () => {
+    const names: (string | null)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        names.push(new Headers(init.headers).get("X-GCPE-File-Name"));
+        return names.length === 2 ? jsonResponse(409, { error: "version" }) : jsonResponse(201, releaseView({ ...BASE, version: BASE.version + 1 }));
+      }),
+    );
+    render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
+    const files = ["A.pdf", "B.pdf", "C.pdf"].map((n) => new File(["%PDF"], n, { type: "application/pdf" }));
+    await userEvent.setup().upload(screen.getByLabelText("Upload translations (PDF, one or more)"), files);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(names).toEqual(["A.pdf", "B.pdf"]);
+  });
+
   it("shows a 422 message from the server on upload", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { error: "bad", problems: ["That file type isn't allowed."] })));
     render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
     const file = new File(["x"], "bad.exe", { type: "application/octet-stream" });
     const user = userEvent.setup();
-    await user.upload(screen.getByLabelText("Upload a media file"), file);
+    await user.upload(screen.getByLabelText("Upload media files (one or more)"), file);
     expect(await screen.findByText("That file type isn't allowed.")).toBeInTheDocument();
   });
 
@@ -71,7 +130,7 @@ describe("FilesSection", () => {
     render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
     const file = new File(["x"], "huge.pdf", { type: "application/pdf" });
     const user = userEvent.setup();
-    await user.upload(screen.getByLabelText("Upload a translation (PDF)"), file);
+    await user.upload(screen.getByLabelText("Upload translations (PDF, one or more)"), file);
     expect(await screen.findByText("A file can be at most 25 MB.")).toBeInTheDocument();
     expect(screen.queryByText("request entity too large")).not.toBeInTheDocument();
   });
@@ -83,7 +142,7 @@ describe("FilesSection", () => {
     const file = new File(["x"], "video.mp4", { type: "video/mp4" });
     Object.defineProperty(file, "size", { value: 25 * 1024 * 1024 + 1 });
     const user = userEvent.setup();
-    await user.upload(screen.getByLabelText("Upload a media file"), file);
+    await user.upload(screen.getByLabelText("Upload media files (one or more)"), file);
     expect(await screen.findByText("video.mp4 is too large to upload. A file can be at most 25 MB.")).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -94,7 +153,7 @@ describe("FilesSection", () => {
     render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
     const file = new File(["x"], "video.mp4", { type: "video/mp4" });
     Object.defineProperty(file, "size", { value: 25 * 1024 * 1024 });
-    await userEvent.setup().upload(screen.getByLabelText("Upload a media file"), file);
+    await userEvent.setup().upload(screen.getByLabelText("Upload media files (one or more)"), file);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 

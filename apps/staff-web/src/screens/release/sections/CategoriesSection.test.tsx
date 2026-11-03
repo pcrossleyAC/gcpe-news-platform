@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
@@ -75,46 +75,54 @@ describe("CategoriesSection", () => {
     expect(screen.queryByText("Sectors")).not.toBeInTheDocument();
   });
 
-  it("shows the lead ministry picker once more than one ministry is chosen", async () => {
+  const Q = "Which of the ministries is the lead ministry?";
+
+  it("C328: once a second ministry is ticked, asks legacy's question with a radio button per ticked ministry", async () => {
     stubFetch();
     renderSection(releaseView({ type: "release", ministries: ["health"], leadMinistryKey: "health" }));
     await screen.findByLabelText("Health");
-    expect(screen.queryByRole("combobox", { name: /Lead ministry/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /lead ministry/i })).not.toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Education"));
-    expect(screen.getByRole("combobox", { name: /Lead ministry/ })).toBeInTheDocument();
+    const lead = screen.getByRole("group", { name: `${Q} (needed before approving)` });
+    const radios = within(lead).getAllByRole("radio");
+    expect(radios.map((r) => r.closest("label")?.textContent)).toEqual(["Health", "Education"]);
+    expect(within(lead).getByRole("radio", { name: "Health" })).toBeChecked();
+
+    await user.click(within(lead).getByRole("radio", { name: "Education" }));
+    expect(within(lead).getByRole("radio", { name: "Education" })).toBeChecked();
+    expect(within(lead).getByRole("radio", { name: "Health" })).not.toBeChecked();
   });
 
-  // forms-b #23: a lead is needed to approve (approveProblems), so "(none)" isn't offered: the
-  // empty choice only prompts. An advisory doesn't need one and keeps "(none)".
-  it("the lead ministry says it's needed before approving and offers no \"(none)\"; an advisory keeps (none)", async () => {
+  // forms-b #23: a lead is needed to approve (approveProblems), so "(none)" isn't offered and nothing
+  // is chosen until the user chooses. An advisory doesn't need one and keeps "(none)".
+  it("the question says a lead is needed before approving and offers no \"(none)\"; an advisory keeps (none)", async () => {
     stubFetch();
     const { unmount } = renderSection(releaseView({ type: "release", ministries: ["health", "education"], leadMinistryKey: null }));
-    const lead = await screen.findByRole("combobox", { name: "Lead ministry (needed before approving)" });
-    expect(lead).toHaveValue("");
-    const prompt = screen.getByRole("option", { name: "Choose the lead ministry" });
-    expect(prompt).toBeDisabled();
-    expect(screen.queryByRole("option", { name: "(none)" })).not.toBeInTheDocument();
+    const lead = await screen.findByRole("group", { name: `${Q} (needed before approving)` });
+    expect(within(lead).getAllByRole("radio").every((r) => !(r as HTMLInputElement).checked)).toBe(true);
+    expect(within(lead).queryByRole("radio", { name: "(none)" })).not.toBeInTheDocument();
     unmount();
 
     renderSection(releaseView({ type: "advisory", ministries: ["health", "education"], leadMinistryKey: null }));
-    expect(await screen.findByRole("combobox", { name: "Lead ministry" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "(none)" })).toBeEnabled();
+    const advisory = await screen.findByRole("group", { name: "Lead ministry" });
+    expect(within(advisory).getByRole("radio", { name: "(none)" })).toBeChecked();
   });
 
   // Fix round 1 (minor): approving is behind it once the release isn't a draft.
   it("an approved release's lead ministry has no needed-before-approving marker, and still no (none)", async () => {
     stubFetch();
     renderSection(releaseView({ type: "release", status: "approved", ministries: ["health", "education"], leadMinistryKey: "health" }));
-    expect(await screen.findByRole("combobox", { name: "Lead ministry" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "(none)" })).not.toBeInTheDocument();
+    const lead = await screen.findByRole("group", { name: "Lead ministry" });
+    expect(within(lead).queryByRole("radio", { name: "(none)" })).not.toBeInTheDocument();
   });
 
-  it("read-only: the lead ministry has no marker", async () => {
+  it("read-only: the lead ministry has no marker and can't be changed", async () => {
     stubFetch();
     renderSection(releaseView({ type: "release", ministries: ["health", "education"], leadMinistryKey: "health" }), () => {}, true);
-    expect(await screen.findByRole("combobox", { name: "Lead ministry" })).toBeDisabled();
+    const lead = await screen.findByRole("group", { name: "Lead ministry" });
+    within(lead).getAllByRole("radio").forEach((r) => expect(r).toBeDisabled());
   });
 
   it("C326: Ministries leaves out organizations that aren't public and the Ministers of State, but keeps one the release already has", async () => {

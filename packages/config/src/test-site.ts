@@ -2,6 +2,8 @@
 export interface TestSiteEnv {
   NODE_ENV?: string | undefined;
   SITE_ENVIRONMENT?: string | undefined;
+  /** Display only (C331): the name the Hub's environment banner shows, such as DEV or TEST. */
+  ENVIRONMENT_NAME?: string | undefined;
 }
 
 /**
@@ -28,4 +30,16 @@ export function siteEnvironment(env: TestSiteEnv): string {
 /** The real production deployment: not a test site. */
 export function isRealProduction(env: TestSiteEnv): boolean {
   return !isTestSite(env);
+}
+
+/**
+ * The name the Hub's environment banner shows (C331), or null for none: real production never has
+ * one, whatever is set, so the banner can't be switched on there by mistake. A test site shows
+ * ENVIRONMENT_NAME (trimmed, upper-cased, at most 20 characters; letters, digits, spaces and
+ * hyphens only), or TEST when it isn't set. Display only: it decides nothing else.
+ */
+export function environmentName(env: TestSiteEnv): string | null {
+  if (!isTestSite(env)) return null;
+  const name = (env.ENVIRONMENT_NAME ?? "").replace(/[^A-Za-z0-9 -]/g, "").trim().toUpperCase().slice(0, 20);
+  return name || "TEST";
 }

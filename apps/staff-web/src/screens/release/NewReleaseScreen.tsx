@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { Form } from "../../shared/Form";
 import {
   CREATABLE_TYPES, LANG_EN, LAYOUTS, MAX_ACTIVITY_ID, TYPE_LABEL, createReleaseSchema, typeRules, type Layout, type ReleasePrefill, type ReleaseView,
@@ -16,7 +16,7 @@ import { dateTimeText } from "../calendar/list/dates";
 import { LeadMinistrySelect } from "./LeadMinistrySelect";
 import { ActivityLookupPanel, useActivityLookup } from "./ActivityLookupPanel";
 import { LeavePageGuard } from "../../shared/LeaveGuard";
-import { releaseMinistries, useOrgFlags, type Categories } from "./categories";
+import { organizationsFor, releaseMinistries, useOrgFlags, type Categories } from "./categories";
 
 type CreatableType = (typeof CREATABLE_TYPES)[number];
 
@@ -148,6 +148,9 @@ function ErrorSummary({ problems }: { problems: { field: string; message: string
   );
 }
 
+/** Under New release's Organizations box (C328). */
+export const ORGANIZATIONS_HINT = "Shown at the top of a formal document. Filled in from the ministries you tick, one per line, until you change it.";
+
 /**
  * `/hub/releases/new` (task-3-brief.md): type, page title (from `GET /page-types`), layout,
  * page image (`GET /page-images`), categories, and headline — the fields shown and required
@@ -204,6 +207,8 @@ export function NewReleaseScreen(): React.JSX.Element {
   const [pageImages, setPageImages] = useState<PageImageOption[]>([]);
   const [categories, setCategories] = useState<Categories>(EMPTY_CATEGORIES);
   const orgFlags = useOrgFlags();
+  // Organizations follows the ticked ministries, as legacy's did, until the user types in it (null).
+  const [organizationsTyped, setOrganizationsTyped] = useState<string | null>(null);
   const [mediaLists, setMediaLists] = useState<MediaListOption[]>([]);
 
   const [problems, setProblems] = useState<Record<string, string[]>>({});
@@ -314,6 +319,8 @@ export function NewReleaseScreen(): React.JSX.Element {
     setList(list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
   };
 
+  const organizations = organizationsTyped ?? organizationsFor(ministries, categories.ministries);
+
   const onMinistryToggle = (key: string) => {
     touch("ministries");
     const next = ministries.includes(key) ? ministries.filter((k) => k !== key) : [...ministries, key];
@@ -328,7 +335,7 @@ export function NewReleaseScreen(): React.JSX.Element {
     pageImageId: rules.pageImageAllowed ? pageImageId : null,
     headline,
     subheadline: null,
-    organizations: null,
+    organizations: layout === "formal" ? organizations.trim() || null : null,
     byline: null,
     bodyHtml: "",
     location,
@@ -516,6 +523,16 @@ export function NewReleaseScreen(): React.JSX.Element {
               touch("ministries");
               setLeadMinistryKey(key);
             }}
+          />
+        )}
+
+        {layout === "formal" && (
+          <TextArea
+            label="Organizations"
+            value={organizations}
+            onChange={setOrganizationsTyped}
+            description={ORGANIZATIONS_HINT}
+            maxLength={500}
           />
         )}
 

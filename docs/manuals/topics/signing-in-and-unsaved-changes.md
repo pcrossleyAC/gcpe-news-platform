@@ -9,6 +9,10 @@ topics: []
 ---
 **Who this is for:** Everyone who uses the Hub.
 
+## Test and development sites
+
+On a test or development copy of the Hub, a thin coloured strip across the top of every page, the sign-in page included, says which one it is, such as "TEST site: changes here don't reach the live news site." DEV is purple, TEST dark orange, and any other name dark teal. The browser tab's title starts with the same name, such as "[TEST] Drafts — GCPE News Staff". The real Hub never shows the strip: if you don't see it, you are working on the live site.
+
 ## Staying signed in
 
 While a Hub tab is open, it keeps you signed in, even when the tab sits behind other windows. Your session can still end: when you sign out in another tab or window, when your computer has been asleep or offline for a while (it can be as little as a few minutes, and is never more than an hour), when the browser has put a tab it hasn't shown for a long time to sleep, or when an administrator changes your account.

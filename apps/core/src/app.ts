@@ -31,6 +31,8 @@ export function createApp(deps: {
   };
   /** Core's session gate (start.ts hands the same one to the stack); built here when not given. */
   sessionGate?: SessionGate;
+  /** The Hub's environment banner name (@gcpe/config environmentName): null on real production. */
+  environmentName?: string | null;
   /** Renders a ministry's public pages for the profile preview (the stack's public site). */
   ministryPreview?: MinistryPreviewRenderer;
 }): express.Express {
@@ -45,6 +47,9 @@ export function createApp(deps: {
   app.disable("x-powered-by");
   app.set("trust proxy", deps.trustProxyHops ?? 1); // hops: 1 = OpenShift router / SiteGround nginx / local IIS; TRUST_PROXY_HOPS=2 behind a DMZ proxy
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`)]));
+  // C331: the Hub's environment banner, before sign-in too (null on real production). Public:
+  // the public site itself already says TEST on a test site.
+  app.get("/environment", (_req, res) => void res.set("Cache-Control", "no-store").json({ name: deps.environmentName ?? null }));
   if (deps.loginRouter) app.use(deps.loginRouter);
   if (deps.session) app.use(sessionRoutes({ db: deps.db, ...deps.session, gate }));
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.

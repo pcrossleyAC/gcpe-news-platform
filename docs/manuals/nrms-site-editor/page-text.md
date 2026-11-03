@@ -24,7 +24,7 @@ Only two boxes are required: the page not found **Heading** and the privacy page
 
 **Notice of Collection** is legal wording. Changes may need review by your privacy office before you publish.
 
-The **Statement**, **Before play**, **When not live**, **Notice of Collection** and **Help line** boxes take formatted text: bold, italic, bulleted and numbered lists, and links.
+The **Statement**, **Before play**, **When not live**, **Notice of Collection** and **Help line** boxes take formatted text: bold, italic, bulleted and numbered lists, and links. Like a release's body, the box has **Full screen** (it fills the window; Esc returns) and **Show blocks** (it outlines each paragraph and list; drag one by its grip, or put the cursor in it and choose **Move up** or **Move down**).
 
 ## Change the wording
 
