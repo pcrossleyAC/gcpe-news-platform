@@ -54,7 +54,8 @@
     "showHqCommentsField": false,
     "showRecordsSection": false,
     "cloneKeptKeywordNames": ["30-60-90"],
-    "lookAheadCoverImage": null,
+    "lookAheadCoverImage": "LookAheadCover.jpg",
+    "lookAheadLogoImage": "ProvinceOfBritishColumbia.jpg",
     "reportBanner": { "province": "Province of BC", "confidentiality": "DRAFT AND CONFIDENTIAL" },
     "forecastCategoryPrefix": "Approved",
     "reports": {
