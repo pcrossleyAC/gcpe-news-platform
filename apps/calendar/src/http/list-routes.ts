@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { LIST_QUERY_MAX_CHARS, bcDateSchema, checkCalendarRange, listPreferencesSchema, listQuerySchema } from "@gcpe/calendar-contract";
 import { calendarRange } from "../list/calendar-range";
-import { EXPORT_CONCURRENCY, ExportBusyError, exportWorkbook } from "../list/export";
+import { EXPORT_CONCURRENCY, EXPORT_NAME, ExportBusyError, exportWorkbook } from "../list/export";
 import { listOptions } from "../list/options";
 import { listPage } from "../list/page";
 import { readPreferences, writePreferences } from "../list/preferences";
@@ -61,7 +61,7 @@ export function listRoutes(deps: ApiDeps): Router {
     }
     res.set({
       "Content-Type": XLSX_CONTENT_TYPE,
-      "Content-Disposition": 'attachment; filename="BCGovernmentActivities.xlsx"',
+      "Content-Disposition": `attachment; filename="${EXPORT_NAME}.xlsx"`,
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
     });

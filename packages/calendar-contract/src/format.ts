@@ -34,8 +34,9 @@ function wall(at: Date, timeZone: string, wallClock?: WallClock): Wall {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const sameDay = (a: Wall, b: { y: number; m: number; d: number }) => a.y === b.y && a.m === b.m && a.d === b.d;
-const dateText = (w: Wall, year: boolean, weekday: boolean) => `${weekday ? `${DAYS[w.dow]} ` : ""}${MONTHS[w.m - 1]} ${w.d}${year ? ` ${w.y}` : ""}`;
-const timeText = (w: Wall, ampm: boolean) => `${w.hh % 12 === 0 ? 12 : w.hh % 12}:${String(w.mm).padStart(2, "0")}${ampm ? (w.hh < 12 ? " AM" : " PM") : ""}`;
+/** `sp` joins a date's or a time's own parts: a space, or legacy's no-break space (ActivityListProvider.ashx.cs:768). */
+const dateText = (w: Wall, year: boolean, weekday: boolean, sp = " ") => `${weekday ? `${DAYS[w.dow]}${sp}` : ""}${MONTHS[w.m - 1]}${sp}${w.d}${year ? `${sp}${w.y}` : ""}`;
+const timeText = (w: Wall, ampm: boolean, sp = " ") => `${w.hh % 12 === 0 ? 12 : w.hh % 12}:${String(w.mm).padStart(2, "0")}${ampm ? `${sp}${w.hh < 12 ? "AM" : "PM"}` : ""}`;
 
 export interface DatedActivity {
   startAt: string | Date | null;
@@ -60,6 +61,8 @@ export interface FriendlyDateOptions {
   endTime?: boolean;
   /** How to read the wall clock; this runtime's `Intl` by default (see {@link WallClock}). */
   wallClock?: WallClock;
+  /** Legacy's no-break spaces inside each date and time ("Tue\u00a0Nov\u00a010", "9:00\u00a0AM"), as its Excel export had them; plain spaces by default. */
+  nbsp?: boolean;
 }
 
 /** A friendly date's text, and legacy's "TBC" or "Time TBD" marker, which the reports colour. */
@@ -70,9 +73,10 @@ export interface FriendlyDateParts {
 
 /**
  * Legacy's FriendlyDateTimeRange (ActivityListProvider.ashx.cs:769-840), in the tenant's time
- * zone, with plain spaces, as text and marker.
+ * zone, with plain spaces unless `nbsp`, as text and marker.
  */
 export function friendlyDateParts(a: DatedActivity, o: FriendlyDateOptions): FriendlyDateParts {
+  const sp = o.nbsp ? "\u00a0" : " ";
   if (!a.startAt || !a.endAt) return { text: a.potentialDates || "—", pending: null };
   const s = wall(new Date(a.startAt), o.timeZone, o.wallClock);
   const e = wall(new Date(a.endAt), o.timeZone, o.wallClock);
@@ -83,14 +87,14 @@ export function friendlyDateParts(a: DatedActivity, o: FriendlyDateOptions): Fri
   let value = "";
   if (sameDay(s, e)) {
     const isRef = sameDay(s, ref);
-    value = isRef && o.referenceDay !== undefined && !a.isAllDay ? "" : dateText(s, !isRef && s.y !== ref.y, isRef || (o.weekday ?? true));
+    value = isRef && o.referenceDay !== undefined && !a.isAllDay ? "" : dateText(s, !isRef && s.y !== ref.y, isRef || (o.weekday ?? true), sp);
     if (!a.isAllDay && !timeTbd) {
-      value += (o.endTime ?? true) ? ` ${timeText(s, s.hh >= 12 !== e.hh >= 12)}-${timeText(e, true)}` : ` ${timeText(s, true)}`;
+      value += (o.endTime ?? true) ? ` ${timeText(s, s.hh >= 12 !== e.hh >= 12, sp)}-${timeText(e, true, sp)}` : ` ${timeText(s, true, sp)}`;
     }
     value = value.trim();
   } else {
     const year = s.y !== e.y || s.y !== ref.y;
-    value = `${dateText(s, year, false)}-${year || s.m !== e.m ? dateText(e, year, false) : String(e.d)}`;
+    value = `${dateText(s, year, false, sp)}-${year || s.m !== e.m ? dateText(e, year, false, sp) : String(e.d)}`;
   }
   if (a.isConfirmed) return { text: value, pending: null };
   return { text: a.potentialDates || value, pending: timeTbd ? "Time TBD" : "TBC" };
