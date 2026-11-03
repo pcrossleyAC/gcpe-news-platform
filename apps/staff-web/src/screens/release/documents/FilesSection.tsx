@@ -38,31 +38,48 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
 
   const setGroup = (kind: Kind, patch: Partial<GroupState>) => setState((s) => ({ ...s, [kind]: { ...s[kind], ...patch } }));
 
-  const upload = async (kind: Kind, file: File) => {
-    // The server's own cap (media/files.ts), checked here so a large file isn't sent for nothing.
-    if (file.size > RELEASE_FILE_MAX_MB * 1024 * 1024) {
-      setGroup(kind, { ...INITIAL, problems: [`${file.name} is too large to upload. ${RELEASE_FILE_TOO_LARGE}`] });
-      return;
-    }
+  /**
+   * Uploads the picked files one after another (C330: legacy's Choose Files takes several), each
+   * through the save queue, so each sends the version the one before it left. A file over the size
+   * cap, or one the server refuses, is listed with its reason and the rest still go; a conflict
+   * (someone else changed the release) stops the batch and asks for a reload.
+   */
+  const upload = async (kind: Kind, picked: File[]) => {
+    const problems: string[] = [];
+    const several = picked.length > 1;
+    const named = (file: File, message: string) => (several ? `${file.name}: ${message}` : message);
+    // The version the last upload left, for when no page queue supplies one.
+    let latest = view.version;
     setGroup(kind, { ...INITIAL, busy: true, waiting: true });
-    try {
-      const next = await queue.run((version) => {
-        setGroup(kind, { waiting: false });
-        return apiFetch<ReleaseView>(`/nrms/api/releases/${view.id}/files?kind=${kind}&version=${version ?? view.version}`, {
-          method: "POST",
-          raw: file,
-          headers: { "X-GCPE-File-Name": encodeURIComponent(file.name) },
+    for (const file of picked) {
+      // The server's own cap (media/files.ts), checked here so a large file isn't sent for nothing.
+      if (file.size > RELEASE_FILE_MAX_MB * 1024 * 1024) {
+        problems.push(`${file.name} is too large to upload. ${RELEASE_FILE_TOO_LARGE}`);
+        continue;
+      }
+      try {
+        const next = await queue.run((version) => {
+          setGroup(kind, { waiting: false });
+          return apiFetch<ReleaseView>(`/nrms/api/releases/${view.id}/files?kind=${kind}&version=${version ?? latest}`, {
+            method: "POST",
+            raw: file,
+            headers: { "X-GCPE-File-Name": encodeURIComponent(file.name) },
+          });
         });
-      });
-      setView(next);
-      setGroup(kind, INITIAL);
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 409) setGroup(kind, { busy: false, conflict: true, problems: null, error: null });
-      else if (caught instanceof ApiError && caught.status === 422) setGroup(kind, { busy: false, conflict: false, problems: caught.problems ?? [caught.message], error: null });
-      // Over the size cap (whatever said so: the server, or a proxy in front of it).
-      else if (caught instanceof ApiError && caught.status === 413) setGroup(kind, { busy: false, conflict: false, problems: [RELEASE_FILE_TOO_LARGE], error: null });
-      else setGroup(kind, { busy: false, conflict: false, problems: null, error: caught instanceof ApiError ? caught.message : "Upload failed." });
+        latest = next.version;
+        setView(next);
+      } catch (caught) {
+        if (caught instanceof ApiError && caught.status === 409) {
+          setGroup(kind, { busy: false, waiting: false, conflict: true, problems: problems.length ? problems : null, error: null });
+          return;
+        }
+        if (caught instanceof ApiError && caught.status === 422) problems.push(...(caught.problems ?? [caught.message]).map((m) => named(file, m)));
+        // Over the size cap (whatever said so: the server, or a proxy in front of it).
+        else if (caught instanceof ApiError && caught.status === 413) problems.push(named(file, RELEASE_FILE_TOO_LARGE));
+        else problems.push(named(file, caught instanceof ApiError ? caught.message : "Upload failed."));
+      }
     }
+    setGroup(kind, { ...INITIAL, problems: problems.length ? problems : null });
   };
 
   const confirmRemove = async () => {
@@ -87,9 +104,9 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
   };
 
   const onPick = (kind: Kind) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const picked = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (file) void upload(kind, file);
+    if (picked.length) void upload(kind, picked);
   };
 
   // An Advisory takes no translations or media files (the server refuses them): no upload is
@@ -150,7 +167,7 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
         {canUpload && (
           <label className="gcpe-file-input">
             <span>{inputLabel}</span>
-            <input type="file" accept={accept} onChange={onPick(kind)} disabled={s.busy} />
+            <input type="file" multiple accept={accept} onChange={onPick(kind)} disabled={s.busy} />
           </label>
         )}
         {!readOnly && <SaveStatus saving={s.busy} waiting={s.waiting} />}
@@ -164,8 +181,8 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
       {!uploadsAllowed && <p>{aType(view.type)} has no translations or media files.</p>}
       {(uploadsAllowed || view.files.length > 0) && (
         <>
-          {group("translation", "Translations", "application/pdf", "Upload a translation (PDF)")}
-          {group("asset", "Media files", undefined, "Upload a media file")}
+          {group("translation", "Translations", "application/pdf", "Upload translations (PDF, one or more)")}
+          {group("asset", "Media files", undefined, "Upload media files (one or more)")}
         </>
       )}
     </section>
