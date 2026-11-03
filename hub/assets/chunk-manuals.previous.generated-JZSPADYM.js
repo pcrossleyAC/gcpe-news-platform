@@ -1164,7 +1164,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>Choose <strong>Copy public address</strong> beside the file. You see &quot;Copied the public address of {name}.&quot; While the page is still working out the public address, the button is greyed out and the page says &quot;Working out the public address\u2026&quot;.</li>
 <li>Paste the address into the other screen&#39;s web address box.</li>
 </ol>
-<p>Don&#39;t copy the address from your browser&#39;s address bar while you are in the Hub. That address points at the Hub&#39;s own server, which the public can&#39;t open: you would see the file, but visitors would get a broken image or link. A web address box holding such an address says &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot;</p>
+<p>Don&#39;t copy the address from your browser&#39;s address bar while you are in the Hub. That address points at the Hub&#39;s own server, which the public can&#39;t open: you would see the file, but visitors would get a broken image or link. A web address box holding such an address says &quot;This address points at the Hub, which the public can&#39;t open. On Website \u2192 Files, use Copy public address and paste that instead.&quot; It shows for the Hub&#39;s other known web addresses too, not just the one you are using.</p>
 <h2>Replace a file</h2>
 <p>Replacing keeps the file&#39;s name and address, so every link to it keeps working.</p>
 <ol>
@@ -1218,7 +1218,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Most often this happens just after the Hub was updated: a page left open from before the update sends the file in a way the Hub no longer accepts.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},q=null,C={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
+`,changed:"2026-11-01"},q=null,C={html:`<p><strong>Who this is for:</strong> Site editors (NRMS.SiteEditor).</p>
 <p>These two <strong>Website</strong> tabs only show information. Release editors and release viewers see them too.</p>
 <h2>What&#39;s featured where</h2>
 <p>The table lists each place on the public site that has a Top or Feature release: <strong>Home</strong> and each ministry, sector or theme page. <strong>Top</strong> and <strong>Feature</strong> show the release&#39;s headline. A dash means the spot is empty.</p>
