@@ -613,7 +613,8 @@ body {
 /* Release lists and search. */
 
 .gcpe-release-list__toolbar,
-.gcpe-search__filters {
+.gcpe-search__filters,
+.gcpe-user-filters {
   display: flex;
   align-items: center;
   gap: 0.75rem;

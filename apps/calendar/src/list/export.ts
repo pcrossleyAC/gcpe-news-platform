@@ -1,4 +1,4 @@
-import { filterSummary, friendlyDateRange, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
+import { filterSummary, friendlyDateParts, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { inReadSnapshot } from "../activities/store";
 import { activities } from "../db/schema";
@@ -10,6 +10,8 @@ import { rowsOf } from "./rows";
 import { xlsxOf, type Run, type Sheet, type SheetCell } from "./xlsx";
 
 export const EXPORT_ROW_LIMIT = 10_000;
+/** Legacy's file name, which Excel also gave its one sheet (ActivityHandler.ashx.cs:123). */
+export const EXPORT_NAME = "BCGovernmentActivities";
 export class ExportTooLargeError extends Error {
   override name = "ExportTooLargeError";
   constructor() {
@@ -39,6 +41,8 @@ const WIDTHS = [8, 10, 16, 20, 24, 48, 36, 16, 24, 18, 16, 20, 14, 16, 16, 14];
 export const CONFIDENTIALITY_NOTICE =
   "CONFIDENTIALITY NOTICE:  This information, including any attachments, is confidential.  It is intended only for the use of the person or persons to whom it is addressed or shared with, unless I have expressly authorized otherwise.  If you have received this data extract in error, please discard the document, including any related information or attachments, and notify the Corporate Calendar Administrator immediately by email or telephone.";
 const DARK_RED = "FF8B0000";
+/** Legacy's TBC and Time TBD: bold #1919d2 (ActivityListProvider.ashx.cs:796). */
+const PENDING_BLUE = "FF1919D2";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const plain = (text: string): SheetCell => ({ runs: [{ text }], style: "cell" });
@@ -65,14 +69,31 @@ function printed(now: Date, timeZone: string): string {
   return `Printed: ${p.weekday}, ${p.month} ${p.day} ${p.hour}:${p.minute} ${p.dayPeriod}`;
 }
 
+/**
+ * Legacy's Date & Time (ActivityHandler.ashx.cs:461): no-break spaces inside each date and time, a space
+ * before every "-" so Excel can break there, and TBC or Time TBD in bold blue.
+ */
+export function exportDateRuns(r: ListRow, scope: Pick<ListScope, "rules" | "today">): Run[] {
+  const d = friendlyDateParts(r, { timeZone: scope.rules.timeZone, today: scope.today, weekday: true, nbsp: true });
+  const text = d.text.replaceAll("-", " -");
+  return d.pending ? [{ text: `${text} ` }, { text: d.pending, bold: true, color: PENDING_BLUE }] : [{ text }];
+}
+
+/** Legacy's Categories: an Issue's list starts "Issue" and drops "FYI Only" (ActivityHandler.ashx.cs:434-439). */
+export function exportCategories(r: Pick<ListRow, "isIssue" | "categories">, scope: Pick<ListScope, "rules">): string {
+  const names = r.categories.join(", ");
+  if (!r.isIssue) return names;
+  return `Issue, ${names}`.replaceAll(`, ${scope.rules.reports.fyiOnlyCategoryText}`, "").replace(/[, ]+$/, "");
+}
+
 function rowCells(r: ListRow, scope: ListScope): SheetCell[] {
   const summary: Run[] = r.isConfidential ? [{ text: "Not for Look Ahead ", color: DARK_RED }, { text: r.details }] : [{ text: r.details }];
   const significance: Run[] = r.strategy ? [{ text: r.significance }, { text: "\n\nStrategy: ", italic: true }, { text: r.strategy }] : [{ text: r.significance }];
   return [
     { number: r.id, style: "cell" },
     bold(r.ministryAbbreviation ?? ""),
-    bold([...(r.isIssue ? ["Issue"] : []), ...r.categories].join(", ")),
-    plain(friendlyDateRange(r, { timeZone: scope.rules.timeZone, today: scope.today, weekday: true })),
+    bold(exportCategories(r, scope)),
+    { runs: exportDateRuns(r, scope), style: "cell" },
     bold(r.title),
     { runs: summary, style: "cell" },
     { runs: significance, style: "cell" },
@@ -92,7 +113,7 @@ function rowCells(r: ListRow, scope: ListScope): SheetCell[] {
 export function exportSheet(rows: ListRow[], q: ListQuery, scope: ListScope, now: Date, filter: string): Sheet {
   const banner = scope.rules.reportBanner.province;
   return {
-    name: "Activities",
+    name: EXPORT_NAME,
     widths: WIDTHS,
     rows: [
       {
@@ -102,7 +123,8 @@ export function exportSheet(rows: ListRow[], q: ListQuery, scope: ListScope, now
           { runs: [{ text: printed(now, scope.rules.timeZone) }], style: "heading", span: 4 },
         ],
       },
-      { cells: EXPORT_HEADERS.map((h) => ({ runs: [{ text: h }], style: "header" as const })) },
+      // AddHeaderCell: white bold 11 pt on #31869b, left, turned 45 degrees, 85 high.
+      { cells: EXPORT_HEADERS.map((h) => ({ runs: [{ text: h }], style: "header" as const })), height: 85 },
       ...rows.map((r) => ({ cells: rowCells(r, scope) })),
       { cells: [{ runs: [{ text: CONFIDENTIALITY_NOTICE }], style: "notice", span: 10 }], height: 60 },
       // After legacy's footer, so the banner, header row, data and footer stay where legacy put them (suite review CAL-3).

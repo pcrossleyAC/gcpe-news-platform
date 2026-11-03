@@ -95,11 +95,12 @@ describe("the report routes (spec addendum §10)", () => {
     expect(file.headers["content-disposition"]).toBe('attachment; filename="LookAhead.pdf"');
     expect(file.headers["x-content-type-options"]).toBe("nosniff");
     expect(file.headers["cache-control"]).toBe("no-store");
-    expect((file.body as Buffer).toString("latin1")).toBe("%PDF-sample Look Ahead");
+    expect((file.body as Buffer).toString("latin1")).toBe("%PDF-sample LookAheadReport");
   });
 
   it("each report builds its own document from the list's query", async () => {
-    for (const [report, title] of [["30-60-90", "30 / 60 / 90 Report"], ["planning", "Planning Report"], ["exec-look-ahead", "Exec Look Ahead"]] as const) {
+    // Legacy's PDF titles: the Look Ahead and the Exec share one (look-ahead.test.ts tells their documents apart).
+    for (const [report, title] of [["30-60-90", "Main30_60_90Report"], ["planning", "PlanningReport"], ["exec-look-ahead", "LookAheadReport"]] as const) {
       const res = await start("hqAdmin", report);
       expect(res.status, report).toBe(201);
       expect(fake.docs.at(-1)!.title).toBe(title);

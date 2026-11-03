@@ -6,6 +6,7 @@ import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { calendarRoleLabel } from "../../admin/calendar-access/calendar-roles";
 import { RANK_OPTIONS, rowLabel, type CalendarUserRow } from "./types";
 import { TableScroll } from "../../../shared/TableScroll";
+import { NO_USER_FILTERS, roleMatches, UserFilters } from "../../admin/calendar-access/UserFilters";
 
 const rankLabel = (rank: number | null): string => (rank ? (RANK_OPTIONS.find((o) => o.value === String(rank))?.label ?? String(rank)) : "");
 
@@ -15,6 +16,7 @@ export function CalendarUsersScreen(): React.JSX.Element {
   const [inactive, setInactive] = useState(false);
   const [noAccess, setNoAccess] = useState(false);
   const [filter, setFilter] = useState("");
+  const [narrow, setNarrow] = useState(NO_USER_FILTERS);
   const [rows, setRows] = useState<CalendarUserRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef(0);
@@ -36,7 +38,15 @@ export function CalendarUsersScreen(): React.JSX.Element {
   }, [inactive, noAccess]);
 
   const needle = filter.trim().toLowerCase();
-  const shown = (rows ?? []).filter((r) => !needle || r.displayName.toLowerCase().includes(needle) || (r.ministryAbbreviation ?? "").toLowerCase().includes(needle));
+  const shown = (rows ?? []).filter(
+    (r) =>
+      (!needle || r.displayName.toLowerCase().includes(needle) || (r.ministryAbbreviation ?? "").toLowerCase().includes(needle)) &&
+      roleMatches(narrow.role, r.role) &&
+      (!narrow.ministry || r.ministryKey === narrow.ministry),
+  );
+  const ministryChoices = [...new Map((rows ?? []).filter((r) => r.ministryKey).map((r) => [r.ministryKey!, r.ministryAbbreviation ?? r.ministryKey!])).entries()]
+    .map(([key, label]) => ({ key, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
   return (
     <div>
       <h1>Calendar users</h1>
@@ -51,6 +61,7 @@ export function CalendarUsersScreen(): React.JSX.Element {
         <input id="calendar-users-no-access" type="checkbox" checked={noAccess} onChange={(e) => setNoAccess(e.target.checked)} />
         <label htmlFor="calendar-users-no-access">Show users without Calendar access</label>
       </div>
+      {rows !== null && <UserFilters idPrefix="calendar-users" value={narrow} onChange={setNarrow} ministries={ministryChoices} shown={shown.length} total={rows.length} noun="rows" />}
       {rows === null && !error && <p>Loading…</p>}
       {rows !== null && (
         <TableScroll label="Calendar users">

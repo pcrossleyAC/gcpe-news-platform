@@ -66,7 +66,7 @@ describe("the reports as PDF: sections and activity order from the text (golden 
     await tdb.drop();
   });
 
-  it("Look Ahead, Health Editor: their events, an empty day said so, Issues by the ministry rule, Awareness; no Consultations section", async () => {
+  it("Look Ahead, Health Editor: their events, an empty day said so, Issues by the ministry rule, Awareness; no Consultations section, though the legend names it", async () => {
     const pages = await pdfOf("editor", "look-ahead");
     expect(pages.every((p) => p.size[0] === 612 && p.size[1] === 792)).toBe(true);
     expect(outlineOf(pages)).toEqual([
@@ -79,7 +79,9 @@ describe("the reports as PDF: sections and activity order from the text (golden 
     const all = text(pages);
     expect(all).toContain("DRAFT ONLY - NOT FOR CIRCULATION");
     expect(all).toContain("Monday, Mar. 12, 2046 to Wednesday, Mar. 14, 2046");
-    expect(all).not.toContain("Consultations and Dialogues");
+    // Legacy's legend names Consultations and Dialogues; the section itself is dropped (C185).
+    expect(text(pages.slice(0, 1))).toContain("Consultations and Dialogues");
+    expect(text(pages.slice(1))).not.toContain("Consultations and Dialogues");
     expect(all).toContain("Not for Look Ahead Fictional details B");
     for (const k of ["C", "D", "F"] as const) expect(all).not.toContain(`Golden ${k}`);
   });

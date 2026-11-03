@@ -7,11 +7,11 @@ import { insertRaw, seedWorld, type Who, type World } from "../../test/world";
 import { bc, outline, plain, reportRow, sampleRows } from "../../test/report-rows";
 import { reportData, ReportTooLargeError, type ReportRow } from "./data";
 import { LOOK_AHEAD_MAX_DAYS, lookAheadDoc, lookAheadRange, type LookAheadContext } from "./look-ahead";
-import { rowCountOf, type TableBlock } from "./model";
+import { rowCountOf, type CoverBlock, type TableBlock } from "./model";
 import { COLOURS } from "./text";
 import { reportAssets } from "./render/assets";
 import { renderPdf, useBcSans } from "./render/pdf";
-import { pdfPages } from "../../test/pdf-text";
+import { outlineOf, pdfPages } from "../../test/pdf-text";
 
 const tz = TEST_RULES.timeZone;
 // 2026-11-03 11:00 BC. 2026-11-13 is a Friday.
@@ -49,7 +49,7 @@ describe("the Look Ahead's range and title (ActivityHandler.ashx.cs:640-673)", (
     expect(lookAheadRange(q({ filter: { from: "2026-11-10", thisDayOnly: true } }), "2026-11-03", tz, false)).toMatchObject({ from: "2026-11-10", to: "2026-11-10", includeOutlook: false });
   });
   it("legacy's title: the start's year only when both ends share it", () => {
-    const title = (i: ListQueryInput) => plain((lookAheadDoc(ctx([], { q: q(i) }), { detailed: false }).blocks[1] as { runs: { text: string }[] }).runs);
+    const title = (i: ListQueryInput) => plain((lookAheadDoc(ctx([], { q: q(i) }), { detailed: false }).blocks[0] as CoverBlock).title);
     expect(title({ filter: { from: "2026-11-10", to: "2026-11-12" } })).toBe("Tuesday, Nov. 10, 2026 to Thursday, Nov. 12, 2026");
     expect(title({ filter: { from: "2026-12-30", to: "2027-01-02" } })).toBe("Wednesday, Dec. 30 to Saturday, Jan. 2, 2027");
     expect(title({ filter: { from: "2026-11-10", thisDayOnly: true } })).toBe("Tuesday, Nov. 10, 2026");
@@ -60,12 +60,12 @@ describe("the Look Ahead's range and title (ActivityHandler.ashx.cs:640-673)", (
 });
 
 describe("the Look Ahead's sections, in legacy's order (spec addendum §10.2)", () => {
-  it("for a ministry user: the cover without Consultations, each day's Events, Issues by legacy's ministry rule, each day's In the News, Awareness Dates", () => {
+  it("for a ministry user: the cover, its legend naming Consultations and Dialogues as legacy's though the section is dropped, each day's Events, Issues by legacy's ministry rule, each day's In the News, Awareness Dates", () => {
     expect(outline(lookAheadDoc(ctx(ROWS), { detailed: false }))).toEqual([
       "[banner] SAMPLE PROVINCE CORPORATE LOOK AHEAD",
       "# Tuesday, Nov. 10, 2026 to Thursday, Nov. 12, 2026",
       "# Contents:",
-      "[legend] Events, Speeches and Releases (Inside Government) | Issues and Reports | In the News (Outside Government) | Awareness Dates",
+      "[legend] Events, Speeches and Releases (Inside Government) | Issues and Reports | Consultations and Dialogues | In the News (Outside Government) | Awareness Dates",
       "---",
       "# Inside Government",
       // Time-TBD and multi-day rows first, in list order; then the day's timed rows.
@@ -120,8 +120,8 @@ describe("the Look Ahead's sections, in legacy's order (spec addendum §10.2)", 
     const tail = (isHq: boolean) => outline(lookAheadDoc(ctx([later, marked], { isHq, q: q({}) }), { detailed: false })).slice(-3);
     expect(tail(false)).toEqual(["# LONG TERM OUTLOOK", "HLTH-20020", "HLTH-20021"]);
     expect(tail(true)).toEqual(["---", "# LONG TERM OUTLOOK", "HLTH-20021"]);
-    const legend = lookAheadDoc(ctx([], { q: q({}) }), { detailed: false }).blocks[3];
-    expect(legend).toMatchObject({ kind: "legend", items: [{}, {}, {}, {}, { colour: COLOURS.outlook }] });
+    const cover = lookAheadDoc(ctx([], { q: q({}) }), { detailed: false }).blocks[0] as CoverBlock;
+    expect(cover.legend.map((i) => i.colour)).toEqual([COLOURS.events, COLOURS.issues, "#daeef3", COLOURS.news, COLOURS.awareness, COLOURS.outlook]);
   });
 });
 
@@ -174,6 +174,8 @@ describe("a Look Ahead row (ActivityHandler.ashx.cs:984-1061)", () => {
     expect(plain(day(doc).header[0]!.runs)).toBe("Tue Nov 10");
     expect(plain(first![0]!.runs)).toBe("Nov 10-12");
     expect(plain(second![0]!.runs)).toBe("9:00 AM\nNEW");
+    // The Date textbox's Flag run: 11 pt bold orange.
+    expect(second![0]!.runs.at(-1)).toEqual({ text: "\nNEW", bold: true, color: "#ffa500", size: 11 });
     expect(second!.map((cell) => plain(cell.runs))).toEqual(["9:00 AM\nNEW", "HLTH", "Sample City - Sample 20001: Sample details", "-", "HLTH-20001"]);
     expect(second![4]!.runs[0]!.link).toBe("https://staff.example.test/hub/calendar/activities/20001");
     expect([first![2]!.fill, second![2]!.fill]).toEqual([COLOURS.zebra, undefined]);
@@ -185,7 +187,7 @@ describe("a Look Ahead row (ActivityHandler.ashx.cs:984-1061)", () => {
 
   it("Time TBD and TBC are bold blue after the date", () => {
     const cell = day(lookAheadDoc(ctx([C]), { detailed: false })).rows[0]![0]!;
-    expect(cell.runs).toEqual([{ text: "", color: COLOURS.white }, { text: "Time TBD", bold: true, color: COLOURS.pending }]);
+    expect(cell.runs).toEqual([{ text: "", wrapAtHyphen: true, color: COLOURS.white }, { text: "Time TBD", bold: true, color: COLOURS.pending }]);
   });
 
   it("the Executive Summary in place of the title and details, where the row carries it", () => {
@@ -196,19 +198,26 @@ describe("a Look Ahead row (ActivityHandler.ashx.cs:984-1061)", () => {
   it("the Exec Look Ahead: the detailed text, and issues highlighted in every table", () => {
     const doc = lookAheadDoc(ctx([{ ...A, isIssue: true, lastUpdatedAt: "2026-11-03T16:15:00Z" }], { isHq: true }), { detailed: true });
     const r = day(doc).rows[0]!;
-    expect(plain(r[2]!.runs)).toBe("Sample 20001\nSample details\nSample significance\nSample City  Last updated today at 9:15 AM");
-    expect(r[2]!.fill).toBe(COLOURS.issues);
-    expect(doc.title).toBe("Exec Look Ahead");
+    expect(plain(r[2]!.runs)).toBe("Sample 20001\nSample details\n\u00a0\nSample significance\nSample City  Last updated today at 9:15 AM");
+    // Only Activity/Details turns purple; Lead, RLS and CC ID# keep the zebra.
+    expect(r.map((cell) => cell.fill)).toEqual([COLOURS.events, COLOURS.zebra, COLOURS.issues, COLOURS.zebra, COLOURS.zebra]);
+    expect(doc.title).toBe("LookAheadReport");
   });
 
-  it("the running text: page 1 only the DRAFT ONLY line; later pages the province, DRAFT AND CONFIDENTIAL, Updated, the CHANGED note and Page X of Y", () => {
+  it("the running text: page 1 only the DRAFT ONLY line; later pages the logo (or the province without one), DRAFT AND CONFIDENTIAL, Updated, the CHANGED note and Page X of Y", () => {
     const doc = lookAheadDoc(ctx([]), { detailed: false });
-    expect(doc.firstPage).toEqual({ header: { right: [{ text: "DRAFT ONLY - NOT FOR CIRCULATION\nInformation is confidential and subject to change" }] }, footer: null });
+    expect(doc.firstPage).toEqual({ header: { right: [{ text: "DRAFT ONLY - NOT FOR CIRCULATION\nInformation is confidential and subject to change" }], size: 11, offset: 14.4, padding: 2 }, footer: null });
     expect(plain(doc.header!.left!)).toBe("Sample Province");
-    expect(plain(doc.header!.right!)).toBe("DRAFT AND CONFIDENTIAL");
+    expect(doc.header!.image).toBeUndefined();
+    expect(doc.header!.right).toEqual([{ text: "DRAFT AND CONFIDENTIAL", color: "#a52a2a" }]);
     expect(plain(doc.footer!.left!)).toBe("Updated Tuesday, Nov 3, 2026 11:00 AM");
-    expect(doc.footer).toMatchObject({ pageNumbers: true });
+    // One right-aligned run: the note, three spaces, then the page numbers (LookAheadReport.rdlc's PageNumber textbox).
+    expect(doc.footer).toMatchObject({ right: [{ text: '"CHANGED" applies to major detail or date changes only (not time switches)   ' }], pageNumbers: true, size: 9 });
     expect(doc.page).toBe("letter-portrait");
+    const bc = lookAheadDoc(ctx([], { rules: { ...TEST_RULES, lookAheadCoverImage: "LookAheadCover.jpg", lookAheadLogoImage: "ProvinceOfBritishColumbia.jpg" } }), { detailed: false });
+    expect(bc.header).toMatchObject({ image: { name: "ProvinceOfBritishColumbia.jpg", width: 114.75, height: 30.75 } });
+    expect(bc.header!.left).toBeUndefined();
+    expect(bc.blocks[0]).toMatchObject({ kind: "cover", image: { name: "LookAheadCover.jpg", width: 573.75, height: 742.5 } });
   });
 });
 
@@ -363,10 +372,13 @@ describe("what building a Look Ahead costs the event loop", () => {
 });
 
 describe("a CC ID# wider than its column, as drawn", () => {
-  it("stays on one line, so the row has one link, as legacy's did", async () => {
+  it("breaks after its hyphen, never inside the number, as legacy's did; the outline still reads one activity", async () => {
     useBcSans(reportAssets().fontsDir);
     const wide = row(20011, { hqSection: "events_and_speeches", ministryAbbreviation: "WWMW", startAt: at("2026-11-10", "09:00"), endAt: at("2026-11-10", "10:00") });
     const pages = await pdfPages(await renderPdf(lookAheadDoc(ctx([wide]), { detailed: false })));
-    expect(pages.flatMap((p) => p.links).filter((l) => l.url.endsWith("/activities/20011"))).toHaveLength(1);
+    const lines = pages.flatMap((p) => p.lines.map((l) => l.text));
+    expect(lines.some((l) => l.endsWith("WWMW-"))).toBe(true);
+    expect(lines.some((l) => l.endsWith("20011"))).toBe(true);
+    expect(outlineOf(pages).filter((t) => t === "id:20011")).toHaveLength(1);
   });
 });

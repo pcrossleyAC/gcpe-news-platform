@@ -61,6 +61,26 @@ describe("CalendarAccessScreen", () => {
     expect(within(edit.closest("tr")!).getByRole("rowheader", { name: "Robin Staff" })).toBeInTheDocument();
   });
 
+  it("narrows the list by Calendar role (or no access) and by ministry, and says how many are shown", async () => {
+    stub(["Calendar.Administrator"], []);
+    renderScreen();
+    await screen.findByRole("button", { name: "Edit access for Robin Staff" });
+    const names = () => screen.getAllByRole("rowheader").map((h) => h.textContent);
+    const all = names();
+    expect(screen.getByText(`Showing ${all.length} of ${all.length} users`)).toBeInTheDocument();
+    const user = userEvent.setup();
+    const role = screen.getByLabelText("Calendar role", { selector: "#calendar-access-role" });
+    const ministry = screen.getByLabelText("Ministry", { selector: "#calendar-access-ministry" });
+    await user.selectOptions(role, "none");
+    expect(names()).toEqual(["Robin Staff"]);
+    await user.selectOptions(role, "");
+    await user.selectOptions(ministry, "gcpe-headquarters");
+    expect(names()).toEqual(["Pat Hq"]);
+    expect(screen.getByText(`Showing 1 of ${all.length} users`)).toBeInTheDocument();
+    // The inactive ministry is a choice only once someone listed holds it.
+    expect([...(ministry as HTMLSelectElement).options].map((o) => o.value)).not.toContain("retired");
+  });
+
   it("an Administrator is offered roles up to Administrator, and saves the role with the ministries", async () => {
     const calls: Call[] = [];
     stub(["Calendar.Administrator"], calls, () => jsonResponse(200, { ...STAFF, calendarRole: "Calendar.Editor", organizationKeys: ["health"] }));

@@ -58,7 +58,9 @@ export interface CalendarRules {
   showRecordsSection: boolean;
   /** Keywords a clone keeps; every other keyword is dropped (ActivityWebService.cs:430). */
   cloneKeptKeywordNames: readonly string[];
+  /** File names in apps/calendar/assets/report/: the Look Ahead's cover picture and its later pages' logo. */
   lookAheadCoverImage: string | null;
+  lookAheadLogoImage: string | null;
   reportBanner: { province: string; confidentiality: string };
   reports: ReportRules;
 }

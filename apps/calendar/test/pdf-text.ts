@@ -57,7 +57,8 @@ export function activityIdOf(url: string): number | null {
 /**
  * A report's structure in reading order, for golden tests and the 5i comparison with legacy's
  * PDFs: "§ SECTION", "# day or month heading", "∅ day with no activities", and "id:123" for each
- * row's activity link. The cover (the page with "Contents:") is skipped.
+ * row's activity link, once: a CC ID# broken after its hyphen is two links on two lines. The cover
+ * (the page with "Contents:") is skipped.
  */
 export function outlineOf(pages: PdfPage[]): string[] {
   const out: string[] = [];
@@ -72,7 +73,7 @@ export function outlineOf(pages: PdfPage[]): string[] {
       const id = activityIdOf(link.url);
       if (id !== null) tokens.push({ y: link.y, t: `id:${id}` });
     }
-    out.push(...tokens.sort((a, b) => b.y - a.y).map((x) => x.t));
+    for (const { t } of tokens.sort((a, b) => b.y - a.y)) if (!(t.startsWith("id:") && out.at(-1) === t)) out.push(t);
   }
   return out;
 }

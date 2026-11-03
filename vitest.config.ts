@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 // Two projects share one `vitest run` invocation: the Node suite (every app and package) and a
 // jsdom project for apps/staff-web's React component tests. Kept apart by file extension, not a
@@ -15,6 +15,8 @@ export default defineConfig({
           name: "node",
           environment: "node",
           include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts", "apps/*/test/**/*.test.ts", "scripts/**/*.test.ts", "tests/**/*.test.ts", "tools/**/*.test.ts"],
+          // The test-data scrub is a Mac or Linux developer tool (bash, ssh, owner-only file modes); it never runs on Windows.
+          exclude: [...configDefaults.exclude, ...(process.platform === "win32" ? ["tests/scrub/**"] : [])],
           testTimeout: 20_000,
           hookTimeout: 30_000,
           env: { TZ: "UTC" },

@@ -11,7 +11,7 @@ topics: []
 
 **Calendar access** gives staff a Calendar role and the ministries they work for. Calendar administrators and Calendar system administrators use this screen too, but with limits that don't apply to you.
 
-The table shows each person's **Name**, **Email**, **Calendar role** and **Ministries**. Inactive people are hidden until you tick **Show inactive users, including those with no email**.
+The table shows each person's **Name**, **Email**, **Calendar role** and **Ministries**. Inactive people are hidden until you tick **Show inactive users, including those with no email**. To narrow a long list, choose a **Calendar role** (or **No Calendar access**) or a **Ministry**; the line under the dropdowns says how many people are shown.
 
 ## The Calendar roles
 

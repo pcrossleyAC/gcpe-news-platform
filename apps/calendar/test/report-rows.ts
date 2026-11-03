@@ -23,17 +23,22 @@ export function reportRow(over: Partial<ReportRow> = {}): ReportRow {
 export const plain = (runs: { text: string }[]) => runs.map((r) => r.text).join("");
 
 /**
- * A document's structure, for golden comparisons: "# heading", "---" for a page break, and each
- * table row as its CC ID# ("HLTH-20001"). Colours and fonts are the renderer's tests' business.
+ * A document's structure, for golden comparisons: "# heading" (a table's titles too), "---" for a page
+ * break, and each table row as its CC ID# ("HLTH-20001"); the cover as its picture or banner, its title,
+ * "Contents:" and its legend. Colours and fonts are the renderer's tests' business.
  */
 export function outline(doc: { blocks: import("../src/reports/model").Block[] }): string[] {
   const out: string[] = [];
   for (const b of doc.blocks) {
     if (b.kind === "heading") out.push(`# ${plain(b.runs)}`);
     else if (b.kind === "pageBreak") out.push("---");
-    else if (b.kind === "banner") out.push(`[banner] ${b.lines.join(" ")}`);
-    else if (b.kind === "legend") out.push(`[legend] ${b.items.map((i) => plain(i.runs)).join(" | ")}`);
-    else for (const row of b.rows) out.push(row.flatMap((cell) => plain(cell.runs).split("\n")).find((t) => /^[A-Z][A-Z0-9]*-\d+$/.test(t)) ?? "?");
+    else if (b.kind === "cover") {
+      out.push(b.image ? `[cover] ${b.image.name}` : `[banner] ${b.lines.join(" ")}`, `# ${plain(b.title)}`, ...(b.filter ? [`# ${plain(b.filter)}`] : []), `# ${plain(b.contents)}`);
+      out.push(`[legend] ${b.legend.map((i) => plain(i.runs)).join(" | ")}`);
+    } else {
+      out.push(...(b.titles ?? []).map((t) => `# ${plain(t.runs)}`));
+      for (const row of b.rows) out.push(row.flatMap((cell) => plain(cell.runs).split("\n")).find((t) => /^[A-Z][A-Z0-9]*-\d+$/.test(t)) ?? "?");
+    }
   }
   return out;
 }

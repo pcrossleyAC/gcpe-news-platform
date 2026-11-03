@@ -59,6 +59,17 @@ describe("the Look Ahead's dates: a reference day, the start time only (Activity
   });
 });
 
+describe("legacy's no-break spaces, for the Excel export (ActivityListProvider.ashx.cs:768, 823-850)", () => {
+  const timed = (start: string, end: string, more: object = {}) => ({ startAt: at(start), endAt: at(end), isAllDay: false, isConfirmed: true, ...more });
+  const nb = { ...o, nbsp: true };
+  it("inside each date and time, a plain space between the date and the time; off by default", () => {
+    expect(friendlyDateParts(timed("2026-11-10T16:00:00Z", "2026-11-10T17:00:00Z"), nb).text).toBe("Tue\u00a0Nov\u00a010 9:00-10:00\u00a0AM");
+    expect(friendlyDateParts(timed("2027-01-05T16:00:00Z", "2027-01-05T21:00:00Z"), nb).text).toBe("Tue\u00a0Jan\u00a05\u00a02027 9:00\u00a0AM-2:00\u00a0PM");
+    expect(friendlyDateParts(timed("2026-11-10T16:00:00Z", "2026-11-12T17:00:00Z"), nb).text).toBe("Nov\u00a010-12");
+    expect(friendlyDateParts(timed("2026-11-10T16:00:00Z", "2026-11-10T17:00:00Z"), o).text).toBe("Tue Nov 10 9:00-10:00 AM");
+  });
+});
+
 describe("friendlySpan (ActivityListProvider.ashx.cs:850-876)", () => {
   const now = at("2026-11-03T18:00:00Z");
   it("months, weeks, days, then hours or minutes the same day", () => {

@@ -7,6 +7,7 @@ import { AccessEditor, actorFor, lockedMessage, type Actor } from "./AccessEdito
 import { calendarRoleLabel, canManageCalendarAccess, checkCalendarGrant, type CalendarRoleName } from "./calendar-roles";
 import { LeavePageGuard, useDirtyParts } from "../../../shared/LeaveGuard";
 import { TableScroll } from "../../../shared/TableScroll";
+import { NO_USER_FILTERS, roleMatches, UserFilters } from "./UserFilters";
 
 export interface CalendarAccessUser {
   id: string;
@@ -43,6 +44,7 @@ export function CalendarAccessScreen(): React.JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [narrow, setNarrow] = useState(NO_USER_FILTERS);
   const [editing, setEditing] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   // Suite review H2: an open editor's unsaved role or ministries ask before leaving.
@@ -79,7 +81,19 @@ export function CalendarAccessScreen(): React.JSX.Element {
 
   const byKey = new Map(orgs.map((o) => [o.key, o]));
   const needle = filter.trim().toLowerCase();
-  const shown = (users ?? []).filter((u) => (showInactive || u.isActive) && (!needle || u.displayName.toLowerCase().includes(needle) || (u.email ?? "").includes(needle)));
+  const listed = (users ?? []).filter((u) => showInactive || u.isActive);
+  const shown = listed.filter(
+    (u) =>
+      (!needle || u.displayName.toLowerCase().includes(needle) || (u.email ?? "").includes(needle)) &&
+      roleMatches(narrow.role, u.calendarRole) &&
+      (!narrow.ministry || u.organizationKeys.includes(narrow.ministry)),
+  );
+  // Every active organization, and any inactive one someone listed still belongs to.
+  const held = new Set(listed.flatMap((u) => u.organizationKeys));
+  const ministryChoices = orgs
+    .filter((o) => o.isActive || held.has(o.key))
+    .map((o) => ({ key: o.key, label: o.abbreviation ? `${o.abbreviation} — ${o.displayName}` : o.displayName }))
+    .sort((a, b) => a.label.localeCompare(b.label));
   const hqKeys = new Set(orgs.filter((o) => o.isHq).map((o) => o.key));
   const actor: Actor = actorFor(session, users ?? [], orgs);
 
@@ -95,6 +109,7 @@ export function CalendarAccessScreen(): React.JSX.Element {
         <input id="calendar-access-show-inactive" type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
         <label htmlFor="calendar-access-show-inactive">Show inactive users, including those with no email</label>
       </div>
+      {users !== null && <UserFilters idPrefix="calendar-access" value={narrow} onChange={setNarrow} ministries={ministryChoices} shown={shown.length} total={listed.length} noun="users" />}
       {users === null && !loadError && <p>Loading…</p>}
       {users !== null && (
         <TableScroll label="Staff and their Calendar access">

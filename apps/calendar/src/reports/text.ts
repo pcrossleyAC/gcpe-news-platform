@@ -9,6 +9,8 @@ export const COLOURS = {
   events: "#558abd",
   issues: "#ccc0d9",
   issuesDate: "#f2dbdb",
+  /** The cover legend's Consultations and Dialogues swatch (ActivityHandler.ashx.cs:765); the section itself is dropped (C185). */
+  consultations: "#daeef3",
   news: "#e8f3a9",
   awareness: "#eaf1dd",
   outlook: "#edf2f8",
@@ -16,17 +18,25 @@ export const COLOURS = {
   listHeader: "#000000",
   thirtySixtyNinety: "#35989d",
   planning: "#384c70",
+  /** Planning's header-row border (PlanningReport.rdlc). */
+  planningBorder: "#4e648a",
   white: "#ffffff",
-  zebra: "#d9d9d9",
-  heading: "#365f91",
-  draft: "#9e3a38",
-  /** The 30/60/90's and Planning's "DRAFT AND CONFIDENTIAL" (the RDLCs' Brown). */
+  black: "#000000",
+  /** The RDLCs' LightGrey: the Look Ahead's zebra and every report's grid. */
+  zebra: "#d3d3d3",
+  grid: "#d3d3d3",
+  /** The Look Ahead's headings (the RDLCs' #384c70). */
+  heading: "#384c70",
+  /** "DRAFT AND CONFIDENTIAL" in every report (the RDLCs' Brown). */
   brown: "#a52a2a",
   banner: "#595959",
+  /** The cover's "Contents:" (the RDLC's Gray). */
+  grey: "#808080",
   darkRed: "#8b0000",
   seaGreen: "#2e8b57",
   flag: "#ffa500",
-  link: "#0000ee",
+  /** The RDLCs' Blue: the CC ID# and links in the text. */
+  link: "#0000ff",
   pending: "#1919d2",
   lastUpdated: "#cf7a50",
 } as const;
@@ -207,16 +217,17 @@ export function detailedRuns(row: ReportRow, c: TextContext): Run[] {
   const cityVenue = [city, row.venue].filter(Boolean).join(": ");
   const runs: Run[] = [{ text: cleanTitle(row.title), bold: true }];
   if (row.details) runs.push({ text: `\n${row.details}` });
-  if (row.significance) runs.push({ text: `\n${row.significance}` });
+  // Legacy's <div style="font-size:2pt">&nbsp;</div>: a 2 pt line before the significance.
+  if (row.significance) runs.push({ text: "\n" }, { text: "\u00a0\n", size: 2 }, { text: row.significance });
   // Legacy ends only the significance with a line break; without one, City: Venue follows the details after a space.
   if (cityVenue) runs.push({ text: row.significance ? "\n" : " " }, { text: cityVenue, bold: true });
-  runs.push({ text: cityVenue ? "  " : "\n" }, { text: lastUpdatedText(row, c.now, c.rules.timeZone), size: 8, color: COLOURS.lastUpdated });
+  runs.push({ text: cityVenue ? "  " : "\n" }, { text: lastUpdatedText(row, c.now, c.rules.timeZone), size: 9, color: COLOURS.lastUpdated });
   return linkify(runs);
 }
 
-/** Legacy's FormatFlag: NEW or CHANGED in orange, from the LA status the viewer may see. */
+/** Legacy's FormatFlag: NEW or CHANGED, 11 pt bold orange (the Date textbox's Flag run), from the LA status the viewer may see. */
 export function flagRuns(row: Pick<ReportRow, "hqStatus">): Run[] {
-  return row.hqStatus ? [{ text: `\n${row.hqStatus.toUpperCase()}`, bold: true, color: COLOURS.flag }] : [];
+  return row.hqStatus ? [{ text: `\n${row.hqStatus.toUpperCase()}`, bold: true, color: COLOURS.flag, size: 11 }] : [];
 }
 
 /** The Lead column and the CC ID#'s prefix: the ministry's abbreviation, mapped as the tenant says (GCPEHQ → HQ). */
@@ -226,11 +237,11 @@ export function leadOf(row: Pick<ReportRow, "ministryAbbreviation">, rules: Cale
 }
 
 /**
- * "MIN-Id", blue, linked to the activity in the staff app (carry-forward § 5g). Never broken: in BC Sans a
- * four-letter abbreviation and a six-digit id are wider than the column, and legacy kept them on one line.
+ * "MIN-Id", blue, linked to the activity in the staff app (carry-forward § 5g). Where it is wider than
+ * its column it breaks after the hyphen, as legacy's did (LookAheadEventSpeechRlsSubreport.rdlc's ActivityId).
  */
 export function minIdRuns(row: Pick<ReportRow, "id" | "ministryAbbreviation">, c: Pick<TextContext, "rules" | "origin">): Run[] {
-  return [{ text: `${leadOf(row, c.rules)}-${row.id}`, color: COLOURS.link, noWrap: true, ...(c.origin ? { link: `${c.origin}/hub/calendar/activities/${row.id}` } : {}) }];
+  return [{ text: `${leadOf(row, c.rules)}-${row.id}`, color: COLOURS.link, wrapAtHyphen: true, ...(c.origin ? { link: `${c.origin}/hub/calendar/activities/${row.id}` } : {}) }];
 }
 
 /** Which Look Ahead table a row is in: legacy's `inTheNews` is true for Issues and Reports and for In the News. */

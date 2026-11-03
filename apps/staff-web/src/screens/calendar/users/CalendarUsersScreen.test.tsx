@@ -63,6 +63,22 @@ describe("CalendarUsersScreen", () => {
     expect(within(screen.getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Name", "Ministry", "Comm contact", "Calendar role", "Active"]);
   });
 
+  it("narrows the rows by Calendar role and by ministry, and says how many are shown", async () => {
+    stub([]);
+    renderScreen();
+    await screen.findByRole("link", { name: "Robin Staff (HLTH) (4)" });
+    expect(screen.getByText("Showing 2 of 2 rows")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText("Ministry"), "health");
+    expect(screen.queryByRole("link", { name: "Robin Staff (FIN)" })).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 2 rows")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Ministry"), "");
+    await user.selectOptions(screen.getByLabelText("Calendar role"), "Calendar.Advanced");
+    expect(screen.queryByRole("link", { name: /Robin Staff/ })).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Calendar role"), "Calendar.Editor");
+    expect(screen.getAllByRole("link", { name: /Robin Staff/ })).toHaveLength(2);
+  });
+
   it("asks for inactive users, including those with no email, when the switch is on", async () => {
     const calls: string[] = [];
     stub(calls);

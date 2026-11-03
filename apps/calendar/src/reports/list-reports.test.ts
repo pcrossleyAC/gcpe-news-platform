@@ -68,9 +68,11 @@ describe("the 30/60/90 report (spec addendum §10.4)", () => {
       "Sample strategy\n\nSample news release",
       "HLTH-20001\nRobin Staff\n\ncreated yesterday",
     ]);
-    expect(row.slice(1).map((c) => c.fill)).toEqual([COLOURS.issues, COLOURS.issues, COLOURS.issues]);
+    // Monthly30_60_90Subreport.rdlc: Fields!Color on TOPIC and STRATEGY only; ID/CONT centred and never filled.
+    expect(row.slice(1).map((c) => c.fill)).toEqual([COLOURS.issues, COLOURS.issues, undefined]);
+    expect(row[3]!.align).toBe("center");
     expect(row[0]!.fill).toBe(COLOURS.thirtySixtyNinety);
-    expect(plain(doc.footer!.left!)).toBe("DRAFT AND CONFIDENTIAL Updated Tuesday, Nov 3, 2026 11:00 AM");
+    expect(plain(doc.footer!.left!)).toBe("DRAFT AND CONFIDENTIAL  Updated Tuesday, Nov 3, 2026 11:00 AM");
     expect(doc.header).toBeNull();
   });
 
@@ -78,11 +80,23 @@ describe("the 30/60/90 report (spec addendum §10.4)", () => {
     const doc = thirtySixtyNinetyDoc(ctx([on(20001, "2026-11-10")]));
     expect(doc.blocks[0]).toMatchObject({ kind: "heading", size: 18, runs: [{ text: "30 / 60 / 90 REPORT", bold: true }] });
     expect(doc.blocks[1]).toMatchObject({ kind: "heading", size: 16, runs: [{ text: "November 2026", bold: true, color: "#384c70" }] });
-    expect(doc.footer!.left).toEqual([{ text: "DRAFT AND CONFIDENTIAL", color: "#a52a2a", size: 9 }, { text: " Updated Tuesday, Nov 3, 2026 11:00 AM", size: 9 }]);
+    // Main30_60_90Report.rdlc's ExecutionTime: "DRAFT AND CONFIDENTIAL" and two spaces in Brown, then Updated; 9 pt.
+    expect(doc.footer).toMatchObject({ left: [{ text: "DRAFT AND CONFIDENTIAL  ", color: "#a52a2a" }, { text: "Updated Tuesday, Nov 3, 2026 11:00 AM" }], size: 9, pageNumbers: true });
+    expect(doc.margins).toEqual([18, 36, 18, expect.closeTo(14.51, 2)]);
+    expect(doc.title).toBe("Main30_60_90Report");
     const table = tables(doc)[0]!;
     // 57.6 / 338.4 / 122.4 / 57.6 pt: the middle column takes the rest of legacy's 576 pt line.
     expect(table.widths).toEqual([57.6, "*", 122.4, 57.6]);
     expect(table.rows[0]![3]!.runs.at(-1)).toEqual({ text: "\n\nupdated 1 month ago", size: 8 });
+    expect(table.header.map((c) => c.align ?? "left")).toEqual(["center", "left", "left", "center"]);
+    expect(table.grid).toEqual({ colour: "#d3d3d3", width: 1, padding: 2 });
+  });
+
+  it("TBC and Time TBD bold #1919d2 after the white date, as the Look Ahead's", () => {
+    const date = (over: Partial<ReportRow>) => (thirtySixtyNinetyDoc(ctx([on(20001, "2026-11-10", over)])).blocks[2] as TableBlock).rows[0]![0]!.runs;
+    expect(date({ isConfirmed: false })).toEqual([{ text: "Tue Nov 10 9:00-10:00 AM", wrapAtHyphen: true, color: COLOURS.white }, { text: " TBC", bold: true, color: "#1919d2" }]);
+    expect(date({ isConfirmed: false, startAt: bc("2026-11-10", "08:00"), endAt: bc("2026-11-10", "18:00") })).toEqual([{ text: "Tue Nov 10", wrapAtHyphen: true, color: COLOURS.white }, { text: " Time TBD", bold: true, color: "#1919d2" }]);
+    expect(date({})).toEqual([{ text: "Tue Nov 10 9:00-10:00 AM", wrapAtHyphen: true, color: COLOURS.white }]);
   });
 
   it("with no contact, ID/CONT is the CC ID# alone (GenerateMonthly30_60_90)", () => {
@@ -117,8 +131,9 @@ describe("the Planning report (spec addendum §10.5)", () => {
 
   it("legacy's measured styling: brown 11 pt regular DRAFT AND CONFIDENTIAL, 9 pt footer, #cf7a50 Premier and Tags, 9 pt black created/updated, legacy's widths", () => {
     const doc = planningDoc(ctx([on(20001, "2026-11-10", { premierRequested: "Premier Confirmed", keywords: ["Sample"] })]));
-    expect(doc.header!.right).toEqual([{ text: "DRAFT AND CONFIDENTIAL", color: "#a52a2a", size: 11 }]);
-    expect(doc.footer!.left).toEqual([{ text: "Updated 11/3/2026 11:00:00 AM", size: 9 }]);
+    expect(doc.header).toMatchObject({ right: [{ text: "DRAFT AND CONFIDENTIAL", color: "#a52a2a" }], size: 11 });
+    expect(doc.footer).toMatchObject({ left: [{ text: "Updated 11/3/2026 11:00:00 AM" }], size: 9, pageNumbers: true });
+    expect(doc.title).toBe("PlanningReport");
     const table = tables(doc)[0]!;
     // 183.6 / 407.2 / 240.4 / 104 pt: the middle column takes the rest of the line.
     expect(table.widths).toEqual([183.6, "*", 240.4, 104]);
@@ -128,6 +143,12 @@ describe("the Planning report (spec addendum §10.5)", () => {
       { text: "\nTags: ", bold: true, color: "#cf7a50" }, { text: "Sample", color: "#cf7a50" },
     ]);
     expect(id!.runs.at(-1)).toEqual({ text: "\nupdated 1 month ago", size: 9 });
+    // PlanningReport.rdlc: CC ID# right-aligned, header and cells; TBC bold #1919d2 in the Schedule.
+    expect([table.header[3]!.align, id!.align]).toEqual(["right", "right"]);
+    expect(table.header.map((c) => c.runs[0]!.size)).toEqual([11, 11, 11, 11]);
+    expect(table.grid).toEqual({ colour: "#000000", width: 0.5, headerColour: "#4e648a", padding: 2 });
+    const unconfirmed = tables(planningDoc(ctx([on(20001, "2026-11-10", { isConfirmed: false })])))[0]!.rows[0]![0]!.runs;
+    expect(unconfirmed.slice(0, 2)).toEqual([{ text: "Tue Nov 10 9:00-10:00 AM", wrapAtHyphen: true }, { text: " TBC", bold: true, color: "#1919d2" }]);
   });
 
   it("HQ tags first, each group sorted", () => {
@@ -240,7 +261,8 @@ describe("the 30/60/90 and Planning reports at the built document, through the r
   it("every report states the filter it used, under its heading, in the list's words (suite review CAL-3)", async () => {
     const actor = (await loadCalendarActor(tdb.db, w.as.editor.id))!;
     const deps = { db: tdb.db, rules: TEST_RULES, subscribers: [], now: () => FIXED_NOW };
-    const headings = (doc: ReportDoc) => doc.blocks.flatMap((b) => (b.kind === "heading" ? [plain(b.runs)] : []));
+    // The Look Ahead's filter line is on its cover, under the title.
+    const headings = (doc: ReportDoc) => doc.blocks.flatMap((b) => (b.kind === "heading" ? [plain(b.runs)] : b.kind === "cover" && b.filter ? [plain(b.filter)] : []));
     const narrowed = await reportData(deps, actor, q({ display: "my_watchlist", filter: { from: "2046-03-10", to: "2046-03-12", ministryKey: "health" } }));
     expect(narrowed.filter).toBe("Dates: 2046-03-10 to 2046-03-12 · Lead Ministry: HLTH · My Watchlist Only");
     for (const kind of REPORT_KINDS.filter((k) => k !== "exec-look-ahead")) {
@@ -284,7 +306,8 @@ describe("the 30/60/90 and Planning reports at the built document, through the r
     const d = await dataOf("hqAdmin", false);
     const docs = Object.fromEntries(REPORT_KINDS.map((k) => [k, buildReport(k, d, "https://staff.example.test")])) as Record<ReportKind, ReportDoc>;
     expect(REPORT_KINDS.map((k) => [docs[k].title, docs[k].page])).toEqual([
-      ["Look Ahead", "letter-portrait"], ["Exec Look Ahead", "letter-portrait"], ["30 / 60 / 90 Report", "letter-portrait"], ["Planning Report", "legal-landscape"],
+      // The PDF titles legacy's ReportViewer wrote.
+      ["LookAheadReport", "letter-portrait"], ["LookAheadReport", "letter-portrait"], ["Main30_60_90Report", "letter-portrait"], ["PlanningReport", "legal-landscape"],
     ]);
     const id = d.rows[0]!.id;
     for (const k of REPORT_KINDS) expect(JSON.stringify(docs[k])).toContain(`"link":"https://staff.example.test/hub/calendar/activities/${id}"`);

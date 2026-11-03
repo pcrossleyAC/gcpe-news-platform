@@ -39,6 +39,7 @@ export const TEST_RULES: CalendarRules = {
   showRecordsSection: false,
   cloneKeptKeywordNames: ["Sample kept keyword"],
   lookAheadCoverImage: null,
+  lookAheadLogoImage: null,
   reportBanner: { province: "Sample Province", confidentiality: "DRAFT AND CONFIDENTIAL" },
   reports: {
     cover: { organization: "Sample Communications Office", lines: ["SAMPLE PROVINCE", "CORPORATE LOOK AHEAD"] },
