@@ -44,6 +44,70 @@ describe("FilesScreen", () => {
     await waitFor(() => expect(document.title).toBe("Files — GCPE News Staff"));
   });
 
+  const SESSION = (roles = ["NRMS.SiteEditor"]) => jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
+  const file = (i: number) => ({ id: `f${i}`, name: `file-${i}.pdf`, url: `/files/file-${i}.pdf`, contentType: "application/pdf", size: 10, createdAt: "2026-01-01T00:00:00.000Z", createdBy: "u" });
+
+  it("C332: Upload files sits above the list, which says newest first and how many of how many it shows", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => (url === "/core/auth/session" ? SESSION() : jsonResponse(200, { total: 120, files: [file(1), file(2)] }))));
+    render(withAuth(<FilesScreen />));
+    const upload = await screen.findByRole("heading", { name: "Upload files", level: 2 });
+    const list = screen.getByRole("heading", { name: "Uploaded files", level: 2 });
+    expect(upload.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByLabelText("Choose one or more files (any type, up to 512 MB each)")).toHaveAttribute("multiple");
+    expect(screen.getByText("Newest first. Showing 2 of 120 files.")).toBeInTheDocument();
+  });
+
+  it("C332: Show more files adds the next 50 under the ones shown, until all are shown", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        if (url === "/core/auth/session") return SESSION();
+        if (url.endsWith("&page=2")) return jsonResponse(200, { total: 3, files: [file(3)] });
+        return jsonResponse(200, { total: 3, files: [file(1), file(2)] });
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Show more files" }));
+    expect(await screen.findByRole("link", { name: "file-3.pdf" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link").map((l) => l.textContent)).toEqual(["file-1.pdf", "file-2.pdf", "file-3.pdf"]);
+    expect(urls).toContain("/nrms/api/site/files?q=&page=2");
+    expect(screen.getByText("Newest first. Showing 3 of 3 files.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show more files" })).not.toBeInTheDocument();
+  });
+
+  it("C332: several files upload one after another; each name already taken is asked about in turn", async () => {
+    const posts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return SESSION();
+        if (init?.method === "POST") {
+          const name = nameOf(init);
+          posts.push(`${name}${url.endsWith("replace=true") ? " (replace)" : ""}`);
+          if (url.endsWith("replace=false") && (name === "a.pdf" || name === "c.pdf")) return jsonResponse(409, { error: "exists" });
+          return jsonResponse(201, { ...file(9), name });
+        }
+        return jsonResponse(200, EMPTY);
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    const user = userEvent.setup();
+    const input = await screen.findByLabelText("Choose one or more files (any type, up to 512 MB each)");
+    await user.upload(input, ["a.pdf", "b.pdf", "c.pdf"].map((n) => new File(["%PDF"], n, { type: "application/pdf" })));
+
+    const first = await screen.findByRole("dialog");
+    expect(within(first).getByText('A file named "a.pdf" already exists')).toBeInTheDocument();
+    expect(posts).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
+    await user.click(within(first).getByRole("button", { name: "Replace it" }));
+    const second = await within(document.body).findByText('A file named "c.pdf" already exists').then(() => screen.getByRole("dialog"));
+    await user.click(within(second).getByRole("button", { name: "Keep the existing file" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(posts).toEqual(["a.pdf", "b.pdf", "c.pdf", "a.pdf (replace)"]);
+  });
+
   it("a new upload that collides (409) offers to replace, and replacing resends with replace=true", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     let listing = EMPTY;
@@ -66,7 +130,7 @@ describe("FilesScreen", () => {
     await screen.findByText("No files found.");
 
     const file = new File(["bytes"], "report.pdf", { type: "application/pdf" });
-    const input = screen.getByLabelText("Upload a file (any type, up to 512 MB)") as HTMLInputElement;
+    const input = screen.getByLabelText("Choose one or more files (any type, up to 512 MB each)") as HTMLInputElement;
     const user = userEvent.setup();
     await user.upload(input, file);
 
@@ -175,7 +239,7 @@ describe("FilesScreen", () => {
       }),
     );
     render(withAuth(<FilesScreen />));
-    const input = (await screen.findByLabelText("Upload a file (any type, up to 512 MB)")) as HTMLInputElement;
+    const input = (await screen.findByLabelText("Choose one or more files (any type, up to 512 MB each)")) as HTMLInputElement;
     expect(input.getAttribute("accept")).toBeNull();
     const user = userEvent.setup({ applyAccept: true });
     await user.upload(input, new File(["<p>x</p>"], "page.html", { type: "text/html" }));
@@ -196,7 +260,7 @@ describe("FilesScreen", () => {
       }),
     );
     render(withAuth(<FilesScreen />));
-    const input = (await screen.findByLabelText("Upload a file (any type, up to 512 MB)")) as HTMLInputElement;
+    const input = (await screen.findByLabelText("Choose one or more files (any type, up to 512 MB each)")) as HTMLInputElement;
     const huge = new File(["x"], "huge.mp4", { type: "video/mp4" });
     Object.defineProperty(huge, "size", { value: 512 * 1024 * 1024 + 1 });
     await userEvent.setup().upload(input, huge);
@@ -215,7 +279,7 @@ describe("FilesScreen", () => {
       }),
     );
     render(withAuth(<FilesScreen />));
-    const input = (await screen.findByLabelText("Upload a file (any type, up to 512 MB)")) as HTMLInputElement;
+    const input = (await screen.findByLabelText("Choose one or more files (any type, up to 512 MB each)")) as HTMLInputElement;
     const user = userEvent.setup();
     await user.upload(input, new File([new Uint8Array(10)], "big.pdf", { type: "application/pdf" }));
     expect(await screen.findByText("big.pdf: A file can be at most 512 MB.")).toBeInTheDocument();
@@ -233,7 +297,7 @@ describe("FilesScreen", () => {
       }),
     );
     render(withAuth(<FilesScreen />));
-    const input = (await screen.findByLabelText("Upload a file (any type, up to 512 MB)")) as HTMLInputElement;
+    const input = (await screen.findByLabelText("Choose one or more files (any type, up to 512 MB each)")) as HTMLInputElement;
     await userEvent.setup().upload(input, new File([new Uint8Array(10)], "a.pdf", { type: "application/pdf" }));
     expect(await screen.findByText("The upload wasn't accepted. Reload the page and try again.")).toBeInTheDocument();
     expect(screen.queryByText("invalid request")).toBeNull();
@@ -252,7 +316,7 @@ describe("FilesScreen", () => {
     render(withAuth(<FilesScreen />));
     await screen.findByText("You don’t have permission to view the files.");
     expect(screen.queryByText("report.pdf")).toBeNull();
-    expect(screen.queryByLabelText("Upload a file (any type, up to 512 MB)")).toBeNull();
+    expect(screen.queryByLabelText("Choose one or more files (any type, up to 512 MB each)")).toBeNull();
   });
 
   it("never puts the file name in the URL: it goes in X-GCPE-File-Name, percent-encoded", async () => {
@@ -272,7 +336,7 @@ describe("FilesScreen", () => {
     render(withAuth(<FilesScreen />));
     await screen.findByText("No files found.");
     const name = "Résumé 100% final.pdf";
-    await userEvent.setup().upload(screen.getByLabelText("Upload a file (any type, up to 512 MB)"), new File(["bytes"], name, { type: "application/pdf" }));
+    await userEvent.setup().upload(screen.getByLabelText("Choose one or more files (any type, up to 512 MB each)"), new File(["bytes"], name, { type: "application/pdf" }));
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]!.url).toBe("/nrms/api/site/files?replace=false");
     expect(posts[0]!.url).not.toContain(encodeURIComponent(name));
