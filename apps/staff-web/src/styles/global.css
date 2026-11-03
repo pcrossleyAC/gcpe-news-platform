@@ -1140,6 +1140,13 @@ body {
   gap: 0.75rem;
   padding: 0.25rem 0;
 }
+/* Search files: the button level with the box, not with its label above it. */
+.gcpe-files__search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+}
 /* W1: the file's name (its link) over its full public address, which wraps rather than
  * pushing the row past a 390 px screen. */
 .gcpe-files__file {

@@ -47,7 +47,7 @@ A category that is a release, such as **Approved Release**, also needs **Origin*
 
 | Field | What to enter |
 |---|---|
-| **Comm Contact** | The communications person responsible. Only the active comm contacts of the **Lead Ministry**, chosen above, are offered. On a new activity it starts as you, when you are one of them. |
+| **Comm Contact** | The communications person responsible. Only the active comm contacts of the **Lead Ministry**, chosen above, are offered. On a new activity it starts as you, when you are one of them. A ministry with none says "No comm contacts for this ministry yet": a Calendar role alone doesn't make someone a comm contact. Ask a Calendar administrator to give them a **Comm contact rank** for the ministry under **Calendar** > **Users**. |
 | **Key activity** | Tick it for a key activity. |
 | **Strategy** | Up to 500 characters. |
 | **Comm Materials** | The products planned, such as a news release. |

@@ -183,6 +183,11 @@ async function runBuild() {
     // `core:link-legacy-ids` (apps/core/src/import/link-legacy-ids-cli.ts): a Core set up without its
     // legacy import (a test host) gets the legacy ids the Calendar import maps by, its content unchanged.
     ["apps/core/src/import/link-legacy-ids-cli.ts", "tools/core-link-legacy-ids.mjs"],
+    // After a Calendar import (docs/deploy/siteground.md, "Importing legacy Calendar data"): fill
+    // NRMS's copy of the activities (Forecast, "Fill in from activity N"), then send linked releases'
+    // status to the Calendar. Both run beside their own databases, dry runs until --confirm.
+    ["apps/calendar/src/cli/replay-to-nrms.ts", "tools/calendar-replay-to-nrms.mjs"],
+    ["apps/nrms/src/cli/replay-activity-links.ts", "tools/nrms-replay-activity-links.mjs"],
   ]) {
     console.log(`[build-siteground] bundling ${tool} …`);
     await build({

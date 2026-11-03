@@ -27,7 +27,7 @@ The ministry pages change within a few minutes.
 **Website** > **Site settings** > **Media contacts page** sets the public page that lists media contacts.
 
 - **Page heading** (required), **Contact line heading** and **List heading**.
-- **Introduction**: formatted text with bold, italic, lists and links. Include the 24-hour media line number here.
+- **Introduction**: formatted text with bold, italic, lists and links. Include the 24-hour media line number here. Like a release's body, the box has **Full screen** (it fills the window; Esc returns) and **Show blocks** (it outlines each paragraph and list; drag one by its grip, or put the cursor in it and choose **Move up** or **Move down**).
 - **Other media contacts**: contacts that aren't a ministry's, such as a central media line. Each ministry's own contacts come from its **Organizations** form.
 
 To add another contact:

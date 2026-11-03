@@ -185,7 +185,7 @@ export function FilesScreen(): React.JSX.Element {
     <div className="gcpe-files">
       <h1>Files</h1>
 
-      <form onSubmit={onSearch} role="search" aria-label="Search files">
+      <form onSubmit={onSearch} role="search" aria-label="Search files" className="gcpe-files__search">
         <TextField label="Search files" value={q} onChange={setQ} />
         <Button type="submit">Search</Button>
       </form>
@@ -193,7 +193,7 @@ export function FilesScreen(): React.JSX.Element {
       {canEdit && (
         <section className="gcpe-files__upload" aria-labelledby="files-upload-heading">
           <h2 id="files-upload-heading">Upload files</h2>
-          <label>
+          <label className="gcpe-file-input">
             Choose one or more files (any type, up to 512 MB each)
             <input type="file" multiple onChange={onPick} disabled={upload.busy} />
           </label>
@@ -231,7 +231,6 @@ export function FilesScreen(): React.JSX.Element {
 
 
       {removeError && <InlineAlert variant="danger" role="alert" description={removeError} />}
-      <p className="gcpe-hint">Each file&rsquo;s public address is shown under its name. Use Copy public address when you paste a file into a slide, a pin, a link or a minister&rsquo;s photo.</p>
       {!addressKnown && (
         <p id="files-address-pending" className="gcpe-hint">
           {publicFiles.status === "loading" ? "Working out the public address\u2026" : "Couldn\u2019t work out the public address. Reload the page."}
@@ -243,6 +242,7 @@ export function FilesScreen(): React.JSX.Element {
       </p>
 
       <h2>Uploaded files</h2>
+      <p className="gcpe-hint">Each file&rsquo;s public address is shown under its name. Use Copy public address when you paste a file into a slide, a pin, a link or a minister&rsquo;s photo.</p>
       <p className="gcpe-hint">
         Newest first. Showing {result.files.length} of {result.total} {result.total === 1 ? "file" : "files"}.
       </p>
@@ -261,7 +261,9 @@ export function FilesScreen(): React.JSX.Element {
             {canEdit && (
               <DialogTrigger isOpen={removeTarget?.id === f.id} onOpenChange={(open) => setRemoveTarget(open ? f : null)}>
                 <Button variant="secondary" danger>
-                  Delete {f.name}
+                  <span>
+                    Delete <span className="gcpe-visually-hidden">{f.name}</span>
+                  </span>
                 </Button>
                 <Modal isDismissable>
                   <AlertDialog

@@ -55,6 +55,10 @@ describe("FilesScreen", () => {
     expect(upload.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByLabelText("Choose one or more files (any type, up to 512 MB each)")).toHaveAttribute("multiple");
     expect(screen.getByText("Newest first. Showing 2 of 120 files.")).toBeInTheDocument();
+    // Each Delete button shows just "Delete"; the file's name is in its accessible name.
+    const del = screen.getByRole("button", { name: "Delete file-1.pdf" });
+    expect(del).toHaveTextContent(/^Delete file-1\.pdf$/);
+    expect(within(del).getByText("file-1.pdf")).toHaveClass("gcpe-visually-hidden");
   });
 
   it("C332: Show more files adds the next 50 under the ones shown, until all are shown", async () => {
@@ -139,7 +143,7 @@ describe("FilesScreen", () => {
     await user.click(within(dialog).getByRole("button", { name: "Replace it" }));
 
     await waitFor(() => expect(calls.some((c) => c.url.includes("replace=true"))).toBe(true));
-    await screen.findByText("report.pdf");
+    await screen.findByRole("link", { name: "report.pdf" });
   });
 
   it("W1: each file shows its public address on the public site's base, not the Hub's host, and Copy public address copies it", async () => {

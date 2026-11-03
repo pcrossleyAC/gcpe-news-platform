@@ -46,7 +46,7 @@ Visitors may see the old copy for up to a minute.
 
 ## Delete a file
 
-1. Choose **Delete {name}** beside the file.
+1. Choose **Delete** beside the file.
 2. A box asks "Delete {name}?" and warns "This deletes the file from the public site. It can't be undone."
 3. Choose **Confirm delete**.
 
