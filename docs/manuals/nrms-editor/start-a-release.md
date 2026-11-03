@@ -19,7 +19,8 @@ topics: []
 6. Enter the **Headline**.
 7. If the release is for a Calendar activity, enter its number in **Calendar activity ID**. See below.
 8. Enter the **Location**, such as VICTORIA.
-9. Tick the **Ministries**. If you tick more than one, choose the **Lead ministry (needed before approving)**. An advisory doesn't need one.
+9. Tick the **Ministries**. If you tick more than one, answer **Which of the ministries is the lead ministry? (needed before approving)** by choosing one. An advisory doesn't need one and also offers **(none)**.
+   On a **Formal** layout, **Organizations** fills in from the ministries you tick, one per line, such as "Ministry of Citizens' Services". Change it if you need to; once you type in it, ticking ministries no longer changes it.
 10. Tick the **Sectors**, **Themes** and **Tags** that fit. Advisories have none.
 11. Tick any **Media distribution lists** the release should go to. For an advisory the heading reads **Media distribution lists (needed before publishing)**: you can create it without one.
 12. Choose **Create release**.

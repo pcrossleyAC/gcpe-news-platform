@@ -191,7 +191,8 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
         <div className="gcpe-form-grid">
           <TextField label="Page title" value={form.pageTitle} onChange={(v) => setForm((f) => ({ ...f, pageTitle: v }))} isDisabled={readOnly} isRequired={!readOnly} maxLength={50} />
           {formal ? (
-            <TextField
+            // One organization per line, as the PDF and the email print them (legacy's box was multi-line too).
+            <TextArea
               label="Organizations"
               value={form.organizations}
               onChange={(v) => setForm((f) => ({ ...f, organizations: v }))}

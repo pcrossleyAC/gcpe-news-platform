@@ -255,6 +255,24 @@ describe("DocumentLanguageForm", () => {
       expect(screen.queryByRole("textbox", { name: /Byline/ })).not.toBeInTheDocument();
     });
 
+    it("C328: Organizations keeps one organization per line, and a save sends the lines as they are", async () => {
+      const calls: { url: string; init?: RequestInit }[] = [];
+      stubFetch((url, init) => {
+        calls.push({ url, init });
+        return jsonResponse(200, releaseView({ ...BASE, version: 2 }));
+      });
+      renderForm(withLanguage("formal", { organizations: "Ministry of Finance\nTreasury Board", byline: null }));
+      const orgs = await screen.findByRole("textbox", { name: "Organizations" });
+      expect(orgs.tagName).toBe("TEXTAREA");
+      expect(orgs).toHaveValue("Ministry of Finance\nTreasury Board");
+
+      const user = userEvent.setup();
+      await user.type(orgs, "{Enter}BC Housing");
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(JSON.parse(calls[0]!.init?.body as string).organizations).toBe("Ministry of Finance\nTreasury Board\nBC Housing");
+    });
+
     it("Formal advisory: Organizations isn't needed to publish, so no note", async () => {
       stubFetch(() => jsonResponse(200, {}));
       renderForm(withLanguage("formal", { organizations: null, byline: null }, "advisory"));

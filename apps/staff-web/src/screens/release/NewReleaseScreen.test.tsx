@@ -81,6 +81,9 @@ function renderScreen(path = "/releases/new") {
   );
 }
 
+/** A ministry's checkbox: its name also labels a lead-ministry radio once two are ticked (C328). */
+const ministryBox = (name: string) => within(screen.getByRole("group", { name: "Ministries" })).getByRole("checkbox", { name });
+
 describe("NewReleaseScreen (acceptance: each type shows exactly its required fields; 422 maps to fields)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -172,10 +175,49 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     const user = userEvent.setup();
     await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open this weekend");
-    await user.click(screen.getByLabelText("Health"));
+    await user.click(ministryBox("Health"));
     await user.click(screen.getByRole("button", { name: "Create release" }));
 
     await waitFor(() => expect(screen.getByText("Editor page")).toBeInTheDocument());
+  });
+
+  it("C328: a formal release's Organizations follows the ticked ministries, one per line, until typed in, and is sent", async () => {
+    const calls = stubFetch();
+    renderScreen();
+    await screen.findByText("Legislature");
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
+    await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open this weekend");
+    const orgs = () => screen.getByRole("textbox", { name: "Organizations" }) as HTMLTextAreaElement;
+    expect(orgs().value).toBe("");
+
+    await user.click(ministryBox("Health"));
+    expect(orgs().value).toBe("Ministry of Health");
+    await user.click(ministryBox("Education"));
+    expect(orgs().value).toBe("Ministry of Health\nMinistry of Education");
+    await user.click(ministryBox("Health"));
+    expect(orgs().value).toBe("Ministry of Education");
+
+    await user.type(orgs(), "{Enter}Treasury Board");
+    await user.click(ministryBox("Health"));
+    expect(orgs().value).toBe("Ministry of Education\nTreasury Board");
+
+    await user.click(screen.getByRole("radio", { name: "Education" }));
+    await user.click(screen.getByRole("button", { name: "Create release" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/nrms/api/releases")?.body).toMatchObject({ organizations: "Ministry of Education\nTreasury Board" }));
+  });
+
+  it("C328: an informal release has no Organizations box and sends none", async () => {
+    const calls = stubFetch();
+    renderScreen();
+    await screen.findByText("Legislature");
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText(/^Page title/), "Backgrounder");
+    await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open this weekend");
+    await user.click(ministryBox("Health"));
+    expect(screen.queryByRole("textbox", { name: "Organizations" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create release" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/nrms/api/releases")?.body).toMatchObject({ organizations: null }));
   });
 
   it("Ctrl+Enter (⌘Return on a Mac) creates the release from anywhere in the form, once; the button shows the keys", async () => {
@@ -194,7 +236,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     const headline = screen.getByLabelText("Headline", { exact: false });
     await user.type(headline, "Clinics open this weekend");
-    await user.click(screen.getByLabelText("Health"));
+    await user.click(ministryBox("Health"));
     headline.focus();
     fireEvent.keyDown(headline, { key: "Enter", ctrlKey: true });
     fireEvent.keyDown(headline, { key: "Enter", ctrlKey: true });
@@ -320,8 +362,8 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen("/releases/new?activity=4102");
     expect(await screen.findByRole("link", { name: "Sample clinic opening" })).toHaveAttribute("href", "/calendar/activities/4102");
     expect(screen.getByLabelText("Calendar activity ID")).toHaveValue("4102");
-    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
-    expect(screen.getByLabelText("Education")).toBeChecked();
+    await waitFor(() => expect(ministryBox("Health")).toBeChecked());
+    expect(ministryBox("Education")).toBeChecked();
     expect(screen.getByLabelText("Sector One")).toBeChecked();
     expect(screen.getByLabelText("Theme One")).toBeChecked();
     expect(screen.getByLabelText("Location")).toHaveValue("Victoria");
@@ -373,8 +415,8 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Headline", { exact: false }), "My own headline");
     await user.type(screen.getByLabelText("Location"), "My own city");
-    await user.click(screen.getByLabelText("Health"));
-    expect(screen.getByLabelText("Health")).toBeChecked();
+    await user.click(ministryBox("Health"));
+    expect(ministryBox("Health")).toBeChecked();
 
     // Now let the lookup resolve: its pre-fill must not silently overwrite what the user typed.
     resolveLookup(jsonResponse(200, ACTIVITY));
@@ -382,8 +424,8 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
 
     expect(screen.getByLabelText("Headline", { exact: false })).toHaveValue("My own headline");
     expect(screen.getByLabelText("Location")).toHaveValue("My own city");
-    expect(screen.getByLabelText("Health")).toBeChecked();
-    expect(screen.getByLabelText("Education")).not.toBeChecked();
+    expect(ministryBox("Health")).toBeChecked();
+    expect(ministryBox("Education")).not.toBeChecked();
   });
 
   it("a typed id is looked up, and its fields are filled in only when asked", async () => {
@@ -393,9 +435,9 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Calendar activity ID"), "4102");
     expect(await screen.findByRole("link", { name: "Sample clinic opening" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Health")).not.toBeChecked();
+    expect(ministryBox("Health")).not.toBeChecked();
     await user.click(screen.getByRole("button", { name: "Fill in from activity 4102" }));
-    expect(screen.getByLabelText("Health")).toBeChecked();
+    expect(ministryBox("Health")).toBeChecked();
   });
 
   it("retyping the Activity ID clears the untouched pre-fill, but never a field the user touched", async () => {
@@ -406,7 +448,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     };
     stubFetch({ lookups: { "4102": ACTIVITY, "4103": OTHER_ACTIVITY } });
     renderScreen("/releases/new?activity=4102");
-    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    await waitFor(() => expect(ministryBox("Health")).toBeChecked());
     expect(screen.getByLabelText("Location")).toHaveValue("Victoria");
     expect(screen.getByText(/Planned publish date:/)).toBeInTheDocument();
 
@@ -419,8 +461,8 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     // the planned publish date) clears, but the touched Location survives.
     await user.clear(screen.getByLabelText("Calendar activity ID"));
     await user.type(screen.getByLabelText("Calendar activity ID"), "4103");
-    await waitFor(() => expect(screen.getByLabelText("Health")).not.toBeChecked());
-    expect(screen.getByLabelText("Education")).not.toBeChecked();
+    await waitFor(() => expect(ministryBox("Health")).not.toBeChecked());
+    expect(ministryBox("Education")).not.toBeChecked();
     expect(screen.queryByText(/Planned publish date:/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Location")).toHaveValue("My own place");
   });
@@ -428,11 +470,11 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
   it("clearing the Activity ID clears the untouched pre-fill", async () => {
     stubFetch({ lookups: { "4102": ACTIVITY } });
     renderScreen("/releases/new?activity=4102");
-    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    await waitFor(() => expect(ministryBox("Health")).toBeChecked());
 
     const user = userEvent.setup();
     await user.clear(screen.getByLabelText("Calendar activity ID"));
-    await waitFor(() => expect(screen.getByLabelText("Health")).not.toBeChecked());
+    await waitFor(() => expect(ministryBox("Health")).not.toBeChecked());
     expect(screen.getByLabelText("Location")).toHaveValue("");
     expect(screen.queryByText(/Planned publish date:/)).not.toBeInTheDocument();
   });
@@ -442,17 +484,17 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen();
     await screen.findByText("Legislature");
     const user = userEvent.setup();
-    await user.click(screen.getByLabelText("Health")); // touched, before any lookup
+    await user.click(ministryBox("Health")); // touched, before any lookup
     await user.type(screen.getByLabelText("Calendar activity ID"), "4102");
     await screen.findByRole("button", { name: "Fill in from activity 4102" });
-    expect(screen.getByLabelText("Health")).toBeChecked();
+    expect(ministryBox("Health")).toBeChecked();
 
-    await user.click(screen.getByLabelText("Health")); // untouch it by hand: unchecked now
-    expect(screen.getByLabelText("Health")).not.toBeChecked();
+    await user.click(ministryBox("Health")); // untouch it by hand: unchecked now
+    expect(ministryBox("Health")).not.toBeChecked();
 
     await user.click(screen.getByRole("button", { name: "Fill in from activity 4102" }));
-    expect(screen.getByLabelText("Health")).toBeChecked();
-    expect(screen.getByLabelText("Education")).toBeChecked();
+    expect(ministryBox("Health")).toBeChecked();
+    expect(ministryBox("Education")).toBeChecked();
   });
 
   it("an unknown or deleted id says so, offers nothing to fill in, and the server's refusal shows at the field", async () => {
@@ -470,7 +512,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
   it("has no serious or critical axe violations, filled in from an activity", async () => {
     stubFetch({ lookups: { "4102": ACTIVITY } });
     const { container } = renderScreen("/releases/new?activity=4102");
-    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    await waitFor(() => expect(ministryBox("Health")).toBeChecked());
     const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
     expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   });
@@ -510,7 +552,7 @@ describe("NewReleaseScreen: leaving with unsaved changes", () => {
       },
     });
     const router = renderGuarded(<NewReleaseScreen />, { ...at, at: "/releases/new?activity=4102" });
-    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    await waitFor(() => expect(ministryBox("Health")).toBeChecked());
     await expectLeaveFree(router);
   });
 
@@ -521,7 +563,7 @@ describe("NewReleaseScreen: leaving with unsaved changes", () => {
     const user = userEvent.setup();
     await user.selectOptions(screen.getByLabelText(/^Page title/), "News Release");
     await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open this weekend");
-    await user.click(screen.getByLabelText("Health"));
+    await user.click(ministryBox("Health"));
     await user.click(screen.getByRole("button", { name: "Create release" }));
     expect(await screen.findByText("Editor page")).toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).toBeNull();

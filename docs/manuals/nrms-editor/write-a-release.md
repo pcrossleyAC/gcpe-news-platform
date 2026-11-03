@@ -38,7 +38,7 @@ A release has one or more documents, such as the news release and a backgrounder
 
 Each document says its layout under its heading, such as "Layout: Formal". The layout decides one field:
 
-- A **Formal** document has **Organizations**, marked "Needed before publishing." on a release, story or factsheet.
+- A **Formal** document has **Organizations**, one per line, marked "Needed before publishing." on a release, story or factsheet.
 - An **Informal** document has a **Byline** instead.
 
 Every document also has a **Page title**, **Headline**, **Subheadline**, **Body** and **Contacts**.
@@ -89,7 +89,7 @@ Advisories have no summary, social media summary or keywords.
 
 ## Categories
 
-**Categories** shows what is ticked. Choose **Edit categories** to change the **Ministries**, **Lead ministry**, **Sectors**, **Themes** and **Tags**. **Ministries** lists the ministries a release can be filed under: not the Ministers of State, GCPE Headquarters or GCPE Media Relations. One a release already has still shows, so you can untick it. Once you tick more than one ministry, **Lead ministry (needed before approving)** appears and says "Choose the lead ministry" until you do. An advisory doesn't need one and offers **(none)**.
+**Categories** shows what is ticked. Choose **Edit categories** to change the **Ministries**, **Lead ministry**, **Sectors**, **Themes** and **Tags**. **Ministries** lists the ministries a release can be filed under: not the Ministers of State, GCPE Headquarters or GCPE Media Relations. One a release already has still shows, so you can untick it. Once you tick more than one ministry, **Which of the ministries is the lead ministry? (needed before approving)** appears with a button for each; choose one. An advisory doesn't need one and also offers **(none)**.
 
 These decide which subscribers are emailed and which public pages list the release. You need at least one ministry and one sector to publish, and a lead ministry when you tick more than one.
 
