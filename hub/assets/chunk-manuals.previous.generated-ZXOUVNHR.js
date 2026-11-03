@@ -2071,12 +2071,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>If it still fails after 24 hours, the alert says &quot;The release is live without it \u2014 re-add or replace the photo.&quot; Change the <strong>Asset URL</strong> and save.</li>
 </ul>
 <h2>Translations and media files</h2>
-<p><strong>Files</strong> holds files people can open from the public release.</p>
+<p><strong>Files</strong> holds files people can open from the public release. On an advisory it says &quot;An Advisory has no translations or media files.&quot; and offers no upload.</p>
 <ul>
 <li><strong>Translations</strong>: PDFs, such as the release in French or another language. Choose <strong>Upload a translation (PDF)</strong> and pick the file.</li>
 <li><strong>Media files</strong>: PDF, PNG or JPEG files, such as a photo or a fact sheet. Choose <strong>Upload a media file</strong> and pick the file. <strong>Includes additional media assets</strong> in <strong>Media asset</strong> is ticked for you.</li>
 </ul>
-<p>Each file can be up to 25 MB. A file is saved as soon as it is uploaded; you don&#39;t need <strong>Save changes</strong>. Choose a file&#39;s name to open it.</p>
+<p>Each file can be up to 25 MB. A larger file isn&#39;t uploaded. A file is saved as soon as it is uploaded; you don&#39;t need <strong>Save changes</strong>. Choose a file&#39;s name to open it.</p>
 <p>Files can be opened by the public only while the release is published. Before then, and after an unpublish, only Hub staff can open them.</p>
 <p>To remove a file, choose <strong>Remove</strong> and its name, then <strong>Confirm remove</strong>. This can&#39;t be undone.</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 3 \u2014 scrollable" tabindex="0"><table>
@@ -2099,8 +2099,12 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>Pick the file again.</td>
 </tr>
 <tr>
-<td>&quot;request entity too large&quot;</td>
+<td>&quot;photo.jpg is too large to upload. A file can be at most 25 MB.&quot;</td>
 <td>The file is over 25 MB. Make it smaller.</td>
+</tr>
+<tr>
+<td>&quot;A file can be at most 25 MB.&quot;</td>
+<td>The same, found while uploading.</td>
 </tr>
 </tbody></table></div>
 <p>Uploading or removing a file on a published release republishes it at once, as a correction.</p>
