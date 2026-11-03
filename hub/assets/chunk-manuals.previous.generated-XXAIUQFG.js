@@ -5316,7 +5316,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </thead>
 <tbody><tr>
 <td><strong>Comm Contact</strong></td>
-<td>The communications person responsible. Only the active comm contacts of the <strong>Lead Ministry</strong>, chosen above, are offered.</td>
+<td>The communications person responsible. Only the active comm contacts of the <strong>Lead Ministry</strong>, chosen above, are offered. On a new activity it starts as you, when you are one of them.</td>
 </tr>
 <tr>
 <td><strong>Key activity</strong></td>
@@ -5357,7 +5357,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 <tr>
 <td><strong>End date</strong>, <strong>End time</strong></td>
-<td>The end can&#39;t be before the start.</td>
+<td>The end can&#39;t be before the start. On a new activity the end date follows the start date until you set it yourself.</td>
 </tr>
 <tr>
 <td><strong>Potential Dates</strong></td>
