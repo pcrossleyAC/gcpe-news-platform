@@ -153,7 +153,8 @@ async function runParityUnmasked(o: ParityOptions): Promise<ParityResult> {
     log(`Projected ${await projectCoreIntoCalendar(core.db, cal.db, rules)} Core events into the Calendar.`);
 
     const actor: CalendarActor = { userId: randomUUID(), displayName: "Parity runner", role: "Calendar.SysAdmin", level: CALENDAR_LEVELS["Calendar.SysAdmin"], ministryKeys: [hqKey], isHq: true };
-    useBcSans(reportAssets().fontsDir);
+    const assets = reportAssets();
+    useBcSans(assets.fontsDir, assets.imagesDir);
     mkdirSync(join(o.out, "ours"), { recursive: true, mode: 0o700 });
     const reports: ParityResult["reports"] = [];
     for (const r of REPORTS) {

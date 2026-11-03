@@ -87,8 +87,11 @@ describe("report text (ActivityHandler.ashx.cs:1087-1257)", () => {
 
   it("the Exec Look Ahead's row: title, details, significance, City: Venue, Last updated; the typed Other City, not Other...", () => {
     const runs = detailedRuns(reportRow({ city: "Sampleton, SP", venue: "Sample Hall", title: "**CONFIDENTIAL** Sample launch" }), c);
-    expect(plain(runs)).toBe("Sample launch\nSample details\nSample significance\nSampleton: Sample Hall  Last updated 1 month ago");
+    // Legacy's 2 pt line (<div style="font-size:2pt">&nbsp;</div>) before the significance; Last updated 9 pt #cf7a50.
+    expect(plain(runs)).toBe("Sample launch\nSample details\n\u00a0\nSample significance\nSampleton: Sample Hall  Last updated 1 month ago");
+    expect(runs.find((r) => r.text === "\u00a0\n")).toEqual({ text: "\u00a0\n", size: 2 });
     expect(runs.find((r) => r.text === "Sampleton: Sample Hall")).toMatchObject({ bold: true });
+    expect(runs.at(-1)).toEqual({ text: "Last updated 1 month ago", size: 9, color: "#cf7a50" });
     expect(plain(detailedRuns(reportRow({ city: null, venue: "", details: "", significance: "" }), c))).toBe("Sample activity\nLast updated 1 month ago");
     // Legacy breaks the line before City: Venue only after a significance; otherwise it follows on after a space (ActivityHandler.ashx.cs:1000-1033).
     expect(plain(detailedRuns(reportRow({ city: "Sampleton, SP", venue: "Sample Hall", significance: "" }), c))).toBe("Sample activity\nSample details Sampleton: Sample Hall  Last updated 1 month ago");
@@ -100,8 +103,9 @@ describe("report text (ActivityHandler.ashx.cs:1087-1257)", () => {
   });
 
   it("the CC ID# links to the activity in the staff app, under the tenant's abbreviation", () => {
-    expect(minIdRuns(reportRow(), c)).toEqual([{ text: "HLTH-20001", color: COLOURS.link, noWrap: true, link: "https://staff.example.test/hub/calendar/activities/20001" }]);
-    expect(minIdRuns(reportRow({ ministryAbbreviation: "FIN" }), { ...c, origin: null })).toEqual([{ text: "FN-20001", color: COLOURS.link, noWrap: true }]);
+    // The RDLCs' Blue; broken after the hyphen where it doesn't fit, as legacy's.
+    expect(minIdRuns(reportRow(), c)).toEqual([{ text: "HLTH-20001", color: "#0000ff", wrapAtHyphen: true, link: "https://staff.example.test/hub/calendar/activities/20001" }]);
+    expect(minIdRuns(reportRow({ ministryAbbreviation: "FIN" }), { ...c, origin: null })).toEqual([{ text: "FN-20001", color: COLOURS.link, wrapAtHyphen: true }]);
   });
 
   it("RLS: origin above material, the first rule wins, Report only outside Events, both fact sheet spellings (C148), the NR time on its day", () => {

@@ -3,6 +3,8 @@ import { z } from "zod";
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "use HH:MM, 24-hour");
 const id = z.number().int().positive();
 const names = z.array(z.string().min(1));
+/** A bare image file name, never a path: the report worker reads it from its images folder. */
+const imageName = z.string().regex(/^[\w-]+(\.[\w-]+)*\.(jpe?g|png)$/i, "a JPEG or PNG file name, no folder");
 
 /**
  * The tenant's Corporate Calendar settings (spec addendum §5.1). BC's values come from legacy and
@@ -50,7 +52,9 @@ export const calendarTenantSchema = z
     showHqCommentsField: z.boolean(),
     showRecordsSection: z.boolean(),
     cloneKeptKeywordNames: names,
-    lookAheadCoverImage: z.string().min(1).nullable(),
+    /** The Look Ahead's cover picture and its pages' header logo: file names in apps/calendar/assets/report/ (null: a drawn banner, the province's name). */
+    lookAheadCoverImage: imageName.nullable(),
+    lookAheadLogoImage: imageName.nullable(),
     reportBanner: z.object({ province: z.string().min(1), confidentiality: z.string().min(1) }).strict(),
     reports: reportsSchema,
     /** NRMS's Forecast and release-editor lookup take only activities with a category starting with this (spec addendum §11). */

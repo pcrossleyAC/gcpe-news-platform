@@ -10,10 +10,10 @@ import type { PdfPage } from "../apps/calendar/test/pdf-text";
 import { compareReports, compareRowTexts, diffOutlines, insideRepo, rowTextsOf } from "../scripts/calendar-report-compare";
 
 const doc = (ids: number[]): ReportDoc => ({
-  page: "letter-portrait", title: "Sample", header: null, footer: { pageNumbers: true },
+  page: "letter-portrait", margins: [36, 36, 36, 36], fontSize: 10, title: "Sample", header: null, footer: { pageNumbers: true, size: 9, offset: 8 },
   blocks: [
     { kind: "heading", runs: [{ text: "AWARENESS DATES" }], size: 12 },
-    { kind: "table", widths: ["*", 80], header: [{ runs: [{ text: "Name" }] }, { runs: [{ text: "CC ID#" }] }], rows: ids.map((id) => [{ runs: [{ text: `Sample ${id}` }] }, { runs: [{ text: `HLTH-${id}`, link: `https://staff.example.test/hub/calendar/activities/${id}` }] }]) },
+    { kind: "table", widths: ["*", 80], grid: { colour: "#d3d3d3", width: 1, padding: 2 }, header: [{ runs: [{ text: "Name" }] }, { runs: [{ text: "CC ID#" }] }], rows: ids.map((id) => [{ runs: [{ text: `Sample ${id}` }] }, { runs: [{ text: `HLTH-${id}`, link: `https://staff.example.test/hub/calendar/activities/${id}` }] }]) },
   ],
 });
 

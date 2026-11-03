@@ -2,10 +2,14 @@ import { friendlyDateParts, type FriendlyDateParts, type ListQuery } from "@gcpe
 import { addDays, bcMidnight, wallClock, type WallClock } from "../time";
 import { ReportTooLargeError, type ReportRow } from "./data";
 import { addMonths, longDay, shortDay, titleDay, updatedLong, weekdayOf } from "./dates";
-import type { Block, Cell, ReportDoc, Run } from "./model";
+import { cm, inch, type Block, type Cell, type Grid, type HeadingBlock, type LegendItem, type ReportDoc, type Run, type TableBlock } from "./model";
 import {
   categoryText, COLOURS, detailedRuns, filterLine, flagRuns, leadOf, lookAheadText, minIdRuns, rlsLines, type LookAheadTable, type TextContext,
 } from "./text";
+
+/** The tenant's pictures at legacy's 96 ppi: the cover 765 x 990 px (LookAheadReport.rdlc's background), the logo 153 x 41 px. */
+const COVER_SIZE = { width: 765 * 0.75, height: 990 * 0.75 };
+const LOGO_SIZE = { width: 153 * 0.75, height: 41 * 0.75 };
 
 /** A Look Ahead covers at most this many days; a longer range is refused before anything is drawn. */
 export const LOOK_AHEAD_MAX_DAYS = 366;
@@ -149,55 +153,78 @@ function dayTables(placed: readonly Placed[], days: readonly string[]): { events
   return { events, news };
 }
 
-const header = (labels: string[], fill: string): Cell[] => labels.map((text) => ({ runs: [{ text, bold: true, color: COLOURS.white }], fill }));
-const heading = (text: string, o: { size?: number; align?: "left" | "center"; underline?: boolean; colour?: string; spaceBefore?: number } = {}): Block => ({
-  kind: "heading",
+/** The subreports' grid: LightGrey 1 pt lines, 2 pt padding (LookAheadEventSpeechRlsSubreport.rdlc and its siblings). */
+const GRID: Grid = { colour: COLOURS.grid, width: 1, padding: 2 };
+/** Legacy's TitleDetails cell: 8 pt under the text, not 2. */
+const DETAILS_PAD = 6;
+type Align = Cell["align"];
+/** Column titles: 11 pt bold white, each aligned as its RDLC textbox. */
+const header = (labels: [string, Align?][], fill: string): Cell[] =>
+  labels.map(([text, align]) => ({ runs: [{ text, bold: true, color: COLOURS.white, size: 11 }], fill, ...(align ? { align } : {}) }));
+type HeadingOptions = { size?: number; align?: "left" | "center"; underline?: boolean; colour?: string; spaceBefore?: number; spaceAfter?: number; bookmark?: string };
+const title = (text: string, o: HeadingOptions = {}): Omit<HeadingBlock, "kind"> => ({
   runs: [{ text, bold: true, ...(o.underline ? { underline: true } : {}), ...(o.colour ? { color: o.colour } : {}) }],
-  size: o.size ?? 12,
+  size: o.size ?? 14,
   ...(o.align ? { align: o.align } : {}),
-  ...(o.spaceBefore ? { spaceBefore: o.spaceBefore } : {}),
+  ...(o.spaceBefore !== undefined ? { spaceBefore: o.spaceBefore } : {}),
+  ...(o.spaceAfter !== undefined ? { spaceAfter: o.spaceAfter } : {}),
+  ...(o.bookmark ? { bookmark: o.bookmark } : {}),
 });
+const heading = (text: string, o: HeadingOptions = {}): Block => ({ kind: "heading", ...title(text, o) });
+/** "Inside Government", "Outside Government": 16 pt bold, underlined (LookAheadReport.rdlc). */
+const sideHeading = (text: string, bookmark: string) => heading(text, { size: 16, underline: true, spaceBefore: 2, spaceAfter: 2, bookmark });
+/** A day's heading and "No Activities for …": 16 pt bold navy, centred (LookAheadEventSpeechRlsSubreport.rdlc Textbox1, LookAheadReport.rdlc textbox1). */
+const dayHeading = (text: string) => title(text, { size: 16, align: "center", colour: COLOURS.heading, spaceBefore: 0, spaceAfter: 0 });
+/** A section's title: 14 pt bold navy with 2 pt padding (the subreports' Textbox2). */
+const sectionTitle = (text: string, bookmark?: string) => title(text, { colour: COLOURS.heading, spaceBefore: 2, spaceAfter: 2, ...(bookmark ? { bookmark } : {}) });
 
 function dateRuns(r: { date: FriendlyDateParts; flag: boolean; row: ReportRow }, colour?: string): Run[] {
-  const runs: Run[] = [{ text: r.date.text, ...(colour ? { color: colour } : {}) }];
+  const runs: Run[] = [{ text: r.date.text, wrapAtHyphen: true, ...(colour ? { color: colour } : {}) }];
   if (r.date.pending) runs.push({ text: `${r.date.text ? " " : ""}${r.date.pending}`, bold: true, color: COLOURS.pending });
   return r.flag ? [...runs, ...flagRuns(r.row)] : runs;
 }
 
-function eventsTable(c: LookAheadContext, day: string, rows: LaRow[]): Block {
+/** LookAheadEventSpeechRlsSubreport.rdlc: the day and section titles repeat with the header on every page the day runs onto. */
+function eventsTable(c: LookAheadContext, day: string, rows: LaRow[]): TableBlock {
   return {
     kind: "table",
-    widths: [62, 36, "*", 50, 58],
-    header: header([shortDay(day), "Lead", "Activity/Details", "RLS", "CC ID#"], COLOURS.events),
+    widths: [inch(1), inch(0.65827), inch(4.86851), inch(0.8), inch(0.65827)],
+    titles: [dayHeading(longDay(day)), sectionTitle("Events, Speeches & Releases")],
+    header: header([[shortDay(day)], ["Lead", "center"], ["Activity/Details"], ["RLS", "center"], ["CC ID#", "center"]], COLOURS.events),
+    grid: GRID,
     rows: rows.map((r, i) => {
-      const fill = r.issue ? COLOURS.issues : i % 2 === 0 ? COLOURS.zebra : undefined;
-      const f = fill ? { fill } : {};
+      // Zebra on the odd rows; the Exec's issue purple on Activity/Details alone.
+      const zebra = i % 2 === 0 ? { fill: COLOURS.zebra } : {};
       return [
         { runs: dateRuns(r, COLOURS.white), fill: COLOURS.events },
-        { runs: [{ text: leadOf(r.row, c.rules) }], align: "center", ...f },
-        { runs: r.text, ...f },
-        { runs: [{ text: r.rls.join("\n") }], align: "center", ...f },
-        { runs: minIdRuns(r.row, c), align: "center", ...f },
+        { runs: [{ text: leadOf(r.row, c.rules) }], align: "center", ...zebra },
+        { runs: r.text, paddingBottom: DETAILS_PAD, ...(r.issue ? { fill: COLOURS.issues } : zebra) },
+        { runs: [{ text: r.rls.join("\n") }], align: "center", ...zebra },
+        { runs: minIdRuns(r.row, c), align: "center", ...zebra },
       ];
     }),
   };
 }
 
-function listTable(c: LookAheadContext, first: string, rows: LaRow[], dateFill: string, issues: boolean): Block {
+/**
+ * LookAheadIssuesSubreport.rdlc, for Issues and Reports and each day's In the News: Activity/Details purple
+ * on an issue's row and Category on "Issue"; the CC ID# and Rls never filled.
+ */
+function listTable(c: LookAheadContext, first: string, sectionName: string, rows: LaRow[], dateFill: string, bookmark?: string): TableBlock {
+  const purple = { fill: COLOURS.issues };
   return {
     kind: "table",
-    widths: [62, 58, "*", 52, 46],
-    header: header([first, "CC ID#", "Activity/Details", "Category", "Rls"], COLOURS.listHeader),
-    rows: rows.map((r) => {
-      const purple = issues || r.issue ? { fill: COLOURS.issues } : {};
-      return [
-        { runs: dateRuns(r), fill: dateFill },
-        { runs: minIdRuns(r.row, c), align: "center", ...(r.issue && !issues ? purple : {}) },
-        { runs: r.text, ...purple },
-        { runs: [{ text: r.category }], align: "center", ...purple },
-        { runs: [{ text: r.rls.join("\n") }], align: "center", ...(r.issue && !issues ? purple : {}) },
-      ];
-    }),
+    widths: [inch(1), inch(0.65827), inch(4.9), inch(0.8), inch(0.6)],
+    titles: [sectionTitle(sectionName, bookmark)],
+    header: header([[first], ["CC ID#", "center"], ["Activity/Details"], ["Category", "center"], ["Rls", "center"]], COLOURS.listHeader),
+    grid: GRID,
+    rows: rows.map((r) => [
+      { runs: dateRuns(r), fill: dateFill },
+      { runs: minIdRuns(r.row, c), align: "center" },
+      { runs: r.text, paddingBottom: DETAILS_PAD, ...(r.issue ? purple : {}) },
+      { runs: [{ text: r.category }], align: "center", ...(r.category === "Issue" ? purple : {}) },
+      { runs: [{ text: r.rls.join("\n") }], align: "center" },
+    ]),
   };
 }
 
@@ -206,17 +233,25 @@ function laterRows(c: LookAheadContext, placed: readonly Placed[], which: "aware
   return placed.filter((p) => p.place === which && (which === "awareness" || !c.isHq || p.row.longTermOutlook)).map((p) => p.row);
 }
 
-function laterTable(c: LookAheadContext, rows: ReportRow[], which: "awareness" | "outlook"): Block {
+/**
+ * LookAheadAwarenessConsultationOutlookSubreport.rdlc: Awareness's dates green; the Outlook's header
+ * brick red and its rows banded, the even ones pale blue across the row.
+ */
+function laterTable(c: LookAheadContext, rows: ReportRow[], which: "awareness" | "outlook"): TableBlock {
   const outlook = which === "outlook";
   return {
     kind: "table",
-    widths: [62, "*", 72],
-    header: header(["Date", outlook ? "Activity/Details" : "Name", "CC ID#"], outlook ? COLOURS.outlookHeader : COLOURS.listHeader),
-    rows: rows.map((row) => [
-      { runs: dateRuns({ row, flag: true, date: friendlyDateParts(row, { timeZone: c.rules.timeZone, today: c.today, weekday: false }) }), fill: outlook ? COLOURS.outlook : COLOURS.awareness },
-      { runs: lookAheadText(row, c.rules, { titleOnly: !outlook }) },
-      { runs: minIdRuns(row, c), align: "center" },
-    ]),
+    widths: [inch(1), inch(5.98505), inch(1)],
+    header: header([["Date"], [outlook ? "Activity/Details" : "Name"], ["CC ID#", "center"]], outlook ? COLOURS.outlookHeader : COLOURS.listHeader),
+    grid: GRID,
+    rows: rows.map((row, i) => {
+      const band = outlook && i % 2 === 1 ? { fill: COLOURS.outlook } : {};
+      return [
+        { runs: dateRuns({ row, flag: true, date: friendlyDateParts(row, { timeZone: c.rules.timeZone, today: c.today, weekday: false }) }), ...(outlook ? band : { fill: COLOURS.awareness }) },
+        { runs: lookAheadText(row, c.rules, { titleOnly: !outlook }), paddingBottom: DETAILS_PAD, ...band },
+        { runs: minIdRuns(row, c), align: "center", ...band },
+      ];
+    }),
   };
 }
 
@@ -232,7 +267,8 @@ export function lookAheadDays(range: Pick<LookAheadRange, "from" | "to">): strin
 
 /**
  * The Look Ahead (spec addendum §10.2; Reports/LookAheadReport.rdlc) and, with `detailed`, the Exec
- * Look Ahead (§10.3). Six sections: legacy's "Consultations and Dialogues" is dropped (carry-forward § 5g).
+ * Look Ahead (§10.3). Six sections: legacy's "Consultations and Dialogues" is dropped (carry-forward § 5g),
+ * though the cover's legend still names it, as legacy's did.
  */
 export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean; maxRows?: number }): ReportDoc {
   const range = lookAheadRange(c.q, c.today, c.rules.timeZone, o.detailed);
@@ -248,21 +284,31 @@ export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean; maxRow
   const sameYear = range.from.slice(0, 4) === range.to.slice(0, 4);
   // Legacy's own quirk, kept: the start shows its year only when both ends share it (ActivityHandler.ashx.cs:668-673).
   const title = c.q.filter.thisDayOnly ? titleDay(range.from, true) : `${titleDay(range.from, sameYear)} to ${titleDay(range.to, true)}`;
-  const legend = [
+  // ActivityHandler.ashx.cs:760-774: legacy's legend, Consultations and Dialogues included, though its section is dropped (C185).
+  const legend: LegendItem[] = [
     { colour: COLOURS.events, runs: [{ text: "Events, Speeches and Releases", bold: true }, { text: " (Inside Government)" }] },
     { colour: COLOURS.issues, runs: [{ text: "Issues and Reports", bold: true }] },
+    { colour: COLOURS.consultations, runs: [{ text: "Consultations and Dialogues", bold: true }] },
     { colour: COLOURS.news, runs: [{ text: "In the News", bold: true }, { text: " (Outside Government)" }] },
     { colour: COLOURS.awareness, runs: [{ text: "Awareness Dates", bold: true }] },
     ...(range.includeOutlook ? [{ colour: COLOURS.outlook, runs: [{ text: "Long Term Outlook", bold: true }] }] : []),
   ];
+  const filter = filterLine(c)[0];
   const blocks: Block[] = [
-    { kind: "banner", organization: c.rules.reports.cover.organization, lines: [...c.rules.reports.cover.lines] },
-    heading(title, { size: 14, spaceBefore: 24 }),
-    ...filterLine(c),
-    { kind: "heading", runs: [{ text: "Contents:", color: "#808080" }], size: 11, spaceBefore: 6 },
-    { kind: "legend", items: legend },
+    {
+      kind: "cover",
+      image: c.rules.lookAheadCoverImage ? { name: c.rules.lookAheadCoverImage, ...COVER_SIZE } : null,
+      organization: c.rules.reports.cover.organization,
+      lines: [...c.rules.reports.cover.lines],
+      title: [{ text: title, bold: true }],
+      filter: filter ? filter.runs : null,
+      // LookAheadLegendSubreport.rdlc: "Contents:" 14 pt Gray.
+      contents: [{ text: "Contents:", color: COLOURS.grey }],
+      legend,
+    },
     { kind: "pageBreak" },
-    heading("Inside Government", { size: 14, underline: true }),
+    // LookAheadReport.rdlc's DocumentMapLabels: legacy's bookmarks name the sections, not the headings.
+    sideHeading("Inside Government", "Events, Speeches and Releases"),
   ];
   // ActivityHandler.ashx.cs:707-731: HQ breaks after every day but a Saturday; everyone, after the last day. Legacy adds the
   // day's rows (plus 2 for its headings) and then tests the total plus them again against 16, counting the day twice: a
@@ -270,8 +316,8 @@ export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean; maxRow
   let sinceBreak = 0;
   days.forEach((day, i) => {
     const rows = sectionRows(c, events[i]!, { table: "events", day, detailed: o.detailed });
-    if (rows.length === 0) blocks.push(heading(`No Activities for ${longDay(day)}`, { size: 14, align: "center", colour: COLOURS.heading, spaceBefore: 12 }));
-    else blocks.push(heading(longDay(day), { size: 14, align: "center", colour: COLOURS.heading, spaceBefore: 12 }), heading("Events, Speeches & Releases", { colour: COLOURS.heading }), eventsTable(c, day, rows));
+    if (rows.length === 0) blocks.push({ kind: "heading", ...dayHeading(`No Activities for ${longDay(day)}`), spaceAfter: 6 });
+    else blocks.push(eventsTable(c, day, rows));
     const onPage = rows.length ? rows.length + 2 : 0;
     sinceBreak += onPage;
     if ((c.isHq && (weekdayOf(day) !== 6 || sinceBreak + onPage > 16)) || day === range.to) {
@@ -282,32 +328,49 @@ export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean; maxRow
   // LookAheadReport.rdlc: an empty subreport draws nothing, its heading and its page break included.
   const issues = sectionRows(c, issueRows, { table: "issues", day: null, detailed: o.detailed });
   if (issues.length) {
-    blocks.push(heading("ISSUES AND REPORTS", { colour: COLOURS.heading }), listTable(c, "Date", issues, COLOURS.issuesDate, true));
+    blocks.push(listTable(c, "Date", "ISSUES AND REPORTS", issues, COLOURS.issuesDate, "Issues and Reports"));
     // IssuesSubreport's PageBreakAtEnd is IsAppOwner.
     if (c.isHq) blocks.push({ kind: "pageBreak" });
   }
-  blocks.push(heading("Outside Government", { size: 14, underline: true }));
+  blocks.push(sideHeading("Outside Government", "In the News"));
   days.forEach((day, i) => {
     const rows = sectionRows(c, news[i]!, { table: "news", day, detailed: o.detailed });
-    if (rows.length) blocks.push(heading("In the News", { colour: COLOURS.heading, spaceBefore: 8 }), listTable(c, shortDay(day), rows, COLOURS.news, false));
+    if (rows.length) blocks.push(listTable(c, shortDay(day), "In the News", rows, COLOURS.news));
   });
   // RectangleAwarenessPageBreak breaks for HQ only; not when nothing follows it, which would end the PDF on a blank page.
   if (c.isHq && (awareness.length || outlook.length)) blocks.push({ kind: "pageBreak" });
-  if (awareness.length) blocks.push(heading("AWARENESS DATES", { colour: COLOURS.heading }), laterTable(c, awareness, "awareness"));
+  if (awareness.length) blocks.push({ kind: "heading", ...sectionTitle("AWARENESS DATES", "Awareness Dates") }, laterTable(c, awareness, "awareness"));
   if (outlook.length) {
     // The Awareness subreport's PageBreakAtEnd is IncludeLTOutlook.
     if (awareness.length) blocks.push({ kind: "pageBreak" });
-    blocks.push(heading("LONG TERM OUTLOOK", { colour: COLOURS.heading, spaceBefore: 12 }), laterTable(c, outlook, "outlook"));
+    blocks.push({ kind: "heading", ...sectionTitle("LONG TERM OUTLOOK", "Long Term Outlook") }, laterTable(c, outlook, "outlook"));
   }
+  const updated = updatedLong(c.now, c.rules.timeZone);
+  const logo = c.rules.lookAheadLogoImage;
   return {
     page: "letter-portrait",
-    title: o.detailed ? "Exec Look Ahead" : "Look Ahead",
-    firstPage: { header: { right: [{ text: "DRAFT ONLY - NOT FOR CIRCULATION\nInformation is confidential and subject to change" }] }, footer: null },
-    header: { left: [{ text: c.rules.reportBanner.province, bold: true, size: 11 }], right: [{ text: c.rules.reportBanner.confidentiality, color: COLOURS.draft }] },
+    // LookAheadReport.rdlc: 0.25 in sides, 0.2 in top, a 1.5 cm header and a 0.51 cm footer, no bottom margin.
+    margins: [inch(0.25), inch(0.2) + cm(1.5), inch(0.25), cm(0.51181)],
+    fontSize: 10,
+    // The PDF title legacy's ReportViewer wrote, for both.
+    title: "LookAheadReport",
+    // The Header textbox: 11 pt, right, 2 pt padding; page 1 black, later pages Brown over the logo.
+    firstPage: { header: { right: [{ text: "DRAFT ONLY - NOT FOR CIRCULATION\nInformation is confidential and subject to change" }], size: 11, offset: inch(0.2), padding: 2 }, footer: null },
+    header: {
+      ...(logo ? { image: { name: logo, ...LOGO_SIZE } } : { left: [{ text: c.rules.reportBanner.province, bold: true }] }),
+      right: [{ text: c.rules.reportBanner.confidentiality, color: COLOURS.brown }],
+      size: 11,
+      offset: inch(0.2),
+      padding: 2,
+    },
+    // ExecutionTime at the left; the CHANGED note, three spaces and the page numbers right-aligned in one run, all 9 pt.
     footer: {
-      left: [{ text: updatedLong(c.now, c.rules.timeZone), size: 7 }],
-      center: [{ text: '"CHANGED" applies to major detail or date changes only (not time switches)', size: 7 }],
+      left: [{ text: updated }],
+      right: [{ text: '"CHANGED" applies to major detail or date changes only (not time switches)   ' }],
       pageNumbers: true,
+      size: 9,
+      offset: cm(0.03528),
+      rightOffset: cm(0.07056),
     },
     blocks,
   };

@@ -43,7 +43,7 @@ export function workerRenderer(o: WorkerRendererOptions): PdfRenderer {
       return new Promise<Uint8Array>((resolve, reject) => {
         const worker = new Worker(o.workerFile, {
           execArgv: o.execArgv,
-          workerData: { fontsDir: o.fontsDir },
+          workerData: { fontsDir: o.fontsDir, imagesDir: o.imagesDir },
           // Not the stack's environment: the worker needs none of it, and it holds the secrets.
           env: {},
           resourceLimits: { maxOldGenerationSizeMb: o.heapMb, maxYoungGenerationSizeMb: 32 },

@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { monitorEventLoopDelay } from "node:perf_hooks";
@@ -6,18 +7,21 @@ import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pdfPages } from "../../../test/pdf-text";
 import type { ReportDoc } from "../model";
-import { BUNDLED_WORKER, reportAssets } from "./assets";
+import { BUNDLED_IMAGES, BUNDLED_WORKER, reportAssets } from "./assets";
 import { ReportRenderError, workerRenderer, type PdfRenderer } from "./renderer";
 
 const doc = (rows: number): ReportDoc => ({
   page: "letter-portrait",
+  margins: [36, 36, 36, 36],
+  fontSize: 10,
   title: "Sample report",
   header: null,
-  footer: { pageNumbers: true },
+  footer: { pageNumbers: true, size: 9, offset: 8 },
   blocks: [
     {
       kind: "table",
       widths: [60, "*", 60],
+      grid: { colour: "#d3d3d3", width: 1, padding: 2 },
       header: ["Date", "Activity/Details", "CC ID#"].map((text) => ({ runs: [{ text }] })),
       rows: Array.from({ length: rows }, (_, i) => [{ runs: [{ text: "Tue Nov 10" }] }, { runs: [{ text: `Sample row ${i}: ${"fictional details ".repeat(8)}` }] }, { runs: [{ text: `HLTH-${20001 + i}` }] }]),
     },
@@ -32,16 +36,18 @@ describe("rendering in a worker thread (the stack's event loop stays free)", () 
   });
   const make = (over: { heapMb?: number; timeoutMs?: number } = {}) => (renderer = workerRenderer({ ...reportAssets(), heapMb: 256, timeoutMs: 60_000, ...over }));
 
-  it("finds the worker and BC Sans in a source checkout, and beside a bundle when they're there", () => {
+  it("finds the worker, BC Sans and the report images in a source checkout, and beside a bundle when they're there", () => {
     const src = reportAssets();
     expect(src.workerFile).toMatch(/reports[\\/]render[\\/]worker\.ts$/);
     expect(src.execArgv).toEqual(["--import", "tsx"]);
     expect(src.fontsDir).toMatch(/@bcgov[\\/]bc-sans[\\/]fonts$/);
+    expect(src.imagesDir).toMatch(/apps[\\/]calendar[\\/]assets[\\/]report[\\/]$/);
+    expect(readdirSync(src.imagesDir).sort()).toEqual(["LookAheadCover.jpg", "ProvinceOfBritishColumbia.jpg"]);
     const app = resolve("/srv/app");
     const worker = join(app, BUNDLED_WORKER);
     const fonts = `${join(app, "fonts")}${sep}`;
     const bundle = reportAssets(pathToFileURL(join(app, "stack.js")).href, (p) => p === worker || p === fonts);
-    expect(bundle).toEqual({ workerFile: worker, execArgv: [], fontsDir: fonts });
+    expect(bundle).toEqual({ workerFile: worker, execArgv: [], fontsDir: fonts, imagesDir: `${join(app, BUNDLED_IMAGES)}${sep}` });
   });
 
   it("renders a report while the main thread keeps running", async () => {
@@ -79,13 +85,13 @@ describe("what the worker is given, and what leaves it", () => {
   const fixture = (name: string) => fileURLToPath(new URL(`../../../test/fixtures/${name}`, import.meta.url));
   const sample: ReportDoc = { ...doc(2), title: "Sample confidential title 7f3a" };
 
-  it("the worker is handed the document and the fonts' folder, nothing else: no environment", async () => {
+  it("the worker is handed the document and the fonts' and images' folders, nothing else: no environment", async () => {
     process.env.SAMPLE_REPORT_SECRET = "sample-secret-value";
     try {
-      const r = workerRenderer({ workerFile: fixture("echo-worker.mjs"), execArgv: [], fontsDir: "/srv/sample/fonts", heapMb: 64, timeoutMs: 10_000 });
+      const r = workerRenderer({ workerFile: fixture("echo-worker.mjs"), execArgv: [], fontsDir: "/srv/sample/fonts", imagesDir: "/srv/sample/report-images", heapMb: 64, timeoutMs: 10_000 });
       const got = JSON.parse(new TextDecoder().decode(await r.render(sample))) as unknown;
       await r.close();
-      expect(got).toEqual({ workerData: { fontsDir: "/srv/sample/fonts" }, messages: [sample], env: {} });
+      expect(got).toEqual({ workerData: { fontsDir: "/srv/sample/fonts", imagesDir: "/srv/sample/report-images" }, messages: [sample], env: {} });
     } finally {
       delete process.env.SAMPLE_REPORT_SECRET;
     }
@@ -112,7 +118,7 @@ describe("what the worker is given, and what leaves it", () => {
     );
     const logs = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
     try {
-      const r = workerRenderer({ workerFile: fixture("chatty-worker.mjs"), execArgv: [], fontsDir: "/srv/sample/fonts", heapMb: 64, timeoutMs: 10_000 });
+      const r = workerRenderer({ workerFile: fixture("chatty-worker.mjs"), execArgv: [], fontsDir: "/srv/sample/fonts", imagesDir: "/srv/sample/report-images", heapMb: 64, timeoutMs: 10_000 });
       await r.render(sample);
       await r.close();
       await new Promise((resolve) => setTimeout(resolve, 100));

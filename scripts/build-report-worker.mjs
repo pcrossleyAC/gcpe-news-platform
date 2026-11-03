@@ -1,8 +1,9 @@
 // Bundles the Calendar's report worker (apps/calendar/src/reports/render/worker.ts) to
-// <outDir>/report-worker.cjs and copies BC Sans to <outDir>/fonts/, the layout
+// <outDir>/report-worker.cjs and copies BC Sans to <outDir>/fonts/ and the tenants' report images
+// (apps/calendar/assets/report/) to <outDir>/report-images/, the layout
 // apps/calendar/src/reports/render/assets.ts looks for beside a bundle. CommonJS, not ESM: pdfmake's
 // in-memory file store reads __dirname, which an ESM bundle doesn't define.
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { build } from "esbuild";
@@ -14,6 +15,7 @@ const FONT_FILES = ["BCSans-Regular.woff", "BCSans-Bold.woff", "BCSans-Italic.wo
 /** `external`: npm packages left to node_modules (the per-app images); none for SiteGround's self-contained artifact. */
 export async function buildReportWorker(outDir, { external = [] } = {}) {
   mkdirSync(join(outDir, "fonts"), { recursive: true });
+  mkdirSync(join(outDir, "report-images"), { recursive: true });
   await build({
     entryPoints: [join(root, "apps/calendar/src/reports/render/worker.ts")],
     outfile: join(outDir, "report-worker.cjs"),
@@ -33,4 +35,6 @@ export async function buildReportWorker(outDir, { external = [] } = {}) {
   });
   const pkg = dirname(require.resolve("@bcgov/bc-sans/package.json"));
   for (const f of FONT_FILES) copyFileSync(join(pkg, f.endsWith(".txt") ? f : join("fonts", f)), join(outDir, "fonts", f));
+  const images = join(root, "apps/calendar/assets/report");
+  for (const f of readdirSync(images)) copyFileSync(join(images, f), join(outDir, "report-images", f));
 }

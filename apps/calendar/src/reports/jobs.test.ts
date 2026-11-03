@@ -3,7 +3,7 @@ import { REPORT_STORE_MAX_BYTES, ReportJobNotFoundError, ReportJobs } from "./jo
 import type { ReportDoc } from "./model";
 import type { PdfRenderer } from "./render/renderer";
 
-const doc = (title: string): ReportDoc => ({ page: "letter-portrait", title, header: null, footer: null, blocks: [] });
+const doc = (title: string): ReportDoc => ({ page: "letter-portrait", margins: [36, 36, 36, 36], fontSize: 10, title, header: null, footer: null, blocks: [] });
 const MB = 1024 * 1024;
 
 describe("finished reports held in memory", () => {

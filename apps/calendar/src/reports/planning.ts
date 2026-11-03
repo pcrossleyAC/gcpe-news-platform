@@ -1,9 +1,8 @@
-import { friendlyDateRange } from "@gcpe/calendar-contract";
 import type { ReportRow } from "./data";
 import { updatedNumeric } from "./dates";
-import type { Cell, ReportDoc, Run } from "./model";
+import { cm, inch, type Cell, type ReportDoc, type Run } from "./model";
 import { cityOf, cleanTitle, COLOURS, createdOrUpdated, filterLine, linkify, minIdRuns } from "./text";
-import type { ListReportContext } from "./thirty-sixty-ninety";
+import { pendingDateRuns, type ListReportContext } from "./thirty-sixty-ninety";
 
 const byCulture = new Intl.Collator("en-CA", { sensitivity: "base" });
 
@@ -16,7 +15,7 @@ export function planningTags(keywords: readonly string[]): string[] {
 function rowCells(row: ReportRow, c: ListReportContext): Cell[] {
   const tz = c.rules.timeZone;
   const r = c.rules.reports;
-  const schedule: Run[] = [{ text: friendlyDateRange(row, { timeZone: tz, today: c.today, weekday: true }) }];
+  const schedule: Run[] = pendingDateRuns(row, c);
   if (row.schedule) schedule.push({ text: `\n${row.schedule}` });
   // ActivityHandler.ashx.cs:567: the Premier/Tags block opens with its own <br>, leaving a blank line.
   const tags: Run[] = [];
@@ -37,7 +36,7 @@ function rowCells(row: ReportRow, c: ListReportContext): Cell[] {
     { runs: schedule },
     { runs: linkify(summary) },
     { runs: significance },
-    { runs: [...minIdRuns(row, c), { text: `\n${createdOrUpdated(row, c.now, tz)}`, size: 9 }] },
+    { runs: [...minIdRuns(row, c), { text: `\n${createdOrUpdated(row, c.now, tz)}`, size: 9 }], align: "right" },
   ];
 }
 
@@ -45,15 +44,29 @@ function rowCells(row: ReportRow, c: ListReportContext): Cell[] {
 export function planningDoc(c: ListReportContext): ReportDoc {
   return {
     page: "legal-landscape",
-    title: "Planning Report",
-    header: { left: [{ text: c.rules.reports.planningTitle, bold: true, size: 14, color: COLOURS.planning }], right: [{ text: c.rules.reportBanner.confidentiality, color: COLOURS.brown, size: 11 }] },
-    footer: { left: [{ text: updatedNumeric(c.now, c.rules.timeZone), size: 9 }], pageNumbers: true },
+    // PlanningReport.rdlc: 35.56 x 21.59 cm, 0.5 in sides, 0.25 in top and bottom, a 0.67 cm header and a 0.51 cm footer.
+    margins: [inch(0.5), inch(0.25) + cm(0.67), inch(0.5), inch(0.25) + cm(0.51181)],
+    fontSize: 10,
+    // The PDF title legacy's ReportViewer wrote.
+    title: "PlanningReport",
+    // The title (legacy's Microsoft Sans Serif) at the left; DRAFT AND CONFIDENTIAL (legacy's Verdana) 11 pt regular Brown, right, 0.11 cm lower.
+    header: {
+      left: [{ text: c.rules.reports.planningTitle, bold: true, size: 14, color: COLOURS.planning }],
+      right: [{ text: c.rules.reportBanner.confidentiality, color: COLOURS.brown }],
+      size: 11,
+      offset: inch(0.25),
+      rightOffset: inch(0.25) + cm(0.10908),
+      padding: 2,
+    },
+    footer: { left: [{ text: updatedNumeric(c.now, c.rules.timeZone) }], pageNumbers: true, size: 9, offset: cm(0.03528), rightOffset: cm(0.07056), padding: 2 },
     blocks: [
       ...filterLine(c, 0),
       {
         kind: "table",
         widths: [183.6, "*", 240.4, 104],
-        header: ["Schedule", "Title & Summary", "Significance", "CC ID#"].map((text) => ({ runs: [{ text, bold: true, color: COLOURS.white }], fill: COLOURS.planning })),
+        // 11 pt bold white on navy inside #4e648a lines; CC ID# right-aligned. The rows' lines are 0.5 pt black.
+        header: [["Schedule"], ["Title & Summary"], ["Significance"], ["CC ID#", "right"]].map(([text, align]) => ({ runs: [{ text: text!, bold: true, color: COLOURS.white, size: 11 }], fill: COLOURS.planning, ...(align ? { align: align as Cell["align"] } : {}) })),
+        grid: { colour: COLOURS.black, width: 0.5, headerColour: COLOURS.planningBorder, padding: 2 },
         rows: c.rows.map((r) => rowCells(r, c)),
       },
     ],

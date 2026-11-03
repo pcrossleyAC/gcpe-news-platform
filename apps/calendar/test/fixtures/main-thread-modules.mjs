@@ -18,9 +18,11 @@ const jobs = new ReportJobs({ renderer: workerRenderer({ ...reportAssets(), heap
 const owner = "00000000-0000-4000-8000-000000000401";
 const started = jobs.start(owner, "look-ahead", {
   page: "letter-portrait",
+  margins: [36, 36, 36, 36],
+  fontSize: 10,
   title: "Sample report",
   header: null,
-  footer: { pageNumbers: true },
+  footer: { pageNumbers: true, size: 9, offset: 8 },
   blocks: [{ kind: "heading", runs: [{ text: "Sample heading" }], size: 14 }],
 });
 const view = await jobs.settle(owner, started.id, 60_000);

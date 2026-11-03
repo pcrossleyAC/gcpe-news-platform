@@ -19,7 +19,7 @@ beforeAll(async () => {
   writeFileSync(join(dir, "part-c.csv"), partCFile().bytes);
   mkdirSync(join(dir, "legacy-empty"));
   useBcSans(reportAssets().fontsDir);
-  const empty = await renderPdf({ page: "letter-portrait", title: "Sample", header: null, footer: { pageNumbers: true }, blocks: [{ kind: "heading", runs: [{ text: "Sample" }], size: 12 }] });
+  const empty = await renderPdf({ page: "letter-portrait", margins: [36, 36, 36, 36], fontSize: 10, title: "Sample", header: null, footer: { pageNumbers: true, size: 9, offset: 8 }, blocks: [{ kind: "heading", runs: [{ text: "Sample" }], size: 12 }] });
   for (const r of REPORTS) writeFileSync(join(dir, "legacy-empty", r.legacy), empty);
   options = (over) => ({
     csv, partC: join(dir, "part-c.csv"), legacyDir: join(dir, "legacy-empty"), out: join(dir, "out"),
