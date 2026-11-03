@@ -61,7 +61,7 @@ export function CalendarUsersScreen(): React.JSX.Element {
         <input id="calendar-users-no-access" type="checkbox" checked={noAccess} onChange={(e) => setNoAccess(e.target.checked)} />
         <label htmlFor="calendar-users-no-access">Show users without Calendar access</label>
       </div>
-      <UserFilters idPrefix="calendar-users" value={narrow} onChange={setNarrow} ministries={ministryChoices} shown={shown.length} total={rows?.length ?? 0} noun="rows" />
+      {rows !== null && <UserFilters idPrefix="calendar-users" value={narrow} onChange={setNarrow} ministries={ministryChoices} shown={shown.length} total={rows.length} noun="rows" />}
       {rows === null && !error && <p>Loading…</p>}
       {rows !== null && (
         <TableScroll label="Calendar users">

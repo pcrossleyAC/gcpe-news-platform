@@ -109,7 +109,7 @@ export function CalendarAccessScreen(): React.JSX.Element {
         <input id="calendar-access-show-inactive" type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
         <label htmlFor="calendar-access-show-inactive">Show inactive users, including those with no email</label>
       </div>
-      <UserFilters idPrefix="calendar-access" value={narrow} onChange={setNarrow} ministries={ministryChoices} shown={shown.length} total={listed.length} noun="users" />
+      {users !== null && <UserFilters idPrefix="calendar-access" value={narrow} onChange={setNarrow} ministries={ministryChoices} shown={shown.length} total={listed.length} noun="users" />}
       {users === null && !loadError && <p>Loading…</p>}
       {users !== null && (
         <TableScroll label="Staff and their Calendar access">
