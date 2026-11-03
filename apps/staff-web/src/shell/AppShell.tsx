@@ -65,8 +65,9 @@ export function AppShell(): React.JSX.Element {
 
   return (
     <AnnouncerProvider>
+      {/* Above the shell's grid, full width (C331). */}
+      <EnvironmentBanner />
       <div className="gcpe-shell">
-        <EnvironmentBanner />
         <a className="gcpe-skip-link" href="#main-content">
           Skip to main content
         </a>
