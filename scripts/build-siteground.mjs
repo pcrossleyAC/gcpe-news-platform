@@ -175,6 +175,14 @@ async function runBuild() {
     // `legacy-files:copy` (apps/stack/src/legacy-files/cli.ts): imports legacy news.gov.bc.ca/files/*
     // (the legacy Hub's uploads) as NRMS site files before DNS moves (docs/deploy/siteground.md, "Legacy /files import").
     ["apps/stack/src/legacy-files/cli.ts", "tools/legacy-files-copy.mjs"],
+    // `calendar:import` (apps/calendar/src/import/cli.ts) with `--snapshot <file>`: SiteGround can't
+    // reach the legacy SQL Server and allows no tunnels, so the legacy read is made elsewhere
+    // (`calendar:snapshot`) and imported here, on the server, against its own databases and its
+    // own attachment store (docs/deploy/siteground.md, "Importing legacy Calendar data").
+    ["apps/calendar/src/import/cli.ts", "tools/calendar-import.mjs"],
+    // `core:link-legacy-ids` (apps/core/src/import/link-legacy-ids-cli.ts): a Core set up without its
+    // legacy import (a test host) gets the legacy ids the Calendar import maps by, its content unchanged.
+    ["apps/core/src/import/link-legacy-ids-cli.ts", "tools/core-link-legacy-ids.mjs"],
   ]) {
     console.log(`[build-siteground] bundling ${tool} …`);
     await build({

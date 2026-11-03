@@ -44,20 +44,22 @@ interface CalendarImportBase { db: Db; coreDb: Db; store: ObjectStore; rules: Ca
 export type CalendarImportDeps = CalendarImportBase & ({ source: LegacySource; snapshot?: undefined } | { snapshot: LegacySnapshot; source?: undefined });
 export interface CalendarImportOptions { cutoff: string; confirm: boolean }
 
-export function parseImportArgs(argv: string[]): { cutoff: string; confirm: boolean; reportPath?: string } {
+export function parseImportArgs(argv: string[]): { cutoff: string; confirm: boolean; reportPath?: string; snapshotPath?: string } {
   let cutoff: string | undefined;
   let confirm = false;
   let reportPath: string | undefined;
+  let snapshotPath: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--cutoff") cutoff = argv[++i];
     else if (a === "--confirm") confirm = true;
     else if (a === "--report") reportPath = argv[++i];
+    else if (a === "--snapshot") snapshotPath = argv[++i];
     else throw new ImportArgumentError(`Unknown argument: ${a}`);
   }
   if (!cutoff) throw new ImportArgumentError("--cutoff <YYYY-MM-DD> is required: the date activities must end on or after (Q53)");
   if (!bcDateSchema.safeParse(cutoff).success) throw new ImportArgumentError("--cutoff must be a real date, YYYY-MM-DD");
-  return reportPath ? { cutoff, confirm, reportPath } : { cutoff, confirm };
+  return { cutoff, confirm, ...(reportPath ? { reportPath } : {}), ...(snapshotPath ? { snapshotPath } : {}) };
 }
 
 export function historyContextOf(s: LegacySnapshot, scope: Scope, keys: LegacyKeys, userIdOf: (id: number | null) => string | null, mapped: Map<number, MappedActivity>, timeZone: string): HistoryContext {

@@ -16,6 +16,8 @@ import { snapshotFromCsv } from "./csv-snapshot";
 import { seedCoreFromLegacyKeys } from "../../../../scripts/lib/calendar-parity-core";
 import { activities, activityChanges, activityFiles, categories, commContacts as calCommContacts, favourites, savedFilters } from "../db/schema";
 import { defaultReportPath, ImportStageError, parseImportArgs, runCalendarImport, runCalendarImportCli } from "./run";
+import { loadLegacy } from "./load";
+import { decodeSnapshot, encodeSnapshot } from "./snapshot-file";
 
 let cal: TestDatabase, core: TestDatabase;
 beforeAll(async () => { [cal, core] = await Promise.all([createCalendarTestDb(), createCoreTestDb()]); });
@@ -47,6 +49,38 @@ describe("calendar:import (acceptance 15)", () => {
     expect(() => parseImportArgs([])).toThrow(/--cutoff/);
     expect(() => parseImportArgs(["--cutoff", "2027-02-30"])).toThrow();
     expect(() => parseImportArgs(["--cutoff", "2027-01-15", "--force"])).toThrow(/Unknown argument/);
+    expect(parseImportArgs(["--cutoff", "2027-01-15", "--snapshot", "legacy.snap.gz"])).toEqual({ cutoff: "2027-01-15", confirm: false, snapshotPath: "legacy.snap.gz" });
+  });
+
+  it("an import from a snapshot file leaves the databases, the file store and the report exactly as one from SQL Server", async () => {
+    const viaSource = await deps();
+    const fromSource = await runCalendarImport(viaSource, confirm);
+    const stateFromSource = await snapshot();
+    const filesFromSource = (await readdir(viaSource.storeDir, { recursive: true })).sort();
+
+    await cal.db.execute(sql`TRUNCATE activities, comm_contacts, saved_filters, user_profiles, favourites, activity_files, activity_changes, outbox_events, categories, cities, comm_materials, event_planners, government_representatives, initiatives, keywords, nr_distributions, nr_origins, premier_requested, videographers RESTART IDENTITY CASCADE`);
+    await core.db.execute(sql`TRUNCATE users, organizations, terms, outbox_events, outbox_deliveries, aggregate_sequences CASCADE`);
+    await seedCoreForImport(core.db);
+    const scope = { cutoff: TEST_CUTOFF, awarenessCategoryIds: TEST_RULES.awarenessCategoryIds };
+    const read = await loadLegacy(createFakeSource(legacyCalendarTables()), scope);
+    const { snapshot: fromFile } = decodeSnapshot(encodeSnapshot(read, scope, new Date()), scope);
+    const viaFile = await deps();
+    const { source: _unused, ...base } = viaFile;
+    const fromSnapshot = await runCalendarImport({ ...base, snapshot: fromFile }, confirm);
+
+    // Core user ids are new random UUIDs on each run; everything else must match.
+    const strip = (r: ReturnType<typeof fromSource.toJSON>) =>
+      JSON.parse(JSON.stringify({ ...r, startedAt: undefined, finishedAt: undefined }).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "~"));
+    expect(strip(fromSnapshot.toJSON())).toEqual(strip(fromSource.toJSON()));
+    // Random ids (Core users, row uuids) and timestamps of this run differ; nothing else may.
+    const without = (o: Record<string, unknown>) =>
+      JSON.parse(JSON.stringify(o, (k, v) => (/_at$|At$/.test(k) && typeof v === "string" ? "~" : v)).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "~").replace(/\b[0-9a-f]{16}-/g, "~-"));
+    // Rows ordered by a random id come back in another order: compare each table as a sorted set.
+    const bag = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(without(o) as Record<string, unknown[]>).map(([t, rows]) => [t, rows.map((r) => JSON.stringify(r)).sort()]));
+    expect(bag(await snapshot())).toEqual(bag(stateFromSource));
+    // A stored file's key has a random part too (…/<16 hex>-<name>).
+    const keys = (names: string[]) => names.map((n) => n.replace(/\b[0-9a-f]{16}-/, "~-")).sort();
+    expect(keys(await readdir(viaFile.storeDir, { recursive: true }))).toEqual(keys(filesFromSource));
   });
 
   it("a dry run writes nothing anywhere, and its report balances", async () => {
