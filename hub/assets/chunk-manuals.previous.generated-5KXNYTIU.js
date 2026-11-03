@@ -1925,6 +1925,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </tr>
 </tbody></table></div>
 <p>You can link or change the activity later in <strong>Publish settings</strong> on the release, as <strong>Calendar activity ID</strong>. Once a release is linked, the activity shows its status in the Calendar within a minute of each change.</p>
+<h2>If you leave before creating it</h2>
+<p>If you have filled in anything and not chosen <strong>Create release</strong>, the Hub asks before you go to another screen: &quot;You have unsaved changes on this page. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> to keep working, or <strong>Leave</strong> to discard it. What was filled in for you from a Calendar activity doesn&#39;t count. Closing or reloading the tab gets your browser&#39;s own question.</p>
 `,changed:"2026-10-31"},D={html:`<p><strong>Who this is for:</strong> Release editors (NRMS.Editor).</p>
 <p>At the top of a release you see its type, status, reference number and headline. If something is still missing, a line such as &quot;Not ready: 2 things to fix.&quot; follows. Choose <strong>See them under Actions</strong> to go to the list, where each item links to the part to fix.</p>
 <p>On a wide screen, the release is on the left, and <strong>Actions</strong>, <strong>Publish settings</strong> and <strong>Release info</strong> are on the right. On a narrow screen they come one after another.</p>
@@ -1988,7 +1990,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 </ul>
 <p>Advisories have no summary, social media summary or keywords.</p>
 <h2>Categories</h2>
-<p><strong>Categories</strong> shows what is ticked. Choose <strong>Edit categories</strong> to change the <strong>Ministries</strong>, <strong>Lead ministry</strong>, <strong>Sectors</strong>, <strong>Themes</strong> and <strong>Tags</strong>. Once you tick more than one ministry, <strong>Lead ministry (needed before approving)</strong> appears and says &quot;Choose the lead ministry&quot; until you do. An advisory doesn&#39;t need one and offers <strong>(none)</strong>.</p>
+<p><strong>Categories</strong> shows what is ticked. Choose <strong>Edit categories</strong> to change the <strong>Ministries</strong>, <strong>Lead ministry</strong>, <strong>Sectors</strong>, <strong>Themes</strong> and <strong>Tags</strong>. <strong>Ministries</strong> lists the ministries a release can be filed under: not the Ministers of State, GCPE Headquarters or GCPE Media Relations. One a release already has still shows, so you can untick it. Once you tick more than one ministry, <strong>Lead ministry (needed before approving)</strong> appears and says &quot;Choose the lead ministry&quot; until you do. An advisory doesn&#39;t need one and offers <strong>(none)</strong>.</p>
 <p>These decide which subscribers are emailed and which public pages list the release. You need at least one ministry and one sector to publish, and a lead ministry when you tick more than one.</p>
 <h2>Similar published releases</h2>
 <p>Use it to check whether something like this has gone out before.</p>
