@@ -267,6 +267,8 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>&quot;Only a Core administrator can give Calendar access to an inactive user who has none.&quot;</li>
 </ul>
 <p>When one of them sends a request like this to you, make the change yourself.</p>
+<h2>If you leave before saving</h2>
+<p>If you have changes you haven&#39;t saved and you go to another screen or choose your browser&#39;s <strong>Back</strong>, the Hub asks &quot;You have unsaved changes on this page. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> to keep working, or <strong>Leave</strong> to discard the changes. Closing or reloading the tab gets your browser&#39;s own question.</p>
 <h2>Can&#39;t do this?</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
 <thead>
@@ -284,7 +286,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The named ministry was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},r={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+`,changed:"2026-10-31"},r={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p><strong>Organizations</strong> holds every ministry: its name, minister, media contacts and page links, and the settings that decide who sees it. Site editors also open this screen, but they can only edit a ministry&#39;s details. Adding, deactivating, handing over and the <strong>HQ</strong> and <strong>Public</strong> settings are yours alone.</p>
 <p>The table shows each ministry&#39;s <strong>Name</strong>, <strong>Abbreviation</strong>, <strong>Minister</strong>, <strong>Active</strong>, <strong>HQ</strong> and <strong>Public</strong>. A ministry that isn&#39;t public has a &quot;Not public&quot; badge. Inactive ministries are hidden until you tick <strong>Show inactive organizations</strong>.</p>
 <p>For a new cabinet, prepare all the ministry changes together on <a href="/hub/help/manuals/core-admin/cabinet-change">Cabinet change</a> instead of one at a time here.</p>
@@ -4483,6 +4485,8 @@ On a <strong>Formal</strong> layout, <strong>Organizations</strong> fills in fro
 </tr>
 </tbody></table></div>
 <p>If you have no ministry yourself, the Calendar shows &quot;You aren&#39;t in any ministry yet, so there are no activities to show you. Ask another Calendar administrator or a Core administrator to add your ministry.&quot; You can&#39;t add it yourself.</p>
+<h2>If you leave before saving</h2>
+<p>If you have changes you haven&#39;t saved and you go to another screen or choose your browser&#39;s <strong>Back</strong>, the Hub asks &quot;You have unsaved changes on this page. Leave anyway and discard them?&quot; Choose <strong>Stay</strong> to keep working, or <strong>Leave</strong> to discard the changes. Closing or reloading the tab gets your browser&#39;s own question.</p>
 <h2>Can&#39;t do this?</h2>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 2 \u2014 scrollable" tabindex="0"><table>
 <thead>
@@ -4500,7 +4504,7 @@ On a <strong>Formal</strong> layout, <strong>Organizations</strong> fills in fro
 <td>The named ministry was deactivated while you were editing. Untick it. A person who already had a deactivated ministry keeps it when you save.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-30"},vt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
+`,changed:"2026-10-31"},vt={html:`<p><strong>Who this is for:</strong> Calendar administrators (Calendar.Administrator) and Calendar system administrators (Calendar.SysAdmin).</p>
 <p><strong>Calendar</strong> &gt; <strong>Users</strong> lists everyone with Calendar access, one row for each of their ministries: <strong>Name</strong>, <strong>Ministry</strong>, <strong>Comm contact</strong>, <strong>Calendar role</strong> and <strong>Active</strong>.</p>
 <ul>
 <li>Type a name or a ministry abbreviation in <strong>Find by name or ministry</strong> to narrow the list.</li>
@@ -4547,7 +4551,7 @@ On a <strong>Formal</strong> layout, <strong>Organizations</strong> fills in fro
 </ol>
 <p>They can then sign in with Microsoft using that address.</p>
 <h2>Who you can deactivate, reactivate or link</h2>
-<p>Only people who use nothing in the Hub but the Calendar, and whose Calendar access you could change. You can&#39;t deactivate yourself, so the button isn&#39;t shown on your own page.</p>
+<p>Only people who use nothing in the Hub but the Calendar, and whose Calendar access you could change. You can&#39;t deactivate yourself, so the button isn&#39;t shown on your own page. Nobody can deactivate the last active Core Admin: the Hub says &quot;this is the last active Core Admin: give Core Admin to someone else first, so someone can still manage users&quot;.</p>
 <p>For anyone else you can&#39;t change, <strong>Account</strong> says why instead of showing the button. The message names the button it replaces: deactivate, reactivate or link.</p>
 <div class="gcpe-table-scroll" role="region" aria-label="Table 1 \u2014 scrollable" tabindex="0"><table>
 <thead>
