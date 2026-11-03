@@ -3964,3 +3964,22 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   min-height: 0;
   border: 0;
 }
+
+/* The environment banner (C331): a thin strip on a test deployment, one colour per environment. */
+.gcpe-env-banner {
+  margin: 0;
+  padding: 0.125rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--typography-color-primary-invert, #fff);
+}
+.gcpe-env-banner--dev {
+  background: #5b2a86;
+}
+.gcpe-env-banner--test {
+  background: #9e4400;
+}
+.gcpe-env-banner--other {
+  background: #00585e;
+}

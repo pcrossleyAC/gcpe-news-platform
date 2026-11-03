@@ -1047,6 +1047,14 @@ A deployment is the **real production site** when `NODE_ENV=production` and ther
 `SITE_ENVIRONMENT=production` to say so; keep that line. Break-glass
 (`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`) doesn't change which it is: it only allows the local admin
 login, and on the real production site only alongside `SITE_ENVIRONMENT=production`.
+
+**The Hub's environment banner (C331).** A test site shows a thin strip at the top of every Hub page,
+and puts its name at the front of the browser tab's title, so staff can't mistake it for production.
+`ENVIRONMENT_NAME` sets the name: `ENVIRONMENT_NAME=DEV` on the Dev server (purple), and nothing (it
+then reads TEST, dark orange) on the Test server and boxs.ca. Any other name, such as UAT, gets dark
+teal. It is display only and changes nothing else. The real production site never shows the strip,
+whatever `ENVIRONMENT_NAME` says.
+
 On the real production site the stack checks these at startup, before it opens any database; a
 refusal stops the start (and a deploy's own `stack.js --check` fails first, so the running site isn't
 changed), a warning starts it and says so:

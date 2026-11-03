@@ -6,6 +6,7 @@ import { ApiError, apiFetch, SIGN_IN_CHECK_UNAVAILABLE_MESSAGE } from "../api/cl
 import { safeReturnTo } from "../session/safeReturnTo";
 import { useSession } from "../session/SessionContext";
 import { useDocumentTitle } from "../shared/useDocumentTitle";
+import { EnvironmentBanner } from "../shell/environment";
 
 const SIGN_IN_FAILED = "Sign-in failed. Check your user name and password.";
 const RATE_LIMITED = "Too many attempts, wait a minute";
@@ -88,6 +89,7 @@ export function SignIn(): React.JSX.Element {
 
   return (
     <main className="gcpe-sign-in">
+      <EnvironmentBanner />
       <Header title="GCPE News — Staff" />
       <h1>Sign in</h1>
       {ended && <InlineAlert variant="info" title="You were signed out" description={SESSION_ENDED} />}

@@ -44,6 +44,17 @@ describe("Core HTTP API", () => {
     await tdb.drop();
   });
 
+  it("C331: GET /environment needs no sign-in and answers the banner name, null when none (real production)", async () => {
+    const res = await request(app).get("/environment");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ name: null });
+    expect(res.headers["cache-control"]).toBe("no-store");
+    const pair = await generateKeyPair("RS256");
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+    const dev = createApp({ db: tdb.db, subscribers: [], auth: { issuer, audience, keys }, environmentName: "DEV" });
+    expect((await request(dev).get("/environment")).body).toEqual({ name: "DEV" });
+  });
+
   it("health endpoints need no auth", async () => {
     expect((await request(app).get("/health/live")).status).toBe(200);
     expect((await request(app).get("/health/ready")).body).toEqual({ status: "ok" });
