@@ -406,6 +406,31 @@ export async function patchOrganizationProfile(
   return tx ? run(tx) : db.transaction(run);
 }
 
+/** Carries the would-be record out of the preview's transaction, which it rolls back. */
+class PreviewRollback extends Error {
+  constructor(readonly record: OrgRecord | null) {
+    super("preview rollback");
+  }
+}
+
+/**
+ * The organization as {@link patchOrganizationProfile} would store it, without storing it: the
+ * same checks, trimming and sanitising in a transaction that is always rolled back, so no row,
+ * event or audit entry survives. Null when there is no such organization; refuses exactly as a
+ * save would (an abbreviation taken, an invalid field).
+ */
+export async function previewOrganizationProfile(db: Db, key: string, patch: OrgProfilePatch, subscribers: SubscriberConfig[]): Promise<OrgRecord | null> {
+  try {
+    await db.transaction(async (tx) => {
+      throw new PreviewRollback(await patchOrganizationProfile(db, key, patch, subscribers, tx));
+    });
+  } catch (err) {
+    if (err instanceof PreviewRollback) return err.record;
+    throw err;
+  }
+  throw new Error("unreachable: the preview transaction always rolls back");
+}
+
 export const orgCreateSchema = z
   .object({
     displayName: z.string().trim().min(1),

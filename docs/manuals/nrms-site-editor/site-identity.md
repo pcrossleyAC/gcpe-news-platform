@@ -22,7 +22,7 @@ Change the box, then choose **Publish**.
 
 ## Project Blue Bridge
 
-When the King dies, a Core administrator puts the public site into mourning with Project Blue Bridge: a black banner on every page and a mourning theme. Only a Core administrator can turn it on or off, and only with approval from the Intergovernmental Relations Secretariat (IGRS).
+When the King dies, a Core administrator puts the public site into mourning with Project Blue Bridge: a black banner on every page and a mourning theme (a black-and-white logo, and charcoal instead of blue for the heading bars). Only a Core administrator can turn it on or off, and only with approval from the Intergovernmental Relations Secretariat (IGRS).
 
 You prepare its wording, under **Project Blue Bridge banner**:
 
@@ -31,7 +31,7 @@ You prepare its wording, under **Project Blue Bridge banner**:
 
 Change them, then choose **Publish**. Check them ahead of time: once the switch is on, the banner shows whatever was last published here.
 
-**Website** > **Site settings** > **Project Blue Bridge** shows whether it is on: "Project Blue Bridge is currently OFF." (or ON). You see no switch there. While it is on, your own [site banner](manual:site-banner) is hidden.
+**Website** > **Site settings** > **Project Blue Bridge** shows whether it is on: "Project Blue Bridge is currently OFF." (or ON). You see no switch there. While it is on, your own [site banner](manual:site-banner) still shows, under the Blue Bridge banner.
 
 ## Can't do this?
 

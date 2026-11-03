@@ -26,7 +26,8 @@ For a new cabinet, prepare all the ministry changes together on [Cabinet change]
    - **Minister biography**: shown on the minister's biography page, linked as Read Bio. **Clear the biography** removes that page. After you rename the minister, a note warns "The biography still describes the previous minister."
    - **Meet the Team links**, **Media contacts** (**Primary contact**, **Alternate contact**, **After-hours phone**) and **Ministry page links** (**Ministry website**, **Photos (Flickr) address**, **Videos (YouTube) address**, **Featured Topics**, **Featured Services**).
    - **Active**, last, before **Save**. Only you see it.
-3. Choose **Save**. You see "Saved. The public ministry pages update within a few minutes."
+3. To check how the public pages will look first, choose **Preview** (beside **Cancel**). The ministry page fills the window as visitors will see it, with your changes and the ministry's current news, but nothing is saved. If the minister has a biography, **Ministry page** and **Biography page** switch between the two. Links in the preview open the live site in a new tab. Choose **Close preview** (or press Esc) to return to the form with your changes still in it. If something in the form would stop a save, Preview shows the same message instead.
+4. Choose **Save**. You see "Saved. The public ministry pages update within a few minutes."
 
 The public page shows the alternate contact only when there is a primary contact.
 

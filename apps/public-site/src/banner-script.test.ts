@@ -27,7 +27,7 @@ async function run(json: unknown, now: string, opts: { blueBridge?: boolean; sta
   dom.window.fetch = fetchMock as unknown as typeof fetch;
   dom.window.Date.now = () => Date.parse(now);
   dom.window.eval(SITE_BANNER_SCRIPT);
-  if (!opts.blueBridge) await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
   await new Promise((r) => setTimeout(r, 10));
   const el = dom.window.document.getElementById("site-banner")!;
   const section = dom.window.document.getElementById("banner")!;
@@ -127,11 +127,14 @@ describe("site banner script", () => {
     expect(off.window.document.getElementById("banner")!.hidden).toBe(true);
   });
 
-  it("never runs when #bridge-banner is present", async () => {
-    const { el, fetchMock } = await run(banner(), START, { blueBridge: true });
-    expect(el.hidden).toBe(true);
-    expect(el.childElementCount).toBe(0);
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("C327: shows under the Blue Bridge banner when both are on, an emergency included", async () => {
+    const { dom, el, section } = await run(banner({ style: "emergency" }), START, { blueBridge: true });
+    expect(section.hidden).toBe(false);
+    expect(el.hidden).toBe(false);
+    expect(el.querySelector(".site-banner-emergency[role=alert]")).not.toBeNull();
+    const notices = [...section.children].map((c) => c.id);
+    expect(notices.indexOf("bridge-banner")).toBeLessThan(notices.indexOf("site-banner"));
+    expect(dom.window.document.getElementById("bridge-banner")).not.toBeNull();
   });
 
   it("a message with markup stays text", async () => {

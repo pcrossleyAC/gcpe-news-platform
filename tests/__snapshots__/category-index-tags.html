@@ -32,7 +32,7 @@
 <div id="site-banner" hidden data-base="" data-icons="/assets/site/icons.svg"></div>
 <script>(() => {
   const el = document.getElementById("site-banner");
-  if (!el || document.getElementById("bridge-banner")) return;
+  if (!el) return;
   const wrap = document.getElementById("banner");
   const base = el.getAttribute("data-base") || "";
   const sprite = el.getAttribute("data-icons") || "";

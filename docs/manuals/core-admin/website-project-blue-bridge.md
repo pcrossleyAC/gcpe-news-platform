@@ -35,7 +35,7 @@ The banner's wording is on **Site settings** > **Site identity**, which site edi
 
 ## What happens next
 
-- The public site changes to its mourning theme, with a black banner announcing the King's death. The home page changes within a few minutes; older pages follow over the following minutes, newest first.
+- The public site changes to its mourning theme, with a black banner announcing the King's death, a black-and-white logo, and charcoal instead of blue for the heading bars (on the Connect, Subscribe and Search pages). The home page changes within a few minutes; older pages follow over the following minutes, newest first.
 - Every active Core administrator gets an email such as "Project Blue Bridge turned ON on {site}", saying who changed it and when.
 - The change is listed in **Website log**.
 - Turning it off puts the site back the same way.

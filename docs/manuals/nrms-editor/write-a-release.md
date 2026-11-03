@@ -47,6 +47,10 @@ If a document already holds a byline but is Formal, or organizations but is Info
 
 The **Body** toolbar has **Bold**, **Italic**, **Bulleted list**, **Numbered list**, **Link** and **Insert asset**. Pasted text keeps only that formatting.
 
+Two more buttons change how the body shows while you write, not what is saved:
+- **Full screen** fills the window with the body and its toolbar. Choose it again, or press Esc, to return to the page.
+- **Show blocks** outlines each paragraph and list, with a grip at its left. Drag the grip to move that paragraph or list somewhere else in the body, or put the cursor in it and choose **Move up** or **Move down**. Undo (Ctrl+Z) puts it back.
+
 If you give **Link** or **Insert asset** the address of a file as the Hub shows it (an address on the Hub itself, under any of its known web addresses, ending in /files/ and the file's name), the Hub puts in the file's public address instead, so visitors can open it. Any other address on the Hub asks first: "This address points at the Hub, which the public can't open. … Use this address anyway?" Choose **Cancel** and use the public address.
 
 To show a video or photo inside the body:
@@ -85,7 +89,7 @@ Advisories have no summary, social media summary or keywords.
 
 ## Categories
 
-**Categories** shows what is ticked. Choose **Edit categories** to change the **Ministries**, **Lead ministry**, **Sectors**, **Themes** and **Tags**. Once you tick more than one ministry, **Lead ministry (needed before approving)** appears and says "Choose the lead ministry" until you do. An advisory doesn't need one and offers **(none)**.
+**Categories** shows what is ticked. Choose **Edit categories** to change the **Ministries**, **Lead ministry**, **Sectors**, **Themes** and **Tags**. **Ministries** lists the ministries a release can be filed under: not the Ministers of State, GCPE Headquarters or GCPE Media Relations. One a release already has still shows, so you can untick it. Once you tick more than one ministry, **Lead ministry (needed before approving)** appears and says "Choose the lead ministry" until you do. An advisory doesn't need one and offers **(none)**.
 
 These decide which subscribers are emailed and which public pages list the release. You need at least one ministry and one sector to publish, and a lead ministry when you tick more than one.
 

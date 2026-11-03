@@ -375,6 +375,15 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 .wowza-wrapper #live-status{margin:.5rem 0 0;min-height:1.4em}
 .wowza-wrapper .live-stream-link,.wowza-wrapper .off-air-text{margin:.5rem 0 0;font-size:16px;line-height:1.4}
 
+/* Project Blue Bridge (C325): while its stylesheet is on the page, the solid blue heading bars (the
+ * Connect and Subscribe section bars, the Search page's filter headings) turn near-black, with white
+ * text: the theme's body-text colour (near-black by default, close to legacy's Blue Bridge charcoal),
+ * which white reads on as well as that text reads on the page. Legacy left them blue. Links and the
+ * headline links keep the theme's colours, as legacy's do. Keyed on the stylesheet, not the
+ * banner, so closing the banner keeps it. */
+:root:has(link[href$="/granville-bridge-theme.css"]){--color-section-bar:var(--color-text)}
+:root:has(link[href$="/granville-bridge-theme.css"]) .search-filters .search-filter h2{background-color:var(--color-text);color:var(--bs-white)}
+
 /* The Connect page's sections (pages/connect.ts). Legacy's .expandable-section h3 is a bar in the
  * section-bar colour (the Hub's Theme "Section bar colour", --color-section-bar; validated against
  * white) with white text, as the banner's; ours is an h2 with the same look and the icon (a Font

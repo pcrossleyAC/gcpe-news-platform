@@ -428,6 +428,23 @@ describe("apps/stack", () => {
     expect(res.headers.get("cache-control")).toBe("public, max-age=60");
   });
 
+  it("C324: the site's fonts and its banner and live-stream JSON allow any origin (the Hub's preview frame has none); pages don't", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    const out = fsStorage(instance.outputDir);
+    await out.write("assets/legacy/fonts/probe.woff2", "font");
+    await out.write("assets/site-banner.json", "{}");
+    await out.write("assets/live.json", "{}");
+    await out.write("assets/other.json", "{}");
+    await out.write("probe-page.html", "<p>hi</p>");
+    const acao = async (path: string, encoding?: string) =>
+      (await fetch(`${instance.stackUrl}/site/${path}`, { headers: encoding ? { "accept-encoding": encoding } : {} })).headers.get("access-control-allow-origin");
+    expect(await acao("assets/legacy/fonts/probe.woff2")).toBe("*");
+    expect(await acao("assets/site-banner.json")).toBe("*");
+    expect(await acao("assets/live.json", "br, gzip")).toBe("*");
+    expect(await acao("assets/other.json")).toBeNull();
+    expect(await acao("probe-page.html")).toBeNull();
+  });
+
   // R13: the stack compresses text itself (the Windows/IIS package has no dynamic compression).
   it("compresses the site's text (br, Vary: Accept-Encoding, its public cache kept); no Accept-Encoding gets identity", async () => {
     const { fsStorage } = await import("../../public-site/src/storage");
@@ -1285,6 +1302,33 @@ describe("apps/stack", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ministries: { key: string; name: string; abbreviation: string | null }[] };
     expect(body.ministries).toContainEqual({ key: "health", name: "Health", abbreviation: "HLTH" });
+  });
+
+  // C324: Core's preview route reaches the public site's renderer in the same process (wired
+  // after the public site starts), which draws the page from the unsaved record and the News API.
+  it("the Hub's ministry preview renders through the public site and saves nothing", async () => {
+    const admin = { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` };
+    expect((await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, { method: "PUT", headers: admin, body: JSON.stringify(healthOrg) })).status).toBe(200);
+    expect((await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } })).status).toBe(200);
+    const events = async () => Number((await instance.dbs.core.pool.query<{ n: string }>("SELECT count(*) AS n FROM outbox_events")).rows[0]!.n);
+    const eventsBefore = await events();
+
+    const res = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}/profile/preview`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ displayName: "Health Preview", minister: { name: "Honourable Preview Person", detailsHtml: "<p>Preview bio</p>" } }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ministryPage: string; biographyPage: string | null; onSite: boolean };
+    expect(body.onSite).toBe(true);
+    expect(body.ministryPage).toMatch(/<h1[^>]*>Health Preview<\/h1>/);
+    expect(body.ministryPage).toContain("Honourable Preview Person");
+    expect(body.ministryPage).toContain('<meta name="robots" content="noindex">');
+    expect(body.biographyPage).toContain("Preview bio");
+    const stored = (await (await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, { headers: admin })).json()) as { displayName: string };
+    expect(stored.displayName).toBe(healthOrg.displayName);
+    expect(await events()).toBe(eventsBefore);
   });
 
   // Task 2 (Phase 4a): NoD's `lists` mirror Core's taxonomy events over the same CORE->NOD

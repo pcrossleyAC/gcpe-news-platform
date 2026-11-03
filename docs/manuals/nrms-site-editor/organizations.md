@@ -28,7 +28,8 @@ Core administrators add, deactivate and hand over ministries, and set each one's
    - **Meet the Team links**: shown as Meet the Team on the ministry page.
    - Under **Media contacts**: **Primary contact** and **Alternate contact** (each with **Name**, **Phone**, **Cell** and **Email**), and **After-hours phone**. **Phone** shows as Direct on the ministry page.
    - Under **Ministry page links**: **Ministry website**, **Photos (Flickr) address**, **Videos (YouTube) address**, **Featured Topics** and **Featured Services**.
-3. Choose **Save**. You see "Saved. The public ministry pages update within a few minutes."
+3. To check how the public pages will look first, choose **Preview** (beside **Cancel**). The ministry page fills the window as visitors will see it, with your changes and the ministry's current news, but nothing is saved. If the minister has a biography, **Ministry page** and **Biography page** switch between the two. Links in the preview open the live site in a new tab. Choose **Close preview** (or press Esc) to return to the form with your changes still in it. If something in the form would stop a save, Preview shows the same message instead.
+4. Choose **Save**. You see "Saved. The public ministry pages update within a few minutes."
 
 **Cancel** closes the form without saving.
 

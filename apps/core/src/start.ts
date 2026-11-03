@@ -9,6 +9,7 @@ import { dispatchOnce, outboxAdmin, parseSubscribers, startDispatcher, type Outb
 import { recentDismissals, recordDismissals, type Dismissal } from "./services/outbox-dismissals";
 import type { SessionGate } from "@gcpe/auth";
 import { createApp } from "./app";
+import type { MinistryPreviewRenderer } from "./http/routes";
 import { sessionCheckDb, sessionGate as coreSessionGate } from "./services/sessions";
 import { createEntraClient } from "./entra/client";
 import { signInSettingsFromEnv } from "./entra/config";
@@ -63,7 +64,9 @@ export interface AppHandle {
  * same env vars/defaults, same migrations-at-startup, same logs — just split so main.ts and
  * (later) a single-process stack can share this wiring.
  */
-export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
+/** `ministryPreview`: the public site's renderer for the profile preview, from the stack (which
+ * starts the public site after Core, so it is looked up on each preview, not at start). */
+export async function startCore(env: NodeJS.ProcessEnv, opts: { ministryPreview?: MinistryPreviewRenderer } = {}): Promise<AppHandle> {
   const parsed = parseEnv(coreEnvSchema, env);
   const auth = authFromEnv(env);
   const signIn = signInSettingsFromEnv(env);
@@ -88,6 +91,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const sessionGate = coreSessionGate(check.db, { breakGlass: auth.local, secret: auth.session?.secret ?? "" });
   const app = createApp({
     sessionGate,
+    ministryPreview: opts.ministryPreview,
     trustProxyHops: trustProxyHopsFrom(env),
     db,
     subscribers,

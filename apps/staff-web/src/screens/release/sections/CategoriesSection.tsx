@@ -8,7 +8,7 @@ import { UnsavedMarker } from "../UnsavedMarker";
 import { LeadMinistrySelect } from "../LeadMinistrySelect";
 import { useRegisterDirty, useSaveAll } from "../useUnsavedChanges";
 import { useSeededForm } from "../useSeededForm";
-import type { Categories, Term } from "../categories";
+import { releaseMinistries, useOrgFlags, type Categories, type Term } from "../categories";
 import { SectionDisclosure } from "../../../shared/SectionDisclosure";
 import { FeatureSwitches, type FeaturePlace } from "./FeatureSwitches";
 
@@ -45,6 +45,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
   const [categories, setCategories] = useState<Categories>(EMPTY_CATEGORIES);
+  const orgFlags = useOrgFlags();
   const { form, setForm, dirty: edited, reseed, staleVersion } = useSeededForm<FormState>(fromView(view), view.version);
 
   useEffect(() => {
@@ -155,7 +156,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
 
         <SectionDisclosure label={readOnly ? "Show categories" : "Edit categories"} summary={summary}>
           <Form onSubmit={onSubmit} className="gcpe-stack">
-            {categoryList("ministries", "Ministries", categories.ministries)}
+            {categoryList("ministries", "Ministries", releaseMinistries(categories.ministries, orgFlags, view.ministries))}
 
             {form.ministries.length > 1 && (
               <LeadMinistrySelect

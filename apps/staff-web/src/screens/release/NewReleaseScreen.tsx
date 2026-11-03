@@ -16,7 +16,7 @@ import { dateTimeText } from "../calendar/list/dates";
 import { LeadMinistrySelect } from "./LeadMinistrySelect";
 import { ActivityLookupPanel, useActivityLookup } from "./ActivityLookupPanel";
 import { LeavePageGuard } from "../../shared/LeaveGuard";
-import type { Categories } from "./categories";
+import { releaseMinistries, useOrgFlags, type Categories } from "./categories";
 
 type CreatableType = (typeof CREATABLE_TYPES)[number];
 
@@ -203,6 +203,7 @@ export function NewReleaseScreen(): React.JSX.Element {
   const [pageTypes, setPageTypes] = useState<PageTypeOption[]>([]);
   const [pageImages, setPageImages] = useState<PageImageOption[]>([]);
   const [categories, setCategories] = useState<Categories>(EMPTY_CATEGORIES);
+  const orgFlags = useOrgFlags();
   const [mediaLists, setMediaLists] = useState<MediaListOption[]>([]);
 
   const [problems, setProblems] = useState<Record<string, string[]>>({});
@@ -496,7 +497,7 @@ export function NewReleaseScreen(): React.JSX.Element {
 
         <fieldset className="gcpe-options" id={FIELD_IDS.ministries} tabIndex={-1}>
           <legend>Ministries</legend>
-          {categories.ministries.map((m) => (
+          {releaseMinistries(categories.ministries, orgFlags, ministries).map((m) => (
             <label key={m.key}>
               <input type="checkbox" checked={ministries.includes(m.key)} onChange={() => onMinistryToggle(m.key)} />
               {m.name}

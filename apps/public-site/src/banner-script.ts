@@ -13,8 +13,8 @@
  * Nothing from the JSON becomes markup: the message and link texts go in with `textContent`, and
  * a link gets an `href` only when it passes the settings' safe-URL rule (an absolute https URL,
  * or a "/" path on this site, which gets the base path) — an unsafe one stays plain text. Links
- * open in the same window (look-and-feel §5 #17). Stands down while the Blue Bridge banner
- * (`#bridge-banner`) is on the page. Showing the banner un-hides `#banner` and dispatches
+ * open in the same window (look-and-feel §5 #17). It shows under the Blue Bridge banner
+ * (`#bridge-banner`) when that is on too (C327): an emergency must still reach visitors. Showing the banner un-hides `#banner` and dispatches
  * `site-banner-shown` on the document, which site.js (site-script.ts) answers by showing the header's
  * banner toggle; the close button hides `#banner`, as legacy did (site.js also listens, to flip the
  * toggle). The dismissal isn't remembered (as on news.gov). No banner without JavaScript.
@@ -24,7 +24,7 @@
  */
 export const SITE_BANNER_SCRIPT = String.raw`(() => {
   const el = document.getElementById("site-banner");
-  if (!el || document.getElementById("bridge-banner")) return;
+  if (!el) return;
   const wrap = document.getElementById("banner");
   const base = el.getAttribute("data-base") || "";
   const sprite = el.getAttribute("data-icons") || "";

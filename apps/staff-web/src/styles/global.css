@@ -1212,6 +1212,74 @@ body {
 .gcpe-body-editor__area .ProseMirror[contenteditable="false"] {
   background: var(--surface-color-forms-disabled, #edebe9);
 }
+/* Full screen (C323): the editor fills the window, toolbar on top, the text scrolling below it. */
+.gcpe-body-editor--full {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  margin: 0;
+  padding: 1rem;
+  background: var(--surface-color-background-white, #fff);
+}
+.gcpe-body-editor--full .gcpe-body-editor__area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.gcpe-body-editor--full .gcpe-body-editor__area .ProseMirror {
+  flex: 1;
+  overflow-y: auto;
+}
+/* Show blocks (C323): each top-level block outlined, named in its corner as legacy did, with a
+ * drag handle in the gutter. */
+.gcpe-body-editor__area .ProseMirror.gcpe-body-editor--blocks {
+  position: relative;
+  padding-left: 2rem;
+}
+.gcpe-body-editor--blocks > :is(p, ul, ol, div) {
+  position: relative;
+  padding: 0.75rem 0.25rem 0.25rem;
+  border: 1px dashed var(--surface-color-border-dark, #898785);
+}
+.gcpe-body-editor--blocks > :is(ul, ol) {
+  padding-left: 2rem;
+}
+.gcpe-body-editor--blocks > :is(p, ul, ol, div)::before {
+  position: absolute;
+  top: 0;
+  left: 0.125rem;
+  font-size: 0.625rem;
+  line-height: 1;
+  color: var(--typography-color-secondary, #474543);
+  pointer-events: none;
+}
+.gcpe-body-editor--blocks > p::before {
+  content: "P" / "";
+}
+.gcpe-body-editor--blocks > ul::before {
+  content: "UL" / "";
+}
+.gcpe-body-editor--blocks > ol::before {
+  content: "OL" / "";
+}
+.gcpe-body-editor--blocks > div::before {
+  content: "DIV" / "";
+}
+.gcpe-body-editor__handle {
+  position: absolute;
+  left: 0.5rem;
+  width: 1rem;
+  height: 1.5rem;
+  margin-top: 0.25rem;
+  cursor: grab;
+  border-radius: 2px;
+  /* Six dots, the usual grip. */
+  background: radial-gradient(circle, var(--surface-color-border-dark, #898785) 1.5px, transparent 1.6px) 0 0 / 0.5rem 0.5rem;
+}
+.gcpe-body-editor__handle:hover {
+  background-color: var(--surface-color-secondary-button-disabled, #edebe9);
+}
 
 /* Release editor: why Approve/Publish are unavailable, next to the buttons. */
 
@@ -3847,4 +3915,52 @@ html:has(.gcpe-activity form > .gcpe-actions) {
   align-items: center;
   gap: 1rem;
   margin-top: 1rem;
+}
+
+/* The ministry preview (C324): the design system's modal stretched to the whole window, a bar
+ * with the title, note and buttons, and the rendered page below it. */
+.react-aria-ModalOverlay:has(.gcpe-preview) .bcds-react-aria-Modal {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.gcpe-preview,
+.gcpe-preview > .bcds-react-aria-Dialog--Container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.gcpe-preview__bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8);
+}
+.gcpe-preview__bar h2,
+.gcpe-preview__bar p {
+  margin: 0;
+}
+.gcpe-preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.gcpe-preview__pages {
+  display: flex;
+  gap: var(--layout-margin-xsmall, 0.25rem);
+  padding: var(--layout-padding-xsmall, 0.25rem);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  background: var(--surface-color-secondary-button-disabled, #edebe9);
+}
+.gcpe-preview__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
 }

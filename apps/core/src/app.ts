@@ -4,7 +4,7 @@ import type { Db } from "@gcpe/db-kit";
 import { requireBearer, type BearerOptions, type LocalAuthConfig, type SessionGate } from "@gcpe/auth";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { MAX_EVENT_BYTES, type SubscriberConfig } from "@gcpe/events";
-import { apiRoutes } from "./http/routes";
+import { apiRoutes, type MinistryPreviewRenderer } from "./http/routes";
 import type { EntraClient } from "./entra/client";
 import { sessionRoutes } from "./http/session";
 import { sessionGate } from "./services/sessions";
@@ -31,6 +31,8 @@ export function createApp(deps: {
   };
   /** Core's session gate (start.ts hands the same one to the stack); built here when not given. */
   sessionGate?: SessionGate;
+  /** Renders a ministry's public pages for the profile preview (the stack's public site). */
+  ministryPreview?: MinistryPreviewRenderer;
 }): express.Express {
   // The cookie carries the roles minted at sign-in; every /api request made with it checks the
   // person and this sign-in as Core holds them now (services/sessions.ts), so a deactivated
@@ -50,7 +52,7 @@ export function createApp(deps: {
     "/api",
     requireBearer(auth),
     express.json({ limit: MAX_EVENT_BYTES }),
-    apiRoutes(deps.db, deps.subscribers, { timeZone: deps.timeZone }),
+    apiRoutes(deps.db, deps.subscribers, { timeZone: deps.timeZone, ministryPreview: deps.ministryPreview }),
   );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.

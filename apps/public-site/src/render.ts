@@ -225,8 +225,8 @@ ${page}
 /**
  * `section#banner` (look-and-feel §1.3–1.4): the Project Blue Bridge banner when it is on, in legacy
  * `_BlueBridgeBanner.cshtml`'s skeleton with a real close button and `role="alert"`; then the site
- * banner's placeholder and its inline script (banner-script.ts), which stands down while Blue Bridge
- * shows. With no Blue Bridge banner the section starts hidden, so no empty "Site notices" region is
+ * banner's placeholder and its inline script (banner-script.ts), whose banner shows under Blue
+ * Bridge's when both are on (C327). With no Blue Bridge banner the section starts hidden, so no empty "Site notices" region is
  * announced; the script un-hides it when it shows the site banner.
  */
 function renderBanner(base: string, blueBridge: string | null | undefined): string {

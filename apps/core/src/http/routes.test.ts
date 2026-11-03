@@ -6,7 +6,7 @@ import { hashPassword, localLoginRouter } from "@gcpe/auth";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { MAX_EVENT_BYTES, outboxEvents } from "@gcpe/events";
 import { eq } from "drizzle-orm";
-import { organizations, userOrganizations, users } from "../db/schema";
+import { coreAudit, organizations, userOrganizations, users } from "../db/schema";
 import { createApp } from "../app";
 import * as organizationsService from "../services/organizations";
 import * as republishService from "../services/republish";
@@ -665,6 +665,70 @@ describe("Core HTTP API", () => {
       await seed("forests-invalid");
       expect((await patch(siteEditor, { minister: { photoUrl: "http://x/y.jpg" } }, "forests-invalid")).status).toBe(400);
       expect((await patch(siteEditor, { minister: { email: "nope" } }, "forests-invalid")).status).toBe(400);
+    });
+  });
+
+  describe("POST /api/organizations/:key/profile/preview (C324)", () => {
+    // Own keys: this file shares one database.
+    const seed = async (key: string) => void (await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName: "Forests", abbreviation: null }).expect(200));
+    const get = async (key: string) => (await request(app).get(`/api/organizations/${key}`).set(auth(reader)).expect(200)).body;
+    const renderer = vi.fn(async (org: { displayName: string; minister: { detailsHtml: string | null } }) => ({ ministryPage: `<h1>${org.displayName}</h1>`, biographyPage: org.minister.detailsHtml }));
+    let previewApp: ReturnType<typeof createApp>;
+    beforeAll(async () => {
+      const pair = await generateKeyPair("RS256");
+      const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+      const sign = (roles: string[]) =>
+        new SignJWT({ roles }).setProtectedHeader({ alg: "RS256", kid: "k" }).setIssuer(issuer).setAudience(audience).setSubject("svc").setExpirationTime("5m").sign(pair.privateKey);
+      previewTokens = { admin: await sign(["Core.Admin"]), siteEditor: await sign(["NRMS.SiteEditor"]), editorOnly: await sign(["NRMS.Editor"]) };
+      // A subscriber, so a save would enqueue an event: the preview must leave none.
+      previewApp = createApp({ db: tdb.db, subscribers: [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }], auth: { issuer, audience, keys }, ministryPreview: renderer as never });
+    });
+    let previewTokens: { admin: string; siteEditor: string; editorOnly: string };
+    const preview = (token: string, body: unknown, key: string, on = previewApp) => request(on).post(`/api/organizations/${key}/profile/preview`).set(auth(token)).send(body as object);
+    const traces = async (key: string) => ({
+      events: (await tdb.db.select().from(outboxEvents)).filter((e) => e.aggregateId.endsWith(`:${key}`)).length,
+      audit: (await tdb.db.select().from(coreAudit)).filter((a) => a.targetId === key).length,
+    });
+
+    it("renders what the PATCH would store, cleaned as a save cleans it, and stores nothing: no change, no event, no audit entry", async () => {
+      await seed("forests-preview");
+      const before = await get("forests-preview");
+      const tracesBefore = await traces("forests-preview");
+      renderer.mockClear();
+
+      const res = await preview(previewTokens.siteEditor, { displayName: "  Forests Renamed ", minister: { detailsHtml: "<p>Bio</p><script>alert(1)</script>" } }, "forests-preview");
+
+      expect(res.status).toBe(200);
+      expect(res.headers["cache-control"]).toBe("no-store");
+      expect(res.body).toEqual({ ministryPage: "<h1>Forests Renamed</h1>", biographyPage: expect.stringContaining("Bio"), onSite: true });
+      expect(res.body.biographyPage).not.toContain("script");
+      expect(renderer).toHaveBeenCalledTimes(1);
+      expect(renderer.mock.calls[0]![0]).toMatchObject({ key: "forests-preview", displayName: "Forests Renamed", isActive: true });
+      expect(await get("forests-preview")).toEqual(before);
+      expect(await traces("forests-preview")).toEqual(tracesBefore);
+    });
+
+    it("says when the public site wouldn't show the ministry, still storing nothing", async () => {
+      await seed("forests-preview-off");
+      const res = await preview(previewTokens.admin, { isActive: false }, "forests-preview-off");
+      expect(res.status).toBe(200);
+      expect(res.body.onSite).toBe(false);
+      expect((await get("forests-preview-off")).isActive).toBe(true);
+    });
+
+    it("refuses exactly as the PATCH does", async () => {
+      await seed("forests-preview-refuse");
+      renderer.mockClear();
+      expect((await preview(previewTokens.siteEditor, { isActive: false }, "forests-preview-refuse")).status).toBe(403);
+      expect((await preview(previewTokens.editorOnly, { displayName: "X" }, "forests-preview-refuse")).status).toBe(403);
+      expect((await preview(previewTokens.siteEditor, { minister: { email: "nope" } }, "forests-preview-refuse")).status).toBe(400);
+      expect((await preview(previewTokens.admin, { displayName: "X" }, "nope")).status).toBe(404);
+      expect(renderer).not.toHaveBeenCalled();
+    });
+
+    it("503 when Core runs without the public site to render with", async () => {
+      await seed("forests-preview-alone");
+      expect((await preview(admin, {}, "forests-preview-alone", app)).status).toBe(503);
     });
   });
 
