@@ -8,6 +8,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
 import { backupScript, BOXS_APPS, DROP_MINE_SQL, DUMP_FILTER_SED, localDump, PRELUDE, restoreScript, testAccountsScript, tickScript, unsafeDumpLine } from "../../scripts/lib/scrub/boxs";
 
+// The two throwaway-cluster tests need Postgres's own tools on PATH; CI's runner has a Postgres service but not initdb.
+const HAS_INITDB = spawnSync("initdb", ["--version"]).status === 0;
+
 describe("remote scripts", () => {
   const scripts = [testAccountsScript(), backupScript("20261022-120000"), restoreScript({ stamp: "20261022-120000", from: "scrub-load", apps: ["core", "nrms"], resetNodPositions: true, siteOutput: "clear" }), tickScript("https://boxs.ca", 3)];
 
@@ -249,7 +252,7 @@ describe("fix round 1: localDump", () => {
   });
 });
 
-describe("fix round 2: a password with special characters, over real scram-sha-256 auth", () => {
+describe.skipIf(!HAS_INITDB)("fix round 2: a password with special characters, over real scram-sha-256 auth", () => {
   // The local admin database used everywhere else in this file runs on trust auth, which never
   // exercises PGPASSWORD at all. Proving the percent-decode fix needs a cluster that actually
   // checks a password, so one is built from scratch here, on a scratch port, and torn down
@@ -384,7 +387,7 @@ describe("post-review fix: url_of strips the quoting boxs.ca's real settings fil
   });
 });
 
-describe("post-review fix: a single-quoted password with ! authenticates end to end", () => {
+describe.skipIf(!HAS_INITDB)("post-review fix: a single-quoted password with ! authenticates end to end", () => {
   // Same throwaway-cluster approach as fix round 2: a scratch scram-sha-256 Postgres, on a
   // scratch port, created and torn down entirely inside this test — never the shared local
   // Postgres, never boxs.ca. This time the settings file wraps the URL in single quotes, as
