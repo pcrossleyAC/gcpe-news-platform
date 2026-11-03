@@ -12,6 +12,7 @@ topics: []
 **Calendar** > **Users** lists everyone with Calendar access, one row for each of their ministries: **Name**, **Ministry**, **Comm contact**, **Calendar role** and **Active**.
 
 - Type a name or a ministry abbreviation in **Find by name or ministry** to narrow the list.
+- Choose a **Calendar role** (or **No Calendar access**) or a **Ministry** to show only those rows. The line under the dropdowns says how many rows are shown.
 - Tick **Show inactive users, including those with no email** or **Show users without Calendar access** to see more people.
 - Choose a name to open that person's page.
 

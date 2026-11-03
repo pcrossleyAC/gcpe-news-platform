@@ -11,7 +11,7 @@ topics: []
 
 **Calendar access**, under **Administration** in the side menu, gives a person a Calendar role and the ministries they work for. Each person has one role or **No Calendar access**.
 
-The table shows everyone with a Hub account: **Name**, **Email**, **Calendar role** and **Ministries**. Inactive people are hidden until you tick **Show inactive users, including those with no email**.
+The table shows everyone with a Hub account: **Name**, **Email**, **Calendar role** and **Ministries**. Inactive people are hidden until you tick **Show inactive users, including those with no email**. To narrow a long list, choose a **Calendar role** (or **No Calendar access**) or a **Ministry**; the line under the dropdowns says how many people are shown.
 
 ## What you can give
 
