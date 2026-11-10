@@ -18,6 +18,8 @@ The table lists every staff account with its **Name**, **Email**, **Sign-in** (*
 1. Type part of a name or email address in **Filter users**. You can also type a role as it appears in the table, such as "NRMS Site editor" or "Core Admin", or just a word of it, such as Editor.
 2. The table narrows as you type, and the count shows "Showing 3 of 24 users". Type **active** or **inactive** to list people by status.
 
+Inactive users, including people brought in from the old Calendar without an email, are hidden at first. Tick **Show inactive users, including those with no email** to list them too. Someone you deactivate stays in the table until you close their row.
+
 ## Add a user
 
 Add the person before they first sign in. Without an account, sign-in tells them "Your account hasn't been set up. Contact an administrator."
