@@ -160,7 +160,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <li>At the bottom of their settings, open <strong>History</strong>. It lists each change to their account, newest first: when, who made it, and what they did, such as &quot;Paul Smith gave Core Admin to Jo Lee&quot;.</li>
 <li>If there are more, choose <strong>Show older changes</strong>.</li>
 </ol>
-<p>History shows changes made on <strong>Users</strong> and <strong>Calendar access</strong>: adding the person, their name, roles, Calendar role and ministries, password, linking, Microsoft sign-in, and switching <strong>Active</strong> on or off. Changes made before the Hub started keeping this history aren&#39;t listed: you see &quot;No changes recorded yet.&quot; The break-glass administrator shows as &quot;Administrator (break-glass)&quot;. Every change on this screen, for everyone, is also on <a href="/hub/help/manuals/core-admin/admin-history">Admin history</a>.</p>
+<p>History shows changes made on <strong>Users</strong> and <strong>Calendar access</strong>: adding the person, their name, roles, Calendar role and ministries, password, linking, unlinking Microsoft sign-in, and switching <strong>Active</strong> on or off. It also shows the person&#39;s own first Microsoft sign-in, which links their account, under their name. Changes made before the Hub started keeping this history aren&#39;t listed: you see &quot;No changes recorded yet.&quot; The break-glass administrator shows as &quot;Administrator (break-glass)&quot;. Every change on this screen, for everyone, is also on <a href="/hub/help/manuals/core-admin/admin-history">Admin history</a>.</p>
 <h2>Check for accounts nobody uses</h2>
 <p><strong>Last signed in</strong> shows when the person last signed in with a password or Microsoft, in BC time, or &quot;Never&quot; if they haven&#39;t signed in since the Hub started keeping this. Use it in an access review: someone who hasn&#39;t signed in for months may no longer need their roles. Deactivate them, or take roles away, as for anyone else.</p>
 <h2>Deactivate or reactivate someone</h2>
@@ -230,7 +230,7 @@ import"./chunk-chunk-ESHPZIMQ.js";var n={html:`<p><strong>Who this is for:</stro
 <td>The person was linked already. Reload the page.</td>
 </tr>
 </tbody></table></div>
-`,changed:"2026-10-31"},o={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
+`,changed:"2026-11-01"},o={html:`<p><strong>Who this is for:</strong> Core administrators (Core.Admin).</p>
 <p><strong>Calendar access</strong> gives staff a Calendar role and the ministries they work for. Calendar administrators and Calendar system administrators use this screen too, but with limits that don&#39;t apply to you.</p>
 <p>The table shows each person&#39;s <strong>Name</strong>, <strong>Email</strong>, <strong>Calendar role</strong> and <strong>Ministries</strong>. Inactive people are hidden until you tick <strong>Show inactive users, including those with no email</strong>.</p>
 <h2>The Calendar roles</h2>
