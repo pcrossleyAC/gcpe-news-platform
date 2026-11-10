@@ -41,6 +41,11 @@ async function openEditor(who: string, user = userEvent.setup()): Promise<void> 
   await user.click(await screen.findByRole("button", { name: `Edit ${who}` }));
 }
 
+/** Inactive users are hidden until this box is ticked. */
+async function showInactive(user = userEvent.setup()): Promise<void> {
+  await user.click(await screen.findByRole("checkbox", { name: /Show inactive users/ }));
+}
+
 
 /** Records, the moment a live region first gets text, whether it was hidden from assistive
  * technology then (inside an aria-hidden ancestor, as a still-open modal leaves the page). */
@@ -176,6 +181,21 @@ describe("UsersScreen", () => {
     expect(screen.getByRole("textbox", { name: "other@x.invalid display name" })).toHaveValue("Other Person");
   });
 
+  it("hides inactive users until Show inactive users is ticked", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, { ...OTHER, isActive: false }]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    await screen.findByRole("rowheader", { name: "Self" });
+    expect(screen.queryByRole("rowheader", { name: "Other" })).toBeNull();
+    expect(await screen.findByText("1 users")).toBeInTheDocument();
+    await showInactive(user);
+    expect(screen.getByRole("rowheader", { name: "Other" })).toBeInTheDocument();
+    expect(await screen.findByText("2 users")).toBeInTheDocument();
+  });
+
   it("matches a status as a whole word: active finds no inactive user", async () => {
     stubSession([], (url, init) => {
       if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, { ...OTHER, isActive: false }]);
@@ -183,6 +203,7 @@ describe("UsersScreen", () => {
     });
     render(withAuth(<UsersScreen />));
     const user = userEvent.setup();
+    await showInactive(user);
     await screen.findByRole("rowheader", { name: "Other" });
     await user.type(screen.getByRole("searchbox", { name: /Filter users/ }), "active");
     expect(screen.queryByRole("rowheader", { name: "Other" })).toBeNull();
@@ -330,6 +351,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await showInactive();
     await openEditor("other@x.invalid");
     const user = userEvent.setup();
     await user.click(await screen.findByRole("switch", { name: "other@x.invalid is inactive" }));
@@ -438,6 +460,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await showInactive();
     await openEditor("Kim Imported (no email)");
     const user = userEvent.setup();
     expect(await screen.findByRole("heading", { name: "Kim Imported (no email) (inactive)" })).toBeInTheDocument();
@@ -459,6 +482,7 @@ describe("UsersScreen", () => {
       return null;
     });
     render(withAuth(<UsersScreen />));
+    await showInactive();
     await openEditor("Kim Imported (no email)");
     const user = userEvent.setup();
     const form = await screen.findByRole("form", { name: "Link Kim Imported to an email" });

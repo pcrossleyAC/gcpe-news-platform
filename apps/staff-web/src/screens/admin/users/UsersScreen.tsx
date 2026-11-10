@@ -357,14 +357,20 @@ function UsersTable({ users, calendar, onChanged, reportDirty, orgName }: { user
   // name, roles or password survive Close and the filter.
   const [mounted, setMounted] = useState<Set<string>>(() => new Set());
   const q = query.trim().toLowerCase();
+  // Inactive users (mostly imported legacy staff) are hidden until asked for, as on Calendar access
+  // and Calendar users. A row whose editor is open stays, so deactivating someone doesn't whisk them away.
+  const [showInactive, setShowInactive] = useState(false);
+  const listed = (u: UserView) => showInactive || u.isActive || open.has(u.id);
+  const listedCount = users.filter(listed).length;
   // Name, email and roles (the badge names shown, or the role ids) match on any part; the status only as a whole word, so "active"
   // never finds an inactive user.
   const matches = (u: UserView) =>
-    !q || [u.displayName, u.email ?? "", ...u.roles, ...u.roles.map(roleBadge), calendar.has(u.id) ? `Calendar ${calendar.get(u.id)}` : ""].some((t) => t.toLowerCase().includes(q)) || q === (u.isActive ? "active" : "inactive");
+    listed(u) &&
+    (!q || [u.displayName, u.email ?? "", ...u.roles, ...u.roles.map(roleBadge), calendar.has(u.id) ? `Calendar ${calendar.get(u.id)}` : ""].some((t) => t.toLowerCase().includes(q)) || q === (u.isActive ? "active" : "inactive"));
   const shownCount = users.filter(matches).length;
   // The count is announced once typing pauses, not on every keystroke.
-  const [countText, setCountText] = useState(`${users.length} users`);
-  const nextCount = q ? `Showing ${shownCount} of ${users.length} users` : `${users.length} users`;
+  const [countText, setCountText] = useState(`${listedCount} users`);
+  const nextCount = q ? `Showing ${shownCount} of ${listedCount} users` : `${listedCount} users`;
   useEffect(() => {
     const t = setTimeout(() => setCountText(nextCount), 500);
     return () => clearTimeout(t);
@@ -387,6 +393,10 @@ function UsersTable({ users, calendar, onChanged, reportDirty, orgName }: { user
           {countText}
         </p>
       </div>
+      <div className="gcpe-check">
+        <input id="users-show-inactive" type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+        <label htmlFor="users-show-inactive">Show inactive users, including those with no email</label>
+      </div>
       <TableScroll label="Staff users">
         <table className="gcpe-table gcpe-users__table">
           <caption className="gcpe-visually-hidden">Staff users</caption>
@@ -406,7 +416,7 @@ function UsersTable({ users, calendar, onChanged, reportDirty, orgName }: { user
           <tbody>
             {shownCount === 0 && (
               <tr>
-                <td colSpan={7}>No users match &ldquo;{query.trim()}&rdquo;.</td>
+                <td colSpan={7}>{q ? <>No users match &ldquo;{query.trim()}&rdquo;.</> : "No active users. Choose Show inactive users to see the rest."}</td>
               </tr>
             )}
             {users.map((u) => {
